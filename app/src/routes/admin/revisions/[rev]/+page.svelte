@@ -1,20 +1,21 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import {
 		isAuthenticated,
-		downloadServerManifest,
-		listRevisions,
 		type TomboyServerManifest
 	} from '$lib/sync/dropboxClient.js';
 	import {
-		downloadRevisionManifest,
 		diffManifests,
 		fetchNoteAtRevision,
 		rollbackAndResync,
 		type RevisionChangeSet
 	} from '$lib/sync/adminClient.js';
+	import {
+		adminCache,
+		initAdminCache,
+		ensureRevLoaded
+	} from '$lib/stores/adminCache.svelte.js';
 	import { pushToast } from '$lib/stores/toast.js';
 	import { diffLines, type Change } from 'diff';
 
@@ -27,7 +28,6 @@
 	let thisManifest = $state<TomboyServerManifest | null>(null);
 	let prevRev = $state<number | null>(null);
 	let prevManifest = $state<TomboyServerManifest | null>(null);
-	let currentServerRev = $state<number | null>(null);
 	let changes = $state<RevisionChangeSet | null>(null);
 
 	// Per-note diff expansion state: guid → { loading, changes }
@@ -43,6 +43,8 @@
 		load();
 	});
 
+	const currentServerRev = $derived(adminCache.rootManifest?.revision ?? null);
+
 	async function load() {
 		authed = isAuthenticated();
 		if (!authed) {
@@ -53,19 +55,19 @@
 		error = '';
 		noteDiffs = new Map();
 		try {
-			const [rootManifest, revList, thisMan] = await Promise.all([
-				downloadServerManifest(),
-				listRevisions(),
-				downloadRevisionManifest(rev)
-			]);
-			currentServerRev = rootManifest?.revision ?? null;
-			thisManifest = thisMan;
+			// Seed cache (root + local manifests + first page of revs) if needed.
+			await initAdminCache();
 
-			// Find immediate predecessor in the list
-			const sorted = [...revList].sort((a, b) => a - b);
-			const idx = sorted.indexOf(rev);
-			prevRev = idx > 0 ? sorted[idx - 1] : null;
-			prevManifest = prevRev !== null ? await downloadRevisionManifest(prevRev) : null;
+			// The immediate predecessor in history is rev - 1. If that rev
+			// doesn't exist on the server (rare — only in rollback artifacts or
+			// first rev), fall through to "no previous revision".
+			const [thisMan, prevMan] = await Promise.all([
+				ensureRevLoaded(rev),
+				rev > 1 ? ensureRevLoaded(rev - 1) : Promise.resolve(null)
+			]);
+			thisManifest = thisMan;
+			prevManifest = prevMan;
+			prevRev = prevMan ? rev - 1 : null;
 
 			if (thisMan) changes = diffManifests(prevManifest, thisMan);
 		} catch (e) {

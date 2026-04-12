@@ -1,21 +1,16 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { page } from '$app/state';
-	import {
-		isAuthenticated,
-		listRevisions,
-		downloadServerManifest,
-		type TomboyServerManifest
-	} from '$lib/sync/dropboxClient.js';
-	import {
-		downloadRevisionManifest,
-		fetchNoteAtRevision
-	} from '$lib/sync/adminClient.js';
-	import { parseTomboyDate } from '$lib/core/note.js';
+	import { isAuthenticated } from '$lib/sync/dropboxClient.js';
+	import { fetchNoteAtRevision } from '$lib/sync/adminClient.js';
 	import type { NoteData } from '$lib/core/note.js';
 	import * as noteStore from '$lib/storage/noteStore.js';
-	import { getManifest, saveManifest } from '$lib/sync/manifest.js';
 	import { invalidateCache } from '$lib/stores/noteListCache.js';
+	import {
+		adminCache,
+		initAdminCache,
+		loadMoreRevs,
+		ADMIN_PAGE_SIZE
+	} from '$lib/stores/adminCache.svelte.js';
 	import { pushToast } from '$lib/stores/toast.js';
 
 	const guid = $derived(page.params.guid ?? '');
@@ -24,9 +19,6 @@
 	let loading = $state(true);
 	let error = $state('');
 
-	// revisions at which this note exists (and the rev number for THIS note, not the server rev)
-	let entries = $state<Array<{ serverRev: number; noteRev: number }>>([]);
-	let currentServerRev = $state<number | null>(null);
 	let loadedRevs = $state<Map<number, NoteData | null>>(new Map()); // noteRev → NoteData
 	let expanded = $state<Set<number>>(new Set());
 
@@ -46,33 +38,37 @@
 		loadedRevs = new Map();
 		expanded = new Set();
 		try {
-			const [revList, root] = await Promise.all([listRevisions(), downloadServerManifest()]);
-			currentServerRev = root?.revision ?? null;
-
-			const manifests: Array<{ serverRev: number; m: TomboyServerManifest | null }> = [];
-			for (const r of revList) {
-				const m = await downloadRevisionManifest(r);
-				manifests.push({ serverRev: r, m });
-			}
-
-			const collected: Array<{ serverRev: number; noteRev: number }> = [];
-			const seenNoteRevs = new Set<number>();
-			for (const { serverRev, m } of manifests) {
-				if (!m) continue;
-				const entry = m.notes.find((n) => n.guid === guid);
-				if (!entry) continue;
-				if (seenNoteRevs.has(entry.rev)) continue;
-				seenNoteRevs.add(entry.rev);
-				collected.push({ serverRev, noteRev: entry.rev });
-			}
-			collected.sort((a, b) => b.noteRev - a.noteRev);
-			entries = collected;
+			await initAdminCache();
 		} catch (e) {
 			error = String(e);
 		} finally {
 			loading = false;
 		}
 	}
+
+	/**
+	 * Scan the admin-cache manifests for revs where this guid appears.
+	 * We reuse whatever has already been loaded via the revisions list or
+	 * rev-detail visits — no extra server calls to scan history.
+	 */
+	const entries = $derived.by(() => {
+		const collected: Array<{ serverRev: number; noteRev: number }> = [];
+		const seenNoteRevs = new Set<number>();
+		const serverRevs = [...adminCache.manifestsByRev.keys()].sort((a, b) => b - a);
+		for (const sr of serverRevs) {
+			const m = adminCache.manifestsByRev.get(sr);
+			if (!m) continue;
+			const entry = m.notes.find((n) => n.guid === guid);
+			if (!entry) continue;
+			if (seenNoteRevs.has(entry.rev)) continue;
+			seenNoteRevs.add(entry.rev);
+			collected.push({ serverRev: sr, noteRev: entry.rev });
+		}
+		collected.sort((a, b) => b.noteRev - a.noteRev);
+		return collected;
+	});
+
+	const scannedRevsCount = $derived(adminCache.manifestsByRev.size);
 
 	async function togglePreview(noteRev: number) {
 		if (expanded.has(noteRev)) {
@@ -122,14 +118,9 @@
 			note.localDirty = true;
 			note.deleted = false;
 			await noteStore.putNoteSynced(note);
-
-			// Bump the local manifest entry so sync sees this as a change to upload.
-			// Use the pre-existing known rev so sync uploads as a new revision.
-			const m = await getManifest();
-			// Keep existing noteRevisions[guid] untouched if present — that's
-			// what "last synced rev" means. The localDirty flag is what drives
-			// the upload.
-			await saveManifest(m);
+			// localDirty=true tells the next sync to upload this as a new rev.
+			// We leave the local manifest's noteRevisions[guid] untouched —
+			// that's the last synced rev, which stays accurate.
 
 			invalidateCache();
 			pushToast(
@@ -155,12 +146,28 @@
 	<div class="notice">히스토리를 모으는 중 (모든 리비전 매니페스트 스캔)...</div>
 {:else if error}
 	<div class="notice error">오류: {error}</div>
-{:else if entries.length === 0}
-	<div class="notice">이 노트는 서버에 히스토리가 없습니다.</div>
 {:else}
 	<p class="info">
-		이 노트는 <strong>{entries.length}</strong>개 리비전에서 추적됩니다.
+		로드된 {scannedRevsCount}개 리비전 중 이 노트가 나타난 리비전:
+		<strong>{entries.length}</strong>개
+		{#if adminCache.hasMore}
+			<span class="subtle">
+				(리비전 페이지에서 더 로드하면 이 페이지의 히스토리도 늘어납니다)
+			</span>
+		{/if}
 	</p>
+
+	{#if adminCache.hasMore}
+		<div class="load-more-row">
+			<button class="btn-load-more" onclick={() => loadMoreRevs()} disabled={adminCache.loading}>
+				{adminCache.loading ? '불러오는 중...' : `리비전 ${ADMIN_PAGE_SIZE}개 더 스캔`}
+			</button>
+		</div>
+	{/if}
+
+	{#if entries.length === 0}
+		<div class="notice">로드된 리비전 범위 안에서는 이 노트를 찾지 못했습니다.</div>
+	{:else}
 	<ul class="history">
 		{#each entries as e}
 			{@const note = loadedRevs.get(e.noteRev)}
@@ -210,6 +217,7 @@
 			</li>
 		{/each}
 	</ul>
+	{/if}
 {/if}
 
 <style>
@@ -252,6 +260,22 @@
 		color: var(--color-text-secondary, #6b7280);
 		margin-bottom: 12px;
 	}
+	.subtle {
+		font-size: 0.8rem;
+		color: var(--color-text-secondary, #6b7280);
+	}
+	.load-more-row {
+		margin-bottom: 16px;
+	}
+	.btn-load-more {
+		background: var(--color-bg-secondary, #f7f7f8);
+		border: 1px solid var(--color-border, #e5e7eb);
+		border-radius: 6px;
+		padding: 8px 14px;
+		font-size: 0.85rem;
+		cursor: pointer;
+	}
+	.btn-load-more:disabled { opacity: 0.6; cursor: not-allowed; }
 
 	.history {
 		list-style: none;

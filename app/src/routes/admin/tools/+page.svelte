@@ -10,6 +10,9 @@
 		rootManifestFullPath,
 		revisionManifestFullPath
 	} from '$lib/sync/dropboxClient.js';
+	import { getAllNotesIncludingDeleted } from '$lib/storage/noteStore.js';
+	import { serializeNote } from '$lib/core/noteArchiver.js';
+	import { getManifest } from '$lib/sync/manifest.js';
 	import { pushToast } from '$lib/stores/toast.js';
 	import JSZip from 'jszip';
 
@@ -22,45 +25,51 @@
 	});
 
 	/**
-	 * Download the current server state (root manifest + all notes at their
-	 * tracked revs) into a zip. This is a *snapshot of the current manifest*,
-	 * not the full revision history.
+	 * Zip up the local IndexedDB notes and download. Much faster than round-
+	 * tripping through Dropbox — and captures local-dirty notes that haven't
+	 * been synced yet. The produced archive is a superset of what's on the
+	 * server at the last sync, plus any pending local changes.
 	 */
-	async function backupCurrent() {
+	async function backupLocal() {
 		if (running) return;
 		running = true;
-		progress = '매니페스트 불러오는 중...';
+		progress = '로컬 노트 수집 중...';
 		try {
-			const manifest = await downloadServerManifest();
-			if (!manifest) throw new Error('서버에 매니페스트가 없습니다');
+			const allNotes = await getAllNotesIncludingDeleted();
+			const live = allNotes.filter((n) => !n.deleted);
+			const tombstones = allNotes.filter((n) => n.deleted);
+			const localManifest = await getManifest();
 
 			const zip = new JSZip();
-			const manifestXml = await downloadFileText(rootManifestFullPath());
-			zip.file('manifest.xml', manifestXml);
-			zip.file('revision.txt', String(manifest.revision));
-			zip.file('server-id.txt', manifest.serverId);
-
 			const notesDir = zip.folder('notes')!;
-			let i = 0;
-			for (const { guid, rev } of manifest.notes) {
-				i++;
-				progress = `노트 다운로드 중 ${i}/${manifest.notes.length}...`;
-				try {
-					const content = await downloadNoteAtRevision(guid, rev);
-					notesDir.file(`${guid}.note`, content);
-				} catch (e) {
-					notesDir.file(
-						`${guid}.error.txt`,
-						`Failed to download ${guid} at rev ${rev}:\n${String(e)}`
-					);
-				}
+			for (const n of live) {
+				notesDir.file(`${n.guid}.note`, serializeNote(n));
 			}
+			if (tombstones.length > 0) {
+				zip.file(
+					'tombstones.txt',
+					tombstones.map((n) => `${n.guid}\t${n.title}`).join('\n')
+				);
+			}
+			zip.file('local-manifest.json', JSON.stringify(localManifest, null, 2));
+			zip.file(
+				'meta.txt',
+				[
+					`Tomboy Web — 로컬 백업`,
+					`생성: ${new Date().toISOString()}`,
+					`노트 수: ${live.length}`,
+					`삭제 보류(툼스톤): ${tombstones.length}`,
+					`마지막 동기화 rev: ${localManifest.lastSyncRev}`,
+					`마지막 동기화 시각: ${localManifest.lastSyncDate || '(없음)'}`,
+					`server-id: ${localManifest.serverId || '(없음)'}`
+				].join('\n')
+			);
 
 			progress = 'zip 생성 중...';
 			const blob = await zip.generateAsync({ type: 'blob' });
 			const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-			downloadBlob(blob, `tomboy-backup-rev${manifest.revision}-${ts}.zip`);
-			pushToast(`백업 완료: ${manifest.notes.length}개 노트`);
+			downloadBlob(blob, `tomboy-local-backup-${ts}.zip`);
+			pushToast(`로컬 백업 완료: ${live.length}개 노트`);
 		} catch (e) {
 			pushToast('백업 실패: ' + String(e), { kind: 'error' });
 		} finally {
@@ -107,9 +116,7 @@
 					try {
 						const content = await downloadNoteAtRevision(n.guid, n.rev);
 						// Store note files keyed by their actual rev to avoid duplication
-						zip
-							.folder('notes-by-rev')!
-							.file(`${n.guid}.rev${n.rev}.note`, content);
+						zip.folder('notes-by-rev')!.file(`${n.guid}.rev${n.rev}.note`, content);
 					} catch {
 						// skip missing file
 					}
@@ -139,7 +146,6 @@
 		document.body.removeChild(a);
 		setTimeout(() => URL.revokeObjectURL(url), 1000);
 	}
-
 </script>
 
 <h2 class="page-title">도구</h2>
@@ -148,13 +154,14 @@
 	<div class="notice">Dropbox 연결이 필요합니다.</div>
 {:else}
 	<section class="tool">
-		<h3>현재 상태 백업 (zip)</h3>
+		<h3>로컬 상태 백업 (zip)</h3>
 		<p class="info">
-			현재 root manifest와 그에 나열된 모든 노트 파일을 zip으로 다운로드합니다.
-			소프트 롤백이나 서버 초기화 전에 안전망으로 사용하세요.
+			브라우저의 IndexedDB에 저장된 모든 노트(로컬 변경사항 포함)를 zip으로 다운로드합니다.
+			서버를 거치지 않아 빠르며, 아직 동기화되지 않은 로컬 수정도 그대로 포함됩니다.
+			롤백이나 초기화 전 안전망으로 사용하세요.
 		</p>
-		<button class="btn" onclick={backupCurrent} disabled={running}>
-			{running ? '진행 중...' : '현재 상태 zip 다운로드'}
+		<button class="btn" onclick={backupLocal} disabled={running}>
+			{running ? '진행 중...' : '로컬 상태 zip 다운로드'}
 		</button>
 	</section>
 
@@ -162,7 +169,7 @@
 		<h3>전체 히스토리 백업 (zip)</h3>
 		<p class="info">
 			서버에 남아있는 <strong>모든 리비전</strong>의 매니페스트와 노트 파일을 zip으로 묶어 내려받습니다.
-			리비전이 많으면 시간이 오래 걸릴 수 있습니다.
+			리비전이 많으면 시간이 오래 걸립니다.
 		</p>
 		<button class="btn" onclick={backupFullHistory} disabled={running}>
 			{running ? '진행 중...' : '전체 히스토리 zip 다운로드'}
