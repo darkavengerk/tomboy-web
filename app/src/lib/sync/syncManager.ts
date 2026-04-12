@@ -410,6 +410,72 @@ export async function applyPlan(plan: SyncPlan, selection?: PlanSelection): Prom
 	return result;
 }
 
+// ─── Per-note revert (discard local changes) ─────────────────────────────────
+
+export interface RevertResult {
+	status: 'success' | 'error';
+	message?: string;
+}
+
+/**
+ * Discard local changes for a single note: download the server's current
+ * version and overwrite the local copy, marking it clean. Used by the
+ * "변경 취소" button in the sync preview — essentially "I didn't mean to
+ * change this locally; bring back what's on the server".
+ *
+ * Fails if:
+ *   - not authenticated
+ *   - server manifest cannot be loaded
+ *   - the guid isn't on the server (e.g. it's a new local-only note — there
+ *     is nothing to revert to; the caller should offer "delete locally" instead)
+ *   - the download / parse fails
+ */
+export async function revertNoteToServer(guid: string): Promise<RevertResult> {
+	if (!isAuthenticated()) {
+		return { status: 'error', message: 'Not authenticated' };
+	}
+
+	let serverManifest: TomboyServerManifest | null;
+	try {
+		serverManifest = await downloadServerManifest();
+	} catch (err) {
+		return { status: 'error', message: `서버 매니페스트를 불러올 수 없습니다: ${err}` };
+	}
+	if (!serverManifest) {
+		return { status: 'error', message: '서버에 매니페스트가 없습니다' };
+	}
+
+	const serverEntry = serverManifest.notes.find((n) => n.guid === guid);
+	if (!serverEntry) {
+		return {
+			status: 'error',
+			message: '서버에 해당 노트가 없습니다 (아직 업로드된 적 없음)'
+		};
+	}
+
+	let remoteNote: NoteData;
+	try {
+		const content = await downloadNoteAtRevision(guid, serverEntry.rev);
+		remoteNote = parseNoteFromFile(content, `${guid}.note`);
+	} catch (err) {
+		return { status: 'error', message: String(err) };
+	}
+
+	remoteNote.guid = guid;
+	remoteNote.localDirty = false;
+	remoteNote.deleted = false;
+	await noteStore.putNoteSynced(remoteNote);
+
+	const localManifest = await getManifest();
+	localManifest.noteRevisions[guid] = serverEntry.rev;
+	await saveManifest(localManifest);
+
+	invalidateCache();
+	try { await refreshNotebooksCache(); } catch { /* non-fatal */ }
+
+	return { status: 'success' };
+}
+
 // ─── Main sync ────────────────────────────────────────────────────────────────
 
 /**

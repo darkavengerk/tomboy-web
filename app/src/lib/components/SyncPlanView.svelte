@@ -1,5 +1,7 @@
 <script lang="ts">
 	import type { SyncPlan, PlanSelection } from '$lib/sync/syncManager.js';
+	import { revertNoteToServer } from '$lib/sync/syncManager.js';
+	import { pushToast } from '$lib/stores/toast.js';
 
 	interface Props {
 		plan: SyncPlan;
@@ -14,7 +16,12 @@
 	let deleteRemoteSel = $state<Record<string, boolean>>({});
 	let deleteLocalSel = $state<Record<string, boolean>>({});
 	let conflictChoice = $state<Record<string, 'local' | 'remote'>>({});
-	let openPreview = $state<string | null>(null);
+
+	// GUIDs that were reverted (server version pulled down) — hidden from the
+	// upload list without mutating the plan prop. Also cleared from uploadSel.
+	let reverted = $state<Record<string, boolean>>({});
+	let reverting = $state<Record<string, boolean>>({});
+	let bulkReverting = $state(false);
 
 	// Initialize once from plan
 	$effect(() => {
@@ -36,7 +43,7 @@
 	$effect(() => {
 		selection.upload = new Set(
 			Object.entries(uploadSel)
-				.filter(([, v]) => v)
+				.filter(([k, v]) => v && !reverted[k])
 				.map(([k]) => k)
 		);
 	});
@@ -60,10 +67,66 @@
 		) as Map<string, 'local' | 'remote'>;
 	});
 
-	function previewText(guid: string): string {
-		const item = plan.toUpload.find((x) => x.guid === guid);
-		return item ? `제목: ${item.title ?? guid}` : '';
+	// ── Revert handlers ──────────────────────────────────────────────────────
+	async function revertOne(guid: string) {
+		if (reverting[guid]) return;
+		reverting[guid] = true;
+		try {
+			const res = await revertNoteToServer(guid);
+			if (res.status === 'success') {
+				reverted[guid] = true;
+				uploadSel[guid] = false;
+				pushToast('변경 취소 완료');
+			} else {
+				pushToast(res.message ?? '변경 취소 실패', { kind: 'error' });
+			}
+		} catch (e) {
+			pushToast('변경 취소 실패: ' + String(e), { kind: 'error' });
+		} finally {
+			reverting[guid] = false;
+		}
 	}
+
+	async function revertAllUploads() {
+		if (bulkReverting) return;
+		const targets = plan.toUpload.filter((u) => !reverted[u.guid]);
+		if (targets.length === 0) return;
+		const ok = confirm(
+			`업로드 예정인 ${targets.length}개 노트를 모두 서버 버전으로 되돌립니다.\n로컬 변경사항은 사라집니다. 계속할까요?`
+		);
+		if (!ok) return;
+		bulkReverting = true;
+		let success = 0;
+		let fail = 0;
+		try {
+			for (const item of targets) {
+				reverting[item.guid] = true;
+				try {
+					const res = await revertNoteToServer(item.guid);
+					if (res.status === 'success') {
+						reverted[item.guid] = true;
+						uploadSel[item.guid] = false;
+						success++;
+					} else {
+						fail++;
+					}
+				} catch {
+					fail++;
+				} finally {
+					reverting[item.guid] = false;
+				}
+			}
+			if (fail === 0) {
+				pushToast(`${success}개 노트 변경 취소 완료`);
+			} else {
+				pushToast(`${success}개 성공, ${fail}개 실패`, { kind: 'error' });
+			}
+		} finally {
+			bulkReverting = false;
+		}
+	}
+
+	let uploadRemaining = $derived(plan.toUpload.filter((u) => !reverted[u.guid]).length);
 </script>
 
 <div class="plan-view">
@@ -88,25 +151,39 @@
 	{/if}
 
 	<!-- Uploads -->
-	{#if plan.toUpload.length > 0}
+	{#if uploadRemaining > 0}
 	<section>
-		<h3 class="section-title">⬆ 업로드 ({plan.toUpload.length})</h3>
+		<div class="section-head">
+			<h3 class="section-title">⬆ 업로드 ({uploadRemaining})</h3>
+			<button
+				class="revert-bulk-btn"
+				type="button"
+				disabled={bulkReverting || uploadRemaining === 0}
+				onclick={revertAllUploads}
+			>
+				{bulkReverting ? '되돌리는 중...' : '모두 변경 취소'}
+			</button>
+		</div>
 		{#each plan.toUpload as item (item.guid)}
-			<div class="plan-item-row">
-				<label class="plan-item">
-					<input type="checkbox" bind:checked={uploadSel[item.guid]} />
-					<span class="item-title">{item.title ?? item.guid}</span>
-					<span class="item-reason">{item.reason}</span>
-				</label>
-				<button
-					class="preview-btn"
-					onclick={() => (openPreview = openPreview === item.guid ? null : item.guid)}
-				>
-					미리보기
-				</button>
-			</div>
-			{#if openPreview === item.guid}
-				<pre class="preview-text">{previewText(item.guid)}</pre>
+			{#if !reverted[item.guid]}
+				<div class="plan-item-row">
+					<label class="plan-item">
+						<input type="checkbox" bind:checked={uploadSel[item.guid]} />
+						<span class="item-title">{item.title ?? item.guid}</span>
+						<span class="item-reason">{item.reason}</span>
+					</label>
+					<button
+						class="revert-btn"
+						type="button"
+						disabled={reverting[item.guid] || bulkReverting || item.reason === 'new'}
+						title={item.reason === 'new'
+							? '새 노트는 서버에 없어 되돌릴 수 없습니다'
+							: '서버 버전으로 되돌리고 업로드 대상에서 제외합니다'}
+						onclick={() => revertOne(item.guid)}
+					>
+						{reverting[item.guid] ? '...' : '변경 취소'}
+					</button>
+				</div>
 			{/if}
 		{/each}
 	</section>
@@ -205,26 +282,48 @@
 		border-bottom: 1px solid var(--color-border, #eee);
 	}
 
-	.plan-item {
+	.section-head {
 		display: flex;
 		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		margin-bottom: 6px;
+		padding-bottom: 4px;
+		border-bottom: 1px solid var(--color-border, #eee);
+	}
+
+	.section-head .section-title {
+		margin: 0;
+		padding: 0;
+		border: none;
+		flex: 1;
+		min-width: 0;
+	}
+
+	.plan-item {
+		display: flex;
+		align-items: flex-start;
 		gap: 8px;
 		padding: 6px 0;
 		cursor: pointer;
 		flex: 1;
+		min-width: 0;
+		flex-wrap: wrap;
 	}
 
 	.plan-item-row {
 		display: flex;
-		align-items: center;
+		align-items: flex-start;
 		justify-content: space-between;
+		gap: 8px;
 	}
 
 	.item-title {
-		flex: 1;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		flex: 1 1 auto;
+		min-width: 0;
+		overflow-wrap: anywhere;
+		word-break: break-word;
+		white-space: normal;
 	}
 
 	.item-reason {
@@ -234,27 +333,50 @@
 		padding: 1px 6px;
 		border-radius: 4px;
 		flex-shrink: 0;
+		align-self: flex-start;
 	}
 
-	.preview-btn {
+	.revert-btn {
 		font-size: 0.75rem;
 		padding: 2px 8px;
-		border: 1px solid var(--color-border, #ddd);
+		border: 1px solid #e57373;
 		border-radius: 4px;
-		background: none;
+		background: #fff;
 		cursor: pointer;
-		color: var(--color-primary, #1a73e8);
+		color: #c62828;
+		flex-shrink: 0;
+		white-space: nowrap;
+		align-self: flex-start;
+	}
+
+	.revert-btn:hover:not(:disabled) {
+		background: #ffebee;
+	}
+
+	.revert-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.revert-bulk-btn {
+		font-size: 0.75rem;
+		padding: 4px 10px;
+		border: 1px solid #e57373;
+		border-radius: 6px;
+		background: #fff;
+		cursor: pointer;
+		color: #c62828;
+		white-space: nowrap;
 		flex-shrink: 0;
 	}
 
-	.preview-text {
-		background: var(--color-bg-secondary, #f5f5f5);
-		padding: 8px 12px;
-		border-radius: 6px;
-		font-size: 0.8rem;
-		white-space: pre-wrap;
-		word-break: break-all;
-		margin: 4px 0 8px;
+	.revert-bulk-btn:hover:not(:disabled) {
+		background: #ffebee;
+	}
+
+	.revert-bulk-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 
 	.conflict-help {
