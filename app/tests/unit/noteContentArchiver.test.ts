@@ -326,7 +326,9 @@ describe('noteContentArchiver - serialize', () => {
 		};
 		const xml = serializeContent(doc);
 		expect(xml).toContain('<list>');
-		expect(xml).toContain('<list-item dir="ltr">Item 1</list-item>');
+		// Tomboy desktop inserts '\n' before </list-item> for every item except
+		// the last one in a list.
+		expect(xml).toContain('<list-item dir="ltr">Item 1\n</list-item>');
 		expect(xml).toContain('<list-item dir="ltr">Item 2</list-item>');
 		expect(xml).toContain('</list>');
 	});
@@ -374,7 +376,7 @@ describe('noteContentArchiver - round-trip', () => {
 
 	it('round-trips list structure', () => {
 		const original =
-			'<note-content version="0.1">Title\n<list><list-item dir="ltr">A</list-item><list-item dir="ltr">B</list-item></list></note-content>';
+			'<note-content version="0.1">Title\n<list><list-item dir="ltr">A\n</list-item><list-item dir="ltr">B</list-item></list></note-content>';
 		expect(roundTrip(original)).toBe(original);
 	});
 
@@ -469,13 +471,13 @@ describe('noteContentArchiver - ref-grounded round-trip', () => {
 
 	it('round-trips nested lists two levels deep', () => {
 		const original =
-			'<note-content version="0.1">Title\n<list><list-item dir="ltr">A<list><list-item dir="ltr">A.1</list-item><list-item dir="ltr">A.2</list-item></list></list-item><list-item dir="ltr">B</list-item></list></note-content>';
+			'<note-content version="0.1">Title\n<list><list-item dir="ltr">A\n<list><list-item dir="ltr">A.1\n</list-item><list-item dir="ltr">A.2\n</list-item></list></list-item><list-item dir="ltr">B</list-item></list></note-content>';
 		expect(roundTrip(original)).toBe(original);
 	});
 
 	it('round-trips list item with inline formatting', () => {
 		const original =
-			'<note-content version="0.1">Title\n<list><list-item dir="ltr"><bold>bold item</bold></list-item><list-item dir="ltr">plain</list-item></list></note-content>';
+			'<note-content version="0.1">Title\n<list><list-item dir="ltr"><bold>bold item</bold>\n</list-item><list-item dir="ltr">plain</list-item></list></note-content>';
 		expect(roundTrip(original)).toBe(original);
 	});
 
@@ -497,7 +499,7 @@ describe('noteContentArchiver - ref-grounded round-trip', () => {
 
 	it('round-trips a mixed realistic note', () => {
 		const original =
-			'<note-content version="0.1">My Note\n\nIntro with <bold>emphasis</bold>.\n\n<list><list-item dir="ltr">first</list-item><list-item dir="ltr"><italic>second</italic></list-item></list>\nA link: <link:url>https://example.com</link:url> and <link:internal>Another Note</link:internal>.</note-content>';
+			'<note-content version="0.1">My Note\n\nIntro with <bold>emphasis</bold>.\n\n<list><list-item dir="ltr">first\n</list-item><list-item dir="ltr"><italic>second</italic></list-item></list>\nA link: <link:url>https://example.com</link:url> and <link:internal>Another Note</link:internal>.</note-content>';
 		expect(roundTrip(original)).toBe(original);
 	});
 
@@ -608,8 +610,10 @@ describe('noteContentArchiver - ref-grounded round-trip', () => {
 	// --- List edge cases ---
 
 	it('round-trips three-level nested list', () => {
+		// Deeply nested: every inner last-item keeps its \n; only the top-
+		// level list's last item drops it.
 		const original =
-			'<note-content version="0.1">T\n<list><list-item dir="ltr">L1<list><list-item dir="ltr">L2<list><list-item dir="ltr">L3</list-item></list></list-item></list></list-item></list></note-content>';
+			'<note-content version="0.1">T\n<list><list-item dir="ltr">L1\n<list><list-item dir="ltr">L2\n<list><list-item dir="ltr">L3\n</list-item></list></list-item></list></list-item></list></note-content>';
 		expect(roundTrip(original)).toBe(original);
 	});
 

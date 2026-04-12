@@ -9,6 +9,7 @@
 	import { TomboyMonospace } from './extensions/TomboyMonospace.js';
 	import { TomboyInternalLink } from './extensions/TomboyInternalLink.js';
 	import { TomboyUrlLink } from './extensions/TomboyUrlLink.js';
+	import { TomboyDatetime } from './extensions/TomboyDatetime.js';
 	import { createTitleProvider } from './autoLink/titleProvider.js';
 	import { autoLinkPluginKey } from './autoLink/autoLinkPlugin.js';
 	import type { JSONContent } from '@tiptap/core';
@@ -24,7 +25,12 @@
 
 	let editorElement: HTMLDivElement;
 	let editor: Editor | null = $state(null);
-	let prevContentStr = JSON.stringify(content ?? { type: 'doc', content: [{ type: 'paragraph' }] });
+	// Snapshot of the editor's last known content JSON, used to suppress
+	// no-op onUpdate callbacks. Initialised AFTER the editor is created, so
+	// it uses TipTap/ProseMirror's normalised JSON shape (different key
+	// order, default attrs filled in) — comparing against the raw parser
+	// output would always mismatch and cause spurious saves on first touch.
+	let prevContentStr = '';
 
 	onMount(() => {
 		const titleProvider = createTitleProvider({ excludeGuid: currentGuid });
@@ -52,7 +58,8 @@
 					getTitles: () => titleProvider.getTitles(),
 					getCurrentGuid: () => currentGuid
 				}),
-				TomboyUrlLink
+				TomboyUrlLink,
+				TomboyDatetime
 			],
 			content: content ?? { type: 'doc', content: [{ type: 'paragraph' }] },
 			onUpdate: ({ editor: ed }) => {
@@ -77,6 +84,10 @@
 				}
 			}
 		});
+
+		// Capture the editor's normalised initial JSON so the onUpdate
+		// dirty-check compares like-for-like.
+		prevContentStr = JSON.stringify(editor.getJSON());
 
 		// When the note list changes (another note created / renamed / deleted),
 		// ask the plugin to re-scan the current doc so stale / newly-matching

@@ -60,6 +60,14 @@ export function serializeContent(doc: JSONContent): string {
 	// <bold>a</bold>\n<bold>b</bold>. This matches Tomboy desktop's output
 	// where the text buffer applies a tag over a contiguous range that may
 	// include '\n' characters.
+	//
+	// Important: we must only keep marks open across a '\n' when the *next*
+	// rendered text node actually shares that outer→inner mark prefix.
+	// Otherwise the '\n' separator leaks *inside* the mark — e.g. an empty
+	// paragraph between a linked paragraph and an unlinked one would produce
+	// `<link:internal>text\n\n</link:internal>next`, changing the semantics
+	// on round-trip. We look ahead before each separator and close any marks
+	// the next text node doesn't share.
 	let result = '';
 	let openMarks: JSONContent[] = [];
 
@@ -68,6 +76,44 @@ export function serializeContent(doc: JSONContent): string {
 			result += markToTags(openMarks[i])[1];
 		}
 		openMarks = [];
+	}
+
+	function closeUnmatched(nextMarks: JSONContent[] | undefined) {
+		const outerToInner = [...(nextMarks ?? [])].reverse();
+		let common = 0;
+		while (
+			common < openMarks.length &&
+			common < outerToInner.length &&
+			marksEqual(openMarks[common], outerToInner[common])
+		) {
+			common++;
+		}
+		for (let i = openMarks.length - 1; i >= common; i--) {
+			result += markToTags(openMarks[i])[1];
+		}
+		openMarks = openMarks.slice(0, common);
+	}
+
+	/** Find the first text-node inline in blocks[startIdx..]. */
+	function nextTextNodeMarks(
+		blocks: JSONContent[],
+		startIdx: number
+	): JSONContent[] | undefined {
+		for (let i = startIdx; i < blocks.length; i++) {
+			const b = blocks[i];
+			if (b.type === 'paragraph' || b.type === 'heading') {
+				for (const inline of b.content ?? []) {
+					if (inline.type === 'text') return inline.marks ?? [];
+					if (inline.type === 'hardBreak') return [];
+				}
+				// Empty paragraph — keep scanning subsequent blocks.
+				continue;
+			}
+			// A list (or any non-inline block) forces a close; no marks to share.
+			return [];
+		}
+		// No more text in the doc — close everything.
+		return [];
 	}
 
 	function writeTextNode(node: JSONContent) {
@@ -90,13 +136,28 @@ export function serializeContent(doc: JSONContent): string {
 		result += escapeXmlContent(node.text ?? '');
 	}
 
-	const nodes = doc.content;
+	// ProseMirror often places an auto-inserted empty paragraph after a list
+	// so the cursor can live past the list's end. Tomboy desktop's XML never
+	// emits that phantom paragraph, so we drop it here to keep round-trips
+	// stable. (A user-authored empty paragraph elsewhere — e.g. blank line
+	// between two text paragraphs — is NOT affected.)
+	let nodes = doc.content;
+	if (nodes.length >= 2) {
+		const last = nodes[nodes.length - 1];
+		const secondLast = nodes[nodes.length - 2];
+		const isEmptyPara =
+			last.type === 'paragraph' && (!last.content || last.content.length === 0);
+		if (isEmptyPara && secondLast.type === 'bulletList') {
+			nodes = nodes.slice(0, -1);
+		}
+	}
+
 	for (let i = 0; i < nodes.length; i++) {
 		const node = nodes[i];
 
 		if (node.type === 'bulletList') {
 			closeAll();
-			result += serializeBulletList(node);
+			result += serializeBulletList(node, /*isTopLevel=*/ true);
 		} else if (node.type === 'paragraph' || node.type === 'heading') {
 			for (const inline of node.content ?? []) {
 				if (inline.type === 'text') {
@@ -112,6 +173,10 @@ export function serializeContent(doc: JSONContent): string {
 			// Marks cannot continue across a list boundary — close them.
 			if (node.type === 'bulletList' || nodes[i + 1].type === 'bulletList') {
 				closeAll();
+			} else {
+				// Close marks that the next text node doesn't share, so the '\n'
+				// separator ends up *outside* the mark tags.
+				closeUnmatched(nextTextNodeMarks(nodes, i + 1));
 			}
 			result += '\n';
 		}
@@ -325,6 +390,8 @@ function elementToMark(el: Element): JSONContent | null {
 			return { type: 'tomboyUrlLink', attrs: { href: el.textContent ?? '' } };
 		case 'link:broken':
 			return { type: 'tomboyInternalLink', attrs: { target: el.textContent ?? '', broken: true } };
+		case 'datetime':
+			return { type: 'tomboyDatetime' };
 		default:
 			return null;
 	}
@@ -460,13 +527,23 @@ function marksEqual(a: JSONContent, b: JSONContent): boolean {
 
 /**
  * Serialize a bulletList node to Tomboy XML.
+ *
+ * `isTopLevel` indicates whether this list sits directly inside the
+ * note-content body (true) or is nested inside a list-item (false). Tomboy's
+ * pattern: the LAST list-item of a top-level list has no trailing '\n'
+ * (the '\n' lives outside, as the block separator), whereas the last item of
+ * a nested list DOES keep its trailing '\n' because it sits inside a
+ * containing list-item.
  */
-function serializeBulletList(node: JSONContent): string {
+function serializeBulletList(node: JSONContent, isTopLevel: boolean): string {
 	let result = '<list>';
 
-	for (const item of node.content ?? []) {
+	const items = node.content ?? [];
+	for (let i = 0; i < items.length; i++) {
+		const item = items[i];
 		if (item.type === 'listItem') {
-			result += serializeListItem(item);
+			const isLastTopLevel = isTopLevel && i === items.length - 1;
+			result += serializeListItem(item, isLastTopLevel);
 		}
 	}
 
@@ -476,16 +553,48 @@ function serializeBulletList(node: JSONContent): string {
 
 /**
  * Serialize a listItem node to Tomboy XML.
+ *
+ * `suppressTrailingNewline` is true only for the LAST list-item of a
+ * TOP-LEVEL list (Tomboy omits the inner '\n' there because the surrounding
+ * block separator already provides one).
+ *
+ * Tomboy desktop's output pattern (observed from real .note files):
+ *   <list-item>text\n</list-item>                 — any non-last item
+ *   <list-item>text\n</list-item>                 — last item of a NESTED list
+ *   <list-item>text</list-item>                   — last item of a TOP-LEVEL list
+ *   <list-item>text\n<list>…</list></list-item>   — item with a nested list
+ *
+ * The parser strips these structural '\n' characters, so we re-emit them here
+ * to preserve byte-for-byte round-trip with the desktop format.
  */
-function serializeListItem(item: JSONContent): string {
+function serializeListItem(item: JSONContent, suppressTrailingNewline: boolean): string {
 	let result = '<list-item dir="ltr">';
 
-	for (const child of item.content ?? []) {
+	const children = item.content ?? [];
+	let hasNestedList = false;
+
+	// Emit paragraph content first.
+	for (const child of children) {
 		if (child.type === 'paragraph') {
 			result += serializeInlineContent(child.content ?? []);
 		} else if (child.type === 'bulletList') {
-			result += serializeBulletList(child);
+			hasNestedList = true;
 		}
+	}
+
+	if (hasNestedList) {
+		// Tomboy inserts '\n' between the item's text and its nested list,
+		// and no extra '\n' before </list-item>.
+		result += '\n';
+		for (const child of children) {
+			if (child.type === 'bulletList') {
+				result += serializeBulletList(child, /*isTopLevel=*/ false);
+			}
+		}
+	} else if (!suppressTrailingNewline) {
+		// Emit trailing '\n' before </list-item> for every item EXCEPT the
+		// last one of a top-level list.
+		result += '\n';
 	}
 
 	result += '</list-item>';
@@ -521,6 +630,8 @@ function markToTags(mark: JSONContent): [string, string] {
 		}
 		case 'tomboyUrlLink':
 			return ['<link:url>', '</link:url>'];
+		case 'tomboyDatetime':
+			return ['<datetime>', '</datetime>'];
 		default:
 			return ['', ''];
 	}
