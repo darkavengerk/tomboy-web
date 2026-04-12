@@ -227,6 +227,11 @@
 			return;
 		}
 
+		if (kind === 'compareWithServer') {
+			goto(`/note/${note!.guid}/compare`);
+			return;
+		}
+
 		if (kind === 'toggleScrollBottom') {
 			const next = !isScrollBottomState;
 			await setScrollBottomNote(note!.guid, next);

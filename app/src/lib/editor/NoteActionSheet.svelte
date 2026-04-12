@@ -10,7 +10,8 @@
 		| 'setHome'
 		| 'unsetHome'
 		| 'pickNotebook'
-		| 'toggleScrollBottom';
+		| 'toggleScrollBottom'
+		| 'compareWithServer';
 
 	interface Props {
 		note: NoteData;
@@ -139,6 +140,10 @@
 					{#if dirty}
 						<span class="dirty-hint">(저장 중)</span>
 					{/if}
+				</button>
+				<button class="action-btn" onclick={() => onaction('compareWithServer')}>
+					<span class="action-icon">🔍</span>
+					원본과 비교하기
 				</button>
 				<button class="action-btn danger" onclick={handleDelete}>
 					<span class="action-icon">🗑</span>

@@ -2,6 +2,7 @@
 	import type { SyncPlan, PlanSelection } from '$lib/sync/syncManager.js';
 	import { revertNoteToServer } from '$lib/sync/syncManager.js';
 	import { pushToast } from '$lib/stores/toast.js';
+	import { goto } from '$app/navigation';
 
 	interface Props {
 		plan: SyncPlan;
@@ -127,6 +128,10 @@
 	}
 
 	let uploadRemaining = $derived(plan.toUpload.filter((u) => !reverted[u.guid]).length);
+
+	function openNote(guid: string) {
+		goto(`/note/${guid}`);
+	}
 </script>
 
 <div class="plan-view">
@@ -141,11 +146,19 @@
 	<section>
 		<h3 class="section-title">⬇ 다운로드 ({plan.toDownload.length})</h3>
 		{#each plan.toDownload as item (item.guid)}
-			<label class="plan-item">
-				<input type="checkbox" bind:checked={downloadSel[item.guid]} />
-				<span class="item-title">{item.title ?? item.guid}</span>
-				<span class="item-reason">{item.reason}</span>
-			</label>
+			<div class="plan-item">
+				<input
+					type="checkbox"
+					class="row-check"
+					bind:checked={downloadSel[item.guid]}
+					onclick={(e) => e.stopPropagation()}
+					aria-label="선택"
+				/>
+				<button type="button" class="row-link" onclick={() => openNote(item.guid)}>
+					<span class="item-title">{item.title ?? item.guid}</span>
+					<span class="item-reason">{item.reason}</span>
+				</button>
+			</div>
 		{/each}
 	</section>
 	{/if}
@@ -167,11 +180,19 @@
 		{#each plan.toUpload as item (item.guid)}
 			{#if !reverted[item.guid]}
 				<div class="plan-item-row">
-					<label class="plan-item">
-						<input type="checkbox" bind:checked={uploadSel[item.guid]} />
-						<span class="item-title">{item.title ?? item.guid}</span>
-						<span class="item-reason">{item.reason}</span>
-					</label>
+					<div class="plan-item">
+						<input
+							type="checkbox"
+							class="row-check"
+							bind:checked={uploadSel[item.guid]}
+							onclick={(e) => e.stopPropagation()}
+							aria-label="선택"
+						/>
+						<button type="button" class="row-link" onclick={() => openNote(item.guid)}>
+							<span class="item-title">{item.title ?? item.guid}</span>
+							<span class="item-reason">{item.reason}</span>
+						</button>
+					</div>
 					<button
 						class="revert-btn"
 						type="button"
@@ -194,10 +215,18 @@
 	<section>
 		<h3 class="section-title">🗑 서버에서 삭제 ({plan.toDeleteRemote.length})</h3>
 		{#each plan.toDeleteRemote as item (item.guid)}
-			<label class="plan-item">
-				<input type="checkbox" bind:checked={deleteRemoteSel[item.guid]} />
-				<span class="item-title">{item.title ?? item.guid}</span>
-			</label>
+			<div class="plan-item">
+				<input
+					type="checkbox"
+					class="row-check"
+					bind:checked={deleteRemoteSel[item.guid]}
+					onclick={(e) => e.stopPropagation()}
+					aria-label="선택"
+				/>
+				<button type="button" class="row-link" onclick={() => openNote(item.guid)}>
+					<span class="item-title">{item.title ?? item.guid}</span>
+				</button>
+			</div>
 		{/each}
 	</section>
 	{/if}
@@ -207,10 +236,18 @@
 	<section>
 		<h3 class="section-title">🗑 로컬에서 삭제 ({plan.toDeleteLocal.length})</h3>
 		{#each plan.toDeleteLocal as item (item.guid)}
-			<label class="plan-item">
-				<input type="checkbox" bind:checked={deleteLocalSel[item.guid]} />
-				<span class="item-title">{item.title ?? item.guid}</span>
-			</label>
+			<div class="plan-item">
+				<input
+					type="checkbox"
+					class="row-check"
+					bind:checked={deleteLocalSel[item.guid]}
+					onclick={(e) => e.stopPropagation()}
+					aria-label="선택"
+				/>
+				<span class="row-link row-link-disabled">
+					<span class="item-title">{item.title ?? item.guid}</span>
+				</span>
+			</div>
 		{/each}
 	</section>
 	{/if}
@@ -305,10 +342,8 @@
 		align-items: flex-start;
 		gap: 8px;
 		padding: 6px 0;
-		cursor: pointer;
 		flex: 1;
 		min-width: 0;
-		flex-wrap: wrap;
 	}
 
 	.plan-item-row {
@@ -316,6 +351,37 @@
 		align-items: flex-start;
 		justify-content: space-between;
 		gap: 8px;
+	}
+
+	.row-check {
+		flex-shrink: 0;
+		margin-top: 3px;
+		cursor: pointer;
+	}
+
+	.row-link {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: flex;
+		align-items: flex-start;
+		gap: 8px;
+		flex-wrap: wrap;
+		background: none;
+		border: none;
+		padding: 0;
+		text-align: left;
+		color: inherit;
+		cursor: pointer;
+		font: inherit;
+	}
+
+	.row-link:hover:not(.row-link-disabled) .item-title {
+		text-decoration: underline;
+		color: var(--color-primary, #d05b10);
+	}
+
+	.row-link-disabled {
+		cursor: default;
 	}
 
 	.item-title {
