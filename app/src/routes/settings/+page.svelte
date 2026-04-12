@@ -237,6 +237,16 @@
 		</section>
 
 		{#if authenticated}
+			<section class="section">
+				<h2>고급</h2>
+				<p class="info-text">
+					동기화 리비전 히스토리, 롤백, 파일 탐색, 백업 등을 다루는 관리자 페이지입니다.
+				</p>
+				<a href="/admin" class="btn btn-secondary admin-link">
+					관리자 페이지 열기 →
+				</a>
+			</section>
+
 			<section class="section danger-section">
 				<h2>초기화</h2>
 				<p class="info-text">
@@ -375,6 +385,12 @@
 
 	.btn-secondary:active {
 		background: #e8f0fe;
+	}
+
+	.admin-link {
+		text-align: center;
+		text-decoration: none;
+		line-height: 1.4;
 	}
 
 	.btn-danger {

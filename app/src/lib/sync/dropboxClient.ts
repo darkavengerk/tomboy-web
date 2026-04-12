@@ -322,3 +322,170 @@ export async function initServerManifest(
 	};
 }
 
+// ─── Admin / revision-history operations ─────────────────────────────────────
+
+/**
+ * List revision numbers that still exist on the server by walking the
+ * {parent}/{rev}/ folder tree. Returned sorted descending (newest first).
+ *
+ * The server layout is /{rev/100}/{rev}/..., so we list top-level integer
+ * folders, then list each one to collect rev numbers.
+ */
+export async function listRevisions(): Promise<number[]> {
+	const dbx = getClient();
+	if (!dbx) throw new Error('Not authenticated');
+
+	const notesPath = getNotesPath();
+	const basePath = notesPath || '';
+
+	const parentRes = await dbx.filesListFolder({ path: basePath });
+	const parents: string[] = [];
+	for (const entry of parentRes.result.entries) {
+		if (entry['.tag'] !== 'folder') continue;
+		if (/^\d+$/.test(entry.name)) parents.push(entry.name);
+	}
+
+	const revs: number[] = [];
+	for (const parent of parents) {
+		const parentPath = notesPath ? `${notesPath}/${parent}` : `/${parent}`;
+		let res = await dbx.filesListFolder({ path: parentPath });
+		while (true) {
+			for (const entry of res.result.entries) {
+				if (entry['.tag'] !== 'folder') continue;
+				if (/^\d+$/.test(entry.name)) revs.push(parseInt(entry.name, 10));
+			}
+			if (!res.result.has_more) break;
+			res = await dbx.filesListFolderContinue({ cursor: res.result.cursor });
+		}
+	}
+
+	return revs.sort((a, b) => b - a);
+}
+
+/**
+ * Download and parse the per-revision manifest at {notesPath}/{rev/100}/{rev}/manifest.xml.
+ * Returns null if that manifest doesn't exist.
+ */
+export async function downloadRevisionManifest(rev: number): Promise<TomboyServerManifest | null> {
+	const dbx = getClient();
+	if (!dbx) throw new Error('Not authenticated');
+
+	const path = revisionManifestPath(getNotesPath(), rev);
+	try {
+		const xml = await downloadText(dbx, path);
+		return parseTomboyManifest(xml);
+	} catch (err: unknown) {
+		const error = err as { status?: number };
+		if (error.status === 409) return null;
+		throw err;
+	}
+}
+
+/**
+ * Soft rollback: commit a new revision whose manifest matches the state at
+ * targetRev. Files at the target rev still exist (we never delete history),
+ * so the new manifest simply points guid → rev using target's rev numbers.
+ *
+ * This preserves full history (target rev and all later revs remain on disk)
+ * while making the current state match target. On next sync, clients will
+ * see the new higher revision number and re-download accordingly.
+ *
+ * Returns the new committed revision number.
+ */
+export async function softRollbackToRevision(targetRev: number): Promise<number> {
+	const dbx = getClient();
+	if (!dbx) throw new Error('Not authenticated');
+
+	const notesPath = getNotesPath();
+
+	const current = await downloadServerManifest();
+	if (!current) throw new Error('서버에 매니페스트가 없습니다');
+
+	const target = await downloadRevisionManifest(targetRev);
+	if (!target) throw new Error(`rev ${targetRev} 매니페스트를 찾을 수 없습니다`);
+
+	if (targetRev >= current.revision) {
+		throw new Error('대상 리비전은 현재 리비전보다 낮아야 합니다');
+	}
+
+	const newRev = current.revision + 1;
+
+	const noteMap = new Map<string, number>();
+	for (const n of target.notes) noteMap.set(n.guid, n.rev);
+
+	const manifestXml = buildTomboyManifest(newRev, current.serverId, noteMap);
+	await uploadText(dbx, revisionManifestPath(notesPath, newRev), manifestXml);
+	await uploadText(dbx, rootManifestPath(notesPath), manifestXml);
+
+	return newRev;
+}
+
+export interface FolderEntry {
+	name: string;
+	path: string;
+	kind: 'folder' | 'file';
+	size?: number;
+	modified?: string;
+}
+
+/**
+ * List a folder on Dropbox. Used by the raw-file browser in admin.
+ */
+export async function listFolder(path: string): Promise<FolderEntry[]> {
+	const dbx = getClient();
+	if (!dbx) throw new Error('Not authenticated');
+
+	const entries: FolderEntry[] = [];
+	let res = await dbx.filesListFolder({ path: path || '' });
+	while (true) {
+		for (const e of res.result.entries) {
+			if (e['.tag'] === 'folder') {
+				entries.push({ name: e.name, path: e.path_display ?? e.path_lower ?? '', kind: 'folder' });
+			} else if (e['.tag'] === 'file') {
+				entries.push({
+					name: e.name,
+					path: e.path_display ?? e.path_lower ?? '',
+					kind: 'file',
+					size: e.size,
+					modified: e.server_modified
+				});
+			}
+		}
+		if (!res.result.has_more) break;
+		res = await dbx.filesListFolderContinue({ cursor: res.result.cursor });
+	}
+
+	entries.sort((a, b) => {
+		if (a.kind !== b.kind) return a.kind === 'folder' ? -1 : 1;
+		return a.name.localeCompare(b.name, undefined, { numeric: true });
+	});
+	return entries;
+}
+
+/** Download any file from Dropbox as text. Used by raw-file viewer and backup. */
+export async function downloadFileText(path: string): Promise<string> {
+	const dbx = getClient();
+	if (!dbx) throw new Error('Not authenticated');
+	return downloadText(dbx, path);
+}
+
+/** Expose the configured notes-path root for admin UI. */
+export function notesRootPath(): string {
+	return getNotesPath() || '';
+}
+
+/** Expose the root-manifest path for admin UI. */
+export function rootManifestFullPath(): string {
+	return rootManifestPath(getNotesPath());
+}
+
+/** Build the per-revision manifest path for admin UI. */
+export function revisionManifestFullPath(rev: number): string {
+	return revisionManifestPath(getNotesPath(), rev);
+}
+
+/** Build the note-at-revision path for admin UI. */
+export function noteAtRevisionFullPath(guid: string, rev: number): string {
+	return noteRevisionPath(getNotesPath(), guid, rev);
+}
+
