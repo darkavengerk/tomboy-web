@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<note version="0.3" xmlns:link="http://beatniksoftware.com/tomboy/link" xmlns:size="http://beatniksoftware.com/tomboy/size" xmlns="http://beatniksoftware.com/tomboy">
+  <title>Rich Formatting Note</title>
+  <text xml:space="preserve"><note-content version="0.1">Rich Formatting Note
+This has <bold>bold text</bold> and <italic>italic text</italic>.
+Also <strikethrough>strikethrough</strikethrough> and <highlight>highlighted</highlight>.
+Some <monospace>monospace code</monospace> here.
+Sizes: <size:huge>huge</size:huge>, <size:large>large</size:large>, <size:small>small</size:small>.
+Links: <link:internal>Another Note</link:internal> and <link:url>https://example.com</link:url>.</note-content></text>
+  <last-change-date>2024-06-20T14:15:30.5678901+09:00</last-change-date>
+  <last-metadata-change-date>2024-06-20T14:20:00.0000000+09:00</last-metadata-change-date>
+  <create-date>2024-06-01T08:00:00.0000000+09:00</create-date>
+  <cursor-position>0</cursor-position>
+  <selection-bound-position>-1</selection-bound-position>
+  <width>500</width>
+  <height>400</height>
+  <x>200</x>
+  <y>100</y>
+  <tags>
+    <tag>system:notebook:Work</tag>
+    <tag>system:pinned</tag>
+  </tags>
+  <open-on-startup>True</open-on-startup>
+</note>

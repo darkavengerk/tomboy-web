@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<note version="0.3" xmlns:link="http://beatniksoftware.com/tomboy/link" xmlns:size="http://beatniksoftware.com/tomboy/size" xmlns="http://beatniksoftware.com/tomboy">
+  <title>List Note</title>
+  <text xml:space="preserve"><note-content version="0.1">List Note
+Here are some items:
+<list><list-item dir="ltr">First item</list-item>
+<list-item dir="ltr">Second item with <bold>bold</bold></list-item>
+<list-item dir="ltr">Third item
+<list><list-item dir="ltr">Nested item A</list-item>
+<list-item dir="ltr">Nested item B</list-item></list></list-item></list></note-content></text>
+  <last-change-date>2024-07-01T12:00:00.0000000+09:00</last-change-date>
+  <last-metadata-change-date>2024-07-01T12:00:00.0000000+09:00</last-metadata-change-date>
+  <create-date>2024-07-01T11:00:00.0000000+09:00</create-date>
+  <cursor-position>0</cursor-position>
+  <selection-bound-position>-1</selection-bound-position>
+  <width>450</width>
+  <height>360</height>
+  <x>0</x>
+  <y>0</y>
+  <tags>
+    <tag>system:notebook:Personal</tag>
+  </tags>
+  <open-on-startup>False</open-on-startup>
+</note>
