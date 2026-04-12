@@ -390,7 +390,6 @@
 
 	.toolbar-area {
 		flex-shrink: 0;
-		padding-bottom: var(--safe-area-bottom);
 	}
 
 	.loading {
