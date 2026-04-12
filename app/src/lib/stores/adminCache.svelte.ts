@@ -75,7 +75,10 @@ export async function initAdminCache(forceRefresh = false): Promise<void> {
 		adminCache.initialized = true;
 
 		if (adminCache.displayedRevs.length === 0 && adminCache.hasMore) {
-			await loadMoreRevs(ADMIN_PAGE_SIZE);
+			// Call the internal fetch directly — we're already inside the
+			// outer `loading=true` critical section, so the public wrapper
+			// would short-circuit on its guard.
+			await fetchMoreRevsInternal(ADMIN_PAGE_SIZE);
 		}
 	} catch (e) {
 		adminCache.error = String(e);
@@ -85,44 +88,57 @@ export async function initAdminCache(forceRefresh = false): Promise<void> {
 }
 
 /**
- * Extend the displayed rev list by `count` entries, fetching manifests in
- * parallel. Uses the per-rev cache when possible.
+ * Fetch the next `count` revs into `manifestsByRev` and `displayedRevs`.
+ * No loading-flag management — caller is responsible.
  */
-export async function loadMoreRevs(count = ADMIN_PAGE_SIZE): Promise<void> {
+async function fetchMoreRevsInternal(count: number): Promise<void> {
 	if (adminCache.nextRevToLoad === null || adminCache.nextRevToLoad < 1) {
 		adminCache.hasMore = false;
 		return;
 	}
+	const toLoad: number[] = [];
+	let rev = adminCache.nextRevToLoad;
+	while (toLoad.length < count && rev >= 1) {
+		toLoad.push(rev);
+		rev--;
+	}
+
+	const results = await Promise.all(
+		toLoad.map(async (r) => {
+			if (adminCache.manifestsByRev.has(r)) {
+				return { rev: r, manifest: adminCache.manifestsByRev.get(r) ?? null };
+			}
+			const m = await downloadRevisionManifest(r).catch(() => null);
+			return { rev: r, manifest: m };
+		})
+	);
+
+	const newMap = new Map(adminCache.manifestsByRev);
+	for (const { rev: r, manifest } of results) newMap.set(r, manifest);
+	adminCache.manifestsByRev = newMap;
+
+	const existing = new Set(adminCache.displayedRevs);
+	const added = results.map((r) => r.rev).filter((r) => !existing.has(r));
+	adminCache.displayedRevs = [...adminCache.displayedRevs, ...added];
+
+	adminCache.nextRevToLoad = rev >= 1 ? rev : null;
+	adminCache.hasMore = adminCache.nextRevToLoad !== null;
+}
+
+/**
+ * Extend the displayed rev list by `count` entries, fetching manifests in
+ * parallel. Uses the per-rev cache when possible. Public entry point used
+ * by "load more" buttons; guards against concurrent runs.
+ */
+export async function loadMoreRevs(count = ADMIN_PAGE_SIZE): Promise<void> {
 	if (adminCache.loading) return;
+	if (adminCache.nextRevToLoad === null || adminCache.nextRevToLoad < 1) {
+		adminCache.hasMore = false;
+		return;
+	}
 	adminCache.loading = true;
 	try {
-		const toLoad: number[] = [];
-		let rev = adminCache.nextRevToLoad;
-		while (toLoad.length < count && rev >= 1) {
-			toLoad.push(rev);
-			rev--;
-		}
-
-		const results = await Promise.all(
-			toLoad.map(async (r) => {
-				if (adminCache.manifestsByRev.has(r)) {
-					return { rev: r, manifest: adminCache.manifestsByRev.get(r) ?? null };
-				}
-				const m = await downloadRevisionManifest(r).catch(() => null);
-				return { rev: r, manifest: m };
-			})
-		);
-
-		const newMap = new Map(adminCache.manifestsByRev);
-		for (const { rev: r, manifest } of results) newMap.set(r, manifest);
-		adminCache.manifestsByRev = newMap;
-
-		const existing = new Set(adminCache.displayedRevs);
-		const added = results.map((r) => r.rev).filter((r) => !existing.has(r));
-		adminCache.displayedRevs = [...adminCache.displayedRevs, ...added];
-
-		adminCache.nextRevToLoad = rev >= 1 ? rev : null;
-		adminCache.hasMore = adminCache.nextRevToLoad !== null;
+		await fetchMoreRevsInternal(count);
 	} finally {
 		adminCache.loading = false;
 	}
