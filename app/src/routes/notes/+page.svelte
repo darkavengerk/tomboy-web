@@ -329,6 +329,7 @@
 		flex: 1;
 		overflow-y: auto;
 		-webkit-overflow-scrolling: touch;
+		padding-bottom: var(--safe-area-bottom);
 	}
 
 	.loading {

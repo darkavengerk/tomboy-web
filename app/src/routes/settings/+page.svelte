@@ -218,6 +218,7 @@
 		flex: 1;
 		overflow-y: auto;
 		padding: 16px;
+		padding-bottom: max(16px, var(--safe-area-bottom));
 	}
 
 	.section {

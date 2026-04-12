@@ -77,7 +77,7 @@
 <style>
 	.note-list {
 		list-style: none;
-		padding: 0;
+		padding: 0 0 8px;
 		margin: 0;
 	}
 
