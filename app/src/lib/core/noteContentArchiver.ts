@@ -54,24 +54,71 @@ export function serializeContent(doc: JSONContent): string {
 		return `<note-content version="0.1">\n</note-content>`;
 	}
 
-	const parts: string[] = [];
+	// Top-level serialization keeps a single openMarks stack across paragraph
+	// boundaries so that a mark spanning multiple paragraphs emits as one
+	// continuous tag over the '\n' separator — e.g. <bold>a\nb</bold>, not
+	// <bold>a</bold>\n<bold>b</bold>. This matches Tomboy desktop's output
+	// where the text buffer applies a tag over a contiguous range that may
+	// include '\n' characters.
+	let result = '';
+	let openMarks: JSONContent[] = [];
 
-	for (let i = 0; i < doc.content.length; i++) {
-		const node = doc.content[i];
+	function closeAll() {
+		for (let i = openMarks.length - 1; i >= 0; i--) {
+			result += markToTags(openMarks[i])[1];
+		}
+		openMarks = [];
+	}
+
+	function writeTextNode(node: JSONContent) {
+		const outerToInner = [...(node.marks ?? [])].reverse();
+		let common = 0;
+		while (
+			common < openMarks.length &&
+			common < outerToInner.length &&
+			marksEqual(openMarks[common], outerToInner[common])
+		) {
+			common++;
+		}
+		for (let i = openMarks.length - 1; i >= common; i--) {
+			result += markToTags(openMarks[i])[1];
+		}
+		for (let i = common; i < outerToInner.length; i++) {
+			result += markToTags(outerToInner[i])[0];
+		}
+		openMarks = outerToInner;
+		result += escapeXmlContent(node.text ?? '');
+	}
+
+	const nodes = doc.content;
+	for (let i = 0; i < nodes.length; i++) {
+		const node = nodes[i];
 
 		if (node.type === 'bulletList') {
-			parts.push(serializeBulletList(node));
+			closeAll();
+			result += serializeBulletList(node);
 		} else if (node.type === 'paragraph' || node.type === 'heading') {
-			const inline = serializeInlineContent(node.content ?? []);
-			parts.push(inline);
-			// Add newline between blocks, except after the last one
-			if (i < doc.content.length - 1) {
-				parts.push('\n');
+			for (const inline of node.content ?? []) {
+				if (inline.type === 'text') {
+					writeTextNode(inline);
+				} else if (inline.type === 'hardBreak') {
+					closeAll();
+					result += '\n';
+				}
 			}
+		}
+
+		if (i < nodes.length - 1) {
+			// Marks cannot continue across a list boundary — close them.
+			if (node.type === 'bulletList' || nodes[i + 1].type === 'bulletList') {
+				closeAll();
+			}
+			result += '\n';
 		}
 	}
 
-	return `<note-content version="0.1">${parts.join('')}</note-content>`;
+	closeAll();
+	return `<note-content version="0.1">${result}</note-content>`;
 }
 
 /**
@@ -109,12 +156,70 @@ function parseBlocks(container: Element): JSONContent[] {
 	const blocks: JSONContent[] = [];
 	let currentInline: JSONContent[] = [];
 
-	function flushParagraph() {
+	// True when the previous child was a block-level element (e.g. <list>).
+	// The *next* '\n' we see belongs to that block as its separator, not as
+	// a paragraph boundary — consume it without emitting a phantom empty para.
+	let absorbNextNewline = false;
+
+	// True when the last text node ended with '\n'. If we reach end-of-container
+	// with no further inline content, that trailing newline opens an empty
+	// paragraph (what Tomboy desktop sees as "cursor on a new empty line").
+	let lastTextEndedWithNewline = false;
+
+	// Push currentInline as a paragraph — empty paragraph if no inline content.
+	function pushParagraph() {
 		if (currentInline.length > 0) {
 			blocks.push({ type: 'paragraph', content: currentInline });
 			currentInline = [];
-		} else if (blocks.length > 0 || container.childNodes.length > 0) {
-			// Empty paragraph for blank lines — but only push if we've already started content
+		} else {
+			blocks.push({ type: 'paragraph' });
+		}
+	}
+
+	// Flush any pending inline as a paragraph, but don't emit an empty one.
+	// Used before block elements and at end of container.
+	function flushPendingInline() {
+		if (currentInline.length > 0) {
+			blocks.push({ type: 'paragraph', content: currentInline });
+			currentInline = [];
+		}
+	}
+
+	// Append inline nodes (text with optional marks). If any text contains '\n'
+	// — which Tomboy desktop produces for a mark that spans multiple lines,
+	// e.g. <bold>a\nb</bold> — split into paragraph boundaries while re-applying
+	// the same marks to each piece. This keeps ProseMirror text nodes free of
+	// embedded newlines (invalid in its schema) and splits the logical mark
+	// range into per-line marked text runs.
+	function appendInlineNodes(nodes: JSONContent[]) {
+		for (const n of nodes) {
+			if (n.type === 'text' && typeof n.text === 'string') {
+				if (n.text.length === 0) continue;
+				if (n.text.includes('\n')) {
+					const parts = n.text.split('\n');
+					for (let j = 0; j < parts.length; j++) {
+						if (j > 0) {
+							if (absorbNextNewline) absorbNextNewline = false;
+							else pushParagraph();
+						}
+						if (parts[j].length > 0) {
+							const piece: JSONContent = { type: 'text', text: parts[j] };
+							if (n.marks) piece.marks = n.marks;
+							currentInline.push(piece);
+							absorbNextNewline = false;
+						}
+					}
+					lastTextEndedWithNewline = n.text.endsWith('\n');
+				} else {
+					currentInline.push(n);
+					absorbNextNewline = false;
+					lastTextEndedWithNewline = false;
+				}
+			} else {
+				currentInline.push(n);
+				absorbNextNewline = false;
+				lastTextEndedWithNewline = false;
+			}
 		}
 	}
 
@@ -123,31 +228,29 @@ function parseBlocks(container: Element): JSONContent[] {
 
 		if (child.nodeType === Node.TEXT_NODE) {
 			const text = child.textContent ?? '';
-			const lines = text.split('\n');
-			for (let j = 0; j < lines.length; j++) {
-				if (j > 0) {
-					flushParagraph();
-				}
-				if (lines[j].length > 0) {
-					currentInline.push({ type: 'text', text: lines[j] });
-				}
-			}
+			appendInlineNodes([{ type: 'text', text }]);
 		} else if (child.nodeType === Node.ELEMENT_NODE) {
 			const el = child as Element;
 			const tagName = el.tagName;
 
 			if (tagName === 'list') {
-				flushParagraph();
+				flushPendingInline();
 				blocks.push(parseList(el));
+				absorbNextNewline = true;
+				lastTextEndedWithNewline = false;
 			} else {
 				// Inline formatting element — collect inline content with marks
-				const inlineNodes = parseInlineElement(el);
-				currentInline.push(...inlineNodes);
+				appendInlineNodes(parseInlineElement(el));
 			}
 		}
 	}
 
-	flushParagraph();
+	if (currentInline.length > 0) {
+		flushPendingInline();
+	} else if (lastTextEndedWithNewline) {
+		// Trailing '\n' with no content after it → one extra empty paragraph.
+		blocks.push({ type: 'paragraph' });
+	}
 
 	// Ensure at least one block
 	if (blocks.length === 0) {
@@ -290,27 +393,69 @@ function parseListItem(itemEl: Element): JSONContent {
 // --- Internal: PM JSON → XML ---
 
 /**
- * Serialize inline content (text nodes with marks) to Tomboy XML.
+ * Serialize inline content (text nodes with marks) to Tomboy XML, keeping
+ * adjacent runs that share a mark inside a single open tag — matching the
+ * Tomboy desktop serializer's tag_stack behavior
+ * (ref/Tomboy/NoteBuffer.cs Serialize).
+ *
+ * ProseMirror stores marks per text node innermost-first. We reverse to get
+ * outer→inner order for stable nesting, then open/close incrementally as
+ * adjacent text nodes gain or drop marks.
  */
 function serializeInlineContent(content: JSONContent[]): string {
 	let result = '';
+	let openMarks: JSONContent[] = []; // outer → inner
+
+	function closeAll() {
+		for (let i = openMarks.length - 1; i >= 0; i--) {
+			result += markToTags(openMarks[i])[1];
+		}
+		openMarks = [];
+	}
 
 	for (const node of content) {
 		if (node.type === 'text') {
-			let text = escapeXmlContent(node.text ?? '');
-			const marks = node.marks ?? [];
-			// Wrap text in mark tags (innermost first)
-			for (const mark of marks) {
-				const [open, close] = markToTags(mark);
-				text = `${open}${text}${close}`;
+			const outerToInner = [...(node.marks ?? [])].reverse();
+			// Longest common prefix with currently open marks (outer→inner).
+			let common = 0;
+			while (
+				common < openMarks.length &&
+				common < outerToInner.length &&
+				marksEqual(openMarks[common], outerToInner[common])
+			) {
+				common++;
 			}
-			result += text;
+			// Close marks beyond the common prefix (innermost first).
+			for (let i = openMarks.length - 1; i >= common; i--) {
+				result += markToTags(openMarks[i])[1];
+			}
+			// Open the remaining new marks.
+			for (let i = common; i < outerToInner.length; i++) {
+				result += markToTags(outerToInner[i])[0];
+			}
+			openMarks = outerToInner;
+			result += escapeXmlContent(node.text ?? '');
 		} else if (node.type === 'hardBreak') {
+			closeAll();
 			result += '\n';
 		}
 	}
 
+	closeAll();
 	return result;
+}
+
+function marksEqual(a: JSONContent, b: JSONContent): boolean {
+	if (a.type !== b.type) return false;
+	const aAttrs = a.attrs ?? {};
+	const bAttrs = b.attrs ?? {};
+	const aKeys = Object.keys(aAttrs);
+	const bKeys = Object.keys(bAttrs);
+	if (aKeys.length !== bKeys.length) return false;
+	for (const k of aKeys) {
+		if (aAttrs[k] !== bAttrs[k]) return false;
+	}
+	return true;
 }
 
 /**
@@ -339,7 +484,7 @@ function serializeListItem(item: JSONContent): string {
 		if (child.type === 'paragraph') {
 			result += serializeInlineContent(child.content ?? []);
 		} else if (child.type === 'bulletList') {
-			result += '\n' + serializeBulletList(child);
+			result += serializeBulletList(child);
 		}
 	}
 

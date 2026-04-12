@@ -110,7 +110,7 @@
 		display: flex;
 		align-items: center;
 		gap: 2px;
-		padding: 6px 8px calc(6px + var(--safe-area-bottom, 0px));
+		padding: 6px 8px;
 		background: #f8f9fa;
 		border-top: 1px solid #dee2e6;
 		overflow-x: auto;

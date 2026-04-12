@@ -16,7 +16,10 @@
 		type SyncPlan,
 		type PlanSelection
 	} from '$lib/sync/syncManager.js';
-	import { getManifest } from '$lib/sync/manifest.js';
+	import { getManifest, clearManifest } from '$lib/sync/manifest.js';
+	import { purgeAllLocal } from '$lib/storage/noteStore.js';
+	import { sync } from '$lib/sync/syncManager.js';
+	import { pushToast } from '$lib/stores/toast.js';
 	import SyncPlanView from '$lib/components/SyncPlanView.svelte';
 
 	let authenticated = $state(false);
@@ -30,6 +33,8 @@
 	let plan = $state<SyncPlan | null>(null);
 	let planSelection = $state<PlanSelection | null>(null);
 	let previewing = $state(false);
+	let resetting = $state(false);
+	let resetConfirm = $state(false);
 
 	onMount(() => {
 		notesPath = getNotesPath();
@@ -102,6 +107,33 @@
 			syncResult = { status: 'error', uploaded: 0, downloaded: 0, deleted: 0, errors: [String(e)] };
 		} finally {
 			previewing = false;
+		}
+	}
+
+	async function handleResetAndRedownload() {
+		if (!resetConfirm) {
+			resetConfirm = true;
+			return;
+		}
+		resetting = true;
+		try {
+			await purgeAllLocal();
+			await clearManifest();
+			const r = await sync();
+			if (r.status === 'success') {
+				pushToast(`다시 받기 완료. 다운로드 ${r.downloaded}건.`);
+				const manifest = await getManifest();
+				if (manifest.lastSyncDate) {
+					lastSyncDate = new Date(manifest.lastSyncDate).toLocaleString('ko-KR');
+				}
+			} else {
+				pushToast('동기화 실패: ' + (r.errors[0] ?? '알 수 없는 오류'), { kind: 'error' });
+			}
+		} catch (e) {
+			pushToast('초기화 실패: ' + String(e), { kind: 'error' });
+		} finally {
+			resetting = false;
+			resetConfirm = false;
 		}
 	}
 
@@ -203,6 +235,34 @@
 				</button>
 			{/if}
 		</section>
+
+		{#if authenticated}
+			<section class="section danger-section">
+				<h2>초기화</h2>
+				<p class="info-text">
+					로컬 노트와 동기화 상태를 모두 지우고 Dropbox에서 처음부터 다시 받습니다.
+					저장되지 않은 변경사항은 잃습니다.
+				</p>
+				<button
+					class="btn btn-danger"
+					onclick={handleResetAndRedownload}
+					disabled={resetting || processing || syncStatus === 'syncing'}
+				>
+					{#if resetting}
+						다시 받는 중...
+					{:else if resetConfirm}
+						정말로 초기화할까요? (다시 눌러 확인)
+					{:else}
+						초기화하고 다시 받기
+					{/if}
+				</button>
+				{#if resetConfirm && !resetting}
+					<button class="btn btn-secondary" onclick={() => (resetConfirm = false)}>
+						취소
+					</button>
+				{/if}
+			</section>
+		{/if}
 
 	</main>
 </div>
@@ -315,6 +375,19 @@
 
 	.btn-secondary:active {
 		background: #e8f0fe;
+	}
+
+	.btn-danger {
+		background: #d93025;
+		color: white;
+	}
+
+	.btn-danger:active:not(:disabled) {
+		background: #a52714;
+	}
+
+	.danger-section h2 {
+		color: #d93025;
 	}
 
 	.info-text {

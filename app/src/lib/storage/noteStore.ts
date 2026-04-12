@@ -77,6 +77,16 @@ export async function getAllNotesIncludingDeleted(): Promise<NoteData[]> {
 	return db.getAll('notes');
 }
 
+/**
+ * Hard-delete ALL notes locally without creating tombstones.
+ * Used for "reset and re-download" — sync manifest should be cleared
+ * separately so everything is fetched fresh from the server.
+ */
+export async function purgeAllLocal(): Promise<void> {
+	const db = await getDB();
+	await db.clear('notes');
+}
+
 /** Find a non-deleted note by title (case-insensitive). Returns the most recently changed match. */
 export async function findNoteByTitle(title: string): Promise<NoteData | undefined> {
 	const db = await getDB();
