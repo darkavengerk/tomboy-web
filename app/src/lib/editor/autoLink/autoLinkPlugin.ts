@@ -156,9 +156,23 @@ function applyInRange(
 		charMeta: { pos: number; suppressed: boolean; hasInternalLink: boolean; internalTarget: string | null }[];
 	}
 
+	// The first block of the document is Tomboy's "title line" — it IS the
+	// note's own title. Auto-linking there is almost always wrong (self-link
+	// or, worse, linking to a duplicate-named note). Skip it, but only if
+	// the doc has more than one block; a single-paragraph doc represents
+	// early-stage content where the user hasn't split a body yet, and we
+	// shouldn't suppress matches there.
+	const firstBlock = doc.firstChild;
+	const hasBody = doc.childCount > 1;
+
 	const runs: Run[] = [];
 	doc.nodesBetween(from, to, (node, pos) => {
 		if (!node.isTextblock) return true;
+
+		if (hasBody && node === firstBlock) {
+			// Title line — don't scan or modify.
+			return false;
+		}
 
 		// One run per textblock; split within the block if positions are
 		// non-contiguous (e.g. hard break or other non-text inline child).
