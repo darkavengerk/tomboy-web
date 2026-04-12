@@ -136,7 +136,22 @@ export function serializeContent(doc: JSONContent): string {
 		result += escapeXmlContent(node.text ?? '');
 	}
 
-	const nodes = doc.content;
+	// ProseMirror often places an auto-inserted empty paragraph after a list
+	// so the cursor can live past the list's end. Tomboy desktop's XML never
+	// emits that phantom paragraph, so we drop it here to keep round-trips
+	// stable. (A user-authored empty paragraph elsewhere — e.g. blank line
+	// between two text paragraphs — is NOT affected.)
+	let nodes = doc.content;
+	if (nodes.length >= 2) {
+		const last = nodes[nodes.length - 1];
+		const secondLast = nodes[nodes.length - 2];
+		const isEmptyPara =
+			last.type === 'paragraph' && (!last.content || last.content.length === 0);
+		if (isEmptyPara && secondLast.type === 'bulletList') {
+			nodes = nodes.slice(0, -1);
+		}
+	}
+
 	for (let i = 0; i < nodes.length; i++) {
 		const node = nodes[i];
 
