@@ -9,20 +9,30 @@
 		| 'toggleFavorite'
 		| 'setHome'
 		| 'unsetHome'
-		| 'pickNotebook';
+		| 'pickNotebook'
+		| 'toggleScrollBottom';
 
 	interface Props {
 		note: NoteData;
 		dirty: boolean;
 		isFavoriteNote?: boolean;
 		isHomeNote?: boolean;
+		isScrollBottomNote?: boolean;
 		onaction: (kind: ActionKind) => void;
 		onclose: () => void;
 		ongoto?: (guid: string) => void;
 	}
 
-	let { note, dirty, isFavoriteNote = false, isHomeNote = false, onaction, onclose, ongoto }: Props =
-		$props();
+	let {
+		note,
+		dirty,
+		isFavoriteNote = false,
+		isHomeNote = false,
+		isScrollBottomNote = false,
+		onaction,
+		onclose,
+		ongoto
+	}: Props = $props();
 
 	type View = 'main' | 'backlinks';
 	let view = $state<View>('main');
@@ -114,6 +124,10 @@
 				<button class="action-btn" onclick={() => onaction(isHomeNote ? 'unsetHome' : 'setHome')}>
 					<span class="action-icon">🏠</span>
 					{isHomeNote ? '홈 해제' : '홈으로 지정'}
+				</button>
+				<button class="action-btn" onclick={() => onaction('toggleScrollBottom')}>
+					<span class="action-icon">⏬</span>
+					{isScrollBottomNote ? '하단 최신 해제' : '하단이 최신'}
 				</button>
 				<button class="action-btn" onclick={openBacklinks}>
 					<span class="action-icon">🔗</span>

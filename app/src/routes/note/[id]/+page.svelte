@@ -25,6 +25,7 @@
 	import { sync } from '$lib/sync/syncManager.js';
 	import { assignNotebook, getNotebook } from '$lib/core/notebooks.js';
 	import { setHomeNote, clearHomeNote, getHomeNoteGuid } from '$lib/core/home.js';
+	import { isScrollBottomNote, setScrollBottomNote } from '$lib/core/scrollBottom.js';
 
 	let note: NoteData | undefined = $state(undefined);
 	let loading = $state(true);
@@ -34,6 +35,8 @@
 	let actionSheetOpen = $state(false);
 	let pickerOpen = $state(false);
 	let isHomeNoteState = $state(false);
+	let isScrollBottomState = $state(false);
+	let editorAreaEl: HTMLDivElement | undefined = $state(undefined);
 
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	let loadedGuid: string | null = null;
@@ -72,8 +75,25 @@
 
 			const homeGuid = await getHomeNoteGuid();
 			isHomeNoteState = homeGuid === id;
+
+			isScrollBottomState = await isScrollBottomNote(id);
+			if (isScrollBottomState) {
+				// Wait for the editor to render before scrolling.
+				requestAnimationFrame(() => {
+					requestAnimationFrame(() => {
+						if (id !== noteId) return;
+						scrollEditorToBottom();
+					});
+				});
+			}
 		})();
 	});
+
+	function scrollEditorToBottom() {
+		const el = editorAreaEl;
+		if (!el) return;
+		el.scrollTop = el.scrollHeight;
+	}
 
 	onMount(() => {
 		return () => {
@@ -206,6 +226,15 @@
 			pickerOpen = true;
 			return;
 		}
+
+		if (kind === 'toggleScrollBottom') {
+			const next = !isScrollBottomState;
+			await setScrollBottomNote(note!.guid, next);
+			isScrollBottomState = next;
+			pushToast(next ? '이 노트는 열 때 항상 맨 아래로 이동합니다.' : '맨 아래 이동이 해제되었습니다.');
+			if (next) scrollEditorToBottom();
+			return;
+		}
 	}
 
 	async function gotoRandom() {
@@ -275,7 +304,7 @@
 		{/if}
 	</div>
 
-	<div class="editor-area">
+	<div class="editor-area" bind:this={editorAreaEl}>
 		{#if loading}
 			<div class="loading">로딩 중...</div>
 		{:else if editorContent}
@@ -306,6 +335,7 @@
 		dirty={!!(pendingDoc || saving)}
 		isFavoriteNote={isFavoriteNote}
 		isHomeNote={isHomeNoteState}
+		isScrollBottomNote={isScrollBottomState}
 		onaction={handleAction}
 		onclose={() => (actionSheetOpen = false)}
 		ongoto={(guid) => { actionSheetOpen = false; goto(`/note/${guid}`); }}
