@@ -220,22 +220,38 @@ function applyInRange(
 		return false;
 	});
 
+	// Precompute a set of lower-cased titles for fast membership check in
+	// Pass 1's preservation logic.
+	const knownTitlesLower = new Set<string>();
+	for (const t of titles) {
+		const trimmed = t.titleLower.trim();
+		if (trimmed) knownTitlesLower.add(trimmed);
+	}
+	const titlesKnown = knownTitlesLower.size > 0;
+
 	for (const run of runs) {
 		// Build a "desired" array: for each char index, what target should the
 		// internal-link mark have? `null` means no mark.
 		const desired: (string | null)[] = new Array(run.text.length).fill(null);
 		// `locked[i]` = char i carries an existing mark we want to preserve
-		// (its span text still matches the mark's own `target`). New matches
-		// from findTitleMatches never overwrite locked regions — this keeps
-		// existing links stable even when the titles list is momentarily
-		// empty (e.g. right after setContent() while titles are still loading)
-		// or has since lost the target (note deleted).
+		// (its span text still matches the mark's own `target` AND that
+		// target is a real loaded note title). New matches from findTitleMatches
+		// never overwrite locked regions — this keeps existing links stable
+		// even when the titles list is momentarily empty (e.g. right after
+		// setContent() while titles are still loading).
 		const locked: boolean[] = new Array(run.text.length).fill(false);
 
 		// Pass 1: preserve existing link spans whose text still matches their
 		// target (case-insensitive, with word-boundary check). Stale spans
 		// (text diverged from target via user editing) are left unlocked and
 		// with desired=null so they will be removed.
+		//
+		// An additional safety rule: if the title list IS loaded (non-empty),
+		// we also require the mark's `target` to match a known note title.
+		// This cleans up legacy "broken" marks whose target was polluted by
+		// earlier serialization bugs (e.g. `target="Title123"` where the real
+		// note is just "Title"). When titles are not yet loaded we skip the
+		// check so existing marks aren't wrongly stripped during async boot.
 		{
 			let p = 0;
 			while (p < run.text.length) {
@@ -257,11 +273,13 @@ function applyInRange(
 				const before = p > 0 ? run.text[p - 1] : undefined;
 				const after = q < run.text.length ? run.text[q] : undefined;
 				const targetTrimmed = (target ?? '').trim();
+				const targetLower = targetTrimmed.toLocaleLowerCase();
 				const stillValid =
 					targetTrimmed.length > 0 &&
-					spanText.toLocaleLowerCase() === targetTrimmed.toLocaleLowerCase() &&
+					spanText.toLocaleLowerCase() === targetLower &&
 					!isWordChar(before) &&
-					!isWordChar(after);
+					!isWordChar(after) &&
+					(!titlesKnown || knownTitlesLower.has(targetLower));
 				if (stillValid) {
 					for (let k = p; k < q; k++) {
 						desired[k] = target;
