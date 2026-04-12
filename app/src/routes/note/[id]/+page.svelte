@@ -215,6 +215,26 @@
 		goto(`/note/${picked.guid}?from=home`);
 	}
 
+	function todayTitle(): string {
+		const d = new Date();
+		const y = d.getFullYear();
+		const m = String(d.getMonth() + 1).padStart(2, '0');
+		const day = String(d.getDate()).padStart(2, '0');
+		return `${y}-${m}-${day}`;
+	}
+
+	async function gotoToday() {
+		const title = todayTitle();
+		const existing = await findNoteByTitle(title);
+		if (existing && !existing.deleted) {
+			if (existing.guid === noteId) return;
+			goto(`/note/${existing.guid}?from=home`);
+			return;
+		}
+		const created = await createNote(title);
+		goto(`/note/${created.guid}?from=home`);
+	}
+
 	async function handleNotebookSelect(name: string | null) {
 		if (!note) return;
 		if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
@@ -275,6 +295,7 @@
 	</div>
 
 	{#if isFromHome}
+		<button class="fab-today" onclick={gotoToday} aria-label="오늘 날짜 노트">📅</button>
 		<button class="fab-random" onclick={gotoRandom} aria-label="랜덤 노트">🎲</button>
 	{/if}
 </div>
@@ -421,6 +442,28 @@
 	}
 
 	.fab-random:active {
+		transform: scale(0.93);
+	}
+
+	.fab-today {
+		position: fixed;
+		bottom: calc(88px + var(--safe-area-bottom) + 56px);
+		right: 20px;
+		width: 48px;
+		height: 48px;
+		border-radius: 50%;
+		border: none;
+		background: var(--color-bg);
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+		font-size: 1.4rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		z-index: 10;
+	}
+
+	.fab-today:active {
 		transform: scale(0.93);
 	}
 </style>
