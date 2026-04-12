@@ -1,4 +1,6 @@
 import { Mark, mergeAttributes } from '@tiptap/core';
+import type { TitleEntry } from '../autoLink/findTitleMatches.js';
+import { createAutoLinkPlugin } from '../autoLink/autoLinkPlugin.js';
 
 declare module '@tiptap/core' {
 	interface Commands<ReturnType> {
@@ -9,13 +11,24 @@ declare module '@tiptap/core' {
 	}
 }
 
-export const TomboyInternalLink = Mark.create({
+export interface TomboyInternalLinkOptions {
+	HTMLAttributes: Record<string, unknown>;
+	onLinkClick: (target: string) => void;
+	/** Returns the current note-title list used for auto-linking. */
+	getTitles: () => TitleEntry[];
+	/** Returns the guid of the note being edited (excluded from auto-links). */
+	getCurrentGuid: () => string | null;
+}
+
+export const TomboyInternalLink = Mark.create<TomboyInternalLinkOptions>({
 	name: 'tomboyInternalLink',
 
 	addOptions() {
 		return {
 			HTMLAttributes: {},
-			onLinkClick: (_target: string) => {}
+			onLinkClick: (_target: string) => {},
+			getTitles: () => [],
+			getCurrentGuid: () => null
 		};
 	},
 
@@ -68,5 +81,15 @@ export const TomboyInternalLink = Mark.create({
 					return commands.unsetMark(this.name);
 				}
 		};
+	},
+
+	addProseMirrorPlugins() {
+		return [
+			createAutoLinkPlugin({
+				markType: this.type,
+				getTitles: () => this.options.getTitles(),
+				getCurrentGuid: () => this.options.getCurrentGuid()
+			})
+		];
 	}
 });

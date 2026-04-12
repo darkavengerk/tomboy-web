@@ -314,6 +314,7 @@
 					content={editorContent}
 					onchange={handleEditorChange}
 					oninternallink={handleInternalLink}
+					currentGuid={noteId}
 				/>
 			{/key}
 		{/if}

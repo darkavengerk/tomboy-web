@@ -9,21 +9,29 @@
 	import { TomboyMonospace } from './extensions/TomboyMonospace.js';
 	import { TomboyInternalLink } from './extensions/TomboyInternalLink.js';
 	import { TomboyUrlLink } from './extensions/TomboyUrlLink.js';
+	import { createTitleProvider } from './autoLink/titleProvider.js';
+	import { autoLinkPluginKey } from './autoLink/autoLinkPlugin.js';
 	import type { JSONContent } from '@tiptap/core';
 
 	interface Props {
 		content?: JSONContent;
 		onchange?: (doc: JSONContent) => void;
 		oninternallink?: (target: string) => void;
+		currentGuid?: string | null;
 	}
 
-	let { content, onchange, oninternallink }: Props = $props();
+	let { content, onchange, oninternallink, currentGuid = null }: Props = $props();
 
 	let editorElement: HTMLDivElement;
 	let editor: Editor | null = $state(null);
 	let prevContentStr = JSON.stringify(content ?? { type: 'doc', content: [{ type: 'paragraph' }] });
 
 	onMount(() => {
+		const titleProvider = createTitleProvider({ excludeGuid: currentGuid });
+		// Populate titles asynchronously; the plugin reads via getTitles() so
+		// late arrivals still auto-link pre-existing content via the refresh meta.
+		void titleProvider.refresh();
+
 		editor = new Editor({
 			element: editorElement,
 			extensions: [
@@ -40,7 +48,9 @@
 				TomboyInternalLink.configure({
 					onLinkClick: (target: string) => {
 						oninternallink?.(target);
-					}
+					},
+					getTitles: () => titleProvider.getTitles(),
+					getCurrentGuid: () => currentGuid
 				}),
 				TomboyUrlLink
 			],
@@ -68,7 +78,18 @@
 			}
 		});
 
+		// When the note list changes (another note created / renamed / deleted),
+		// ask the plugin to re-scan the current doc so stale / newly-matching
+		// spans are reconciled.
+		const offChange = titleProvider.onChange(() => {
+			const ed = editor;
+			if (!ed) return;
+			ed.view.dispatch(ed.state.tr.setMeta(autoLinkPluginKey, { refresh: true }));
+		});
+
 		return () => {
+			offChange();
+			titleProvider.dispose();
 			editor?.destroy();
 		};
 	});
