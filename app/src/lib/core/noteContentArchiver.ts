@@ -157,7 +157,7 @@ export function serializeContent(doc: JSONContent): string {
 
 		if (node.type === 'bulletList') {
 			closeAll();
-			result += serializeBulletList(node);
+			result += serializeBulletList(node, /*isTopLevel=*/ true);
 		} else if (node.type === 'paragraph' || node.type === 'heading') {
 			for (const inline of node.content ?? []) {
 				if (inline.type === 'text') {
@@ -390,6 +390,8 @@ function elementToMark(el: Element): JSONContent | null {
 			return { type: 'tomboyUrlLink', attrs: { href: el.textContent ?? '' } };
 		case 'link:broken':
 			return { type: 'tomboyInternalLink', attrs: { target: el.textContent ?? '', broken: true } };
+		case 'datetime':
+			return { type: 'tomboyDatetime' };
 		default:
 			return null;
 	}
@@ -525,15 +527,23 @@ function marksEqual(a: JSONContent, b: JSONContent): boolean {
 
 /**
  * Serialize a bulletList node to Tomboy XML.
+ *
+ * `isTopLevel` indicates whether this list sits directly inside the
+ * note-content body (true) or is nested inside a list-item (false). Tomboy's
+ * pattern: the LAST list-item of a top-level list has no trailing '\n'
+ * (the '\n' lives outside, as the block separator), whereas the last item of
+ * a nested list DOES keep its trailing '\n' because it sits inside a
+ * containing list-item.
  */
-function serializeBulletList(node: JSONContent): string {
+function serializeBulletList(node: JSONContent, isTopLevel: boolean): string {
 	let result = '<list>';
 
 	const items = node.content ?? [];
 	for (let i = 0; i < items.length; i++) {
 		const item = items[i];
 		if (item.type === 'listItem') {
-			result += serializeListItem(item, i === items.length - 1);
+			const isLastTopLevel = isTopLevel && i === items.length - 1;
+			result += serializeListItem(item, isLastTopLevel);
 		}
 	}
 
@@ -544,14 +554,20 @@ function serializeBulletList(node: JSONContent): string {
 /**
  * Serialize a listItem node to Tomboy XML.
  *
+ * `suppressTrailingNewline` is true only for the LAST list-item of a
+ * TOP-LEVEL list (Tomboy omits the inner '\n' there because the surrounding
+ * block separator already provides one).
+ *
  * Tomboy desktop's output pattern (observed from real .note files):
- *   <list-item>text\n</list-item>            — non-last item, text only
- *   <list-item>text</list-item>              — last item of a list
- *   <list-item>text\n<list>…</list></list-item> — item with a nested list
+ *   <list-item>text\n</list-item>                 — any non-last item
+ *   <list-item>text\n</list-item>                 — last item of a NESTED list
+ *   <list-item>text</list-item>                   — last item of a TOP-LEVEL list
+ *   <list-item>text\n<list>…</list></list-item>   — item with a nested list
+ *
  * The parser strips these structural '\n' characters, so we re-emit them here
  * to preserve byte-for-byte round-trip with the desktop format.
  */
-function serializeListItem(item: JSONContent, isLast: boolean): string {
+function serializeListItem(item: JSONContent, suppressTrailingNewline: boolean): string {
 	let result = '<list-item dir="ltr">';
 
 	const children = item.content ?? [];
@@ -572,11 +588,12 @@ function serializeListItem(item: JSONContent, isLast: boolean): string {
 		result += '\n';
 		for (const child of children) {
 			if (child.type === 'bulletList') {
-				result += serializeBulletList(child);
+				result += serializeBulletList(child, /*isTopLevel=*/ false);
 			}
 		}
-	} else if (!isLast) {
-		// Non-last item without a nested list: trailing '\n' before </list-item>.
+	} else if (!suppressTrailingNewline) {
+		// Emit trailing '\n' before </list-item> for every item EXCEPT the
+		// last one of a top-level list.
 		result += '\n';
 	}
 
@@ -613,6 +630,8 @@ function markToTags(mark: JSONContent): [string, string] {
 		}
 		case 'tomboyUrlLink':
 			return ['<link:url>', '</link:url>'];
+		case 'tomboyDatetime':
+			return ['<datetime>', '</datetime>'];
 		default:
 			return ['', ''];
 	}

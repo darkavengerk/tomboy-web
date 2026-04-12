@@ -27,11 +27,13 @@ describe('noteContentArchiver — round-trip idempotency', () => {
 	});
 
 	it('nested list preserves the outer item\'s trailing newline before the inner list', () => {
+		// Nested list's last item (inner) DOES keep its trailing \n because
+		// it's nested; only a TOP-LEVEL list's last item drops it.
 		const xml =
 			`<note-content version="0.1">` +
 			`<list>` +
 			`<list-item dir="ltr">outer\n` +
-			`<list><list-item dir="ltr">inner</list-item></list>` +
+			`<list><list-item dir="ltr">inner\n</list-item></list>` +
 			`</list-item>` +
 			`<list-item dir="ltr">next</list-item>` +
 			`</list>` +

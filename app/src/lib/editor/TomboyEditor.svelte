@@ -9,6 +9,7 @@
 	import { TomboyMonospace } from './extensions/TomboyMonospace.js';
 	import { TomboyInternalLink } from './extensions/TomboyInternalLink.js';
 	import { TomboyUrlLink } from './extensions/TomboyUrlLink.js';
+	import { TomboyDatetime } from './extensions/TomboyDatetime.js';
 	import { createTitleProvider } from './autoLink/titleProvider.js';
 	import { autoLinkPluginKey } from './autoLink/autoLinkPlugin.js';
 	import type { JSONContent } from '@tiptap/core';
@@ -52,7 +53,8 @@
 					getTitles: () => titleProvider.getTitles(),
 					getCurrentGuid: () => currentGuid
 				}),
-				TomboyUrlLink
+				TomboyUrlLink,
+				TomboyDatetime
 			],
 			content: content ?? { type: 'doc', content: [{ type: 'paragraph' }] },
 			onUpdate: ({ editor: ed }) => {

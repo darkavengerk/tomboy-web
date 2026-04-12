@@ -471,7 +471,7 @@ describe('noteContentArchiver - ref-grounded round-trip', () => {
 
 	it('round-trips nested lists two levels deep', () => {
 		const original =
-			'<note-content version="0.1">Title\n<list><list-item dir="ltr">A\n<list><list-item dir="ltr">A.1\n</list-item><list-item dir="ltr">A.2</list-item></list></list-item><list-item dir="ltr">B</list-item></list></note-content>';
+			'<note-content version="0.1">Title\n<list><list-item dir="ltr">A\n<list><list-item dir="ltr">A.1\n</list-item><list-item dir="ltr">A.2\n</list-item></list></list-item><list-item dir="ltr">B</list-item></list></note-content>';
 		expect(roundTrip(original)).toBe(original);
 	});
 
@@ -610,8 +610,10 @@ describe('noteContentArchiver - ref-grounded round-trip', () => {
 	// --- List edge cases ---
 
 	it('round-trips three-level nested list', () => {
+		// Deeply nested: every inner last-item keeps its \n; only the top-
+		// level list's last item drops it.
 		const original =
-			'<note-content version="0.1">T\n<list><list-item dir="ltr">L1\n<list><list-item dir="ltr">L2\n<list><list-item dir="ltr">L3</list-item></list></list-item></list></list-item></list></note-content>';
+			'<note-content version="0.1">T\n<list><list-item dir="ltr">L1\n<list><list-item dir="ltr">L2\n<list><list-item dir="ltr">L3\n</list-item></list></list-item></list></list-item></list></note-content>';
 		expect(roundTrip(original)).toBe(original);
 	});
 
