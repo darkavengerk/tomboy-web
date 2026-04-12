@@ -7,7 +7,7 @@
  */
 
 import { Dropbox, DropboxAuth } from 'dropbox';
-import { PUBLIC_DROPBOX_APP_KEY } from '$env/static/public';
+import { env } from '$env/dynamic/public';
 
 const STORAGE_KEY_ACCESS_TOKEN = 'tomboy-dropbox-access-token';
 const STORAGE_KEY_REFRESH_TOKEN = 'tomboy-dropbox-refresh-token';
@@ -28,7 +28,7 @@ export function setNotesPath(path: string): void {
 }
 
 function getAppKey(): string {
-	return PUBLIC_DROPBOX_APP_KEY ?? '';
+	return env.PUBLIC_DROPBOX_APP_KEY ?? '';
 }
 
 /** Create a DropboxAuth instance for PKCE auth */
