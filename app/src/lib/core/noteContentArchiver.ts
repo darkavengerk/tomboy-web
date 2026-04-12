@@ -79,7 +79,19 @@ export function serializeContent(doc: JSONContent): string {
 	}
 
 	function closeUnmatched(nextMarks: JSONContent[] | undefined) {
-		const outerToInner = [...(nextMarks ?? [])].reverse();
+		// Mark types that must NEVER span a paragraph boundary — a link or
+		// datetime reference is a self-contained anchor, so `<link:internal>
+		// A\nB</link:internal>` would incorrectly bundle two anchors into one.
+		// We strip these from the "next text node's marks" before common-prefix
+		// matching, which forces closeUnmatched to close any such mark that's
+		// currently open. writeTextNode for the next paragraph will re-open it.
+		const NON_SPANNING = new Set([
+			'tomboyInternalLink',
+			'tomboyUrlLink',
+			'tomboyDatetime'
+		]);
+		const filtered = (nextMarks ?? []).filter((m) => !NON_SPANNING.has(m.type));
+		const outerToInner = [...filtered].reverse();
 		let common = 0;
 		while (
 			common < openMarks.length &&
