@@ -24,9 +24,22 @@ export async function updateNoteFromEditor(guid: string, doc: JSONContent): Prom
 	const note = await noteStore.getNote(guid);
 	if (!note) return undefined;
 
+	const newXmlContent = serializeContent(doc);
+	const newTitle = extractTitleFromDoc(doc);
+
+	// No-op skip: if the serialized doc is byte-identical to what's already
+	// in storage, don't touch the note. This prevents spurious "dirty" state
+	// when a user types a character and then deletes it — the final doc
+	// equals the stored one, so there's nothing to save. Without this check
+	// the date fields would tick forward on every transient edit cycle and
+	// the note would re-appear on the upload list.
+	if (newXmlContent === note.xmlContent && newTitle === note.title) {
+		return note;
+	}
+
 	const now = formatTomboyDate(new Date());
-	note.xmlContent = serializeContent(doc);
-	note.title = extractTitleFromDoc(doc);
+	note.xmlContent = newXmlContent;
+	note.title = newTitle;
 	note.changeDate = now;
 	note.metadataChangeDate = now;
 
