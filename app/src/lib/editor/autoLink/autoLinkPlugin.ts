@@ -8,7 +8,7 @@
 
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { MarkType, Node as PMNode } from '@tiptap/pm/model';
-import { findTitleMatches, type TitleEntry } from './findTitleMatches.js';
+import { findTitleMatches, isWordChar, type TitleEntry } from './findTitleMatches.js';
 
 export const autoLinkPluginKey = new PluginKey<AutoLinkMeta>('tomboyAutoLink');
 
@@ -158,64 +158,118 @@ function applyInRange(
 
 	const runs: Run[] = [];
 	doc.nodesBetween(from, to, (node, pos) => {
-		if (node.isTextblock) {
-			// Build a run for this block by walking its text children.
-			const run: Run = { start: pos + 1, text: '', charMeta: [] };
-			node.descendants((child, childOffset) => {
-				if (!child.isText) return;
-				const absStart = pos + 1 + childOffset;
-				const text = child.text ?? '';
-				const isSuppressed = child.marks.some((m) => suppress.has(m.type.name));
-				const internalMark = child.marks.find(
-					(m) => m.type.name === markType.name
-				);
-				const internalTarget = internalMark
-					? (internalMark.attrs.target as string)
-					: null;
-				// If run is not contiguous with the previous char, break into a new run.
-				if (
-					run.charMeta.length > 0 &&
-					run.charMeta[run.charMeta.length - 1].pos + 1 !== absStart
-				) {
-					if (run.text.length > 0) runs.push(run);
-					runs.push({ start: absStart, text: '', charMeta: [] });
-				}
-				// Extend current run (or new one created just above).
-				const target = runs.length > 0 ? runs[runs.length - 1] : run;
-				for (let i = 0; i < text.length; i++) {
-					target.text += text[i];
-					target.charMeta.push({
-						pos: absStart + i,
-						suppressed: isSuppressed,
-						hasInternalLink: internalMark !== undefined,
-						internalTarget
-					});
-				}
-			});
-			if (run.text.length > 0 && !runs.includes(run)) runs.push(run);
-			// Don't recurse further (we already walked descendants).
-			return false;
-		}
-		return true;
+		if (!node.isTextblock) return true;
+
+		// One run per textblock; split within the block if positions are
+		// non-contiguous (e.g. hard break or other non-text inline child).
+		let current: Run = { start: pos + 1, text: '', charMeta: [] };
+		const commit = () => {
+			if (current.text.length > 0) runs.push(current);
+		};
+
+		node.descendants((child, childOffset) => {
+			if (!child.isText) return;
+			const absStart = pos + 1 + childOffset;
+			const text = child.text ?? '';
+			const isSuppressed = child.marks.some((m) => suppress.has(m.type.name));
+			const internalMark = child.marks.find(
+				(m) => m.type.name === markType.name
+			);
+			const internalTarget = internalMark
+				? (internalMark.attrs.target as string)
+				: null;
+
+			// If this text node isn't contiguous with the previous one (hard
+			// break / other inline non-text in between), commit the current
+			// run and start a fresh one.
+			if (
+				current.charMeta.length > 0 &&
+				current.charMeta[current.charMeta.length - 1].pos + 1 !== absStart
+			) {
+				commit();
+				current = { start: absStart, text: '', charMeta: [] };
+			}
+
+			for (let i = 0; i < text.length; i++) {
+				current.text += text[i];
+				current.charMeta.push({
+					pos: absStart + i,
+					suppressed: isSuppressed,
+					hasInternalLink: internalMark !== undefined,
+					internalTarget
+				});
+			}
+		});
+
+		commit();
+		// Don't recurse further (we already walked descendants).
+		return false;
 	});
 
 	for (const run of runs) {
-		// Compute desired matches on the run text.
-		const matches = findTitleMatches(run.text, titles, { excludeGuid: currentGuid });
-
-		// Build a "desired" array: for each char index, what target should it have?
-		// `null` means no internal-link mark; a string means that target.
+		// Build a "desired" array: for each char index, what target should the
+		// internal-link mark have? `null` means no mark.
 		const desired: (string | null)[] = new Array(run.text.length).fill(null);
+		// `locked[i]` = char i carries an existing mark we want to preserve
+		// (its span text still matches the mark's own `target`). New matches
+		// from findTitleMatches never overwrite locked regions — this keeps
+		// existing links stable even when the titles list is momentarily
+		// empty (e.g. right after setContent() while titles are still loading)
+		// or has since lost the target (note deleted).
+		const locked: boolean[] = new Array(run.text.length).fill(false);
+
+		// Pass 1: preserve existing link spans whose text still matches their
+		// target (case-insensitive, with word-boundary check). Stale spans
+		// (text diverged from target via user editing) are left unlocked and
+		// with desired=null so they will be removed.
+		{
+			let p = 0;
+			while (p < run.text.length) {
+				const cm = run.charMeta[p];
+				if (!cm.hasInternalLink) {
+					p++;
+					continue;
+				}
+				const target = cm.internalTarget;
+				let q = p;
+				while (
+					q < run.text.length &&
+					run.charMeta[q].hasInternalLink &&
+					run.charMeta[q].internalTarget === target
+				) {
+					q++;
+				}
+				const spanText = run.text.slice(p, q);
+				const before = p > 0 ? run.text[p - 1] : undefined;
+				const after = q < run.text.length ? run.text[q] : undefined;
+				const targetTrimmed = (target ?? '').trim();
+				const stillValid =
+					targetTrimmed.length > 0 &&
+					spanText.toLocaleLowerCase() === targetTrimmed.toLocaleLowerCase() &&
+					!isWordChar(before) &&
+					!isWordChar(after);
+				if (stillValid) {
+					for (let k = p; k < q; k++) {
+						desired[k] = target;
+						locked[k] = true;
+					}
+				}
+				p = q;
+			}
+		}
+
+		// Pass 2: scan for new auto-link matches, skipping suppressed marks
+		// and locked regions.
+		const matches = findTitleMatches(run.text, titles, { excludeGuid: currentGuid });
 		for (const m of matches) {
-			// Skip matches that fall (even partially) inside a suppressed mark.
-			let suppressed = false;
+			let skip = false;
 			for (let i = m.from; i < m.to; i++) {
-				if (run.charMeta[i].suppressed) {
-					suppressed = true;
+				if (run.charMeta[i].suppressed || locked[i]) {
+					skip = true;
 					break;
 				}
 			}
-			if (suppressed) continue;
+			if (skip) continue;
 			for (let i = m.from; i < m.to; i++) desired[i] = m.target;
 		}
 

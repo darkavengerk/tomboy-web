@@ -36,7 +36,7 @@ export interface FindOptions {
 // We use \p{L}\p{N}_ classes so this works for ASCII + CJK + accented scripts.
 const WORD_CHAR = /[\p{L}\p{N}_]/u;
 
-function isWordChar(ch: string | undefined): boolean {
+export function isWordChar(ch: string | undefined): boolean {
 	if (!ch) return false;
 	return WORD_CHAR.test(ch);
 }
