@@ -135,6 +135,14 @@
 				>{nb}</button>
 			{/each}
 		</div>
+
+		<button
+			type="button"
+			class="rail-settings"
+			onclick={onopensettings}
+			title="설정"
+			aria-label="설정"
+		>설정</button>
 	</div>
 
 	<!--
@@ -177,9 +185,6 @@
 			{/if}
 		</div>
 
-		<div class="footer">
-			<button type="button" class="settings-link" onclick={onopensettings}>설정</button>
-		</div>
 	</div>
 </aside>
 
@@ -187,30 +192,28 @@
 	.side-panel {
 		position: fixed;
 		top: 0;
-		right: 0;
+		left: 0;
 		bottom: 0;
 		width: 300px;
 		display: flex;
 		flex-direction: row;
 		color: #eee;
 		z-index: 100000;
-		/* Start collapsed: push the main (240px) column off-screen to the
-		   right so only the 60px rail remains visible. */
-		transform: translateX(220px);
-		transition: transform 180ms ease;
+		/* The side-panel box spans the full expanded width so .main can
+		   occupy its eventual position when revealed. But we don't want the
+		   full box to capture hover — only the visible rail should. Setting
+		   pointer-events: none on the container lets child elements opt back
+		   in individually; the collapsed .main area passes clicks through to
+		   notes beneath. */
+		pointer-events: none;
 	}
 
-	.side-panel:hover,
-	.side-panel:focus-within {
-		transform: translateX(0);
-	}
-
-	/* Rail: left column of the panel, always visible even when the panel is
-	   translated right. */
+	/* Rail: always-visible left column. Sits flush to the screen's left edge
+	   so the shrunk panel remains visible at all times. */
 	.rail {
 		flex: 0 0 80px;
 		background: #1a1a1a;
-		border-left: 1px solid #333;
+		border-right: 1px solid #333;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
@@ -218,6 +221,7 @@
 		gap: 10px;
 		overflow: hidden;
 		min-height: 0;
+		pointer-events: auto;
 	}
 
 	.rail-chips {
@@ -258,14 +262,29 @@
 		border-color: #3a7a50;
 	}
 
-	/* Main: right column, hidden off-screen when panel is collapsed. */
+	/* Main: revealed column to the right of the rail. When collapsed it is
+	   clipped away (not translated), so expanding reveals the hidden content
+	   growing out from behind the rail rather than sliding in as a block. */
 	.main {
 		flex: 1;
 		min-width: 0;
 		background: #1a1a1a;
-		border-left: 1px solid #333;
+		border-right: 1px solid #333;
 		display: flex;
 		flex-direction: column;
+		clip-path: inset(0 100% 0 0);
+		pointer-events: none;
+		transition: clip-path 180ms ease;
+	}
+
+	/* Reveal triggers: hovering the always-visible rail, or keyboard focus
+	   anywhere in the panel. Once revealed, hovering .main itself keeps it
+	   open so the mouse can cross from rail into main without flicker. */
+	.rail:hover ~ .main,
+	.main:hover,
+	.side-panel:focus-within .main {
+		clip-path: inset(0 0 0 0);
+		pointer-events: auto;
 	}
 
 	.header {
@@ -404,24 +423,27 @@
 		font-size: 0.85rem;
 	}
 
-	.footer {
-		padding: 8px 12px;
-		border-top: 1px solid #2a2a2a;
+	/* Settings lives in the rail so it stays visible when the panel is
+	   collapsed. It is outside the scrollable .rail-chips column on purpose:
+	   the chips scroll independently while this button stays pinned at the
+	   bottom of the rail. */
+	.rail-settings {
 		flex-shrink: 0;
-	}
-
-	.settings-link {
-		background: none;
-		border: none;
-		padding: 0;
-		color: #aaa;
-		font-size: 0.85rem;
-		text-decoration: none;
+		margin-top: auto;
+		width: calc(100% - 12px);
+		padding: 6px 4px;
+		border-radius: 4px;
+		border: 1px solid #2a2a2a;
+		background: #111;
+		color: #bbb;
+		font-size: 0.7rem;
 		cursor: pointer;
+		text-align: center;
+		line-height: 1.2;
 	}
 
-	.settings-link:hover {
+	.rail-settings:hover {
+		background: #232323;
 		color: #fff;
-		text-decoration: underline;
 	}
 </style>

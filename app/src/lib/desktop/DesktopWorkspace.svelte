@@ -73,10 +73,12 @@
 		const note = await createNote(title);
 		const width = 560;
 		const height = 520;
-		const vw = window.innerWidth - 60; // canvas width (panel rail is 60px)
+		// x/y are canvas-local: (0, 0) is the top-left of the note area,
+		// which already sits to the right of the SidePanel rail.
+		const vw = window.innerWidth - 80;
 		const vh = window.innerHeight;
 		const x = Math.max(0, Math.round((vw - width) / 2));
-		const y = Math.max(0, Math.round((vh - height) / 2 - 60)); // slightly above center
+		const y = Math.max(0, Math.round((vh - height) / 2 - 60));
 		desktopSession.openWindowAt(note.guid, { x, y, width, height });
 	}
 
@@ -204,13 +206,14 @@
 
 	.canvas {
 		position: fixed;
-		left: 0;
+		/* Reserve the SidePanel rail (80px) on the left. Notes use
+		   canvas-local coordinates: their stored (0, 0) corresponds to the
+		   canvas's top-left, so moving the panel between sides is a pure CSS
+		   change — no note coordinates need to migrate. */
+		left: 80px;
+		right: 0;
 		top: 0;
 		bottom: 0;
-		/* Reserve only the SidePanel's rail width on the right — the
-		   expandable portion of the panel overlays the canvas on hover,
-		   so notes and the wallpaper keep their place. */
-		right: 60px;
 		background: #000;
 		overflow: hidden;
 	}

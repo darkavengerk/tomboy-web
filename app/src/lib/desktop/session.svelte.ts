@@ -73,6 +73,11 @@ const DEFAULT_SETTINGS_HEIGHT = 640;
 const MIN_WIDTH = 280;
 const MIN_HEIGHT = 240;
 const STAGGER = 30;
+// Width reserved for the SidePanel rail. Note coordinates are stored in
+// canvas-local space (the canvas element already excludes this width), so
+// this constant is only used to size the usable viewport for staggering —
+// it is NOT added to stored x values.
+const RAIL_WIDTH = 80;
 
 function emptyWorkspace(): WorkspaceState {
 	return { windows: [], geometryByGuid: {}, nextZ: 1 };
@@ -203,10 +208,10 @@ function defaultGeometry(ws: WorkspaceState, kind: DesktopWindowKind): GeometryS
 }
 
 function staggeredFrom(ws: WorkspaceState, width: number, height: number): GeometrySnapshot {
-	const baseX = 120;
+	const baseX = 40;
 	const baseY = 80;
 	const i = ws.windows.length;
-	const viewportW = typeof window !== 'undefined' ? window.innerWidth - 60 : 1200;
+	const viewportW = typeof window !== 'undefined' ? window.innerWidth - RAIL_WIDTH : 1200;
 	const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800;
 	const x = (baseX + i * STAGGER) % Math.max(200, viewportW - width);
 	const y = (baseY + i * STAGGER) % Math.max(160, viewportH - height);
