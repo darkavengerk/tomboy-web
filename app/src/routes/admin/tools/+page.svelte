@@ -10,9 +10,16 @@
 		rootManifestFullPath,
 		revisionManifestFullPath
 	} from '$lib/sync/dropboxClient.js';
-	import { getAllNotesIncludingDeleted } from '$lib/storage/noteStore.js';
-	import { serializeNote } from '$lib/core/noteArchiver.js';
-	import { getManifest } from '$lib/sync/manifest.js';
+	import {
+		getAllNotesIncludingDeleted,
+		purgeAllLocal,
+		putNote
+	} from '$lib/storage/noteStore.js';
+	import { serializeNote, parseNoteFromFile } from '$lib/core/noteArchiver.js';
+	import { createEmptyNote } from '$lib/core/note.js';
+	import type { NoteData } from '$lib/core/note.js';
+	import { getManifest, clearManifest } from '$lib/sync/manifest.js';
+	import { invalidateCache } from '$lib/stores/noteListCache.js';
 	import { pushToast } from '$lib/stores/toast.js';
 	import JSZip from 'jszip';
 
@@ -136,6 +143,122 @@
 		}
 	}
 
+	/**
+	 * Restore the local IndexedDB from a previously created local-backup zip.
+	 * This is a reset: existing notes are wiped first, then the zip's notes,
+	 * tombstones are imported. The sync manifest is cleared so the next sync
+	 * treats everything as local (all restored notes are marked localDirty).
+	 */
+	let fileInput: HTMLInputElement | undefined = $state(undefined);
+
+	async function restoreLocalFromZip(file: File) {
+		if (running) return;
+		running = true;
+		progress = 'zip 파일 읽는 중...';
+		try {
+			const zip = await JSZip.loadAsync(file);
+
+			// Collect .note files under notes/ (or anywhere named guid.note).
+			const noteEntries: Array<{ basename: string; file: JSZip.JSZipObject }> = [];
+			zip.forEach((relPath, entry) => {
+				if (entry.dir) return;
+				if (!relPath.toLowerCase().endsWith('.note')) return;
+				const basename = relPath.split('/').pop() ?? relPath;
+				noteEntries.push({ basename, file: entry });
+			});
+
+			// Read optional tombstones.txt.
+			const tombstonesFile = zip.file('tombstones.txt');
+			let tombstoneLines: string[] = [];
+			if (tombstonesFile) {
+				const raw = await tombstonesFile.async('text');
+				tombstoneLines = raw.split(/\r?\n/).filter((l) => l.trim().length > 0);
+			}
+
+			if (noteEntries.length === 0 && tombstoneLines.length === 0) {
+				throw new Error('zip 안에 복원할 .note 파일이 없습니다.');
+			}
+
+			const ok = window.confirm(
+				`기존에 저장된 노트가 모두 삭제되고 zip 내용으로 교체됩니다.\n` +
+					`- 복원할 노트: ${noteEntries.length}개\n` +
+					`- 툼스톤: ${tombstoneLines.length}개\n\n` +
+					`계속하시겠습니까?`
+			);
+			if (!ok) {
+				progress = '';
+				return;
+			}
+
+			progress = '기존 로컬 상태 삭제 중...';
+			await purgeAllLocal();
+			await clearManifest();
+
+			progress = `노트 복원 중 (0/${noteEntries.length})...`;
+			let imported = 0;
+			let failed = 0;
+			let i = 0;
+			for (const { basename, file: entry } of noteEntries) {
+				i++;
+				if (i % 20 === 0) progress = `노트 복원 중 (${i}/${noteEntries.length})...`;
+				try {
+					const xml = await entry.async('text');
+					const note = parseNoteFromFile(xml, basename);
+					await putNote(note);
+					imported++;
+				} catch {
+					failed++;
+				}
+			}
+
+			let restoredTombstones = 0;
+			if (tombstoneLines.length > 0) {
+				progress = '툼스톤 복원 중...';
+				for (const line of tombstoneLines) {
+					const [guid, ...titleParts] = line.split('\t');
+					if (!guid) continue;
+					const title = titleParts.join('\t');
+					const base = createEmptyNote(guid);
+					const tomb: NoteData = {
+						...base,
+						title: title || base.title,
+						deleted: true
+					};
+					try {
+						await putNote(tomb);
+						restoredTombstones++;
+					} catch {
+						/* skip */
+					}
+				}
+			}
+
+			invalidateCache();
+
+			const msg = `복원 완료: 노트 ${imported}개${
+				failed > 0 ? ` (실패 ${failed}개)` : ''
+			}${restoredTombstones > 0 ? `, 툼스톤 ${restoredTombstones}개` : ''}`;
+			pushToast(msg, { kind: failed > 0 ? 'error' : 'info' });
+		} catch (e) {
+			pushToast('복원 실패: ' + String(e), { kind: 'error' });
+		} finally {
+			running = false;
+			progress = '';
+			if (fileInput) fileInput.value = '';
+		}
+	}
+
+	function onRestoreFileChosen(e: Event) {
+		const input = e.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file) return;
+		void restoreLocalFromZip(file);
+	}
+
+	function triggerRestore() {
+		fileInput?.click();
+	}
+
 	function downloadBlob(blob: Blob, filename: string) {
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement('a');
@@ -150,8 +273,27 @@
 
 <h2 class="page-title">도구</h2>
 
+<section class="tool danger">
+	<h3>zip으로 로컬 초기화 · 복원</h3>
+	<p class="info">
+		로컬 상태 백업(zip)을 선택하면 <strong>현재 IndexedDB의 모든 노트가 삭제되고</strong>
+		zip 내용으로 교체됩니다. 초기화 전에는 반드시 먼저 백업을 받아두세요.
+		복원된 노트는 모두 "로컬 변경" 상태가 되어 다음 동기화 시 서버로 업로드됩니다.
+	</p>
+	<button class="btn btn-danger" onclick={triggerRestore} disabled={running}>
+		{running ? '진행 중...' : 'zip 파일 선택해서 복원'}
+	</button>
+	<input
+		bind:this={fileInput}
+		type="file"
+		accept=".zip,application/zip"
+		onchange={onRestoreFileChosen}
+		hidden
+	/>
+</section>
+
 {#if !authed}
-	<div class="notice">Dropbox 연결이 필요합니다.</div>
+	<div class="notice">Dropbox 백업 도구를 사용하려면 Dropbox 연결이 필요합니다.</div>
 {:else}
 	<section class="tool">
 		<h3>로컬 상태 백업 (zip)</h3>
@@ -175,10 +317,10 @@
 			{running ? '진행 중...' : '전체 히스토리 zip 다운로드'}
 		</button>
 	</section>
+{/if}
 
-	{#if progress}
-		<div class="progress">{progress}</div>
-	{/if}
+{#if progress}
+	<div class="progress">{progress}</div>
 {/if}
 
 <style>
@@ -214,6 +356,8 @@
 		font-weight: 500;
 	}
 	.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+	.btn-danger { background: #dc2626; }
+	.tool.danger { border-color: #fca5a5; background: #fff6f6; }
 	.progress {
 		margin-top: 16px;
 		padding: 10px 14px;
