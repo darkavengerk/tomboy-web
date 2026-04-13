@@ -12,6 +12,8 @@
 	let { children } = $props();
 
 	const isDesktopRoute = $derived(page.url.pathname.startsWith('/desktop'));
+	const isEmbedded = $derived(page.url.searchParams.get('embed') === '1');
+	const isChromeless = $derived(isDesktopRoute || isEmbedded);
 
 	let offline = $state(false);
 	let installPrompt: BeforeInstallPromptEvent | null = $state(null);
@@ -92,8 +94,10 @@
 	<title>Tomboy Web</title>
 </svelte:head>
 
-{#if isDesktopRoute}
-	{@render children()}
+{#if isChromeless}
+	<div class="chromeless">
+		{@render children()}
+	</div>
 	<Toast />
 {:else}
 	{#if offline}
@@ -133,6 +137,22 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
+	}
+
+	/* When embedded (in an iframe) or on the desktop route, the settings page
+	   still needs a flex column container so its inner layout (which uses
+	   height:100%) sizes correctly. */
+	.chromeless {
+		height: 100vh;
+		height: 100dvh;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+
+	.chromeless > :global(*) {
+		flex: 1;
+		min-height: 0;
 	}
 
 	.content {

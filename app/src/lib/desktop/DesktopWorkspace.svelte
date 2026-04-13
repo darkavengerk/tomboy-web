@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import NoteWindow from './NoteWindow.svelte';
+	import SettingsWindow from './SettingsWindow.svelte';
 	import SidePanel from './SidePanel.svelte';
 	import { desktopSession } from './session.svelte.js';
 
@@ -38,30 +39,48 @@
 	function handleOpenLink(title: string) {
 		void desktopSession.openByTitle(title);
 	}
+
+	function handleOpenSettings() {
+		desktopSession.openSettings();
+	}
 </script>
 
 <div class="desktop-root">
 	<div class="canvas" aria-label="노트 작업 공간">
 		{#if ready}
 			{#each desktopSession.windows as win (win.guid)}
-				<NoteWindow
-					guid={win.guid}
-					x={win.x}
-					y={win.y}
-					width={win.width}
-					height={win.height}
-					z={win.z}
-					onfocus={handleFocus}
-					onclose={handleClose}
-					onmove={handleMove}
-					onresize={handleResize}
-					onopenlink={handleOpenLink}
-				/>
+				{#if win.kind === 'settings'}
+					<SettingsWindow
+						x={win.x}
+						y={win.y}
+						width={win.width}
+						height={win.height}
+						z={win.z}
+						onfocus={handleFocus}
+						onclose={handleClose}
+						onmove={handleMove}
+						onresize={handleResize}
+					/>
+				{:else}
+					<NoteWindow
+						guid={win.guid}
+						x={win.x}
+						y={win.y}
+						width={win.width}
+						height={win.height}
+						z={win.z}
+						onfocus={handleFocus}
+						onclose={handleClose}
+						onmove={handleMove}
+						onresize={handleResize}
+						onopenlink={handleOpenLink}
+					/>
+				{/if}
 			{/each}
 		{/if}
 	</div>
 
-	<SidePanel openGuids={openGuidSet} onopen={handleOpen} />
+	<SidePanel openGuids={openGuidSet} onopen={handleOpen} onopensettings={handleOpenSettings} />
 </div>
 
 <style>

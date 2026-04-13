@@ -3,7 +3,8 @@
 	import { getNote, updateNoteFromEditor, getNoteEditorContent } from '$lib/core/noteManager.js';
 	import type { NoteData } from '$lib/core/note.js';
 	import TomboyEditor from '$lib/editor/TomboyEditor.svelte';
-	import type { JSONContent } from '@tiptap/core';
+	import Toolbar from '$lib/editor/Toolbar.svelte';
+	import type { JSONContent, Editor } from '@tiptap/core';
 	import { startPointerDrag } from './dragResize.js';
 	import {
 		DESKTOP_WINDOW_MIN_WIDTH,
@@ -43,9 +44,14 @@
 	let loading = $state(true);
 	let saving = $state(false);
 	let editorContent: JSONContent | undefined = $state(undefined);
+	let editorComponent: TomboyEditor | undefined = $state(undefined);
 
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	let pendingDoc: JSONContent | null = null;
+
+	function getEditor(): Editor | null {
+		return editorComponent?.getEditor() ?? null;
+	}
 
 	onMount(() => {
 		(async () => {
@@ -171,11 +177,18 @@
 		>✕</button>
 	</div>
 
+	{#if !loading && editorContent}
+		<div class="toolbar-slot">
+			<Toolbar editor={getEditor()} />
+		</div>
+	{/if}
+
 	<div class="body">
 		{#if loading}
 			<div class="loading">로딩 중...</div>
 		{:else if editorContent}
 			<TomboyEditor
+				bind:this={editorComponent}
 				content={editorContent}
 				onchange={handleEditorChange}
 				oninternallink={handleInternalLink}
@@ -260,6 +273,17 @@
 	.close-btn:hover {
 		background: #c0392b;
 		color: #fff;
+	}
+
+	.toolbar-slot {
+		flex-shrink: 0;
+		border-bottom: 1px solid #dee2e6;
+	}
+
+	/* Flip the size-menu downward since the toolbar is now at the top. */
+	.toolbar-slot :global(.size-menu) {
+		top: 100%;
+		bottom: auto;
 	}
 
 	.body {

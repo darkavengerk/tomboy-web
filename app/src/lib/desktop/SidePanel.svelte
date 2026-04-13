@@ -17,9 +17,10 @@
 	interface Props {
 		openGuids: Set<string>;
 		onopen: (guid: string) => void;
+		onopensettings: () => void;
 	}
 
-	let { openGuids, onopen }: Props = $props();
+	let { openGuids, onopen, onopensettings }: Props = $props();
 
 	let allNotes: NoteData[] = $state(getCachedNotes() ?? []);
 	let loading = $state(getCachedNotes() === null);
@@ -130,7 +131,7 @@
 	</div>
 
 	<div class="footer">
-		<a class="settings-link" href="/settings">설정</a>
+		<button type="button" class="settings-link" onclick={onopensettings}>설정</button>
 	</div>
 </aside>
 
@@ -276,9 +277,13 @@
 	}
 
 	.settings-link {
+		background: none;
+		border: none;
+		padding: 0;
 		color: #aaa;
 		font-size: 0.85rem;
 		text-decoration: none;
+		cursor: pointer;
 	}
 
 	.settings-link:hover {
