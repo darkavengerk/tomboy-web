@@ -7,8 +7,11 @@
 	import { page } from '$app/state';
 	import { createHistoryTracker } from '$lib/nav/history.js';
 	import { appMode, modeFromUrl } from '$lib/stores/appMode.svelte.js';
+	import { maybeRedirectToDesktop } from '$lib/desktop/viewportRedirect.js';
 
 	let { children } = $props();
+
+	const isDesktopRoute = $derived(page.url.pathname.startsWith('/desktop'));
 
 	let offline = $state(false);
 	let installPrompt: BeforeInstallPromptEvent | null = $state(null);
@@ -46,6 +49,8 @@
 	}
 
 	onMount(() => {
+		maybeRedirectToDesktop(page.url.pathname);
+
 		offline = !navigator.onLine;
 		const goOffline = () => { offline = true; };
 		const goOnline = () => { offline = false; };
@@ -87,34 +92,39 @@
 	<title>Tomboy Web</title>
 </svelte:head>
 
-{#if offline}
-	<div class="offline-banner" role="alert">
-		오프라인 상태입니다
-	</div>
-{/if}
+{#if isDesktopRoute}
+	{@render children()}
+	<Toast />
+{:else}
+	{#if offline}
+		<div class="offline-banner" role="alert">
+			오프라인 상태입니다
+		</div>
+	{/if}
 
-{#if showInstallBanner}
-	<div class="install-banner">
-		<span>홈 화면에 추가하여 앱처럼 사용하세요</span>
-		<div class="install-actions">
-			<button class="install-btn" onclick={handleInstall}>설치</button>
-			<button class="dismiss-btn" onclick={dismissInstallBanner}>✕</button>
+	{#if showInstallBanner}
+		<div class="install-banner">
+			<span>홈 화면에 추가하여 앱처럼 사용하세요</span>
+			<div class="install-actions">
+				<button class="install-btn" onclick={handleInstall}>설치</button>
+				<button class="dismiss-btn" onclick={dismissInstallBanner}>✕</button>
+			</div>
+		</div>
+	{/if}
+
+	<div class="app-shell">
+		<TopNav
+			{canGoBack}
+			{canGoForward}
+			onback={handleBack}
+			onforward={handleForward}
+		/>
+		<div class="content">
+			{@render children()}
 		</div>
 	</div>
+	<Toast />
 {/if}
-
-<div class="app-shell">
-	<TopNav
-		{canGoBack}
-		{canGoForward}
-		onback={handleBack}
-		onforward={handleForward}
-	/>
-	<div class="content">
-		{@render children()}
-	</div>
-</div>
-<Toast />
 
 <style>
 	.app-shell {
