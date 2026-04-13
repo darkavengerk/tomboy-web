@@ -103,6 +103,38 @@
 				</button>
 			{/each}
 		</div>
+
+		<div class="rail-chips" role="tablist" aria-label="노트북 필터">
+			<button
+				type="button"
+				role="tab"
+				class="rail-chip"
+				class:active={selectedNotebook === null}
+				aria-selected={selectedNotebook === null}
+				title="전체"
+				onclick={() => selectNotebook(null)}
+			>전체</button>
+			<button
+				type="button"
+				role="tab"
+				class="rail-chip"
+				class:active={selectedNotebook === ''}
+				aria-selected={selectedNotebook === ''}
+				title="미분류"
+				onclick={() => selectNotebook('')}
+			>미분류</button>
+			{#each notebooks as nb (nb)}
+				<button
+					type="button"
+					role="tab"
+					class="rail-chip"
+					class:active={selectedNotebook === nb}
+					aria-selected={selectedNotebook === nb}
+					title={nb}
+					onclick={() => selectNotebook(nb)}
+				>{nb}</button>
+			{/each}
+		</div>
 	</div>
 
 	<!--
@@ -119,35 +151,6 @@
 				aria-label="노트 검색"
 			/>
 			<button type="button" class="new-btn" onclick={handleNew} title="새 노트">＋ 새 노트</button>
-		</div>
-
-		<div class="chips" role="tablist" aria-label="노트북 필터">
-			<button
-				type="button"
-				role="tab"
-				class="chip"
-				class:active={selectedNotebook === null}
-				aria-selected={selectedNotebook === null}
-				onclick={() => selectNotebook(null)}
-			>전체</button>
-			<button
-				type="button"
-				role="tab"
-				class="chip"
-				class:active={selectedNotebook === ''}
-				aria-selected={selectedNotebook === ''}
-				onclick={() => selectNotebook('')}
-			>미분류</button>
-			{#each notebooks as nb (nb)}
-				<button
-					type="button"
-					role="tab"
-					class="chip"
-					class:active={selectedNotebook === nb}
-					aria-selected={selectedNotebook === nb}
-					onclick={() => selectNotebook(nb)}
-				>🗂 {nb}</button>
-			{/each}
 		</div>
 
 		<div class="list">
@@ -193,7 +196,7 @@
 		z-index: 100000;
 		/* Start collapsed: push the main (240px) column off-screen to the
 		   right so only the 60px rail remains visible. */
-		transform: translateX(240px);
+		transform: translateX(220px);
 		transition: transform 180ms ease;
 	}
 
@@ -205,13 +208,54 @@
 	/* Rail: left column of the panel, always visible even when the panel is
 	   translated right. */
 	.rail {
-		flex: 0 0 60px;
+		flex: 0 0 80px;
 		background: #1a1a1a;
 		border-left: 1px solid #333;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		padding: 10px 0;
+		gap: 10px;
+		overflow: hidden;
+		min-height: 0;
+	}
+
+	.rail-chips {
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 4px;
+		width: 100%;
+		padding: 0 6px;
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+	}
+
+	.rail-chip {
+		padding: 5px 6px;
+		border-radius: 4px;
+		border: 1px solid #2a2a2a;
+		background: #111;
+		color: #bbb;
+		font-size: 0.7rem;
+		cursor: pointer;
+		text-align: center;
+		line-height: 1.2;
+		white-space: normal;
+		overflow-wrap: anywhere;
+		word-break: break-word;
+	}
+
+	.rail-chip:hover {
+		background: #232323;
+		color: #fff;
+	}
+
+	.rail-chip.active {
+		background: #2d5a3d;
+		color: #fff;
+		border-color: #3a7a50;
 	}
 
 	/* Main: right column, hidden off-screen when panel is collapsed. */
@@ -261,34 +305,6 @@
 
 	.new-btn:hover {
 		background: #3a7a50;
-	}
-
-	.chips {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 4px;
-		padding: 8px 12px;
-		border-bottom: 1px solid #2a2a2a;
-		flex-shrink: 0;
-		max-height: 88px;
-		overflow-y: auto;
-	}
-
-	.chip {
-		padding: 3px 8px;
-		border-radius: 10px;
-		border: 1px solid #333;
-		background: #111;
-		color: #bbb;
-		font-size: 0.75rem;
-		cursor: pointer;
-		white-space: nowrap;
-	}
-
-	.chip.active {
-		background: #2d5a3d;
-		color: #fff;
-		border-color: #3a7a50;
 	}
 
 	.workspace-switcher {
