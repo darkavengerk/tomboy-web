@@ -13,12 +13,13 @@
 	import {
 		getAllNotesIncludingDeleted,
 		purgeAllLocal,
-		putNote
+		putNoteSynced
 	} from '$lib/storage/noteStore.js';
 	import { serializeNote, parseNoteFromFile } from '$lib/core/noteArchiver.js';
 	import { createEmptyNote } from '$lib/core/note.js';
 	import type { NoteData } from '$lib/core/note.js';
-	import { getManifest, clearManifest } from '$lib/sync/manifest.js';
+	import { getManifest, clearManifest, saveManifest } from '$lib/sync/manifest.js';
+	import type { SyncManifest } from '$lib/sync/manifest.js';
 	import { invalidateCache } from '$lib/stores/noteListCache.js';
 	import { pushToast } from '$lib/stores/toast.js';
 	import JSZip from 'jszip';
@@ -58,6 +59,23 @@
 					tombstones.map((n) => `${n.guid}\t${n.title}`).join('\n')
 				);
 			}
+			// local-state.json captures the local-only fields (localDirty flags
+			// and full tombstone records) that the .note XML format doesn't
+			// preserve. Restoring this file lets the restore reproduce the
+			// exact pre-backup state, so a backup → restore round-trip with no
+			// intervening edits has nothing to upload on the next sync.
+			zip.file(
+				'local-state.json',
+				JSON.stringify(
+					{
+						version: 1,
+						dirtyGuids: live.filter((n) => n.localDirty).map((n) => n.guid),
+						tombstones: tombstones.map((n) => ({ ...n }))
+					},
+					null,
+					2
+				)
+			);
 			zip.file('local-manifest.json', JSON.stringify(localManifest, null, 2));
 			zip.file(
 				'meta.txt',
@@ -145,11 +163,26 @@
 
 	/**
 	 * Restore the local IndexedDB from a previously created local-backup zip.
-	 * This is a reset: existing notes are wiped first, then the zip's notes,
-	 * tombstones are imported. The sync manifest is cleared so the next sync
-	 * treats everything as local (all restored notes are marked localDirty).
+	 * Semantics: reproduce the exact pre-backup state. Existing notes are
+	 * wiped first, then the zip's contents replace them.
+	 *
+	 * - Notes are written with their original localDirty flags (recovered
+	 *   from local-state.json), so a clean state stays clean and the next
+	 *   sync uploads nothing unless there were real pending changes.
+	 * - The sync manifest is restored verbatim from local-manifest.json so
+	 *   the sync relationship with the server (lastSyncRev, noteRevisions)
+	 *   is preserved.
+	 * - For old backups without local-state.json, we fall back to
+	 *   tombstones.txt (and treat those tombstones as dirty since we can't
+	 *   tell otherwise); live notes fall back to clean.
 	 */
 	let fileInput: HTMLInputElement | undefined = $state(undefined);
+
+	interface LocalStateV1 {
+		version: 1;
+		dirtyGuids: string[];
+		tombstones: NoteData[];
+	}
 
 	async function restoreLocalFromZip(file: File) {
 		if (running) return;
@@ -167,22 +200,70 @@
 				noteEntries.push({ basename, file: entry });
 			});
 
-			// Read optional tombstones.txt.
-			const tombstonesFile = zip.file('tombstones.txt');
-			let tombstoneLines: string[] = [];
-			if (tombstonesFile) {
-				const raw = await tombstonesFile.async('text');
-				tombstoneLines = raw.split(/\r?\n/).filter((l) => l.trim().length > 0);
+			// Preferred: local-state.json (new format, captures dirty flags + full tombstone records).
+			let localState: LocalStateV1 | null = null;
+			const localStateFile = zip.file('local-state.json');
+			if (localStateFile) {
+				try {
+					const parsed = JSON.parse(await localStateFile.async('text'));
+					if (parsed && typeof parsed === 'object') {
+						localState = {
+							version: 1,
+							dirtyGuids: Array.isArray(parsed.dirtyGuids) ? parsed.dirtyGuids : [],
+							tombstones: Array.isArray(parsed.tombstones) ? parsed.tombstones : []
+						};
+					}
+				} catch {
+					/* ignore */
+				}
 			}
 
-			if (noteEntries.length === 0 && tombstoneLines.length === 0) {
+			// Fallback: tombstones.txt (old format) — reconstruct minimal tombstones.
+			const fallbackTombstones: NoteData[] = [];
+			if (!localState) {
+				const tombstonesFile = zip.file('tombstones.txt');
+				if (tombstonesFile) {
+					const raw = await tombstonesFile.async('text');
+					for (const line of raw.split(/\r?\n/)) {
+						if (!line.trim()) continue;
+						const [guid, ...titleParts] = line.split('\t');
+						if (!guid) continue;
+						const base = createEmptyNote(guid);
+						fallbackTombstones.push({
+							...base,
+							title: titleParts.join('\t') || base.title,
+							deleted: true,
+							// Old format can't tell us — mark as dirty so the tombstone
+							// won't silently disappear from the sync picture.
+							localDirty: true
+						});
+					}
+				}
+			}
+
+			// Read local-manifest.json (restored verbatim if present).
+			let manifestToRestore: SyncManifest | null = null;
+			const manifestFile = zip.file('local-manifest.json');
+			if (manifestFile) {
+				try {
+					manifestToRestore = JSON.parse(await manifestFile.async('text')) as SyncManifest;
+				} catch {
+					/* ignore */
+				}
+			}
+
+			const tombstoneCount = localState
+				? localState.tombstones.length
+				: fallbackTombstones.length;
+			if (noteEntries.length === 0 && tombstoneCount === 0) {
 				throw new Error('zip 안에 복원할 .note 파일이 없습니다.');
 			}
 
 			const ok = window.confirm(
 				`기존에 저장된 노트가 모두 삭제되고 zip 내용으로 교체됩니다.\n` +
 					`- 복원할 노트: ${noteEntries.length}개\n` +
-					`- 툼스톤: ${tombstoneLines.length}개\n\n` +
+					`- 툼스톤: ${tombstoneCount}개\n` +
+					`- 동기화 매니페스트: ${manifestToRestore ? '복원' : '없음(초기화)'}\n\n` +
 					`계속하시겠습니까?`
 			);
 			if (!ok) {
@@ -194,6 +275,8 @@
 			await purgeAllLocal();
 			await clearManifest();
 
+			const dirtySet = new Set(localState?.dirtyGuids ?? []);
+
 			progress = `노트 복원 중 (0/${noteEntries.length})...`;
 			let imported = 0;
 			let failed = 0;
@@ -204,7 +287,10 @@
 				try {
 					const xml = await entry.async('text');
 					const note = parseNoteFromFile(xml, basename);
-					await putNote(note);
+					// parseNoteFromFile returns localDirty=false; upgrade if the
+					// backup tagged this guid as dirty at export time.
+					note.localDirty = dirtySet.has(note.guid);
+					await putNoteSynced(note);
 					imported++;
 				} catch {
 					failed++;
@@ -212,20 +298,26 @@
 			}
 
 			let restoredTombstones = 0;
-			if (tombstoneLines.length > 0) {
+			const tombstonesToWrite: NoteData[] = localState
+				? localState.tombstones
+				: fallbackTombstones;
+			if (tombstonesToWrite.length > 0) {
 				progress = '툼스톤 복원 중...';
-				for (const line of tombstoneLines) {
-					const [guid, ...titleParts] = line.split('\t');
-					if (!guid) continue;
-					const title = titleParts.join('\t');
-					const base = createEmptyNote(guid);
-					const tomb: NoteData = {
-						...base,
-						title: title || base.title,
-						deleted: true
-					};
+				for (const tomb of tombstonesToWrite) {
+					if (!tomb?.guid) continue;
 					try {
-						await putNote(tomb);
+						const base = createEmptyNote(tomb.guid);
+						// Preserve the stored tombstone fields but fall back to a
+						// well-formed default for anything the backup may have
+						// dropped along the way.
+						const full: NoteData = {
+							...base,
+							...tomb,
+							guid: tomb.guid,
+							deleted: true,
+							localDirty: Boolean(tomb.localDirty)
+						};
+						await putNoteSynced(full);
 						restoredTombstones++;
 					} catch {
 						/* skip */
@@ -233,11 +325,22 @@
 				}
 			}
 
+			if (manifestToRestore) {
+				progress = '동기화 매니페스트 복원 중...';
+				try {
+					await saveManifest(manifestToRestore);
+				} catch {
+					/* best-effort */
+				}
+			}
+
 			invalidateCache();
 
 			const msg = `복원 완료: 노트 ${imported}개${
 				failed > 0 ? ` (실패 ${failed}개)` : ''
-			}${restoredTombstones > 0 ? `, 툼스톤 ${restoredTombstones}개` : ''}`;
+			}${restoredTombstones > 0 ? `, 툼스톤 ${restoredTombstones}개` : ''}${
+				manifestToRestore ? ', 매니페스트 복원됨' : ''
+			}`;
 			pushToast(msg, { kind: failed > 0 ? 'error' : 'info' });
 		} catch (e) {
 			pushToast('복원 실패: ' + String(e), { kind: 'error' });
@@ -278,7 +381,8 @@
 	<p class="info">
 		로컬 상태 백업(zip)을 선택하면 <strong>현재 IndexedDB의 모든 노트가 삭제되고</strong>
 		zip 내용으로 교체됩니다. 초기화 전에는 반드시 먼저 백업을 받아두세요.
-		복원된 노트는 모두 "로컬 변경" 상태가 되어 다음 동기화 시 서버로 업로드됩니다.
+		백업 시점의 로컬 변경(dirty) 상태와 동기화 매니페스트까지 그대로 복원하므로,
+		백업→복원 왕복 후에 추가 변경이 없다면 다음 동기화에서 서버로 업로드할 것이 없습니다.
 	</p>
 	<button class="btn btn-danger" onclick={triggerRestore} disabled={running}>
 		{running ? '진행 중...' : 'zip 파일 선택해서 복원'}
