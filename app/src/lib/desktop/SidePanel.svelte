@@ -42,7 +42,10 @@
 		const filtered = filterByNotebook(allNotes, selectedNotebook);
 		const q = query.trim();
 		const base = q ? searchNotes(filtered, q, 200).map((r) => r.note) : filtered;
-		return sortForList(base, 'changeDate');
+		// Side panel is a "recents" surface — cap the list so long histories
+		// don't balloon the DOM. 30 is enough for quick access; users who
+		// need more can use search.
+		return sortForList(base, 'changeDate').slice(0, 30);
 	});
 
 	async function refresh() {
