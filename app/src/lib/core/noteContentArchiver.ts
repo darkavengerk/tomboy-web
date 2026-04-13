@@ -33,12 +33,24 @@ const NON_SPANNING_MARK_TYPES = new Set([
 	'tomboyDatetime'
 ]);
 
+// Per-element counter used to mint unique `instanceId` attrs on NON_SPANNING
+// anchor marks (datetime / link:internal / link:url). Two source elements
+// therefore produce marks that compare unequal, which the serializer uses to
+// emit them as separate XML elements instead of coalescing adjacent runs of
+// the "same" mark. Reset at the start of every deserialize so IDs are
+// deterministic per input and round-trip cleanly.
+let instanceIdCounter = 0;
+function mintInstanceId(): string {
+	return `p${instanceIdCounter++}`;
+}
+
 // --- XML → ProseMirror JSON ---
 
 /**
  * Parse a Tomboy note-content XML string into a TipTap-compatible JSON document.
  */
 export function deserializeContent(xmlContent: string): JSONContent {
+	instanceIdCounter = 0;
 	const inner = extractInnerContent(xmlContent);
 	if (!inner) {
 		return { type: 'doc', content: [{ type: 'paragraph' }] };
@@ -90,29 +102,6 @@ export function serializeContent(doc: JSONContent): string {
 		openMarks = [];
 	}
 
-	function closeUnmatched(nextMarks: JSONContent[] | undefined) {
-		// Mark types that must NEVER span a paragraph boundary — a link or
-		// datetime reference is a self-contained anchor, so `<link:internal>
-		// A\nB</link:internal>` would incorrectly bundle two anchors into one.
-		// We strip these from the "next text node's marks" before common-prefix
-		// matching, which forces closeUnmatched to close any such mark that's
-		// currently open. writeTextNode for the next paragraph will re-open it.
-		const filtered = (nextMarks ?? []).filter((m) => !m.type || !NON_SPANNING_MARK_TYPES.has(m.type));
-		const outerToInner = [...filtered].reverse();
-		let common = 0;
-		while (
-			common < openMarks.length &&
-			common < outerToInner.length &&
-			marksEqual(openMarks[common], outerToInner[common])
-		) {
-			common++;
-		}
-		for (let i = openMarks.length - 1; i >= common; i--) {
-			result += markToTags(openMarks[i])[1];
-		}
-		openMarks = openMarks.slice(0, common);
-	}
-
 	/** Find the first text-node inline in blocks[startIdx..]. */
 	function nextTextNodeMarks(
 		blocks: JSONContent[],
@@ -136,7 +125,8 @@ export function serializeContent(doc: JSONContent): string {
 	}
 
 	function writeTextNode(node: JSONContent) {
-		const outerToInner = [...(node.marks ?? [])].reverse();
+		// marks are stored outer→inner (TipTap convention); use them as-is.
+		const outerToInner = node.marks ?? [];
 		let common = 0;
 		while (
 			common < openMarks.length &&
@@ -189,19 +179,49 @@ export function serializeContent(doc: JSONContent): string {
 		}
 
 		if (i < nodes.length - 1) {
-			// Marks cannot continue across a list boundary — close them.
+			// TipTap extensions with `default: null` materialise the attr as
+			// null (not undefined) on every node. Coerce to undefined so the
+			// fallback path kicks in for editor-authored docs.
+			const rawTrailing = node.attrs?.tomboyTrailingMarks;
+			const attrTrailing =
+				Array.isArray(rawTrailing) ? (rawTrailing as JSONContent[]) : undefined;
+			// Explicit trailingMarks (from our parser) authoritatively describe
+			// the marks applied to the '\n' char in the source. Without them
+			// (editor-authored or hand-crafted docs), fall back to next text's
+			// marks so spanning marks like <bold> keep continuity — but strip
+			// NON_SPANNING types so `<link:internal>A</link:internal>` in two
+			// paragraphs doesn't merge into one anchor on output.
+			let separatorMarks: JSONContent[];
+			if (attrTrailing !== undefined) {
+				separatorMarks = attrTrailing;
+			} else {
+				// Common prefix (outer→inner) of currently-open marks and the
+				// next text's marks — exactly the marks that span continuously
+				// across the '\n'. Excludes NON_SPANNING anchor marks to avoid
+				// merging two adjacent-paragraph anchors into one span.
+				const nextMarks = nextTextNodeMarks(nodes, i + 1) ?? [];
+				const shared: JSONContent[] = [];
+				for (let k = 0; k < openMarks.length && k < nextMarks.length; k++) {
+					if (!marksEqual(openMarks[k], nextMarks[k])) break;
+					const m = openMarks[k];
+					if (m.type && NON_SPANNING_MARK_TYPES.has(m.type)) break;
+					shared.push(m);
+				}
+				separatorMarks = shared;
+			}
+			// Emit the separator '\n' as a phantom text node; writeTextNode's
+			// close/open-with-common-prefix logic keeps marks continuous
+			// across the '\n' when all three sides (before / the '\n' itself /
+			// after) share them.
+			writeTextNode({
+				type: 'text',
+				text: '\n',
+				...(separatorMarks.length > 0 ? { marks: separatorMarks } : {})
+			} as JSONContent);
+			// A bulletList boundary can't carry open marks into its inner
+			// serialization — close everything that's still open.
 			if (node.type === 'bulletList' || nodes[i + 1].type === 'bulletList') {
 				closeAll();
-			} else {
-				// Close marks that the next text node doesn't share, so the '\n'
-				// separator ends up *outside* the mark tags.
-				closeUnmatched(nextTextNodeMarks(nodes, i + 1));
-			}
-			const trailing = node.attrs?.tomboyTrailingMarks as JSONContent[] | undefined;
-			if (trailing && trailing.length > 0) {
-				result += wrapWithMarks('\n', trailing);
-			} else {
-				result += '\n';
 			}
 		}
 	}
@@ -293,24 +313,16 @@ function parseBlocks(container: Element): JSONContent[] {
 				if (n.text.length === 0) continue;
 				if (n.text.includes('\n')) {
 					const parts = n.text.split('\n');
-					// Only NON_SPANNING marks (datetime / link:internal / link:url)
-					// need to be reattached to the separator '\n' on serialize —
-					// regular spanning marks like <bold> already survive the
-					// paragraph boundary via closeUnmatched's common-prefix
-					// logic. Passing spanning marks as trailingMarks would
-					// double-wrap and break round-trip of `<bold>a\nb</bold>`.
-					const nonSpanningMarks = n.marks?.filter(
-						(m) => m.type && NON_SPANNING_MARK_TYPES.has(m.type)
-					);
 					for (let j = 0; j < parts.length; j++) {
 						if (j > 0) {
 							if (absorbNextNewline) absorbNextNewline = false;
-							// A '\n' that lives inside a marked text node is a
-							// separator whose character carries those marks in
-							// Tomboy's flat-buffer model. Capture the marks on
-							// the outgoing paragraph so serialize can re-wrap
-							// the separator byte-for-byte.
-							else pushParagraph(nonSpanningMarks);
+							// A '\n' inside a marked text node carries those
+							// marks in Tomboy's flat-buffer model. Capture
+							// them on the outgoing paragraph as trailingMarks
+							// so serialize's phantom-'\n' emission keeps the
+							// mark continuous across the block boundary when
+							// appropriate.
+							else pushParagraph(n.marks);
 						}
 						if (parts[j].length > 0) {
 							const piece: JSONContent = { type: 'text', text: parts[j] };
@@ -391,10 +403,17 @@ function parseInlineElement(el: Element): JSONContent[] {
 			}
 		} else if (child.nodeType === Node.ELEMENT_NODE) {
 			// Nested formatting: e.g. <bold><italic>text</italic></bold>
+			// We prepend the parent mark so marks arrays are stored
+			// outermost-first — the same convention TipTap/PM returns from
+			// `editor.getJSON()`. Previously we appended (innermost-first),
+			// which meant editor-authored JSON flowed in with the opposite
+			// ordering and the serializer flipped nesting (e.g. produced
+			// `<link><strike>X</strike></link>` for a source that wrote
+			// `<strike><link>X</link></strike>`).
 			const nested = parseInlineElement(child as Element);
 			if (mark) {
 				for (const n of nested) {
-					n.marks = [...(n.marks ?? []), mark];
+					n.marks = [mark, ...(n.marks ?? [])];
 				}
 			}
 			result.push(...nested);
@@ -407,7 +426,8 @@ function parseInlineElement(el: Element): JSONContent[] {
 /**
  * Map a Tomboy XML element to a ProseMirror mark.
  */
-function elementToMark(el: Element): JSONContent | null {
+type Mark = { type: string; attrs?: Record<string, any> };
+function elementToMark(el: Element): Mark | null {
 	const tag = el.tagName;
 
 	switch (tag) {
@@ -430,13 +450,26 @@ function elementToMark(el: Element): JSONContent | null {
 		case 'size:small':
 			return { type: 'tomboySize', attrs: { level: 'small' } };
 		case 'link:internal':
-			return { type: 'tomboyInternalLink', attrs: { target: el.textContent ?? '' } };
+			return {
+				type: 'tomboyInternalLink',
+				attrs: { target: el.textContent ?? '', instanceId: mintInstanceId() }
+			};
 		case 'link:url':
-			return { type: 'tomboyUrlLink', attrs: { href: el.textContent ?? '' } };
+			return {
+				type: 'tomboyUrlLink',
+				attrs: { href: el.textContent ?? '', instanceId: mintInstanceId() }
+			};
 		case 'link:broken':
-			return { type: 'tomboyInternalLink', attrs: { target: el.textContent ?? '', broken: true } };
+			return {
+				type: 'tomboyInternalLink',
+				attrs: {
+					target: el.textContent ?? '',
+					broken: true,
+					instanceId: mintInstanceId()
+				}
+			};
 		case 'datetime':
-			return { type: 'tomboyDatetime' };
+			return { type: 'tomboyDatetime', attrs: { instanceId: mintInstanceId() } };
 		default:
 			return null;
 	}
@@ -520,7 +553,36 @@ function parseListItem(itemEl: Element): JSONContent {
 		content.push({ type: 'paragraph' });
 	}
 
-	return { type: 'listItem', content };
+	// Remember whether the source XML had a '\n' immediately before
+	// </list-item>. Tomboy's usual convention is "nested last item has \n,
+	// top-level last item does not", but real files produced by other tools
+	// or edge cases (a note that ends at the deepest list) can violate that.
+	// Tracking it per item keeps round-trip byte-stable.
+	let hasTrailingNewline = false;
+	for (let k = itemEl.childNodes.length - 1; k >= 0; k--) {
+		const c = itemEl.childNodes[k];
+		if (c.nodeType === Node.TEXT_NODE) {
+			const t = c.textContent ?? '';
+			if (t.length === 0) continue;
+			hasTrailingNewline = t.endsWith('\n');
+			break;
+		} else if (c.nodeType === Node.ELEMENT_NODE) {
+			const tag = (c as Element).tagName;
+			if (tag === 'list') {
+				// A nested <list> is followed by `</list-item>` directly; no \n.
+				hasTrailingNewline = false;
+			} else {
+				hasTrailingNewline = ((c as Element).textContent ?? '').endsWith('\n');
+			}
+			break;
+		}
+	}
+
+	return {
+		type: 'listItem',
+		attrs: { tomboyTrailingNewline: hasTrailingNewline },
+		content
+	};
 }
 
 // --- Internal: PM JSON → XML ---
@@ -548,7 +610,7 @@ function serializeInlineContent(content: JSONContent[]): string {
 
 	for (const node of content) {
 		if (node.type === 'text') {
-			const outerToInner = [...(node.marks ?? [])].reverse();
+			const outerToInner = node.marks ?? [];
 			// Longest common prefix with currently open marks (outer→inner).
 			let common = 0;
 			while (
@@ -620,20 +682,14 @@ function serializeBulletList(node: JSONContent, isTopLevel: boolean): string {
 /**
  * Serialize a listItem node to Tomboy XML.
  *
- * `suppressTrailingNewline` is true only for the LAST list-item of a
- * TOP-LEVEL list (Tomboy omits the inner '\n' there because the surrounding
- * block separator already provides one).
- *
- * Tomboy desktop's output pattern (observed from real .note files):
- *   <list-item>text\n</list-item>                 — any non-last item
- *   <list-item>text\n</list-item>                 — last item of a NESTED list
- *   <list-item>text</list-item>                   — last item of a TOP-LEVEL list
- *   <list-item>text\n<list>…</list></list-item>   — item with a nested list
- *
- * The parser strips these structural '\n' characters, so we re-emit them here
- * to preserve byte-for-byte round-trip with the desktop format.
+ * Whether a '\n' appears immediately before `</list-item>` depends on the
+ * source. The parser records this per item as `attrs.tomboyTrailingNewline`.
+ * When the attr is missing (items authored inside the editor without going
+ * through parse), fall back to Tomboy's positional convention:
+ *   last item of a top-level list → no trailing '\n'
+ *   any other item                 → trailing '\n'
  */
-function serializeListItem(item: JSONContent, suppressTrailingNewline: boolean): string {
+function serializeListItem(item: JSONContent, isLastTopLevel: boolean): string {
 	let result = '<list-item dir="ltr">';
 
 	const children = item.content ?? [];
@@ -644,26 +700,31 @@ function serializeListItem(item: JSONContent, suppressTrailingNewline: boolean):
 	for (const child of children) {
 		if (child.type === 'paragraph') {
 			result += serializeInlineContent(child.content ?? []);
-			const t = child.attrs?.tomboyTrailingMarks as JSONContent[] | undefined;
-			if (t && t.length > 0) trailingMarks = t;
+			const t = child.attrs?.tomboyTrailingMarks;
+			if (Array.isArray(t) && t.length > 0) trailingMarks = t as JSONContent[];
 		} else if (child.type === 'bulletList') {
 			hasNestedList = true;
 		}
 	}
 
+	const attrFlag = item.attrs?.tomboyTrailingNewline;
+	const hasTrailingNewline =
+		typeof attrFlag === 'boolean' ? attrFlag : !isLastTopLevel;
+
 	if (hasNestedList) {
-		// Tomboy inserts '\n' between the item's text and its nested list,
-		// and no extra '\n' before </list-item>. If the source had marks on
-		// that separator '\n' (e.g. `<datetime>\n</datetime>`), re-wrap it.
+		// Tomboy inserts '\n' between the item's text and its nested list.
+		// If the source had marks on that separator '\n'
+		// (e.g. `<datetime>\n</datetime>`), re-wrap it.
 		result += trailingMarks ? wrapWithMarks('\n', trailingMarks) : '\n';
 		for (const child of children) {
 			if (child.type === 'bulletList') {
 				result += serializeBulletList(child, /*isTopLevel=*/ false);
 			}
 		}
-	} else if (!suppressTrailingNewline) {
-		// Emit trailing '\n' before </list-item> for every item EXCEPT the
-		// last one of a top-level list.
+		// The `\n` AFTER the nested list (before </list-item>) only appears
+		// when the item explicitly had one in the source.
+		if (hasTrailingNewline) result += '\n';
+	} else if (hasTrailingNewline) {
 		result += '\n';
 	}
 
@@ -676,7 +737,8 @@ function serializeListItem(item: JSONContent, suppressTrailingNewline: boolean):
  * stored on a PM text node are innermost-first, so we reverse).
  */
 function wrapWithMarks(inner: string, marks: JSONContent[]): string {
-	const outerToInner = [...marks].reverse();
+	// marks are already outer→inner.
+	const outerToInner = marks;
 	let open = '';
 	let close = '';
 	for (const m of outerToInner) {

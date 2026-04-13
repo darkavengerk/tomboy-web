@@ -26,6 +26,11 @@ export const TomboyUrlLink = Mark.create({
 				renderHTML: (attributes) => ({
 					href: attributes.href
 				})
+			},
+			// Schema-only anchor-instance id; see TomboyDatetime for rationale.
+			instanceId: {
+				default: null,
+				rendered: false
 			}
 		};
 	},

@@ -18,6 +18,19 @@ export const TomboyDatetime = Mark.create({
 		};
 	},
 
+	addAttributes() {
+		return {
+			// Unique per source <datetime> element. Keeps two adjacent
+			// datetime anchors from being coalesced by PM's mark-merging (which
+			// considers marks with identical attrs to be the same instance).
+			// `rendered: false` keeps it out of the DOM output.
+			instanceId: {
+				default: null,
+				rendered: false
+			}
+		};
+	},
+
 	parseHTML() {
 		return [
 			{ tag: 'span[data-tomboy-datetime]' },

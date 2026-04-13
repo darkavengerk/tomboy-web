@@ -48,6 +48,12 @@ export const TomboyInternalLink = Mark.create<TomboyInternalLinkOptions>({
 					if (!attributes.broken) return {};
 					return { 'data-broken': 'true' };
 				}
+			},
+			// Schema-only attr used to distinguish two adjacent link anchors
+			// that wrap identical text — without it PM would merge them.
+			instanceId: {
+				default: null,
+				rendered: false
 			}
 		};
 	},

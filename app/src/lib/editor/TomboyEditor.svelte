@@ -10,6 +10,8 @@
 	import { TomboyInternalLink } from "./extensions/TomboyInternalLink.js";
 	import { TomboyUrlLink } from "./extensions/TomboyUrlLink.js";
 	import { TomboyDatetime } from "./extensions/TomboyDatetime.js";
+	import { TomboyListItem } from "./extensions/TomboyListItem.js";
+	import { TomboyParagraph } from "./extensions/TomboyParagraph.js";
 	import { createTitleProvider } from "./autoLink/titleProvider.js";
 	import { autoLinkPluginKey } from "./autoLink/autoLinkPlugin.js";
 	import type { JSONContent } from "@tiptap/core";
@@ -50,12 +52,21 @@
 					// Disable code (we use tomboyMonospace instead)
 					code: false,
 					codeBlock: false,
+					// We substitute extended versions that carry Tomboy round-trip attrs.
+					paragraph: false,
+					listItem: false,
 				}),
+				TomboyParagraph,
+				TomboyListItem,
 				Underline,
 				Highlight.configure({ multicolor: false }),
 				Placeholder.configure({ placeholder: "Start typing..." }),
 				TomboySize,
 				TomboyMonospace,
+				// TomboyDatetime registered before link extensions so PM ranks
+				// it as the outer mark (preserves `<datetime><link>X</link></datetime>`
+				// nesting instead of flipping to `<link><datetime>X</datetime></link>`).
+				TomboyDatetime,
 				TomboyInternalLink.configure({
 					onLinkClick: (target: string) => {
 						oninternallink?.(target);
@@ -64,7 +75,6 @@
 					getCurrentGuid: () => currentGuid,
 				}),
 				TomboyUrlLink,
-				TomboyDatetime,
 			],
 			content: content ?? {
 				type: "doc",
