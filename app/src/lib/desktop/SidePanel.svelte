@@ -77,89 +77,103 @@
 </script>
 
 <aside class="side-panel" aria-label="노트 메뉴">
-	<div class="header">
-		<input
-			type="search"
-			placeholder="검색"
-			bind:value={query}
-			aria-label="노트 검색"
-		/>
-		<button type="button" class="new-btn" onclick={handleNew} title="새 노트">＋ 새 노트</button>
+	<!--
+		Rail: always visible, hosts only the workspace switcher. Its width
+		defines how much of the canvas is permanently reserved on the right
+		(canvas is sized to stop exactly where the rail starts).
+	-->
+	<div class="rail">
+		<div class="workspace-switcher" role="group" aria-label="작업 공간">
+			{#each workspaceSummaries as ws (ws.index)}
+				<button
+					type="button"
+					class="quadrant"
+					class:active={currentWorkspace === ws.index}
+					aria-current={currentWorkspace === ws.index ? 'true' : undefined}
+					aria-label={`작업 공간 ${ws.index + 1} — 창 ${ws.windowCount}개`}
+					title={`작업 공간 ${ws.index + 1} — 창 ${ws.windowCount}개`}
+					onclick={() => onswitchworkspace(ws.index)}
+				>
+					{#if ws.windowCount > 0}
+						<span class="count">{ws.windowCount}</span>
+					{/if}
+				</button>
+			{/each}
+		</div>
 	</div>
 
-	<div class="chips" role="tablist" aria-label="노트북 필터">
-		<button
-			type="button"
-			role="tab"
-			class="chip"
-			class:active={selectedNotebook === null}
-			aria-selected={selectedNotebook === null}
-			onclick={() => selectNotebook(null)}
-		>전체</button>
-		<button
-			type="button"
-			role="tab"
-			class="chip"
-			class:active={selectedNotebook === ''}
-			aria-selected={selectedNotebook === ''}
-			onclick={() => selectNotebook('')}
-		>미분류</button>
-		{#each notebooks as nb (nb)}
+	<!--
+		Main content: search, new-note, notebook chips, note list, footer.
+		Slides off-screen to the right when the panel is not hovered and
+		overlays the canvas on hover. Canvas geometry is unaffected.
+	-->
+	<div class="main">
+		<div class="header">
+			<input
+				type="search"
+				placeholder="검색"
+				bind:value={query}
+				aria-label="노트 검색"
+			/>
+			<button type="button" class="new-btn" onclick={handleNew} title="새 노트">＋ 새 노트</button>
+		</div>
+
+		<div class="chips" role="tablist" aria-label="노트북 필터">
 			<button
 				type="button"
 				role="tab"
 				class="chip"
-				class:active={selectedNotebook === nb}
-				aria-selected={selectedNotebook === nb}
-				onclick={() => selectNotebook(nb)}
-			>🗂 {nb}</button>
-		{/each}
-	</div>
-
-	<div class="workspace-switcher" role="group" aria-label="작업 공간">
-		{#each workspaceSummaries as ws (ws.index)}
+				class:active={selectedNotebook === null}
+				aria-selected={selectedNotebook === null}
+				onclick={() => selectNotebook(null)}
+			>전체</button>
 			<button
 				type="button"
-				class="quadrant"
-				class:active={currentWorkspace === ws.index}
-				aria-current={currentWorkspace === ws.index ? 'true' : undefined}
-				aria-label={`작업 공간 ${ws.index + 1} — 창 ${ws.windowCount}개`}
-				title={`작업 공간 ${ws.index + 1} — 창 ${ws.windowCount}개`}
-				onclick={() => onswitchworkspace(ws.index)}
-			>
-				{#if ws.windowCount > 0}
-					<span class="count">{ws.windowCount}</span>
-				{/if}
-			</button>
-		{/each}
-	</div>
+				role="tab"
+				class="chip"
+				class:active={selectedNotebook === ''}
+				aria-selected={selectedNotebook === ''}
+				onclick={() => selectNotebook('')}
+			>미분류</button>
+			{#each notebooks as nb (nb)}
+				<button
+					type="button"
+					role="tab"
+					class="chip"
+					class:active={selectedNotebook === nb}
+					aria-selected={selectedNotebook === nb}
+					onclick={() => selectNotebook(nb)}
+				>🗂 {nb}</button>
+			{/each}
+		</div>
 
-	<div class="list">
-		{#if loading}
-			<div class="empty">로딩 중...</div>
-		{:else if filteredNotes.length === 0}
-			<div class="empty">노트가 없습니다.</div>
-		{:else}
-			<ul>
-				{#each filteredNotes as n (n.guid)}
-					<li>
-						<button
-							type="button"
-							class="note-item"
-							class:open={openGuids.has(n.guid)}
-							onclick={() => onopen(n.guid)}
-							title={n.title}
-						>
-							<span class="title">{n.title || '제목 없음'}</span>
-						</button>
-					</li>
-				{/each}
-			</ul>
-		{/if}
-	</div>
+		<div class="list">
+			{#if loading}
+				<div class="empty">로딩 중...</div>
+			{:else if filteredNotes.length === 0}
+				<div class="empty">노트가 없습니다.</div>
+			{:else}
+				<ul>
+					{#each filteredNotes as n (n.guid)}
+						<li>
+							<button
+								type="button"
+								class="note-item"
+								class:open={openGuids.has(n.guid)}
+								onclick={() => onopen(n.guid)}
+								title={n.title}
+							>
+								<span class="title">{n.title || '제목 없음'}</span>
+							</button>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</div>
 
-	<div class="footer">
-		<button type="button" class="settings-link" onclick={onopensettings}>설정</button>
+		<div class="footer">
+			<button type="button" class="settings-link" onclick={onopensettings}>설정</button>
+		</div>
 	</div>
 </aside>
 
@@ -170,12 +184,41 @@
 		right: 0;
 		bottom: 0;
 		width: 300px;
-		background: #1a1a1a;
+		display: flex;
+		flex-direction: row;
 		color: #eee;
+		z-index: 100000;
+		/* Start collapsed: push the main (240px) column off-screen to the
+		   right so only the 60px rail remains visible. */
+		transform: translateX(240px);
+		transition: transform 180ms ease;
+	}
+
+	.side-panel:hover,
+	.side-panel:focus-within {
+		transform: translateX(0);
+	}
+
+	/* Rail: left column of the panel, always visible even when the panel is
+	   translated right. */
+	.rail {
+		flex: 0 0 60px;
+		background: #1a1a1a;
+		border-left: 1px solid #333;
 		display: flex;
 		flex-direction: column;
+		align-items: center;
+		padding: 10px 0;
+	}
+
+	/* Main: right column, hidden off-screen when panel is collapsed. */
+	.main {
+		flex: 1;
+		min-width: 0;
+		background: #1a1a1a;
 		border-left: 1px solid #333;
-		z-index: 100000;
+		display: flex;
+		flex-direction: column;
 	}
 
 	.header {
@@ -250,9 +293,8 @@
 		grid-template-columns: 1fr 1fr;
 		grid-template-rows: 1fr 1fr;
 		gap: 3px;
-		width: 72px;
+		width: 44px;
 		aspect-ratio: 1 / 1;
-		margin: 10px 12px;
 		padding: 3px;
 		background: #111;
 		border: 1px solid #333;
@@ -268,7 +310,7 @@
 		border-radius: 2px;
 		cursor: pointer;
 		color: #888;
-		font-size: 0.7rem;
+		font-size: 0.65rem;
 		line-height: 1;
 		display: flex;
 		align-items: center;

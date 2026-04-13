@@ -7,7 +7,6 @@
 	import { page } from '$app/state';
 	import { createHistoryTracker } from '$lib/nav/history.js';
 	import { appMode, modeFromUrl } from '$lib/stores/appMode.svelte.js';
-	import { maybeRedirectToDesktop } from '$lib/desktop/viewportRedirect.js';
 
 	let { children } = $props();
 
@@ -51,8 +50,6 @@
 	}
 
 	onMount(() => {
-		maybeRedirectToDesktop(page.url.pathname);
-
 		offline = !navigator.onLine;
 		const goOffline = () => { offline = true; };
 		const goOnline = () => { offline = false; };

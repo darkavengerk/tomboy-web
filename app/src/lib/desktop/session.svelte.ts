@@ -177,7 +177,7 @@ function staggeredFrom(ws: WorkspaceState, width: number, height: number): Geome
 	const baseX = 120;
 	const baseY = 80;
 	const i = ws.windows.length;
-	const viewportW = typeof window !== 'undefined' ? window.innerWidth - 300 : 1200;
+	const viewportW = typeof window !== 'undefined' ? window.innerWidth - 60 : 1200;
 	const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800;
 	const x = (baseX + i * STAGGER) % Math.max(200, viewportW - width);
 	const y = (baseY + i * STAGGER) % Math.max(160, viewportH - height);

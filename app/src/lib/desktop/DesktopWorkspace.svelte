@@ -73,7 +73,7 @@
 		const note = await createNote(title);
 		const width = 560;
 		const height = 520;
-		const vw = window.innerWidth - 300; // canvas width (panel is 300px)
+		const vw = window.innerWidth - 60; // canvas width (panel rail is 60px)
 		const vh = window.innerHeight;
 		const x = Math.max(0, Math.round((vw - width) / 2));
 		const y = Math.max(0, Math.round((vh - height) / 2 - 60)); // slightly above center
@@ -207,7 +207,10 @@
 		left: 0;
 		top: 0;
 		bottom: 0;
-		right: 300px;
+		/* Reserve only the SidePanel's rail width on the right — the
+		   expandable portion of the panel overlays the canvas on hover,
+		   so notes and the wallpaper keep their place. */
+		right: 60px;
 		background: #000;
 		overflow: hidden;
 	}
