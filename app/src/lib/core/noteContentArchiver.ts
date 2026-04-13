@@ -21,6 +21,18 @@
 
 import type { JSONContent } from '@tiptap/core';
 
+// Mark types that must NEVER span a paragraph boundary — a link or datetime
+// reference is a self-contained anchor, so `<link:internal>A\nB</link:internal>`
+// would incorrectly bundle two anchors into one. When such a mark legitimately
+// applies to a separator '\n' (e.g. `<datetime>\n</datetime>` between blocks
+// in the source), it is preserved via `attrs.tomboyTrailingMarks` on the
+// outgoing paragraph and re-emitted around the separator on serialize.
+const NON_SPANNING_MARK_TYPES = new Set([
+	'tomboyInternalLink',
+	'tomboyUrlLink',
+	'tomboyDatetime'
+]);
+
 // --- XML → ProseMirror JSON ---
 
 /**
@@ -85,12 +97,7 @@ export function serializeContent(doc: JSONContent): string {
 		// We strip these from the "next text node's marks" before common-prefix
 		// matching, which forces closeUnmatched to close any such mark that's
 		// currently open. writeTextNode for the next paragraph will re-open it.
-		const NON_SPANNING = new Set([
-			'tomboyInternalLink',
-			'tomboyUrlLink',
-			'tomboyDatetime'
-		]);
-		const filtered = (nextMarks ?? []).filter((m) => !NON_SPANNING.has(m.type));
+		const filtered = (nextMarks ?? []).filter((m) => !m.type || !NON_SPANNING_MARK_TYPES.has(m.type));
 		const outerToInner = [...filtered].reverse();
 		let common = 0;
 		while (
@@ -190,7 +197,12 @@ export function serializeContent(doc: JSONContent): string {
 				// separator ends up *outside* the mark tags.
 				closeUnmatched(nextTextNodeMarks(nodes, i + 1));
 			}
-			result += '\n';
+			const trailing = node.attrs?.tomboyTrailingMarks as JSONContent[] | undefined;
+			if (trailing && trailing.length > 0) {
+				result += wrapWithMarks('\n', trailing);
+			} else {
+				result += '\n';
+			}
 		}
 	}
 
@@ -244,13 +256,20 @@ function parseBlocks(container: Element): JSONContent[] {
 	let lastTextEndedWithNewline = false;
 
 	// Push currentInline as a paragraph — empty paragraph if no inline content.
-	function pushParagraph() {
-		if (currentInline.length > 0) {
-			blocks.push({ type: 'paragraph', content: currentInline });
-			currentInline = [];
-		} else {
-			blocks.push({ type: 'paragraph' });
+	// `trailingMarks` captures marks that applied to the separator '\n' after
+	// this paragraph in the source XML (e.g. `<datetime>\n</datetime>`). They
+	// are re-emitted around the block separator on serialize so the round-trip
+	// is byte-stable.
+	function pushParagraph(trailingMarks?: JSONContent[]) {
+		const p: JSONContent =
+			currentInline.length > 0
+				? { type: 'paragraph', content: currentInline }
+				: { type: 'paragraph' };
+		if (trailingMarks && trailingMarks.length > 0) {
+			p.attrs = { ...(p.attrs ?? {}), tomboyTrailingMarks: trailingMarks };
 		}
+		blocks.push(p);
+		currentInline = [];
 	}
 
 	// Flush any pending inline as a paragraph, but don't emit an empty one.
@@ -274,10 +293,24 @@ function parseBlocks(container: Element): JSONContent[] {
 				if (n.text.length === 0) continue;
 				if (n.text.includes('\n')) {
 					const parts = n.text.split('\n');
+					// Only NON_SPANNING marks (datetime / link:internal / link:url)
+					// need to be reattached to the separator '\n' on serialize —
+					// regular spanning marks like <bold> already survive the
+					// paragraph boundary via closeUnmatched's common-prefix
+					// logic. Passing spanning marks as trailingMarks would
+					// double-wrap and break round-trip of `<bold>a\nb</bold>`.
+					const nonSpanningMarks = n.marks?.filter(
+						(m) => m.type && NON_SPANNING_MARK_TYPES.has(m.type)
+					);
 					for (let j = 0; j < parts.length; j++) {
 						if (j > 0) {
 							if (absorbNextNewline) absorbNextNewline = false;
-							else pushParagraph();
+							// A '\n' that lives inside a marked text node is a
+							// separator whose character carries those marks in
+							// Tomboy's flat-buffer model. Capture the marks on
+							// the outgoing paragraph so serialize can re-wrap
+							// the separator byte-for-byte.
+							else pushParagraph(nonSpanningMarks);
 						}
 						if (parts[j].length > 0) {
 							const piece: JSONContent = { type: 'text', text: parts[j] };
@@ -432,11 +465,21 @@ function parseList(listEl: Element): JSONContent {
 function parseListItem(itemEl: Element): JSONContent {
 	const content: JSONContent[] = [];
 	let inlineContent: JSONContent[] = [];
+	// A `<mark>\n</mark>` sitting between the item's inline text and a nested
+	// <list> is Tomboy's way of applying a tag to the separator newline. We
+	// capture the mark here so the flushed paragraph carries it as
+	// trailingMarks, and the serializer can re-wrap the separator on output.
+	let pendingTrailingMarks: JSONContent[] | undefined;
 
 	function flushInline() {
 		if (inlineContent.length > 0) {
-			content.push({ type: 'paragraph', content: inlineContent });
+			const p: JSONContent = { type: 'paragraph', content: inlineContent };
+			if (pendingTrailingMarks && pendingTrailingMarks.length > 0) {
+				p.attrs = { tomboyTrailingMarks: pendingTrailingMarks };
+			}
+			content.push(p);
 			inlineContent = [];
+			pendingTrailingMarks = undefined;
 		}
 	}
 
@@ -455,7 +498,18 @@ function parseListItem(itemEl: Element): JSONContent {
 				content.push(parseList(el));
 			} else {
 				const nodes = parseInlineElement(el);
-				inlineContent.push(...nodes);
+				// A marked inline element containing only '\n' is a separator
+				// marker; its marks belong on the pending paragraph, not as a
+				// text node (PM schema disallows '\n' inside text nodes).
+				const isPureNewline =
+					nodes.length === 1 &&
+					nodes[0].type === 'text' &&
+					nodes[0].text === '\n';
+				if (isPureNewline) {
+					pendingTrailingMarks = nodes[0].marks;
+				} else {
+					inlineContent.push(...nodes);
+				}
 			}
 		}
 	}
@@ -584,11 +638,14 @@ function serializeListItem(item: JSONContent, suppressTrailingNewline: boolean):
 
 	const children = item.content ?? [];
 	let hasNestedList = false;
+	let trailingMarks: JSONContent[] | undefined;
 
 	// Emit paragraph content first.
 	for (const child of children) {
 		if (child.type === 'paragraph') {
 			result += serializeInlineContent(child.content ?? []);
+			const t = child.attrs?.tomboyTrailingMarks as JSONContent[] | undefined;
+			if (t && t.length > 0) trailingMarks = t;
 		} else if (child.type === 'bulletList') {
 			hasNestedList = true;
 		}
@@ -596,8 +653,9 @@ function serializeListItem(item: JSONContent, suppressTrailingNewline: boolean):
 
 	if (hasNestedList) {
 		// Tomboy inserts '\n' between the item's text and its nested list,
-		// and no extra '\n' before </list-item>.
-		result += '\n';
+		// and no extra '\n' before </list-item>. If the source had marks on
+		// that separator '\n' (e.g. `<datetime>\n</datetime>`), re-wrap it.
+		result += trailingMarks ? wrapWithMarks('\n', trailingMarks) : '\n';
 		for (const child of children) {
 			if (child.type === 'bulletList') {
 				result += serializeBulletList(child, /*isTopLevel=*/ false);
@@ -611,6 +669,22 @@ function serializeListItem(item: JSONContent, suppressTrailingNewline: boolean):
 
 	result += '</list-item>';
 	return result;
+}
+
+/**
+ * Wrap `inner` with the given marks in outer→inner nesting order (marks as
+ * stored on a PM text node are innermost-first, so we reverse).
+ */
+function wrapWithMarks(inner: string, marks: JSONContent[]): string {
+	const outerToInner = [...marks].reverse();
+	let open = '';
+	let close = '';
+	for (const m of outerToInner) {
+		const [o, c] = markToTags(m);
+		open += o;
+		close = c + close;
+	}
+	return open + inner + close;
 }
 
 /**

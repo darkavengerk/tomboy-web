@@ -330,10 +330,10 @@
 		display: grid;
 		grid-template-columns: 1fr 1fr;
 		grid-template-rows: 1fr 1fr;
-		gap: 3px;
-		width: 44px;
+		gap: 4px;
+		width: calc(100% - 12px);
 		aspect-ratio: 1 / 1;
-		padding: 3px;
+		padding: 4px;
 		background: #111;
 		border: 1px solid #333;
 		border-radius: 4px;
@@ -348,7 +348,7 @@
 		border-radius: 2px;
 		cursor: pointer;
 		color: #888;
-		font-size: 0.65rem;
+		font-size: 0.8rem;
 		line-height: 1;
 		display: flex;
 		align-items: center;
