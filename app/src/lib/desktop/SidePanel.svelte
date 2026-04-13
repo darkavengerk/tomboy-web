@@ -16,11 +16,21 @@
 
 	interface Props {
 		openGuids: Set<string>;
+		currentWorkspace: number;
+		workspaceSummaries: Array<{ index: number; windowCount: number }>;
 		onopen: (guid: string) => void;
 		onopensettings: () => void;
+		onswitchworkspace: (index: number) => void;
 	}
 
-	let { openGuids, onopen, onopensettings }: Props = $props();
+	let {
+		openGuids,
+		currentWorkspace,
+		workspaceSummaries,
+		onopen,
+		onopensettings,
+		onswitchworkspace
+	}: Props = $props();
 
 	let allNotes: NoteData[] = $state(getCachedNotes() ?? []);
 	let loading = $state(getCachedNotes() === null);
@@ -103,6 +113,24 @@
 				aria-selected={selectedNotebook === nb}
 				onclick={() => selectNotebook(nb)}
 			>🗂 {nb}</button>
+		{/each}
+	</div>
+
+	<div class="workspace-switcher" role="group" aria-label="작업 공간">
+		{#each workspaceSummaries as ws (ws.index)}
+			<button
+				type="button"
+				class="quadrant"
+				class:active={currentWorkspace === ws.index}
+				aria-current={currentWorkspace === ws.index ? 'true' : undefined}
+				aria-label={`작업 공간 ${ws.index + 1} — 창 ${ws.windowCount}개`}
+				title={`작업 공간 ${ws.index + 1} — 창 ${ws.windowCount}개`}
+				onclick={() => onswitchworkspace(ws.index)}
+			>
+				{#if ws.windowCount > 0}
+					<span class="count">{ws.windowCount}</span>
+				{/if}
+			</button>
 		{/each}
 	</div>
 
@@ -215,6 +243,51 @@
 		background: #2d5a3d;
 		color: #fff;
 		border-color: #3a7a50;
+	}
+
+	.workspace-switcher {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		grid-template-rows: 1fr 1fr;
+		gap: 3px;
+		width: 72px;
+		aspect-ratio: 1 / 1;
+		margin: 10px 12px;
+		padding: 3px;
+		background: #111;
+		border: 1px solid #333;
+		border-radius: 4px;
+		flex-shrink: 0;
+	}
+
+	.quadrant {
+		position: relative;
+		padding: 0;
+		background: #1f1f1f;
+		border: 1px solid #2a2a2a;
+		border-radius: 2px;
+		cursor: pointer;
+		color: #888;
+		font-size: 0.7rem;
+		line-height: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.quadrant:hover {
+		background: #2a2a2a;
+		border-color: #3a7a50;
+	}
+
+	.quadrant.active {
+		background: #2d5a3d;
+		border-color: #5ab378;
+		color: #fff;
+	}
+
+	.quadrant .count {
+		font-weight: 600;
 	}
 
 	.list {

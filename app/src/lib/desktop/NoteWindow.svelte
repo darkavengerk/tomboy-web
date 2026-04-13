@@ -9,7 +9,8 @@
 	import {
 		DESKTOP_WINDOW_MIN_WIDTH,
 		DESKTOP_WINDOW_MIN_HEIGHT,
-		registerFlushHook
+		registerFlushHook,
+		desktopSession
 	} from './session.svelte.js';
 
 	interface Props {
@@ -79,6 +80,17 @@
 		};
 	});
 
+	// Register the Tiptap editor with the session so global shortcuts
+	// (Ctrl+L) can access the current selection.
+	$effect(() => {
+		const ec = editorComponent;
+		if (!ec) return;
+		const editor = ec.getEditor();
+		if (!editor) return;
+		const off = desktopSession.registerEditor(guid, editor);
+		return off;
+	});
+
 	function handleEditorChange(doc: JSONContent) {
 		pendingDoc = doc;
 		if (saveTimer) clearTimeout(saveTimer);
@@ -116,8 +128,25 @@
 		onclose(guid);
 	}
 
-	function handleFocus() {
+	function handleWindowPointerDown(e: PointerEvent) {
+		// Always raise-to-top on any pointer inside the window.
 		onfocus(guid);
+		if (!e.altKey) return;
+		const targetEl = e.target as HTMLElement | null;
+		// Let the close button / resize grip do their thing.
+		if (targetEl?.closest('[data-no-drag]')) return;
+		if (targetEl?.closest('.resize-grip')) return;
+		// Alt held anywhere else: start a drag from the window root and
+		// suppress the inner handlers (title-bar, editor text selection, etc.).
+		e.preventDefault();
+		e.stopPropagation();
+		const origX = x;
+		const origY = y;
+		startPointerDrag(e, {
+			onMove: (dx, dy) => {
+				onmove(guid, origX + dx, origY + dy);
+			}
+		});
 	}
 
 	function startDrag(e: PointerEvent) {
@@ -157,7 +186,7 @@
 <div
 	class="note-window"
 	style="left:{x}px; top:{y}px; width:{width}px; height:{height}px; z-index:{z};"
-	onpointerdowncapture={handleFocus}
+	onpointerdowncapture={handleWindowPointerDown}
 >
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
