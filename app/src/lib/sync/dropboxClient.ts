@@ -83,7 +83,7 @@ export async function startAuth(redirectUri: string): Promise<void> {
 		undefined, // state — not needed for personal use
 		'code',
 		'offline', // token_access_type — get a refresh_token
-		undefined,
+		['files.content.read', 'files.content.write', 'files.metadata.read', 'files.metadata.write'],
 		undefined,
 		true // usePKCE
 	);

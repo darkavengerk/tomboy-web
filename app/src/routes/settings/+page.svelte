@@ -4,6 +4,7 @@
 		isAuthenticated,
 		startAuth,
 		completeAuth,
+		clearTokens,
 		getNotesPath,
 		setNotesPath
 	} from '$lib/sync/dropboxClient.js';
@@ -184,6 +185,9 @@
 				<div class="status-card">
 					<span class="status-dot connected"></span>
 					<span>Dropbox 연결됨</span>
+					<button class="btn-disconnect" onclick={() => { clearTokens(); authenticated = false; }}>
+						연결 끊기
+					</button>
 				</div>
 
 				<div class="sync-btns">
@@ -322,6 +326,21 @@
 
 	.status-dot.connected {
 		background: #2ecc71;
+	}
+
+	.btn-disconnect {
+		margin-left: auto;
+		padding: 4px 10px;
+		border: 1px solid #d93025;
+		border-radius: 6px;
+		background: transparent;
+		color: #d93025;
+		font-size: 0.8rem;
+		cursor: pointer;
+	}
+
+	.btn-disconnect:active {
+		background: #ffeef0;
 	}
 
 	.status-dot.syncing {

@@ -258,6 +258,7 @@ export async function applyPlan(plan: SyncPlan, selection?: PlanSelection): Prom
 		await saveManifest(localManifest);
 		invalidateCache();
 		try { await refreshNotebooksCache(); } catch { /* non-fatal */ }
+		setStatus('success');
 		return result;
 	}
 
@@ -407,6 +408,7 @@ export async function applyPlan(plan: SyncPlan, selection?: PlanSelection): Prom
 		try { await refreshNotebooksCache(); } catch { /* non-fatal */ }
 	}
 
+	setStatus(result.status === 'success' ? 'success' : 'error');
 	return result;
 }
 
