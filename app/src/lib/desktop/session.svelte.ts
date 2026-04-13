@@ -132,18 +132,47 @@ function schedulePersist(): void {
 		persistTimer = null;
 		void persistNow();
 	}, 300);
+	ensurePersistFlushOnHide();
+}
+
+/**
+ * Because `schedulePersist` debounces by 300ms, a refresh right after a drag
+ * or resize would lose the tail-end geometry if we didn't flush on page
+ * hide. This installs (at most once) a `pagehide` + `visibilitychange`
+ * listener that cancels the timer and kicks off `persistNow()` synchronously
+ * — IndexedDB writes initiated from these handlers are allowed to complete
+ * by modern browsers, so the latest state reliably survives a reload.
+ */
+let flushListenersInstalled = false;
+function ensurePersistFlushOnHide(): void {
+	if (flushListenersInstalled) return;
+	if (typeof window === 'undefined') return;
+	flushListenersInstalled = true;
+	const flush = () => {
+		if (persistTimer) {
+			clearTimeout(persistTimer);
+			persistTimer = null;
+			void persistNow();
+		}
+	};
+	window.addEventListener('pagehide', flush);
+	document.addEventListener('visibilitychange', () => {
+		if (document.visibilityState === 'hidden') flush();
+	});
 }
 
 async function persistNow(): Promise<void> {
-	const snapshot: PersistedV3 = {
+	// Svelte 5 `$state` wraps nested objects and arrays in proxies that
+	// IndexedDB's structured-clone algorithm cannot serialise ("DataCloneError:
+	// #<Object> could not be cloned"). Shallow spreads (`{ ...w }`) leave
+	// deeper objects — e.g. the geometry values inside `geometryByGuid` —
+	// still wrapped. `$state.snapshot` returns a plain deep copy, which is
+	// safe to persist.
+	const snapshot: PersistedV3 = $state.snapshot({
 		version: VERSION,
 		currentWorkspace: currentWorkspaceIndex,
-		workspaces: workspaces.map((ws) => ({
-			windows: ws.windows.map((w) => ({ ...w })),
-			geometryByGuid: { ...ws.geometryByGuid },
-			nextZ: ws.nextZ
-		}))
-	};
+		workspaces
+	}) as PersistedV3;
 	try {
 		await setSetting(STORAGE_KEY, snapshot);
 	} catch {
