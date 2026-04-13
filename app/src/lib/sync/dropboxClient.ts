@@ -13,6 +13,12 @@ const STORAGE_KEY_ACCESS_TOKEN = 'tomboy-dropbox-access-token';
 const STORAGE_KEY_REFRESH_TOKEN = 'tomboy-dropbox-refresh-token';
 const STORAGE_KEY_EXPIRES_AT = 'tomboy-dropbox-expires-at';
 const STORAGE_KEY_NOTES_PATH = 'tomboy-dropbox-notes-path';
+const STORAGE_KEY_SETTINGS_PATH = 'tomboy-dropbox-settings-path';
+
+function normalizePath(path: string): string {
+	const normalized = path.trim().replace(/\/+$/, '');
+	return normalized && !normalized.startsWith('/') ? '/' + normalized : normalized;
+}
 
 /** Get the configured Dropbox folder path (e.g. '/Apps/Tomboy' or '') */
 export function getNotesPath(): string {
@@ -21,10 +27,17 @@ export function getNotesPath(): string {
 
 /** Set the Dropbox folder path */
 export function setNotesPath(path: string): void {
-	// Normalize: ensure leading slash, strip trailing slash
-	const normalized = path.trim().replace(/\/+$/, '');
-	const withSlash = normalized && !normalized.startsWith('/') ? '/' + normalized : normalized;
-	localStorage.setItem(STORAGE_KEY_NOTES_PATH, withSlash);
+	localStorage.setItem(STORAGE_KEY_NOTES_PATH, normalizePath(path));
+}
+
+/** Get the configured Dropbox folder path for settings/workspace state. */
+export function getSettingsPath(): string {
+	return localStorage.getItem(STORAGE_KEY_SETTINGS_PATH) ?? '';
+}
+
+/** Set the Dropbox folder path for settings/workspace state. */
+export function setSettingsPath(path: string): void {
+	localStorage.setItem(STORAGE_KEY_SETTINGS_PATH, normalizePath(path));
 }
 
 function getAppKey(): string {
@@ -487,5 +500,63 @@ export function revisionManifestFullPath(rev: number): string {
 /** Build the note-at-revision path for admin UI. */
 export function noteAtRevisionFullPath(guid: string, rev: number): string {
 	return noteRevisionPath(getNotesPath(), guid, rev);
+}
+
+// ─── Settings-profile sync ──────────────────────────────────────────────────
+
+function sanitizeProfileName(name: string): string {
+	const trimmed = name.trim().replace(/[\\/:*?"<>|]/g, '_');
+	if (!trimmed) throw new Error('프로필 이름이 비어 있습니다');
+	return trimmed;
+}
+
+function settingsProfilePath(settingsPath: string, profileName: string): string {
+	const file = `${sanitizeProfileName(profileName)}.json`;
+	return settingsPath ? `${settingsPath}/${file}` : `/${file}`;
+}
+
+/** Upload a settings profile as JSON. Overwrites any existing profile of the same name. */
+export async function uploadSettingsProfile(
+	profileName: string,
+	jsonContent: string
+): Promise<void> {
+	const dbx = getClient();
+	if (!dbx) throw new Error('Not authenticated');
+	const path = settingsProfilePath(getSettingsPath(), profileName);
+	await uploadText(dbx, path, jsonContent);
+}
+
+/** Download a settings profile's JSON. */
+export async function downloadSettingsProfile(profileName: string): Promise<string> {
+	const dbx = getClient();
+	if (!dbx) throw new Error('Not authenticated');
+	const path = settingsProfilePath(getSettingsPath(), profileName);
+	return downloadText(dbx, path);
+}
+
+/** List profile names (file stems) found in the settings folder. */
+export async function listSettingsProfiles(): Promise<string[]> {
+	const dbx = getClient();
+	if (!dbx) throw new Error('Not authenticated');
+	const base = getSettingsPath() || '';
+	try {
+		const names: string[] = [];
+		let res = await dbx.filesListFolder({ path: base });
+		while (true) {
+			for (const e of res.result.entries) {
+				if (e['.tag'] !== 'file') continue;
+				if (!e.name.toLowerCase().endsWith('.json')) continue;
+				names.push(e.name.replace(/\.json$/i, ''));
+			}
+			if (!res.result.has_more) break;
+			res = await dbx.filesListFolderContinue({ cursor: res.result.cursor });
+		}
+		names.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+		return names;
+	} catch (err: unknown) {
+		const error = err as { status?: number };
+		if (error.status === 409) return []; // folder not found
+		throw err;
+	}
 }
 

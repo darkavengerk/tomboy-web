@@ -6,8 +6,15 @@
 		completeAuth,
 		clearTokens,
 		getNotesPath,
-		setNotesPath
+		setNotesPath,
+		getSettingsPath,
+		setSettingsPath
 	} from '$lib/sync/dropboxClient.js';
+	import {
+		saveSettingsProfile,
+		restoreSettingsProfile,
+		listSettingsProfiles
+	} from '$lib/sync/settingsSync.js';
 	import {
 		onSyncStatus,
 		computePlan,
@@ -37,8 +44,19 @@
 	let resetting = $state(false);
 	let resetConfirm = $state(false);
 
+	let settingsPath = $state('');
+	let settingsPathSaved = $state(false);
+	let profileName = $state('default');
+	let profiles = $state<string[]>([]);
+	let selectedProfile = $state('');
+	let savingProfile = $state(false);
+	let restoringProfile = $state(false);
+	let loadingProfiles = $state(false);
+	let restoreConfirm = $state(false);
+
 	onMount(() => {
 		notesPath = getNotesPath();
+		settingsPath = getSettingsPath();
 
 		(async () => {
 			// Check if we're returning from OAuth callback
@@ -135,6 +153,65 @@
 		} finally {
 			resetting = false;
 			resetConfirm = false;
+		}
+	}
+
+	function handleSaveSettingsPath() {
+		setSettingsPath(settingsPath);
+		settingsPath = getSettingsPath();
+		settingsPathSaved = true;
+		setTimeout(() => (settingsPathSaved = false), 2000);
+	}
+
+	async function refreshProfiles() {
+		loadingProfiles = true;
+		try {
+			profiles = await listSettingsProfiles();
+			if (profiles.length > 0 && !profiles.includes(selectedProfile)) {
+				selectedProfile = profiles[0];
+			}
+		} catch (e) {
+			pushToast('프로필 목록을 불러오지 못했습니다: ' + String(e), { kind: 'error' });
+		} finally {
+			loadingProfiles = false;
+		}
+	}
+
+	async function handleSaveProfile() {
+		const name = profileName.trim();
+		if (!name) {
+			pushToast('프로필 이름을 입력하세요.', { kind: 'error' });
+			return;
+		}
+		savingProfile = true;
+		try {
+			await saveSettingsProfile(name);
+			pushToast(`'${name}' 프로필을 저장했습니다.`);
+			await refreshProfiles();
+			selectedProfile = name;
+		} catch (e) {
+			pushToast('프로필 저장 실패: ' + String(e), { kind: 'error' });
+		} finally {
+			savingProfile = false;
+		}
+	}
+
+	async function handleRestoreProfile() {
+		if (!selectedProfile) return;
+		if (!restoreConfirm) {
+			restoreConfirm = true;
+			return;
+		}
+		restoringProfile = true;
+		try {
+			await restoreSettingsProfile(selectedProfile);
+			pushToast(`'${selectedProfile}' 프로필을 내려받았습니다. 새로고침 후 적용됩니다.`);
+			setTimeout(() => window.location.reload(), 800);
+		} catch (e) {
+			pushToast('프로필 내려받기 실패: ' + String(e), { kind: 'error' });
+		} finally {
+			restoringProfile = false;
+			restoreConfirm = false;
 		}
 	}
 
@@ -249,6 +326,79 @@
 				<a href="/admin" class="btn btn-secondary admin-link">
 					관리자 페이지 열기 →
 				</a>
+			</section>
+
+			<section class="section">
+				<h2>설정 동기화</h2>
+				<p class="info-text">
+					작업 공간 구성(열린 노트, 창 위치·크기 등)을 노트와 별도 폴더에 저장합니다.
+					프로필 이름으로 여러 버전을 저장할 수 있습니다.
+				</p>
+
+				<div class="path-row">
+					<input
+						class="path-input"
+						type="text"
+						placeholder="/tomboy-settings"
+						bind:value={settingsPath}
+						onkeydown={(e) => e.key === 'Enter' && handleSaveSettingsPath()}
+					/>
+					<button class="btn-save" onclick={handleSaveSettingsPath}>
+						{settingsPathSaved ? '저장됨' : '폴더 저장'}
+					</button>
+				</div>
+
+				<div class="profile-row">
+					<input
+						class="path-input"
+						type="text"
+						placeholder="프로필 이름"
+						bind:value={profileName}
+					/>
+					<button
+						class="btn btn-primary profile-btn"
+						onclick={handleSaveProfile}
+						disabled={savingProfile}
+					>
+						{savingProfile ? '저장 중...' : '현재 설정 저장'}
+					</button>
+				</div>
+
+				<div class="profile-row">
+					<select class="path-input" bind:value={selectedProfile} disabled={profiles.length === 0}>
+						{#if profiles.length === 0}
+							<option value="">프로필 없음</option>
+						{:else}
+							{#each profiles as name}
+								<option value={name}>{name}</option>
+							{/each}
+						{/if}
+					</select>
+					<button
+						class="btn btn-secondary profile-btn"
+						onclick={refreshProfiles}
+						disabled={loadingProfiles}
+					>
+						{loadingProfiles ? '...' : '새로고침'}
+					</button>
+				</div>
+
+				<button
+					class="btn btn-primary"
+					onclick={handleRestoreProfile}
+					disabled={!selectedProfile || restoringProfile}
+				>
+					{#if restoringProfile}
+						내려받는 중...
+					{:else if restoreConfirm}
+						덮어쓰기 확인 (다시 눌러 적용)
+					{:else}
+						선택한 프로필 내려받기
+					{/if}
+				</button>
+				{#if restoreConfirm && !restoringProfile}
+					<button class="btn btn-secondary" onclick={() => (restoreConfirm = false)}>취소</button>
+				{/if}
 			</section>
 
 			<section class="section danger-section">
@@ -435,6 +585,20 @@
 		display: flex;
 		gap: 8px;
 		margin-bottom: 4px;
+	}
+
+	.profile-row {
+		display: flex;
+		gap: 8px;
+		margin-top: 8px;
+		margin-bottom: 4px;
+	}
+
+	.profile-btn {
+		flex-shrink: 0;
+		width: auto;
+		margin-bottom: 0;
+		padding: 10px 16px;
 	}
 
 	.path-input {
