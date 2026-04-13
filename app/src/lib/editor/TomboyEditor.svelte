@@ -1,18 +1,18 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { Editor } from '@tiptap/core';
-	import StarterKit from '@tiptap/starter-kit';
-	import Underline from '@tiptap/extension-underline';
-	import Highlight from '@tiptap/extension-highlight';
-	import Placeholder from '@tiptap/extension-placeholder';
-	import { TomboySize } from './extensions/TomboySize.js';
-	import { TomboyMonospace } from './extensions/TomboyMonospace.js';
-	import { TomboyInternalLink } from './extensions/TomboyInternalLink.js';
-	import { TomboyUrlLink } from './extensions/TomboyUrlLink.js';
-	import { TomboyDatetime } from './extensions/TomboyDatetime.js';
-	import { createTitleProvider } from './autoLink/titleProvider.js';
-	import { autoLinkPluginKey } from './autoLink/autoLinkPlugin.js';
-	import type { JSONContent } from '@tiptap/core';
+	import { onMount } from "svelte";
+	import { Editor } from "@tiptap/core";
+	import StarterKit from "@tiptap/starter-kit";
+	import Underline from "@tiptap/extension-underline";
+	import Highlight from "@tiptap/extension-highlight";
+	import Placeholder from "@tiptap/extension-placeholder";
+	import { TomboySize } from "./extensions/TomboySize.js";
+	import { TomboyMonospace } from "./extensions/TomboyMonospace.js";
+	import { TomboyInternalLink } from "./extensions/TomboyInternalLink.js";
+	import { TomboyUrlLink } from "./extensions/TomboyUrlLink.js";
+	import { TomboyDatetime } from "./extensions/TomboyDatetime.js";
+	import { createTitleProvider } from "./autoLink/titleProvider.js";
+	import { autoLinkPluginKey } from "./autoLink/autoLinkPlugin.js";
+	import type { JSONContent } from "@tiptap/core";
 
 	interface Props {
 		content?: JSONContent;
@@ -21,7 +21,12 @@
 		currentGuid?: string | null;
 	}
 
-	let { content, onchange, oninternallink, currentGuid = null }: Props = $props();
+	let {
+		content,
+		onchange,
+		oninternallink,
+		currentGuid = null,
+	}: Props = $props();
 
 	let editorElement: HTMLDivElement;
 	let editor: Editor | null = $state(null);
@@ -30,7 +35,7 @@
 	// it uses TipTap/ProseMirror's normalised JSON shape (different key
 	// order, default attrs filled in) — comparing against the raw parser
 	// output would always mismatch and cause spurious saves on first touch.
-	let prevContentStr = '';
+	let prevContentStr = "";
 
 	onMount(() => {
 		const titleProvider = createTitleProvider({ excludeGuid: currentGuid });
@@ -44,11 +49,11 @@
 				StarterKit.configure({
 					// Disable code (we use tomboyMonospace instead)
 					code: false,
-					codeBlock: false
+					codeBlock: false,
 				}),
 				Underline,
 				Highlight.configure({ multicolor: false }),
-				Placeholder.configure({ placeholder: 'Start typing...' }),
+				Placeholder.configure({ placeholder: "Start typing..." }),
 				TomboySize,
 				TomboyMonospace,
 				TomboyInternalLink.configure({
@@ -56,12 +61,15 @@
 						oninternallink?.(target);
 					},
 					getTitles: () => titleProvider.getTitles(),
-					getCurrentGuid: () => currentGuid
+					getCurrentGuid: () => currentGuid,
 				}),
 				TomboyUrlLink,
-				TomboyDatetime
+				TomboyDatetime,
 			],
-			content: content ?? { type: 'doc', content: [{ type: 'paragraph' }] },
+			content: content ?? {
+				type: "doc",
+				content: [{ type: "paragraph" }],
+			},
 			onUpdate: ({ editor: ed }) => {
 				const newDoc = ed.getJSON();
 				const newStr = JSON.stringify(newDoc);
@@ -71,18 +79,21 @@
 			},
 			editorProps: {
 				handleClick: (view, pos, event) => {
-					const target = (event.target as HTMLElement).closest('a[data-link-target]');
+					const target = (event.target as HTMLElement).closest(
+						"a[data-link-target]",
+					);
 					if (target) {
 						event.preventDefault();
-						const linkTarget = target.getAttribute('data-link-target');
+						const linkTarget =
+							target.getAttribute("data-link-target");
 						if (linkTarget) {
 							oninternallink?.(linkTarget);
 						}
 						return true;
 					}
 					return false;
-				}
-			}
+				},
+			},
 		});
 
 		// Capture the editor's normalised initial JSON so the onUpdate
@@ -95,7 +106,9 @@
 		const offChange = titleProvider.onChange(() => {
 			const ed = editor;
 			if (!ed) return;
-			ed.view.dispatch(ed.state.tr.setMeta(autoLinkPluginKey, { refresh: true }));
+			ed.view.dispatch(
+				ed.state.tr.setMeta(autoLinkPluginKey, { refresh: true }),
+			);
 		});
 
 		return () => {
@@ -116,9 +129,9 @@
 	.tomboy-editor {
 		flex: 1;
 		overflow-y: auto;
-		padding: 1rem;
+		padding: 0.5rem;
 		font-size: 16px;
-		line-height: 1.6;
+		line-height: 1.4;
 	}
 
 	.tomboy-editor :global(.tiptap) {
@@ -134,7 +147,7 @@
 	.tomboy-editor :global(.tiptap > p:first-child) {
 		font-size: 1.4em;
 		font-weight: bold;
-		margin-bottom: 0.5em;
+		margin-bottom: 0;
 	}
 
 	/* Tomboy size marks */
