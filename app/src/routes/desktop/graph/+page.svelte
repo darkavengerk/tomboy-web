@@ -121,7 +121,7 @@
 		};
 		const labelEntries: LabelEntry[] = [];
 		function isHubLabel(size: number): boolean {
-			return size >= 1.8;
+			return size >= 1.6;
 		}
 
 		// 3) Instantiate the graph. We disable the built-in navigation
@@ -151,8 +151,12 @@
 						? '#9b6cff'
 						: degreeColor(node.size);
 				const radius = 3 * node.size;
+				// 24×16 segments = smooth silhouette at the sizes we draw
+				// (10×8 was visibly polygonal on screen). ~384 tris/node ×
+				// 2000 nodes ≈ 770K tris total, still within comfortable
+				// range for a desktop GPU.
 				const sphere = new THREE.Mesh(
-					new THREE.SphereGeometry(radius, 10, 8),
+					new THREE.SphereGeometry(radius, 24, 16),
 					new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.9 })
 				);
 				group.add(sphere);
@@ -185,34 +189,6 @@
 			.graphData(graphData);
 
 		fg = graph;
-
-		// 4) Center camera on starting nodes (home + sleep) only on the first
-		//    engine stop, so dragging a node doesn't teleport the camera back.
-		let centeredOnce = false;
-		graph.onEngineStop(() => {
-			if (centeredOnce) return;
-			centeredOnce = true;
-			const starters = graphData!.nodes.filter((n) => n.isHome || n.isSleep);
-			if (starters.length === 0) return;
-			const placed = starters
-				.map((n) => graph.graphData().nodes.find((x) => (x as GraphNode).id === n.id))
-				.filter((x): x is NonNullable<typeof x> => !!x) as Array<
-				GraphNode & { x?: number; y?: number; z?: number }
-			>;
-			if (placed.length === 0) return;
-			const avg = placed.reduce(
-				(acc, n) => ({
-					x: acc.x + (n.x ?? 0),
-					y: acc.y + (n.y ?? 0),
-					z: acc.z + (n.z ?? 0)
-				}),
-				{ x: 0, y: 0, z: 0 }
-			);
-			avg.x /= placed.length;
-			avg.y /= placed.length;
-			avg.z /= placed.length;
-			graph.cameraPosition({ x: avg.x, y: avg.y, z: avg.z + 220 }, avg, 800);
-		});
 
 		loading = false;
 
