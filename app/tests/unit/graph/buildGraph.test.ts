@@ -6,7 +6,8 @@ function makeNote(
 	guid: string,
 	title: string,
 	internalLinks: string[] = [],
-	changeDate = '2024-01-01T00:00:00.0000000+00:00'
+	changeDate = '2024-01-01T00:00:00.0000000+00:00',
+	tags: string[] = []
 ): NoteData {
 	const body = internalLinks
 		.map((t) => `<link:internal>${t}</link:internal>`)
@@ -26,7 +27,7 @@ function makeNote(
 		height: 360,
 		x: 0,
 		y: 0,
-		tags: [],
+		tags,
 		openOnStartup: false,
 		localDirty: false,
 		deleted: false
@@ -136,6 +137,59 @@ describe('buildGraph', () => {
 			expect(n.size).toBeGreaterThanOrEqual(1);
 			expect(n.size).toBeLessThanOrEqual(2);
 		}
+	});
+
+	describe('includeCategories', () => {
+		it('adds no extra nodes when the option is off', () => {
+			const notes = [
+				makeNote('a', 'A', [], undefined, ['system:notebook:Work']),
+				makeNote('b', 'B', [], undefined, ['system:notebook:Work'])
+			];
+			const g = buildGraph(notes);
+			expect(g.nodes).toHaveLength(2);
+			expect(g.nodes.some((n) => n.isCategory)).toBe(false);
+		});
+
+		it('adds a category node per notebook with edges from member notes', () => {
+			const notes = [
+				makeNote('a', 'A', [], undefined, ['system:notebook:Work']),
+				makeNote('b', 'B', [], undefined, ['system:notebook:Work']),
+				makeNote('c', 'C', [], undefined, ['system:notebook:Home']),
+				makeNote('d', 'D', [], undefined, []) // no notebook
+			];
+			const g = buildGraph(notes, { includeCategories: true });
+			const cats = g.nodes.filter((n) => n.isCategory);
+			expect(cats.map((c) => c.title).sort()).toEqual(['Home', 'Work']);
+			expect(cats.every((c) => c.id.startsWith('category:'))).toBe(true);
+
+			const categoryEdges = g.links.filter((l) =>
+				l.target.startsWith('category:')
+			);
+			expect(categoryEdges).toHaveLength(3);
+			expect(
+				categoryEdges.find((l) => l.source === 'a')?.target
+			).toBe('category:Work');
+			expect(
+				categoryEdges.find((l) => l.source === 'c')?.target
+			).toBe('category:Home');
+		});
+
+		it('scales category size with its member count (log)', () => {
+			// Work has 4 members, Home has 1.
+			const notes = [
+				makeNote('a', 'A', [], undefined, ['system:notebook:Work']),
+				makeNote('b', 'B', [], undefined, ['system:notebook:Work']),
+				makeNote('c', 'C', [], undefined, ['system:notebook:Work']),
+				makeNote('d', 'D', [], undefined, ['system:notebook:Work']),
+				makeNote('e', 'E', [], undefined, ['system:notebook:Home'])
+			];
+			const g = buildGraph(notes, { includeCategories: true });
+			const work = g.nodes.find((n) => n.id === 'category:Work')!;
+			const home = g.nodes.find((n) => n.id === 'category:Home')!;
+			expect(work.size).toBeCloseTo(2, 10); // max → full size
+			expect(home.size).toBeGreaterThan(1);
+			expect(home.size).toBeLessThan(2);
+		});
 	});
 
 	it('invokes onProgress for each note processed', () => {

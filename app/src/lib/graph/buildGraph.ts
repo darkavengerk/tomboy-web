@@ -1,9 +1,11 @@
 import type { NoteData } from '$lib/core/note.js';
 import { deserializeContent } from '$lib/core/noteContentArchiver.js';
+import { getNotebook } from '$lib/core/notebooks.js';
 import { extractInternalLinkTargets } from './extractInternalLinks.js';
 
 export interface GraphNode {
-	/** Note GUID — used as the d3-force / 3d-force-graph node id */
+	/** Note GUID — used as the d3-force / 3d-force-graph node id.
+	 *  Category nodes use the synthetic prefix `category:<name>`. */
 	id: string;
 	title: string;
 	/** Combined in+out degree */
@@ -14,6 +16,9 @@ export interface GraphNode {
 	isHome: boolean;
 	/** True iff this is the fixed sleep note */
 	isSleep: boolean;
+	/** True for synthetic category (notebook) nodes — excluded from
+	 *  note-selection logic because they have no body to display. */
+	isCategory?: boolean;
 }
 
 export interface GraphLink {
@@ -29,6 +34,10 @@ export interface GraphData {
 export interface BuildGraphOptions {
 	homeGuid?: string | null;
 	sleepGuid?: string | null;
+	/** When true, add a node per notebook (`system:notebook:<name>` tag)
+	 *  and an edge from each note to its notebook. Useful for visualizing
+	 *  which clusters of notes share a notebook. */
+	includeCategories?: boolean;
 	/** Optional progress callback (0..1) for long builds. */
 	onProgress?: (done: number, total: number) => void;
 }
@@ -122,6 +131,46 @@ export function buildGraph(
 			isSleep: sleepGuid != null && note.guid === sleepGuid
 		};
 	});
+
+	// 4) Optional: inject notebook-as-category nodes, connected to each of
+	//    their member notes. Categories get their own log-scaled size based
+	//    on member count; they're tagged so the graph page can render them
+	//    distinctively and skip them in note-selection logic.
+	if (options.includeCategories) {
+		const notebookMembers = new Map<string, string[]>();
+		for (const note of notes) {
+			const nb = getNotebook(note);
+			if (!nb) continue;
+			const arr = notebookMembers.get(nb) ?? [];
+			arr.push(note.guid);
+			notebookMembers.set(nb, arr);
+		}
+
+		let maxCatDegree = 0;
+		for (const members of notebookMembers.values()) {
+			if (members.length > maxCatDegree) maxCatDegree = members.length;
+		}
+		const logMaxCat = Math.log1p(maxCatDegree);
+
+		for (const [name, members] of notebookMembers) {
+			const degree = members.length;
+			const size =
+				logMaxCat > 0 ? Math.min(2, 1 + Math.log1p(degree) / logMaxCat) : 1;
+			const id = `category:${name}`;
+			nodes.push({
+				id,
+				title: name,
+				degree,
+				size,
+				isHome: false,
+				isSleep: false,
+				isCategory: true
+			});
+			for (const guid of members) {
+				links.push({ source: guid, target: id });
+			}
+		}
+	}
 
 	return { nodes, links };
 }

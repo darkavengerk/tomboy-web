@@ -39,6 +39,11 @@
 	// Exposed as a number input in the top bar so users can tune it live.
 	let labelBaseDistance = $state(400);
 
+	// Experimental: toggle synthetic category (notebook) nodes in the graph.
+	// Each note gains an edge to its notebook; the notebook becomes a node.
+	// Categories are excluded from selection (no body to display).
+	let includeCategories = $state(false);
+
 	// Selection strategy for the debounced auto-select:
 	//   - 'aim'    : nearest-in-frustum to the aim point (camera + forward*40)
 	//   - 'center' : whichever node actually overlaps the reticle
@@ -56,6 +61,10 @@
 
 	let fg: ForceGraph3DInstance | null = null;
 	let disposed = false;
+
+	// Assigned inside init(); exposed so the $effect watching
+	// `includeCategories` can request a live graph rebuild.
+	let rebuildGraphData: (() => void) | null = null;
 
 	onMount(() => {
 		let cleanup: (() => void) | null = null;
@@ -81,31 +90,46 @@
 			import('three-spritetext')
 		]);
 
-		// 1) Load + compute graph.
+		// 1) Load + compute graph. Keep the raw notes + homeGuid around so we
+		//    can rebuild the graph in place when the "categories" toggle flips.
 		const [notes, homeGuid] = await Promise.all([getAllNotes(), getHomeNoteGuid()]);
 		if (disposed) return () => {};
+		const loadedNotes = notes;
+		const loadedHomeGuid = homeGuid ?? null;
+
+		function buildCurrent(): GraphData {
+			return buildGraph(loadedNotes, {
+				homeGuid: loadedHomeGuid,
+				sleepGuid: SLEEP_NOTE_GUID,
+				includeCategories,
+				onProgress: (done, total) => {
+					progress = { done, total };
+				}
+			});
+		}
+
+		/** Refresh `nodesById`, `titleToGuid`, `backlinksByGuid`, `stats`
+		 *  from the given graph data. Category nodes are excluded from the
+		 *  title→guid map so internal-link resolution only picks real notes. */
+		function refreshIndices(data: GraphData) {
+			nodesById = new Map(data.nodes.map((n) => [n.id, n]));
+			titleToGuid = new Map(
+				data.nodes
+					.filter((n) => !n.isCategory)
+					.map((n) => [n.title.trim().toLowerCase(), n.id])
+			);
+			backlinksByGuid = new Map<string, string[]>();
+			for (const l of data.links) {
+				const arr = backlinksByGuid.get(l.target) ?? [];
+				arr.push(l.source);
+				backlinksByGuid.set(l.target, arr);
+			}
+			stats = { nodes: data.nodes.length, links: data.links.length };
+		}
 
 		progress = { done: 0, total: notes.length };
-		graphData = buildGraph(notes, {
-			homeGuid: homeGuid ?? null,
-			sleepGuid: SLEEP_NOTE_GUID,
-			onProgress: (done, total) => {
-				progress = { done, total };
-			}
-		});
-		stats = { nodes: graphData.nodes.length, links: graphData.links.length };
-
-		// 2) Indices for click/link/backlink lookups.
-		nodesById = new Map(graphData.nodes.map((n) => [n.id, n]));
-		titleToGuid = new Map(
-			graphData.nodes.map((n) => [n.title.trim().toLowerCase(), n.id])
-		);
-		backlinksByGuid = new Map<string, string[]>();
-		for (const l of graphData.links) {
-			const arr = backlinksByGuid.get(l.target) ?? [];
-			arr.push(l.source);
-			backlinksByGuid.set(l.target, arr);
-		}
+		graphData = buildCurrent();
+		refreshIndices(graphData);
 
 		// Distance-LOD for node titles. Four buckets by node size:
 		//   tier 4 (size ≥ 1.8, hubs): always on, full opacity
@@ -145,21 +169,38 @@
 			.nodeThreeObject((raw) => {
 				const node = raw as GraphNode;
 				const group = new THREE.Group();
-				const color = node.isHome
-					? '#f5c542'
-					: node.isSleep
-						? '#9b6cff'
-						: degreeColor(node.size);
 				const radius = 3 * node.size;
-				// 24×16 segments = smooth silhouette at the sizes we draw
-				// (10×8 was visibly polygonal on screen). ~384 tris/node ×
-				// 2000 nodes ≈ 770K tris total, still within comfortable
-				// range for a desktop GPU.
-				const sphere = new THREE.Mesh(
-					new THREE.SphereGeometry(radius, 24, 16),
-					new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.9 })
-				);
-				group.add(sphere);
+				// Category nodes use a cube + muted teal so they read as
+				// "meta" entities distinct from the note spheres; note
+				// nodes keep the yellow→red gradient plus gold/purple for
+				// home/sleep.
+				if (node.isCategory) {
+					const side = radius * 1.6;
+					const box = new THREE.Mesh(
+						new THREE.BoxGeometry(side, side, side),
+						new THREE.MeshLambertMaterial({
+							color: '#4fd1c5',
+							transparent: true,
+							opacity: 0.75
+						})
+					);
+					group.add(box);
+				} else {
+					const color = node.isHome
+						? '#f5c542'
+						: node.isSleep
+							? '#9b6cff'
+							: degreeColor(node.size);
+					// 24×16 segments = smooth silhouette at the sizes we draw
+					// (10×8 was visibly polygonal on screen). ~384 tris/node
+					// × 2000 nodes ≈ 770K tris total, still comfortable for
+					// a desktop GPU.
+					const sphere = new THREE.Mesh(
+						new THREE.SphereGeometry(radius, 24, 16),
+						new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.9 })
+					);
+					group.add(sphere);
+				}
 				const label = new SpriteText(node.title);
 				label.color = '#ffffff';
 				label.textHeight = 4 * node.size;
@@ -168,11 +209,11 @@
 				label.position.set(0, radius + 2 + label.textHeight / 2, 0);
 				group.add(label);
 
-				// Register for distance-based LOD. Hubs (tier 4) stay on
-				// permanently; others need `transparent: true` so we can
-				// fade them, and start hidden — the first RAF tick toggles
-				// them based on the camera distance.
-				if (isHubLabel(node.size)) {
+				// Register for distance-based LOD. Hubs (tier 4) and
+				// category nodes stay on permanently; others need
+				// `transparent: true` so we can fade them, and start hidden —
+				// the first RAF tick toggles them based on camera distance.
+				if (node.isCategory || isHubLabel(node.size)) {
 					label.visible = true;
 				} else {
 					label.material.transparent = true;
@@ -259,6 +300,28 @@
 		};
 		window.addEventListener('keydown', onMovementKey);
 
+		// Expose a live-rebuild hook so the `includeCategories` $effect can
+		// swap the graph data in place without tearing down the whole page.
+		// 3d-force-graph will re-run `nodeThreeObject` for each node;
+		// `labelEntries` is cleared beforehand so it's freshly repopulated.
+		rebuildGraphData = () => {
+			const newData = buildCurrent();
+			graphData = newData;
+			labelEntries.length = 0;
+			graph.graphData(newData);
+			refreshIndices(newData);
+			// Re-grab the live node array (3d-force-graph mutates these
+			// references with x/y/z during the force simulation).
+			liveNodes = graph.graphData().nodes as Array<
+				GraphNode & { x?: number; y?: number; z?: number }
+			>;
+			liveNodesById = new Map();
+			for (const n of liveNodes) liveNodesById.set(n.id, n);
+			// A selected note that survived the rebuild keeps showing; a
+			// category node that got removed won't have been selectable
+			// anyway, so no cleanup needed here.
+		};
+
 		// Selection halo: a slim cyan ring around the currently-selected node,
 		// billboarded toward the camera. On click it scales up briefly as
 		// feedback. A second, dimmer "hover" halo marks whatever node is
@@ -292,15 +355,18 @@
 		hoverHalo.renderOrder = 998;
 		graph.scene().add(hoverHalo);
 
-		const liveNodesById = new Map<
+		// `let` (not `const`) because a rebuild via the category toggle
+		// re-points these to a fresh array/map while the same closures
+		// (findCenterNode, findAimedNode, halos, label LOD) keep reading
+		// through the captured references.
+		let liveNodes = graph.graphData().nodes as Array<
+			GraphNode & { x?: number; y?: number; z?: number }
+		>;
+		let liveNodesById = new Map<
 			string,
 			GraphNode & { x?: number; y?: number; z?: number }
 		>();
-		for (const n of graph.graphData().nodes as Array<
-			GraphNode & { x?: number; y?: number; z?: number }
-		>) {
-			liveNodesById.set(n.id, n);
-		}
+		for (const n of liveNodes) liveNodesById.set(n.id, n);
 
 		let pulseUntil = 0;
 		function triggerClickPulse() {
@@ -324,6 +390,7 @@
 			let bestId: string | null = null;
 			let bestZ = Infinity;
 			for (const n of liveNodes) {
+				if (n.isCategory) continue; // categories aren't selectable
 				if (n.x === undefined) continue;
 				ndcCenter.set(n.x, n.y ?? 0, n.z ?? 0);
 				ndcCenter.project(camera);
@@ -447,9 +514,6 @@
 			}
 		}
 
-		const liveNodes = graph.graphData().nodes as Array<
-			GraphNode & { x?: number; y?: number; z?: number }
-		>;
 		let candidateGuid: string | null = null;
 		let candidateSince = 0;
 		const forwardVec = new THREE.Vector3();
@@ -476,6 +540,7 @@
 			let bestId: string | null = null;
 			let bestD2 = Infinity;
 			for (const n of liveNodes) {
+				if (n.isCategory) continue; // categories aren't selectable
 				if (n.x === undefined) continue;
 				tmpPoint.set(n.x, n.y ?? 0, n.z ?? 0);
 				if (!frustum.containsPoint(tmpPoint)) continue;
@@ -609,6 +674,16 @@
 		selectionMode = 'aim';
 	}
 
+	// Rebuild the graph when the category toggle flips. `rebuildGraphData`
+	// is assigned inside init() after the graph is live; an earlier firing
+	// of this effect (before init finishes) is a no-op. The initial build
+	// reads the current `includeCategories` value directly, so flipping
+	// before init is also safe.
+	$effect(() => {
+		includeCategories; // track reactive dep
+		rebuildGraphData?.();
+	});
+
 	// Keep the WebGL canvas sized to its container.
 	$effect(() => {
 		if (!fg || !container) return;
@@ -674,6 +749,13 @@
 				min="50"
 				step="50"
 			/>
+		</label>
+		<label
+			class="category-toggle"
+			title="노트북(카테고리)을 별도 노드로 추가하고, 해당 노트북에 속한 노트들과 연결. 카테고리 노드는 노트 선택 대상에서 제외."
+		>
+			<input type="checkbox" bind:checked={includeCategories} />
+			카테고리 표시
 		</label>
 		{#if !autoSelect}
 			<button
@@ -842,6 +924,25 @@
 	.lod-input input:focus {
 		outline: none;
 		border-color: #5a9;
+	}
+
+	.category-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 4px 8px;
+		border-radius: 4px;
+		border: 1px solid #2a3040;
+		background: rgba(20, 24, 34, 0.75);
+		color: #cfd8e3;
+		font-size: 0.78rem;
+		cursor: pointer;
+		user-select: none;
+	}
+
+	.category-toggle input {
+		accent-color: #4fd1c5;
+		cursor: pointer;
 	}
 
 	/* Push the auto-select "re-arm" chip to the right edge when shown. */
