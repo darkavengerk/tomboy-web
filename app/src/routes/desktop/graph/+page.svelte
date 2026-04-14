@@ -175,8 +175,9 @@
 		// Click handlers go on AFTER fps exists so onBackgroundClick can lock.
 		graph
 			.onNodeClick((raw) => {
-				// While pointer-locked, mouse coords are frozen and node
-				// picking is meaningless — ignore and let the user ESC first.
+				// While pointer-locked, mouse coords are frozen so
+				// 3d-force-graph's raycast is meaningless. Our own
+				// reticle-based click handler (below) covers that case.
 				if (fps.locked) return;
 				const node = raw as GraphNode;
 				autoSelect = true;
@@ -189,6 +190,24 @@
 				fps.lock();
 			});
 
+		// Reticle-click handler: in locked mode, clicking commits whatever
+		// node the crosshair is aimed at, bypassing the 350ms auto-select
+		// debounce. The selection then naturally sticks for as long as the
+		// aim stays on that node (normal auto-select behaviour), and reverts
+		// to the next candidate once you turn away. Does nothing when
+		// unlocked — the graph's own onNodeClick / onBackgroundClick handle
+		// that case.
+		const canvasEl = renderer.domElement;
+		const handleCanvasClick = () => {
+			if (!fps.locked) return;
+			const id = findAimedNode();
+			if (id) {
+				autoSelect = true;
+				selectedGuid = id;
+			}
+		};
+		canvasEl.addEventListener('click', handleCanvasClick);
+
 		const liveNodes = graph.graphData().nodes as Array<
 			GraphNode & { x?: number; y?: number; z?: number }
 		>;
@@ -199,18 +218,17 @@
 		const projMatrix = new THREE.Matrix4();
 		const tmpPoint = new THREE.Vector3();
 
-		function updateNearest(now: number) {
-			if (!autoSelect) return;
-			// Recompute the camera's view frustum — only nodes currently on
-			// screen (not behind you, not off to the side) are eligible.
-			// That's how we exclude notes you've already flown past.
+		/**
+		 * Find the on-screen node closest to the aim point (40 units along
+		 * the camera's forward direction). Returns null when the frustum
+		 * is empty, which is how we skip selection while the user is
+		 * staring into empty space.
+		 */
+		function findAimedNode(): string | null {
 			camera.updateMatrixWorld();
 			projMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
 			frustum.setFromProjectionMatrix(projMatrix);
 
-			// Aim-point (40 units ahead along view) acts as the distance
-			// reference among on-screen candidates, so "the note you're
-			// looking toward" wins over something just barely in view.
 			camera.getWorldDirection(forwardVec);
 			const ax = camera.position.x + forwardVec.x * AIM_OFFSET;
 			const ay = camera.position.y + forwardVec.y * AIM_OFFSET;
@@ -231,6 +249,12 @@
 					bestId = n.id;
 				}
 			}
+			return bestId;
+		}
+
+		function updateNearest(now: number) {
+			if (!autoSelect) return;
+			const bestId = findAimedNode();
 			if (bestId === null) return; // nothing on screen — keep current.
 			if (bestId !== candidateGuid) {
 				candidateGuid = bestId;
@@ -279,6 +303,7 @@
 		return () => {
 			cancelAnimationFrame(rafId);
 			window.removeEventListener('wheel', wheelForwarder, { capture: true });
+			canvasEl.removeEventListener('click', handleCanvasClick);
 			fps.dispose();
 			graph._destructor();
 		};
