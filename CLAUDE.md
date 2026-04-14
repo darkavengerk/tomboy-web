@@ -346,6 +346,30 @@ landings. On the first engine stop the camera auto-positions 220 units
 behind the midpoint of home + sleep; it never auto-recenters again, so
 dragging a node doesn't yank the camera back.
 
+### Label LOD
+
+Title sprites are toggled per-frame based on camera distance, banded by
+node size into five tiers. Bigger nodes' labels stay legible from further
+out; least-connected notes only show their title when you're nearby. A
+single `labelEntries` array gets populated in `nodeThreeObject`; the RAF
+loop walks it once per frame and flips `label.visible`. Tier-5 labels
+(size ≥ 1.8, the hub nodes) skip the array entirely since they're always
+on.
+
+Thresholds (world units, squared in the hot path):
+
+| Tier | `size` | Distance |
+|------|--------|----------|
+| 5    | ≥ 1.8  | ∞ (always) |
+| 4    | ≥ 1.6  | 320 |
+| 3    | ≥ 1.4  | 160 |
+| 2    | ≥ 1.2  | 80 |
+| 1    | < 1.2  | 40 |
+
+Labels keep a translucent black background (`rgba(0,0,0,0.45)`) with 1px
+padding — without it overlapping titles in dense clusters become
+unreadable.
+
 ### Controls: WASD-only, pointer-lock
 
 3d-force-graph's built-in navigation is fully disabled

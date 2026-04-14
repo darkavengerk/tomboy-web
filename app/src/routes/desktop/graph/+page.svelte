@@ -99,6 +99,24 @@
 			backlinksByGuid.set(l.target, arr);
 		}
 
+		// Distance-LOD for node titles: bigger (more-linked) nodes' labels
+		// stay legible from farther away, small fry only show up when you
+		// fly close. Keeps the view readable at graph-wide zoom.
+		// Thresholds roughly double per tier.
+		type LabelEntry = {
+			node: GraphNode & { x?: number; y?: number; z?: number };
+			label: { visible: boolean };
+			thresholdSq: number;
+		};
+		const labelEntries: LabelEntry[] = [];
+		function distanceThresholdForSize(size: number): number {
+			if (size >= 1.8) return Infinity; // tier 5: always visible
+			if (size >= 1.6) return 320; // tier 4
+			if (size >= 1.4) return 160; // tier 3
+			if (size >= 1.2) return 80; // tier 2
+			return 40; // tier 1: only when close
+		}
+
 		// 3) Instantiate the graph. We disable the built-in navigation
 		//    controls entirely — the only supported interaction is our
 		//    pointer-lock FPS mode. Clicking the background requests the
@@ -134,10 +152,25 @@
 				const label = new SpriteText(node.title);
 				label.color = '#ffffff';
 				label.textHeight = 4 * node.size;
-				label.backgroundColor = false;
-				label.padding = 0;
+				label.backgroundColor = 'rgba(0,0,0,0.45)';
+				label.padding = 1;
 				label.position.set(0, radius + 2 + label.textHeight / 2, 0);
 				group.add(label);
+
+				// Register for distance-based LOD. Tier 5 (hubs) stay on
+				// permanently; others start hidden and get toggled per frame
+				// by updateLabelVisibility().
+				const threshold = distanceThresholdForSize(node.size);
+				if (threshold === Infinity) {
+					label.visible = true;
+				} else {
+					label.visible = false;
+					labelEntries.push({
+						node: node as GraphNode & { x?: number; y?: number; z?: number },
+						label,
+						thresholdSq: threshold * threshold
+					});
+				}
 				return group;
 			})
 			.nodeThreeObjectExtend(false)
@@ -367,6 +400,25 @@
 			halo.rotateZ(0.008);
 		}
 
+		function updateLabelVisibility() {
+			const cx = camera.position.x;
+			const cy = camera.position.y;
+			const cz = camera.position.z;
+			for (let i = 0; i < labelEntries.length; i++) {
+				const entry = labelEntries[i];
+				const n = entry.node;
+				if (n.x === undefined) continue;
+				const dx = cx - n.x;
+				const dy = cy - (n.y ?? 0);
+				const dz = cz - (n.z ?? 0);
+				const d2 = dx * dx + dy * dy + dz * dz;
+				const shouldShow = d2 < entry.thresholdSq;
+				if (entry.label.visible !== shouldShow) {
+					entry.label.visible = shouldShow;
+				}
+			}
+		}
+
 		function updateHoverHalo() {
 			const id = findCenterNode();
 			// Don't double-ring the selected node — the brighter selected
@@ -469,6 +521,7 @@
 			maybePulseOnSelectionChange();
 			updateHalo(t);
 			updateHoverHalo();
+			updateLabelVisibility();
 			rafId = requestAnimationFrame(loop);
 		};
 		rafId = requestAnimationFrame(loop);
