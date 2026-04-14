@@ -13,6 +13,12 @@
 	// to avoid thrashing the TipTap editor while flying through a crowd.
 	const SWITCH_DEBOUNCE_MS = 350;
 
+	// "Aim point" offset: distance calculations use a point this far ahead of
+	// the camera instead of the camera itself, so notes you're *looking at*
+	// win over notes immediately beside/behind you. Gives the spacefarer
+	// feeling of approaching whatever is in your sights.
+	const AIM_OFFSET = 40;
+
 	let container: HTMLDivElement;
 	let loading = $state(true);
 	let progress = $state({ done: 0, total: 0 });
@@ -175,19 +181,24 @@
 		>;
 		let candidateGuid: string | null = null;
 		let candidateSince = 0;
+		const forwardVec = new THREE.Vector3();
 
 		function updateNearest(now: number) {
 			if (!autoSelect) return;
+			// Aim-point = camera position shifted forward along the look
+			// direction. Notes in front of you get shorter distances than
+			// notes beside/behind, so the selection tracks your gaze.
+			camera.getWorldDirection(forwardVec);
+			const ax = camera.position.x + forwardVec.x * AIM_OFFSET;
+			const ay = camera.position.y + forwardVec.y * AIM_OFFSET;
+			const az = camera.position.z + forwardVec.z * AIM_OFFSET;
 			let bestId: string | null = null;
 			let bestD2 = Infinity;
-			const cx = camera.position.x;
-			const cy = camera.position.y;
-			const cz = camera.position.z;
 			for (const n of liveNodes) {
 				if (n.x === undefined) continue;
-				const dx = cx - n.x;
-				const dy = cy - (n.y ?? 0);
-				const dz = cz - (n.z ?? 0);
+				const dx = ax - n.x;
+				const dy = ay - (n.y ?? 0);
+				const dz = az - (n.z ?? 0);
 				const d2 = dx * dx + dy * dy + dz * dz;
 				if (d2 < bestD2) {
 					bestD2 = d2;
@@ -376,8 +387,33 @@
 		<div class="hint">크기·색상 = 링크 수 (로그 스케일)</div>
 	</div>
 
+	<!-- Spacefarer HUD: central reticle marks the aim point used for the
+	     nearest-note calculation; bottom silhouette suggests a ship's bow
+	     for an exploration vibe. Always visible; purely decorative. -->
+	<div class="hud" aria-hidden="true">
+		<svg class="reticle" viewBox="-20 -20 40 40">
+			<circle cx="0" cy="0" r="7" />
+			<circle cx="0" cy="0" r="1.2" />
+			<line x1="-16" y1="0" x2="-10" y2="0" />
+			<line x1="10" y1="0" x2="16" y2="0" />
+			<line x1="0" y1="-16" x2="0" y2="-10" />
+			<line x1="0" y1="10" x2="0" y2="16" />
+		</svg>
+		<svg class="ship" viewBox="-80 -40 160 56">
+			<!-- Top-down ship silhouette, nose pointing up toward screen center.
+			     Translucent so the graph stays readable underneath. -->
+			<path
+				class="ship-body"
+				d="M 0 -35 L 14 -12 L 32 -2 L 60 6 L 40 12 L 14 12 L 6 4 L -6 4 L -14 12 L -40 12 L -60 6 L -32 -2 L -14 -12 Z"
+			/>
+			<path class="ship-cockpit" d="M -6 -14 L 6 -14 L 4 -4 L -4 -4 Z" />
+			<line class="ship-vent" x1="-22" y1="12" x2="-22" y2="16" />
+			<line class="ship-vent" x1="0" y1="12" x2="0" y2="16" />
+			<line class="ship-vent" x1="22" y1="12" x2="22" y2="16" />
+		</svg>
+	</div>
+
 	{#if fpsLocked}
-		<div class="crosshair" aria-hidden="true"></div>
 		<div class="fps-hint">WASD: 이동 · Space/C: 상/하 · Shift: 빠르게 · ESC: 해제</div>
 	{/if}
 
@@ -618,19 +654,57 @@
 		transition: width 100ms linear;
 	}
 
-	.crosshair {
+	/* Heads-up display overlay — pointer-events: none so it never eats
+	   canvas clicks. Two fixed children: a centered reticle marking the
+	   aim point, and a bottom-center ship silhouette. */
+	.hud {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		z-index: 15;
+	}
+
+	.reticle {
 		position: absolute;
 		top: 50%;
 		left: 50%;
-		width: 8px;
-		height: 8px;
-		margin: -4px 0 0 -4px;
-		border: 2px solid #e6edf3;
-		border-radius: 50%;
-		background: transparent;
-		pointer-events: none;
-		z-index: 15;
-		mix-blend-mode: difference;
+		width: 40px;
+		height: 40px;
+		transform: translate(-50%, -50%);
+		stroke: rgba(230, 237, 243, 0.55);
+		stroke-width: 1.2;
+		fill: none;
+		mix-blend-mode: screen;
+	}
+
+	.reticle circle:nth-child(2) {
+		fill: rgba(230, 237, 243, 0.75);
+		stroke: none;
+	}
+
+	.ship {
+		position: absolute;
+		bottom: 8px;
+		left: 50%;
+		width: 320px;
+		height: 112px;
+		transform: translateX(-50%);
+		stroke: rgba(90, 179, 120, 0.65);
+		stroke-width: 1.2;
+		stroke-linejoin: round;
+		stroke-linecap: round;
+		fill: rgba(90, 179, 120, 0.08);
+		filter: drop-shadow(0 0 6px rgba(90, 179, 120, 0.25));
+	}
+
+	.ship .ship-cockpit {
+		fill: rgba(120, 200, 255, 0.25);
+		stroke: rgba(120, 200, 255, 0.7);
+	}
+
+	.ship .ship-vent {
+		stroke: rgba(255, 180, 100, 0.8);
+		stroke-width: 2;
 	}
 
 	.fps-hint {
