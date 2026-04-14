@@ -136,6 +136,15 @@
 			{/each}
 		</div>
 
+		<a
+			class="rail-settings rail-graph"
+			href="/desktop/graph"
+			target="_blank"
+			rel="noopener"
+			title="노트 그래프 (새 탭)"
+			aria-label="노트 그래프"
+		>그래프</a>
+
 		<button
 			type="button"
 			class="rail-settings"
@@ -445,5 +454,18 @@
 	.rail-settings:hover {
 		background: #232323;
 		color: #fff;
+	}
+
+	/* Anchor variant for the graph link — mirrors rail-settings styling so
+	   it stacks identically above the settings button. margin-top: auto on
+	   rail-settings would push this one down too; we reset it here. */
+	.rail-graph {
+		display: block;
+		text-decoration: none;
+		margin-top: auto;
+	}
+
+	.rail-graph + .rail-settings {
+		margin-top: 0;
 	}
 </style>
