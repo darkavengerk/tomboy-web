@@ -178,8 +178,7 @@
 			.nodeRelSize(4)
 			.nodeLabel((n) => (n as GraphNode).title)
 			.linkColor(() => 'rgba(140, 180, 220, 0.35)')
-			.linkDirectionalArrowLength(2)
-			.linkDirectionalArrowRelPos(0.9)
+			.linkDirectionalArrowLength(0)
 			.linkWidth(0.3)
 			.linkOpacity(0.6)
 			.cooldownTicks(200)
@@ -403,20 +402,27 @@
 
 		// Scratch vectors reused across frames for projection math.
 		const ndcCenter = new THREE.Vector3();
-		const ndcEdge = new THREE.Vector3();
 
 		/**
-		 * Precise "what's at the reticle" lookup: projects every live node to
-		 * screen space (NDC) and picks whichever one's projected sphere
-		 * actually covers the center of the screen. Distance-agnostic — the
-		 * node you can see directly at the crosshair wins, regardless of
-		 * whether something else is closer in 3D. Returns null if the reticle
-		 * isn't over any node.
+		 * "What's near the reticle" lookup: any node whose projected
+		 * screen position is within CENTER_PICK_RADIUS_PX of the crosshair
+		 * counts as a candidate. Among candidates, we pick the one closest
+		 * to the center in screen-space (not depth) so small nodes in the
+		 * distance aren't lost to larger ones off to the side. A strict
+		 * "reticle-inside-sphere" test made far-away tiny nodes almost
+		 * impossible to target.
 		 */
+		const CENTER_PICK_RADIUS_PX = 50;
 		function findCenterNode(): string | null {
 			camera.updateMatrixWorld();
+			const w = graph.width();
+			const h = graph.height();
+			const halfW = w / 2;
+			const halfH = h / 2;
+			const threshSq = CENTER_PICK_RADIUS_PX * CENTER_PICK_RADIUS_PX;
+
 			let bestId: string | null = null;
-			let bestZ = Infinity;
+			let bestDistSq = Infinity;
 			for (const n of liveNodes) {
 				if (n.isCategory) continue; // categories aren't selectable
 				if (n.x === undefined) continue;
@@ -424,22 +430,12 @@
 				ndcCenter.project(camera);
 				// z outside [-1, 1] = behind camera or past far plane.
 				if (ndcCenter.z < -1 || ndcCenter.z > 1) continue;
-				// Cheap rejection: well outside the screen.
-				if (Math.abs(ndcCenter.x) > 1.2 || Math.abs(ndcCenter.y) > 1.2) continue;
-				// Project a point on the node's surface to measure its
-				// apparent screen radius.
-				const worldR = 3 * n.size;
-				ndcEdge.set(n.x + worldR, n.y ?? 0, n.z ?? 0);
-				ndcEdge.project(camera);
-				const screenR = Math.hypot(
-					ndcEdge.x - ndcCenter.x,
-					ndcEdge.y - ndcCenter.y
-				);
-				const dFromCenter = Math.hypot(ndcCenter.x, ndcCenter.y);
-				if (dFromCenter <= screenR && ndcCenter.z < bestZ) {
-					// Overlaps the reticle; break depth ties toward the
-					// closest (smallest z in NDC = nearest camera).
-					bestZ = ndcCenter.z;
+				// NDC → pixel distance from screen center (reticle = 0,0).
+				const px = ndcCenter.x * halfW;
+				const py = ndcCenter.y * halfH;
+				const dSq = px * px + py * py;
+				if (dSq <= threshSq && dSq < bestDistSq) {
+					bestDistSq = dSq;
 					bestId = n.id;
 				}
 			}

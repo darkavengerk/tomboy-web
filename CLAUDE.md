@@ -509,11 +509,13 @@ ticker a few hundred ms later.
   frustum node to the "aim point" (camera + forward × 40). Something is
   (almost) always selected as you fly, which suits free exploration.
 
-- **`center` mode** — `findCenterNode()` projects every live node to NDC
-  and returns whichever one's projected sphere *actually covers the
-  reticle* (ties broken by depth). Distance-agnostic — the note you see
-  directly at the crosshair wins, regardless of whether something else is
-  closer in 3D. If the reticle is on empty space, the picker returns
+- **`center` mode** — `findCenterNode()` projects every live node to NDC,
+  converts to pixel offset from the reticle, and returns whichever one
+  is within `CENTER_PICK_RADIUS_PX` (50px) of the crosshair. Ties broken
+  by screen-space distance (not depth), so a tiny far-away node wins
+  over a larger one off to the side. A strict "reticle-inside-sphere"
+  test used to lose faraway nodes entirely; the 50px halo keeps them
+  pickable. If the reticle is over empty space, the picker returns
   `null` and auto-select keeps the current selection (no blanking).
 
 Flips:
