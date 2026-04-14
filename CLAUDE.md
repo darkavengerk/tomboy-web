@@ -348,30 +348,29 @@ dragging a node doesn't yank the camera back.
 
 ### Label LOD
 
-Title sprites are toggled per-frame based on camera distance, banded by
-node size into five tiers. Bigger nodes' labels stay legible from further
-out; least-connected notes only show their title when you're nearby.
+Title sprites are driven by camera distance with a fade band, split into
+just two buckets by node size:
 
-A single `labelEntries` array is populated in `nodeThreeObject`. Each
-entry stores a **tier multiplier** (1–4, squared for the hot path), *not*
-an absolute threshold — the actual distance is `labelBaseDistance × mult`
-and is reapplied every frame, so the top-bar input tunes the whole graph
-live without rebuilding anything. Tier-5 labels (size ≥ 1.8, the hub
-nodes) skip the array entirely — they're always on.
+- **Hub nodes** (`size ≥ 1.8`) — always visible, full opacity. Skip
+  `labelEntries` entirely; `label.visible` is set once in
+  `nodeThreeObject` and never touched again.
+- **Everyone else** — distance fade around `labelBaseDistance`:
 
-Tiers and multipliers (default base distance = 200):
+  | Range                            | Opacity |
+  |----------------------------------|---------|
+  | `d ≤ base`                       | 1 (fully visible) |
+  | `base < d < 2 × base`            | linear fade 1 → 0 |
+  | `d ≥ 2 × base`                   | hidden (`visible = false`) |
 
-| Tier | `size`  | Multiplier | Default distance |
-|------|---------|------------|------------------|
-| 5    | ≥ 1.8   | —          | ∞ (always) |
-| 4    | ≥ 1.6   | 4×         | 800 |
-| 3    | ≥ 1.4   | 3×         | 600 |
-| 2    | ≥ 1.2   | 2×         | 400 |
-| 1    | < 1.2   | 1×         | 200 |
+  Non-hub labels are created with `material.transparent = true` so the
+  interpolated opacity blends; `updateLabelVisibility()` reads the
+  current `labelBaseDistance` each RAF tick, so the top-bar input tunes
+  the whole graph live with no rebuild. Squared distance is used for
+  the cheap in/out checks; `Math.sqrt` is only called inside the fade
+  band.
 
-The base is a Svelte 5 `$state` (default `200`) exposed as a number input
-(`.lod-input`) in the top bar. No `$effect` is needed — `updateLabelVisibility()`
-reads the current value each RAF tick.
+The base is a Svelte 5 `$state` (default `400`, min 50, step 50) exposed
+as a number input (`.lod-input`) in the top bar.
 
 Labels keep a translucent black background (`rgba(0,0,0,0.45)`) with 1px
 padding — without it overlapping titles in dense clusters become
