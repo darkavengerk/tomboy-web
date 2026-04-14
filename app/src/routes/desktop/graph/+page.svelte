@@ -219,8 +219,31 @@
 
 		enterFpsMode = () => fps.lock();
 
+		// 6) Forward wheel events to the embedded note's scroll container so
+		// the user can scroll through the note content without having to
+		// precisely hover the panel. Capture-phase listener preempts the
+		// graph's built-in zoom, which is fine since the graph page itself
+		// has nothing else to scroll.
+		const wheelForwarder = (e: WheelEvent) => {
+			if (!selectedGuid) return;
+			const panel = document.querySelector('.side-panel');
+			if (!panel) return;
+			// If the cursor is already inside the panel, let native bubbling
+			// handle scrolling normally.
+			if (panel.contains(e.target as Node)) return;
+			const scrollTarget = panel.querySelector('.tomboy-editor') as HTMLElement | null;
+			if (!scrollTarget) return;
+			e.preventDefault();
+			e.stopPropagation();
+			// Treat non-pixel delta modes (line=1, page=2) as line heights.
+			const factor = e.deltaMode === 1 ? 18 : e.deltaMode === 2 ? scrollTarget.clientHeight : 1;
+			scrollTarget.scrollBy({ top: e.deltaY * factor });
+		};
+		window.addEventListener('wheel', wheelForwarder, { capture: true, passive: false });
+
 		return () => {
 			cancelAnimationFrame(rafId);
+			window.removeEventListener('wheel', wheelForwarder, { capture: true });
 			fps.dispose();
 			graph._destructor();
 		};
@@ -360,21 +383,6 @@
 
 	{#if selectedNode}
 		<aside class="side-panel" aria-label="노트 보기">
-			<div class="panel-badge">
-				{#if autoSelect}
-					<span class="dot-auto" aria-hidden="true"></span> 가장 가까운 노트
-				{:else}
-					선택한 노트
-				{/if}
-				<button
-					type="button"
-					class="close"
-					onclick={closePanel}
-					aria-label="패널 닫기"
-					title="패널 닫기 (자동 선택 끄기)"
-				>×</button>
-			</div>
-
 			<div class="note-host">
 				{#key selectedNode.id}
 					<NoteWindow
@@ -640,62 +648,22 @@
 		pointer-events: none;
 	}
 
-	/* Side panel — holds the embedded NoteWindow plus an auto-select badge
-	   and an optional backlinks footer. Width is a bit wider than the plain-
-	   text preview was, since the TipTap editor needs elbow room. */
+	/* Side panel — holds the embedded NoteWindow and an optional backlinks
+	   footer. Height is capped to roughly half the viewport so the graph
+	   stays visible; the editor itself scrolls internally. NoteWindow's own
+	   title-bar close button drives our closePanel handler. */
 	.side-panel {
 		position: absolute;
 		top: 60px;
 		right: 12px;
-		bottom: 12px;
 		width: 420px;
 		max-width: calc(100vw - 24px);
+		max-height: calc(100vh - 72px);
+		height: 50vh;
 		display: flex;
 		flex-direction: column;
 		gap: 6px;
 		z-index: 10;
-	}
-
-	.panel-badge {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 6px 10px;
-		background: rgba(20, 24, 34, 0.85);
-		border: 1px solid #2a3040;
-		border-radius: 4px;
-		font-size: 0.78rem;
-		color: #cfd8e3;
-	}
-
-	.dot-auto {
-		display: inline-block;
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		background: #5ab378;
-		box-shadow: 0 0 6px #5ab378;
-		animation: pulse 1.4s ease-in-out infinite;
-	}
-
-	@keyframes pulse {
-		0%, 100% { opacity: 0.6; }
-		50% { opacity: 1; }
-	}
-
-	.close {
-		margin-left: auto;
-		background: transparent;
-		border: none;
-		color: #8a94a6;
-		font-size: 1.2rem;
-		line-height: 1;
-		cursor: pointer;
-		padding: 0 4px;
-	}
-
-	.close:hover {
-		color: #e6edf3;
 	}
 
 	/* Host for the embedded NoteWindow. NoteWindow uses position: absolute
