@@ -423,7 +423,7 @@ unreadable.
 ### Live-tunable force simulation
 
 A second top-bar number input, "노드 간격" (`bind:value={nodeSpacing}`,
-default `50`, min 5, step 5), exposes d3-force's many-body charge
+default `500`, min 5, step 5), exposes d3-force's many-body charge
 strength (applied as `-nodeSpacing`). Raising it pushes nodes further
 apart — looser, lower-density cloud; lowering it tightens the cluster.
 A `$effect` calls `applyNodeSpacing(fg, nodeSpacing)` whenever the input
@@ -432,12 +432,17 @@ wraps `graph.d3ReheatSimulation()` in a try/catch — the internal
 `three-forcegraph` layout isn't always ready on first call, but the new
 strength still takes effect on the next tick.
 
+A third input, "이동 속도" (`bind:value={moveSpeed}`, default `240`, min
+20, step 20), writes directly to `fpsRef.speed`. The spacious default
+layout (500 spacing) would feel glacial at the old 120 baseline, so the
+speed default is doubled to match. The FpsControls update loop reads
+`this.speed` per frame, so the change is live.
+
 ### Link visibility (selective)
 
 A top-bar checkbox "링크 표시" (`bind:checked={showLinks}`) flips link
-rendering. Default **off** — the node cloud alone reads more clearly.
-When on, links render **selectively** rather than all-or-nothing: only
-edges satisfying at least one of these criteria are drawn:
+rendering. Default **on** but **selective** — rather than drawing every
+edge, only links satisfying at least one of these criteria render:
 
 1. An endpoint node is a hub (size ≥ 1.6)
 2. An endpoint node is the currently selected note

@@ -46,13 +46,19 @@
 
 	// d3-force charge strength magnitude (applied as -value). Larger values
 	// push nodes further apart → looser cloud; smaller values tighten the
-	// cluster. Default 50 gives a visibly less cramped layout than
-	// 3d-force-graph's -30 default.
-	let nodeSpacing = $state(50);
+	// cluster. 500 gives a spacious "room to explore" feel that pairs with
+	// a higher movement speed.
+	let nodeSpacing = $state(500);
 
-	// Link visibility toggle. Default off — the node cloud on its own tends
-	// to read more clearly; turn links on when you need to trace structure.
-	let showLinks = $state(false);
+	// Link visibility toggle. Default on — when on, links render
+	// selectively (hub / selected / hovered endpoints only), which keeps
+	// even the spread-out default layout readable.
+	let showLinks = $state(true);
+
+	// Camera travel speed in world units per second at normal (non-shift)
+	// pace. Default 240 roughly doubles the 120 baseline that used to pair
+	// with a tighter cloud. Exposed so users can tune to their layout.
+	let moveSpeed = $state(240);
 
 	// Selection strategy for the debounced auto-select:
 	//   - 'aim'    : nearest-in-frustum to the aim point (camera + forward*40)
@@ -75,6 +81,10 @@
 	// Assigned inside init(); exposed so the $effect watching
 	// `includeCategories` can request a live graph rebuild.
 	let rebuildGraphData: (() => void) | null = null;
+
+	// Assigned inside init(); the moveSpeed $effect mutates `fps.speed`
+	// live so the slider tunes camera travel without rebuilding.
+	let fpsRef: FpsControls | null = null;
 
 	onMount(() => {
 		let cleanup: (() => void) | null = null;
@@ -253,6 +263,8 @@
 		const camera = graph.camera();
 		const renderer = graph.renderer();
 		const fps = new FpsControls(camera, renderer.domElement);
+		fps.speed = moveSpeed;
+		fpsRef = fps;
 		fps.onLockChange = (locked) => {
 			fpsLocked = locked;
 		};
@@ -696,6 +708,7 @@
 			hoverHalo.geometry.dispose();
 			(hoverHalo.material as { dispose: () => void }).dispose();
 			fps.dispose();
+			fpsRef = null;
 			graph._destructor();
 		};
 	}
@@ -794,6 +807,14 @@
 		applyNodeSpacing(fg, s);
 	});
 
+	// Mutate the live FpsControls instance when the speed slider moves —
+	// the RAF loop reads `fps.speed` per frame so the change takes effect
+	// immediately on the next tick.
+	$effect(() => {
+		const v = moveSpeed;
+		if (fpsRef) fpsRef.speed = v;
+	});
+
 	// Link visibility is driven per-link inside the RAF loop
 	// (see updateLinkVisibility in init()) rather than via the global
 	// `linkOpacity` accessor, so we can honor dynamic criteria
@@ -876,6 +897,18 @@
 				bind:value={nodeSpacing}
 				min="5"
 				step="5"
+			/>
+		</label>
+		<label
+			class="lod-input"
+			title="WASD 이동 속도 (초당 월드 유닛). Shift 키로 3배 부스트."
+		>
+			이동 속도
+			<input
+				type="number"
+				bind:value={moveSpeed}
+				min="20"
+				step="20"
 			/>
 		</label>
 		<label
