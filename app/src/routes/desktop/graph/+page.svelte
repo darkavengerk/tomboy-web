@@ -44,6 +44,12 @@
 	// Categories are excluded from selection (no body to display).
 	let includeCategories = $state(false);
 
+	// d3-force charge strength magnitude (applied as -value). Larger values
+	// push nodes further apart → looser cloud; smaller values tighten the
+	// cluster. 3d-force-graph's default is 30, which we match so the initial
+	// look is identical to the unconfigured library default.
+	let nodeSpacing = $state(30);
+
 	// Selection strategy for the debounced auto-select:
 	//   - 'aim'    : nearest-in-frustum to the aim point (camera + forward*40)
 	//   - 'center' : whichever node actually overlaps the reticle
@@ -230,6 +236,12 @@
 			.graphData(graphData);
 
 		fg = graph;
+
+		// Apply the initial charge strength (node-spacing input controls it
+		// live via a separate $effect below). 3d-force-graph's default is
+		// already -30 so setting the same value is a no-op, but we do it
+		// unconditionally to stay consistent if we ever change the default.
+		applyNodeSpacing(graph, nodeSpacing);
 
 		loading = false;
 
@@ -626,6 +638,20 @@
 		};
 	}
 
+	/**
+	 * Apply node-spacing (charge-force magnitude) to a graph instance and
+	 * reheat the simulation so the change settles into a new layout. Safe
+	 * to call before and after `graphData()` has been set.
+	 */
+	function applyNodeSpacing(graph: ForceGraph3DInstance, magnitude: number) {
+		const charge = graph.d3Force('charge') as
+			| { strength: (v: number) => unknown }
+			| undefined;
+		if (!charge) return;
+		charge.strength(-magnitude);
+		(graph as unknown as { d3ReheatSimulation: () => void }).d3ReheatSimulation();
+	}
+
 	/** Yellow → red HSL gradient driven by node.size (log of degree). */
 	function degreeColor(size: number): string {
 		const t = Math.max(0, Math.min(1, size - 1));
@@ -682,6 +708,15 @@
 	$effect(() => {
 		includeCategories; // track reactive dep
 		rebuildGraphData?.();
+	});
+
+	// Re-apply the charge-force magnitude whenever the spacing input
+	// changes. `d3ReheatSimulation()` inside the helper wakes the force
+	// simulation so the cloud visibly re-lays-out.
+	$effect(() => {
+		const s = nodeSpacing;
+		if (!fg) return;
+		applyNodeSpacing(fg, s);
 	});
 
 	// Keep the WebGL canvas sized to its container.
@@ -748,6 +783,18 @@
 				bind:value={labelBaseDistance}
 				min="50"
 				step="50"
+			/>
+		</label>
+		<label
+			class="lod-input"
+			title="노드 간 반발력. 값이 클수록 노드들이 더 넓게 퍼지고, 작을수록 빽빽하게 뭉칩니다. 변경 시 물리 시뮬레이션이 재시작됩니다."
+		>
+			노드 간격
+			<input
+				type="number"
+				bind:value={nodeSpacing}
+				min="5"
+				step="5"
 			/>
 		</label>
 		<label
