@@ -31,11 +31,13 @@
 	let selectedGuid = $state<string | null>(null);
 	let autoSelect = $state(true);
 
-	// Base distance (world units) for the label LOD. Tier 1 = base,
-	// tier 2 = 2×, tier 3 = 3×, tier 4 = 4×, tier 5 always. Exposed as
-	// an input in the top bar so users can pull labels in or spread them
-	// out to taste.
-	let labelBaseDistance = $state(200);
+	// Base distance (world units) for the label visibility.
+	//   distance ≤ base          → fully opaque
+	//   base < distance < 2×base → linear fade
+	//   distance ≥ 2×base        → hidden
+	// Tier-4 hub nodes (size ≥ 1.8) ignore this and stay always on.
+	// Exposed as a number input in the top bar so users can tune it live.
+	let labelBaseDistance = $state(400);
 
 	// Selection strategy for the debounced auto-select:
 	//   - 'aim'    : nearest-in-frustum to the aim point (camera + forward*40)
@@ -105,24 +107,21 @@
 			backlinksByGuid.set(l.target, arr);
 		}
 
-		// Distance-LOD for node titles: bigger (more-linked) nodes' labels
-		// stay legible from farther away, small fry only show up when you
-		// fly close. Each entry stores a tier *multiplier* (1–4); the actual
-		// distance threshold is `labelBaseDistance × mult`, recomputed each
-		// frame so the input in the top bar tunes the whole graph live.
-		// Tier 5 (hubs) skip the array entirely — they're always on.
+		// Distance-LOD for node titles. Four buckets by node size:
+		//   tier 4 (size ≥ 1.8, hubs): always on, full opacity
+		//   tiers 1-3                : distance-only fade (see updateLabelVisibility)
+		// Tier 4 labels skip the `labelEntries` array entirely — they're set
+		// visible once and never touched.
 		type LabelEntry = {
 			node: GraphNode & { x?: number; y?: number; z?: number };
-			label: { visible: boolean };
-			tierMultSq: number;
+			label: {
+				visible: boolean;
+				material: { opacity: number; transparent: boolean };
+			};
 		};
 		const labelEntries: LabelEntry[] = [];
-		function tierMultForSize(size: number): number | null {
-			if (size >= 1.8) return null; // tier 5: always visible
-			if (size >= 1.6) return 4;    // tier 4
-			if (size >= 1.4) return 3;    // tier 3
-			if (size >= 1.2) return 2;    // tier 2
-			return 1;                     // tier 1
+		function isHubLabel(size: number): boolean {
+			return size >= 1.8;
 		}
 
 		// 3) Instantiate the graph. We disable the built-in navigation
@@ -165,18 +164,19 @@
 				label.position.set(0, radius + 2 + label.textHeight / 2, 0);
 				group.add(label);
 
-				// Register for distance-based LOD. Tier 5 (hubs) stay on
-				// permanently; others start hidden and get toggled per frame
-				// by updateLabelVisibility().
-				const tierMult = tierMultForSize(node.size);
-				if (tierMult === null) {
+				// Register for distance-based LOD. Hubs (tier 4) stay on
+				// permanently; others need `transparent: true` so we can
+				// fade them, and start hidden — the first RAF tick toggles
+				// them based on the camera distance.
+				if (isHubLabel(node.size)) {
 					label.visible = true;
 				} else {
+					label.material.transparent = true;
+					label.material.opacity = 0;
 					label.visible = false;
 					labelEntries.push({
 						node: node as GraphNode & { x?: number; y?: number; z?: number },
-						label,
-						tierMultSq: tierMult * tierMult
+						label: label as LabelEntry['label']
 					});
 				}
 				return group;
@@ -412,7 +412,11 @@
 			const cx = camera.position.x;
 			const cy = camera.position.y;
 			const cz = camera.position.z;
-			const baseSq = labelBaseDistance * labelBaseDistance;
+			const base = labelBaseDistance;
+			// Hot-path comparisons use squared distance to avoid sqrt; we
+			// only call sqrt inside the fade band for the actual opacity.
+			const baseSq = base * base;
+			const fadeEndSq = 4 * baseSq; // (2 × base)²
 			for (let i = 0; i < labelEntries.length; i++) {
 				const entry = labelEntries[i];
 				const n = entry.node;
@@ -421,9 +425,19 @@
 				const dy = cy - (n.y ?? 0);
 				const dz = cz - (n.z ?? 0);
 				const d2 = dx * dx + dy * dy + dz * dz;
-				const shouldShow = d2 < baseSq * entry.tierMultSq;
-				if (entry.label.visible !== shouldShow) {
-					entry.label.visible = shouldShow;
+				const mat = entry.label.material;
+				if (d2 >= fadeEndSq) {
+					if (entry.label.visible) entry.label.visible = false;
+					continue;
+				}
+				if (!entry.label.visible) entry.label.visible = true;
+				if (d2 <= baseSq) {
+					if (mat.opacity !== 1) mat.opacity = 1;
+				} else {
+					// Linear fade from 1 (at base) to 0 (at 2×base), keyed
+					// on raw distance so the gradient feels even.
+					const d = Math.sqrt(d2);
+					mat.opacity = (2 * base - d) / base;
 				}
 			}
 		}
@@ -675,13 +689,13 @@
 		<div class="stats">노드 {stats.nodes} · 링크 {stats.links}</div>
 		<label
 			class="lod-input"
-			title="노드 크기별 라벨이 보이는 기본 거리. 상위 티어는 이 값의 2·3·4배까지, 최상위(허브)는 항상 표시."
+			title="이 거리 이내면 라벨이 선명하게, 거리의 2배 범위까지 흐릿하게 표시됩니다. 허브(상위) 노드는 항상 표시."
 		>
 			라벨 거리
 			<input
 				type="number"
 				bind:value={labelBaseDistance}
-				min="20"
+				min="50"
 				step="50"
 			/>
 		</label>
