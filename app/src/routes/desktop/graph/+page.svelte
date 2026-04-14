@@ -237,11 +237,11 @@
 
 		fg = graph;
 
-		// Apply the initial charge strength (node-spacing input controls it
-		// live via a separate $effect below). 3d-force-graph's default is
-		// already -30 so setting the same value is a no-op, but we do it
-		// unconditionally to stay consistent if we ever change the default.
-		applyNodeSpacing(graph, nodeSpacing);
+		// Initial charge strength matches 3d-force-graph's default (-30)
+		// for `nodeSpacing = 30`, so we skip the initial `applyNodeSpacing`
+		// call to avoid reheating an uninitialized layout. Subsequent
+		// changes to the top-bar input fire the `$effect` below once the
+		// graph is fully set up.
 
 		loading = false;
 
@@ -640,16 +640,29 @@
 
 	/**
 	 * Apply node-spacing (charge-force magnitude) to a graph instance and
-	 * reheat the simulation so the change settles into a new layout. Safe
-	 * to call before and after `graphData()` has been set.
+	 * reheat the simulation so the change settles into a new layout.
+	 *
+	 * Both the force lookup and the reheat call are guarded: on early
+	 * calls (before the internal `three-forcegraph` finishes building its
+	 * `layout`), `d3ReheatSimulation` can throw a `can't access property
+	 * "tick", layout is undefined` TypeError. The charge strength
+	 * assignment still succeeds; the simulation will pick it up on its
+	 * next tick anyway once the layout is initialized.
 	 */
 	function applyNodeSpacing(graph: ForceGraph3DInstance, magnitude: number) {
 		const charge = graph.d3Force('charge') as
-			| { strength: (v: number) => unknown }
+			| { strength?: (v: number) => unknown }
+			| null
 			| undefined;
-		if (!charge) return;
+		if (!charge || typeof charge.strength !== 'function') return;
 		charge.strength(-magnitude);
-		(graph as unknown as { d3ReheatSimulation: () => void }).d3ReheatSimulation();
+		try {
+			const reheat = (graph as unknown as { d3ReheatSimulation?: () => void })
+				.d3ReheatSimulation;
+			if (typeof reheat === 'function') reheat.call(graph);
+		} catch {
+			// Layout not ready yet — next tick will pick up the new strength.
+		}
 	}
 
 	/** Yellow → red HSL gradient driven by node.size (log of degree). */

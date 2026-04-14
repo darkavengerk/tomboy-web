@@ -2,7 +2,6 @@
 	import { onMount } from "svelte";
 	import { Editor } from "@tiptap/core";
 	import StarterKit from "@tiptap/starter-kit";
-	import Underline from "@tiptap/extension-underline";
 	import Highlight from "@tiptap/extension-highlight";
 	import Placeholder from "@tiptap/extension-placeholder";
 	import { TomboySize } from "./extensions/TomboySize.js";
@@ -130,7 +129,8 @@
 				}),
 				TomboyParagraph,
 				TomboyListItem,
-				Underline,
+				// Underline is bundled by StarterKit v3 — importing it again
+				// produces a "Duplicate extension names" warning.
 				Highlight.configure({ multicolor: false }),
 				Placeholder.configure({ placeholder: "Start typing..." }),
 				TomboySize,
