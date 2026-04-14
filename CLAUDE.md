@@ -338,10 +338,11 @@ size = 1 + log1p(degree) / log1p(maxDegree)
 ```
 
 This drives **both** the sphere radius (`3 * size`, so up to 2× the base)
-and the color. Normal notes interpolate HSL from warm yellow
-(`hsl(48, 85%, 62%)`) at size=1 to pure white (`hsl(48, 0%, 100%)`) at
-size=2 via `degreeColor(size)` — saturation fades to 0 and lightness
-rises to 100, so heavily-linked notes shine against the dark background.
+and the color. Normal notes interpolate HSL from vivid yellow
+(`hsl(48, 100%, 55%)`) at size=1 to pure white (`hsl(48, 0%, 100%)`) at
+size=2 via `degreeColor(size)`. The saturation curve is `(1-t)^0.6`
+(ease-out) so low-degree nodes stay *fully* yellow rather than fading
+to a milky pastel; most of the desaturation happens near the top tier.
 The home note is gold (`#f5c542`) and the sleep note (`SLEEP_NOTE_GUID`)
 is purple (`#9b6cff`) regardless of degree, marking them as the two
 "starting" landings. The camera does **not** auto-center on the starter
@@ -435,11 +436,14 @@ wraps `graph.d3ReheatSimulation()` in a try/catch — the internal
 `three-forcegraph` layout isn't always ready on first call, but the new
 strength still takes effect on the next tick.
 
-A third input, "이동 속도" (`bind:value={moveSpeed}`, default `240`, min
-20, step 20), writes directly to `fpsRef.speed`. The spacious default
-layout (500 spacing) would feel glacial at the old 120 baseline, so the
-speed default is doubled to match. The FpsControls update loop reads
-`this.speed` per frame, so the change is live.
+A third input, "이동 속도" (`bind:value={moveSpeed}`, default `60`, min
+20, step 20), writes directly to `fpsRef.speed`. The FpsControls update
+loop reads `this.speed` per frame, so the change is live. Hold **Shift**
+or **right mouse button** for a ×3 sprint; the right-mouse handler is
+wired in `FpsControls.handleMouseDown`/`handleMouseUp` and falls back to
+`false` on lock loss or window blur. `contextmenu` is also
+`preventDefault()`-ed on the canvas so the browser menu doesn't steal
+the sprint input.
 
 ### Link visibility (selective)
 

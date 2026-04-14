@@ -55,10 +55,10 @@
 	// even the spread-out default layout readable.
 	let showLinks = $state(true);
 
-	// Camera travel speed in world units per second at normal (non-shift)
-	// pace. Default 240 roughly doubles the 120 baseline that used to pair
-	// with a tighter cloud. Exposed so users can tune to their layout.
-	let moveSpeed = $state(240);
+	// Camera travel speed in world units per second at normal pace.
+	// Default 60 feels calm for reading; hold Shift or right-mouse for a
+	// ×3 sprint when covering distance. Exposed so users can tune it.
+	let moveSpeed = $state(60);
 
 	// Selection strategy for the debounced auto-select:
 	//   - 'aim'    : nearest-in-frustum to the aim point (camera + forward*40)
@@ -741,15 +741,19 @@
 	}
 
 	/**
-	 * Yellow → white HSL gradient driven by node.size (log of degree).
-	 * Higher connectivity = brighter, more desaturated; at the top end
-	 * hub nodes shine almost pure white against the dark background.
+	 * Vivid yellow → white HSL gradient driven by node.size (log of
+	 * degree). The saturation curve uses an ease-out exponent so low-
+	 * degree nodes stay *fully* yellow (not washed-out pastel) and the
+	 * fade to white is concentrated near the top tier. Lightness also
+	 * starts lower (55%) for richer yellow against the dark background.
 	 */
 	function degreeColor(size: number): string {
 		const t = Math.max(0, Math.min(1, size - 1));
 		const hue = 48;
-		const sat = 85 * (1 - t); // 85% → 0%
-		const light = 62 + 38 * t; // 62% → 100%
+		// (1 - t)^0.6 keeps saturation near 100 until degree is high, then
+		// drops sharply. Prevents the "milky haze" look at the low end.
+		const sat = 100 * Math.pow(1 - t, 0.6);
+		const light = 55 + 45 * t; // 55% → 100%
 		return `hsl(${hue}, ${sat.toFixed(1)}%, ${light.toFixed(1)}%)`;
 	}
 
@@ -1182,8 +1186,8 @@
 		border-radius: 2px;
 		background: linear-gradient(
 			to right,
-			hsl(48, 85%, 62%),
-			hsl(48, 43%, 81%),
+			hsl(48, 100%, 55%),
+			hsl(48, 66%, 77%),
 			hsl(48, 0%, 100%)
 		);
 	}
