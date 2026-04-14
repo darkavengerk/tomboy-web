@@ -169,11 +169,27 @@ export class FpsControls {
 	};
 
 	private handleKeyDown = (e: KeyboardEvent) => {
-		if (!this._locked) return;
+		// Track keys regardless of lock state so that if the lock is
+		// requested *in response* to a keydown (e.g. "press W to start"),
+		// the key is already in the set by the time lock acquires and the
+		// user gets instant movement rather than waiting for OS auto-repeat.
+		// Actual movement is still gated on _locked inside update().
 		const code = e.code.toLowerCase();
+		// Don't hijack keys destined for text inputs / the note editor.
+		const target = e.target as HTMLElement | null;
+		if (
+			target &&
+			(target.tagName === 'INPUT' ||
+				target.tagName === 'TEXTAREA' ||
+				target.isContentEditable)
+		) {
+			return;
+		}
 		this.keys.add(code);
-		// Space would otherwise scroll the page behind the locked canvas.
-		if (MOVEMENT_KEYS.has(code)) e.preventDefault();
+		// Space / arrows would otherwise scroll the page behind the locked
+		// canvas — only suppress once locked so unlocked text navigation
+		// continues to work normally.
+		if (this._locked && MOVEMENT_KEYS.has(code)) e.preventDefault();
 	};
 
 	private handleKeyUp = (e: KeyboardEvent) => {
