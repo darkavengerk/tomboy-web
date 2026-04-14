@@ -34,6 +34,8 @@ export class FpsControls {
 	private direction = new THREE.Vector3();
 	private forward = new THREE.Vector3();
 	private right = new THREE.Vector3();
+	/** Held-right-mouse acts as a Shift boost (FPS convention). */
+	private rightMouseDown = false;
 
 	/** World units per second at normal speed. */
 	speed = 120;
@@ -85,7 +87,11 @@ export class FpsControls {
 		if (!this._enabled) return;
 		if (!this._locked) return;
 
-		const boost = this.keys.has('shiftleft') || this.keys.has('shiftright') ? this.boost : 1;
+		const boosting =
+			this.rightMouseDown ||
+			this.keys.has('shiftleft') ||
+			this.keys.has('shiftright');
+		const boost = boosting ? this.boost : 1;
 		const step = this.speed * boost * deltaSeconds;
 
 		// Forward = full camera look direction (includes pitch), so W moves
@@ -136,17 +142,25 @@ export class FpsControls {
 	private attach() {
 		document.addEventListener('pointerlockchange', this.handleLockChange);
 		document.addEventListener('mousemove', this.handleMouseMove);
+		document.addEventListener('mousedown', this.handleMouseDown);
+		document.addEventListener('mouseup', this.handleMouseUp);
 		window.addEventListener('keydown', this.handleKeyDown);
 		window.addEventListener('keyup', this.handleKeyUp);
 		window.addEventListener('blur', this.handleBlur);
+		// Suppress the browser context menu on our canvas so right-click
+		// can be used cleanly as a sprint modifier.
+		this.domElement.addEventListener('contextmenu', this.handleContextMenu);
 	}
 
 	private detach() {
 		document.removeEventListener('pointerlockchange', this.handleLockChange);
 		document.removeEventListener('mousemove', this.handleMouseMove);
+		document.removeEventListener('mousedown', this.handleMouseDown);
+		document.removeEventListener('mouseup', this.handleMouseUp);
 		window.removeEventListener('keydown', this.handleKeyDown);
 		window.removeEventListener('keyup', this.handleKeyUp);
 		window.removeEventListener('blur', this.handleBlur);
+		this.domElement.removeEventListener('contextmenu', this.handleContextMenu);
 		if (this._locked) this.unlock();
 	}
 
@@ -154,7 +168,10 @@ export class FpsControls {
 		const locked = document.pointerLockElement === this.domElement;
 		if (locked === this._locked) return;
 		this._locked = locked;
-		if (!locked) this.keys.clear();
+		if (!locked) {
+			this.keys.clear();
+			this.rightMouseDown = false;
+		}
 		this.onLockChange?.(locked);
 	};
 
@@ -198,5 +215,18 @@ export class FpsControls {
 
 	private handleBlur = () => {
 		this.keys.clear();
+		this.rightMouseDown = false;
+	};
+
+	private handleMouseDown = (e: MouseEvent) => {
+		if (e.button === 2) this.rightMouseDown = true;
+	};
+
+	private handleMouseUp = (e: MouseEvent) => {
+		if (e.button === 2) this.rightMouseDown = false;
+	};
+
+	private handleContextMenu = (e: Event) => {
+		e.preventDefault();
 	};
 }
