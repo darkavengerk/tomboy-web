@@ -350,21 +350,28 @@ dragging a node doesn't yank the camera back.
 
 Title sprites are toggled per-frame based on camera distance, banded by
 node size into five tiers. Bigger nodes' labels stay legible from further
-out; least-connected notes only show their title when you're nearby. A
-single `labelEntries` array gets populated in `nodeThreeObject`; the RAF
-loop walks it once per frame and flips `label.visible`. Tier-5 labels
-(size ≥ 1.8, the hub nodes) skip the array entirely since they're always
-on.
+out; least-connected notes only show their title when you're nearby.
 
-Thresholds (world units, squared in the hot path):
+A single `labelEntries` array is populated in `nodeThreeObject`. Each
+entry stores a **tier multiplier** (1–4, squared for the hot path), *not*
+an absolute threshold — the actual distance is `labelBaseDistance × mult`
+and is reapplied every frame, so the top-bar input tunes the whole graph
+live without rebuilding anything. Tier-5 labels (size ≥ 1.8, the hub
+nodes) skip the array entirely — they're always on.
 
-| Tier | `size` | Distance |
-|------|--------|----------|
-| 5    | ≥ 1.8  | ∞ (always) |
-| 4    | ≥ 1.6  | 320 |
-| 3    | ≥ 1.4  | 160 |
-| 2    | ≥ 1.2  | 80 |
-| 1    | < 1.2  | 40 |
+Tiers and multipliers (default base distance = 200):
+
+| Tier | `size`  | Multiplier | Default distance |
+|------|---------|------------|------------------|
+| 5    | ≥ 1.8   | —          | ∞ (always) |
+| 4    | ≥ 1.6   | 4×         | 800 |
+| 3    | ≥ 1.4   | 3×         | 600 |
+| 2    | ≥ 1.2   | 2×         | 400 |
+| 1    | < 1.2   | 1×         | 200 |
+
+The base is a Svelte 5 `$state` (default `200`) exposed as a number input
+(`.lod-input`) in the top bar. No `$effect` is needed — `updateLabelVisibility()`
+reads the current value each RAF tick.
 
 Labels keep a translucent black background (`rgba(0,0,0,0.45)`) with 1px
 padding — without it overlapping titles in dense clusters become
