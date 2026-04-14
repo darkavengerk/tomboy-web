@@ -420,6 +420,21 @@ Labels keep a translucent black background (`rgba(0,0,0,0.45)`) with 1px
 padding — without it overlapping titles in dense clusters become
 unreadable.
 
+### Live-tunable force simulation
+
+A second top-bar number input, "노드 간격" (`bind:value={nodeSpacing}`,
+default `30`, min 5, step 5), exposes d3-force's many-body charge
+strength (applied as `-nodeSpacing`). Raising it pushes nodes further
+apart — looser, lower-density cloud; lowering it tightens the cluster.
+A `$effect` calls `applyNodeSpacing(fg, nodeSpacing)` whenever the input
+changes; the helper mutates `graph.d3Force('charge').strength(...)` and
+calls `graph.d3ReheatSimulation()` so the simulation wakes and
+re-layouts the cloud on the fly.
+
+The initial value is also applied once inside `init()` right after
+`graphData()` is set, for consistency if we ever pick a default other
+than the library's -30.
+
 ### Controls: WASD-only, pointer-lock
 
 3d-force-graph's built-in navigation is fully disabled
