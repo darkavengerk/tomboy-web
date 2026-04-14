@@ -363,6 +363,58 @@ describe('autoLinkPlugin — deferred mode', () => {
 		expect(links[0].target).toBe('Foo Bar');
 	});
 
+	it('deferred mode: {clearDirty:true} drops accumulated dirty ranges', () => {
+		// Regression guard for the note-swap path: when the editor component
+		// calls setContent() to load a different note, the plugin would
+		// otherwise have the whole new doc sitting in its dirty-range set
+		// (from the replace transaction), forcing a full rescan on the next
+		// refresh. The {clearDirty:true} meta clears that state.
+		const titles: TitleEntry[] = [entry('Foo')];
+		const editor = new Editor({
+			extensions: [
+				Document,
+				Paragraph,
+				Text,
+				TomboyMonospace,
+				TomboyUrlLink,
+				TomboyInternalLink.configure({
+					getTitles: () => titles,
+					getCurrentGuid: () => null,
+					deferred: true
+				})
+			],
+			content: '<p></p>'
+		});
+		currentEditor = editor;
+
+		// Typing accumulates a dirty range.
+		editor.commands.insertContent('Foo');
+		expect(collectLinks(editor)).toHaveLength(0);
+
+		// Clear the accumulated dirty set before the next refresh.
+		editor.view.dispatch(
+			editor.state.tr.setMeta(autoLinkPluginKey, {
+				clearDirty: true,
+				skip: true
+			})
+		);
+
+		// Plain refresh without dirty ranges should be a no-op.
+		editor.view.dispatch(
+			editor.state.tr.setMeta(autoLinkPluginKey, { refresh: true })
+		);
+		expect(collectLinks(editor)).toHaveLength(0);
+
+		// But full:true still forces a whole-doc scan regardless.
+		editor.view.dispatch(
+			editor.state.tr.setMeta(autoLinkPluginKey, {
+				refresh: true,
+				full: true
+			})
+		);
+		expect(collectLinks(editor)).toHaveLength(1);
+	});
+
 	it('deferred mode: accumulated edits scan only the edited range on refresh', () => {
 		// Regression guard: after an edit, a plain {refresh:true} dispatch
 		// should link matches that land inside the word-boundary expansion

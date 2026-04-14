@@ -22,6 +22,14 @@ interface AutoLinkMeta {
 	 * any previously-unchanged text might newly match or stop matching.
 	 */
 	full?: boolean;
+	/**
+	 * Drop any accumulated dirty-range state. Dispatched by the editor
+	 * component right after `setContent()` swaps the whole document: the
+	 * ranges it had collected for the OLD doc's edits are meaningless for
+	 * the freshly loaded one, and the stored XML already carries the
+	 * persisted `<link:internal>` marks so no rescan is needed.
+	 */
+	clearDirty?: boolean;
 }
 
 export interface AutoLinkPluginOptions {
@@ -68,6 +76,10 @@ export function createAutoLinkPlugin(opts: AutoLinkPluginOptions): Plugin {
 			const skip = transactions.some(
 				(tr) => tr.getMeta(autoLinkPluginKey)?.skip === true
 			);
+			const clearDirty = transactions.some(
+				(tr) => tr.getMeta(autoLinkPluginKey)?.clearDirty === true
+			);
+			if (clearDirty) dirtyRanges = [];
 			if (skip) return null;
 
 			const docChanged = transactions.some((tr) => tr.docChanged);

@@ -31,7 +31,15 @@ export interface TitleProvider {
 }
 
 export interface TitleProviderOptions {
+	/** Static guid to filter out of `getTitles()` (the current note). */
 	excludeGuid?: string | null;
+	/**
+	 * Dynamic variant of `excludeGuid` — consulted on every `getTitles()`
+	 * call so the filter can follow a note-transition without requiring
+	 * dispose + recreate of the provider. When provided, takes precedence
+	 * over the static `excludeGuid`.
+	 */
+	getExcludeGuid?: () => string | null;
 }
 
 // --- Singleton state -----------------------------------------------------
@@ -82,7 +90,9 @@ function maybeUnsubscribe(): void {
 // --- Public factory ------------------------------------------------------
 
 export function createTitleProvider(opts: TitleProviderOptions = {}): TitleProvider {
-	const excludeGuid = opts.excludeGuid ?? null;
+	const staticExclude = opts.excludeGuid ?? null;
+	const readExclude =
+		opts.getExcludeGuid ?? (() => staticExclude);
 	let disposed = false;
 	const myListeners = new Set<() => void>();
 
@@ -97,6 +107,7 @@ export function createTitleProvider(opts: TitleProviderOptions = {}): TitleProvi
 	return {
 		getTitles() {
 			if (disposed) return [];
+			const excludeGuid = readExclude();
 			if (excludeGuid === null) return sharedEntries;
 			// Excluded case: build a filtered view. Callers may call this per
 			// scan, so filtering eagerly here (instead of relying on

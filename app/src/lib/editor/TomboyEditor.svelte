@@ -33,6 +33,16 @@
 	let editorElement: HTMLDivElement;
 	let editor: Editor | null = $state(null);
 
+	// Track the last content/guid we pushed into the editor. The $effect
+	// below only swaps the editor's doc when the parent actually navigates
+	// to a different note — not on every reactive pass where `content` is
+	// re-read but unchanged. Left undefined/null until the first $effect
+	// run after mount seeds them, so we don't accidentally capture stale
+	// initial prop values at component-construction time.
+	let lastAppliedContent: JSONContent | undefined = undefined;
+	let lastAppliedGuid: string | null = null;
+	let contentSyncSeeded = false;
+
 	// Debounced dispatcher for the auto-link plugin's rescan. The plugin
 	// runs in "deferred" mode (only scans on {refresh:true} meta), which
 	// keeps the typing hot path cheap. We fire a single refresh after the
@@ -95,7 +105,14 @@
 	}
 
 	onMount(() => {
-		const titleProvider = createTitleProvider({ excludeGuid: currentGuid });
+		// Use a dynamic excludeGuid callback so the provider follows note
+		// transitions without needing dispose + recreate. The editor
+		// instance is reused across notes (see $effect below), and the
+		// plugin also reads getCurrentGuid() on every scan, so the filter
+		// stays correct for the active note.
+		const titleProvider = createTitleProvider({
+			getExcludeGuid: () => currentGuid,
+		});
 		// Populate titles asynchronously; the plugin reads via getTitles() so
 		// late arrivals still auto-link pre-existing content via the refresh meta.
 		void titleProvider.refresh();
@@ -189,6 +206,53 @@
 			titleProvider.dispose();
 			editor?.destroy();
 		};
+	});
+
+	// Reactively swap the editor's document when the parent navigates to a
+	// different note (or otherwise hands us new content). Reusing the same
+	// TipTap instance across notes avoids the full
+	// destroy→PM-schema-rebuild→extension-init→DOM-mount churn that the
+	// previous `{#key noteId}` pattern paid on every transition.
+	$effect(() => {
+		const c = content;
+		const g = currentGuid;
+		const ed = editor;
+		if (!ed || ed.isDestroyed) return;
+
+		if (!contentSyncSeeded) {
+			// First run after onMount created the editor: the editor was
+			// initialised with the current `content` already, so just
+			// record the applied state — no setContent, no clearDirty.
+			contentSyncSeeded = true;
+			lastAppliedContent = c;
+			lastAppliedGuid = g;
+			return;
+		}
+
+		if (c === lastAppliedContent && g === lastAppliedGuid) return;
+		lastAppliedContent = c;
+		lastAppliedGuid = g;
+
+		const docContent = c ?? {
+			type: "doc",
+			content: [{ type: "paragraph" }],
+		};
+		// emitUpdate:false so the parent's onchange doesn't interpret this
+		// as a user edit (no spurious save triggered for just loading a
+		// note). The plugin still sees the underlying PM transaction and
+		// would otherwise accumulate the whole new doc as a dirty range,
+		// so we clear that explicitly below — the stored XML already
+		// carries `<link:internal>` marks and a rescan on load is neither
+		// needed nor cheap for large notes.
+		ed.commands.setContent(docContent, { emitUpdate: false });
+		ed.view.dispatch(
+			ed.state.tr.setMeta(autoLinkPluginKey, {
+				clearDirty: true,
+				skip: true,
+			}),
+		);
+		// Any pending scan timer was for the previous note; drop it.
+		cancelAutoLinkScan();
 	});
 
 	export function getEditor(): Editor | null {
