@@ -398,6 +398,9 @@ ticker a few hundred ms later.
 Flips:
 - Clicking a node in locked mode → `center`. The click primes the
   debounce state with the clicked id so the mode switch is seamless.
+- Pressing any movement key (W/A/S/D/Space/C), even while already locked,
+  → `aim`. "Moving means exploring" is the mnemonic: click to focus on
+  one note, start moving and the selection tracks your heading again.
 - Closing the panel (`onclose`) or hitting "자동 선택 다시 켜기" → resets
   to `aim`.
 - Backlink / internal-link navigation flies the camera and resets to
@@ -417,8 +420,9 @@ All `pointer-events: none`, so they never eat canvas input.
   view of a ship with cockpit + engine vents, drop-shadow glow, purely
   decorative exploration flavor.
 - **Selection halo** — slim cyan `RingGeometry(1, 1.08)` billboarded at
-  the selected node, scaled to `3 * size + 1.5`, opacity 0.55, with a
-  gentle Z-axis spin. On selection change (click / auto-select /
+  the selected node, scaled to the node's sphere radius (`3 * size`) so
+  the ring's inner edge traces the silhouette exactly. Opacity 0.55 with
+  a gentle Z-axis spin. On selection change (click / auto-select /
   backlink) it pulses +45% for 420ms as click feedback.
 - **Hover halo** — identical ring in faint white (opacity 0.22) around
   whichever node `findCenterNode()` currently returns. Hidden when the

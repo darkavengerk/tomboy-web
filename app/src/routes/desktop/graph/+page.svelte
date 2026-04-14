@@ -132,10 +132,10 @@
 				);
 				group.add(sphere);
 				const label = new SpriteText(node.title);
-				label.color = node.isHome || node.isSleep ? '#ffffff' : '#cfd8e3';
+				label.color = '#ffffff';
 				label.textHeight = 4 * node.size;
-				label.backgroundColor = 'rgba(0,0,0,0.45)';
-				label.padding = 1;
+				label.backgroundColor = false;
+				label.padding = 0;
 				label.position.set(0, radius + 2 + label.textHeight / 2, 0);
 				group.add(label);
 				return group;
@@ -215,13 +215,17 @@
 		// Auto-lock when the user presses a movement key — no need to click
 		// first. Keys pressed before lock are already tracked by
 		// FpsControls, so the moment lock engages movement starts.
-		const AUTOLOCK_KEYS = new Set([
-			'keyw', 'keya', 'keys', 'keyd', 'space'
+		// Movement keys do two jobs: (1) auto-lock on first press when the
+		// pointer isn't yet captured, and (2) flip the selection mode back
+		// to 'aim' any time the user is actually moving. Rule of thumb:
+		// clicking = 'center' mode (pinned to the crosshair), moving =
+		// 'aim' mode (tracks the on-screen node closest to your heading).
+		const MOVEMENT_KEYS_FOR_MODE = new Set([
+			'keyw', 'keya', 'keys', 'keyd', 'space', 'keyc'
 		]);
-		const autoLockOnKey = (e: KeyboardEvent) => {
-			if (fps.locked) return;
+		const onMovementKey = (e: KeyboardEvent) => {
 			const code = e.code.toLowerCase();
-			if (!AUTOLOCK_KEYS.has(code)) return;
+			if (!MOVEMENT_KEYS_FOR_MODE.has(code)) return;
 			const target = e.target as HTMLElement | null;
 			if (
 				target &&
@@ -231,9 +235,12 @@
 			) {
 				return;
 			}
-			fps.lock();
+			// Any movement key press — including while already locked —
+			// drops us out of click/center mode.
+			selectionMode = 'aim';
+			if (!fps.locked) fps.lock();
 		};
-		window.addEventListener('keydown', autoLockOnKey);
+		window.addEventListener('keydown', onMovementKey);
 
 		// Selection halo: a slim cyan ring around the currently-selected node,
 		// billboarded toward the camera. On click it scales up briefly as
@@ -328,12 +335,13 @@
 		}
 
 		/**
-		 * Size the two halos consistently. Base radius is a hair larger than
-		 * the node sphere (3 * size) for a tight fit — the old `+ 3` looked
-		 * too loose.
+		 * Size the two halos consistently. Inner ring radius equals the
+		 * node sphere radius (`3 * size`) so the halo sits exactly at the
+		 * sphere's silhouette — the thin `RingGeometry(1, 1.08)` ring then
+		 * extends just 8% beyond.
 		 */
 		function haloRadiusFor(size: number): number {
-			return 3 * size + 1.5;
+			return 3 * size;
 		}
 
 		function updateHalo(t: number) {
@@ -490,7 +498,7 @@
 		return () => {
 			cancelAnimationFrame(rafId);
 			window.removeEventListener('wheel', wheelForwarder, { capture: true });
-			window.removeEventListener('keydown', autoLockOnKey);
+			window.removeEventListener('keydown', onMovementKey);
 			canvasEl.removeEventListener('click', handleCanvasClick);
 			halo.geometry.dispose();
 			(halo.material as { dispose: () => void }).dispose();
