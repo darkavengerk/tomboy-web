@@ -423,17 +423,25 @@ unreadable.
 ### Live-tunable force simulation
 
 A second top-bar number input, "노드 간격" (`bind:value={nodeSpacing}`,
-default `30`, min 5, step 5), exposes d3-force's many-body charge
+default `50`, min 5, step 5), exposes d3-force's many-body charge
 strength (applied as `-nodeSpacing`). Raising it pushes nodes further
 apart — looser, lower-density cloud; lowering it tightens the cluster.
 A `$effect` calls `applyNodeSpacing(fg, nodeSpacing)` whenever the input
 changes; the helper mutates `graph.d3Force('charge').strength(...)` and
-calls `graph.d3ReheatSimulation()` so the simulation wakes and
-re-layouts the cloud on the fly.
+wraps `graph.d3ReheatSimulation()` in a try/catch — the internal
+`three-forcegraph` layout isn't always ready on first call, but the new
+strength still takes effect on the next tick.
 
-The initial value is also applied once inside `init()` right after
-`graphData()` is set, for consistency if we ever pick a default other
-than the library's -30.
+### Link visibility toggle
+
+A top-bar checkbox "링크 표시" (`bind:checked={showLinks}`) flips link
+rendering. Default **off** — the node cloud alone tends to read more
+clearly, and turning the web on only when you need to trace structure
+keeps dense graphs legible.
+
+Implementation is a one-liner pair: `linkOpacity(show ? 0.6 : 0)`
+plus `linkDirectionalArrowLength(show ? 2 : 0)`. Both are applied in
+the initial chain and re-applied via a `$effect` on toggle.
 
 ### Controls: WASD-only, pointer-lock
 
