@@ -7,6 +7,7 @@ import { TomboyInternalLink } from '$lib/editor/extensions/TomboyInternalLink.js
 import { TomboyUrlLink } from '$lib/editor/extensions/TomboyUrlLink.js';
 import { TomboyMonospace } from '$lib/editor/extensions/TomboyMonospace.js';
 import type { TitleEntry } from '$lib/editor/autoLink/findTitleMatches.js';
+import { autoLinkPluginKey } from '$lib/editor/autoLink/autoLinkPlugin.js';
 
 function entry(title: string, guid = `guid-${title}`): TitleEntry {
 	return { titleLower: title.toLocaleLowerCase(), original: title, guid };
@@ -257,6 +258,63 @@ describe('autoLinkPlugin — paste', () => {
 		const editor = makeEditor({ titles: [entry('Foo Bar')] });
 		// Simulate paste by inserting multi-word content at once.
 		editor.commands.insertContent('see Foo Bar in action');
+
+		const links = collectLinks(editor);
+		expect(links).toHaveLength(1);
+		expect(links[0].target).toBe('Foo Bar');
+	});
+});
+
+describe('autoLinkPlugin — deferred mode', () => {
+	it('does NOT auto-link on ordinary doc changes when deferred:true', () => {
+		const titles: TitleEntry[] = [entry('Foo Bar')];
+		const editor = new Editor({
+			extensions: [
+				Document,
+				Paragraph,
+				Text,
+				TomboyMonospace,
+				TomboyUrlLink,
+				TomboyInternalLink.configure({
+					getTitles: () => titles,
+					getCurrentGuid: () => null,
+					deferred: true
+				})
+			],
+			content: '<p></p>'
+		});
+		currentEditor = editor;
+
+		editor.commands.insertContent('I saw Foo Bar today.');
+		// In deferred mode the plugin stays out of the hot path.
+		expect(collectLinks(editor)).toHaveLength(0);
+	});
+
+	it('applies marks in deferred mode when {refresh:true} is dispatched', () => {
+		const titles: TitleEntry[] = [entry('Foo Bar')];
+		const editor = new Editor({
+			extensions: [
+				Document,
+				Paragraph,
+				Text,
+				TomboyMonospace,
+				TomboyUrlLink,
+				TomboyInternalLink.configure({
+					getTitles: () => titles,
+					getCurrentGuid: () => null,
+					deferred: true
+				})
+			],
+			content: '<p></p>'
+		});
+		currentEditor = editor;
+
+		editor.commands.insertContent('I saw Foo Bar today.');
+		expect(collectLinks(editor)).toHaveLength(0);
+
+		editor.view.dispatch(
+			editor.state.tr.setMeta(autoLinkPluginKey, { refresh: true })
+		);
 
 		const links = collectLinks(editor);
 		expect(links).toHaveLength(1);

@@ -26,12 +26,22 @@ export interface AutoLinkPluginOptions {
 	 * monospace). Names are checked against each `Node.marks[i].type.name`.
 	 */
 	suppressMarks?: string[];
+	/**
+	 * When true, the plugin does NOT scan on ordinary document changes. It
+	 * only runs when a `{refresh: true}` meta is dispatched on the transaction.
+	 * This moves the scan out of the typing hot path — the consumer is expected
+	 * to schedule refreshes at idle / debounced intervals.
+	 *
+	 * Defaults to false (legacy: scan on every doc change).
+	 */
+	deferred?: boolean;
 }
 
 const DEFAULT_SUPPRESS = ['tomboyUrlLink', 'tomboyMonospace', 'code'];
 
 export function createAutoLinkPlugin(opts: AutoLinkPluginOptions): Plugin {
 	const suppress = new Set(opts.suppressMarks ?? DEFAULT_SUPPRESS);
+	const deferred = opts.deferred ?? false;
 
 	return new Plugin<AutoLinkMeta>({
 		key: autoLinkPluginKey,
@@ -46,6 +56,12 @@ export function createAutoLinkPlugin(opts: AutoLinkPluginOptions): Plugin {
 
 			const docChanged = transactions.some((tr) => tr.docChanged);
 			if (!docChanged && !isRefresh) return null;
+
+			// In deferred mode, only react to explicit refresh dispatches.
+			// Ordinary typing / doc changes are ignored here so the hot path
+			// stays cheap; an external debouncer is expected to dispatch a
+			// `{refresh: true}` transaction at idle.
+			if (deferred && !isRefresh) return null;
 
 			const titles = opts.getTitles();
 			const currentGuid = opts.getCurrentGuid();

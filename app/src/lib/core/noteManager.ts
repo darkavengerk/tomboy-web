@@ -37,6 +37,7 @@ export async function updateNoteFromEditor(guid: string, doc: JSONContent): Prom
 		return note;
 	}
 
+	const titleChanged = newTitle !== note.title;
 	const now = formatTomboyDate(new Date());
 	note.xmlContent = newXmlContent;
 	note.title = newTitle;
@@ -44,7 +45,14 @@ export async function updateNoteFromEditor(guid: string, doc: JSONContent): Prom
 	note.metadataChangeDate = now;
 
 	await noteStore.putNote(note);
-	invalidateCache();
+	// Only invalidate the shared note-list cache when the title changed.
+	// Body-only edits don't affect any derived views that matter while the
+	// user is actively typing (the title list for auto-linking, notebook
+	// chips, etc.), so skipping invalidate here avoids a cascade where every
+	// keystroke's debounced save triggers a full titleProvider refetch +
+	// full-doc auto-link rescan. List pages remount on navigation and
+	// refetch fresh data then.
+	if (titleChanged) invalidateCache();
 	return note;
 }
 
