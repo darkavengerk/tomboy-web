@@ -168,10 +168,10 @@
 			.nodeRelSize(4)
 			.nodeLabel((n) => (n as GraphNode).title)
 			.linkColor(() => 'rgba(140, 180, 220, 0.35)')
-			.linkDirectionalArrowLength(showLinks ? 2 : 0)
+			.linkDirectionalArrowLength(2)
 			.linkDirectionalArrowRelPos(0.9)
 			.linkWidth(0.3)
-			.linkOpacity(showLinks ? 0.6 : 0)
+			.linkOpacity(0.6)
 			.cooldownTicks(200)
 			.warmupTicks(40)
 			.d3AlphaDecay(0.05)
@@ -501,8 +501,14 @@
 			}
 		}
 
+		// Shared per-frame "what's under the reticle" cache. Written by
+		// updateHoverHalo, read by updateLinkVisibility — saves calling
+		// findCenterNode twice per frame.
+		let currentCenterId: string | null = null;
+
 		function updateHoverHalo() {
 			const id = findCenterNode();
+			currentCenterId = id;
 			// Don't double-ring the selected node — the brighter selected
 			// halo already marks it.
 			if (!id || id === selectedGuid) {
@@ -518,6 +524,57 @@
 			hoverHalo.position.set(n.x, n.y ?? 0, n.z ?? 0);
 			hoverHalo.lookAt(camera.position);
 			hoverHalo.scale.setScalar(haloRadiusFor(n.size));
+		}
+
+		// Selective link visibility. When `showLinks` is on, only links
+		// that satisfy at least one of these conditions render:
+		//   1. An endpoint is a hub-tier node (size ≥ 1.6)
+		//   2. An endpoint is the currently selected note
+		//   3. An endpoint is the node currently under the reticle
+		// Rather than going through 3d-force-graph's global `linkOpacity`
+		// (which is a single scalar and doesn't accept per-link predicates
+		// dynamically), we toggle each link's internal `__lineObj.visible`
+		// and its matching arrow directly. 2000 links × a handful of
+		// property reads/writes per frame is trivial.
+		type LinkObj = {
+			source: string | { id?: string };
+			target: string | { id?: string };
+			__lineObj?: { visible: boolean };
+			__arrowObj?: { visible: boolean };
+		};
+		function linkEndpointId(v: LinkObj['source']): string {
+			return typeof v === 'string' ? v : v?.id ?? '';
+		}
+		function updateLinkVisibility() {
+			const data = graph.graphData().links as unknown as LinkObj[];
+			const show = showLinks;
+			const sel = selectedGuid;
+			const hov = currentCenterId;
+			for (let i = 0; i < data.length; i++) {
+				const l = data[i];
+				let visible = false;
+				if (show) {
+					const sId = linkEndpointId(l.source);
+					const tId = linkEndpointId(l.target);
+					if (sId === sel || tId === sel) {
+						visible = true;
+					} else if (sId === hov || tId === hov) {
+						visible = true;
+					} else {
+						const sn = liveNodesById.get(sId);
+						const tn = liveNodesById.get(tId);
+						if ((sn && sn.size >= 1.6) || (tn && tn.size >= 1.6)) {
+							visible = true;
+						}
+					}
+				}
+				if (l.__lineObj && l.__lineObj.visible !== visible) {
+					l.__lineObj.visible = visible;
+				}
+				if (l.__arrowObj && l.__arrowObj.visible !== visible) {
+					l.__arrowObj.visible = visible;
+				}
+			}
 		}
 
 		// When selection changes by any means (click, auto-select, backlink),
@@ -600,7 +657,8 @@
 			updateNearest(t);
 			maybePulseOnSelectionChange();
 			updateHalo(t);
-			updateHoverHalo();
+			updateHoverHalo(); // sets currentCenterId
+			updateLinkVisibility(); // reads currentCenterId
 			updateLabelVisibility();
 			rafId = requestAnimationFrame(loop);
 		};
@@ -736,13 +794,11 @@
 		applyNodeSpacing(fg, s);
 	});
 
-	// Toggle link rendering. Opacity 0 + zero-length arrows effectively
-	// hides the web without rebuilding anything.
-	$effect(() => {
-		const show = showLinks;
-		if (!fg) return;
-		fg.linkOpacity(show ? 0.6 : 0).linkDirectionalArrowLength(show ? 2 : 0);
-	});
+	// Link visibility is driven per-link inside the RAF loop
+	// (see updateLinkVisibility in init()) rather than via the global
+	// `linkOpacity` accessor, so we can honor dynamic criteria
+	// (selection / reticle target / hub tier) without rebuilding the
+	// graph. The loop reads `showLinks` fresh each frame, no effect needed.
 
 	// Keep the WebGL canvas sized to its container.
 	$effect(() => {
@@ -831,7 +887,7 @@
 		</label>
 		<label
 			class="category-toggle"
-			title="노트 사이 연결선(링크) 을 표시합니다. 꺼 두면 노드 구름만 보입니다."
+			title="링크를 선택적으로 표시: 허브(1.6 이상 티어) 노드, 현재 선택된 노드, 레티클이 가리키는 노드에 연결된 링크만 보임. 꺼 두면 전부 숨김."
 		>
 			<input type="checkbox" bind:checked={showLinks} />
 			링크 표시

@@ -432,16 +432,28 @@ wraps `graph.d3ReheatSimulation()` in a try/catch — the internal
 `three-forcegraph` layout isn't always ready on first call, but the new
 strength still takes effect on the next tick.
 
-### Link visibility toggle
+### Link visibility (selective)
 
 A top-bar checkbox "링크 표시" (`bind:checked={showLinks}`) flips link
-rendering. Default **off** — the node cloud alone tends to read more
-clearly, and turning the web on only when you need to trace structure
-keeps dense graphs legible.
+rendering. Default **off** — the node cloud alone reads more clearly.
+When on, links render **selectively** rather than all-or-nothing: only
+edges satisfying at least one of these criteria are drawn:
 
-Implementation is a one-liner pair: `linkOpacity(show ? 0.6 : 0)`
-plus `linkDirectionalArrowLength(show ? 2 : 0)`. Both are applied in
-the initial chain and re-applied via a `$effect` on toggle.
+1. An endpoint node is a hub (size ≥ 1.6)
+2. An endpoint node is the currently selected note
+3. An endpoint node is under the reticle (`currentCenterId`)
+
+Because 3d-force-graph's `linkOpacity` / `linkVisibility` accessors are
+evaluated on data change rather than per frame, selective filtering is
+done by directly toggling each link's internal `__lineObj.visible`
+(and `__arrowObj.visible` for the arrow head) inside the RAF loop. For
+a 2000-link graph this is a few thousand cheap property reads/writes
+per frame — trivial. The shared per-frame `currentCenterId` is set
+inside `updateHoverHalo()` so `updateLinkVisibility()` doesn't have to
+call `findCenterNode()` again.
+
+When `showLinks` is off, every link is forced invisible on the next
+tick — no special handling needed, the RAF loop just does it.
 
 ### Controls: WASD-only, pointer-lock
 
