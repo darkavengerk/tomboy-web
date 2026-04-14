@@ -88,8 +88,12 @@
 			backlinksByGuid.set(l.target, arr);
 		}
 
-		// 3) Instantiate the graph.
+		// 3) Instantiate the graph. We disable the built-in navigation
+		//    controls entirely — the only supported interaction is our
+		//    pointer-lock FPS mode. Clicking the background requests the
+		//    lock; clicking a node selects + flies (only when unlocked).
 		const graph = new ForceGraph3D(container, { controlType: 'orbit' })
+			.enableNavigationControls(false)
 			.backgroundColor('#05060a')
 			.nodeRelSize(4)
 			.nodeLabel((n) => (n as GraphNode).title)
@@ -126,12 +130,6 @@
 				return group;
 			})
 			.nodeThreeObjectExtend(false)
-			.onNodeClick((raw) => {
-				const node = raw as GraphNode;
-				autoSelect = true;
-				selectedGuid = node.id;
-				focusNode(node.id);
-			})
 			.graphData(graphData);
 
 		fg = graph;
@@ -172,9 +170,24 @@
 		const fps = new FpsControls(camera, renderer.domElement);
 		fps.onLockChange = (locked) => {
 			fpsLocked = locked;
-			const orbit = graph.controls() as { enabled?: boolean } | null;
-			if (orbit && 'enabled' in orbit) orbit.enabled = !locked;
 		};
+
+		// Click handlers go on AFTER fps exists so onBackgroundClick can lock.
+		graph
+			.onNodeClick((raw) => {
+				// While pointer-locked, mouse coords are frozen and node
+				// picking is meaningless — ignore and let the user ESC first.
+				if (fps.locked) return;
+				const node = raw as GraphNode;
+				autoSelect = true;
+				selectedGuid = node.id;
+				focusNode(node.id);
+			})
+			.onBackgroundClick(() => {
+				// Empty-space click = (re)enter WASD mode. Safe to call while
+				// already locked (browser no-ops the request).
+				fps.lock();
+			});
 
 		const liveNodes = graph.graphData().nodes as Array<
 			GraphNode & { x?: number; y?: number; z?: number }
@@ -182,30 +195,43 @@
 		let candidateGuid: string | null = null;
 		let candidateSince = 0;
 		const forwardVec = new THREE.Vector3();
+		const frustum = new THREE.Frustum();
+		const projMatrix = new THREE.Matrix4();
+		const tmpPoint = new THREE.Vector3();
 
 		function updateNearest(now: number) {
 			if (!autoSelect) return;
-			// Aim-point = camera position shifted forward along the look
-			// direction. Notes in front of you get shorter distances than
-			// notes beside/behind, so the selection tracks your gaze.
+			// Recompute the camera's view frustum — only nodes currently on
+			// screen (not behind you, not off to the side) are eligible.
+			// That's how we exclude notes you've already flown past.
+			camera.updateMatrixWorld();
+			projMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+			frustum.setFromProjectionMatrix(projMatrix);
+
+			// Aim-point (40 units ahead along view) acts as the distance
+			// reference among on-screen candidates, so "the note you're
+			// looking toward" wins over something just barely in view.
 			camera.getWorldDirection(forwardVec);
 			const ax = camera.position.x + forwardVec.x * AIM_OFFSET;
 			const ay = camera.position.y + forwardVec.y * AIM_OFFSET;
 			const az = camera.position.z + forwardVec.z * AIM_OFFSET;
+
 			let bestId: string | null = null;
 			let bestD2 = Infinity;
 			for (const n of liveNodes) {
 				if (n.x === undefined) continue;
-				const dx = ax - n.x;
-				const dy = ay - (n.y ?? 0);
-				const dz = az - (n.z ?? 0);
+				tmpPoint.set(n.x, n.y ?? 0, n.z ?? 0);
+				if (!frustum.containsPoint(tmpPoint)) continue;
+				const dx = ax - tmpPoint.x;
+				const dy = ay - tmpPoint.y;
+				const dz = az - tmpPoint.z;
 				const d2 = dx * dx + dy * dy + dz * dz;
 				if (d2 < bestD2) {
 					bestD2 = d2;
 					bestId = n.id;
 				}
 			}
-			if (bestId === null) return;
+			if (bestId === null) return; // nothing on screen — keep current.
 			if (bestId !== candidateGuid) {
 				candidateGuid = bestId;
 				candidateSince = now;
@@ -227,8 +253,6 @@
 			rafId = requestAnimationFrame(loop);
 		};
 		rafId = requestAnimationFrame(loop);
-
-		enterFpsMode = () => fps.lock();
 
 		// 6) Forward wheel events to the embedded note's scroll container so
 		// the user can scroll through the note content without having to
@@ -259,8 +283,6 @@
 			graph._destructor();
 		};
 	}
-
-	let enterFpsMode: (() => void) | null = null;
 
 	/** Yellow → red HSL gradient driven by node.size (log of degree). */
 	function degreeColor(size: number): string {
@@ -363,17 +385,9 @@
 				type="button"
 				class="auto-btn"
 				onclick={reenableAutoSelect}
-				title="카메라에서 가장 가까운 노트를 자동으로 열어주는 기능"
+				title="시선 방향에서 가장 가까운 노트를 자동으로 열어주는 기능"
 			>자동 선택 다시 켜기</button>
 		{/if}
-		<button
-			type="button"
-			class="fps-btn"
-			onclick={() => enterFpsMode?.()}
-			title="클릭 후 WASD + 마우스로 이동. ESC로 해제."
-		>
-			{fpsLocked ? '이동 중 (ESC로 해제)' : '시점 이동 (WASD)'}
-		</button>
 	</div>
 
 	<div class="legend">
@@ -413,9 +427,13 @@
 		</svg>
 	</div>
 
-	{#if fpsLocked}
-		<div class="fps-hint">WASD: 이동 · Space/C: 상/하 · Shift: 빠르게 · ESC: 해제</div>
-	{/if}
+	<div class="fps-hint" class:paused={!fpsLocked && !loading}>
+		{#if fpsLocked}
+			WASD: 이동 · Space/C: 상/하 · Shift: 빠르게 · ESC: 정지
+		{:else if !loading}
+			클릭하여 이동 시작 (WASD)
+		{/if}
+	</div>
 
 	{#if selectedNode}
 		<aside class="side-panel" aria-label="노트 보기">
@@ -538,19 +556,6 @@
 		background: #2d3d50;
 	}
 
-	.fps-btn {
-		padding: 6px 12px;
-		border-radius: 4px;
-		border: 1px solid #3a7a50;
-		background: #1f3a2a;
-		color: #cfe8d8;
-		cursor: pointer;
-		font-size: 0.85rem;
-	}
-
-	.fps-btn:hover {
-		background: #2d5a3d;
-	}
 
 	.legend {
 		position: absolute;
@@ -712,7 +717,7 @@
 		top: 54px;
 		left: 50%;
 		transform: translateX(-50%);
-		padding: 6px 10px;
+		padding: 6px 12px;
 		background: rgba(20, 24, 34, 0.85);
 		border: 1px solid #2a3040;
 		border-radius: 4px;
@@ -720,6 +725,24 @@
 		color: #cfd8e3;
 		z-index: 10;
 		pointer-events: none;
+	}
+
+	.fps-hint:empty {
+		display: none;
+	}
+
+	/* When the pointer isn't locked, the hint doubles as an "enter WASD
+	   mode" call-to-action with a subtle pulse so it's easy to notice. */
+	.fps-hint.paused {
+		border-color: #5ab378;
+		color: #cfe8d8;
+		background: rgba(20, 46, 30, 0.85);
+		animation: hint-pulse 1.8s ease-in-out infinite;
+	}
+
+	@keyframes hint-pulse {
+		0%, 100% { box-shadow: 0 0 0 0 rgba(90, 179, 120, 0.0); }
+		50% { box-shadow: 0 0 18px 2px rgba(90, 179, 120, 0.35); }
 	}
 
 	/* Side panel — holds the embedded NoteWindow and an optional backlinks
