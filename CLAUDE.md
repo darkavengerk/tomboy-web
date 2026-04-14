@@ -451,10 +451,7 @@ All `pointer-events: none`, so they never eat canvas input.
 
 - **Reticle** at screen center — thin ring + cross ticks, `mix-blend-mode:
   screen` so it stays visible over any background color. Marks the aim
-  point used by both selection layers.
-- **Ship silhouette** at bottom-center — translucent green SVG top-down
-  view of a ship with cockpit + engine vents, drop-shadow glow, purely
-  decorative exploration flavor.
+  point used by both selection modes.
 - **Selection halo** — slim cyan `RingGeometry(1, 1.08)` billboarded at
   the selected node, scaled to the node's sphere radius (`3 * size`) so
   the ring's inner edge traces the silhouette exactly. Opacity 0.55 with
