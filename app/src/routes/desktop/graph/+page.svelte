@@ -46,9 +46,13 @@
 
 	// d3-force charge strength magnitude (applied as -value). Larger values
 	// push nodes further apart → looser cloud; smaller values tighten the
-	// cluster. 3d-force-graph's default is 30, which we match so the initial
-	// look is identical to the unconfigured library default.
-	let nodeSpacing = $state(30);
+	// cluster. Default 50 gives a visibly less cramped layout than
+	// 3d-force-graph's -30 default.
+	let nodeSpacing = $state(50);
+
+	// Link visibility toggle. Default off — the node cloud on its own tends
+	// to read more clearly; turn links on when you need to trace structure.
+	let showLinks = $state(false);
 
 	// Selection strategy for the debounced auto-select:
 	//   - 'aim'    : nearest-in-frustum to the aim point (camera + forward*40)
@@ -164,10 +168,10 @@
 			.nodeRelSize(4)
 			.nodeLabel((n) => (n as GraphNode).title)
 			.linkColor(() => 'rgba(140, 180, 220, 0.35)')
-			.linkDirectionalArrowLength(2)
+			.linkDirectionalArrowLength(showLinks ? 2 : 0)
 			.linkDirectionalArrowRelPos(0.9)
 			.linkWidth(0.3)
-			.linkOpacity(0.6)
+			.linkOpacity(showLinks ? 0.6 : 0)
 			.cooldownTicks(200)
 			.warmupTicks(40)
 			.d3AlphaDecay(0.05)
@@ -732,6 +736,14 @@
 		applyNodeSpacing(fg, s);
 	});
 
+	// Toggle link rendering. Opacity 0 + zero-length arrows effectively
+	// hides the web without rebuilding anything.
+	$effect(() => {
+		const show = showLinks;
+		if (!fg) return;
+		fg.linkOpacity(show ? 0.6 : 0).linkDirectionalArrowLength(show ? 2 : 0);
+	});
+
 	// Keep the WebGL canvas sized to its container.
 	$effect(() => {
 		if (!fg || !container) return;
@@ -816,6 +828,13 @@
 		>
 			<input type="checkbox" bind:checked={includeCategories} />
 			카테고리 표시
+		</label>
+		<label
+			class="category-toggle"
+			title="노트 사이 연결선(링크) 을 표시합니다. 꺼 두면 노드 구름만 보입니다."
+		>
+			<input type="checkbox" bind:checked={showLinks} />
+			링크 표시
 		</label>
 		{#if !autoSelect}
 			<button
