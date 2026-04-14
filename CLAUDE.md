@@ -342,16 +342,22 @@ and the color. Normal notes interpolate HSL hue from yellow (48°) at
 size=1 to red (0°) at size=2 via `degreeColor(size)`. The home note is
 gold (`#f5c542`) and the sleep note (`SLEEP_NOTE_GUID`) is purple
 (`#9b6cff`) regardless of degree, marking them as the two "starting"
-landings. On the first engine stop the camera auto-positions 220 units
-behind the midpoint of home + sleep; it never auto-recenters again, so
-dragging a node doesn't yank the camera back.
+landings. The camera does **not** auto-center on the starter notes —
+previous versions flew the view to the home+sleep midpoint on first
+engine stop, but that felt like being yanked away on page load, so the
+framework's default initial camera position is used instead.
+
+Sphere geometry uses `SphereGeometry(radius, 24, 16)` — the earlier
+`(10, 8)` setting was visibly polygonal against the black background.
+24×16 keeps silhouettes round at the displayed sizes while staying
+within a comfortable ~770K tri budget for a 2000-node graph.
 
 ### Label LOD
 
 Title sprites are driven by camera distance with a fade band, split into
 just two buckets by node size:
 
-- **Hub nodes** (`size ≥ 1.8`) — always visible, full opacity. Skip
+- **Hub nodes** (`size ≥ 1.6`) — always visible, full opacity. Skip
   `labelEntries` entirely; `label.visible` is set once in
   `nodeThreeObject` and never touched again.
 - **Everyone else** — distance fade around `labelBaseDistance`:
