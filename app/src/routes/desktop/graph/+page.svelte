@@ -1,13 +1,17 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getAllNotes, getNote } from '$lib/storage/noteStore.js';
+	import { getAllNotes } from '$lib/storage/noteStore.js';
 	import { getHomeNoteGuid } from '$lib/core/home.js';
-	import { deserializeContent } from '$lib/core/noteContentArchiver.js';
 	import { buildGraph, type GraphData, type GraphNode } from '$lib/graph/buildGraph.js';
-	import { toPlainText } from '$lib/graph/plainText.js';
 	import { SLEEP_NOTE_GUID } from '$lib/graph/constants.js';
 	import { FpsControls } from '$lib/graph/FpsControls.js';
+	import NoteWindow from '$lib/desktop/NoteWindow.svelte';
 	import type { ForceGraph3DInstance } from '3d-force-graph';
+
+	// How long a new nearest-node candidate must stay on top before we actually
+	// switch the displayed note. Short enough to feel responsive, long enough
+	// to avoid thrashing the TipTap editor while flying through a crowd.
+	const SWITCH_DEBOUNCE_MS = 350;
 
 	let container: HTMLDivElement;
 	let loading = $state(true);
@@ -16,12 +20,14 @@
 	let graphData: GraphData | null = null;
 	let fpsLocked = $state(false);
 
-	// Selected-node preview panel state.
-	let selected = $state<{
-		node: GraphNode;
-		text: string;
-		backlinks: Array<{ id: string; title: string }>;
-	} | null>(null);
+	// Auto-selection state. Auto-select is on by default; closing the panel
+	// turns it off until the user explicitly clicks a node again.
+	let selectedGuid = $state<string | null>(null);
+	let autoSelect = $state(true);
+
+	let nodesById = new Map<string, GraphNode>();
+	let titleToGuid = new Map<string, string>();
+	let backlinksByGuid = new Map<string, string[]>();
 
 	let fg: ForceGraph3DInstance | null = null;
 	let disposed = false;
@@ -64,14 +70,17 @@
 		});
 		stats = { nodes: graphData.nodes.length, links: graphData.links.length };
 
-		// 2) Build reverse-adjacency for backlinks panel.
-		const backlinks = new Map<string, string[]>();
+		// 2) Indices for click/link/backlink lookups.
+		nodesById = new Map(graphData.nodes.map((n) => [n.id, n]));
+		titleToGuid = new Map(
+			graphData.nodes.map((n) => [n.title.trim().toLowerCase(), n.id])
+		);
+		backlinksByGuid = new Map<string, string[]>();
 		for (const l of graphData.links) {
-			const arr = backlinks.get(l.target) ?? [];
+			const arr = backlinksByGuid.get(l.target) ?? [];
 			arr.push(l.source);
-			backlinks.set(l.target, arr);
+			backlinksByGuid.set(l.target, arr);
 		}
-		const nodesById = new Map(graphData.nodes.map((n) => [n.id, n]));
 
 		// 3) Instantiate the graph.
 		const graph = new ForceGraph3D(container, { controlType: 'orbit' })
@@ -113,30 +122,29 @@
 			.nodeThreeObjectExtend(false)
 			.onNodeClick((raw) => {
 				const node = raw as GraphNode;
-				void openNode(node, nodesById, backlinks);
+				autoSelect = true;
+				selectedGuid = node.id;
+				focusNode(node.id);
 			})
 			.graphData(graphData);
 
 		fg = graph;
 
-		// 4) Center camera on starting nodes (home + sleep) once the layout
-		//    has stabilized — but only on the *first* engine stop. Dragging a
-		//    node re-heats the simulation; without this one-shot guard the
-		//    camera would teleport back to the starters every time motion
-		//    settles, which feels like being yanked away mid-exploration.
+		// 4) Center camera on starting nodes (home + sleep) only on the first
+		//    engine stop, so dragging a node doesn't teleport the camera back.
 		let centeredOnce = false;
 		graph.onEngineStop(() => {
 			if (centeredOnce) return;
 			centeredOnce = true;
 			const starters = graphData!.nodes.filter((n) => n.isHome || n.isSleep);
 			if (starters.length === 0) return;
-			const nodesWithPos = starters
+			const placed = starters
 				.map((n) => graph.graphData().nodes.find((x) => (x as GraphNode).id === n.id))
 				.filter((x): x is NonNullable<typeof x> => !!x) as Array<
 				GraphNode & { x?: number; y?: number; z?: number }
 			>;
-			if (nodesWithPos.length === 0) return;
-			const avg = nodesWithPos.reduce(
+			if (placed.length === 0) return;
+			const avg = placed.reduce(
 				(acc, n) => ({
 					x: acc.x + (n.x ?? 0),
 					y: acc.y + (n.y ?? 0),
@@ -144,42 +152,71 @@
 				}),
 				{ x: 0, y: 0, z: 0 }
 			);
-			avg.x /= nodesWithPos.length;
-			avg.y /= nodesWithPos.length;
-			avg.z /= nodesWithPos.length;
-			const distance = 220;
-			graph.cameraPosition({ x: avg.x, y: avg.y, z: avg.z + distance }, avg, 800);
+			avg.x /= placed.length;
+			avg.y /= placed.length;
+			avg.z /= placed.length;
+			graph.cameraPosition({ x: avg.x, y: avg.y, z: avg.z + 220 }, avg, 800);
 		});
 
 		loading = false;
 
-		// 5) Install custom FPS controls alongside orbit.
-		// We keep orbit enabled for trackpad-friendly rotation when the
-		// pointer isn't locked, and switch to FPS when the user clicks to
-		// enter pointer-lock mode via the "시점 이동" button.
+		// 5) FPS controls + animation loop (also drives nearest-node tracking).
 		const camera = graph.camera();
 		const renderer = graph.renderer();
 		const fps = new FpsControls(camera, renderer.domElement);
 		fps.onLockChange = (locked) => {
 			fpsLocked = locked;
-			// Disable orbit controls while FPS is active to avoid fighting.
 			const orbit = graph.controls() as { enabled?: boolean } | null;
 			if (orbit && 'enabled' in orbit) orbit.enabled = !locked;
 		};
 
-		// 6) Drive FPS movement from the graph's animation loop. 3d-force-graph
-		// doesn't expose a public tick hook, so we use requestAnimationFrame.
+		const liveNodes = graph.graphData().nodes as Array<
+			GraphNode & { x?: number; y?: number; z?: number }
+		>;
+		let candidateGuid: string | null = null;
+		let candidateSince = 0;
+
+		function updateNearest(now: number) {
+			if (!autoSelect) return;
+			let bestId: string | null = null;
+			let bestD2 = Infinity;
+			const cx = camera.position.x;
+			const cy = camera.position.y;
+			const cz = camera.position.z;
+			for (const n of liveNodes) {
+				if (n.x === undefined) continue;
+				const dx = cx - n.x;
+				const dy = cy - (n.y ?? 0);
+				const dz = cz - (n.z ?? 0);
+				const d2 = dx * dx + dy * dy + dz * dz;
+				if (d2 < bestD2) {
+					bestD2 = d2;
+					bestId = n.id;
+				}
+			}
+			if (bestId === null) return;
+			if (bestId !== candidateGuid) {
+				candidateGuid = bestId;
+				candidateSince = now;
+			} else if (
+				bestId !== selectedGuid &&
+				now - candidateSince >= SWITCH_DEBOUNCE_MS
+			) {
+				selectedGuid = bestId;
+			}
+		}
+
 		let lastTime = performance.now();
 		let rafId = 0;
 		const loop = (t: number) => {
 			const dt = Math.min(0.1, (t - lastTime) / 1000);
 			lastTime = t;
 			fps.update(dt);
+			updateNearest(t);
 			rafId = requestAnimationFrame(loop);
 		};
 		rafId = requestAnimationFrame(loop);
 
-		// Expose lock trigger for the button.
 		enterFpsMode = () => fps.lock();
 
 		return () => {
@@ -191,65 +228,49 @@
 
 	let enterFpsMode: (() => void) | null = null;
 
-	/**
-	 * Map a node's log-scaled size (1.0 = no links, 2.0 = most-linked) to a
-	 * yellow → orange → red gradient. `size` already encodes the log curve on
-	 * degree, so a linear HSL interpolation on hue gives a perceptually even
-	 * transition: hue 48° (yellow) → 0° (red).
-	 */
+	/** Yellow → red HSL gradient driven by node.size (log of degree). */
 	function degreeColor(size: number): string {
 		const t = Math.max(0, Math.min(1, size - 1));
 		const hue = 48 - 48 * t;
-		const sat = 85 + 10 * t; // 85% → 95%
-		const light = 62 - 10 * t; // 62% → 52%
+		const sat = 85 + 10 * t;
+		const light = 62 - 10 * t;
 		return `hsl(${hue.toFixed(1)}, ${sat.toFixed(1)}%, ${light.toFixed(1)}%)`;
-	}
-
-	async function openNode(
-		node: GraphNode,
-		nodesById: Map<string, GraphNode>,
-		backlinks: Map<string, string[]>
-	) {
-		const data = await getNote(node.id);
-		let text = '';
-		if (data) {
-			try {
-				const doc = deserializeContent(data.xmlContent);
-				text = toPlainText(doc, 1500);
-			} catch {
-				text = '(본문 파싱 실패)';
-			}
-		}
-		const bls = (backlinks.get(node.id) ?? [])
-			.map((id) => nodesById.get(id))
-			.filter((n): n is GraphNode => !!n)
-			.map((n) => ({ id: n.id, title: n.title }));
-		selected = { node, text, backlinks: bls };
 	}
 
 	function focusNode(guid: string) {
 		if (!fg) return;
-		const data = (fg as unknown as { graphData: () => GraphData }).graphData();
-		const target = data.nodes.find((n) => (n as GraphNode).id === guid) as
-			| (GraphNode & { x?: number; y?: number; z?: number })
-			| undefined;
+		const target = fg.graphData().nodes.find(
+			(n) => (n as GraphNode).id === guid
+		) as (GraphNode & { x?: number; y?: number; z?: number }) | undefined;
 		if (!target || target.x === undefined) return;
 		const distance = 80;
 		const distRatio = 1 + distance / Math.hypot(target.x, target.y ?? 0, target.z ?? 1);
-		(fg as unknown as {
-			cameraPosition: (p: { x: number; y: number; z: number }, look: unknown, ms?: number) => void;
-		}).cameraPosition(
+		fg.cameraPosition(
 			{ x: target.x * distRatio, y: (target.y ?? 0) * distRatio, z: (target.z ?? 0) * distRatio },
 			{ x: target.x, y: target.y ?? 0, z: target.z ?? 0 },
 			1000
 		);
 	}
 
-	function openInEditor(guid: string) {
-		window.open(`/note/${guid}`, '_blank', 'noopener');
+	function handleOpenLink(title: string) {
+		const key = title.trim().toLowerCase();
+		const guid = titleToGuid.get(key);
+		if (!guid) return;
+		autoSelect = true;
+		selectedGuid = guid;
+		focusNode(guid);
 	}
 
-	// Keep canvas sized to the container.
+	function closePanel() {
+		selectedGuid = null;
+		autoSelect = false;
+	}
+
+	function reenableAutoSelect() {
+		autoSelect = true;
+	}
+
+	// Keep the WebGL canvas sized to its container.
 	$effect(() => {
 		if (!fg || !container) return;
 		const instance = fg;
@@ -262,6 +283,17 @@
 		ro.observe(el);
 		return () => ro.disconnect();
 	});
+
+	const selectedNode = $derived(
+		selectedGuid ? (nodesById.get(selectedGuid) ?? null) : null
+	);
+	const selectedBacklinks = $derived(
+		selectedGuid
+			? (backlinksByGuid.get(selectedGuid) ?? [])
+					.map((id) => nodesById.get(id))
+					.filter((n): n is GraphNode => !!n)
+			: []
+	);
 </script>
 
 <svelte:head>
@@ -291,9 +323,15 @@
 
 	<div class="top-bar">
 		<a class="back" href="/desktop" title="데스크톱으로 돌아가기">← 데스크톱</a>
-		<div class="stats">
-			노드 {stats.nodes} · 링크 {stats.links}
-		</div>
+		<div class="stats">노드 {stats.nodes} · 링크 {stats.links}</div>
+		{#if !autoSelect}
+			<button
+				type="button"
+				class="auto-btn"
+				onclick={reenableAutoSelect}
+				title="카메라에서 가장 가까운 노트를 자동으로 열어주는 기능"
+			>자동 선택 다시 켜기</button>
+		{/if}
 		<button
 			type="button"
 			class="fps-btn"
@@ -317,57 +355,65 @@
 
 	{#if fpsLocked}
 		<div class="crosshair" aria-hidden="true"></div>
-		<div class="fps-hint">
-			WASD: 이동 · Space/C: 상/하 · Shift: 빠르게 · ESC: 해제
-		</div>
+		<div class="fps-hint">WASD: 이동 · Space/C: 상/하 · Shift: 빠르게 · ESC: 해제</div>
 	{/if}
 
-	{#if selected}
-		<aside class="side-panel" aria-label="노트 미리보기">
-			<div class="panel-header">
-				<h2>{selected.node.title}</h2>
+	{#if selectedNode}
+		<aside class="side-panel" aria-label="노트 보기">
+			<div class="panel-badge">
+				{#if autoSelect}
+					<span class="dot-auto" aria-hidden="true"></span> 가장 가까운 노트
+				{:else}
+					선택한 노트
+				{/if}
 				<button
 					type="button"
 					class="close"
-					onclick={() => (selected = null)}
-					aria-label="닫기"
+					onclick={closePanel}
+					aria-label="패널 닫기"
+					title="패널 닫기 (자동 선택 끄기)"
 				>×</button>
 			</div>
 
-			<div class="panel-meta">
-				링크 수 {selected.node.degree}
-				{#if selected.node.isHome} · 홈{/if}
-				{#if selected.node.isSleep} · 슬립노트{/if}
+			<div class="note-host">
+				{#key selectedNode.id}
+					<NoteWindow
+						guid={selectedNode.id}
+						x={0}
+						y={0}
+						width={0}
+						height={0}
+						z={1}
+						onfocus={() => {}}
+						onclose={closePanel}
+						onmove={() => {}}
+						onresize={() => {}}
+						onopenlink={handleOpenLink}
+					/>
+				{/key}
 			</div>
 
-			<div class="panel-body">
-				{#if selected.text}
-					<pre>{selected.text}</pre>
-				{:else}
-					<div class="muted">(내용 없음)</div>
-				{/if}
-			</div>
-
-			{#if selected.backlinks.length > 0}
+			{#if selectedBacklinks.length > 0}
 				<div class="backlinks">
-					<div class="backlinks-title">이 노트를 가리키는 {selected.backlinks.length}개 노트</div>
+					<div class="backlinks-title">
+						이 노트를 가리키는 {selectedBacklinks.length}개
+					</div>
 					<ul>
-						{#each selected.backlinks as bl (bl.id)}
+						{#each selectedBacklinks as bl (bl.id)}
 							<li>
-								<button type="button" onclick={() => focusNode(bl.id)}>
-									{bl.title}
-								</button>
+								<button
+									type="button"
+									onclick={() => {
+										autoSelect = true;
+										selectedGuid = bl.id;
+										focusNode(bl.id);
+									}}
+								>{bl.title}</button>
 							</li>
 						{/each}
 					</ul>
 				</div>
 			{/if}
-
-			<div class="panel-actions">
-				<button type="button" onclick={() => openInEditor(selected!.node.id)}>
-					이 노트 열기 ↗
-				</button>
-			</div>
 		</aside>
 	{/if}
 </div>
@@ -425,8 +471,30 @@
 		border-radius: 4px;
 	}
 
+	/* Spacer separates left-aligned items (back/stats) from right-aligned
+	   action buttons. Using a spacer makes the ordering independent of
+	   whether auto-btn is rendered. */
+	.top-bar::before {
+		content: '';
+		flex: 1;
+		pointer-events: none;
+	}
+
+	.auto-btn {
+		padding: 6px 12px;
+		border-radius: 4px;
+		border: 1px solid #3a5a7a;
+		background: #1f2a3a;
+		color: #cfd8e8;
+		cursor: pointer;
+		font-size: 0.85rem;
+	}
+
+	.auto-btn:hover {
+		background: #2d3d50;
+	}
+
 	.fps-btn {
-		margin-left: auto;
 		padding: 6px 12px;
 		border-radius: 4px;
 		border: 1px solid #3a7a50;
@@ -572,45 +640,55 @@
 		pointer-events: none;
 	}
 
+	/* Side panel — holds the embedded NoteWindow plus an auto-select badge
+	   and an optional backlinks footer. Width is a bit wider than the plain-
+	   text preview was, since the TipTap editor needs elbow room. */
 	.side-panel {
 		position: absolute;
 		top: 60px;
 		right: 12px;
 		bottom: 12px;
-		width: 360px;
+		width: 420px;
 		max-width: calc(100vw - 24px);
-		background: #14182a;
-		border: 1px solid #2a3040;
-		border-radius: 8px;
 		display: flex;
 		flex-direction: column;
+		gap: 6px;
 		z-index: 10;
-		overflow: hidden;
-		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
 	}
 
-	.panel-header {
+	.panel-badge {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		padding: 12px 14px 8px;
-		border-bottom: 1px solid #2a3040;
+		padding: 6px 10px;
+		background: rgba(20, 24, 34, 0.85);
+		border: 1px solid #2a3040;
+		border-radius: 4px;
+		font-size: 0.78rem;
+		color: #cfd8e3;
 	}
 
-	.panel-header h2 {
-		margin: 0;
-		font-size: 1rem;
-		flex: 1;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+	.dot-auto {
+		display: inline-block;
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: #5ab378;
+		box-shadow: 0 0 6px #5ab378;
+		animation: pulse 1.4s ease-in-out infinite;
+	}
+
+	@keyframes pulse {
+		0%, 100% { opacity: 0.6; }
+		50% { opacity: 1; }
 	}
 
 	.close {
+		margin-left: auto;
 		background: transparent;
 		border: none;
 		color: #8a94a6;
-		font-size: 1.4rem;
+		font-size: 1.2rem;
 		line-height: 1;
 		cursor: pointer;
 		padding: 0 4px;
@@ -620,44 +698,40 @@
 		color: #e6edf3;
 	}
 
-	.panel-meta {
-		padding: 6px 14px;
-		font-size: 0.78rem;
-		color: #8a94a6;
-		border-bottom: 1px solid #2a3040;
-	}
-
-	.panel-body {
+	/* Host for the embedded NoteWindow. NoteWindow uses position: absolute
+	   with left/top/width/height, so we override those to stretch it across
+	   the host rather than require live size prop updates. */
+	.note-host {
+		position: relative;
 		flex: 1;
-		overflow-y: auto;
-		padding: 12px 14px;
-		font-size: 0.85rem;
-		line-height: 1.5;
+		min-height: 0;
+		overflow: hidden;
+		border-radius: 6px;
+		box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
 	}
 
-	.panel-body pre {
-		margin: 0;
-		white-space: pre-wrap;
-		word-break: break-word;
-		font-family: inherit;
-		color: #cfd8e3;
-	}
-
-	.panel-body .muted {
-		color: #7a8494;
+	.note-host :global(.note-window) {
+		position: absolute !important;
+		left: 0 !important;
+		top: 0 !important;
+		width: 100% !important;
+		height: 100% !important;
 	}
 
 	.backlinks {
-		padding: 10px 14px;
-		border-top: 1px solid #2a3040;
-		max-height: 30%;
+		flex-shrink: 0;
+		max-height: 25%;
 		overflow-y: auto;
+		padding: 8px 12px;
+		background: rgba(20, 24, 34, 0.85);
+		border: 1px solid #2a3040;
+		border-radius: 4px;
 	}
 
 	.backlinks-title {
-		font-size: 0.78rem;
+		font-size: 0.76rem;
 		color: #8a94a6;
-		margin-bottom: 6px;
+		margin-bottom: 4px;
 	}
 
 	.backlinks ul {
@@ -669,12 +743,12 @@
 	.backlinks li button {
 		width: 100%;
 		text-align: left;
-		padding: 4px 6px;
+		padding: 3px 6px;
 		border: none;
 		background: transparent;
 		color: #cfd8e3;
 		cursor: pointer;
-		font-size: 0.82rem;
+		font-size: 0.8rem;
 		border-radius: 3px;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -683,25 +757,5 @@
 
 	.backlinks li button:hover {
 		background: #1f2638;
-	}
-
-	.panel-actions {
-		padding: 10px 14px;
-		border-top: 1px solid #2a3040;
-	}
-
-	.panel-actions button {
-		width: 100%;
-		padding: 8px;
-		border: 1px solid #3a7a50;
-		background: #1f3a2a;
-		color: #cfe8d8;
-		border-radius: 4px;
-		cursor: pointer;
-		font-size: 0.85rem;
-	}
-
-	.panel-actions button:hover {
-		background: #2d5a3d;
 	}
 </style>
