@@ -18,6 +18,13 @@ export interface TomboyInternalLinkOptions {
 	getTitles: () => TitleEntry[];
 	/** Returns the guid of the note being edited (excluded from auto-links). */
 	getCurrentGuid: () => string | null;
+	/**
+	 * When true, the auto-link plugin only runs on explicit `{refresh: true}`
+	 * meta dispatches (not on ordinary doc changes). The consumer is expected
+	 * to schedule refreshes at idle/debounced intervals to keep the typing hot
+	 * path cheap. Defaults to false (scan on every doc change).
+	 */
+	deferred: boolean;
 }
 
 export const TomboyInternalLink = Mark.create<TomboyInternalLinkOptions>({
@@ -28,7 +35,8 @@ export const TomboyInternalLink = Mark.create<TomboyInternalLinkOptions>({
 			HTMLAttributes: {},
 			onLinkClick: (_target: string) => {},
 			getTitles: () => [],
-			getCurrentGuid: () => null
+			getCurrentGuid: () => null,
+			deferred: false
 		};
 	},
 
@@ -94,7 +102,8 @@ export const TomboyInternalLink = Mark.create<TomboyInternalLinkOptions>({
 			createAutoLinkPlugin({
 				markType: this.type,
 				getTitles: () => this.options.getTitles(),
-				getCurrentGuid: () => this.options.getCurrentGuid()
+				getCurrentGuid: () => this.options.getCurrentGuid(),
+				deferred: this.options.deferred
 			})
 		];
 	}

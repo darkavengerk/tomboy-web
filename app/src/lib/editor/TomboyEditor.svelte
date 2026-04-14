@@ -32,12 +32,58 @@
 
 	let editorElement: HTMLDivElement;
 	let editor: Editor | null = $state(null);
-	// Snapshot of the editor's last known content JSON, used to suppress
-	// no-op onUpdate callbacks. Initialised AFTER the editor is created, so
-	// it uses TipTap/ProseMirror's normalised JSON shape (different key
-	// order, default attrs filled in) — comparing against the raw parser
-	// output would always mismatch and cause spurious saves on first touch.
-	let prevContentStr = "";
+
+	// Debounced dispatcher for the auto-link plugin's full-doc rescan. The
+	// plugin runs in "deferred" mode (only scans on {refresh:true} meta),
+	// which keeps the typing hot path cheap. We fire a single refresh after
+	// the user has paused typing. Idle fallback via requestIdleCallback
+	// when available so the scan doesn't steal a frame from active input.
+	const AUTO_LINK_DEBOUNCE_MS = 300;
+	let autoLinkTimer: ReturnType<typeof setTimeout> | null = null;
+	let autoLinkIdleHandle: number | null = null;
+
+	function cancelAutoLinkScan(): void {
+		if (autoLinkTimer !== null) {
+			clearTimeout(autoLinkTimer);
+			autoLinkTimer = null;
+		}
+		if (autoLinkIdleHandle !== null) {
+			const anyWin = window as unknown as {
+				cancelIdleCallback?: (h: number) => void;
+			};
+			anyWin.cancelIdleCallback?.(autoLinkIdleHandle);
+			autoLinkIdleHandle = null;
+		}
+	}
+
+	function runAutoLinkScan(): void {
+		const ed = editor;
+		if (!ed || ed.isDestroyed) return;
+		ed.view.dispatch(
+			ed.state.tr.setMeta(autoLinkPluginKey, { refresh: true }),
+		);
+	}
+
+	function scheduleAutoLinkScan(): void {
+		cancelAutoLinkScan();
+		autoLinkTimer = setTimeout(() => {
+			autoLinkTimer = null;
+			const anyWin = window as unknown as {
+				requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+			};
+			if (typeof anyWin.requestIdleCallback === "function") {
+				autoLinkIdleHandle = anyWin.requestIdleCallback(
+					() => {
+						autoLinkIdleHandle = null;
+						runAutoLinkScan();
+					},
+					{ timeout: 500 },
+				);
+			} else {
+				runAutoLinkScan();
+			}
+		}, AUTO_LINK_DEBOUNCE_MS);
+	}
 
 	onMount(() => {
 		const titleProvider = createTitleProvider({ excludeGuid: currentGuid });
@@ -73,6 +119,10 @@
 					},
 					getTitles: () => titleProvider.getTitles(),
 					getCurrentGuid: () => currentGuid,
+					// Scan only at idle — scheduleAutoLinkScan() below fires
+					// a single {refresh:true} after typing pauses. This keeps
+					// the keystroke path out of the O(doc * titles) scan.
+					deferred: true,
 				}),
 				TomboyUrlLink,
 			],
@@ -81,11 +131,13 @@
 				content: [{ type: "paragraph" }],
 			},
 			onUpdate: ({ editor: ed }) => {
-				const newDoc = ed.getJSON();
-				const newStr = JSON.stringify(newDoc);
-				if (newStr === prevContentStr) return;
-				prevContentStr = newStr;
-				onchange?.(newDoc);
+				// TipTap's onUpdate only fires on docChanged transactions,
+				// so the previous JSON.stringify dirty-check was redundant.
+				// Auto-link mark mutations appended by the plugin also need
+				// to be persisted, so we always forward to onchange and let
+				// updateNoteFromEditor's XML-equality check absorb no-ops.
+				onchange?.(ed.getJSON());
+				scheduleAutoLinkScan();
 			},
 			editorProps: {
 				handleClick: (view, pos, event) => {
@@ -106,22 +158,21 @@
 			},
 		});
 
-		// Capture the editor's normalised initial JSON so the onUpdate
-		// dirty-check compares like-for-like.
-		prevContentStr = JSON.stringify(editor.getJSON());
+		// Initial scan so pre-existing content gets its auto-links applied
+		// right after mount (the plugin itself no longer scans on setContent
+		// because it's in deferred mode).
+		scheduleAutoLinkScan();
 
 		// When the note list changes (another note created / renamed / deleted),
 		// ask the plugin to re-scan the current doc so stale / newly-matching
-		// spans are reconciled.
+		// spans are reconciled. Routed through the same debouncer so a burst
+		// of cache invalidations collapses into one scan.
 		const offChange = titleProvider.onChange(() => {
-			const ed = editor;
-			if (!ed) return;
-			ed.view.dispatch(
-				ed.state.tr.setMeta(autoLinkPluginKey, { refresh: true }),
-			);
+			scheduleAutoLinkScan();
 		});
 
 		return () => {
+			cancelAutoLinkScan();
 			offChange();
 			titleProvider.dispose();
 			editor?.destroy();
