@@ -352,6 +352,44 @@ Sphere geometry uses `SphereGeometry(radius, 24, 16)` — the earlier
 24×16 keeps silhouettes round at the displayed sizes while staying
 within a comfortable ~770K tri budget for a 2000-node graph.
 
+### Category (notebook) nodes — experimental toggle
+
+A checkbox in the top bar (`bind:checked={includeCategories}`) opts into
+adding synthetic nodes for notebooks. When on, `buildGraph` emits an
+extra node per distinct `system:notebook:<name>` tag (id
+`category:<name>`, flagged `isCategory: true`) and a directed edge from
+each member note to its notebook. Category size follows the same
+log-scaled degree formula as notes, but based on member count.
+
+Visually, categories render as translucent teal `BoxGeometry` cubes
+(`#4fd1c5`, opacity 0.75) side = `radius × 1.6`, so they're obviously
+"meta" entities versus the sphere notes. Their labels are always
+visible regardless of distance — same treatment as the hub tier —
+because there's typically only a handful and they act as landmarks.
+
+Categories are deliberately **excluded from selection**:
+`findAimedNode`, `findCenterNode`, and `titleToGuid` all filter
+`isCategory`, so auto-select / click / internal-link resolution only
+ever pick real notes. A category at the reticle won't even highlight
+(the hover halo skips it too).
+
+The toggle rebuilds the graph in place: a `$effect` watches
+`includeCategories` and calls the closure-captured `rebuildGraphData()`
+hook set in `init()`, which:
+
+1. Re-runs `buildGraph(loadedNotes, { includeCategories, ... })`.
+2. Clears `labelEntries` so `nodeThreeObject` can freshly repopulate.
+3. Calls `graph.graphData(newData)`.
+4. Re-grabs the live node array and rebuilds `liveNodes` /
+   `liveNodesById` (3d-force-graph mutates these references during
+   the force simulation).
+5. Calls `refreshIndices()` for `nodesById`, `titleToGuid`,
+   `backlinksByGuid`, and the `stats` counter.
+
+An early `$effect` firing (before init finishes) is harmless because
+`rebuildGraphData` is still `null`; init reads the current
+`includeCategories` value when it does the initial build.
+
 ### Label LOD
 
 Title sprites are driven by camera distance with a fade band, split into
