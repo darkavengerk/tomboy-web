@@ -33,14 +33,21 @@
 	let editorElement: HTMLDivElement;
 	let editor: Editor | null = $state(null);
 
-	// Debounced dispatcher for the auto-link plugin's full-doc rescan. The
-	// plugin runs in "deferred" mode (only scans on {refresh:true} meta),
-	// which keeps the typing hot path cheap. We fire a single refresh after
-	// the user has paused typing. Idle fallback via requestIdleCallback
-	// when available so the scan doesn't steal a frame from active input.
-	const AUTO_LINK_DEBOUNCE_MS = 300;
+	// Debounced dispatcher for the auto-link plugin's rescan. The plugin
+	// runs in "deferred" mode (only scans on {refresh:true} meta), which
+	// keeps the typing hot path cheap. We fire a single refresh after the
+	// user has paused typing. Idle fallback via requestIdleCallback when
+	// available so the scan doesn't steal a frame from active input.
+	//
+	// `full:true` is used when the title list changes out from under us
+	// (another note created / renamed / deleted). That case requires a
+	// whole-document rescan because any text might now match, unlike the
+	// ordinary typing path where the plugin's own dirty-range tracking
+	// lets us scan only around the edit.
+	const AUTO_LINK_DEBOUNCE_MS = 1000;
 	let autoLinkTimer: ReturnType<typeof setTimeout> | null = null;
 	let autoLinkIdleHandle: number | null = null;
+	let autoLinkPendingFull = false;
 
 	function cancelAutoLinkScan(): void {
 		if (autoLinkTimer !== null) {
@@ -59,12 +66,14 @@
 	function runAutoLinkScan(): void {
 		const ed = editor;
 		if (!ed || ed.isDestroyed) return;
-		ed.view.dispatch(
-			ed.state.tr.setMeta(autoLinkPluginKey, { refresh: true }),
-		);
+		const meta: { refresh: true; full?: true } = { refresh: true };
+		if (autoLinkPendingFull) meta.full = true;
+		autoLinkPendingFull = false;
+		ed.view.dispatch(ed.state.tr.setMeta(autoLinkPluginKey, meta));
 	}
 
-	function scheduleAutoLinkScan(): void {
+	function scheduleAutoLinkScan(opts?: { full?: boolean }): void {
+		if (opts?.full) autoLinkPendingFull = true;
 		cancelAutoLinkScan();
 		autoLinkTimer = setTimeout(() => {
 			autoLinkTimer = null;
@@ -158,17 +167,20 @@
 			},
 		});
 
-		// Initial scan so pre-existing content gets its auto-links applied
-		// right after mount (the plugin itself no longer scans on setContent
-		// because it's in deferred mode).
-		scheduleAutoLinkScan();
+		// Note: no initial scan on mount. The note's stored XML already
+		// carries the `<link:internal>` marks from its last save, so the
+		// deserialized doc shows links immediately. Any staleness (e.g.
+		// another note renamed while this one was closed) self-heals on
+		// the next edit via the plugin's dirty-range tracking, or
+		// immediately via the titleProvider.onChange hook below.
 
 		// When the note list changes (another note created / renamed / deleted),
-		// ask the plugin to re-scan the current doc so stale / newly-matching
-		// spans are reconciled. Routed through the same debouncer so a burst
-		// of cache invalidations collapses into one scan.
+		// any text in this note might newly match / stop matching a title —
+		// ask the plugin for a full-document rescan. Routed through the
+		// same debouncer so a burst of cache invalidations collapses into
+		// one scan.
 		const offChange = titleProvider.onChange(() => {
-			scheduleAutoLinkScan();
+			scheduleAutoLinkScan({ full: true });
 		});
 
 		return () => {

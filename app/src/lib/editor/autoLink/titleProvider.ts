@@ -4,6 +4,15 @@
  * Wraps `listNotes()` + `noteListCache.onInvalidate` to expose a synchronous
  * `getTitles()` view that is kept up to date as notes are created, renamed
  * or deleted anywhere in the app.
+ *
+ * Module-level singleton state: the expensive `listNotes()` full-DB read is
+ * shared across every active provider instance, which matters a lot when
+ * many editors mount at once (e.g. desktop workspace switching opens several
+ * NoteWindow components in parallel). Each `createTitleProvider` call
+ * returns a thin handle that layers its own `excludeGuid` filter and its own
+ * `onChange` listeners over the shared entries array. An internal refcount
+ * keeps the `invalidateCache` subscription alive only while at least one
+ * provider is undisposed.
  */
 
 import { listNotes } from '$lib/core/noteManager.js';
@@ -13,11 +22,11 @@ import type { TitleEntry } from './findTitleMatches.js';
 export interface TitleProvider {
 	/** Current snapshot of title entries. Excludes blank titles / the excluded guid. */
 	getTitles(): TitleEntry[];
-	/** Re-fetch from the note store. */
+	/** Re-fetch from the note store. Coalesces concurrent callers. */
 	refresh(): Promise<void>;
 	/** Subscribe to refresh completions. Returns unsubscribe fn. */
 	onChange(cb: () => void): () => void;
-	/** Release the invalidation subscription. */
+	/** Release the invalidation subscription for this handle. */
 	dispose(): void;
 }
 
@@ -25,20 +34,21 @@ export interface TitleProviderOptions {
 	excludeGuid?: string | null;
 }
 
-export function createTitleProvider(opts: TitleProviderOptions = {}): TitleProvider {
-	const excludeGuid = opts.excludeGuid ?? null;
-	let entries: TitleEntry[] = [];
-	const listeners = new Set<() => void>();
-	let disposed = false;
+// --- Singleton state -----------------------------------------------------
 
-	async function refresh(): Promise<void> {
-		if (disposed) return;
+let sharedEntries: TitleEntry[] = [];
+let sharedInFlight: Promise<void> | null = null;
+const sharedListeners = new Set<() => void>();
+let providerCount = 0;
+let invalidateOff: (() => void) | null = null;
+
+async function doSharedRefresh(): Promise<void> {
+	if (sharedInFlight) return sharedInFlight;
+	sharedInFlight = (async () => {
 		const notes = await listNotes();
-		if (disposed) return;
 		const next: TitleEntry[] = [];
 		for (const n of notes) {
 			if (!n || typeof n.title !== 'string') continue;
-			if (excludeGuid !== null && n.guid === excludeGuid) continue;
 			const trimmed = n.title.trim();
 			if (!trimmed) continue;
 			next.push({
@@ -47,30 +57,82 @@ export function createTitleProvider(opts: TitleProviderOptions = {}): TitleProvi
 				guid: n.guid
 			});
 		}
-		entries = next;
-		for (const l of listeners) l();
-	}
-
-	const off = onInvalidate(() => {
-		// Fire-and-forget; internal listeners run after the refresh completes.
-		void refresh();
+		sharedEntries = next;
+		for (const l of sharedListeners) l();
+	})().finally(() => {
+		sharedInFlight = null;
 	});
+	return sharedInFlight;
+}
+
+function ensureSubscribed(): void {
+	if (invalidateOff) return;
+	invalidateOff = onInvalidate(() => {
+		void doSharedRefresh();
+	});
+}
+
+function maybeUnsubscribe(): void {
+	if (providerCount === 0 && invalidateOff) {
+		invalidateOff();
+		invalidateOff = null;
+	}
+}
+
+// --- Public factory ------------------------------------------------------
+
+export function createTitleProvider(opts: TitleProviderOptions = {}): TitleProvider {
+	const excludeGuid = opts.excludeGuid ?? null;
+	let disposed = false;
+	const myListeners = new Set<() => void>();
+
+	const forward = () => {
+		if (disposed) return;
+		for (const l of myListeners) l();
+	};
+	sharedListeners.add(forward);
+	providerCount++;
+	ensureSubscribed();
 
 	return {
 		getTitles() {
-			return entries;
+			if (disposed) return [];
+			if (excludeGuid === null) return sharedEntries;
+			// Excluded case: build a filtered view. Callers may call this per
+			// scan, so filtering eagerly here (instead of relying on
+			// findTitleMatches' secondary filter) keeps the plugin's inner
+			// loop working on a smaller array when the current note is in a
+			// store with many other entries.
+			return sharedEntries.filter((e) => e.guid !== excludeGuid);
 		},
-		refresh,
+		refresh(): Promise<void> {
+			if (disposed) return Promise.resolve();
+			return doSharedRefresh();
+		},
 		onChange(cb) {
-			listeners.add(cb);
-			return () => listeners.delete(cb);
+			myListeners.add(cb);
+			return () => myListeners.delete(cb);
 		},
 		dispose() {
 			if (disposed) return;
 			disposed = true;
-			off();
-			listeners.clear();
-			entries = [];
+			sharedListeners.delete(forward);
+			myListeners.clear();
+			providerCount--;
+			maybeUnsubscribe();
 		}
 	};
+}
+
+// --- Test-only reset -----------------------------------------------------
+
+export function _resetForTest(): void {
+	sharedEntries = [];
+	sharedInFlight = null;
+	sharedListeners.clear();
+	providerCount = 0;
+	if (invalidateOff) {
+		invalidateOff();
+		invalidateOff = null;
+	}
 }

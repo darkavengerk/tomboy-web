@@ -12,7 +12,10 @@ import {
 	invalidateCache,
 	_resetForTest
 } from '$lib/stores/noteListCache.js';
-import { createTitleProvider } from '$lib/editor/autoLink/titleProvider.js';
+import {
+	createTitleProvider,
+	_resetForTest as _resetTitleProvider
+} from '$lib/editor/autoLink/titleProvider.js';
 
 function makeNote(guid: string, title: string, changeDate = '2024-01-01T00:00:00Z'): NoteData {
 	return {
@@ -38,6 +41,7 @@ function makeNote(guid: string, title: string, changeDate = '2024-01-01T00:00:00
 
 beforeEach(() => {
 	_resetForTest();
+	_resetTitleProvider();
 	listNotesMock.mockReset();
 });
 

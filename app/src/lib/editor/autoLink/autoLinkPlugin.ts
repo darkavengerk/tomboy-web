@@ -15,6 +15,13 @@ export const autoLinkPluginKey = new PluginKey<AutoLinkMeta>('tomboyAutoLink');
 interface AutoLinkMeta {
 	skip?: boolean;
 	refresh?: boolean;
+	/**
+	 * When set together with `refresh: true`, forces a full-document scan
+	 * instead of scanning just the accumulated dirty ranges. Used when the
+	 * title list changes (rename / create / delete somewhere in the app) —
+	 * any previously-unchanged text might newly match or stop matching.
+	 */
+	full?: boolean;
 }
 
 export interface AutoLinkPluginOptions {
@@ -43,11 +50,20 @@ export function createAutoLinkPlugin(opts: AutoLinkPluginOptions): Plugin {
 	const suppress = new Set(opts.suppressMarks ?? DEFAULT_SUPPRESS);
 	const deferred = opts.deferred ?? false;
 
+	// Accumulated dirty ranges in deferred mode. Each entry is in the doc
+	// coordinate space of the most recently seen state; we map existing
+	// entries through new transactions as they come in so the ranges stay
+	// valid between debounced refreshes. Cleared on every scan.
+	let dirtyRanges: { from: number; to: number }[] = [];
+
 	return new Plugin<AutoLinkMeta>({
 		key: autoLinkPluginKey,
 		appendTransaction(transactions, _oldState, newState) {
 			const isRefresh = transactions.some(
 				(tr) => tr.getMeta(autoLinkPluginKey)?.refresh === true
+			);
+			const isFull = transactions.some(
+				(tr) => tr.getMeta(autoLinkPluginKey)?.full === true
 			);
 			const skip = transactions.some(
 				(tr) => tr.getMeta(autoLinkPluginKey)?.skip === true
@@ -57,39 +73,85 @@ export function createAutoLinkPlugin(opts: AutoLinkPluginOptions): Plugin {
 			const docChanged = transactions.some((tr) => tr.docChanged);
 			if (!docChanged && !isRefresh) return null;
 
-			// In deferred mode, only react to explicit refresh dispatches.
-			// Ordinary typing / doc changes are ignored here so the hot path
-			// stays cheap; an external debouncer is expected to dispatch a
-			// `{refresh: true}` transaction at idle.
-			if (deferred && !isRefresh) return null;
+			const doc = newState.doc;
+			const docSize = doc.content.size;
+
+			// In deferred mode, doc changes don't trigger a scan — they
+			// merely extend the dirty-range set, to be scanned on the next
+			// refresh dispatch.
+			if (deferred) {
+				if (docChanged) {
+					// Map any existing dirty ranges through the incoming
+					// transactions so they stay addressable in the new coord
+					// space, then record the newly changed ranges too.
+					for (const tr of transactions) {
+						if (!tr.docChanged) continue;
+						if (dirtyRanges.length > 0) {
+							const mapping = tr.mapping;
+							dirtyRanges = dirtyRanges.map((r) => ({
+								from: mapping.map(r.from, -1),
+								to: mapping.map(r.to, 1)
+							}));
+						}
+						for (const map of tr.mapping.maps) {
+							map.forEach((_oldStart, _oldEnd, newStart, newEnd) => {
+								dirtyRanges.push({ from: newStart, to: newEnd });
+							});
+						}
+					}
+				}
+				if (!isRefresh) return null;
+			}
 
 			const titles = opts.getTitles();
 			const currentGuid = opts.getCurrentGuid();
 			const markType = opts.markType;
 
-			// Collect scan ranges in newState doc coordinates.
-			const doc = newState.doc;
-			const docSize = doc.content.size;
-
 			interface Range { from: number; to: number; }
-			const ranges: Range[] = [];
-			if (isRefresh) {
-				ranges.push({ from: 0, to: docSize });
+			let ranges: Range[];
+			let expandFn: (doc: PMNode, from: number, to: number) => Range;
+
+			if (deferred) {
+				if (isFull) {
+					ranges = [{ from: 0, to: docSize }];
+					expandFn = (_d, f, t) => ({ from: f, to: t });
+				} else {
+					// No accumulated edits since the last refresh — nothing
+					// new to look at.
+					if (dirtyRanges.length === 0) return null;
+					ranges = dirtyRanges;
+					// Narrow expansion: the mapping-derived range covers the
+					// actual insert/replace, so we only need a word-boundary
+					// pad on each side to pick up the neighbouring
+					// characters that matter for \b checks. Scanning the
+					// whole enclosing paragraph is wasteful for short edits.
+					expandFn = expandToWordBoundary;
+				}
+				// Reset before running — if applyInRange emits marks that
+				// re-enter us, we don't want to re-scan the same ranges.
+				dirtyRanges = [];
 			} else {
-				for (const tr of transactions) {
-					if (!tr.docChanged) continue;
-					for (const map of tr.mapping.maps) {
-						map.forEach((_oldStart, _oldEnd, newStart, newEnd) => {
-							ranges.push({ from: newStart, to: newEnd });
-						});
+				// Sync (non-deferred) mode preserves the legacy behaviour
+				// used by unit tests and any legacy caller: scan on every
+				// doc change, expanding to enclosing block bounds.
+				ranges = [];
+				if (isRefresh) {
+					ranges.push({ from: 0, to: docSize });
+				} else {
+					for (const tr of transactions) {
+						if (!tr.docChanged) continue;
+						for (const map of tr.mapping.maps) {
+							map.forEach((_oldStart, _oldEnd, newStart, newEnd) => {
+								ranges.push({ from: newStart, to: newEnd });
+							});
+						}
 					}
 				}
+				if (ranges.length === 0) return null;
+				expandFn = expandToBlock;
 			}
-			if (ranges.length === 0) return null;
 
-			// Expand each range to enclosing block node bounds so word-boundary
-			// checks at range edges see neighboring characters.
-			const expanded: Range[] = ranges.map((r) => expandToBlock(doc, r.from, r.to));
+			const expanded: Range[] = ranges.map((r) => expandFn(doc, r.from, r.to));
 			const merged = mergeRanges(expanded);
 
 			const tr = newState.tr;
@@ -122,6 +184,40 @@ function expandToBlock(doc: PMNode, from: number, to: number): { from: number; t
 	const $to = doc.resolve(clampedTo);
 	const start = $from.start($from.depth);
 	const end = $to.end($to.depth);
+	return { from: start, to: end };
+}
+
+/**
+ * Expand a range outward until we hit a non-word character on each side,
+ * but never crossing the enclosing block boundaries. Much narrower than
+ * `expandToBlock` for small edits — when the user types one character, the
+ * scanned region is just the surrounding word instead of the whole
+ * paragraph, which keeps `findTitleMatches` work bounded by edit size
+ * rather than block size.
+ */
+function expandToWordBoundary(doc: PMNode, from: number, to: number): { from: number; to: number } {
+	const clampedFrom = Math.max(0, Math.min(from, doc.content.size));
+	const clampedTo = Math.max(clampedFrom, Math.min(to, doc.content.size));
+	const $from = doc.resolve(clampedFrom);
+	const $to = doc.resolve(clampedTo);
+	const blockStart = $from.start($from.depth);
+	const blockEnd = $to.end($to.depth);
+
+	// Leaf / non-text nodes return '\uFFFC' (object replacement char) via
+	// textBetween, which is not a word char — that's what we want, so we
+	// stop expanding when we hit them.
+	let start = clampedFrom;
+	while (start > blockStart) {
+		const ch = doc.textBetween(start - 1, start, '\uFFFC');
+		if (!isWordChar(ch)) break;
+		start--;
+	}
+	let end = clampedTo;
+	while (end < blockEnd) {
+		const ch = doc.textBetween(end, end + 1, '\uFFFC');
+		if (!isWordChar(ch)) break;
+		end++;
+	}
 	return { from: start, to: end };
 }
 

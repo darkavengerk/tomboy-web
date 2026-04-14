@@ -69,6 +69,10 @@
 
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	let pendingDoc: JSONContent | null = $state(null);
+	// Fingerprint of the last successfully-flushed doc. flushSave() skips
+	// the whole save pipeline (IDB read + XML serialize) when the incoming
+	// doc stringifies identically — catches the type-and-undo case cheaply.
+	let lastSavedDocFingerprint: string | null = null;
 
 	const isFavoriteState = $derived(note ? isFavorite(note) : false);
 	const currentNotebook = $derived(note ? getNotebook(note) : null);
@@ -134,9 +138,15 @@
 
 	async function flushSave(): Promise<void> {
 		if (!pendingDoc || !note) return;
+		const fingerprint = JSON.stringify(pendingDoc);
+		if (fingerprint === lastSavedDocFingerprint) {
+			pendingDoc = null;
+			return;
+		}
 		saving = true;
 		const updated = await updateNoteFromEditor(note.guid, pendingDoc);
 		if (updated) note = updated;
+		lastSavedDocFingerprint = fingerprint;
 		pendingDoc = null;
 		saving = false;
 	}
