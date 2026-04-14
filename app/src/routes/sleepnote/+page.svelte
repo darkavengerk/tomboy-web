@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-
-	const SLEEP_NOTE_GUID = '1c97d161-1489-4c32-93d9-d8c383330b9c';
+	import { SLEEP_NOTE_GUID } from '$lib/graph/constants.js';
 
 	onMount(() => {
 		goto(`/note/${SLEEP_NOTE_GUID}?from=sleepnote`, { replaceState: true });
