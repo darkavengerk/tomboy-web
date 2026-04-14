@@ -377,28 +377,34 @@ Browser security forbids acquiring pointer lock without a user gesture,
 so truly auto-locking on page load is not possible; the unlocked state
 shows a pulsing "클릭 또는 WASD 로 이동 시작" hint to minimize friction.
 
-### Selection: two layers
+### Selection: two modes, one pipeline
 
-There are **two** independent notions of "which note is selected", both
-feeding the side panel's embedded `NoteWindow`:
+Selection is driven by a single debounced auto-select tick (350ms) that
+asks a mode-dependent picker each frame. The mode flips on explicit user
+action so a deliberate click doesn't get overwritten by the continuous
+ticker a few hundred ms later.
 
-1. **Auto-select (distance-based, continuous)** — every frame, compute the
-   "aim point" (camera position + forward × 40), then among nodes **inside
-   the camera's view frustum** pick the one closest to the aim point.
-   Debounced 350ms to avoid thrashing the TipTap editor while flying. The
-   frustum filter means notes you've flown past are excluded — the
-   selection only ever picks from what's currently on screen.
+- **`aim` mode (default)** — `findAimedNode()` returns the nearest-in-
+  frustum node to the "aim point" (camera + forward × 40). Something is
+  (almost) always selected as you fly, which suits free exploration.
 
-2. **Click-to-select (screen-center, precise)** — in locked mode, a canvas
-   click runs `findCenterNode()`, which projects every live node to NDC
-   and returns whichever one's projected sphere actually covers the reticle
-   (ties broken by depth). Distance-agnostic — the note you *see directly
-   at the crosshair* wins, regardless of whether something else is closer
-   in 3D. If the reticle is on empty space, the click is a no-op.
+- **`center` mode** — `findCenterNode()` projects every live node to NDC
+  and returns whichever one's projected sphere *actually covers the
+  reticle* (ties broken by depth). Distance-agnostic — the note you see
+  directly at the crosshair wins, regardless of whether something else is
+  closer in 3D. If the reticle is on empty space, the picker returns
+  `null` and auto-select keeps the current selection (no blanking).
+
+Flips:
+- Clicking a node in locked mode → `center`. The click primes the
+  debounce state with the clicked id so the mode switch is seamless.
+- Closing the panel (`onclose`) or hitting "자동 선택 다시 켜기" → resets
+  to `aim`.
+- Backlink / internal-link navigation flies the camera and resets to
+  `aim` so auto-select picks up the arrival target.
 
 Auto-select can be turned off by closing the panel via the `NoteWindow`'s
-own × button; a "자동 선택 다시 켜기" chip in the top bar re-arms it. Any
-click or backlink navigation re-arms it automatically.
+own × button; the top-bar chip re-arms it.
 
 ### HUD overlays
 
