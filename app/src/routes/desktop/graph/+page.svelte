@@ -120,8 +120,14 @@
 		fg = graph;
 
 		// 4) Center camera on starting nodes (home + sleep) once the layout
-		//    has stabilized.
+		//    has stabilized — but only on the *first* engine stop. Dragging a
+		//    node re-heats the simulation; without this one-shot guard the
+		//    camera would teleport back to the starters every time motion
+		//    settles, which feels like being yanked away mid-exploration.
+		let centeredOnce = false;
 		graph.onEngineStop(() => {
+			if (centeredOnce) return;
+			centeredOnce = true;
 			const starters = graphData!.nodes.filter((n) => n.isHome || n.isSleep);
 			if (starters.length === 0) return;
 			const nodesWithPos = starters
