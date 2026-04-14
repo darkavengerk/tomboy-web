@@ -172,41 +172,114 @@
 			fpsLocked = locked;
 		};
 
-		// Click handlers go on AFTER fps exists so onBackgroundClick can lock.
-		graph
-			.onNodeClick((raw) => {
-				// While pointer-locked, mouse coords are frozen so
-				// 3d-force-graph's raycast is meaningless. Our own
-				// reticle-based click handler (below) covers that case.
-				if (fps.locked) return;
-				const node = raw as GraphNode;
-				autoSelect = true;
-				selectedGuid = node.id;
-				focusNode(node.id);
-			})
-			.onBackgroundClick(() => {
-				// Empty-space click = (re)enter WASD mode. Safe to call while
-				// already locked (browser no-ops the request).
-				fps.lock();
-			});
-
-		// Reticle-click handler: in locked mode, clicking commits whatever
-		// node the crosshair is aimed at, bypassing the 350ms auto-select
-		// debounce. The selection then naturally sticks for as long as the
-		// aim stays on that node (normal auto-select behaviour), and reverts
-		// to the next candidate once you turn away. Does nothing when
-		// unlocked — the graph's own onNodeClick / onBackgroundClick handle
-		// that case.
+		// Unified click handler: one click = enter lock, any click while
+		// locked = commit the reticle-aimed node. 3d-force-graph's own
+		// onNodeClick / onBackgroundClick are intentionally unused — their
+		// raycast relies on mouse coords that freeze during pointer lock.
 		const canvasEl = renderer.domElement;
 		const handleCanvasClick = () => {
-			if (!fps.locked) return;
+			if (!fps.locked) {
+				fps.lock();
+				return;
+			}
 			const id = findAimedNode();
 			if (id) {
 				autoSelect = true;
 				selectedGuid = id;
+				triggerClickPulse();
 			}
 		};
 		canvasEl.addEventListener('click', handleCanvasClick);
+
+		// Auto-lock when the user presses a movement key — no need to click
+		// first. Keys pressed before lock are already tracked by
+		// FpsControls, so the moment lock engages movement starts.
+		const AUTOLOCK_KEYS = new Set([
+			'keyw', 'keya', 'keys', 'keyd', 'space'
+		]);
+		const autoLockOnKey = (e: KeyboardEvent) => {
+			if (fps.locked) return;
+			const code = e.code.toLowerCase();
+			if (!AUTOLOCK_KEYS.has(code)) return;
+			const target = e.target as HTMLElement | null;
+			if (
+				target &&
+				(target.tagName === 'INPUT' ||
+					target.tagName === 'TEXTAREA' ||
+					target.isContentEditable)
+			) {
+				return;
+			}
+			fps.lock();
+		};
+		window.addEventListener('keydown', autoLockOnKey);
+
+		// Selection halo: a thin cyan ring that billboards toward the camera
+		// around the currently-selected node. On click it briefly scales up
+		// (~400ms) as feedback that the click registered.
+		const PULSE_DURATION_MS = 420;
+		const halo = new THREE.Mesh(
+			new THREE.RingGeometry(1, 1.18, 64),
+			new THREE.MeshBasicMaterial({
+				color: 0x5ad6ff,
+				side: THREE.DoubleSide,
+				transparent: true,
+				opacity: 0.9,
+				depthWrite: false
+			})
+		);
+		halo.visible = false;
+		halo.renderOrder = 999;
+		graph.scene().add(halo);
+
+		const liveNodesById = new Map<
+			string,
+			GraphNode & { x?: number; y?: number; z?: number }
+		>();
+		for (const n of graph.graphData().nodes as Array<
+			GraphNode & { x?: number; y?: number; z?: number }
+		>) {
+			liveNodesById.set(n.id, n);
+		}
+
+		let pulseUntil = 0;
+		function triggerClickPulse() {
+			pulseUntil = performance.now() + PULSE_DURATION_MS;
+		}
+
+		function updateHalo(t: number) {
+			if (!selectedGuid) {
+				halo.visible = false;
+				return;
+			}
+			const n = liveNodesById.get(selectedGuid);
+			if (!n || n.x === undefined) {
+				halo.visible = false;
+				return;
+			}
+			halo.visible = true;
+			halo.position.set(n.x, n.y ?? 0, n.z ?? 0);
+			halo.lookAt(camera.position);
+			// Base radius = node radius + 3 (node radius is 3 * node.size).
+			const baseRadius = 3 * n.size + 3;
+			let pulse = 1;
+			if (t < pulseUntil) {
+				const remaining = (pulseUntil - t) / PULSE_DURATION_MS; // 1 → 0
+				pulse = 1 + remaining * 0.55; // +55% fades to base over the window
+			}
+			halo.scale.setScalar(baseRadius * pulse);
+			halo.rotateZ(0.008); // gentle spin so it feels alive
+		}
+
+		// When selection changes by any means (click, auto-select, backlink),
+		// trigger the pulse so the user gets consistent visual feedback.
+		let lastHaloedId: string | null = null;
+		function maybePulseOnSelectionChange() {
+			if (selectedGuid !== lastHaloedId) {
+				lastHaloedId = selectedGuid;
+				if (selectedGuid) triggerClickPulse();
+			}
+		}
 
 		const liveNodes = graph.graphData().nodes as Array<
 			GraphNode & { x?: number; y?: number; z?: number }
@@ -274,6 +347,8 @@
 			lastTime = t;
 			fps.update(dt);
 			updateNearest(t);
+			maybePulseOnSelectionChange();
+			updateHalo(t);
 			rafId = requestAnimationFrame(loop);
 		};
 		rafId = requestAnimationFrame(loop);
@@ -303,7 +378,10 @@
 		return () => {
 			cancelAnimationFrame(rafId);
 			window.removeEventListener('wheel', wheelForwarder, { capture: true });
+			window.removeEventListener('keydown', autoLockOnKey);
 			canvasEl.removeEventListener('click', handleCanvasClick);
+			halo.geometry.dispose();
+			(halo.material as { dispose: () => void }).dispose();
 			fps.dispose();
 			graph._destructor();
 		};
@@ -456,7 +534,7 @@
 		{#if fpsLocked}
 			WASD: 이동 · Space/C: 상/하 · Shift: 빠르게 · ESC: 정지
 		{:else if !loading}
-			클릭하여 이동 시작 (WASD)
+			클릭 또는 WASD 로 이동 시작
 		{/if}
 	</div>
 
