@@ -182,7 +182,10 @@
 				fps.lock();
 				return;
 			}
-			const id = findAimedNode();
+			// Click = whatever's precisely at the reticle, distance-agnostic.
+			// If nothing is under the crosshair, the click is a no-op (we
+			// stay locked; auto-select still shows whatever it picked).
+			const id = findCenterNode();
 			if (id) {
 				autoSelect = true;
 				selectedGuid = id;
@@ -214,23 +217,38 @@
 		};
 		window.addEventListener('keydown', autoLockOnKey);
 
-		// Selection halo: a thin cyan ring that billboards toward the camera
-		// around the currently-selected node. On click it briefly scales up
-		// (~400ms) as feedback that the click registered.
+		// Selection halo: a slim cyan ring around the currently-selected node,
+		// billboarded toward the camera. On click it scales up briefly as
+		// feedback. A second, dimmer "hover" halo marks whatever node is
+		// currently under the reticle — a preview of what a click would pick.
 		const PULSE_DURATION_MS = 420;
 		const halo = new THREE.Mesh(
-			new THREE.RingGeometry(1, 1.18, 64),
+			new THREE.RingGeometry(1, 1.08, 64),
 			new THREE.MeshBasicMaterial({
 				color: 0x5ad6ff,
 				side: THREE.DoubleSide,
 				transparent: true,
-				opacity: 0.9,
+				opacity: 0.55,
 				depthWrite: false
 			})
 		);
 		halo.visible = false;
 		halo.renderOrder = 999;
 		graph.scene().add(halo);
+
+		const hoverHalo = new THREE.Mesh(
+			new THREE.RingGeometry(1, 1.08, 48),
+			new THREE.MeshBasicMaterial({
+				color: 0xffffff,
+				side: THREE.DoubleSide,
+				transparent: true,
+				opacity: 0.22,
+				depthWrite: false
+			})
+		);
+		hoverHalo.visible = false;
+		hoverHalo.renderOrder = 998;
+		graph.scene().add(hoverHalo);
 
 		const liveNodesById = new Map<
 			string,
@@ -247,6 +265,59 @@
 			pulseUntil = performance.now() + PULSE_DURATION_MS;
 		}
 
+		// Scratch vectors reused across frames for projection math.
+		const ndcCenter = new THREE.Vector3();
+		const ndcEdge = new THREE.Vector3();
+
+		/**
+		 * Precise "what's at the reticle" lookup: projects every live node to
+		 * screen space (NDC) and picks whichever one's projected sphere
+		 * actually covers the center of the screen. Distance-agnostic — the
+		 * node you can see directly at the crosshair wins, regardless of
+		 * whether something else is closer in 3D. Returns null if the reticle
+		 * isn't over any node.
+		 */
+		function findCenterNode(): string | null {
+			camera.updateMatrixWorld();
+			let bestId: string | null = null;
+			let bestZ = Infinity;
+			for (const n of liveNodes) {
+				if (n.x === undefined) continue;
+				ndcCenter.set(n.x, n.y ?? 0, n.z ?? 0);
+				ndcCenter.project(camera);
+				// z outside [-1, 1] = behind camera or past far plane.
+				if (ndcCenter.z < -1 || ndcCenter.z > 1) continue;
+				// Cheap rejection: well outside the screen.
+				if (Math.abs(ndcCenter.x) > 1.2 || Math.abs(ndcCenter.y) > 1.2) continue;
+				// Project a point on the node's surface to measure its
+				// apparent screen radius.
+				const worldR = 3 * n.size;
+				ndcEdge.set(n.x + worldR, n.y ?? 0, n.z ?? 0);
+				ndcEdge.project(camera);
+				const screenR = Math.hypot(
+					ndcEdge.x - ndcCenter.x,
+					ndcEdge.y - ndcCenter.y
+				);
+				const dFromCenter = Math.hypot(ndcCenter.x, ndcCenter.y);
+				if (dFromCenter <= screenR && ndcCenter.z < bestZ) {
+					// Overlaps the reticle; break depth ties toward the
+					// closest (smallest z in NDC = nearest camera).
+					bestZ = ndcCenter.z;
+					bestId = n.id;
+				}
+			}
+			return bestId;
+		}
+
+		/**
+		 * Size the two halos consistently. Base radius is a hair larger than
+		 * the node sphere (3 * size) for a tight fit — the old `+ 3` looked
+		 * too loose.
+		 */
+		function haloRadiusFor(size: number): number {
+			return 3 * size + 1.5;
+		}
+
 		function updateHalo(t: number) {
 			if (!selectedGuid) {
 				halo.visible = false;
@@ -260,15 +331,33 @@
 			halo.visible = true;
 			halo.position.set(n.x, n.y ?? 0, n.z ?? 0);
 			halo.lookAt(camera.position);
-			// Base radius = node radius + 3 (node radius is 3 * node.size).
-			const baseRadius = 3 * n.size + 3;
+			const baseRadius = haloRadiusFor(n.size);
 			let pulse = 1;
 			if (t < pulseUntil) {
 				const remaining = (pulseUntil - t) / PULSE_DURATION_MS; // 1 → 0
-				pulse = 1 + remaining * 0.55; // +55% fades to base over the window
+				pulse = 1 + remaining * 0.45;
 			}
 			halo.scale.setScalar(baseRadius * pulse);
-			halo.rotateZ(0.008); // gentle spin so it feels alive
+			halo.rotateZ(0.008);
+		}
+
+		function updateHoverHalo() {
+			const id = findCenterNode();
+			// Don't double-ring the selected node — the brighter selected
+			// halo already marks it.
+			if (!id || id === selectedGuid) {
+				hoverHalo.visible = false;
+				return;
+			}
+			const n = liveNodesById.get(id);
+			if (!n || n.x === undefined) {
+				hoverHalo.visible = false;
+				return;
+			}
+			hoverHalo.visible = true;
+			hoverHalo.position.set(n.x, n.y ?? 0, n.z ?? 0);
+			hoverHalo.lookAt(camera.position);
+			hoverHalo.scale.setScalar(haloRadiusFor(n.size));
 		}
 
 		// When selection changes by any means (click, auto-select, backlink),
@@ -349,6 +438,7 @@
 			updateNearest(t);
 			maybePulseOnSelectionChange();
 			updateHalo(t);
+			updateHoverHalo();
 			rafId = requestAnimationFrame(loop);
 		};
 		rafId = requestAnimationFrame(loop);
@@ -382,6 +472,8 @@
 			canvasEl.removeEventListener('click', handleCanvasClick);
 			halo.geometry.dispose();
 			(halo.material as { dispose: () => void }).dispose();
+			hoverHalo.geometry.dispose();
+			(hoverHalo.material as { dispose: () => void }).dispose();
 			fps.dispose();
 			graph._destructor();
 		};
