@@ -740,13 +740,17 @@
 		}
 	}
 
-	/** Yellow → red HSL gradient driven by node.size (log of degree). */
+	/**
+	 * Yellow → white HSL gradient driven by node.size (log of degree).
+	 * Higher connectivity = brighter, more desaturated; at the top end
+	 * hub nodes shine almost pure white against the dark background.
+	 */
 	function degreeColor(size: number): string {
 		const t = Math.max(0, Math.min(1, size - 1));
-		const hue = 48 - 48 * t;
-		const sat = 85 + 10 * t;
-		const light = 62 - 10 * t;
-		return `hsl(${hue.toFixed(1)}, ${sat.toFixed(1)}%, ${light.toFixed(1)}%)`;
+		const hue = 48;
+		const sat = 85 * (1 - t); // 85% → 0%
+		const light = 62 + 38 * t; // 62% → 100%
+		return `hsl(${hue}, ${sat.toFixed(1)}%, ${light.toFixed(1)}%)`;
 	}
 
 	function focusNode(guid: string) {
@@ -1179,8 +1183,8 @@
 		background: linear-gradient(
 			to right,
 			hsl(48, 85%, 62%),
-			hsl(24, 90%, 57%),
-			hsl(0, 95%, 52%)
+			hsl(48, 43%, 81%),
+			hsl(48, 0%, 100%)
 		);
 	}
 
