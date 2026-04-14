@@ -31,6 +31,17 @@
 	let selectedGuid = $state<string | null>(null);
 	let autoSelect = $state(true);
 
+	// Selection strategy for the debounced auto-select:
+	//   - 'aim'    : nearest-in-frustum to the aim point (camera + forward*40)
+	//   - 'center' : whichever node actually overlaps the reticle
+	// Default is 'aim' so something is always selected as you fly through
+	// the cloud (good exploration feel). A click switches to 'center', which
+	// locks selection to "whatever the crosshair points at" — that's the
+	// only way a deliberate click doesn't get immediately overwritten by
+	// the distance-based auto-select ~350ms later.
+	// Closing the panel / re-enabling auto-select resets to 'aim'.
+	let selectionMode: 'aim' | 'center' = 'aim';
+
 	let nodesById = new Map<string, GraphNode>();
 	let titleToGuid = new Map<string, string>();
 	let backlinksByGuid = new Map<string, string[]>();
@@ -188,6 +199,13 @@
 			const id = findCenterNode();
 			if (id) {
 				autoSelect = true;
+				// Flip to center-follow mode so the next updateNearest tick
+				// doesn't immediately overwrite our pick with the distance-
+				// based aim candidate. Prime the debounce state with the
+				// clicked node so the mode switch is smooth.
+				selectionMode = 'center';
+				candidateGuid = id;
+				candidateSince = performance.now();
 				selectedGuid = id;
 				triggerClickPulse();
 			}
@@ -416,8 +434,12 @@
 
 		function updateNearest(now: number) {
 			if (!autoSelect) return;
-			const bestId = findAimedNode();
-			if (bestId === null) return; // nothing on screen — keep current.
+			const bestId =
+				selectionMode === 'center' ? findCenterNode() : findAimedNode();
+			// In center mode a reticle over empty space returns null — keep
+			// the current selection so the last-clicked note stays on screen
+			// instead of blanking out as you sweep past gaps.
+			if (bestId === null) return;
 			if (bestId !== candidateGuid) {
 				candidateGuid = bestId;
 				candidateSince = now;
@@ -508,6 +530,10 @@
 		const guid = titleToGuid.get(key);
 		if (!guid) return;
 		autoSelect = true;
+		// Backlink / internal-link navigation flies the camera; revert to
+		// aim-mode so auto-select can pick up the target as the fly lands
+		// (the reticle won't be on it yet).
+		selectionMode = 'aim';
 		selectedGuid = guid;
 		focusNode(guid);
 	}
@@ -515,10 +541,12 @@
 	function closePanel() {
 		selectedGuid = null;
 		autoSelect = false;
+		selectionMode = 'aim';
 	}
 
 	function reenableAutoSelect() {
 		autoSelect = true;
+		selectionMode = 'aim';
 	}
 
 	// Keep the WebGL canvas sized to its container.
@@ -662,6 +690,7 @@
 									type="button"
 									onclick={() => {
 										autoSelect = true;
+										selectionMode = 'aim';
 										selectedGuid = bl.id;
 										focusNode(bl.id);
 									}}
