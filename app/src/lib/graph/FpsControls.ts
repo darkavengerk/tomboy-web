@@ -88,13 +88,27 @@ export class FpsControls {
 		const boost = this.keys.has('shiftleft') || this.keys.has('shiftright') ? this.boost : 1;
 		const step = this.speed * boost * deltaSeconds;
 
-		// Camera-relative forward projected to XZ (so pitching doesn't cause
-		// up/down drift while moving "forward"); right is always horizontal.
+		// Forward = full camera look direction (includes pitch), so W moves
+		// you along the way you're looking — pitching down flies down-forward,
+		// pitching up flies up-forward.
 		this.camera.getWorldDirection(this.forward);
-		this.forward.y = 0;
 		if (this.forward.lengthSq() === 0) this.forward.set(0, 0, -1);
 		else this.forward.normalize();
-		this.right.set(this.forward.z, 0, -this.forward.x); // rotate 90° around Y
+
+		// Right = horizontal vector perpendicular to the camera's facing
+		// direction, derived from the forward's XZ projection. Keeping strafe
+		// level (never vertical) matches FPS conventions and avoids drift when
+		// looking steeply up/down. right = cross(forwardXZ, worldUp).
+		const fx = this.forward.x;
+		const fz = this.forward.z;
+		const horizLen = Math.hypot(fx, fz);
+		if (horizLen > 1e-6) {
+			this.right.set(-fz / horizLen, 0, fx / horizLen);
+		} else {
+			// Looking straight up or down — fall back to world X so strafe
+			// still works.
+			this.right.set(1, 0, 0);
+		}
 
 		this.direction.set(0, 0, 0);
 		if (this.keys.has('keyw')) this.direction.add(this.forward);

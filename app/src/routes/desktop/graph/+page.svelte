@@ -90,7 +90,11 @@
 			.nodeThreeObject((raw) => {
 				const node = raw as GraphNode;
 				const group = new THREE.Group();
-				const color = node.isHome ? '#f5c542' : node.isSleep ? '#9b6cff' : '#6aa9ff';
+				const color = node.isHome
+					? '#f5c542'
+					: node.isSleep
+						? '#9b6cff'
+						: degreeColor(node.size);
 				const radius = 3 * node.size;
 				const sphere = new THREE.Mesh(
 					new THREE.SphereGeometry(radius, 10, 8),
@@ -180,6 +184,20 @@
 	}
 
 	let enterFpsMode: (() => void) | null = null;
+
+	/**
+	 * Map a node's log-scaled size (1.0 = no links, 2.0 = most-linked) to a
+	 * yellow → orange → red gradient. `size` already encodes the log curve on
+	 * degree, so a linear HSL interpolation on hue gives a perceptually even
+	 * transition: hue 48° (yellow) → 0° (red).
+	 */
+	function degreeColor(size: number): string {
+		const t = Math.max(0, Math.min(1, size - 1));
+		const hue = 48 - 48 * t;
+		const sat = 85 + 10 * t; // 85% → 95%
+		const light = 62 - 10 * t; // 62% → 52%
+		return `hsl(${hue.toFixed(1)}, ${sat.toFixed(1)}%, ${light.toFixed(1)}%)`;
+	}
 
 	async function openNode(
 		node: GraphNode,
@@ -283,8 +301,12 @@
 	<div class="legend">
 		<div><span class="dot home"></span> 홈 노트</div>
 		<div><span class="dot sleep"></span> 슬립노트</div>
-		<div><span class="dot normal"></span> 일반 노트</div>
-		<div class="hint">크기 = 링크 수 (로그 스케일)</div>
+		<div class="gradient-row">
+			<span>링크 적음</span>
+			<span class="gradient-bar" aria-hidden="true"></span>
+			<span>많음</span>
+		</div>
+		<div class="hint">크기·색상 = 링크 수 (로그 스케일)</div>
 	</div>
 
 	{#if fpsLocked}
@@ -445,8 +467,25 @@
 		background: #9b6cff;
 	}
 
-	.dot.normal {
-		background: #6aa9ff;
+	.gradient-row {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 0.72rem;
+		color: #cfd8e3;
+		margin-top: 2px;
+	}
+
+	.gradient-bar {
+		flex: 1;
+		height: 8px;
+		border-radius: 2px;
+		background: linear-gradient(
+			to right,
+			hsl(48, 85%, 62%),
+			hsl(24, 90%, 57%),
+			hsl(0, 95%, 52%)
+		);
 	}
 
 	.hint {
