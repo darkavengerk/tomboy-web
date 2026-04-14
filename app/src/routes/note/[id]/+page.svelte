@@ -52,14 +52,19 @@
 	const currentNotebook = $derived(note ? getNotebook(note) : null);
 	const isFavoriteNote = $derived(note ? isFavorite(note) : false);
 
-	// Route 변경 시 에디터 재로드
+	// Route 변경 시 에디터 콘텐츠 교체
+	//
+	// The TomboyEditor instance is created on first load and kept alive
+	// for every subsequent note navigation — only its `content` /
+	// `currentGuid` props change, which the editor reacts to internally
+	// via setContent(). We deliberately do NOT clear `editorContent` /
+	// `note` / `loading` here: those fields drive the conditional that
+	// mounts the editor, and toggling them would force a remount (the
+	// old pattern that this K-optimization undoes).
 	$effect(() => {
 		const id = noteId;
 		if (!id || id === loadedGuid) return;
 		loadedGuid = id;
-		loading = true;
-		editorContent = undefined;
-		note = undefined;
 		// New note → previous fingerprint doesn't apply anymore.
 		lastSavedDocFingerprint = null;
 
@@ -85,7 +90,10 @@
 
 			isScrollBottomState = await isScrollBottomNote(id);
 			if (isScrollBottomState) {
-				// Wait for the editor to render before scrolling.
+				// Wait for the editor to apply the new doc + layout before
+				// scrolling. Two rAFs is enough with the reused-editor
+				// model (setContent is synchronous but layout needs a
+				// frame).
 				requestAnimationFrame(() => {
 					requestAnimationFrame(() => {
 						if (id !== noteId) return;
@@ -331,15 +339,21 @@
 		{#if loading}
 			<div class="loading">로딩 중...</div>
 		{:else if editorContent}
-			{#key noteId}
-				<TomboyEditor
-					bind:this={editorComponent}
-					content={editorContent}
-					onchange={handleEditorChange}
-					oninternallink={handleInternalLink}
-					currentGuid={noteId}
-				/>
-			{/key}
+			<!--
+				No {#key noteId} — TomboyEditor stays mounted across note
+				navigations and reacts to `content` / `currentGuid` prop
+				changes internally via setContent(). Destroying and
+				recreating the editor on every transition rebuilt the PM
+				schema + all extensions + DOM and was the dominant cost
+				in "open a new note" lag.
+			-->
+			<TomboyEditor
+				bind:this={editorComponent}
+				content={editorContent}
+				onchange={handleEditorChange}
+				oninternallink={handleInternalLink}
+				currentGuid={noteId}
+			/>
 		{/if}
 	</div>
 

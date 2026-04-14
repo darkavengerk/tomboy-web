@@ -133,4 +133,30 @@ describe('titleProvider', () => {
 		expect(changed).not.toHaveBeenCalled();
 		p.dispose();
 	});
+
+	it('getExcludeGuid callback is re-evaluated on every getTitles() call', async () => {
+		listNotesMock.mockResolvedValueOnce([
+			makeNote('a', 'Apple'),
+			makeNote('b', 'Banana'),
+			makeNote('c', 'Cherry')
+		]);
+		let currentExclude: string | null = 'a';
+		const p = createTitleProvider({
+			getExcludeGuid: () => currentExclude
+		});
+		await p.refresh();
+
+		// Initial: 'a' excluded.
+		expect(p.getTitles().map((t) => t.guid).sort()).toEqual(['b', 'c']);
+
+		// Swap the current note — no refresh / recreate required, the
+		// same provider handle keeps serving the new filter.
+		currentExclude = 'b';
+		expect(p.getTitles().map((t) => t.guid).sort()).toEqual(['a', 'c']);
+
+		// Null exclude → full list.
+		currentExclude = null;
+		expect(p.getTitles().map((t) => t.guid).sort()).toEqual(['a', 'b', 'c']);
+		p.dispose();
+	});
 });
