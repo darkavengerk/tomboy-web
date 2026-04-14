@@ -338,11 +338,14 @@ size = 1 + log1p(degree) / log1p(maxDegree)
 ```
 
 This drives **both** the sphere radius (`3 * size`, so up to 2× the base)
-and the color. Normal notes interpolate HSL hue from yellow (48°) at
-size=1 to red (0°) at size=2 via `degreeColor(size)`. The home note is
-gold (`#f5c542`) and the sleep note (`SLEEP_NOTE_GUID`) is purple
-(`#9b6cff`) regardless of degree, marking them as the two "starting"
-landings. The camera does **not** auto-center on the starter notes —
+and the color. Normal notes interpolate HSL from warm yellow
+(`hsl(48, 85%, 62%)`) at size=1 to pure white (`hsl(48, 0%, 100%)`) at
+size=2 via `degreeColor(size)` — saturation fades to 0 and lightness
+rises to 100, so heavily-linked notes shine against the dark background.
+The home note is gold (`#f5c542`) and the sleep note (`SLEEP_NOTE_GUID`)
+is purple (`#9b6cff`) regardless of degree, marking them as the two
+"starting" landings. The camera does **not** auto-center on the starter
+notes —
 previous versions flew the view to the home+sleep midpoint on first
 engine stop, but that felt like being yanked away on page load, so the
 framework's default initial camera position is used instead.
