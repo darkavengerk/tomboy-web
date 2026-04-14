@@ -1,13 +1,20 @@
 import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { setHomeNote, getHomeNote, getHomeNoteGuid, clearHomeNote } from '$lib/core/home.js';
+import {
+	setHomeNote,
+	getHomeNote,
+	getHomeNoteGuid,
+	clearHomeNote,
+	_resetHomeCacheForTest
+} from '$lib/core/home.js';
 import { createNote } from '$lib/core/noteManager.js';
 import { _resetDBForTest } from '$lib/storage/db.js';
 
 beforeEach(() => {
 	globalThis.indexedDB = new IDBFactory();
 	_resetDBForTest();
+	_resetHomeCacheForTest();
 });
 
 describe('home note', () => {

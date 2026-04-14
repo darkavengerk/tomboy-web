@@ -320,4 +320,91 @@ describe('autoLinkPlugin — deferred mode', () => {
 		expect(links).toHaveLength(1);
 		expect(links[0].target).toBe('Foo Bar');
 	});
+
+	it('deferred mode: refresh without accumulated dirty ranges is a no-op', () => {
+		const titles: TitleEntry[] = [entry('Foo Bar')];
+		const editor = new Editor({
+			extensions: [
+				Document,
+				Paragraph,
+				Text,
+				TomboyMonospace,
+				TomboyUrlLink,
+				TomboyInternalLink.configure({
+					getTitles: () => titles,
+					getCurrentGuid: () => null,
+					deferred: true
+				})
+			],
+			content: '<p>I saw Foo Bar today.</p>'
+		});
+		currentEditor = editor;
+
+		// No edits happened post-mount; dirty range set is empty. A plain
+		// refresh should NOT rescan (deferred mode only touches dirty
+		// ranges on normal refresh). Content-level auto-links are whatever
+		// was already in the initial doc (none here).
+		editor.view.dispatch(
+			editor.state.tr.setMeta(autoLinkPluginKey, { refresh: true })
+		);
+		expect(collectLinks(editor)).toHaveLength(0);
+
+		// But a {full:true} refresh forces a whole-doc rescan regardless
+		// of dirty-range state — this is the code path the editor takes
+		// when the title list changes.
+		editor.view.dispatch(
+			editor.state.tr.setMeta(autoLinkPluginKey, {
+				refresh: true,
+				full: true
+			})
+		);
+		const links = collectLinks(editor);
+		expect(links).toHaveLength(1);
+		expect(links[0].target).toBe('Foo Bar');
+	});
+
+	it('deferred mode: accumulated edits scan only the edited range on refresh', () => {
+		// Regression guard: after an edit, a plain {refresh:true} dispatch
+		// should link matches that land inside the word-boundary expansion
+		// of the edit, but unrelated pre-existing text that matches a
+		// title should stay untouched (it wasn't in the dirty set).
+		const titles: TitleEntry[] = [entry('Foo'), entry('Bar')];
+		const editor = new Editor({
+			extensions: [
+				Document,
+				Paragraph,
+				Text,
+				TomboyMonospace,
+				TomboyUrlLink,
+				TomboyInternalLink.configure({
+					getTitles: () => titles,
+					getCurrentGuid: () => null,
+					deferred: true
+				})
+			],
+			// Two paragraphs. Only the second is edited.
+			content: '<p>Bar stays</p><p></p>'
+		});
+		currentEditor = editor;
+
+		// Sanity: no links yet — plugin hasn't scanned and XML had none.
+		expect(collectLinks(editor)).toHaveLength(0);
+
+		// Edit only the second paragraph, appending "Foo".
+		editor.commands.focus('end');
+		editor.commands.insertContent('Foo');
+
+		editor.view.dispatch(
+			editor.state.tr.setMeta(autoLinkPluginKey, { refresh: true })
+		);
+
+		const links = collectLinks(editor);
+		// The edit's word-boundary range covers the new "Foo", so it gets
+		// linked.
+		expect(links.some((l) => l.target === 'Foo')).toBe(true);
+		// The untouched "Bar" in the first paragraph must NOT have been
+		// scanned (it wasn't dirty). If we'd done a full-doc scan it would
+		// also be linked.
+		expect(links.some((l) => l.target === 'Bar')).toBe(false);
+	});
 });
