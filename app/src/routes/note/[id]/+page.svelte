@@ -27,11 +27,17 @@
 	import { setHomeNote, clearHomeNote, getHomeNoteGuid } from '$lib/core/home.js';
 	import { isScrollBottomNote, setScrollBottomNote } from '$lib/core/scrollBottom.js';
 
-	let note: NoteData | undefined = $state(undefined);
+	// `$state.raw` for the large-content holders. Svelte's default deep
+	// proxy traps every property read, and TipTap's Editor walks the full
+	// content tree on construction (and on setContent for note switches)
+	// — a 10k-node doc pays O(n) proxy allocations each time. These vars
+	// are only ever reassigned (never mutated in place), so raw state is
+	// both safe and significantly faster for big notes.
+	let note: NoteData | undefined = $state.raw(undefined);
 	let loading = $state(true);
 	let saving = $state(false);
 	let editorComponent: TomboyEditor | undefined = $state(undefined);
-	let editorContent: JSONContent | undefined = $state(undefined);
+	let editorContent: JSONContent | undefined = $state.raw(undefined);
 	let actionSheetOpen = $state(false);
 	let pickerOpen = $state(false);
 	let isHomeNoteState = $state(false);
@@ -40,7 +46,7 @@
 
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	let loadedGuid: string | null = null;
-	let pendingDoc: JSONContent | null = $state(null);
+	let pendingDoc: JSONContent | null = $state.raw(null);
 	// Fingerprint of the last successfully-flushed doc. flushSave() skips
 	// calling updateNoteFromEditor() when the new doc stringifies to the
 	// same value — this catches the type-and-undo case without paying for

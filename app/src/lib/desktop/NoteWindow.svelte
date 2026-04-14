@@ -57,10 +57,18 @@
 		onopenlink
 	}: Props = $props();
 
-	let note = $state<NoteData | undefined>(undefined);
+	// `$state.raw` instead of `$state` for the big content holders. Svelte's
+	// default deep proxy makes every property read go through a trap, and
+	// TipTap's Editor constructor walks the full JSON tree to build the PM
+	// doc — that walk is O(nodes) proxy allocations for large notes,
+	// which is the main contributor to the "seconds of lag when opening a
+	// closed note" symptom. We never mutate these objects in place (only
+	// reassign the variable), so raw state preserves the reactivity we
+	// actually need without paying the proxy tax.
+	let note = $state.raw<NoteData | undefined>(undefined);
 	let loading = $state(true);
 	let saving = $state(false);
-	let editorContent: JSONContent | undefined = $state(undefined);
+	let editorContent: JSONContent | undefined = $state.raw(undefined);
 	let editorComponent: TomboyEditor | undefined = $state(undefined);
 	let menuAnchor = $state<{ right: number; top: number } | null>(null);
 	let pickerOpen = $state(false);
@@ -68,7 +76,7 @@
 	let isScrollBottomState = $state(false);
 
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
-	let pendingDoc: JSONContent | null = $state(null);
+	let pendingDoc: JSONContent | null = $state.raw(null);
 	// Fingerprint of the last successfully-flushed doc. flushSave() skips
 	// the whole save pipeline (IDB read + XML serialize) when the incoming
 	// doc stringifies identically — catches the type-and-undo case cheaply.

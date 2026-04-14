@@ -1,16 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { removeNoteRevision } from '$lib/sync/manifest.js';
 
-vi.mock('$lib/storage/db.js', () => ({
-	getDB: vi.fn()
-}));
-
 vi.mock('$lib/sync/manifest.js', async (importOriginal) => {
 	// We test removeNoteRevision by mocking getManifest/saveManifest internally
 	const actual = await importOriginal<typeof import('$lib/sync/manifest.js')>();
 	return actual;
 });
 
+// Single mock of `$lib/storage/db.js` — previously there were two
+// `vi.mock(...)` calls for the same path and vitest's hoisting picked
+// one non-deterministically, which made the test flaky depending on
+// which other test files ran in the same worker.
 vi.mock('$lib/storage/db.js', () => {
 	let stored: Record<string, unknown> = {};
 	const fakeDb = {
@@ -25,7 +25,9 @@ vi.mock('$lib/storage/db.js', () => {
 	return {
 		getDB: vi.fn(async () => fakeDb),
 		_fakeDb: fakeDb,
-		_reset: () => { stored = {}; }
+		_reset: () => {
+			stored = {};
+		}
 	};
 });
 
