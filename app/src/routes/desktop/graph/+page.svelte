@@ -31,6 +31,12 @@
 	let selectedGuid = $state<string | null>(null);
 	let autoSelect = $state(true);
 
+	// Base distance (world units) for the label LOD. Tier 1 = base,
+	// tier 2 = 2×, tier 3 = 3×, tier 4 = 4×, tier 5 always. Exposed as
+	// an input in the top bar so users can pull labels in or spread them
+	// out to taste.
+	let labelBaseDistance = $state(200);
+
 	// Selection strategy for the debounced auto-select:
 	//   - 'aim'    : nearest-in-frustum to the aim point (camera + forward*40)
 	//   - 'center' : whichever node actually overlaps the reticle
@@ -101,20 +107,22 @@
 
 		// Distance-LOD for node titles: bigger (more-linked) nodes' labels
 		// stay legible from farther away, small fry only show up when you
-		// fly close. Keeps the view readable at graph-wide zoom.
-		// Thresholds roughly double per tier.
+		// fly close. Each entry stores a tier *multiplier* (1–4); the actual
+		// distance threshold is `labelBaseDistance × mult`, recomputed each
+		// frame so the input in the top bar tunes the whole graph live.
+		// Tier 5 (hubs) skip the array entirely — they're always on.
 		type LabelEntry = {
 			node: GraphNode & { x?: number; y?: number; z?: number };
 			label: { visible: boolean };
-			thresholdSq: number;
+			tierMultSq: number;
 		};
 		const labelEntries: LabelEntry[] = [];
-		function distanceThresholdForSize(size: number): number {
-			if (size >= 1.8) return Infinity; // tier 5: always visible
-			if (size >= 1.6) return 320; // tier 4
-			if (size >= 1.4) return 160; // tier 3
-			if (size >= 1.2) return 80; // tier 2
-			return 40; // tier 1: only when close
+		function tierMultForSize(size: number): number | null {
+			if (size >= 1.8) return null; // tier 5: always visible
+			if (size >= 1.6) return 4;    // tier 4
+			if (size >= 1.4) return 3;    // tier 3
+			if (size >= 1.2) return 2;    // tier 2
+			return 1;                     // tier 1
 		}
 
 		// 3) Instantiate the graph. We disable the built-in navigation
@@ -160,15 +168,15 @@
 				// Register for distance-based LOD. Tier 5 (hubs) stay on
 				// permanently; others start hidden and get toggled per frame
 				// by updateLabelVisibility().
-				const threshold = distanceThresholdForSize(node.size);
-				if (threshold === Infinity) {
+				const tierMult = tierMultForSize(node.size);
+				if (tierMult === null) {
 					label.visible = true;
 				} else {
 					label.visible = false;
 					labelEntries.push({
 						node: node as GraphNode & { x?: number; y?: number; z?: number },
 						label,
-						thresholdSq: threshold * threshold
+						tierMultSq: tierMult * tierMult
 					});
 				}
 				return group;
@@ -404,6 +412,7 @@
 			const cx = camera.position.x;
 			const cy = camera.position.y;
 			const cz = camera.position.z;
+			const baseSq = labelBaseDistance * labelBaseDistance;
 			for (let i = 0; i < labelEntries.length; i++) {
 				const entry = labelEntries[i];
 				const n = entry.node;
@@ -412,7 +421,7 @@
 				const dy = cy - (n.y ?? 0);
 				const dz = cz - (n.z ?? 0);
 				const d2 = dx * dx + dy * dy + dz * dz;
-				const shouldShow = d2 < entry.thresholdSq;
+				const shouldShow = d2 < baseSq * entry.tierMultSq;
 				if (entry.label.visible !== shouldShow) {
 					entry.label.visible = shouldShow;
 				}
@@ -664,6 +673,18 @@
 	<div class="top-bar">
 		<a class="back" href="/desktop" title="데스크톱으로 돌아가기">← 데스크톱</a>
 		<div class="stats">노드 {stats.nodes} · 링크 {stats.links}</div>
+		<label
+			class="lod-input"
+			title="노드 크기별 라벨이 보이는 기본 거리. 상위 티어는 이 값의 2·3·4배까지, 최상위(허브)는 항상 표시."
+		>
+			라벨 거리
+			<input
+				type="number"
+				bind:value={labelBaseDistance}
+				min="20"
+				step="50"
+			/>
+		</label>
 		{#if !autoSelect}
 			<button
 				type="button"
@@ -818,16 +839,37 @@
 		border-radius: 4px;
 	}
 
-	/* Spacer separates left-aligned items (back/stats) from right-aligned
-	   action buttons. Using a spacer makes the ordering independent of
-	   whether auto-btn is rendered. */
-	.top-bar::before {
-		content: '';
-		flex: 1;
-		pointer-events: none;
+	.lod-input {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 4px 8px;
+		border-radius: 4px;
+		border: 1px solid #2a3040;
+		background: rgba(20, 24, 34, 0.75);
+		color: #cfd8e3;
+		font-size: 0.78rem;
 	}
 
+	.lod-input input {
+		width: 64px;
+		padding: 2px 4px;
+		border-radius: 3px;
+		border: 1px solid #2a3040;
+		background: #0d1018;
+		color: #e6edf3;
+		font-size: 0.78rem;
+		text-align: right;
+	}
+
+	.lod-input input:focus {
+		outline: none;
+		border-color: #5a9;
+	}
+
+	/* Push the auto-select "re-arm" chip to the right edge when shown. */
 	.auto-btn {
+		margin-left: auto;
 		padding: 6px 12px;
 		border-radius: 4px;
 		border: 1px solid #3a5a7a;
