@@ -169,43 +169,22 @@ export function sinkListItemOnly(editor: Editor): boolean {
 	const xHasList = xLastChild !== null && isList(xLastChild, editor);
 
 	let xNewContent: PMNode[];
+	let aIndexInSubList: number;
 	if (xHasList && xLastChild) {
-		if (promotedChildren.length === 0) {
-			// A has no children. A adopts X's existing sub-list items as its own
-			// children, so that sink+lift is a round-trip.
-			// X's new sub-list = [A(ul(X's existing items))]
-			const adoptedList = xLastChild.type.create(
-				xLastChild.attrs,
-				xLastChild.content
-			);
-			const aWithAdopted = liType.create(
-				aStripped.attrs,
-				Fragment.fromArray([...toNodeArray(aStripped), adoptedList])
-			);
-			xNewContent = [];
-			prevSibling.forEach((_child, _offset, i) => {
-				if (i < prevSibling.childCount - 1) xNewContent.push(prevSibling.child(i));
-			});
-			xNewContent.push(
-				wrapperListType.create(null, Fragment.from(aWithAdopted))
-			);
-		} else {
-			// A had children that are now being promoted. Merge them with X's
-			// existing sub-list items: existing items first, then A + promoted.
-			const existingItems: PMNode[] = [];
-			xLastChild.forEach((child) => existingItems.push(child));
-			const mergedList = xLastChild.type.create(
-				xLastChild.attrs,
-				Fragment.fromArray([...existingItems, ...innerItems])
-			);
-			xNewContent = [];
-			prevSibling.forEach((_child, _offset, i) => {
-				if (i < prevSibling.childCount - 1) xNewContent.push(prevSibling.child(i));
-			});
-			xNewContent.push(mergedList);
-		}
+		const existingItems: PMNode[] = [];
+		xLastChild.forEach((child) => existingItems.push(child));
+		aIndexInSubList = existingItems.length;
+		const mergedList = xLastChild.type.create(
+			xLastChild.attrs,
+			Fragment.fromArray([...existingItems, ...innerItems])
+		);
+		xNewContent = [];
+		prevSibling.forEach((_child, _offset, i) => {
+			if (i < prevSibling.childCount - 1) xNewContent.push(prevSibling.child(i));
+		});
+		xNewContent.push(mergedList);
 	} else {
-		// Create a new sub-list inside X
+		aIndexInSubList = 0;
 		const newSubList = wrapperListType.create(null, Fragment.fromArray(innerItems));
 		xNewContent = [];
 		prevSibling.forEach((_child, _offset, i) => xNewContent.push(prevSibling.child(i)));
@@ -234,10 +213,17 @@ export function sinkListItemOnly(editor: Editor): boolean {
 	for (let i = 0; i < xNew.childCount - 1; i++) {
 		subListRelOffset += xNew.child(i).nodeSize;
 	}
-	// subList is xNew.lastChild (the wrapperList)
-	// A_stripped is the first item in subList
-	// Cursor: prevSibStart + subListRelOffset + 1(list open) + 1(li open) + 1(para open)
-	const cursorPos = prevSibStart + subListRelOffset + 1 + 1 + 1;
+	// subList is xNew.lastChild (the wrapperList).
+	// A_stripped sits at index `aIndexInSubList` within subList.
+	const subList = xNew.lastChild;
+	let aOffsetInSubList = 1; // open token of subList
+	if (subList) {
+		for (let i = 0; i < aIndexInSubList; i++) {
+			aOffsetInSubList += subList.child(i).nodeSize;
+		}
+	}
+	// Cursor: prevSibStart + subListRelOffset + aOffsetInSubList + 1(li open) + 1(para open)
+	const cursorPos = prevSibStart + subListRelOffset + aOffsetInSubList + 1 + 1;
 	try {
 		const resolvedPos = tr.doc.resolve(Math.min(cursorPos, tr.doc.content.size - 1));
 		tr.setSelection(TextSelection.near(resolvedPos));

@@ -181,6 +181,59 @@ describe('sinkListItemOnly — basic', () => {
 		);
 	});
 
+	it('regression: leaf A sinking into X that ALREADY has a nested list — A is appended, not "adopting" X\'s children', () => {
+		// - X
+		//   - 3
+		// - A
+		// Expected (Alt+→ on A):
+		// - X
+		//   - 3
+		//   - A
+		// Bug observed: previously the code had A adopt X's existing sub-list
+		// as its own child, producing `- X / - A / - 3` at different depths.
+		const editor = makeEditor(
+			doc(ul(li(p('X'), ul(li(p('3')))), li(p('A'))))
+		);
+		placeCursorAt(editor, 'A');
+		expect(sinkListItemOnly(editor)).toBe(true);
+		expect(outline(editor.getJSON())).toBe(
+			['- X', '  - 3', '  - A'].join('\n')
+		);
+	});
+
+	it('regression: leaf A sinks AFTER existing children (order preserved)', () => {
+		// - X
+		//   - 3
+		//   - 5
+		// - A
+		// Expected:
+		// - X
+		//   - 3
+		//   - 5
+		//   - A
+		const editor = makeEditor(
+			doc(ul(li(p('X'), ul(li(p('3')), li(p('5')))), li(p('A'))))
+		);
+		placeCursorAt(editor, 'A');
+		expect(sinkListItemOnly(editor)).toBe(true);
+		expect(outline(editor.getJSON())).toBe(
+			['- X', '  - 3', '  - 5', '  - A'].join('\n')
+		);
+	});
+
+	it('regression: cursor stays inside A after sink-appending to an existing sub-list', () => {
+		const editor = makeEditor(
+			doc(ul(li(p('X'), ul(li(p('3')))), li(p('Hello'))))
+		);
+		placeCursorAt(editor, 'Hello');
+		expect(sinkListItemOnly(editor)).toBe(true);
+		// Cursor must land inside the paragraph that contains "Hello"
+		// (not in "3" which is the previous sibling after the move).
+		const { $from } = editor.state.selection;
+		const paraText = $from.parent.textContent;
+		expect(paraText).toBe('Hello');
+	});
+
 	it('preserves cursor position inside the operated item after sink', () => {
 		const editor = makeEditor(doc(ul(li(p('X')), li(p('Hello')))));
 		placeCursorAt(editor, 'Hello');
@@ -380,20 +433,32 @@ describe('liftListItemOnly — interaction with siblings', () => {
 // ============================================================================
 
 describe('sink+lift inverse property', () => {
-	it("lift-then-sink restores the original outline (item with one child)", () => {
-		const original = doc(
-			ul(li(p('X'), ul(li(p('A'), ul(li(p('B')))))))
-		);
+	// Full round-trip only holds when the operated item has no children —
+	// with children, the "keep absolute visual depth" rule intentionally
+	// flattens nesting into same-depth siblings, losing the hierarchy.
+	it('sink-then-lift on a leaf restores the original outline', () => {
+		// - X
+		// - A
+		const original = doc(ul(li(p('X')), li(p('A'))));
+		const editor = makeEditor(original);
+		placeCursorAt(editor, 'A');
+		const before = outline(editor.getJSON());
+		expect(sinkListItemOnly(editor)).toBe(true);
+		placeCursorAt(editor, 'A');
+		expect(liftListItemOnly(editor)).toBe(true);
+		expect(outline(editor.getJSON())).toBe(before);
+	});
+
+	it('lift-then-sink on a leaf restores the original outline', () => {
+		// - X
+		//   - A
+		const original = doc(ul(li(p('X'), ul(li(p('A'))))));
 		const editor = makeEditor(original);
 		placeCursorAt(editor, 'A');
 		const before = outline(editor.getJSON());
 		expect(liftListItemOnly(editor)).toBe(true);
-		// After lift, place cursor on A again.
 		placeCursorAt(editor, 'A');
 		expect(sinkListItemOnly(editor)).toBe(true);
-		// After lift+sink, expect either the original outline OR a structurally
-		// equivalent one. We accept both since intermediate state may shuffle
-		// adjacency but the semantic positions of A and B should match.
 		expect(outline(editor.getJSON())).toBe(before);
 	});
 });
