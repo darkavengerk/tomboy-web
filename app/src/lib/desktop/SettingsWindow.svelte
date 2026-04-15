@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { startPointerDrag } from './dragResize.js';
+	import ResizeHandles from './ResizeHandles.svelte';
 	import {
 		DESKTOP_WINDOW_MIN_WIDTH,
 		DESKTOP_WINDOW_MIN_HEIGHT,
-		SETTINGS_WINDOW_GUID
+		SETTINGS_WINDOW_GUID,
+		desktopSession
 	} from './session.svelte.js';
 
 	interface Props {
@@ -12,13 +14,15 @@
 		width: number;
 		height: number;
 		z: number;
+		pinned?: boolean;
 		onfocus: (guid: string) => void;
 		onclose: (guid: string) => void;
 		onmove: (guid: string, x: number, y: number) => void;
 		onresize: (guid: string, width: number, height: number) => void;
 	}
 
-	let { x, y, width, height, z, onfocus, onclose, onmove, onresize }: Props = $props();
+	let { x, y, width, height, z, pinned = false, onfocus, onclose, onmove, onresize }: Props =
+		$props();
 
 	const guid = SETTINGS_WINDOW_GUID;
 
@@ -41,19 +45,16 @@
 		});
 	}
 
-	function startResize(e: PointerEvent) {
+	function handlePinToggle(e: MouseEvent) {
 		e.stopPropagation();
-		onfocus(guid);
-		const origW = width;
-		const origH = height;
-		startPointerDrag(e, {
-			onMove: (dx, dy) =>
-				onresize(
-					guid,
-					Math.max(DESKTOP_WINDOW_MIN_WIDTH, origW + dx),
-					Math.max(DESKTOP_WINDOW_MIN_HEIGHT, origH + dy)
-				)
-		});
+		desktopSession.togglePin(guid);
+	}
+
+	function handleTitleBarAuxClick(e: MouseEvent) {
+		if (e.button === 1) {
+			e.preventDefault();
+			desktopSession.sendToBack(guid);
+		}
 	}
 </script>
 
@@ -64,8 +65,17 @@
 	onpointerdowncapture={handleFocus}
 >
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="title-bar" onpointerdown={startDrag}>
+	<div class="title-bar" onpointerdown={startDrag} onauxclick={handleTitleBarAuxClick}>
 		<span class="title-text">설정</span>
+		<button
+			type="button"
+			class="pin-btn"
+			class:pinned
+			onclick={handlePinToggle}
+			aria-label={pinned ? '항상 위 해제' : '항상 위'}
+			title={pinned ? '항상 위 해제' : '항상 위'}
+			data-no-drag
+		>&#x1F4CC;</button>
 		<button
 			type="button"
 			class="close-btn"
@@ -79,8 +89,11 @@
 		<iframe src="/settings?embed=1" title="설정"></iframe>
 	</div>
 
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="resize-grip" onpointerdown={startResize} aria-hidden="true"></div>
+	<ResizeHandles
+		base={() => ({ x, y, width, height })}
+		min={{ width: DESKTOP_WINDOW_MIN_WIDTH, height: DESKTOP_WINDOW_MIN_HEIGHT }}
+		onresize={(g) => desktopSession.updateGeometry(guid, g)}
+	/>
 </div>
 
 <style>
@@ -120,6 +133,27 @@
 		font-weight: 500;
 	}
 
+	.pin-btn {
+		flex-shrink: 0;
+		width: 22px;
+		height: 22px;
+		border: none;
+		background: transparent;
+		color: #888;
+		font-size: 0.75rem;
+		line-height: 1;
+		cursor: pointer;
+		border-radius: 3px;
+		opacity: 0.5;
+	}
+
+	.pin-btn:hover,
+	.pin-btn.pinned {
+		opacity: 1;
+		background: rgba(255, 255, 255, 0.15);
+		color: #fff;
+	}
+
 	.close-btn {
 		flex-shrink: 0;
 		width: 22px;
@@ -149,32 +183,5 @@
 		height: 100%;
 		border: 0;
 		display: block;
-	}
-
-	.resize-grip {
-		position: absolute;
-		right: 0;
-		bottom: 0;
-		width: 16px;
-		height: 16px;
-		cursor: nwse-resize;
-		touch-action: none;
-		background:
-			linear-gradient(
-				135deg,
-				transparent 0%,
-				transparent 50%,
-				#888 50%,
-				#888 55%,
-				transparent 55%,
-				transparent 65%,
-				#888 65%,
-				#888 70%,
-				transparent 70%,
-				transparent 80%,
-				#888 80%,
-				#888 85%,
-				transparent 85%
-			);
 	}
 </style>

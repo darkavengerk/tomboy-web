@@ -22,6 +22,7 @@ export interface DesktopWindowState {
 	width: number;
 	height: number;
 	z: number;
+	pinned?: boolean;
 }
 
 interface GeometrySnapshot {
@@ -46,7 +47,9 @@ interface PersistedV3 {
 	workspaces: Array<{
 		windows: Array<
 			Partial<DesktopWindowState> &
-				Pick<DesktopWindowState, 'guid' | 'x' | 'y' | 'width' | 'height' | 'z'>
+				Pick<DesktopWindowState, 'guid' | 'x' | 'y' | 'width' | 'height' | 'z'> & {
+					pinned?: boolean;
+				}
 		>;
 		geometryByGuid?: Record<string, GeometrySnapshot>;
 		nextZ?: number;
@@ -262,7 +265,7 @@ function restoreWorkspaceFromPersisted(
 			width: Math.max(MIN_WIDTH, w.width),
 			height: Math.max(MIN_HEIGHT, w.height)
 		};
-		windows.push({ guid: w.guid, kind, ...geom, z: w.z });
+		windows.push({ guid: w.guid, kind, ...geom, z: w.z, pinned: w.pinned ?? false });
 		geometryByGuid[w.guid] = geom;
 	}
 	const nextZ =
@@ -500,6 +503,45 @@ export const desktopSession = {
 		win.width = Math.max(MIN_WIDTH, Math.round(width));
 		win.height = Math.max(MIN_HEIGHT, Math.round(height));
 		cacheGeometry(ws, win);
+		schedulePersist();
+	},
+
+	/** Update all four geometry fields atomically (used by 8-way resize). */
+	updateGeometry(guid: string, g: { x: number; y: number; width: number; height: number }): void {
+		const ws = current();
+		const win = ws.windows.find((w) => w.guid === guid);
+		if (!win) return;
+		win.x = Math.max(0, Math.round(g.x));
+		win.y = Math.max(0, Math.round(g.y));
+		win.width = Math.max(MIN_WIDTH, Math.round(g.width));
+		win.height = Math.max(MIN_HEIGHT, Math.round(g.height));
+		cacheGeometry(ws, win);
+		schedulePersist();
+	},
+
+	isPinned(guid: string): boolean {
+		const ws = current();
+		const win = ws.windows.find((w) => w.guid === guid);
+		return win?.pinned ?? false;
+	},
+
+	togglePin(guid: string): void {
+		const ws = current();
+		const win = ws.windows.find((w) => w.guid === guid);
+		if (!win) return;
+		win.pinned = !win.pinned;
+		schedulePersist();
+	},
+
+	/** Set z = minZ - 1 where minZ is the minimum z among OTHER windows. */
+	sendToBack(guid: string): void {
+		const ws = current();
+		const win = ws.windows.find((w) => w.guid === guid);
+		if (!win) return;
+		const others = ws.windows.filter((w) => w.guid !== guid);
+		if (others.length === 0) return;
+		const minZ = others.reduce((m, w) => Math.min(m, w.z), Infinity);
+		win.z = minZ - 1;
 		schedulePersist();
 	},
 

@@ -174,6 +174,12 @@ The TopNav and the 전체 filter bar size themselves with `clamp(min, Xvw, max)`
 italic, strike, monospace, url-link `[x](href)`, internal-link `[[x]]`,
 and bullet list nesting.
 
+## Desktop window resize & z-order
+
+- **8-way resize**: `lib/desktop/dragResize.ts` exposes `applyResize(base, dir, dx, dy, min)` — pure geometry math; N/W handles shift x/y so the opposite edge stays pinned on clamp. `lib/desktop/ResizeHandles.svelte` renders the 4 edges + 4 corners used by both `NoteWindow` and `SettingsWindow`. Session has `updateGeometry(guid, g)` for atomic 4-field updates.
+- **Pin (항상 위)**: `DesktopWindowState.pinned?: boolean`, persisted. Effective z in `DesktopWorkspace.svelte` is `(win.pinned ? 1_000_000 : 0) + win.z` — pinned windows always above unpinned regardless of raw z. Title bar has a toggle; API: `togglePin`, `isPinned`.
+- **Send to back**: middle-click on a title bar calls `sendToBack(guid)` — sets `win.z = minZ - 1` where `minZ` is the lowest z among the other windows in the current workspace. Pinned status unchanged.
+
 ## Desktop context menu
 
 `lib/editor/EditorContextMenu.svelte` — right-click menu in `NoteWindow`

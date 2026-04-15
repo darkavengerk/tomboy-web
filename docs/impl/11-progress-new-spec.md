@@ -30,8 +30,8 @@
 | 3  | 부제 줄 스타일                          | ✅ 완료    | `.tiptap > p:nth-child(2)` 작은 폰트/muted 색 |
 | 4  | 데스크탑 툴바 높이 미세조정              | ✅ 완료    | `@media (pointer: fine)` 로 버튼 28px/패딩 축소 |
 | 5  | 데스크탑 우클릭 커스텀 메뉴              | ✅ 완료    | EditorContextMenu + copyFormatted 22개 테스트 |
-| 6  | NoteWindow 8방향 리사이즈                | ⏳ 대기    | SettingsWindow 동일 |
-| 7  | 항상 위 / 가장 뒤로 (z-order)            | ⏳ 대기    | 핀 토글 + 가운데 클릭 |
+| 6  | NoteWindow 8방향 리사이즈                | ✅ 완료    | `ResizeHandles.svelte` 공용 컴포넌트 + `applyResize` 순수 함수 |
+| 7  | 항상 위 / 가장 뒤로 (z-order)            | ✅ 완료    | `pinned` 영속화, 타이틀바 핀 토글, 가운데 클릭 sendToBack |
 | 8  | 형식 선택 복사 (HTML/plain/MD)           | ✅ 완료    | `copyFormatted.ts`에 구현, 메뉴로 노출 (단계 5와 함께) |
 
 상태 표시: ⏳ 대기 / 🛠 진행중 / ✅ 완료 / ⛔ 막힘
@@ -106,6 +106,10 @@
 - `2026-04-15`: 단계 2 버그픽스. prev sibling X가 이미 중첩 리스트를 갖고 있을 때 자식 없는 A를 sink하면 A가 X의 기존 자식들을 "입양"하던 버그 수정. 회귀 테스트 3개 추가 (총 20개). round-trip 테스트는 자식 없는 leaf 케이스로 한정.
 - `2026-04-15`: 단계 2 다중 선택 지원 추가. `findOperationRange(editor)` 헬퍼: `$from.sharedDepth($to.pos)` 에서 위로 걸어가 첫 리스트 노드를 찾고, `[startIndex..endIndex]`를 작업 범위로 반환. 단일 커서는 자연스럽게 `startIndex===endIndex`로 흡수됨. 선택 범위 내 비선택 중간 항목도 블록으로 함께 이동(표준 에디터 동작). 테스트 10개 추가 (총 30개), 전체 428개 통과.
 - `2026-04-15`: 단계 2 선택 유지 + 추가 회귀 테스트. 범위 선택 후 Alt+←/→ 시 동일 논리 범위가 선택 상태로 유지(이전엔 단일 커서로 collapse 됐음). 각 operated 항목의 innerItems 내 인덱스를 트래킹해 paragraph 절대 위치를 재계산, `TextSelection.create(tr.doc, newFrom, newTo)` 로 범위 복원. 사용자 보고 swap 버그(`11111 / • 22222 / ○ 33333 / • 44444`에서 33333 lift 시 33333/44444 순서 뒤집힘) 재현 시도 — 커서 위치 4가지(시작/끝/중간 range/full name range), trailing empty paragraph 유무, 전체 확장 세트 포함 7개 시나리오 모두 통과, 재현 실패. 총 테스트 40개.
+- `2026-04-15`: 단계 6+7 완료.
+  - 단계 6: `dragResize.ts`에 순수 함수 `applyResize(base, dir, dx, dy, min)` 추가 — N/S 핸들은 y+height, W 핸들은 x+width 축이동, 코너 핸들은 조합. min-width/min-height 클램프 시 반대편 edge는 고정. 17개 테스트. 공용 `ResizeHandles.svelte` 컴포넌트로 `NoteWindow`/`SettingsWindow` 둘 다 8방향 지원. `session.svelte.ts`에 `updateGeometry(guid, g)` 원자적 갱신 메서드 추가.
+  - 단계 7: `DesktopWindowState.pinned?: boolean` 추가, `persistNow` 는 `$state.snapshot()` 이 자동 복제하므로 변경 없이 영속화됨. 로드는 `w.pinned ?? false`. 메서드: `isPinned`/`togglePin`/`sendToBack`. `DesktopWorkspace.svelte` 의 z-index 가 `(win.pinned ? 1_000_000 : 0) + win.z`. 타이틀바에 핀 토글 버튼, 가운데 클릭(`onauxclick` button=1) → `sendToBack`. 9개 테스트.
+  - 전체 549개 통과.
 - `2026-04-15`: 단계 3+4+5(+8) 완료.
   - 단계 3: 본문 첫 paragraph(title)를 제외한 두 번째 paragraph에 작은 폰트/줄높이/muted 색 적용 (`TomboyEditor.svelte` CSS `.tiptap > p:nth-child(2)`). 저장 형식 변경 없음.
   - 단계 4: `Toolbar.svelte`에 `@media (pointer: fine)` 분기 추가. 데스크탑은 버튼 28px/패딩 축소, 모바일은 기존 44px 탭 타깃 유지.

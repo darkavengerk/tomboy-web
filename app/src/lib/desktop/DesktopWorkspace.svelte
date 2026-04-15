@@ -160,7 +160,8 @@
 						y={win.y}
 						width={win.width}
 						height={win.height}
-						z={win.z}
+						z={(win.pinned ? 1_000_000 : 0) + win.z}
+						pinned={win.pinned}
 						onfocus={handleFocus}
 						onclose={handleClose}
 						onmove={handleMove}
@@ -173,7 +174,8 @@
 						y={win.y}
 						width={win.width}
 						height={win.height}
-						z={win.z}
+						z={(win.pinned ? 1_000_000 : 0) + win.z}
+						pinned={win.pinned}
 						onfocus={handleFocus}
 						onclose={handleClose}
 						onmove={handleMove}
