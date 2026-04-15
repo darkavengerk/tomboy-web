@@ -65,6 +65,31 @@ function outline(json: JSONContent): string {
 	return lines.join('\n');
 }
 
+/** Compute the absolute position just after the first occurrence of `needle`. */
+function findPosAfter(editor: Editor, needle: string): number {
+	let pos = -1;
+	editor.state.doc.descendants((node, p) => {
+		if (pos !== -1) return false;
+		if (node.isText && node.text?.includes(needle)) {
+			pos = p + (node.text.indexOf(needle) + needle.length);
+			return false;
+		}
+		return true;
+	});
+	if (pos < 0) throw new Error(`needle not found: ${needle}`);
+	return pos;
+}
+
+/**
+ * Select a range from just after `fromNeedle` to just after `toNeedle` (inclusive
+ * of the final char), so the selection spans multiple list items.
+ */
+function selectRange(editor: Editor, fromNeedle: string, toNeedle: string): void {
+	const from = findPosAfter(editor, fromNeedle) - fromNeedle.length;
+	const to = findPosAfter(editor, toNeedle);
+	editor.commands.setTextSelection({ from, to });
+}
+
 /** Place the cursor inside the first text occurrence of `needle`. */
 function placeCursorAt(editor: Editor, needle: string): void {
 	let pos = -1;
@@ -431,6 +456,205 @@ describe('liftListItemOnly — interaction with siblings', () => {
 // ============================================================================
 //                                ROUND-TRIPS
 // ============================================================================
+
+// ============================================================================
+//                           MULTI-SELECTION (Range)
+// ============================================================================
+
+describe('sinkListItemOnly — multi-selection', () => {
+	it('sinks all selected consecutive items into the previous sibling', () => {
+		// - X
+		// - A   ← selection from here
+		// - B
+		// - C   ← to here
+		// Expected:
+		// - X
+		//   - A
+		//   - B
+		//   - C
+		const editor = makeEditor(
+			doc(ul(li(p('X')), li(p('A')), li(p('B')), li(p('C'))))
+		);
+		selectRange(editor, 'A', 'C');
+		expect(sinkListItemOnly(editor)).toBe(true);
+		expect(outline(editor.getJSON())).toBe(
+			['- X', '  - A', '  - B', '  - C'].join('\n')
+		);
+	});
+
+	it('selection touching the last char of an item still includes that item', () => {
+		// Selection from A..B (ends right after B) — both A and B are in-range.
+		const editor = makeEditor(
+			doc(ul(li(p('X')), li(p('A')), li(p('B')), li(p('C'))))
+		);
+		selectRange(editor, 'A', 'B');
+		expect(sinkListItemOnly(editor)).toBe(true);
+		expect(outline(editor.getJSON())).toBe(
+			['- X', '  - A', '  - B', '- C'].join('\n')
+		);
+	});
+
+	it("if the first selected item has no previous sibling, returns false (no-op)", () => {
+		const editor = makeEditor(doc(ul(li(p('A')), li(p('B')))));
+		selectRange(editor, 'A', 'B');
+		const before = outline(editor.getJSON());
+		expect(sinkListItemOnly(editor)).toBe(false);
+		expect(outline(editor.getJSON())).toBe(before);
+	});
+
+	it('multi-selection where items have children: each item\'s children stay at their visual depth', () => {
+		// - X
+		// - A
+		//   - A1
+		// - B
+		//   - B1
+		// Select A..B
+		// Expected:
+		// - X
+		//   - A
+		//   - A1
+		//   - B
+		//   - B1
+		const editor = makeEditor(
+			doc(
+				ul(
+					li(p('X')),
+					li(p('A'), ul(li(p('A1')))),
+					li(p('B'), ul(li(p('B1'))))
+				)
+			)
+		);
+		selectRange(editor, 'A', 'B');
+		expect(sinkListItemOnly(editor)).toBe(true);
+		expect(outline(editor.getJSON())).toBe(
+			['- X', '  - A', '  - A1', '  - B', '  - B1'].join('\n')
+		);
+	});
+
+	it('selection that includes non-selected intermediate items treats them as part of the block', () => {
+		// - X
+		// - A   ← start selection inside A
+		// - B       (not touched by selection, but in between)
+		// - C   ← end selection inside C
+		// Expected: A, B, C all sink together (block behavior).
+		const editor = makeEditor(
+			doc(ul(li(p('X')), li(p('A')), li(p('B')), li(p('C'))))
+		);
+		selectRange(editor, 'A', 'C');
+		expect(sinkListItemOnly(editor)).toBe(true);
+		expect(outline(editor.getJSON())).toBe(
+			['- X', '  - A', '  - B', '  - C'].join('\n')
+		);
+	});
+
+	it('single-position selection (no range) — behaves like single-item (regression)', () => {
+		const editor = makeEditor(doc(ul(li(p('X')), li(p('A')))));
+		placeCursorAt(editor, 'A');
+		expect(sinkListItemOnly(editor)).toBe(true);
+		expect(outline(editor.getJSON())).toBe(['- X', '  - A'].join('\n'));
+	});
+});
+
+describe('liftListItemOnly — multi-selection', () => {
+	it('lifts all selected consecutive items out of their parent', () => {
+		// - X
+		//   - A   ← start
+		//   - B
+		//   - C   ← end
+		// Expected:
+		// - X
+		// - A
+		// - B
+		// - C
+		const editor = makeEditor(
+			doc(
+				ul(
+					li(
+						p('X'),
+						ul(li(p('A')), li(p('B')), li(p('C')))
+					)
+				)
+			)
+		);
+		selectRange(editor, 'A', 'C');
+		expect(liftListItemOnly(editor)).toBe(true);
+		expect(outline(editor.getJSON())).toBe(
+			['- X', '- A', '- B', '- C'].join('\n')
+		);
+	});
+
+	it('lifting a subset leaves non-selected siblings under the original parent', () => {
+		// - X
+		//   - A   ← start
+		//   - B   ← end
+		//   - C       (not selected)
+		// Expected:
+		// - X
+		//   - C
+		// - A
+		// - B
+		const editor = makeEditor(
+			doc(
+				ul(
+					li(
+						p('X'),
+						ul(li(p('A')), li(p('B')), li(p('C')))
+					)
+				)
+			)
+		);
+		selectRange(editor, 'A', 'B');
+		expect(liftListItemOnly(editor)).toBe(true);
+		expect(outline(editor.getJSON())).toBe(
+			['- X', '  - C', '- A', '- B'].join('\n')
+		);
+	});
+
+	it('lifting multi-selection items that each have children keeps those children under the old parent', () => {
+		// - X
+		//   - A
+		//     - A1
+		//   - B
+		//     - B1
+		// Select A..B
+		// Expected:
+		// - X
+		//   - A1
+		//   - B1
+		// - A
+		// - B
+		const editor = makeEditor(
+			doc(
+				ul(
+					li(
+						p('X'),
+						ul(li(p('A'), ul(li(p('A1')))), li(p('B'), ul(li(p('B1')))))
+					)
+				)
+			)
+		);
+		selectRange(editor, 'A', 'B');
+		expect(liftListItemOnly(editor)).toBe(true);
+		expect(outline(editor.getJSON())).toBe(
+			['- X', '  - A1', '  - B1', '- A', '- B'].join('\n')
+		);
+	});
+
+	it('lifting every child of X empties X\'s sub-list (no orphan empty list node)', () => {
+		// - X
+		//   - A
+		//   - B
+		// Select A..B, lift both → X has no sub-list; A and B at root.
+		const editor = makeEditor(
+			doc(ul(li(p('X'), ul(li(p('A')), li(p('B'))))))
+		);
+		selectRange(editor, 'A', 'B');
+		expect(liftListItemOnly(editor)).toBe(true);
+		expect(outline(editor.getJSON())).toBe(
+			['- X', '- A', '- B'].join('\n')
+		);
+	});
+});
 
 describe('sink+lift inverse property', () => {
 	// Full round-trip only holds when the operated item has no children —

@@ -161,6 +161,10 @@ The TopNav and the 전체 filter bar size themselves with `clamp(min, Xvw, max)`
   parent, the operated item moves out). **Tab/Shift+Tab keep the standard
   TipTap behavior** (whole subtree moves) intentionally — the surgical
   variant is the alt-modifier opt-in.
+  Multi-selection supported: the operation range is `[$from.index..$to.index]`
+  within the deepest common-ancestor list; the whole block moves together,
+  including any non-selected intermediate items (standard editor block
+  indent behavior).
 
 ## Desktop mode (`/desktop`)
 
