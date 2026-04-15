@@ -1,5 +1,6 @@
 # Tomboy desktop source — reference only, not part of this repo
 ref/
 
-# Claude Code project memory
-.claude/
+# Claude Code project memory (local settings only — skills are shared)
+.claude/*
+!.claude/skills/
