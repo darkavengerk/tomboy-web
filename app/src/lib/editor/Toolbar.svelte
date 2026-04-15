@@ -132,6 +132,20 @@
 		-webkit-tap-highlight-color: transparent;
 	}
 
+	/* Desktop (fine pointer): shrink toolbar — touch targets not needed. */
+	@media (pointer: fine) {
+		.toolbar {
+			padding: 2px 6px;
+			gap: 1px;
+		}
+		.toolbar button {
+			min-width: 28px;
+			height: 28px;
+			font-size: 13px;
+			border-radius: 4px;
+		}
+	}
+
 	.toolbar button:active {
 		background: #dee2e6;
 	}

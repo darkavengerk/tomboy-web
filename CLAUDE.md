@@ -166,6 +166,23 @@ The TopNav and the 전체 filter bar size themselves with `clamp(min, Xvw, max)`
   including any non-selected intermediate items (standard editor block
   indent behavior).
 
+## Copy with format
+
+`lib/editor/copyFormatted.ts` — `tiptapToPlainText` / `tiptapToHtml` /
+`tiptapToMarkdown` export the current editor JSON (or a selection slice via
+`copySelectionAsJson`) in one of three formats. Markdown supports bold,
+italic, strike, monospace, url-link `[x](href)`, internal-link `[[x]]`,
+and bullet list nesting.
+
+## Desktop context menu
+
+`lib/editor/EditorContextMenu.svelte` — right-click menu in `NoteWindow`
+only (enabled via `TomboyEditor`'s `enableContextMenu` prop; mobile route
+leaves it off). Items: 잘라내기, 복사, 형식 복사 (HTML / 일반 텍스트 /
+Markdown), 붙여넣기, 오늘 날짜 삽입, 리스트로 만들기, 깊이 ↑/↓ (hidden
+outside a list), 링크 열기 (only when cursor is on a URL or internal link
+mark).
+
 ## Desktop mode (`/desktop`)
 
 A multi-window operator UI for desktop browsers, separate from the mobile

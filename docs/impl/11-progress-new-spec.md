@@ -27,12 +27,12 @@
 | 0  | 스킬 추출 + CLAUDE.md 슬림화            | ✅ 완료    | `tomboy-graph`, `tomboy-admin`, `tomboy-autolink` |
 | 1  | 날짜 삽입 (Ctrl+D)                      | ✅ 완료    | `yyyy-mm-dd`. 우클릭 메뉴는 단계 5에서 |
 | 2  | Alt+←/→ 리스트 깊이 (선택만)            | ✅ 완료    | Tab 동작은 유지. 16개 엣지케이스 통과 |
-| 3  | 부제 줄 스타일                          | ⏳ 대기    | 본문 첫 paragraph만 작게, 스타일 only |
-| 4  | 데스크탑 툴바 높이 미세조정              | ⏳ 대기    | NoteWindow Toolbar |
-| 5  | 데스크탑 우클릭 커스텀 메뉴              | ⏳ 대기    | 위 4번까지 + 형식 복사 자리 |
+| 3  | 부제 줄 스타일                          | ✅ 완료    | `.tiptap > p:nth-child(2)` 작은 폰트/muted 색 |
+| 4  | 데스크탑 툴바 높이 미세조정              | ✅ 완료    | `@media (pointer: fine)` 로 버튼 28px/패딩 축소 |
+| 5  | 데스크탑 우클릭 커스텀 메뉴              | ✅ 완료    | EditorContextMenu + copyFormatted 22개 테스트 |
 | 6  | NoteWindow 8방향 리사이즈                | ⏳ 대기    | SettingsWindow 동일 |
 | 7  | 항상 위 / 가장 뒤로 (z-order)            | ⏳ 대기    | 핀 토글 + 가운데 클릭 |
-| 8  | 형식 선택 복사 (HTML/plain/MD)           | ⏳ 대기    | TipTap JSON → 3종 |
+| 8  | 형식 선택 복사 (HTML/plain/MD)           | ✅ 완료    | `copyFormatted.ts`에 구현, 메뉴로 노출 (단계 5와 함께) |
 
 상태 표시: ⏳ 대기 / 🛠 진행중 / ✅ 완료 / ⛔ 막힘
 
@@ -106,4 +106,8 @@
 - `2026-04-15`: 단계 2 버그픽스. prev sibling X가 이미 중첩 리스트를 갖고 있을 때 자식 없는 A를 sink하면 A가 X의 기존 자식들을 "입양"하던 버그 수정. 회귀 테스트 3개 추가 (총 20개). round-trip 테스트는 자식 없는 leaf 케이스로 한정.
 - `2026-04-15`: 단계 2 다중 선택 지원 추가. `findOperationRange(editor)` 헬퍼: `$from.sharedDepth($to.pos)` 에서 위로 걸어가 첫 리스트 노드를 찾고, `[startIndex..endIndex]`를 작업 범위로 반환. 단일 커서는 자연스럽게 `startIndex===endIndex`로 흡수됨. 선택 범위 내 비선택 중간 항목도 블록으로 함께 이동(표준 에디터 동작). 테스트 10개 추가 (총 30개), 전체 428개 통과.
 - `2026-04-15`: 단계 2 선택 유지 + 추가 회귀 테스트. 범위 선택 후 Alt+←/→ 시 동일 논리 범위가 선택 상태로 유지(이전엔 단일 커서로 collapse 됐음). 각 operated 항목의 innerItems 내 인덱스를 트래킹해 paragraph 절대 위치를 재계산, `TextSelection.create(tr.doc, newFrom, newTo)` 로 범위 복원. 사용자 보고 swap 버그(`11111 / • 22222 / ○ 33333 / • 44444`에서 33333 lift 시 33333/44444 순서 뒤집힘) 재현 시도 — 커서 위치 4가지(시작/끝/중간 range/full name range), trailing empty paragraph 유무, 전체 확장 세트 포함 7개 시나리오 모두 통과, 재현 실패. 총 테스트 40개.
+- `2026-04-15`: 단계 3+4+5(+8) 완료.
+  - 단계 3: 본문 첫 paragraph(title)를 제외한 두 번째 paragraph에 작은 폰트/줄높이/muted 색 적용 (`TomboyEditor.svelte` CSS `.tiptap > p:nth-child(2)`). 저장 형식 변경 없음.
+  - 단계 4: `Toolbar.svelte`에 `@media (pointer: fine)` 분기 추가. 데스크탑은 버튼 28px/패딩 축소, 모바일은 기존 44px 탭 타깃 유지.
+  - 단계 5 + 8: `lib/editor/copyFormatted.ts`에 `tiptapToPlainText` / `tiptapToHtml` / `tiptapToMarkdown` / `copySelectionAsJson` 구현. `lib/editor/EditorContextMenu.svelte` 새 컴포넌트 — 잘라/복사/형식 복사(HTML/plain/MD 서브메뉴)/붙여/오늘 날짜/리스트로 만들기/깊이 ↑↓/링크 열기 9개 항목, ESC·외부 클릭 닫힘. `TomboyEditor.svelte`에 `enableContextMenu` prop 추가(기본 false, 모바일 영향 없음), `NoteWindow`만 true로 전달. 테스트 22개 추가. 전체 523개 통과.
 - `2026-04-15`: 단계 2 NodeSelection 예외 버그 수정. 사용자의 "계속 에러가 나는데" 보고의 원인 — 리스트 항목 불릿 등을 클릭해 NodeSelection이 활성화된 상태에서 Alt+←/→ 를 누르면 `$to.index(listDepth)`가 범위 밖 값을 반환해 `parentList.child(i)` 에서 `Index N out of range` throw. `findOperationRange`에서 startIndex/endIndex를 `[0, childCount-1]` 로 clamp, `startIndex > endIndex` 시 swap, 빈 리스트는 `null` 반환. `TomboyEditor`의 keydown 핸들러도 강화: Alt+←/→ 는 항상 preventDefault (브라우저 기본 뒤로/앞으로 이동 방지), 내부 연산은 try/catch로 감싸 console.error만 남기고 전파 안 함. 엣지케이스 테스트 약 40개 추가 (NodeSelection, 3/4단계 중첩, ol/ul 혼합, 범위 경계, 반복 호출, 빈 항목, trailing paragraph 등). 총 테스트 86개, 전체 484개 통과.

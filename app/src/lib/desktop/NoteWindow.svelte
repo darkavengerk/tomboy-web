@@ -396,6 +396,7 @@
 				onchange={handleEditorChange}
 				oninternallink={handleInternalLink}
 				currentGuid={guid}
+				enableContextMenu={true}
 			/>
 		{:else}
 			<div class="loading">노트를 불러올 수 없습니다.</div>

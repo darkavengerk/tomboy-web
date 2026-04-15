@@ -16,12 +16,14 @@
 	import { insertTodayDate } from "./insertDate.js";
 	import { sinkListItemOnly, liftListItemOnly } from "./listItemDepth.js";
 	import type { JSONContent } from "@tiptap/core";
+	import EditorContextMenu from "./EditorContextMenu.svelte";
 
 	interface Props {
 		content?: JSONContent;
 		onchange?: (doc: JSONContent) => void;
 		oninternallink?: (target: string) => void;
 		currentGuid?: string | null;
+		enableContextMenu?: boolean;
 	}
 
 	let {
@@ -29,7 +31,16 @@
 		onchange,
 		oninternallink,
 		currentGuid = null,
+		enableContextMenu = false,
 	}: Props = $props();
+
+	let ctxMenu = $state<{ x: number; y: number } | null>(null);
+
+	function handleContextMenu(e: MouseEvent) {
+		if (!enableContextMenu) return;
+		e.preventDefault();
+		ctxMenu = { x: e.clientX, y: e.clientY };
+	}
 
 	let editorElement: HTMLDivElement;
 	let editor: Editor | null = $state(null);
@@ -284,7 +295,18 @@
 	}
 </script>
 
-<div bind:this={editorElement} class="tomboy-editor"></div>
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div bind:this={editorElement} class="tomboy-editor" oncontextmenu={handleContextMenu}></div>
+
+{#if ctxMenu && editor}
+	<EditorContextMenu
+		editor={editor}
+		x={ctxMenu.x}
+		y={ctxMenu.y}
+		onclose={() => (ctxMenu = null)}
+		oninternallink={oninternallink}
+	/>
+{/if}
 
 <style>
 	.tomboy-editor {
@@ -309,6 +331,13 @@
 		font-size: 1.4em;
 		font-weight: bold;
 		margin-bottom: 0;
+	}
+
+	/* Second paragraph (body top) = subtitle slot: smaller, muted */
+	.tomboy-editor :global(.tiptap > p:nth-child(2)) {
+		font-size: 0.85em;
+		line-height: 1.25;
+		color: #666;
 	}
 
 	/* Tomboy size marks */
