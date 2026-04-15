@@ -272,6 +272,37 @@ export function sinkListItemOnly(editor: Editor): boolean {
 		lastOperatedEnd += parentList.child(i).nodeSize;
 	}
 
+	// Record selection info BEFORE dispatching for preservation.
+	const { $from: selFrom, $to: selTo } = state.selection;
+	const selIsRange = !state.selection.empty;
+
+	// For each endpoint, compute (relItemIdx, posInPara) relative to the operated block.
+	function getEndpointInfo(
+		$end: typeof selFrom
+	): { relItemIdx: number | null; posInPara: number } {
+		const itemIdx = $end.index(listDepth);
+		if (itemIdx < startIndex || itemIdx > endIndex) {
+			return { relItemIdx: null, posInPara: 0 };
+		}
+		return {
+			relItemIdx: itemIdx - startIndex,
+			posInPara: $end.parentOffset
+		};
+	}
+
+	const fromInfo = getEndpointInfo(selFrom);
+	const toInfo = getEndpointInfo(selTo);
+
+	// Build operatedItemInnerIdx: for each operated item k, its index in innerItems.
+	const operatedItemInnerIdx: number[] = [];
+	let innerIdx = 0;
+	for (let i = startIndex; i <= endIndex; i++) {
+		operatedItemInnerIdx.push(innerIdx);
+		const item = parentList.child(i);
+		const { promotedChildren } = stripNestedList(item, liType, editor);
+		innerIdx += 1 + promotedChildren.length;
+	}
+
 	const tr = state.tr;
 	tr.replaceWith(prevSibStart, lastOperatedEnd, xNew);
 	removeTrailingParagraphIfPresent(tr, editor);
@@ -293,11 +324,39 @@ export function sinkListItemOnly(editor: Editor): boolean {
 			aOffsetInSubList += subList.child(i).nodeSize;
 		}
 	}
+	// Base position: start of subList content.
+	const subListContentAbsStart = prevSibStart + subListRelOffset;
+
+	// Helper: absolute position of paragraph content start for operated item k.
+	function operatedItemParaStart(k: number): number {
+		if (!subList) return subListContentAbsStart + 2;
+		const innerItemIdx = aIndexInSubList + operatedItemInnerIdx[k];
+		let abs = subListContentAbsStart + 1; // +1 for subList open token
+		for (let i = 0; i < innerItemIdx; i++) {
+			abs += subList.child(i).nodeSize;
+		}
+		abs += 2; // +1 li open, +1 para open
+		return abs;
+	}
+
 	// Cursor: prevSibStart + subListRelOffset + aOffsetInSubList + 1(li open) + 1(para open)
 	const cursorPos = prevSibStart + subListRelOffset + aOffsetInSubList + 1 + 1;
 	try {
-		const resolvedPos = tr.doc.resolve(Math.min(cursorPos, tr.doc.content.size - 1));
-		tr.setSelection(TextSelection.near(resolvedPos));
+		if (
+			selIsRange &&
+			fromInfo.relItemIdx !== null &&
+			toInfo.relItemIdx !== null
+		) {
+			const newFrom = operatedItemParaStart(fromInfo.relItemIdx) + fromInfo.posInPara;
+			const newTo = operatedItemParaStart(toInfo.relItemIdx) + toInfo.posInPara;
+			const docSize = tr.doc.content.size;
+			const clampedFrom = Math.max(1, Math.min(newFrom, docSize - 1));
+			const clampedTo = Math.max(1, Math.min(newTo, docSize - 1));
+			tr.setSelection(TextSelection.create(tr.doc, clampedFrom, clampedTo));
+		} else {
+			const resolvedPos = tr.doc.resolve(Math.min(cursorPos, tr.doc.content.size - 1));
+			tr.setSelection(TextSelection.near(resolvedPos));
+		}
 	} catch {
 		// fallback: leave cursor where it is
 	}
@@ -395,6 +454,26 @@ export function liftListItemOnly(editor: Editor): boolean {
 	const xAbsStart = childAbsStart(grandList, xIndex, grandListContentStart);
 	const xAbsEnd = xAbsStart + xNode.nodeSize;
 
+	// Record selection info BEFORE dispatching for preservation.
+	const { $from: selFrom, $to: selTo } = state.selection;
+	const selIsRange = !state.selection.empty;
+
+	function getEndpointInfoLift(
+		$end: typeof selFrom
+	): { relItemIdx: number | null; posInPara: number } {
+		const itemIdx = $end.index(listDepth);
+		if (itemIdx < startIndex || itemIdx > endIndex) {
+			return { relItemIdx: null, posInPara: 0 };
+		}
+		return {
+			relItemIdx: itemIdx - startIndex,
+			posInPara: $end.parentOffset
+		};
+	}
+
+	const fromInfo = getEndpointInfoLift(selFrom);
+	const toInfo = getEndpointInfoLift(selTo);
+
 	const tr = state.tr;
 	tr.replaceWith(xAbsStart, xAbsEnd, Fragment.fromArray(replacementNodes));
 	removeTrailingParagraphIfPresent(tr, editor);
@@ -403,9 +482,34 @@ export function liftListItemOnly(editor: Editor): boolean {
 	// Place cursor inside the first operated item's paragraph (after xNew).
 	const aNewStart = tr.mapping.map(xAbsStart) + xNew.nodeSize;
 	const cursorPos = aNewStart + 2; // +1 li open, +1 para open
+
+	// Helper: absolute position of paragraph content start for operated item k (after lift).
+	// strippedItems[k] is at position aNewStart + sum of sizes of strippedItems[0..k-1].
+	function liftedItemParaStart(k: number): number {
+		let abs = aNewStart;
+		for (let i = 0; i < k; i++) {
+			abs += strippedItems[i].nodeSize;
+		}
+		abs += 2; // +1 li open, +1 para open
+		return abs;
+	}
+
 	try {
-		const resolvedPos = tr.doc.resolve(Math.min(cursorPos, tr.doc.content.size - 1));
-		tr.setSelection(TextSelection.near(resolvedPos));
+		if (
+			selIsRange &&
+			fromInfo.relItemIdx !== null &&
+			toInfo.relItemIdx !== null
+		) {
+			const newFrom = liftedItemParaStart(fromInfo.relItemIdx) + fromInfo.posInPara;
+			const newTo = liftedItemParaStart(toInfo.relItemIdx) + toInfo.posInPara;
+			const docSize = tr.doc.content.size;
+			const clampedFrom = Math.max(1, Math.min(newFrom, docSize - 1));
+			const clampedTo = Math.max(1, Math.min(newTo, docSize - 1));
+			tr.setSelection(TextSelection.create(tr.doc, clampedFrom, clampedTo));
+		} else {
+			const resolvedPos = tr.doc.resolve(Math.min(cursorPos, tr.doc.content.size - 1));
+			tr.setSelection(TextSelection.near(resolvedPos));
+		}
 	} catch {
 		// fallback
 	}

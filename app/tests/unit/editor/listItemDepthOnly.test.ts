@@ -29,6 +29,29 @@ function makeEditor(doc: JSONContent): Editor {
 	return editor;
 }
 
+async function makeFullEditor(doc: JSONContent): Promise<Editor> {
+	const { TomboySize } = await import('$lib/editor/extensions/TomboySize.js');
+	const { TomboyMonospace } = await import('$lib/editor/extensions/TomboyMonospace.js');
+	const { TomboyInternalLink } = await import('$lib/editor/extensions/TomboyInternalLink.js');
+	const { TomboyUrlLink } = await import('$lib/editor/extensions/TomboyUrlLink.js');
+	const { TomboyDatetime } = await import('$lib/editor/extensions/TomboyDatetime.js');
+	const editor = new Editor({
+		extensions: [
+			StarterKit.configure({ code: false, codeBlock: false, paragraph: false, listItem: false }),
+			TomboyParagraph,
+			TomboyListItem,
+			TomboySize,
+			TomboyMonospace,
+			TomboyDatetime,
+			TomboyInternalLink.configure({ getTitles: () => [], getCurrentGuid: () => null }),
+			TomboyUrlLink
+		],
+		content: doc
+	});
+	currentEditor = editor;
+	return editor;
+}
+
 /**
  * Render the doc as an indented text outline (for readable assertions).
  * Each list item becomes a line `"<2*depth spaces>- <text>"`. Top-level
@@ -433,6 +456,155 @@ describe('liftListItemOnly — basic', () => {
 	});
 });
 
+describe('liftListItemOnly — regression: following sibling preserved', () => {
+	function placeCursorAtStartOf(editor: Editor, needle: string): void {
+		let pos = -1;
+		editor.state.doc.descendants((node, p) => {
+			if (pos !== -1) return false;
+			if (node.isText && node.text?.includes(needle)) {
+				pos = p + node.text.indexOf(needle);
+				return false;
+			}
+			return true;
+		});
+		if (pos < 0) throw new Error(`needle not found: ${needle}`);
+		editor.commands.setTextSelection(pos);
+	}
+
+	it("user's scenario with cursor at END of 33333", () => {
+		const editor = makeEditor(
+			doc(
+				p('11111'),
+				ul(
+					li(p('22222'), ul(li(p('33333')))),
+					li(p('44444'))
+				)
+			)
+		);
+		placeCursorAt(editor, '33333');
+		expect(liftListItemOnly(editor)).toBe(true);
+		expect(outline(editor.getJSON())).toBe(
+			['11111', '- 22222', '- 33333', '- 44444'].join('\n')
+		);
+	});
+
+	it("user's scenario with cursor at START of 33333", () => {
+		const editor = makeEditor(
+			doc(
+				p('11111'),
+				ul(
+					li(p('22222'), ul(li(p('33333')))),
+					li(p('44444'))
+				)
+			)
+		);
+		placeCursorAtStartOf(editor, '33333');
+		expect(liftListItemOnly(editor)).toBe(true);
+		expect(outline(editor.getJSON())).toBe(
+			['11111', '- 22222', '- 33333', '- 44444'].join('\n')
+		);
+	});
+
+	it("user's scenario with a trailing empty paragraph (as TipTap would normally have)", () => {
+		const editor = makeEditor(
+			doc(
+				p('11111'),
+				ul(
+					li(p('22222'), ul(li(p('33333')))),
+					li(p('44444'))
+				),
+				p('')
+			)
+		);
+		placeCursorAt(editor, '33333');
+		expect(liftListItemOnly(editor)).toBe(true);
+		expect(outline(editor.getJSON())).toBe(
+			['11111', '- 22222', '- 33333', '- 44444'].join('\n')
+		);
+	});
+
+	it("user's scenario with a text-selection WITHIN 33333 (partial range, not cursor)", () => {
+		const editor = makeEditor(
+			doc(
+				p('11111'),
+				ul(
+					li(p('22222'), ul(li(p('33333')))),
+					li(p('44444'))
+				)
+			)
+		);
+		selectRange(editor, '333', '3');
+		expect(liftListItemOnly(editor)).toBe(true);
+		expect(outline(editor.getJSON())).toBe(
+			['11111', '- 22222', '- 33333', '- 44444'].join('\n')
+		);
+	});
+
+	it("user's scenario: selection entire '33333' word (from after '3' to end of line)", () => {
+		const editor = makeEditor(
+			doc(
+				p('11111'),
+				ul(
+					li(p('22222'), ul(li(p('33333')))),
+					li(p('44444'))
+				)
+			)
+		);
+		// Select from right after first '3' to end of "33333"
+		selectRange(editor, '3', '33333');
+		expect(liftListItemOnly(editor)).toBe(true);
+		expect(outline(editor.getJSON())).toBe(
+			['11111', '- 22222', '- 33333', '- 44444'].join('\n')
+		);
+	});
+
+	it("user's scenario with FULL extension set (same as production editor)", async () => {
+		const editor = await makeFullEditor(
+			doc(
+				p('11111'),
+				ul(
+					li(p('22222'), ul(li(p('33333')))),
+					li(p('44444'))
+				)
+			)
+		);
+		placeCursorAt(editor, '33333');
+		expect(liftListItemOnly(editor)).toBe(true);
+		expect(outline(editor.getJSON())).toBe(
+			['11111', '- 22222', '- 33333', '- 44444'].join('\n')
+		);
+	});
+
+	it("user's scenario: lift a lone nested child when parent has following siblings", () => {
+		// Doc:
+		//   11111
+		//   • 22222
+		//     ○ 33333
+		//   • 44444
+		// Cursor on 33333, Alt+←.
+		// Expected:
+		//   11111
+		//   • 22222
+		//   • 33333
+		//   • 44444
+		// Bug observed: 33333 and 44444 swap order.
+		const editor = makeEditor(
+			doc(
+				p('11111'),
+				ul(
+					li(p('22222'), ul(li(p('33333')))),
+					li(p('44444'))
+				)
+			)
+		);
+		placeCursorAt(editor, '33333');
+		expect(liftListItemOnly(editor)).toBe(true);
+		expect(outline(editor.getJSON())).toBe(
+			['11111', '- 22222', '- 33333', '- 44444'].join('\n')
+		);
+	});
+});
+
 describe('liftListItemOnly — interaction with siblings', () => {
 	it('lifting an item with following-sibling items keeps those siblings in the original list', () => {
 		// - X
@@ -460,6 +632,64 @@ describe('liftListItemOnly — interaction with siblings', () => {
 // ============================================================================
 //                           MULTI-SELECTION (Range)
 // ============================================================================
+
+// ============================================================================
+//                     SELECTION PRESERVATION (multi-select)
+// ============================================================================
+
+describe('selection preservation', () => {
+	it('sink: multi-line range selection stays selected after the operation', () => {
+		const editor = makeEditor(
+			doc(ul(li(p('X')), li(p('A')), li(p('B')), li(p('C'))))
+		);
+		selectRange(editor, 'A', 'C');
+		// Before: selection covers "A..C" across three list items.
+		const beforeText = editor.state.doc.textBetween(
+			editor.state.selection.from,
+			editor.state.selection.to,
+			'\n'
+		);
+		expect(beforeText).toMatch(/A[\s\S]*B[\s\S]*C/);
+		expect(sinkListItemOnly(editor)).toBe(true);
+		// After: selection should still cover the same logical block.
+		expect(editor.state.selection.empty).toBe(false);
+		const afterText = editor.state.doc.textBetween(
+			editor.state.selection.from,
+			editor.state.selection.to,
+			'\n'
+		);
+		expect(afterText).toMatch(/A[\s\S]*B[\s\S]*C/);
+	});
+
+	it('lift: multi-line range selection stays selected after the operation', () => {
+		const editor = makeEditor(
+			doc(
+				ul(
+					li(
+						p('X'),
+						ul(li(p('A')), li(p('B')), li(p('C')))
+					)
+				)
+			)
+		);
+		selectRange(editor, 'A', 'C');
+		expect(liftListItemOnly(editor)).toBe(true);
+		expect(editor.state.selection.empty).toBe(false);
+		const afterText = editor.state.doc.textBetween(
+			editor.state.selection.from,
+			editor.state.selection.to,
+			'\n'
+		);
+		expect(afterText).toMatch(/A[\s\S]*B[\s\S]*C/);
+	});
+
+	it('sink: single-cursor selection remains a single cursor after the operation', () => {
+		const editor = makeEditor(doc(ul(li(p('X')), li(p('Hello')))));
+		placeCursorAt(editor, 'Hello');
+		expect(sinkListItemOnly(editor)).toBe(true);
+		expect(editor.state.selection.empty).toBe(true);
+	});
+});
 
 describe('sinkListItemOnly — multi-selection', () => {
 	it('sinks all selected consecutive items into the previous sibling', () => {
