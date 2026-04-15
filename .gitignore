@@ -4,3 +4,6 @@ ref/
 # Claude Code project memory (local settings only — skills are shared)
 .claude/*
 !.claude/skills/
+
+# Root-level node_modules (if any tool writes here; app/ has its own ignore)
+node_modules/
