@@ -13,6 +13,7 @@
 	import { TomboyParagraph } from "./extensions/TomboyParagraph.js";
 	import { createTitleProvider } from "./autoLink/titleProvider.js";
 	import { autoLinkPluginKey } from "./autoLink/autoLinkPlugin.js";
+	import { insertTodayDate } from "./insertDate.js";
 	import type { JSONContent } from "@tiptap/core";
 
 	interface Props {
@@ -166,6 +167,15 @@
 				scheduleAutoLinkScan();
 			},
 			editorProps: {
+				handleKeyDown: (_view, event) => {
+					if ((event.ctrlKey || event.metaKey) && event.key === 'd') {
+						event.preventDefault();
+						const ed = editor;
+						if (ed) insertTodayDate(ed);
+						return true;
+					}
+					return false;
+				},
 				handleClick: (view, pos, event) => {
 					const target = (event.target as HTMLElement).closest(
 						"a[data-link-target]",
