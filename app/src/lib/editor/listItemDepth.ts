@@ -142,52 +142,29 @@ interface OperationRange {
  */
 function findOperationRange(editor: Editor): OperationRange | null {
 	const { $from, $to } = editor.state.selection;
-	const listItemType: NodeType = editor.schema.nodes.listItem;
 
-	// Find the shared depth first, then walk up to find a list.
 	const shared = $from.sharedDepth($to.pos);
 
 	for (let d = shared; d >= 0; d--) {
 		const node = $from.node(d);
 		if (!isList(node, editor)) continue;
 
-		// Found the deepest common ancestor list.
-		const listContentStart = $from.start(d);
+		const lastIdx = node.childCount - 1;
+		if (lastIdx < 0) return null;
 
-		// startIndex: index of the child of `list` that contains $from
-		const startIndex = $from.index(d);
-
-		// endIndex: index of the child of `list` that contains $to.
-		// Use $to.index(d) — if $to is exactly at the end of a child (i.e.
-		// indexAfter), we still want the child that was "touched".
-		// $to.index(d) gives the child index at $to, which is what we want.
-		let endIndex = $to.index(d);
-
-		// Edge case: if $to is positioned exactly at the boundary between two
-		// children (i.e., $to is at the start of the next child rather than the
-		// end of the previous), we need to check if $to is "inside" endIndex
-		// child or right at its boundary. Use indexAfter to detect this.
-		// indexAfter(d) gives the index after the child containing $to — if
-		// $to.index(d) === $to.indexAfter(d), $to is between children, so we
-		// back off by one.
-		if (endIndex > startIndex && $to.index(d) === $to.indexAfter(d)) {
-			// $to sits exactly at the end of child endIndex-1 or start of endIndex.
-			// selectRange sets `to = findPosAfter(toNeedle)` which is the position
-			// right after the last char of toNeedle's text node — this is still
-			// INSIDE the listItem paragraph. So we don't actually need to back off.
-			// Leave endIndex as-is.
-		}
+		let startIndex = Math.max(0, Math.min($from.index(d), lastIdx));
+		let endIndex = Math.max(0, Math.min($to.index(d), lastIdx));
+		if (startIndex > endIndex) [startIndex, endIndex] = [endIndex, startIndex];
 
 		return {
 			list: node,
 			listDepth: d,
-			listContentStart,
+			listContentStart: $from.start(d),
 			startIndex,
 			endIndex
 		};
 	}
 
-	// Fallback: not inside a list at all.
 	return null;
 }
 

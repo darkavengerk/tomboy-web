@@ -170,22 +170,22 @@
 			editorProps: {
 				handleKeyDown: (_view, event) => {
 					const ed = editor;
-					if ((event.ctrlKey || event.metaKey) && event.key === 'd') {
+					if (!ed) return false;
+					if ((event.ctrlKey || event.metaKey) && event.key === 'd' && !event.altKey && !event.shiftKey) {
 						event.preventDefault();
-						if (ed) insertTodayDate(ed);
+						insertTodayDate(ed);
 						return true;
 					}
 					if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
-						if (event.key === 'ArrowRight' && ed) {
-							if (sinkListItemOnly(ed)) {
-								event.preventDefault();
-								return true;
+						if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+							event.preventDefault();
+							try {
+								if (event.key === 'ArrowRight') sinkListItemOnly(ed);
+								else liftListItemOnly(ed);
+							} catch (err) {
+								console.error('[listItemDepth] operation failed:', err);
 							}
-						} else if (event.key === 'ArrowLeft' && ed) {
-							if (liftListItemOnly(ed)) {
-								event.preventDefault();
-								return true;
-							}
+							return true;
 						}
 					}
 					return false;
