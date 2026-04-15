@@ -154,6 +154,13 @@ The TopNav and the 전체 filter bar size themselves with `clamp(min, Xvw, max)`
   The mark is unset right after insertion so subsequent typing is plain
   text. Helper in `lib/editor/insertDate.ts`. The browser bookmark shortcut
   is suppressed.
+- **Alt+→ / Alt+←** — surgical list depth change in `lib/editor/listItemDepth.ts`.
+  Only the operated `<li>` moves a level; its descendants stay at their
+  current absolute visual depth (sink: children become the operated item's
+  siblings under the previous item; lift: children stay under the old
+  parent, the operated item moves out). **Tab/Shift+Tab keep the standard
+  TipTap behavior** (whole subtree moves) intentionally — the surgical
+  variant is the alt-modifier opt-in.
 
 ## Desktop mode (`/desktop`)
 

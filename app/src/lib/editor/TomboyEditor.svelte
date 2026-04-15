@@ -14,6 +14,7 @@
 	import { createTitleProvider } from "./autoLink/titleProvider.js";
 	import { autoLinkPluginKey } from "./autoLink/autoLinkPlugin.js";
 	import { insertTodayDate } from "./insertDate.js";
+	import { sinkListItemOnly, liftListItemOnly } from "./listItemDepth.js";
 	import type { JSONContent } from "@tiptap/core";
 
 	interface Props {
@@ -168,11 +169,24 @@
 			},
 			editorProps: {
 				handleKeyDown: (_view, event) => {
+					const ed = editor;
 					if ((event.ctrlKey || event.metaKey) && event.key === 'd') {
 						event.preventDefault();
-						const ed = editor;
 						if (ed) insertTodayDate(ed);
 						return true;
+					}
+					if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
+						if (event.key === 'ArrowRight' && ed) {
+							if (sinkListItemOnly(ed)) {
+								event.preventDefault();
+								return true;
+							}
+						} else if (event.key === 'ArrowLeft' && ed) {
+							if (liftListItemOnly(ed)) {
+								event.preventDefault();
+								return true;
+							}
+						}
 					}
 					return false;
 				},

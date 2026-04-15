@@ -26,7 +26,7 @@
 |----|-----------------------------------------|------------|------|
 | 0  | 스킬 추출 + CLAUDE.md 슬림화            | ✅ 완료    | `tomboy-graph`, `tomboy-admin`, `tomboy-autolink` |
 | 1  | 날짜 삽입 (Ctrl+D)                      | ✅ 완료    | `yyyy-mm-dd`. 우클릭 메뉴는 단계 5에서 |
-| 2  | Alt+←/→ 리스트 깊이 (선택만)            | ⏳ 대기    | Tab 동작은 유지 |
+| 2  | Alt+←/→ 리스트 깊이 (선택만)            | ✅ 완료    | Tab 동작은 유지. 16개 엣지케이스 통과 |
 | 3  | 부제 줄 스타일                          | ⏳ 대기    | 본문 첫 paragraph만 작게, 스타일 only |
 | 4  | 데스크탑 툴바 높이 미세조정              | ⏳ 대기    | NoteWindow Toolbar |
 | 5  | 데스크탑 우클릭 커스텀 메뉴              | ⏳ 대기    | 위 4번까지 + 형식 복사 자리 |
@@ -102,3 +102,4 @@
 
 - `2026-04-15`: 단계 0 완료. CLAUDE.md를 598 → 183줄로 슬림화. 세 개의 스킬 파일 추출. 본 문서 생성.
 - `2026-04-15`: 단계 1 완료. `lib/editor/insertDate.ts` 추가, `TomboyEditor.svelte`에 Ctrl/Cmd+D 바인딩. 삽입된 날짜는 `tomboyDatetime` 마크로 감싸 Tomboy `<datetime>` 라운드트립 보존. 마크는 삽입 직후 해제되어 이후 타이핑은 plain. 테스트 7개 통과 (`tests/unit/editor/insertDate.test.ts`).
+- `2026-04-15`: 단계 2 완료. `lib/editor/listItemDepth.ts`에 `sinkListItemOnly`/`liftListItemOnly` 추가. 알고리즘: sink 시 자식 li들을 먼저 부모 리스트의 형제로 분리(operated li 직후) 후 표준 sinkListItem; lift 시 자식 li들을 operated li 직전(부모 li 안)에 분리 후 표준 liftListItem. `TomboyEditor.svelte`의 handleKeyDown에 Alt+ArrowRight/Left 바인딩, 성공 시에만 preventDefault. Tab/Shift+Tab은 변경 없음. 테스트 16개 통과 (`tests/unit/editor/listItemDepthOnly.test.ts`), 전체 414개 통과.
