@@ -23,6 +23,7 @@
 		"@testing-library/user-event": "^14.6.1",
 		"@types/three": "^0.183.1",
 		"fake-indexeddb": "^6.2.5",
+		"fast-check": "^4.6.0",
 		"jsdom": "^29.0.2",
 		"svelte": "^5.55.2",
 		"svelte-check": "^4.4.6",

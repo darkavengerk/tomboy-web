@@ -29,9 +29,26 @@ vi.mock('$env/static/public', () => ({
 }));
 
 const uploadCalls: Array<{ path: string; contents: string; mode: unknown }> = [];
+
+// Per-test hooks — reset in beforeEach
+let uploadDelayMs: (path: string) => number = () => 0;
+let uploadRejector: (path: string) => Error | null = () => null;
+let inFlight = 0;
+let peakInFlight = 0;
+
 const filesUploadMock = vi.fn(async (arg: { path: string; contents: string; mode: unknown }) => {
-	uploadCalls.push({ path: arg.path, contents: String(arg.contents), mode: arg.mode });
-	return { result: {} };
+	inFlight++;
+	if (inFlight > peakInFlight) peakInFlight = inFlight;
+	try {
+		const delay = uploadDelayMs(arg.path);
+		if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+		const err = uploadRejector(arg.path);
+		if (err) throw err;
+		uploadCalls.push({ path: arg.path, contents: String(arg.contents), mode: arg.mode });
+		return { result: {} };
+	} finally {
+		inFlight--;
+	}
 });
 
 vi.mock('dropbox', () => {
@@ -88,6 +105,10 @@ function findUploadIndex(path: string) {
 beforeEach(() => {
 	uploadCalls.length = 0;
 	filesUploadMock.mockClear();
+	uploadDelayMs = () => 0;
+	uploadRejector = () => null;
+	inFlight = 0;
+	peakInFlight = 0;
 	localStorage.clear();
 	authenticate();
 	setNotesPath(''); // root
@@ -305,6 +326,106 @@ describe('commitRevision — Tomboy upload invariants', () => {
 		const parsed = parseManifest(findUpload('/manifest.xml')!.contents);
 		const ancient = parsed.notes.find((n) => n.guid === 'ancient')!;
 		expect(ancient.rev).toBe(2); // NOT 201 — critical Tomboy invariant
+	});
+});
+
+describe('commitRevision — parallel upload safety', () => {
+	const prev: TomboyServerManifest = {
+		revision: 10,
+		serverId: 'SID-PARALLEL',
+		notes: []
+	};
+
+	function makeUploads(n: number) {
+		return Array.from({ length: n }, (_, i) => ({
+			guid: `g-${String(i).padStart(3, '0')}`,
+			content: `<note>${i}</note>`
+		}));
+	}
+
+	it('layered ordering: ALL note uploads complete before either manifest (even under parallel)', async () => {
+		uploadDelayMs = (p) => (p.endsWith('.note') ? 10 : 0);
+		const uploads = makeUploads(20);
+		await commitRevision(11, uploads, [], prev, { concurrency: 8 });
+
+		const noteIdxs = uploadCalls
+			.map((c, i) => ({ p: c.path, i }))
+			.filter((x) => x.p.endsWith('.note'))
+			.map((x) => x.i);
+		const revIdx = uploadCalls.findIndex((c) => c.path === '/0/11/manifest.xml');
+		const rootIdx = uploadCalls.findIndex((c) => c.path === '/manifest.xml');
+
+		expect(noteIdxs).toHaveLength(20);
+		expect(revIdx).toBeGreaterThan(-1);
+		expect(rootIdx).toBeGreaterThan(-1);
+		expect(Math.max(...noteIdxs)).toBeLessThan(revIdx);
+		expect(revIdx).toBeLessThan(rootIdx);
+	});
+
+	it('actually runs in parallel: peak in-flight > 1 when concurrency > 1', async () => {
+		uploadDelayMs = (p) => (p.endsWith('.note') ? 20 : 0);
+		const uploads = makeUploads(16);
+		await commitRevision(11, uploads, [], prev, { concurrency: 8 });
+		expect(peakInFlight).toBeGreaterThan(1);
+	});
+
+	it('respects concurrency limit: peak in-flight <= limit', async () => {
+		uploadDelayMs = (p) => (p.endsWith('.note') ? 10 : 0);
+		const uploads = makeUploads(50);
+		await commitRevision(11, uploads, [], prev, { concurrency: 8 });
+		expect(peakInFlight).toBeLessThanOrEqual(8);
+	});
+
+	it('CRITICAL: if any note upload fails, NEITHER manifest is written (server stays consistent)', async () => {
+		uploadRejector = (p) => (p === '/0/11/g-007.note' ? new Error('network') : null);
+		const uploads = makeUploads(20);
+		await expect(
+			commitRevision(11, uploads, [], prev, { concurrency: 8 })
+		).rejects.toThrow();
+
+		// Server-state invariant: the root manifest MUST NOT have been overwritten.
+		expect(findUpload('/manifest.xml')).toBeUndefined();
+		// And the revision-scoped manifest should not appear either — its presence
+		// would falsely advertise notes that aren't actually there.
+		expect(findUpload('/0/11/manifest.xml')).toBeUndefined();
+	});
+
+	it('idempotent retry after partial failure: re-running the same commit succeeds', async () => {
+		const uploads = makeUploads(10);
+
+		// First attempt — inject a failure
+		uploadRejector = (p) => (p === '/0/11/g-003.note' ? new Error('transient') : null);
+		await expect(
+			commitRevision(11, uploads, [], prev, { concurrency: 4 })
+		).rejects.toThrow();
+
+		// Clear the failure injection and retry with identical args
+		uploadRejector = () => null;
+		uploadCalls.length = 0;
+		await commitRevision(11, uploads, [], prev, { concurrency: 4 });
+
+		// Full success: every note + both manifests present
+		for (let i = 0; i < 10; i++) {
+			expect(findUpload(`/0/11/g-${String(i).padStart(3, '0')}.note`)).toBeDefined();
+		}
+		expect(findUpload('/0/11/manifest.xml')).toBeDefined();
+		expect(findUpload('/manifest.xml')).toBeDefined();
+	});
+
+	it('concurrency=1 (sequential) remains valid and keeps legacy ordering', async () => {
+		uploadDelayMs = (p) => (p.endsWith('.note') ? 5 : 0);
+		const uploads = makeUploads(5);
+		await commitRevision(11, uploads, [], prev, { concurrency: 1 });
+		expect(peakInFlight).toBe(1);
+		// Notes in registration order
+		const noteUploads = uploadCalls.filter((c) => c.path.endsWith('.note'));
+		expect(noteUploads.map((c) => c.path)).toEqual([
+			'/0/11/g-000.note',
+			'/0/11/g-001.note',
+			'/0/11/g-002.note',
+			'/0/11/g-003.note',
+			'/0/11/g-004.note'
+		]);
 	});
 });
 

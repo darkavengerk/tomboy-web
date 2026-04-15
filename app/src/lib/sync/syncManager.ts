@@ -23,6 +23,9 @@ import {
 	isAuthenticated,
 	type TomboyServerManifest
 } from './dropboxClient.js';
+import { runAllSettledWithConcurrency } from './concurrency.js';
+
+const DOWNLOAD_CONCURRENCY = 8;
 
 export type SyncStatus = 'idle' | 'syncing' | 'success' | 'error' | 'offline';
 
@@ -269,66 +272,74 @@ export async function applyPlan(plan: SyncPlan, selection?: PlanSelection): Prom
 	const processedGuids = new Set<string>();
 
 	// ── Download selected notes ──────────────────────────────────────────────
+	// Parallelize the network fetch; the subsequent IDB write and in-memory
+	// manifest update are serialized per task (idb serializes txns anyway,
+	// and the shared JS state mutations are non-overlapping single-property
+	// writes that can't race under the single-threaded event loop).
 	const toDownloadSelected = plan.toDownload.filter((x) => sel.download.has(x.guid));
-	let downloadIdx = 0;
+	let downloadCompleted = 0;
+	setStatus('syncing', `다운로드 중... (0/${toDownloadSelected.length})`);
 
-	for (const { guid, rev } of toDownloadSelected) {
-		downloadIdx++;
-		setStatus('syncing', `다운로드 중... (${downloadIdx}/${toDownloadSelected.length})`);
-		try {
-			const content = await downloadNoteAtRevision(guid, rev);
-			const remoteNote = parseNoteFromFile(content, `${guid}.note`);
-			remoteNote.localDirty = false;
-			remoteNote.deleted = false;
-			await noteStore.putNoteSynced(remoteNote);
-			localManifest.noteRevisions[guid] = rev;
-			result.downloaded++;
-			processedGuids.add(guid);
-			if (result.downloaded % 20 === 0) {
-				await saveManifest(localManifest);
+	await runAllSettledWithConcurrency(
+		toDownloadSelected.map(({ guid, rev }) => async () => {
+			try {
+				const content = await downloadNoteAtRevision(guid, rev);
+				const remoteNote = parseNoteFromFile(content, `${guid}.note`);
+				remoteNote.localDirty = false;
+				remoteNote.deleted = false;
+				await noteStore.putNoteSynced(remoteNote);
+				localManifest.noteRevisions[guid] = rev;
+				result.downloaded++;
+				processedGuids.add(guid);
+			} catch (err) {
+				result.errors.push(`Error downloading ${guid}: ${err}`);
+			} finally {
+				downloadCompleted++;
+				setStatus('syncing', `다운로드 중... (${downloadCompleted}/${toDownloadSelected.length})`);
 			}
-		} catch (err) {
-			result.errors.push(`Error downloading ${guid}: ${err}`);
-		}
-	}
+		}),
+		DOWNLOAD_CONCURRENCY
+	);
 
 	// ── Handle conflicts ─────────────────────────────────────────────────────
 	// Always download conflicting notes to get their content/date, then decide.
-	for (const conflict of plan.conflicts) {
-		const explicitChoice = sel.conflictChoice.get(conflict.guid);
-		const rev = serverNoteMap.get(conflict.guid) ?? 0;
+	await runAllSettledWithConcurrency(
+		plan.conflicts.map((conflict) => async () => {
+			const explicitChoice = sel.conflictChoice.get(conflict.guid);
+			const rev = serverNoteMap.get(conflict.guid) ?? 0;
+			try {
+				const content = await downloadNoteAtRevision(conflict.guid, rev);
+				const remoteNote = parseNoteFromFile(content, `${conflict.guid}.note`);
+				const local = localByGuid.get(conflict.guid);
 
-		try {
-			const content = await downloadNoteAtRevision(conflict.guid, rev);
-			const remoteNote = parseNoteFromFile(content, `${conflict.guid}.note`);
-			const local = localByGuid.get(conflict.guid);
+				let useRemote: boolean;
+				if (explicitChoice === 'remote') {
+					useRemote = true;
+				} else if (explicitChoice === 'local') {
+					useRemote = false;
+				} else {
+					// No explicit choice — fall back to date comparison (last-write-wins)
+					const localDate = local ? parseTomboyDate(local.changeDate) : new Date(0);
+					const remoteDate = parseTomboyDate(remoteNote.changeDate);
+					useRemote = remoteDate > localDate;
+				}
 
-			let useRemote: boolean;
-			if (explicitChoice === 'remote') {
-				useRemote = true;
-			} else if (explicitChoice === 'local') {
-				useRemote = false;
-			} else {
-				// No explicit choice — fall back to date comparison (last-write-wins)
-				const localDate = local ? parseTomboyDate(local.changeDate) : new Date(0);
-				const remoteDate = parseTomboyDate(remoteNote.changeDate);
-				useRemote = remoteDate > localDate;
+				if (useRemote) {
+					remoteNote.localDirty = false;
+					await noteStore.putNoteSynced(remoteNote);
+					localManifest.noteRevisions[conflict.guid] = rev;
+					result.downloaded++;
+					processedGuids.add(conflict.guid);
+				} else {
+					// local wins — will be uploaded below
+					sel.upload.add(conflict.guid);
+				}
+			} catch (err) {
+				result.errors.push(`Error handling conflict ${conflict.guid}: ${err}`);
 			}
-
-			if (useRemote) {
-				remoteNote.localDirty = false;
-				await noteStore.putNoteSynced(remoteNote);
-				localManifest.noteRevisions[conflict.guid] = rev;
-				result.downloaded++;
-				processedGuids.add(conflict.guid);
-			} else {
-				// local wins — will be uploaded below
-				sel.upload.add(conflict.guid);
-			}
-		} catch (err) {
-			result.errors.push(`Error handling conflict ${conflict.guid}: ${err}`);
-		}
-	}
+		}),
+		DOWNLOAD_CONCURRENCY
+	);
 
 	// Save checkpoint after downloads
 	await saveManifest(localManifest);

@@ -8,6 +8,7 @@
 
 import { Dropbox, DropboxAuth } from 'dropbox';
 import { env } from '$env/dynamic/public';
+import { runWithConcurrency } from './concurrency.js';
 
 const STORAGE_KEY_ACCESS_TOKEN = 'tomboy-dropbox-access-token';
 const STORAGE_KEY_REFRESH_TOKEN = 'tomboy-dropbox-refresh-token';
@@ -272,21 +273,35 @@ export async function downloadNoteAtRevision(guid: string, rev: number): Promise
  *   2. Write /{parent}/{newRev}/manifest.xml  (per-revision snapshot)
  *   3. Overwrite /manifest.xml  (root — single source of truth)
  */
+export interface CommitOptions {
+	/** Max concurrent note uploads in step 1. Manifests (steps 2–3) are always sequential. */
+	concurrency?: number;
+}
+
+const DEFAULT_UPLOAD_CONCURRENCY = 8;
+
 export async function commitRevision(
 	newRev: number,
 	uploadNotes: Array<{ guid: string; content: string }>,
 	deletedGuids: string[],
-	prevManifest: TomboyServerManifest
+	prevManifest: TomboyServerManifest,
+	options: CommitOptions = {}
 ): Promise<void> {
 	const dbx = getClient();
 	if (!dbx) throw new Error('Not authenticated');
 
 	const notesPath = getNotesPath();
+	const concurrency = options.concurrency ?? DEFAULT_UPLOAD_CONCURRENCY;
 
-	// 1. Upload note files
-	for (const { guid, content } of uploadNotes) {
-		await uploadText(dbx, noteRevisionPath(notesPath, guid, newRev), content);
-	}
+	// 1. Upload note files in parallel. If any rejects, runWithConcurrency
+	//    throws and we skip steps 2–3 entirely — the server's root manifest
+	//    is left untouched, so a partial upload is invisible to readers.
+	await runWithConcurrency(
+		uploadNotes.map(({ guid, content }) => () =>
+			uploadText(dbx, noteRevisionPath(notesPath, guid, newRev), content)
+		),
+		concurrency
+	);
 
 	// 2. Build updated note map
 	const noteMap = new Map<string, number>();
@@ -308,7 +323,8 @@ export async function commitRevision(
  * Uploads all provided notes at revision 1.
  */
 export async function initServerManifest(
-	uploadNotes: Array<{ guid: string; content: string }>
+	uploadNotes: Array<{ guid: string; content: string }>,
+	options: CommitOptions = {}
 ): Promise<TomboyServerManifest> {
 	const dbx = getClient();
 	if (!dbx) throw new Error('Not authenticated');
@@ -316,10 +332,14 @@ export async function initServerManifest(
 	const notesPath = getNotesPath();
 	const serverId = crypto.randomUUID();
 	const rev = 1;
+	const concurrency = options.concurrency ?? DEFAULT_UPLOAD_CONCURRENCY;
 
-	for (const { guid, content } of uploadNotes) {
-		await uploadText(dbx, noteRevisionPath(notesPath, guid, rev), content);
-	}
+	await runWithConcurrency(
+		uploadNotes.map(({ guid, content }) => () =>
+			uploadText(dbx, noteRevisionPath(notesPath, guid, rev), content)
+		),
+		concurrency
+	);
 
 	const noteMap = new Map<string, number>();
 	for (const { guid } of uploadNotes) noteMap.set(guid, rev);
