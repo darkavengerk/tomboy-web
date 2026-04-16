@@ -13,6 +13,8 @@
 	import { TomboyParagraph } from "./extensions/TomboyParagraph.js";
 	import { createTitleProvider } from "./autoLink/titleProvider.js";
 	import { autoLinkPluginKey } from "./autoLink/autoLinkPlugin.js";
+	import { createImagePreviewPlugin } from "./imagePreview/imagePreviewPlugin.js";
+	import { Extension } from "@tiptap/core";
 	import { insertTodayDate } from "./insertDate.js";
 	import { sinkListItemOnly, liftListItemOnly, isInList } from "./listItemDepth.js";
 	import { moveListItemUp, moveListItemDown } from "./listItemReorder.js";
@@ -165,6 +167,12 @@
 					deferred: true,
 				}),
 				TomboyUrlLink,
+				Extension.create({
+					name: "tomboyImagePreview",
+					addProseMirrorPlugins() {
+						return [createImagePreviewPlugin()];
+					},
+				}),
 			],
 			content: content ?? {
 				type: "doc",
@@ -437,6 +445,20 @@
 	.tomboy-editor :global(.tomboy-link-url) {
 		color: #3465a4;
 		text-decoration: underline;
+	}
+
+	/* Inline image preview widget (decoration; not part of the doc). The
+	   underlying <link:url> mark is preserved verbatim for round-trip
+	   compatibility with Tomboy desktop — this just renders the image
+	   alongside the URL text. */
+	.tomboy-editor :global(img.tomboy-image-preview) {
+		display: block;
+		max-width: 100%;
+		max-height: 400px;
+		height: auto;
+		margin: 0.4em 0;
+		border-radius: 4px;
+		background: rgba(0, 0, 0, 0.04);
 	}
 
 	/* Highlight */
