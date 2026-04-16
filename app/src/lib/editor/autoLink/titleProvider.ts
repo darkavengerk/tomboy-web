@@ -78,7 +78,9 @@ async function doSharedRefresh(): Promise<void> {
 			entries: next.length,
 			listeners: sharedListeners.size
 		});
+		markNoteOpenPerf('titleProvider.refresh:broadcast:before');
 		for (const l of sharedListeners) l();
+		markNoteOpenPerf('titleProvider.refresh:broadcast:after');
 	})().finally(() => {
 		sharedInFlight = null;
 	});

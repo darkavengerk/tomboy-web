@@ -64,6 +64,11 @@ export function startNoteOpenPerf(guid: string, label = 'openWindow'): void {
  * the caller can identify the note in question — the mark is dropped if it
  * doesn't match the active session's guid (prevents unrelated concurrent
  * activity from polluting the log).
+ *
+ * To record a mark regardless of guid (e.g. when investigating cross-window
+ * interference), pass `'*'` as the guid — the mark is always accepted and
+ * the actual guid should be encoded in `detail` so the reader can tell which
+ * window produced it.
  */
 export function markNoteOpenPerf(
 	label: string,
@@ -72,7 +77,7 @@ export function markNoteOpenPerf(
 ): void {
 	const s = session;
 	if (!s) return;
-	if (guid !== undefined && guid !== s.guid) return;
+	if (guid !== undefined && guid !== '*' && guid !== s.guid) return;
 	s.marks.push({ t: now() - s.t0, label, detail });
 }
 

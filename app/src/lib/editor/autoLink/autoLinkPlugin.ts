@@ -119,9 +119,11 @@ export function createAutoLinkPlugin(opts: AutoLinkPluginOptions): Plugin {
 			const titles = opts.getTitles();
 			const currentGuid = opts.getCurrentGuid();
 			const markType = opts.markType;
+			const scanStart = (typeof performance !== 'undefined' ? performance.now() : Date.now());
 			markNoteOpenPerf(
 				'autoLinkPlugin.scan:enter',
 				{
+					guid: currentGuid,
 					refresh: isRefresh,
 					full: isFull,
 					deferred,
@@ -129,7 +131,7 @@ export function createAutoLinkPlugin(opts: AutoLinkPluginOptions): Plugin {
 					titles: titles.length,
 					dirty: dirtyRanges.length
 				},
-				currentGuid ?? undefined
+				'*'
 			);
 
 			interface Range { from: number; to: number; }
@@ -195,14 +197,17 @@ export function createAutoLinkPlugin(opts: AutoLinkPluginOptions): Plugin {
 				) || changed;
 			}
 
+			const scanEnd = (typeof performance !== 'undefined' ? performance.now() : Date.now());
 			markNoteOpenPerf(
 				'autoLinkPlugin.scan:exit',
 				{
+					guid: currentGuid,
 					ranges: merged.length,
 					rangeChars: merged.reduce((s, r) => s + (r.to - r.from), 0),
-					changed
+					changed,
+					durMs: +(scanEnd - scanStart).toFixed(1)
 				},
-				currentGuid ?? undefined
+				'*'
 			);
 
 			if (!changed) return null;
