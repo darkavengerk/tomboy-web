@@ -17,7 +17,6 @@
 
 import { listNotes } from '$lib/core/noteManager.js';
 import { onInvalidate } from '$lib/stores/noteListCache.js';
-import { markNoteOpenPerf } from '$lib/utils/noteOpenPerfLog.js';
 import type { TitleEntry } from './findTitleMatches.js';
 
 export interface TitleProvider {
@@ -52,16 +51,9 @@ let providerCount = 0;
 let invalidateOff: (() => void) | null = null;
 
 async function doSharedRefresh(): Promise<void> {
-	if (sharedInFlight) {
-		markNoteOpenPerf('titleProvider.refresh:coalesced');
-		return sharedInFlight;
-	}
-	markNoteOpenPerf('titleProvider.refresh:listNotes:before');
+	if (sharedInFlight) return sharedInFlight;
 	sharedInFlight = (async () => {
 		const notes = await listNotes();
-		markNoteOpenPerf('titleProvider.refresh:listNotes:after', {
-			count: notes.length
-		});
 		const next: TitleEntry[] = [];
 		for (const n of notes) {
 			if (!n || typeof n.title !== 'string') continue;
@@ -75,11 +67,10 @@ async function doSharedRefresh(): Promise<void> {
 		}
 		// Skip the fan-out to subscribers when the title set is identical to
 		// what we had before. Many callers of invalidateCache() don't
-		// actually change the title list (new TomboyEditor mount →
-		// titleProvider.refresh(), toggleFavorite, body-only edits that
-		// happen to race a refresh, …) and each broadcast triggers a
-		// full-document auto-link rescan on EVERY open editor — so a single
-		// unnecessary broadcast in a workspace with N editors costs
+		// actually change the title list (toggleFavorite, a body-only edit
+		// that happens to race a refresh, etc.) and each broadcast triggers
+		// a full-document auto-link rescan on EVERY open editor — so a
+		// single unnecessary broadcast in a workspace with N editors costs
 		// O(N * doc * titles) main-thread work with no observable effect.
 		//
 		// Equivalence is checked order-independently on (guid, titleLower,
@@ -88,18 +79,8 @@ async function doSharedRefresh(): Promise<void> {
 		// but we shouldn't *require* stable ordering to skip the broadcast.
 		const unchanged = entriesEquivalent(sharedEntries, next);
 		sharedEntries = next;
-		markNoteOpenPerf('titleProvider.refresh:entriesBuilt', {
-			entries: next.length,
-			listeners: sharedListeners.size,
-			unchanged
-		});
-		if (unchanged) {
-			markNoteOpenPerf('titleProvider.refresh:broadcast:skipped');
-			return;
-		}
-		markNoteOpenPerf('titleProvider.refresh:broadcast:before');
+		if (unchanged) return;
 		for (const l of sharedListeners) l();
-		markNoteOpenPerf('titleProvider.refresh:broadcast:after');
 	})().finally(() => {
 		sharedInFlight = null;
 	});
@@ -165,6 +146,13 @@ export function createTitleProvider(opts: TitleProviderOptions = {}): TitleProvi
 		},
 		refresh(): Promise<void> {
 			if (disposed) return Promise.resolve();
+			// Fast path: when the shared cache is already warm (another
+			// editor already fetched), skip the listNotes() round-trip.
+			// ensureSubscribed() has already registered the onInvalidate
+			// listener for this provider, so any real staleness (a note
+			// created / renamed / deleted anywhere in the app) will still
+			// refresh the cache via that subscription.
+			if (sharedEntries.length > 0 && !sharedInFlight) return Promise.resolve();
 			return doSharedRefresh();
 		},
 		onChange(cb) {

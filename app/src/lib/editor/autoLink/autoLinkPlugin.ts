@@ -9,7 +9,6 @@
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { MarkType, Node as PMNode } from '@tiptap/pm/model';
 import { findTitleMatches, isWordChar, type TitleEntry } from './findTitleMatches.js';
-import { markNoteOpenPerf } from '$lib/utils/noteOpenPerfLog.js';
 
 export const autoLinkPluginKey = new PluginKey<AutoLinkMeta>('tomboyAutoLink');
 
@@ -119,20 +118,6 @@ export function createAutoLinkPlugin(opts: AutoLinkPluginOptions): Plugin {
 			const titles = opts.getTitles();
 			const currentGuid = opts.getCurrentGuid();
 			const markType = opts.markType;
-			const scanStart = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-			markNoteOpenPerf(
-				'autoLinkPlugin.scan:enter',
-				{
-					guid: currentGuid,
-					refresh: isRefresh,
-					full: isFull,
-					deferred,
-					docSize,
-					titles: titles.length,
-					dirty: dirtyRanges.length
-				},
-				'*'
-			);
 
 			interface Range { from: number; to: number; }
 			let ranges: Range[];
@@ -196,19 +181,6 @@ export function createAutoLinkPlugin(opts: AutoLinkPluginOptions): Plugin {
 					suppress
 				) || changed;
 			}
-
-			const scanEnd = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-			markNoteOpenPerf(
-				'autoLinkPlugin.scan:exit',
-				{
-					guid: currentGuid,
-					ranges: merged.length,
-					rangeChars: merged.reduce((s, r) => s + (r.to - r.from), 0),
-					changed,
-					durMs: +(scanEnd - scanStart).toFixed(1)
-				},
-				'*'
-			);
 
 			if (!changed) return null;
 			tr.setMeta(autoLinkPluginKey, { skip: true });
