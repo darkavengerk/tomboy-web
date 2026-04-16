@@ -100,8 +100,8 @@
 		autoLinkPendingFull = false;
 		markNoteOpenPerf(
 			'TomboyEditor.runAutoLinkScan:dispatch',
-			{ full: meta.full === true },
-			currentGuid ?? undefined
+			{ guid: currentGuid, full: meta.full === true },
+			'*'
 		);
 		ed.view.dispatch(ed.state.tr.setMeta(autoLinkPluginKey, meta));
 	}
@@ -110,12 +110,17 @@
 		if (opts?.full) autoLinkPendingFull = true;
 		markNoteOpenPerf(
 			'TomboyEditor.scheduleAutoLinkScan',
-			{ full: !!opts?.full, pendingFull: autoLinkPendingFull },
-			currentGuid ?? undefined
+			{ guid: currentGuid, full: !!opts?.full, pendingFull: autoLinkPendingFull },
+			'*'
 		);
 		cancelAutoLinkScan();
 		autoLinkTimer = setTimeout(() => {
 			autoLinkTimer = null;
+			markNoteOpenPerf(
+				'TomboyEditor.autoLinkDebounce:fired',
+				{ guid: currentGuid },
+				'*'
+			);
 			const anyWin = window as unknown as {
 				requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
 			};
@@ -123,6 +128,11 @@
 				autoLinkIdleHandle = anyWin.requestIdleCallback(
 					() => {
 						autoLinkIdleHandle = null;
+						markNoteOpenPerf(
+							'TomboyEditor.autoLinkIdle:fired',
+							{ guid: currentGuid },
+							'*'
+						);
 						runAutoLinkScan();
 					},
 					{ timeout: 500 },
