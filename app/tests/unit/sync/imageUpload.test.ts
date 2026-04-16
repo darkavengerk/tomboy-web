@@ -25,7 +25,8 @@ vi.mock('dropbox', () => {
 
 import {
 	toDirectImageUrl,
-	uploadImageToDropbox
+	uploadImageToDropbox,
+	formatDropboxError
 } from '$lib/sync/imageUpload.js';
 import { getImagesPath, setImagesPath } from '$lib/sync/dropboxClient.js';
 
@@ -212,5 +213,113 @@ describe('getImagesPath default', () => {
 	it('normalizes paths (adds leading slash, strips trailing slash)', () => {
 		setImagesPath('custom/');
 		expect(getImagesPath()).toBe('/custom');
+	});
+});
+
+// ─── formatDropboxError ──────────────────────────────────────────────────────
+
+describe('formatDropboxError', () => {
+	it('extracts `error_summary` when present (most common SDK shape)', () => {
+		const err = {
+			status: 400,
+			error: {
+				error_summary: 'shared_link_already_exists/..',
+				error: { '.tag': 'shared_link_already_exists' }
+			}
+		};
+		expect(formatDropboxError(err)).toContain('shared_link_already_exists');
+	});
+
+	it('falls back to `.tag` when summary is missing', () => {
+		const err = {
+			status: 400,
+			error: { error: { '.tag': 'settings_error' } }
+		};
+		expect(formatDropboxError(err)).toContain('settings_error');
+	});
+
+	it('surfaces plain JS Error messages', () => {
+		expect(formatDropboxError(new Error('network down'))).toContain('network down');
+	});
+
+	it('includes status code when only tag is available', () => {
+		const err = {
+			status: 401,
+			error: { error: { '.tag': 'missing_scope' } }
+		};
+		const out = formatDropboxError(err);
+		expect(out).toContain('missing_scope');
+		expect(out).toContain('401');
+	});
+
+	it('returns a useful string for null/undefined/empty', () => {
+		expect(formatDropboxError(null)).not.toBe('');
+		expect(formatDropboxError(undefined)).not.toBe('');
+		expect(formatDropboxError({})).not.toBe('');
+	});
+
+	it('serializes unknown error objects as a last resort', () => {
+		const err = { foo: 'bar', baz: 42 };
+		const out = formatDropboxError(err);
+		// Should contain some hint about the content, never just "[object Object]".
+		expect(out).not.toBe('[object Object]');
+	});
+});
+
+// ─── upload uses path_display from response ──────────────────────────────────
+
+describe('uploadImageToDropbox — path_display fallback', () => {
+	beforeEach(() => {
+		authenticate();
+	});
+
+	it('uses the path_display returned by filesUpload for the shared-link call', async () => {
+		// Dropbox may normalize (e.g. case) the stored path. Use the exact
+		// path that was actually written for the subsequent shared-link call
+		// so the two always agree.
+		filesUploadMock.mockResolvedValue({
+			result: { path_display: '/Tomboy-Image/Stored-At-This-Path.png' }
+		});
+		createSharedLinkMock.mockResolvedValue({
+			result: { url: 'https://www.dropbox.com/s/xyz/a.png?dl=0' }
+		});
+		await uploadImageToDropbox(fakeFile('a.png', 'image/png'));
+		expect(createSharedLinkMock).toHaveBeenCalledTimes(1);
+		expect(createSharedLinkMock.mock.calls[0][0].path).toBe(
+			'/Tomboy-Image/Stored-At-This-Path.png'
+		);
+	});
+
+	it('falls back to requested path when path_display is missing', async () => {
+		filesUploadMock.mockResolvedValue({ result: {} });
+		createSharedLinkMock.mockResolvedValue({
+			result: { url: 'https://www.dropbox.com/s/xyz/a.png?dl=0' }
+		});
+		await uploadImageToDropbox(fakeFile('a.png', 'image/png'));
+		const sharedPath = createSharedLinkMock.mock.calls[0][0].path;
+		const uploadedPath = filesUploadMock.mock.calls[0][0].path;
+		expect(sharedPath).toBe(uploadedPath);
+	});
+});
+
+// ─── error propagation with useful message ───────────────────────────────────
+
+describe('uploadImageToDropbox — error messages', () => {
+	beforeEach(() => {
+		authenticate();
+		filesUploadMock.mockResolvedValue({ result: {} });
+	});
+
+	it('throws a usefully-formatted error when create_shared_link fails non-recoverably', async () => {
+		createSharedLinkMock.mockRejectedValue({
+			status: 400,
+			error: {
+				error_summary: 'settings_error/not_authorized',
+				error: { '.tag': 'settings_error' }
+			}
+		});
+		await expect(
+			uploadImageToDropbox(fakeFile('a.png', 'image/png'))
+		).rejects.toThrow(/settings_error/);
 	});
 });

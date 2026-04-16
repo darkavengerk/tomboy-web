@@ -15,7 +15,7 @@
 	import { autoLinkPluginKey } from "./autoLink/autoLinkPlugin.js";
 	import { createImagePreviewPlugin } from "./imagePreview/imagePreviewPlugin.js";
 	import { extractImageFile } from "./imagePreview/extractImageFile.js";
-	import { uploadImageToDropbox } from "$lib/sync/imageUpload.js";
+	import { uploadImageToDropbox, formatDropboxError } from "$lib/sync/imageUpload.js";
 	import { pushToast, dismissToast } from "$lib/stores/toast.js";
 	import { Extension } from "@tiptap/core";
 	import { insertTodayDate } from "./insertDate.js";
@@ -408,8 +408,19 @@
 			pushToast("이미지 업로드 완료");
 		} catch (err) {
 			dismissToast(toastId);
-			const msg = err instanceof Error ? err.message : String(err);
-			pushToast(`이미지 업로드 실패: ${msg}`, { kind: "error" });
+			// Always log the raw error so failures can be diagnosed from
+			// devtools even if the toast message is too short to be useful.
+			console.error("[TomboyEditor] image upload failed", err);
+			const msg =
+				err instanceof Error && err.message
+					? err.message
+					: formatDropboxError(err);
+			pushToast(`이미지 업로드 실패: ${msg}`, {
+				kind: "error",
+				// Hold the error long enough for users to read a long
+				// API-error string (default 2.5s is too short for diagnostics).
+				timeoutMs: 8000,
+			});
 		}
 	}
 </script>

@@ -71,7 +71,9 @@ interface DropboxSdkClient {
 		mode: { '.tag': string };
 		mute?: boolean;
 		autorename?: boolean;
-	}) => Promise<unknown>;
+	}) => Promise<{
+		result: { path_display?: string; path_lower?: string };
+	}>;
 	sharingCreateSharedLinkWithSettings: (arg: {
 		path: string;
 		settings?: Record<string, unknown>;
@@ -80,6 +82,44 @@ interface DropboxSdkClient {
 		path: string;
 		direct_only?: boolean;
 	}) => Promise<{ result: { links: Array<{ url: string }> } }>;
+}
+
+/**
+ * Extract a human-readable message from a Dropbox SDK error. The SDK wraps
+ * API errors in a multi-level structure; the useful text is usually in
+ * `error.error_summary` (e.g. `"missing_scope/..."`, `"settings_error/..."`).
+ * Falls back to the `.tag` + status code, then to standard JS Error.message,
+ * and finally to JSON-serialization — never `"[object Object]"`.
+ */
+export function formatDropboxError(err: unknown): string {
+	if (err === null || err === undefined) return 'Unknown error';
+	const e = err as {
+		status?: number;
+		error?: {
+			error_summary?: string;
+			error?: { '.tag'?: string; [k: string]: unknown };
+		};
+		message?: string;
+	};
+
+	if (typeof e.error?.error_summary === 'string' && e.error.error_summary) {
+		return e.error.error_summary;
+	}
+	const innerTag = e.error?.error?.['.tag'];
+	if (typeof innerTag === 'string' && innerTag) {
+		const status = typeof e.status === 'number' ? ` (status ${e.status})` : '';
+		return `${innerTag}${status}`;
+	}
+	if (typeof e.message === 'string' && e.message) {
+		return e.message;
+	}
+	try {
+		const s = JSON.stringify(err);
+		if (s && s !== '{}') return s;
+	} catch {
+		/* ignore */
+	}
+	return 'Unknown error';
 }
 
 /**
@@ -125,20 +165,25 @@ async function resolveSharedUrl(
 		const res = await dbx.sharingCreateSharedLinkWithSettings({ path });
 		return res.result.url;
 	} catch (err) {
-		if (!isSharedLinkAlreadyExists(err)) throw err;
+		if (isSharedLinkAlreadyExists(err)) {
+			// Prefer the URL embedded in the error metadata — it's the cheapest.
+			const embedded = extractExistingSharedUrl(err);
+			if (embedded) return embedded;
 
-		// Prefer the URL embedded in the error metadata — it's the cheapest.
-		const embedded = extractExistingSharedUrl(err);
-		if (embedded) return embedded;
+			// Fallback: list the existing shared links for this exact path.
+			const listRes = await dbx.sharingListSharedLinks({
+				path,
+				direct_only: true
+			});
+			const first = listRes.result.links[0];
+			if (!first) throw err;
+			return first.url;
+		}
 
-		// Fallback: list the existing shared links for this exact path.
-		const listRes = await dbx.sharingListSharedLinks({
-			path,
-			direct_only: true
-		});
-		const first = listRes.result.links[0];
-		if (!first) throw err;
-		return first.url;
+		// Non-recoverable: rethrow with a useful message so the toast UI
+		// doesn't swallow it as "[object Object]" / empty string.
+		console.error('[imageUpload] create_shared_link_with_settings failed', err);
+		throw new Error(`공유 링크 생성 실패: ${formatDropboxError(err)}`);
 	}
 }
 
@@ -153,16 +198,31 @@ export async function uploadImageToDropbox(file: File): Promise<string> {
 	}
 
 	const imagesPath = getImagesPath();
-	const path = buildUploadPath(imagesPath, file);
+	const requestedPath = buildUploadPath(imagesPath, file);
 
-	await dbx.filesUpload({
-		path,
-		contents: file,
-		mode: { '.tag': 'add' },
-		mute: true,
-		autorename: false
-	});
+	let uploadResult: { result: { path_display?: string; path_lower?: string } };
+	try {
+		uploadResult = await dbx.filesUpload({
+			path: requestedPath,
+			contents: file,
+			mode: { '.tag': 'add' },
+			mute: true,
+			autorename: false
+		});
+	} catch (err) {
+		console.error('[imageUpload] filesUpload failed', err);
+		throw new Error(`이미지 업로드 실패: ${formatDropboxError(err)}`);
+	}
 
-	const sharedUrl = await resolveSharedUrl(dbx, path);
+	// Use the path Dropbox actually stored the file at. Dropbox preserves
+	// case in display paths even if operations are case-insensitive; using
+	// the exact returned path rules out any mismatch between what we asked
+	// to write and what the shared-link API sees.
+	const uploadedPath =
+		uploadResult.result.path_display ??
+		uploadResult.result.path_lower ??
+		requestedPath;
+
+	const sharedUrl = await resolveSharedUrl(dbx, uploadedPath);
 	return toDirectImageUrl(sharedUrl);
 }
