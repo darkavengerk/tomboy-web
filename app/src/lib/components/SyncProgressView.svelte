@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { SyncProgress } from '$lib/sync/syncManager.js';
+	import type { SyncProgress, SyncProgressItem } from '$lib/sync/syncManager.js';
 
 	interface Props {
 		progress: SyncProgress;
@@ -9,24 +9,35 @@
 
 	let doneCount = $derived(progress.items.filter((i) => i.status === 'done').length);
 	let errorCount = $derived(progress.items.filter((i) => i.status === 'error').length);
+	let isDone = $derived(progress.phase === 'done');
 </script>
 
 <div class="progress-view">
-	<!-- Completed phases summary -->
-	{#each progress.completedPhases as phase}
-		<div class="phase-summary" class:has-errors={phase.errors > 0}>
-			<span class="phase-icon done">✓</span>
-			<span class="phase-text">
-				{phase.label} {phase.count}개 완료
-				{#if phase.errors > 0}
-					<span class="error-count">({phase.errors}개 실패)</span>
-				{/if}
-			</span>
-		</div>
+	<!-- Completed phases summary — each expandable to show its items -->
+	{#each progress.completedPhases as phase, idx (idx + phase.label)}
+		<details class="phase-details" class:has-errors={phase.errors > 0} open={isDone}>
+			<summary class="phase-summary-row">
+				<span class="phase-icon done">✓</span>
+				<span class="phase-text">
+					{phase.label} {phase.count}개 완료
+					{#if phase.errors > 0}
+						<span class="error-count">({phase.errors}개 실패)</span>
+					{/if}
+				</span>
+				<span class="disclosure">⌄</span>
+			</summary>
+			{#if phase.items.length > 0}
+				<div class="item-list item-list-done">
+					{#each phase.items as item (item.guid)}
+						{@render itemRow(item)}
+					{/each}
+				</div>
+			{/if}
+		</details>
 	{/each}
 
 	<!-- Current phase -->
-	{#if progress.phase !== 'done' && progress.items.length > 0}
+	{#if !isDone && progress.items.length > 0}
 		<div class="phase-current">
 			<div class="phase-header">
 				<span class="phase-icon active-dot"></span>
@@ -39,59 +50,77 @@
 
 			<div class="item-list">
 				{#each progress.items as item (item.guid)}
-					<div
-						class="item-row"
-						class:active={item.status === 'active'}
-						class:done={item.status === 'done'}
-						class:error={item.status === 'error'}
-						class:retrying={item.status === 'retrying'}
-					>
-						<span class="item-icon">
-							{#if item.status === 'pending'}
-								<span class="icon-pending">·</span>
-							{:else if item.status === 'active'}
-								<span class="icon-active"></span>
-							{:else if item.status === 'done'}
-								<span class="icon-done">✓</span>
-							{:else if item.status === 'error'}
-								<span class="icon-error">✗</span>
-							{:else if item.status === 'retrying'}
-								<span class="icon-retrying">↻</span>
-							{/if}
-						</span>
-						<span class="item-title">{item.title ?? item.guid.slice(0, 8)}</span>
-						{#if item.status === 'retrying' && item.retryWaitSec}
-							<span class="retry-badge">{item.retryWaitSec}초 후 재시도</span>
-						{/if}
-						{#if item.status === 'error' && item.error}
-							<span class="error-badge">실패</span>
-						{/if}
-					</div>
+					{@render itemRow(item)}
 				{/each}
 			</div>
 		</div>
-	{:else if progress.phase === 'done'}
-		<div class="phase-summary">
+	{:else if isDone && progress.completedPhases.length === 0}
+		<div class="phase-summary-row">
 			<span class="phase-icon done">✓</span>
-			<span class="phase-text">동기화 완료</span>
+			<span class="phase-text">동기화 완료 (변경 사항 없음)</span>
 		</div>
 	{/if}
 </div>
+
+{#snippet itemRow(item: SyncProgressItem)}
+	<div
+		class="item-row"
+		class:active={item.status === 'active'}
+		class:done={item.status === 'done'}
+		class:error={item.status === 'error'}
+		class:retrying={item.status === 'retrying'}
+	>
+		<span class="item-icon">
+			{#if item.status === 'pending'}
+				<span class="icon-pending">·</span>
+			{:else if item.status === 'active'}
+				<span class="icon-active"></span>
+			{:else if item.status === 'done'}
+				<span class="icon-done">✓</span>
+			{:else if item.status === 'error'}
+				<span class="icon-error">✗</span>
+			{:else if item.status === 'retrying'}
+				<span class="icon-retrying">↻</span>
+			{/if}
+		</span>
+		<span class="item-title">{item.title ?? item.guid.slice(0, 8)}</span>
+		{#if item.status === 'retrying' && item.retryWaitSec}
+			<span class="retry-badge">{item.retryWaitSec}초 후 재시도</span>
+		{/if}
+		{#if item.status === 'error' && item.error}
+			<span class="error-badge" title={item.error}>실패</span>
+		{/if}
+	</div>
+{/snippet}
 
 <style>
 	.progress-view {
 		font-size: 0.85rem;
 	}
 
-	.phase-summary {
+	.phase-details {
+		margin: 2px 0;
+	}
+
+	.phase-details[open] > .phase-summary-row .disclosure {
+		transform: rotate(180deg);
+	}
+
+	.phase-summary-row {
 		display: flex;
 		align-items: center;
 		gap: 6px;
 		padding: 6px 0;
 		color: var(--color-text-secondary, #666);
+		cursor: pointer;
+		list-style: none;
 	}
 
-	.phase-summary.has-errors {
+	.phase-summary-row::-webkit-details-marker {
+		display: none;
+	}
+
+	.phase-details.has-errors > .phase-summary-row {
 		color: var(--color-danger, #c62828);
 	}
 
@@ -113,6 +142,13 @@
 		background: var(--color-primary, #d05b10);
 		animation: pulse 1s infinite;
 		margin: 0 5px;
+	}
+
+	.disclosure {
+		margin-left: auto;
+		font-size: 0.75rem;
+		color: var(--color-text-secondary, #888);
+		transition: transform 0.15s;
 	}
 
 	@keyframes pulse {
@@ -160,6 +196,13 @@
 	.item-list {
 		max-height: 240px;
 		overflow-y: auto;
+	}
+
+	.item-list-done {
+		padding-left: 22px;
+		border-left: 2px solid var(--color-border, #eee);
+		margin-left: 6px;
+		max-height: 200px;
 	}
 
 	.item-row {

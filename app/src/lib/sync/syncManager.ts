@@ -72,11 +72,18 @@ export interface SyncProgressItem {
 	retryWaitSec?: number;
 }
 
+export interface SyncCompletedPhase {
+	label: string;
+	count: number;
+	errors: number;
+	items: SyncProgressItem[];
+}
+
 export interface SyncProgress {
 	phase: 'download' | 'conflict' | 'delete-local' | 'upload' | 'commit' | 'done';
 	phaseLabel: string;
 	items: SyncProgressItem[];
-	completedPhases: Array<{ label: string; count: number; errors: number }>;
+	completedPhases: SyncCompletedPhase[];
 }
 
 export type SyncProgressCallback = (progress: SyncProgress) => void;
@@ -336,6 +343,15 @@ export async function applyPlan(
 			}
 			localManifest.serverId = newServerManifest.serverId;
 			localManifest.lastSyncRev = newServerManifest.revision;
+
+			const doneCount = items.filter((i) => i.status === 'done').length;
+			const errorCount = items.filter((i) => i.status === 'error').length;
+			completedPhases.push({
+				label: '업로드',
+				count: doneCount,
+				errors: errorCount,
+				items: items.map((i) => ({ ...i }))
+			});
 		}
 		localManifest.lastSyncDate = new Date().toISOString();
 		await saveManifest(localManifest);
@@ -398,7 +414,12 @@ export async function applyPlan(
 
 		const doneCount = items.filter((i) => i.status === 'done').length;
 		const errorCount = items.filter((i) => i.status === 'error').length;
-		completedPhases.push({ label: '다운로드', count: doneCount, errors: errorCount });
+		completedPhases.push({
+			label: '다운로드',
+			count: doneCount,
+			errors: errorCount,
+			items: items.map((i) => ({ ...i }))
+		});
 	}
 
 	// ── Handle conflicts (sequential) ────────────────────────────────────────
@@ -458,7 +479,12 @@ export async function applyPlan(
 
 		const doneCount = items.filter((i) => i.status === 'done').length;
 		const errorCount = items.filter((i) => i.status === 'error').length;
-		completedPhases.push({ label: '충돌 해결', count: doneCount, errors: errorCount });
+		completedPhases.push({
+			label: '충돌 해결',
+			count: doneCount,
+			errors: errorCount,
+			items: items.map((i) => ({ ...i }))
+		});
 	}
 
 	// Save checkpoint after downloads
@@ -489,19 +515,38 @@ export async function applyPlan(
 			emitProgress('delete-local', '로컬 삭제', items);
 		}
 
-		completedPhases.push({ label: '로컬 삭제', count: toDeleteLocalSelected.length, errors: 0 });
+		completedPhases.push({
+			label: '로컬 삭제',
+			count: toDeleteLocalSelected.length,
+			errors: 0,
+			items: items.map((i) => ({ ...i }))
+		});
 	}
 
 	// ── Upload local changes ─────────────────────────────────────────────────
 	const toUploadItems: Array<{ guid: string; content: string; note: NoteData }> = [];
 	const toDeleteItems: string[] = [];
 
-	for (const item of plan.toDeleteRemote) {
-		if (!sel.deleteRemote.has(item.guid)) continue;
-		if (serverNoteMap.has(item.guid)) toDeleteItems.push(item.guid);
-		await noteStore.purgeNote(item.guid);
-		delete localManifest.noteRevisions[item.guid];
-		result.deleted++;
+	const deleteRemoteSelected = plan.toDeleteRemote.filter((x) => sel.deleteRemote.has(x.guid));
+	if (deleteRemoteSelected.length > 0) {
+		const items: SyncProgressItem[] = deleteRemoteSelected.map((x) => ({
+			guid: x.guid,
+			title: x.title,
+			status: 'done' as SyncItemStatus
+		}));
+		for (const item of deleteRemoteSelected) {
+			if (serverNoteMap.has(item.guid)) toDeleteItems.push(item.guid);
+			await noteStore.purgeNote(item.guid);
+			delete localManifest.noteRevisions[item.guid];
+			result.deleted++;
+		}
+		completedPhases.push({
+			label: '서버 삭제',
+			count: deleteRemoteSelected.length,
+			errors: 0,
+			items
+		});
+		emitProgress('upload', '업로드 준비 중...', []);
 	}
 
 	for (const item of plan.toUpload) {
@@ -577,7 +622,12 @@ export async function applyPlan(
 				result.errors.push(`업로드 커밋 실패: ${err}`);
 				const doneCount = uploadProgressItems.filter((i) => i.status === 'done').length;
 				const errorCount = uploadProgressItems.filter((i) => i.status === 'error').length;
-				completedPhases.push({ label: '업로드', count: doneCount, errors: errorCount });
+				completedPhases.push({
+					label: '업로드',
+					count: doneCount,
+					errors: errorCount,
+					items: uploadProgressItems.map((i) => ({ ...i }))
+				});
 				emitProgress('done', '완료', []);
 
 				result.status = 'error';
@@ -588,7 +638,12 @@ export async function applyPlan(
 			}
 
 			const doneCount = uploadProgressItems.filter((i) => i.status === 'done').length;
-			completedPhases.push({ label: '업로드', count: doneCount, errors: 0 });
+			completedPhases.push({
+				label: '업로드',
+				count: doneCount,
+				errors: 0,
+				items: uploadProgressItems.map((i) => ({ ...i }))
+			});
 		} else {
 			// delete-only commit (no note uploads)
 			try {
