@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { Editor } from '@tiptap/core';
+import { Editor, Extension } from '@tiptap/core';
 import Document from '@tiptap/extension-document';
 import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
@@ -10,7 +10,6 @@ import {
 	createImagePreviewPlugin,
 	imagePreviewPluginKey
 } from '$lib/editor/imagePreview/imagePreviewPlugin.js';
-import { Extension } from '@tiptap/core';
 
 let currentEditor: Editor | null = null;
 
@@ -21,21 +20,17 @@ function makeEditor(content: unknown = '<p></p>'): Editor {
 			Paragraph,
 			Text,
 			TomboyUrlLink,
-			createImagePreviewExt()
+			Extension.create({
+				name: 'tomboyImagePreview',
+				addProseMirrorPlugins() {
+					return [createImagePreviewPlugin()];
+				}
+			})
 		],
 		content: content as string
 	});
 	currentEditor = editor;
 	return editor;
-}
-
-function createImagePreviewExt() {
-	return Extension.create({
-		name: 'tomboyImagePreview',
-		addProseMirrorPlugins() {
-			return [createImagePreviewPlugin()];
-		}
-	});
 }
 
 beforeEach(() => {
@@ -157,7 +152,7 @@ describe('findImageUrlRanges — marked URL scanning', () => {
 		]);
 	});
 
-	it('emits one decoration per occurrence when same URL appears twice', () => {
+	it('emits one range per occurrence when the same URL appears twice', () => {
 		const url = 'https://example.com/cat.png';
 		const editor = makeEditor(`<p>${url} and again ${url}</p>`);
 		const ranges = findImageUrlRanges(editor.state.doc);
@@ -168,24 +163,24 @@ describe('findImageUrlRanges — marked URL scanning', () => {
 });
 
 describe('imagePreviewPlugin — decoration set', () => {
+	function getDecorations(editor: Editor): DecorationSet | undefined {
+		return imagePreviewPluginKey.getState(editor.state)?.decorations;
+	}
 	function decoCount(editor: Editor): number {
-		const set = imagePreviewPluginKey.getState(editor.state);
-		if (!set) return 0;
-		return set.find().length;
+		return getDecorations(editor)?.find().length ?? 0;
 	}
 
 	it('produces a DecorationSet from initial doc state', () => {
 		const editor = makeEditor();
-		const set = imagePreviewPluginKey.getState(editor.state);
-		expect(set).toBeInstanceOf(DecorationSet);
+		expect(getDecorations(editor)).toBeInstanceOf(DecorationSet);
 	});
 
-	it('emits one decoration for a plain-text image URL', () => {
+	it('emits two decorations (hidden + widget) for a plain-text image URL', () => {
 		const editor = makeEditor('<p>https://example.com/cat.png</p>');
-		expect(decoCount(editor)).toBe(1);
+		expect(decoCount(editor)).toBe(2);
 	});
 
-	it('emits one decoration for a marked image URL', () => {
+	it('emits decorations for a marked image URL too', () => {
 		const editor = makeEditor();
 		const url = 'https://example.com/cat.png';
 		editor.commands.insertContent({
@@ -193,7 +188,7 @@ describe('imagePreviewPlugin — decoration set', () => {
 			text: url,
 			marks: [{ type: 'tomboyUrlLink', attrs: { href: url } }]
 		});
-		expect(decoCount(editor)).toBe(1);
+		expect(decoCount(editor)).toBe(2);
 	});
 
 	it('updates decorations when the doc changes', () => {
@@ -201,20 +196,24 @@ describe('imagePreviewPlugin — decoration set', () => {
 		expect(decoCount(editor)).toBe(0);
 
 		editor.commands.insertContent('https://a.com/a.png');
-		expect(decoCount(editor)).toBe(1);
+		expect(decoCount(editor)).toBe(2);
 
 		editor.commands.insertContent(' + https://b.com/b.jpg');
-		expect(decoCount(editor)).toBe(2);
+		expect(decoCount(editor)).toBe(4);
 	});
 
-	it('renders an <img> element with the href as src', () => {
+	it('includes an <img> widget decoration with the href as src', () => {
 		const editor = makeEditor('<p>https://example.com/cat.png</p>');
-
-		const set = imagePreviewPluginKey.getState(editor.state);
-		const decos = set!.find();
-		expect(decos).toHaveLength(1);
+		const set = getDecorations(editor)!;
+		const widget = set.find().find(
+			(d) =>
+				(d as unknown as { type: { toDOM?: unknown } }).type?.toDOM !== undefined &&
+				(d as unknown as { type: { attrs?: { class?: string } } }).type?.attrs?.class !==
+					'tomboy-image-url-hidden'
+		);
+		expect(widget).toBeDefined();
 		// @ts-expect-error — toDOM() is the internal widget factory
-		const dom = (decos[0].type as { toDOM: (view: unknown) => HTMLElement }).toDOM({
+		const dom = (widget!.type as { toDOM: (view: unknown) => HTMLElement }).toDOM({
 			root: document
 		});
 		expect(dom.tagName).toBe('IMG');

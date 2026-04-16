@@ -448,9 +448,8 @@
 	}
 
 	/* Inline image preview widget (decoration; not part of the doc). The
-	   underlying <link:url> mark is preserved verbatim for round-trip
-	   compatibility with Tomboy desktop — this just renders the image
-	   alongside the URL text. */
+	   underlying text (including any <link:url> mark) is preserved verbatim
+	   for round-trip compatibility with Tomboy desktop. */
 	.tomboy-editor :global(img.tomboy-image-preview) {
 		display: block;
 		max-width: 100%;
@@ -459,6 +458,15 @@
 		margin: 0.4em 0;
 		border-radius: 4px;
 		background: rgba(0, 0, 0, 0.04);
+		cursor: pointer;
+	}
+
+	/* Image-URL text is hidden so the image alone represents the link.
+	   Delete / ArrowLeft / ArrowRight are intercepted in the plugin so the
+	   hidden URL behaves atomically — i.e. Backspace at the end of the URL
+	   removes the whole URL, arrow keys skip across it. */
+	.tomboy-editor :global(.tomboy-image-url-hidden) {
+		display: none;
 	}
 
 	/* Highlight */
