@@ -364,7 +364,11 @@
 	</div>
 
 	<div class="toolbar-area">
-		<Toolbar editor={getEditor()} onextractnote={handleExtractNote} />
+		<Toolbar
+			editor={getEditor()}
+			onextractnote={handleExtractNote}
+			onuploadimage={(file) => editorComponent?.uploadAndInsertImage(file)}
+		/>
 	</div>
 
 	{#if isFromHome}

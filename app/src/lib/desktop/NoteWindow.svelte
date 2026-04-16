@@ -382,7 +382,10 @@
 
 	{#if !loading && editorContent}
 		<div class="toolbar-slot">
-			<Toolbar editor={getEditor()} />
+			<Toolbar
+				editor={getEditor()}
+				onuploadimage={(file) => editorComponent?.uploadAndInsertImage(file)}
+			/>
 			{#if note}
 				<button
 					type="button"

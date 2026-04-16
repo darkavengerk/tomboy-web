@@ -14,6 +14,9 @@
 	import { createTitleProvider } from "./autoLink/titleProvider.js";
 	import { autoLinkPluginKey } from "./autoLink/autoLinkPlugin.js";
 	import { createImagePreviewPlugin } from "./imagePreview/imagePreviewPlugin.js";
+	import { extractImageFile } from "./imagePreview/extractImageFile.js";
+	import { uploadImageToDropbox } from "$lib/sync/imageUpload.js";
+	import { pushToast, dismissToast } from "$lib/stores/toast.js";
 	import { Extension } from "@tiptap/core";
 	import { insertTodayDate } from "./insertDate.js";
 	import { sinkListItemOnly, liftListItemOnly, isInList } from "./listItemDepth.js";
@@ -281,6 +284,20 @@
 					}
 					return false;
 				},
+				handlePaste: (_view, event) => {
+					const file = extractImageFile(event.clipboardData);
+					if (!file) return false;
+					event.preventDefault();
+					void uploadAndInsertImage(file);
+					return true;
+				},
+				handleDrop: (_view, event) => {
+					const file = extractImageFile(event.dataTransfer);
+					if (!file) return false;
+					event.preventDefault();
+					void uploadAndInsertImage(file);
+					return true;
+				},
 			},
 		});
 
@@ -357,6 +374,43 @@
 
 	export function getEditor(): Editor | null {
 		return editor;
+	}
+
+	/**
+	 * Upload an image file to Dropbox and insert the resulting direct URL
+	 * at the current cursor position, wrapped in a tomboyUrlLink mark so
+	 * the note's XML round-trip treats it as a `<link:url>` anchor. The
+	 * image-preview plugin then renders the actual image in place of the
+	 * URL text — see imagePreviewPlugin.ts.
+	 */
+	export async function uploadAndInsertImage(file: File): Promise<void> {
+		const ed = editor;
+		if (!ed) return;
+
+		const toastId = pushToast("이미지 업로드 중…", { timeoutMs: 0 });
+		try {
+			const url = await uploadImageToDropbox(file);
+			dismissToast(toastId);
+			// Save the selection at the moment we insert. If the user moved
+			// the cursor while the upload was in flight, insert at the
+			// current cursor anyway — matches the mental model of "the
+			// image goes where I am now", and avoids stale position bugs.
+			ed.chain()
+				.focus()
+				.insertContent({
+					type: "text",
+					text: url,
+					marks: [
+						{ type: "tomboyUrlLink", attrs: { href: url } },
+					],
+				})
+				.run();
+			pushToast("이미지 업로드 완료");
+		} catch (err) {
+			dismissToast(toastId);
+			const msg = err instanceof Error ? err.message : String(err);
+			pushToast(`이미지 업로드 실패: ${msg}`, { kind: "error" });
+		}
 	}
 </script>
 
