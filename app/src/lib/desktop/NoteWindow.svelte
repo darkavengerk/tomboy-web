@@ -577,6 +577,10 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
+		/* Size container for image previews (max-height: 100cqh inside
+		   TomboyEditor). Safe: .body has a definite height via flex:1
+		   with min-height:0 inside the .note-window flex column. */
+		container-type: size;
 	}
 
 	.body :global(.tomboy-editor) {
