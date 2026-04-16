@@ -73,11 +73,30 @@ async function doSharedRefresh(): Promise<void> {
 				guid: n.guid
 			});
 		}
+		// Skip the fan-out to subscribers when the title set is identical to
+		// what we had before. Many callers of invalidateCache() don't
+		// actually change the title list (new TomboyEditor mount →
+		// titleProvider.refresh(), toggleFavorite, body-only edits that
+		// happen to race a refresh, …) and each broadcast triggers a
+		// full-document auto-link rescan on EVERY open editor — so a single
+		// unnecessary broadcast in a workspace with N editors costs
+		// O(N * doc * titles) main-thread work with no observable effect.
+		//
+		// Equivalence is checked order-independently on (guid, titleLower,
+		// original). The sort order from listNotes() is `changeDate` desc,
+		// and most refreshes fire for reasons that don't alter changeDates,
+		// but we shouldn't *require* stable ordering to skip the broadcast.
+		const unchanged = entriesEquivalent(sharedEntries, next);
 		sharedEntries = next;
 		markNoteOpenPerf('titleProvider.refresh:entriesBuilt', {
 			entries: next.length,
-			listeners: sharedListeners.size
+			listeners: sharedListeners.size,
+			unchanged
 		});
+		if (unchanged) {
+			markNoteOpenPerf('titleProvider.refresh:broadcast:skipped');
+			return;
+		}
 		markNoteOpenPerf('titleProvider.refresh:broadcast:before');
 		for (const l of sharedListeners) l();
 		markNoteOpenPerf('titleProvider.refresh:broadcast:after');
@@ -85,6 +104,20 @@ async function doSharedRefresh(): Promise<void> {
 		sharedInFlight = null;
 	});
 	return sharedInFlight;
+}
+
+function entriesEquivalent(a: TitleEntry[], b: TitleEntry[]): boolean {
+	if (a.length !== b.length) return false;
+	if (a.length === 0) return true;
+	const byGuid = new Map<string, TitleEntry>();
+	for (const e of a) byGuid.set(e.guid, e);
+	for (const e of b) {
+		const match = byGuid.get(e.guid);
+		if (!match) return false;
+		if (match.titleLower !== e.titleLower) return false;
+		if (match.original !== e.original) return false;
+	}
+	return true;
 }
 
 function ensureSubscribed(): void {
