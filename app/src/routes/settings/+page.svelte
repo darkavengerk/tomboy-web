@@ -22,13 +22,15 @@
 		type SyncStatus,
 		type SyncResult,
 		type SyncPlan,
-		type PlanSelection
+		type PlanSelection,
+		type SyncProgress
 	} from '$lib/sync/syncManager.js';
 	import { getManifest, clearManifest } from '$lib/sync/manifest.js';
 	import { purgeAllLocal } from '$lib/storage/noteStore.js';
 	import { sync } from '$lib/sync/syncManager.js';
 	import { pushToast } from '$lib/stores/toast.js';
 	import SyncPlanView from '$lib/components/SyncPlanView.svelte';
+	import SyncProgressView from '$lib/components/SyncProgressView.svelte';
 
 	let authenticated = $state(false);
 	let syncStatus: SyncStatus = $state('idle');
@@ -40,6 +42,7 @@
 	let pathSaved = $state(false);
 	let plan = $state<SyncPlan | null>(null);
 	let planSelection = $state<PlanSelection | null>(null);
+	let syncProgress = $state<SyncProgress | null>(null);
 	let previewing = $state(false);
 	let resetting = $state(false);
 	let resetConfirm = $state(false);
@@ -217,11 +220,20 @@
 
 	async function handleApplyPlan() {
 		if (!plan || !planSelection) return;
-		processing = true;
-		syncResult = await applyPlan(plan, planSelection);
+		const savedPlan = plan;
+		const savedSelection = planSelection;
 		plan = null;
 		planSelection = null;
+		processing = true;
+		syncResult = null;
+		syncProgress = null;
+
+		syncResult = await applyPlan(savedPlan, savedSelection, (progress) => {
+			syncProgress = progress;
+		});
+
 		if (syncResult.status === 'success') {
+			syncProgress = null;
 			const manifest = await getManifest();
 			if (manifest.lastSyncDate) {
 				lastSyncDate = new Date(manifest.lastSyncDate).toLocaleString('ko-KR');
@@ -273,7 +285,11 @@
 					</button>
 				</div>
 
-				{#if plan && planSelection}
+				{#if syncProgress && syncProgress.phase !== 'done'}
+					<div class="plan-section">
+						<SyncProgressView progress={syncProgress} />
+					</div>
+				{:else if plan && planSelection}
 					<div class="plan-section">
 						<SyncPlanView {plan} selection={planSelection} />
 						<button class="btn btn-primary" onclick={handleApplyPlan} disabled={processing}>
@@ -283,9 +299,7 @@
 							취소
 						</button>
 					</div>
-				{/if}
-
-				{#if syncStatus === 'syncing' && syncMessage}
+				{:else if syncStatus === 'syncing' && syncMessage}
 					<div class="sync-progress">
 						<span class="progress-dot"></span>
 						<span>{syncMessage}</span>

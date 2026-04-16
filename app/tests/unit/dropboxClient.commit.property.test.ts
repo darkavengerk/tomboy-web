@@ -13,7 +13,7 @@
  *                     exist and mislead an admin rollback.)
  *   P4 Idempotency : rerunning the same commit after a transient failure
  *                    succeeds and still satisfies P1/P2.
- *   P5 ConcurrencyCap : peak concurrent filesUpload calls ≤ configured limit.
+ *   P5 Sequential    : peak concurrent filesUpload calls === 1 (sequential).
  *   P6 CarryForward : notes neither uploaded nor deleted keep their original
  *                     revision number in the new root manifest.
  */
@@ -111,14 +111,12 @@ const prevManifestArb = fc
 // ─── P1 + P2 + P5 + P6 : happy-path properties ────────────────────────────────
 
 describe('commitRevision — invariants under random schedules (happy path)', () => {
-	it('P1/P2/P5/P6 hold for random uploads+deletes with random delays and concurrency', async () => {
+	it('P1/P2/P5/P6 hold for random uploads+deletes', async () => {
 		await fc.assert(
 			fc.asyncProperty(
 				prevManifestArb,
 				fc.uniqueArray(guidArb, { minLength: 0, maxLength: 10 }), // new uploads
-				fc.integer({ min: 1, max: 12 }), // concurrency
-				fc.array(fc.integer({ min: 0, max: 3 }), { minLength: 0, maxLength: 20 }), // per-upload delay ms
-				async (prev, uploadGuids, concurrency, delays) => {
+				async (prev, uploadGuids) => {
 					resetState();
 					const newRev = prev.revision + 1;
 					// Pick up to half of prev notes to delete (random but deterministic per run)
@@ -126,18 +124,12 @@ describe('commitRevision — invariants under random schedules (happy path)', ()
 					// Upload content: new guids + any delete-conflict guids are skipped
 					const uploads = uploadGuids
 						.filter((g) => !deletes.includes(g))
-						.map((g, i) => ({ guid: g, content: `<note>${g}</note>` }));
+						.map((g) => ({ guid: g, content: `<note>${g}</note>` }));
 
-					uploadDelayMs = (p) => {
-						if (!p.endsWith('.note')) return 0;
-						const idx = uploads.findIndex((u) => p.endsWith(`/${u.guid}.note`));
-						return delays[idx % Math.max(1, delays.length)] ?? 0;
-					};
+					await commitRevision(newRev, uploads, deletes, prev);
 
-					await commitRevision(newRev, uploads, deletes, prev, { concurrency });
-
-					// ── P5 ConcurrencyCap
-					expect(peakInFlight).toBeLessThanOrEqual(concurrency);
+					// ── P5 Sequential
+					expect(peakInFlight).toBeLessThanOrEqual(1);
 
 					// ── P2 Layering
 					const noteIdxs = uploadCalls
@@ -190,9 +182,8 @@ describe('commitRevision — atomicity under random failures', () => {
 			fc.asyncProperty(
 				prevManifestArb,
 				fc.uniqueArray(guidArb, { minLength: 1, maxLength: 10 }),
-				fc.integer({ min: 1, max: 12 }),
 				fc.nat(), // which upload to fail (modded)
-				async (prev, uploadGuids, concurrency, failSeed) => {
+				async (prev, uploadGuids, failSeed) => {
 					resetState();
 					const newRev = prev.revision + 1;
 					const uploads = uploadGuids
@@ -205,7 +196,7 @@ describe('commitRevision — atomicity under random failures', () => {
 					uploadRejector = (p) => (p === failPath ? new Error('injected') : null);
 
 					await expect(
-						commitRevision(newRev, uploads, [], prev, { concurrency })
+						commitRevision(newRev, uploads, [], prev)
 					).rejects.toThrow();
 
 					// The two manifest paths must be absent from uploadCalls.
@@ -227,9 +218,8 @@ describe('commitRevision — idempotent retry', () => {
 			fc.asyncProperty(
 				prevManifestArb,
 				fc.uniqueArray(guidArb, { minLength: 1, maxLength: 8 }),
-				fc.integer({ min: 1, max: 8 }),
 				fc.nat(),
-				async (prev, uploadGuids, concurrency, failSeed) => {
+				async (prev, uploadGuids, failSeed) => {
 					resetState();
 					const newRev = prev.revision + 1;
 					const uploads = uploadGuids
@@ -242,13 +232,13 @@ describe('commitRevision — idempotent retry', () => {
 					uploadRejector = (p) => (p === failPath ? new Error('transient') : null);
 
 					await expect(
-						commitRevision(newRev, uploads, [], prev, { concurrency })
+						commitRevision(newRev, uploads, [], prev)
 					).rejects.toThrow();
 
 					// Clear failure and retry — must succeed with both manifests present
 					uploadRejector = () => null;
 					uploadCalls.length = 0;
-					await commitRevision(newRev, uploads, [], prev, { concurrency });
+					await commitRevision(newRev, uploads, [], prev);
 
 					expect(uploadCalls.some((c) => c.path === '/manifest.xml')).toBe(true);
 					for (const u of uploads) {

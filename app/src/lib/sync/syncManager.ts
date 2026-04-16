@@ -23,9 +23,6 @@ import {
 	isAuthenticated,
 	type TomboyServerManifest
 } from './dropboxClient.js';
-import { runAllSettledWithConcurrency } from './concurrency.js';
-
-const DOWNLOAD_CONCURRENCY = 8;
 
 export type SyncStatus = 'idle' | 'syncing' | 'success' | 'error' | 'offline';
 
@@ -61,6 +58,28 @@ export interface PlanSelection {
 	deleteLocal: Set<string>;
 	conflictChoice: Map<string, 'local' | 'remote'>;
 }
+
+// ─── Progress types ──────────────────────────────────────────────────────────
+
+export type SyncItemStatus = 'pending' | 'active' | 'done' | 'error' | 'retrying';
+
+export interface SyncProgressItem {
+	guid: string;
+	title?: string;
+	status: SyncItemStatus;
+	error?: string;
+	retryAttempt?: number;
+	retryWaitSec?: number;
+}
+
+export interface SyncProgress {
+	phase: 'download' | 'conflict' | 'delete-local' | 'upload' | 'commit' | 'done';
+	phaseLabel: string;
+	items: SyncProgressItem[];
+	completedPhases: Array<{ label: string; count: number; errors: number }>;
+}
+
+export type SyncProgressCallback = (progress: SyncProgress) => void;
 
 // ─── Status listeners ─────────────────────────────────────────────────────────
 
@@ -220,9 +239,28 @@ function selectAll(plan: SyncPlan): PlanSelection {
 
 // ─── Apply plan ───────────────────────────────────────────────────────────────
 
-export async function applyPlan(plan: SyncPlan, selection?: PlanSelection): Promise<SyncResult> {
+export async function applyPlan(
+	plan: SyncPlan,
+	selection?: PlanSelection,
+	onProgress?: SyncProgressCallback
+): Promise<SyncResult> {
 	const sel = selection ?? selectAll(plan);
 	const result: SyncResult = { status: 'success', uploaded: 0, downloaded: 0, deleted: 0, errors: [] };
+
+	const completedPhases: SyncProgress['completedPhases'] = [];
+
+	function emitProgress(
+		phase: SyncProgress['phase'],
+		phaseLabel: string,
+		items: SyncProgressItem[]
+	) {
+		onProgress?.({
+			phase,
+			phaseLabel,
+			items: items.map((i) => ({ ...i })),
+			completedPhases: [...completedPhases]
+		});
+	}
 
 	let localManifest = await getManifest();
 	const allLocal = await noteStore.getAllNotesIncludingDeleted();
@@ -242,11 +280,53 @@ export async function applyPlan(plan: SyncPlan, selection?: PlanSelection): Prom
 			.filter((x) => sel.upload.has(x.guid))
 			.map((x) => {
 				const n = localByGuid.get(x.guid)!;
-				return { guid: x.guid, content: serializeNote(n) };
+				return { guid: x.guid, title: n.title, content: serializeNote(n) };
 			});
 
 		if (toUploadItems.length > 0) {
-			const newServerManifest = await initServerManifest(toUploadItems);
+			const items: SyncProgressItem[] = toUploadItems.map((x) => ({
+				guid: x.guid,
+				title: x.title,
+				status: 'pending' as SyncItemStatus
+			}));
+			emitProgress('upload', '업로드', items);
+			setStatus('syncing', `업로드 중... (0/${toUploadItems.length})`);
+
+			const newServerManifest = await initServerManifest(
+				toUploadItems.map(({ guid, content }) => ({ guid, content })),
+				{
+					onUploadStart: (guid) => {
+						const item = items.find((i) => i.guid === guid);
+						if (item) item.status = 'active';
+						emitProgress('upload', '업로드', items);
+					},
+					onUploadDone: (guid) => {
+						const item = items.find((i) => i.guid === guid);
+						if (item) item.status = 'done';
+						const done = items.filter((i) => i.status === 'done').length;
+						setStatus('syncing', `업로드 중... (${done}/${items.length})`);
+						emitProgress('upload', '업로드', items);
+					},
+					onUploadRetry: (guid, attempt, waitMs) => {
+						const item = items.find((i) => i.guid === guid);
+						if (item) {
+							item.status = 'retrying';
+							item.retryAttempt = attempt;
+							item.retryWaitSec = Math.ceil(waitMs / 1000);
+						}
+						emitProgress('upload', '업로드', items);
+					},
+					onUploadError: (guid, error) => {
+						const item = items.find((i) => i.guid === guid);
+						if (item) {
+							item.status = 'error';
+							item.error = String(error);
+						}
+						emitProgress('upload', '업로드', items);
+					}
+				}
+			);
+
 			for (const { guid } of toUploadItems) {
 				const n = localByGuid.get(guid)!;
 				n.localDirty = false;
@@ -260,8 +340,13 @@ export async function applyPlan(plan: SyncPlan, selection?: PlanSelection): Prom
 		localManifest.lastSyncDate = new Date().toISOString();
 		await saveManifest(localManifest);
 		invalidateCache();
-		try { await refreshNotebooksCache(); } catch { /* non-fatal */ }
+		try {
+			await refreshNotebooksCache();
+		} catch {
+			/* non-fatal */
+		}
 		setStatus('success');
+		emitProgress('done', '완료', []);
 		return result;
 	}
 
@@ -271,19 +356,29 @@ export async function applyPlan(plan: SyncPlan, selection?: PlanSelection): Prom
 
 	const processedGuids = new Set<string>();
 
-	// ── Download selected notes ──────────────────────────────────────────────
-	// Parallelize the network fetch; the subsequent IDB write and in-memory
-	// manifest update are serialized per task (idb serializes txns anyway,
-	// and the shared JS state mutations are non-overlapping single-property
-	// writes that can't race under the single-threaded event loop).
+	// ── Download selected notes (sequential) ────────────────────────────────
 	const toDownloadSelected = plan.toDownload.filter((x) => sel.download.has(x.guid));
-	let downloadCompleted = 0;
-	setStatus('syncing', `다운로드 중... (0/${toDownloadSelected.length})`);
+	if (toDownloadSelected.length > 0) {
+		const items: SyncProgressItem[] = toDownloadSelected.map((x) => ({
+			guid: x.guid,
+			title: x.title,
+			status: 'pending' as SyncItemStatus
+		}));
+		emitProgress('download', '다운로드', items);
+		setStatus('syncing', `다운로드 중... (0/${toDownloadSelected.length})`);
 
-	await runAllSettledWithConcurrency(
-		toDownloadSelected.map(({ guid, rev }) => async () => {
+		for (let i = 0; i < toDownloadSelected.length; i++) {
+			const { guid, rev } = toDownloadSelected[i];
+			items[i].status = 'active';
+			emitProgress('download', '다운로드', items);
+
 			try {
-				const content = await downloadNoteAtRevision(guid, rev);
+				const content = await downloadNoteAtRevision(guid, rev, (attempt, waitMs) => {
+					items[i].status = 'retrying';
+					items[i].retryAttempt = attempt;
+					items[i].retryWaitSec = Math.ceil(waitMs / 1000);
+					emitProgress('download', '다운로드', items);
+				});
 				const remoteNote = parseNoteFromFile(content, `${guid}.note`);
 				remoteNote.localDirty = false;
 				remoteNote.deleted = false;
@@ -291,24 +386,44 @@ export async function applyPlan(plan: SyncPlan, selection?: PlanSelection): Prom
 				localManifest.noteRevisions[guid] = rev;
 				result.downloaded++;
 				processedGuids.add(guid);
+				items[i].status = 'done';
 			} catch (err) {
-				result.errors.push(`Error downloading ${guid}: ${err}`);
-			} finally {
-				downloadCompleted++;
-				setStatus('syncing', `다운로드 중... (${downloadCompleted}/${toDownloadSelected.length})`);
+				items[i].status = 'error';
+				items[i].error = String(err);
+				result.errors.push(`다운로드 실패 ${items[i].title ?? guid}: ${err}`);
 			}
-		}),
-		DOWNLOAD_CONCURRENCY
-	);
+			setStatus('syncing', `다운로드 중... (${i + 1}/${toDownloadSelected.length})`);
+			emitProgress('download', '다운로드', items);
+		}
 
-	// ── Handle conflicts ─────────────────────────────────────────────────────
-	// Always download conflicting notes to get their content/date, then decide.
-	await runAllSettledWithConcurrency(
-		plan.conflicts.map((conflict) => async () => {
+		const doneCount = items.filter((i) => i.status === 'done').length;
+		const errorCount = items.filter((i) => i.status === 'error').length;
+		completedPhases.push({ label: '다운로드', count: doneCount, errors: errorCount });
+	}
+
+	// ── Handle conflicts (sequential) ────────────────────────────────────────
+	if (plan.conflicts.length > 0) {
+		const items: SyncProgressItem[] = plan.conflicts.map((c) => ({
+			guid: c.guid,
+			title: c.title,
+			status: 'pending' as SyncItemStatus
+		}));
+		emitProgress('conflict', '충돌 해결', items);
+
+		for (let i = 0; i < plan.conflicts.length; i++) {
+			const conflict = plan.conflicts[i];
 			const explicitChoice = sel.conflictChoice.get(conflict.guid);
 			const rev = serverNoteMap.get(conflict.guid) ?? 0;
+			items[i].status = 'active';
+			emitProgress('conflict', '충돌 해결', items);
+
 			try {
-				const content = await downloadNoteAtRevision(conflict.guid, rev);
+				const content = await downloadNoteAtRevision(conflict.guid, rev, (attempt, waitMs) => {
+					items[i].status = 'retrying';
+					items[i].retryAttempt = attempt;
+					items[i].retryWaitSec = Math.ceil(waitMs / 1000);
+					emitProgress('conflict', '충돌 해결', items);
+				});
 				const remoteNote = parseNoteFromFile(content, `${conflict.guid}.note`);
 				const local = localByGuid.get(conflict.guid);
 
@@ -318,7 +433,6 @@ export async function applyPlan(plan: SyncPlan, selection?: PlanSelection): Prom
 				} else if (explicitChoice === 'local') {
 					useRemote = false;
 				} else {
-					// No explicit choice — fall back to date comparison (last-write-wins)
 					const localDate = local ? parseTomboyDate(local.changeDate) : new Date(0);
 					const remoteDate = parseTomboyDate(remoteNote.changeDate);
 					useRemote = remoteDate > localDate;
@@ -331,29 +445,51 @@ export async function applyPlan(plan: SyncPlan, selection?: PlanSelection): Prom
 					result.downloaded++;
 					processedGuids.add(conflict.guid);
 				} else {
-					// local wins — will be uploaded below
 					sel.upload.add(conflict.guid);
 				}
+				items[i].status = 'done';
 			} catch (err) {
-				result.errors.push(`Error handling conflict ${conflict.guid}: ${err}`);
+				items[i].status = 'error';
+				items[i].error = String(err);
+				result.errors.push(`충돌 해결 실패 ${items[i].title ?? conflict.guid}: ${err}`);
 			}
-		}),
-		DOWNLOAD_CONCURRENCY
-	);
+			emitProgress('conflict', '충돌 해결', items);
+		}
+
+		const doneCount = items.filter((i) => i.status === 'done').length;
+		const errorCount = items.filter((i) => i.status === 'error').length;
+		completedPhases.push({ label: '충돌 해결', count: doneCount, errors: errorCount });
+	}
 
 	// Save checkpoint after downloads
 	await saveManifest(localManifest);
 
 	// ── Delete locally (server-removed notes) ───────────────────────────────
-	for (const item of plan.toDeleteLocal) {
-		if (!sel.deleteLocal.has(item.guid)) continue;
-		const local = localByGuid.get(item.guid);
-		if (!local) continue;
-		if (!local.localDirty) {
-			await noteStore.purgeNote(item.guid);
-			delete localManifest.noteRevisions[item.guid];
-			result.deleted++;
+	const toDeleteLocalSelected = plan.toDeleteLocal.filter((x) => sel.deleteLocal.has(x.guid));
+	if (toDeleteLocalSelected.length > 0) {
+		const items: SyncProgressItem[] = toDeleteLocalSelected.map((x) => ({
+			guid: x.guid,
+			title: x.title,
+			status: 'pending' as SyncItemStatus
+		}));
+		emitProgress('delete-local', '로컬 삭제', items);
+
+		for (let i = 0; i < toDeleteLocalSelected.length; i++) {
+			const item = toDeleteLocalSelected[i];
+			items[i].status = 'active';
+			emitProgress('delete-local', '로컬 삭제', items);
+
+			const local = localByGuid.get(item.guid);
+			if (local && !local.localDirty) {
+				await noteStore.purgeNote(item.guid);
+				delete localManifest.noteRevisions[item.guid];
+				result.deleted++;
+			}
+			items[i].status = 'done';
+			emitProgress('delete-local', '로컬 삭제', items);
 		}
+
+		completedPhases.push({ label: '로컬 삭제', count: toDeleteLocalSelected.length, errors: 0 });
 	}
 
 	// ── Upload local changes ─────────────────────────────────────────────────
@@ -376,9 +512,8 @@ export async function applyPlan(plan: SyncPlan, selection?: PlanSelection): Prom
 	}
 
 	// Also upload conflict-local-wins notes
-	// (sel.upload may have been updated during conflict resolution above)
 	for (const conflict of plan.conflicts) {
-		if (processedGuids.has(conflict.guid)) continue; // remote won
+		if (processedGuids.has(conflict.guid)) continue;
 		if (!sel.upload.has(conflict.guid)) continue;
 		const local = localByGuid.get(conflict.guid);
 		if (!local) continue;
@@ -390,15 +525,85 @@ export async function applyPlan(plan: SyncPlan, selection?: PlanSelection): Prom
 	// ── Commit ───────────────────────────────────────────────────────────────
 	if (toUploadItems.length > 0 || toDeleteItems.length > 0) {
 		const newRev = serverManifest.revision + 1;
+
 		if (toUploadItems.length > 0) {
-			setStatus('syncing', `업로드 중... (${toUploadItems.length}개)`);
+			const uploadProgressItems: SyncProgressItem[] = toUploadItems.map((x) => ({
+				guid: x.guid,
+				title: x.note.title,
+				status: 'pending' as SyncItemStatus
+			}));
+			emitProgress('upload', '업로드', uploadProgressItems);
+			setStatus('syncing', `업로드 중... (0/${toUploadItems.length})`);
+
+			try {
+				await commitRevision(
+					newRev,
+					toUploadItems.map(({ guid, content }) => ({ guid, content })),
+					toDeleteItems,
+					serverManifest,
+					{
+						onUploadStart: (guid) => {
+							const item = uploadProgressItems.find((i) => i.guid === guid);
+							if (item) item.status = 'active';
+							emitProgress('upload', '업로드', uploadProgressItems);
+						},
+						onUploadDone: (guid) => {
+							const item = uploadProgressItems.find((i) => i.guid === guid);
+							if (item) item.status = 'done';
+							const done = uploadProgressItems.filter((i) => i.status === 'done').length;
+							setStatus('syncing', `업로드 중... (${done}/${uploadProgressItems.length})`);
+							emitProgress('upload', '업로드', uploadProgressItems);
+						},
+						onUploadRetry: (guid, attempt, waitMs) => {
+							const item = uploadProgressItems.find((i) => i.guid === guid);
+							if (item) {
+								item.status = 'retrying';
+								item.retryAttempt = attempt;
+								item.retryWaitSec = Math.ceil(waitMs / 1000);
+							}
+							emitProgress('upload', '업로드', uploadProgressItems);
+						},
+						onUploadError: (guid, error) => {
+							const item = uploadProgressItems.find((i) => i.guid === guid);
+							if (item) {
+								item.status = 'error';
+								item.error = String(error);
+							}
+							emitProgress('upload', '업로드', uploadProgressItems);
+						}
+					}
+				);
+			} catch (err) {
+				result.errors.push(`업로드 커밋 실패: ${err}`);
+				const doneCount = uploadProgressItems.filter((i) => i.status === 'done').length;
+				const errorCount = uploadProgressItems.filter((i) => i.status === 'error').length;
+				completedPhases.push({ label: '업로드', count: doneCount, errors: errorCount });
+				emitProgress('done', '완료', []);
+
+				result.status = 'error';
+				localManifest.lastSyncDate = new Date().toISOString();
+				await saveManifest(localManifest);
+				setStatus('error');
+				return result;
+			}
+
+			const doneCount = uploadProgressItems.filter((i) => i.status === 'done').length;
+			completedPhases.push({ label: '업로드', count: doneCount, errors: 0 });
+		} else {
+			// delete-only commit (no note uploads)
+			try {
+				await commitRevision(newRev, [], toDeleteItems, serverManifest);
+			} catch (err) {
+				result.errors.push(`삭제 커밋 실패: ${err}`);
+				result.status = 'error';
+				localManifest.lastSyncDate = new Date().toISOString();
+				await saveManifest(localManifest);
+				setStatus('error');
+				emitProgress('done', '완료', []);
+				return result;
+			}
 		}
-		await commitRevision(
-			newRev,
-			toUploadItems.map(({ guid, content }) => ({ guid, content })),
-			toDeleteItems,
-			serverManifest
-		);
+
 		for (const { guid, note } of toUploadItems) {
 			note.localDirty = false;
 			await noteStore.putNoteSynced(note);
@@ -416,10 +621,15 @@ export async function applyPlan(plan: SyncPlan, selection?: PlanSelection): Prom
 	result.status = result.errors.length > 0 ? 'error' : 'success';
 	if (result.status === 'success') {
 		invalidateCache();
-		try { await refreshNotebooksCache(); } catch { /* non-fatal */ }
+		try {
+			await refreshNotebooksCache();
+		} catch {
+			/* non-fatal */
+		}
 	}
 
 	setStatus(result.status === 'success' ? 'success' : 'error');
+	emitProgress('done', '완료', []);
 	return result;
 }
 

@@ -123,7 +123,8 @@ describe('syncManager', () => {
 			6, // newRev = 5 + 1
 			expect.arrayContaining([expect.objectContaining({ guid: 'new-local' })]),
 			[],
-			expect.anything()
+			expect.anything(),
+			expect.anything() // CommitCallbacks
 		);
 		expect(noteStore.putNoteSynced).toHaveBeenCalledWith(
 			expect.objectContaining({ guid: 'new-local', localDirty: false })
@@ -143,7 +144,7 @@ describe('syncManager', () => {
 		const result = await sync();
 
 		expect(result.downloaded).toBe(1);
-		expect(dropboxClient.downloadNoteAtRevision).toHaveBeenCalledWith('remote-guid', 5);
+		expect(dropboxClient.downloadNoteAtRevision).toHaveBeenCalledWith('remote-guid', 5, expect.anything());
 		expect(noteStore.putNoteSynced).toHaveBeenCalled();
 	});
 

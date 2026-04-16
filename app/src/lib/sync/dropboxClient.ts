@@ -8,7 +8,6 @@
 
 import { Dropbox, DropboxAuth } from 'dropbox';
 import { env } from '$env/dynamic/public';
-import { runWithConcurrency } from './concurrency.js';
 
 const STORAGE_KEY_ACCESS_TOKEN = 'tomboy-dropbox-access-token';
 const STORAGE_KEY_REFRESH_TOKEN = 'tomboy-dropbox-refresh-token';
@@ -193,6 +192,42 @@ async function uploadText(dbx: Dropbox, path: string, content: string): Promise<
 	});
 }
 
+// ─── Rate-limit retry ────────────────────────────────────────────────────────
+
+const MAX_RETRIES = 5;
+
+function extractRetryAfterMs(err: unknown): number | null {
+	const e = err as {
+		status?: number;
+		error?: { retry_after?: number };
+		headers?: { get?: (k: string) => string | null };
+	};
+	if (e.status !== 429) return null;
+	if (typeof e.error?.retry_after === 'number') return e.error.retry_after * 1000;
+	const h = e.headers?.get?.('retry-after');
+	if (h) {
+		const s = parseInt(h, 10);
+		if (!isNaN(s)) return s * 1000;
+	}
+	return 0; // 429 but no explicit wait
+}
+
+export type RetryCallback = (attempt: number, waitMs: number) => void;
+
+async function withRetry<T>(fn: () => Promise<T>, onRetry?: RetryCallback): Promise<T> {
+	for (let attempt = 0; ; attempt++) {
+		try {
+			return await fn();
+		} catch (err) {
+			const retryMs = extractRetryAfterMs(err);
+			if (retryMs === null || attempt >= MAX_RETRIES) throw err;
+			const waitMs = retryMs > 0 ? retryMs : Math.min(1000 * 2 ** attempt, 30_000);
+			onRetry?.(attempt + 1, waitMs);
+			await new Promise((r) => setTimeout(r, waitMs));
+		}
+	}
+}
+
 // ─── Tomboy sync protocol ─────────────────────────────────────────────────────
 
 export interface TomboyServerManifest {
@@ -244,7 +279,7 @@ export async function downloadServerManifest(): Promise<TomboyServerManifest | n
 
 	const path = rootManifestPath(getNotesPath());
 	try {
-		const xml = await downloadText(dbx, path);
+		const xml = await withRetry(() => downloadText(dbx, path));
 		return parseTomboyManifest(xml);
 	} catch (err: unknown) {
 		const error = err as { status?: number };
@@ -257,12 +292,16 @@ export async function downloadServerManifest(): Promise<TomboyServerManifest | n
  * Download a note file at a specific server revision.
  * Path: {notesPath}/{rev/100}/{rev}/{guid}.note
  */
-export async function downloadNoteAtRevision(guid: string, rev: number): Promise<string> {
+export async function downloadNoteAtRevision(
+	guid: string,
+	rev: number,
+	onRetry?: RetryCallback
+): Promise<string> {
 	const dbx = getClient();
 	if (!dbx) throw new Error('Not authenticated');
 
 	const path = noteRevisionPath(getNotesPath(), guid, rev);
-	return downloadText(dbx, path);
+	return withRetry(() => downloadText(dbx, path), onRetry);
 }
 
 /**
@@ -273,35 +312,41 @@ export async function downloadNoteAtRevision(guid: string, rev: number): Promise
  *   2. Write /{parent}/{newRev}/manifest.xml  (per-revision snapshot)
  *   3. Overwrite /manifest.xml  (root — single source of truth)
  */
-export interface CommitOptions {
-	/** Max concurrent note uploads in step 1. Manifests (steps 2–3) are always sequential. */
-	concurrency?: number;
+export interface CommitCallbacks {
+	onUploadStart?: (guid: string) => void;
+	onUploadDone?: (guid: string) => void;
+	onUploadRetry?: (guid: string, attempt: number, waitMs: number) => void;
+	onUploadError?: (guid: string, error: unknown) => void;
 }
-
-const DEFAULT_UPLOAD_CONCURRENCY = 8;
 
 export async function commitRevision(
 	newRev: number,
 	uploadNotes: Array<{ guid: string; content: string }>,
 	deletedGuids: string[],
 	prevManifest: TomboyServerManifest,
-	options: CommitOptions = {}
+	callbacks?: CommitCallbacks
 ): Promise<void> {
 	const dbx = getClient();
 	if (!dbx) throw new Error('Not authenticated');
 
 	const notesPath = getNotesPath();
-	const concurrency = options.concurrency ?? DEFAULT_UPLOAD_CONCURRENCY;
 
-	// 1. Upload note files in parallel. If any rejects, runWithConcurrency
-	//    throws and we skip steps 2–3 entirely — the server's root manifest
-	//    is left untouched, so a partial upload is invisible to readers.
-	await runWithConcurrency(
-		uploadNotes.map(({ guid, content }) => () =>
-			uploadText(dbx, noteRevisionPath(notesPath, guid, newRev), content)
-		),
-		concurrency
-	);
+	// 1. Upload note files sequentially with retry.
+	//    If any fails after retries, we skip manifest writes — the server's
+	//    root manifest is left untouched, so a partial upload is invisible.
+	for (const { guid, content } of uploadNotes) {
+		callbacks?.onUploadStart?.(guid);
+		try {
+			await withRetry(
+				() => uploadText(dbx, noteRevisionPath(notesPath, guid, newRev), content),
+				(attempt, waitMs) => callbacks?.onUploadRetry?.(guid, attempt, waitMs)
+			);
+			callbacks?.onUploadDone?.(guid);
+		} catch (err) {
+			callbacks?.onUploadError?.(guid, err);
+			throw err;
+		}
+	}
 
 	// 2. Build updated note map
 	const noteMap = new Map<string, number>();
@@ -311,11 +356,11 @@ export async function commitRevision(
 
 	const manifestXml = buildTomboyManifest(newRev, prevManifest.serverId, noteMap);
 
-	// 3. Write revision manifest
-	await uploadText(dbx, revisionManifestPath(notesPath, newRev), manifestXml);
+	// 3. Write revision manifest (with retry)
+	await withRetry(() => uploadText(dbx, revisionManifestPath(notesPath, newRev), manifestXml));
 
-	// 4. Overwrite root manifest (atomic from Dropbox's perspective)
-	await uploadText(dbx, rootManifestPath(notesPath), manifestXml);
+	// 4. Overwrite root manifest (with retry)
+	await withRetry(() => uploadText(dbx, rootManifestPath(notesPath), manifestXml));
 }
 
 /**
@@ -324,7 +369,7 @@ export async function commitRevision(
  */
 export async function initServerManifest(
 	uploadNotes: Array<{ guid: string; content: string }>,
-	options: CommitOptions = {}
+	callbacks?: CommitCallbacks
 ): Promise<TomboyServerManifest> {
 	const dbx = getClient();
 	if (!dbx) throw new Error('Not authenticated');
@@ -332,21 +377,27 @@ export async function initServerManifest(
 	const notesPath = getNotesPath();
 	const serverId = crypto.randomUUID();
 	const rev = 1;
-	const concurrency = options.concurrency ?? DEFAULT_UPLOAD_CONCURRENCY;
 
-	await runWithConcurrency(
-		uploadNotes.map(({ guid, content }) => () =>
-			uploadText(dbx, noteRevisionPath(notesPath, guid, rev), content)
-		),
-		concurrency
-	);
+	for (const { guid, content } of uploadNotes) {
+		callbacks?.onUploadStart?.(guid);
+		try {
+			await withRetry(
+				() => uploadText(dbx, noteRevisionPath(notesPath, guid, rev), content),
+				(attempt, waitMs) => callbacks?.onUploadRetry?.(guid, attempt, waitMs)
+			);
+			callbacks?.onUploadDone?.(guid);
+		} catch (err) {
+			callbacks?.onUploadError?.(guid, err);
+			throw err;
+		}
+	}
 
 	const noteMap = new Map<string, number>();
 	for (const { guid } of uploadNotes) noteMap.set(guid, rev);
 
 	const manifestXml = buildTomboyManifest(rev, serverId, noteMap);
-	await uploadText(dbx, revisionManifestPath(notesPath, rev), manifestXml);
-	await uploadText(dbx, rootManifestPath(notesPath), manifestXml);
+	await withRetry(() => uploadText(dbx, revisionManifestPath(notesPath, rev), manifestXml));
+	await withRetry(() => uploadText(dbx, rootManifestPath(notesPath), manifestXml));
 
 	return {
 		revision: rev,
@@ -405,7 +456,7 @@ export async function downloadRevisionManifest(rev: number): Promise<TomboyServe
 
 	const path = revisionManifestPath(getNotesPath(), rev);
 	try {
-		const xml = await downloadText(dbx, path);
+		const xml = await withRetry(() => downloadText(dbx, path));
 		return parseTomboyManifest(xml);
 	} catch (err: unknown) {
 		const error = err as { status?: number };

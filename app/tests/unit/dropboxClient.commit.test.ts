@@ -329,10 +329,10 @@ describe('commitRevision — Tomboy upload invariants', () => {
 	});
 });
 
-describe('commitRevision — parallel upload safety', () => {
+describe('commitRevision — sequential upload safety', () => {
 	const prev: TomboyServerManifest = {
 		revision: 10,
-		serverId: 'SID-PARALLEL',
+		serverId: 'SID-SEQUENTIAL',
 		notes: []
 	};
 
@@ -343,10 +343,9 @@ describe('commitRevision — parallel upload safety', () => {
 		}));
 	}
 
-	it('layered ordering: ALL note uploads complete before either manifest (even under parallel)', async () => {
-		uploadDelayMs = (p) => (p.endsWith('.note') ? 10 : 0);
+	it('layered ordering: ALL note uploads complete before either manifest', async () => {
 		const uploads = makeUploads(20);
-		await commitRevision(11, uploads, [], prev, { concurrency: 8 });
+		await commitRevision(11, uploads, [], prev);
 
 		const noteIdxs = uploadCalls
 			.map((c, i) => ({ p: c.path, i }))
@@ -362,25 +361,18 @@ describe('commitRevision — parallel upload safety', () => {
 		expect(revIdx).toBeLessThan(rootIdx);
 	});
 
-	it('actually runs in parallel: peak in-flight > 1 when concurrency > 1', async () => {
-		uploadDelayMs = (p) => (p.endsWith('.note') ? 20 : 0);
+	it('runs sequentially: peak in-flight is always 1', async () => {
+		uploadDelayMs = (p) => (p.endsWith('.note') ? 5 : 0);
 		const uploads = makeUploads(16);
-		await commitRevision(11, uploads, [], prev, { concurrency: 8 });
-		expect(peakInFlight).toBeGreaterThan(1);
-	});
-
-	it('respects concurrency limit: peak in-flight <= limit', async () => {
-		uploadDelayMs = (p) => (p.endsWith('.note') ? 10 : 0);
-		const uploads = makeUploads(50);
-		await commitRevision(11, uploads, [], prev, { concurrency: 8 });
-		expect(peakInFlight).toBeLessThanOrEqual(8);
+		await commitRevision(11, uploads, [], prev);
+		expect(peakInFlight).toBe(1);
 	});
 
 	it('CRITICAL: if any note upload fails, NEITHER manifest is written (server stays consistent)', async () => {
 		uploadRejector = (p) => (p === '/0/11/g-007.note' ? new Error('network') : null);
 		const uploads = makeUploads(20);
 		await expect(
-			commitRevision(11, uploads, [], prev, { concurrency: 8 })
+			commitRevision(11, uploads, [], prev)
 		).rejects.toThrow();
 
 		// Server-state invariant: the root manifest MUST NOT have been overwritten.
@@ -396,13 +388,13 @@ describe('commitRevision — parallel upload safety', () => {
 		// First attempt — inject a failure
 		uploadRejector = (p) => (p === '/0/11/g-003.note' ? new Error('transient') : null);
 		await expect(
-			commitRevision(11, uploads, [], prev, { concurrency: 4 })
+			commitRevision(11, uploads, [], prev)
 		).rejects.toThrow();
 
 		// Clear the failure injection and retry with identical args
 		uploadRejector = () => null;
 		uploadCalls.length = 0;
-		await commitRevision(11, uploads, [], prev, { concurrency: 4 });
+		await commitRevision(11, uploads, [], prev);
 
 		// Full success: every note + both manifests present
 		for (let i = 0; i < 10; i++) {
@@ -412,10 +404,9 @@ describe('commitRevision — parallel upload safety', () => {
 		expect(findUpload('/manifest.xml')).toBeDefined();
 	});
 
-	it('concurrency=1 (sequential) remains valid and keeps legacy ordering', async () => {
-		uploadDelayMs = (p) => (p.endsWith('.note') ? 5 : 0);
+	it('notes are uploaded in registration order', async () => {
 		const uploads = makeUploads(5);
-		await commitRevision(11, uploads, [], prev, { concurrency: 1 });
+		await commitRevision(11, uploads, [], prev);
 		expect(peakInFlight).toBe(1);
 		// Notes in registration order
 		const noteUploads = uploadCalls.filter((c) => c.path.endsWith('.note'));
