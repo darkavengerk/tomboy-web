@@ -20,6 +20,7 @@
  */
 
 import type { JSONContent } from '@tiptap/core';
+import { markNoteOpenPerf } from '$lib/utils/noteOpenPerfLog.js';
 
 // Mark types that must NEVER span a paragraph boundary — a link or datetime
 // reference is a self-contained anchor, so `<link:internal>A\nB</link:internal>`
@@ -50,23 +51,30 @@ function mintInstanceId(): string {
  * Parse a Tomboy note-content XML string into a TipTap-compatible JSON document.
  */
 export function deserializeContent(xmlContent: string): JSONContent {
+	markNoteOpenPerf('deserializeContent:enter', { bytes: xmlContent.length });
 	instanceIdCounter = 0;
 	const inner = extractInnerContent(xmlContent);
 	if (!inner) {
+		markNoteOpenPerf('deserializeContent:exit', { reason: 'no-inner' });
 		return { type: 'doc', content: [{ type: 'paragraph' }] };
 	}
 
 	const wrapper = `<root xmlns:link="http://beatniksoftware.com/tomboy/link" xmlns:size="http://beatniksoftware.com/tomboy/size">${inner}</root>`;
 	const parser = new DOMParser();
+	markNoteOpenPerf('deserializeContent:parseFromString:before');
 	const doc = parser.parseFromString(wrapper, 'text/xml');
+	markNoteOpenPerf('deserializeContent:parseFromString:after');
 	const root = doc.documentElement;
 
 	const blocks = parseBlocks(root);
+	markNoteOpenPerf('deserializeContent:parseBlocks:done', { blocks: blocks.length });
 
 	if (blocks.length === 0) {
+		markNoteOpenPerf('deserializeContent:exit', { reason: 'empty' });
 		return { type: 'doc', content: [{ type: 'paragraph' }] };
 	}
 
+	markNoteOpenPerf('deserializeContent:exit', { blocks: blocks.length });
 	return { type: 'doc', content: blocks };
 }
 

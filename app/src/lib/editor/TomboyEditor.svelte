@@ -23,6 +23,7 @@
 	import { moveListItemUp, moveListItemDown } from "./listItemReorder.js";
 	import type { JSONContent } from "@tiptap/core";
 	import EditorContextMenu from "./EditorContextMenu.svelte";
+	import { markNoteOpenPerf } from "$lib/utils/noteOpenPerfLog.js";
 
 	interface Props {
 		content?: JSONContent;
@@ -97,11 +98,21 @@
 		const meta: { refresh: true; full?: true } = { refresh: true };
 		if (autoLinkPendingFull) meta.full = true;
 		autoLinkPendingFull = false;
+		markNoteOpenPerf(
+			'TomboyEditor.runAutoLinkScan:dispatch',
+			{ full: meta.full === true },
+			currentGuid ?? undefined
+		);
 		ed.view.dispatch(ed.state.tr.setMeta(autoLinkPluginKey, meta));
 	}
 
 	function scheduleAutoLinkScan(opts?: { full?: boolean }): void {
 		if (opts?.full) autoLinkPendingFull = true;
+		markNoteOpenPerf(
+			'TomboyEditor.scheduleAutoLinkScan',
+			{ full: !!opts?.full, pendingFull: autoLinkPendingFull },
+			currentGuid ?? undefined
+		);
 		cancelAutoLinkScan();
 		autoLinkTimer = setTimeout(() => {
 			autoLinkTimer = null;
@@ -123,6 +134,7 @@
 	}
 
 	onMount(() => {
+		markNoteOpenPerf('TomboyEditor.onMount', undefined, currentGuid ?? undefined);
 		// Use a dynamic excludeGuid callback so the provider follows note
 		// transitions without needing dispose + recreate. The editor
 		// instance is reused across notes (see $effect below), and the
@@ -133,8 +145,24 @@
 		});
 		// Populate titles asynchronously; the plugin reads via getTitles() so
 		// late arrivals still auto-link pre-existing content via the refresh meta.
-		void titleProvider.refresh();
+		markNoteOpenPerf(
+			'TomboyEditor.titleProvider.refresh:kicked',
+			undefined,
+			currentGuid ?? undefined
+		);
+		void titleProvider.refresh().then(() => {
+			markNoteOpenPerf(
+				'TomboyEditor.titleProvider.refresh:settled',
+				undefined,
+				currentGuid ?? undefined
+			);
+		});
 
+		markNoteOpenPerf(
+			'TomboyEditor.new Editor:before',
+			undefined,
+			currentGuid ?? undefined
+		);
 		editor = new Editor({
 			element: editorElement,
 			extensions: [
@@ -187,6 +215,11 @@
 				// Auto-link mark mutations appended by the plugin also need
 				// to be persisted, so we always forward to onchange and let
 				// updateNoteFromEditor's XML-equality check absorb no-ops.
+				markNoteOpenPerf(
+					'TomboyEditor.onUpdate',
+					undefined,
+					currentGuid ?? undefined
+				);
 				onchange?.(ed.getJSON());
 				scheduleAutoLinkScan();
 			},
@@ -301,6 +334,12 @@
 			},
 		});
 
+		markNoteOpenPerf(
+			'TomboyEditor.new Editor:after',
+			undefined,
+			currentGuid ?? undefined
+		);
+
 		// Note: no initial scan on mount. The note's stored XML already
 		// carries the `<link:internal>` marks from its last save, so the
 		// deserialized doc shows links immediately. Any staleness (e.g.
@@ -343,6 +382,11 @@
 			contentSyncSeeded = true;
 			lastAppliedContent = c;
 			lastAppliedGuid = g;
+			markNoteOpenPerf(
+				'TomboyEditor.contentSync:seed',
+				undefined,
+				currentGuid ?? undefined
+			);
 			return;
 		}
 
@@ -354,6 +398,11 @@
 			type: "doc",
 			content: [{ type: "paragraph" }],
 		};
+		markNoteOpenPerf(
+			'TomboyEditor.setContent:before',
+			undefined,
+			currentGuid ?? undefined
+		);
 		// emitUpdate:false so the parent's onchange doesn't interpret this
 		// as a user edit (no spurious save triggered for just loading a
 		// note). The plugin still sees the underlying PM transaction and
@@ -362,6 +411,11 @@
 		// carries `<link:internal>` marks and a rescan on load is neither
 		// needed nor cheap for large notes.
 		ed.commands.setContent(docContent, { emitUpdate: false });
+		markNoteOpenPerf(
+			'TomboyEditor.setContent:after',
+			undefined,
+			currentGuid ?? undefined
+		);
 		ed.view.dispatch(
 			ed.state.tr.setMeta(autoLinkPluginKey, {
 				clearDirty: true,

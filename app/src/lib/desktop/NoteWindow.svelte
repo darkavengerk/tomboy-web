@@ -29,6 +29,7 @@
 		registerFlushHook,
 		desktopSession
 	} from './session.svelte.js';
+	import { markNoteOpenPerf } from '$lib/utils/noteOpenPerfLog.js';
 
 	interface Props {
 		guid: string;
@@ -93,20 +94,40 @@
 	}
 
 	onMount(() => {
+		markNoteOpenPerf('NoteWindow.onMount', undefined, guid);
 		(async () => {
+			markNoteOpenPerf('NoteWindow.getNote:before', undefined, guid);
 			const loaded = await getNote(guid);
+			markNoteOpenPerf(
+				'NoteWindow.getNote:after',
+				{ found: !!loaded, xmlBytes: loaded?.xmlContent?.length ?? 0 },
+				guid
+			);
 			if (!loaded) {
 				loading = false;
 				return;
 			}
 			note = loaded;
+			markNoteOpenPerf('NoteWindow.deserialize:before', undefined, guid);
 			editorContent = getNoteEditorContent(loaded);
+			markNoteOpenPerf(
+				'NoteWindow.deserialize:after',
+				{ topBlocks: editorContent?.content?.length ?? 0 },
+				guid
+			);
 			loading = false;
+			markNoteOpenPerf('NoteWindow.loading=false', undefined, guid);
 
 			const homeGuid = await getHomeNoteGuid();
 			isHomeState = homeGuid === guid;
+			markNoteOpenPerf('NoteWindow.homeGuid:resolved', undefined, guid);
 
 			isScrollBottomState = await isScrollBottomNote(guid);
+			markNoteOpenPerf(
+				'NoteWindow.scrollBottom:resolved',
+				{ on: isScrollBottomState },
+				guid
+			);
 			if (isScrollBottomState) {
 				requestAnimationFrame(() => {
 					requestAnimationFrame(() => scrollEditorToBottom());
