@@ -8,7 +8,9 @@
 		getNotesPath,
 		setNotesPath,
 		getSettingsPath,
-		setSettingsPath
+		setSettingsPath,
+		getImagesPath,
+		setImagesPath
 	} from '$lib/sync/dropboxClient.js';
 	import {
 		saveSettingsProfile,
@@ -49,6 +51,8 @@
 
 	let settingsPath = $state('');
 	let settingsPathSaved = $state(false);
+	let imagesPath = $state('');
+	let imagesPathSaved = $state(false);
 	let profileName = $state('default');
 	let profiles = $state<string[]>([]);
 	let selectedProfile = $state('');
@@ -60,6 +64,7 @@
 	onMount(() => {
 		notesPath = getNotesPath();
 		settingsPath = getSettingsPath();
+		imagesPath = getImagesPath();
 
 		(async () => {
 			// Check if we're returning from OAuth callback
@@ -166,6 +171,13 @@
 		setTimeout(() => (settingsPathSaved = false), 2000);
 	}
 
+	function handleSaveImagesPath() {
+		setImagesPath(imagesPath);
+		imagesPath = getImagesPath();
+		imagesPathSaved = true;
+		setTimeout(() => (imagesPathSaved = false), 2000);
+	}
+
 	async function refreshProfiles() {
 		loadingProfiles = true;
 		try {
@@ -258,6 +270,26 @@
 				/>
 				<button class="btn-save" onclick={handleSavePath}>
 					{pathSaved ? '저장됨' : '저장'}
+				</button>
+			</div>
+		</section>
+
+		<section class="section">
+			<h2>이미지 업로드 폴더</h2>
+			<p class="info-text">
+				붙여넣기·드롭·파일 선택으로 추가된 이미지는 이 Dropbox 폴더에 업로드되고,
+				전체 공개 공유 링크로 노트에 삽입됩니다. 노트 동기화 폴더와 분리해서 관리됩니다.
+			</p>
+			<div class="path-row">
+				<input
+					class="path-input"
+					type="text"
+					placeholder="/tomboy-image"
+					bind:value={imagesPath}
+					onkeydown={(e) => e.key === 'Enter' && handleSaveImagesPath()}
+				/>
+				<button class="btn-save" onclick={handleSaveImagesPath}>
+					{imagesPathSaved ? '저장됨' : '저장'}
 				</button>
 			</div>
 		</section>

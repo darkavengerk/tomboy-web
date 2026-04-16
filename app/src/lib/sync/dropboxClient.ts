@@ -14,6 +14,9 @@ const STORAGE_KEY_REFRESH_TOKEN = 'tomboy-dropbox-refresh-token';
 const STORAGE_KEY_EXPIRES_AT = 'tomboy-dropbox-expires-at';
 const STORAGE_KEY_NOTES_PATH = 'tomboy-dropbox-notes-path';
 const STORAGE_KEY_SETTINGS_PATH = 'tomboy-dropbox-settings-path';
+const STORAGE_KEY_IMAGES_PATH = 'tomboy-dropbox-images-path';
+
+const DEFAULT_IMAGES_PATH = '/tomboy-image';
 
 function normalizePath(path: string): string {
 	const normalized = path.trim().replace(/\/+$/, '');
@@ -38,6 +41,23 @@ export function getSettingsPath(): string {
 /** Set the Dropbox folder path for settings/workspace state. */
 export function setSettingsPath(path: string): void {
 	localStorage.setItem(STORAGE_KEY_SETTINGS_PATH, normalizePath(path));
+}
+
+/**
+ * Get the configured Dropbox folder path for uploaded images.
+ * Deliberately separated from the notes path so image files don't end up
+ * in the revision-manifest tree that `commitRevision` walks.
+ * Defaults to `/tomboy-image`.
+ */
+export function getImagesPath(): string {
+	const stored = localStorage.getItem(STORAGE_KEY_IMAGES_PATH);
+	if (stored === null || stored === '') return DEFAULT_IMAGES_PATH;
+	return stored;
+}
+
+/** Set the Dropbox folder path for uploaded images. */
+export function setImagesPath(path: string): void {
+	localStorage.setItem(STORAGE_KEY_IMAGES_PATH, normalizePath(path));
 }
 
 function getAppKey(): string {
@@ -96,7 +116,16 @@ export async function startAuth(redirectUri: string): Promise<void> {
 		undefined, // state — not needed for personal use
 		'code',
 		'offline', // token_access_type — get a refresh_token
-		['files.content.read', 'files.content.write', 'files.metadata.read', 'files.metadata.write'],
+		[
+			'files.content.read',
+			'files.content.write',
+			'files.metadata.read',
+			'files.metadata.write',
+			// Image upload needs to create a public shared link and,
+			// in the rare case a link already exists, list the existing one.
+			'sharing.write',
+			'sharing.read'
+		],
 		undefined,
 		true // usePKCE
 	);
