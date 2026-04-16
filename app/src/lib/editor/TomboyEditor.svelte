@@ -438,9 +438,17 @@
 		padding: 0.5rem;
 		font-size: 16px;
 		line-height: 1.4;
-		/* Establish a size container so image previews can cap themselves
-		   to the note's visible width/height via cq units (see below). */
-		container-type: size;
+		/* NOTE: we deliberately do NOT set `container-type: size` here.
+		   That would imply `contain: size`, which prevents the element
+		   from being sized by its contents. It works on the desktop
+		   NoteWindow (where .body is a flex column giving .tomboy-editor
+		   a definite height via flex:1), but collapses the editor to 0
+		   on the mobile /note/[id] page where .editor-area is a plain
+		   block scroller — .tomboy-editor there is content-sized, so
+		   size containment zeroes it out and the note appears blank.
+		   Instead, the outer scroll container in each consumer sets
+		   `container-type: size` (see .editor-area and .body). Image
+		   previews reference that container via `100cqh` below. */
 	}
 
 	.tomboy-editor :global(.tiptap) {
