@@ -438,6 +438,9 @@
 		padding: 0.5rem;
 		font-size: 16px;
 		line-height: 1.4;
+		/* Establish a size container so image previews can cap themselves
+		   to the note's visible width/height via cq units (see below). */
+		container-type: size;
 	}
 
 	.tomboy-editor :global(.tiptap) {
@@ -507,11 +510,16 @@
 
 	/* Inline image preview widget (decoration; not part of the doc). The
 	   underlying text (including any <link:url> mark) is preserved verbatim
-	   for round-trip compatibility with Tomboy desktop. */
+	   for round-trip compatibility with Tomboy desktop.
+
+	   Sizing: default to the image's natural size, but cap to the note's
+	   visible width (max-width: 100%) and height (max-height: 100cqh, the
+	   size-container set on .tomboy-editor). Aspect ratio is preserved. */
 	.tomboy-editor :global(img.tomboy-image-preview) {
 		display: block;
 		max-width: 100%;
-		max-height: 400px;
+		max-height: 100cqh;
+		width: auto;
 		height: auto;
 		margin: 0.4em 0;
 		border-radius: 4px;
