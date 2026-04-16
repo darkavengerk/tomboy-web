@@ -181,6 +181,33 @@ describe('titleProvider', () => {
 		expect(listNotesMock).toHaveBeenCalledTimes(1);
 	});
 
+	it('refresh() is a no-op when the shared cache is already warm', async () => {
+		// First provider warms the cache via listNotes().
+		listNotesMock.mockResolvedValue([makeNote('a', 'Foo'), makeNote('b', 'Bar')]);
+		const p1 = createTitleProvider({});
+		await p1.refresh();
+		expect(listNotesMock).toHaveBeenCalledTimes(1);
+
+		// A second provider — mimicking a second editor mounting — calls
+		// refresh(), but the shared cache is already populated, so no
+		// additional listNotes() round-trip should fire.
+		const p2 = createTitleProvider({});
+		await p2.refresh();
+		expect(listNotesMock).toHaveBeenCalledTimes(1);
+
+		// And p2 still sees the cached data via getTitles().
+		expect(p2.getTitles().map((t) => t.guid).sort()).toEqual(['a', 'b']);
+
+		// invalidateCache() still drives a real refresh — the warm-cache
+		// fast path only applies to direct refresh() calls.
+		invalidateCache();
+		await new Promise((r) => setTimeout(r, 0));
+		expect(listNotesMock).toHaveBeenCalledTimes(2);
+
+		p1.dispose();
+		p2.dispose();
+	});
+
 	it('onChange returns an unsubscribe function', async () => {
 		listNotesMock.mockResolvedValue([makeNote('a', 'Foo')]);
 		const p = createTitleProvider({});
