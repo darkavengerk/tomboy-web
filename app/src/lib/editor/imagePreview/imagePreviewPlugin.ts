@@ -1,17 +1,16 @@
 /**
- * ProseMirror plugin that renders inline image previews for `tomboyUrlLink`
- * marks whose `href` looks like an image URL.
+ * ProseMirror plugin that renders inline image previews for image URLs
+ * found in text.
  *
- * Crucially, this plugin does NOT modify the document — the underlying
- * Tomboy `<link:url>` mark is preserved verbatim so round-trip compatibility
- * with the desktop Tomboy `.note` XML is unchanged. Previews are purely
- * visual, emitted as widget decorations that sit at the end of each
- * image-URL run.
+ * We scan plain text (via a simple http(s) URL regex) rather than relying
+ * on the `tomboyUrlLink` mark — the web editor has no URL auto-link, so
+ * pasted URLs stay unmarked. Marked URLs still work because their visible
+ * text IS the URL, and we scan all text nodes regardless of marks.
  *
- * Position model: we walk text nodes. For each contiguous run of text
- * sharing the same `tomboyUrlLink` mark (href + instanceId), we emit a
- * single widget at the run's end position. Adjacent text nodes split by
- * inner marks (bold inside a url link, etc.) thus still produce ONE preview.
+ * Crucially, the plugin NEVER modifies the document — previews are emitted
+ * as widget decorations. The underlying text (including any `<link:url>`
+ * mark) is preserved verbatim, keeping round-trip compatibility with the
+ * desktop Tomboy `.note` XML.
  */
 
 import { Plugin, PluginKey } from '@tiptap/pm/state';
@@ -22,49 +21,53 @@ import { isImageUrl } from './isImageUrl.js';
 export const imagePreviewPluginKey = new PluginKey<DecorationSet>('tomboyImagePreview');
 
 export interface ImageUrlRange {
-	/** Absolute doc position right after the marked text run (where the widget anchors). */
+	/** Absolute doc position right after the URL's last character. */
 	pos: number;
-	/** The image URL from the `tomboyUrlLink` mark's `href`. */
+	/** The image URL. */
 	href: string;
 }
 
+// Match http(s) URLs up to the next whitespace / quote / angle bracket.
+// Deliberately permissive on URL contents — the caller trims trailing
+// punctuation and validates the result via `isImageUrl`.
+const URL_RE = /https?:\/\/[^\s<>"']+/g;
+
+// Trailing characters that are almost always sentence/prose punctuation
+// rather than part of a URL. Trimmed off before validating.
+const TRAILING_PUNCT_RE = /[.,;:!?)\]\}>]+$/;
+
 /**
- * Scan the doc for `tomboyUrlLink` marks whose href is an image URL,
- * merging adjacent text nodes that belong to the same anchor instance.
+ * Scan the doc for image-URL substrings in any text node and return their
+ * positions (right after the URL's last char, where a widget would anchor).
  * Exported for testing.
  */
 export function findImageUrlRanges(doc: PMNode): ImageUrlRange[] {
-	interface Entry {
-		from: number;
-		to: number;
-		href: string;
-		instanceId: string | null;
-	}
-	const entries: Entry[] = [];
+	const out: ImageUrlRange[] = [];
 
 	doc.descendants((node, pos) => {
-		if (!node.isText) return;
-		const mark = node.marks.find((m) => m.type.name === 'tomboyUrlLink');
-		if (!mark) return;
-		const href = (mark.attrs.href as string | null) ?? null;
-		if (!href || !isImageUrl(href)) return;
-		const instanceId = (mark.attrs.instanceId as string | null) ?? null;
-		const nodeEnd = pos + node.nodeSize;
+		if (!node.isText || !node.text) return;
+		const text = node.text;
+		URL_RE.lastIndex = 0;
+		let m: RegExpExecArray | null;
+		while ((m = URL_RE.exec(text)) !== null) {
+			let url = m[0];
+			// Trim trailing prose punctuation, but iterate in case several
+			// stacked up (e.g. ").").
+			while (true) {
+				const trimmed = url.replace(TRAILING_PUNCT_RE, '');
+				if (trimmed === url) break;
+				url = trimmed;
+			}
+			if (!url || !isImageUrl(url)) continue;
 
-		const last = entries[entries.length - 1];
-		if (
-			last &&
-			last.to === pos &&
-			last.href === href &&
-			last.instanceId === instanceId
-		) {
-			last.to = nodeEnd;
-		} else {
-			entries.push({ from: pos, to: nodeEnd, href, instanceId });
+			const startInText = m.index;
+			const endInText = startInText + url.length;
+			// `pos` is the start of this text node in the doc.
+			out.push({ pos: pos + endInText, href: url });
 		}
 	});
 
-	return entries.map((e) => ({ pos: e.to, href: e.href }));
+	return out;
 }
 
 function buildDecorationSet(doc: PMNode): DecorationSet {
@@ -86,16 +89,16 @@ function buildDecorationSet(doc: PMNode): DecorationSet {
 }
 
 function renderImagePreview(href: string): HTMLElement {
-	const wrap = document.createElement('img');
-	wrap.src = href;
-	wrap.alt = '';
-	wrap.className = 'tomboy-image-preview';
-	wrap.loading = 'lazy';
-	wrap.decoding = 'async';
+	const img = document.createElement('img');
+	img.src = href;
+	img.alt = '';
+	img.className = 'tomboy-image-preview';
+	img.loading = 'lazy';
+	img.decoding = 'async';
 	// Prevent the widget from being selected/edited as doc content.
-	wrap.setAttribute('contenteditable', 'false');
-	wrap.draggable = false;
-	return wrap;
+	img.setAttribute('contenteditable', 'false');
+	img.draggable = false;
+	return img;
 }
 
 export function createImagePreviewPlugin(): Plugin<DecorationSet> {
