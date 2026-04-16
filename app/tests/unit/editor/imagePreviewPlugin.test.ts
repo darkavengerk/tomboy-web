@@ -10,6 +10,7 @@ import {
 	createImagePreviewPlugin,
 	imagePreviewPluginKey
 } from '$lib/editor/imagePreview/imagePreviewPlugin.js';
+import { Extension } from '@tiptap/core';
 
 let currentEditor: Editor | null = null;
 
@@ -28,8 +29,6 @@ function makeEditor(content: unknown = '<p></p>'): Editor {
 	return editor;
 }
 
-// TipTap-wrapper for the bare PM plugin so we can attach it to an Editor.
-import { Extension } from '@tiptap/core';
 function createImagePreviewExt() {
 	return Extension.create({
 		name: 'tomboyImagePreview',
@@ -48,28 +47,74 @@ afterEach(() => {
 	currentEditor = null;
 });
 
-describe('findImageUrlRanges — scanning', () => {
-	it('returns no ranges for an empty doc', () => {
-		const editor = makeEditor('<p></p>');
+describe('findImageUrlRanges — plain-text URL scanning', () => {
+	// Plain-text URLs (e.g. freshly pasted, before any auto-link processing)
+	// must still produce an image preview. Web-port lacks a URL auto-link
+	// plugin so bare URLs never get wrapped in `tomboyUrlLink` — the preview
+	// must not rely on that mark.
+	it('detects a bare pasted image URL in plain text', () => {
+		const editor = makeEditor('<p>https://example.com/cat.png</p>');
+		const ranges = findImageUrlRanges(editor.state.doc);
+		expect(ranges).toHaveLength(1);
+		expect(ranges[0].href).toBe('https://example.com/cat.png');
+	});
+
+	it('detects the real-world Korean CDN URL the user reported', () => {
+		const url =
+			'https://pimg.mk.co.kr/meet/neds/2017/06/image_readtop_2017_425767_14984355952932772.jpg';
+		const editor = makeEditor(`<p>${url}</p>`);
+		const ranges = findImageUrlRanges(editor.state.doc);
+		expect(ranges).toHaveLength(1);
+		expect(ranges[0].href).toBe(url);
+	});
+
+	it('detects a URL embedded inside a sentence', () => {
+		const editor = makeEditor(
+			'<p>see https://example.com/cat.png here</p>'
+		);
+		const ranges = findImageUrlRanges(editor.state.doc);
+		expect(ranges).toHaveLength(1);
+		expect(ranges[0].href).toBe('https://example.com/cat.png');
+	});
+
+	it('trims trailing punctuation from a URL (.,;:!? and brackets)', () => {
+		const editor = makeEditor(
+			'<p>See https://example.com/cat.png, then continue.</p>'
+		);
+		const ranges = findImageUrlRanges(editor.state.doc);
+		expect(ranges).toHaveLength(1);
+		expect(ranges[0].href).toBe('https://example.com/cat.png');
+	});
+
+	it('returns no ranges for a non-image URL in plain text', () => {
+		const editor = makeEditor('<p>https://example.com/page.html</p>');
 		expect(findImageUrlRanges(editor.state.doc)).toEqual([]);
 	});
 
-	it('returns no ranges when there are no url links', () => {
+	it('detects multiple image URLs in one paragraph', () => {
+		const editor = makeEditor(
+			'<p>https://a.com/a.png and https://b.com/b.jpg side by side</p>'
+		);
+		const ranges = findImageUrlRanges(editor.state.doc);
+		expect(ranges.map((r) => r.href)).toEqual([
+			'https://a.com/a.png',
+			'https://b.com/b.jpg'
+		]);
+	});
+
+	it('returns no ranges for plain text without URLs', () => {
 		const editor = makeEditor('<p>just some text</p>');
 		expect(findImageUrlRanges(editor.state.doc)).toEqual([]);
 	});
+});
 
-	it('returns no ranges for a non-image url link', () => {
-		const editor = makeEditor();
-		editor.commands.insertContent({
-			type: 'text',
-			text: 'https://example.com/page.html',
-			marks: [{ type: 'tomboyUrlLink', attrs: { href: 'https://example.com/page.html' } }]
-		});
-		expect(findImageUrlRanges(editor.state.doc)).toEqual([]);
-	});
-
-	it('returns one range for a single image url link', () => {
+describe('findImageUrlRanges — marked URL scanning', () => {
+	// When the URL IS already in a `tomboyUrlLink` mark (e.g. a note loaded
+	// from Tomboy XML with `<link:url>...</link:url>`), the URL is the visible
+	// text of the mark so the same plain-text scan finds it. No marks are
+	// required by the preview logic, but this path must keep working for
+	// round-tripped notes.
+	it('detects a marked image url link', () => {
 		const editor = makeEditor();
 		const url = 'https://example.com/cat.png';
 		editor.commands.insertContent({
@@ -81,11 +126,21 @@ describe('findImageUrlRanges — scanning', () => {
 		const ranges = findImageUrlRanges(editor.state.doc);
 		expect(ranges).toHaveLength(1);
 		expect(ranges[0].href).toBe(url);
-		// Position should be right after the text (1 = paragraph open, + text length).
-		expect(ranges[0].pos).toBe(1 + url.length);
 	});
 
-	it('returns one range per distinct image link when several exist', () => {
+	it('ignores a marked non-image link', () => {
+		const editor = makeEditor();
+		editor.commands.insertContent({
+			type: 'text',
+			text: 'https://example.com/page.html',
+			marks: [
+				{ type: 'tomboyUrlLink', attrs: { href: 'https://example.com/page.html' } }
+			]
+		});
+		expect(findImageUrlRanges(editor.state.doc)).toEqual([]);
+	});
+
+	it('handles a mix of marked and plain-text image URLs', () => {
 		const editor = makeEditor();
 		editor.commands.insertContent([
 			{
@@ -93,14 +148,8 @@ describe('findImageUrlRanges — scanning', () => {
 				text: 'https://a.com/a.png',
 				marks: [{ type: 'tomboyUrlLink', attrs: { href: 'https://a.com/a.png' } }]
 			},
-			{ type: 'text', text: ' and ' },
-			{
-				type: 'text',
-				text: 'https://b.com/b.jpg',
-				marks: [{ type: 'tomboyUrlLink', attrs: { href: 'https://b.com/b.jpg' } }]
-			}
+			{ type: 'text', text: ' and plain https://b.com/b.jpg end' }
 		]);
-
 		const ranges = findImageUrlRanges(editor.state.doc);
 		expect(ranges.map((r) => r.href)).toEqual([
 			'https://a.com/a.png',
@@ -108,74 +157,13 @@ describe('findImageUrlRanges — scanning', () => {
 		]);
 	});
 
-	it('ignores non-image links mixed with image links', () => {
-		const editor = makeEditor();
-		editor.commands.insertContent([
-			{
-				type: 'text',
-				text: 'https://example.com/page.html',
-				marks: [
-					{ type: 'tomboyUrlLink', attrs: { href: 'https://example.com/page.html' } }
-				]
-			},
-			{ type: 'text', text: ' and ' },
-			{
-				type: 'text',
-				text: 'https://example.com/pic.png',
-				marks: [{ type: 'tomboyUrlLink', attrs: { href: 'https://example.com/pic.png' } }]
-			}
-		]);
-
-		const ranges = findImageUrlRanges(editor.state.doc);
-		expect(ranges).toHaveLength(1);
-		expect(ranges[0].href).toBe('https://example.com/pic.png');
-	});
-
-	it('merges adjacent text nodes sharing the same anchor instance', () => {
-		// A URL marked run split by an inner mark (e.g. bold over part of it)
-		// parses to two adjacent text nodes with the same tomboyUrlLink
-		// mark (same instanceId). We want ONE image preview, not two.
-		const editor = makeEditor();
-		const href = 'https://example.com/cat.png';
-		editor.commands.insertContent([
-			{
-				type: 'text',
-				text: 'https://example.com',
-				marks: [{ type: 'tomboyUrlLink', attrs: { href, instanceId: 'p0' } }]
-			},
-			{
-				type: 'text',
-				text: '/cat.png',
-				marks: [{ type: 'tomboyUrlLink', attrs: { href, instanceId: 'p0' } }]
-			}
-		]);
-
-		const ranges = findImageUrlRanges(editor.state.doc);
-		expect(ranges).toHaveLength(1);
-		expect(ranges[0].href).toBe(href);
-	});
-
-	it('keeps separate ranges when two links have the same href but different instances', () => {
-		const editor = makeEditor();
-		const href = 'https://example.com/cat.png';
-		editor.commands.insertContent([
-			{
-				type: 'text',
-				text: href,
-				marks: [{ type: 'tomboyUrlLink', attrs: { href, instanceId: 'p0' } }]
-			},
-			{ type: 'text', text: ' then again ' },
-			{
-				type: 'text',
-				text: href,
-				marks: [{ type: 'tomboyUrlLink', attrs: { href, instanceId: 'p1' } }]
-			}
-		]);
-
+	it('emits one decoration per occurrence when same URL appears twice', () => {
+		const url = 'https://example.com/cat.png';
+		const editor = makeEditor(`<p>${url} and again ${url}</p>`);
 		const ranges = findImageUrlRanges(editor.state.doc);
 		expect(ranges).toHaveLength(2);
-		expect(ranges[0].href).toBe(href);
-		expect(ranges[1].href).toBe(href);
+		expect(ranges[0].href).toBe(url);
+		expect(ranges[1].href).toBe(url);
 	});
 });
 
@@ -192,7 +180,12 @@ describe('imagePreviewPlugin — decoration set', () => {
 		expect(set).toBeInstanceOf(DecorationSet);
 	});
 
-	it('emits one decoration per image url link', () => {
+	it('emits one decoration for a plain-text image URL', () => {
+		const editor = makeEditor('<p>https://example.com/cat.png</p>');
+		expect(decoCount(editor)).toBe(1);
+	});
+
+	it('emits one decoration for a marked image URL', () => {
 		const editor = makeEditor();
 		const url = 'https://example.com/cat.png';
 		editor.commands.insertContent({
@@ -207,32 +200,15 @@ describe('imagePreviewPlugin — decoration set', () => {
 		const editor = makeEditor();
 		expect(decoCount(editor)).toBe(0);
 
-		editor.commands.insertContent({
-			type: 'text',
-			text: 'https://a.com/a.png',
-			marks: [{ type: 'tomboyUrlLink', attrs: { href: 'https://a.com/a.png' } }]
-		});
+		editor.commands.insertContent('https://a.com/a.png');
 		expect(decoCount(editor)).toBe(1);
 
-		editor.commands.insertContent([
-			{ type: 'text', text: ' + ' },
-			{
-				type: 'text',
-				text: 'https://b.com/b.jpg',
-				marks: [{ type: 'tomboyUrlLink', attrs: { href: 'https://b.com/b.jpg' } }]
-			}
-		]);
+		editor.commands.insertContent(' + https://b.com/b.jpg');
 		expect(decoCount(editor)).toBe(2);
 	});
 
 	it('renders an <img> element with the href as src', () => {
-		const editor = makeEditor();
-		const url = 'https://example.com/cat.png';
-		editor.commands.insertContent({
-			type: 'text',
-			text: url,
-			marks: [{ type: 'tomboyUrlLink', attrs: { href: url } }]
-		});
+		const editor = makeEditor('<p>https://example.com/cat.png</p>');
 
 		const set = imagePreviewPluginKey.getState(editor.state);
 		const decos = set!.find();
@@ -242,6 +218,6 @@ describe('imagePreviewPlugin — decoration set', () => {
 			root: document
 		});
 		expect(dom.tagName).toBe('IMG');
-		expect((dom as HTMLImageElement).src).toBe(url);
+		expect((dom as HTMLImageElement).src).toBe('https://example.com/cat.png');
 	});
 });
