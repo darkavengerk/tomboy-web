@@ -3,6 +3,7 @@ import { getNote, findNoteByTitle } from '$lib/core/noteManager.js';
 import { getHomeNote } from '$lib/core/home.js';
 import { getSetting, setSetting, deleteSetting } from '$lib/storage/appSettings.js';
 import { pushToast } from '$lib/stores/toast.js';
+import { startNoteOpenPerf, markNoteOpenPerf } from '$lib/utils/noteOpenPerfLog.js';
 
 const STORAGE_KEY = 'desktop:session';
 const WALLPAPER_KEY = 'desktop:wallpaper';
@@ -380,6 +381,7 @@ export const desktopSession = {
 			schedulePersist();
 			return;
 		}
+		startNoteOpenPerf(guid, 'session.openWindow');
 		const cached = ws.geometryByGuid[guid];
 		const geom = cached ?? defaultGeometry(ws, 'note');
 		const win: DesktopWindowState = {
@@ -393,6 +395,7 @@ export const desktopSession = {
 		};
 		ws.windows.push(win);
 		cacheGeometry(ws, win);
+		markNoteOpenPerf('session.openWindow:pushed', { z: win.z }, guid);
 		schedulePersist();
 	},
 
@@ -412,6 +415,7 @@ export const desktopSession = {
 			schedulePersist();
 			return;
 		}
+		startNoteOpenPerf(guid, 'session.openWindowAt');
 		const width = Math.max(MIN_WIDTH, Math.round(pos.width ?? DEFAULT_WIDTH));
 		const height = Math.max(MIN_HEIGHT, Math.round(pos.height ?? DEFAULT_HEIGHT));
 		const win: DesktopWindowState = {

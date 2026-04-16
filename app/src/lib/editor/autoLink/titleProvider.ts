@@ -17,6 +17,7 @@
 
 import { listNotes } from '$lib/core/noteManager.js';
 import { onInvalidate } from '$lib/stores/noteListCache.js';
+import { markNoteOpenPerf } from '$lib/utils/noteOpenPerfLog.js';
 import type { TitleEntry } from './findTitleMatches.js';
 
 export interface TitleProvider {
@@ -51,9 +52,16 @@ let providerCount = 0;
 let invalidateOff: (() => void) | null = null;
 
 async function doSharedRefresh(): Promise<void> {
-	if (sharedInFlight) return sharedInFlight;
+	if (sharedInFlight) {
+		markNoteOpenPerf('titleProvider.refresh:coalesced');
+		return sharedInFlight;
+	}
+	markNoteOpenPerf('titleProvider.refresh:listNotes:before');
 	sharedInFlight = (async () => {
 		const notes = await listNotes();
+		markNoteOpenPerf('titleProvider.refresh:listNotes:after', {
+			count: notes.length
+		});
 		const next: TitleEntry[] = [];
 		for (const n of notes) {
 			if (!n || typeof n.title !== 'string') continue;
@@ -66,6 +74,10 @@ async function doSharedRefresh(): Promise<void> {
 			});
 		}
 		sharedEntries = next;
+		markNoteOpenPerf('titleProvider.refresh:entriesBuilt', {
+			entries: next.length,
+			listeners: sharedListeners.size
+		});
 		for (const l of sharedListeners) l();
 	})().finally(() => {
 		sharedInFlight = null;
