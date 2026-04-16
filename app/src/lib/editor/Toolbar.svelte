@@ -51,22 +51,22 @@
 </script>
 
 <div class="toolbar">
-	<button class:active={isActive('bold')} onclick={toggleBold} title="Bold">
+	<button class:active={isActive('bold')} onclick={toggleBold} title="Bold (Ctrl+B)">
 		<strong>B</strong>
 	</button>
-	<button class:active={isActive('italic')} onclick={toggleItalic} title="Italic">
+	<button class:active={isActive('italic')} onclick={toggleItalic} title="Italic (Ctrl+I)">
 		<em>I</em>
 	</button>
-	<button class:active={isActive('underline')} onclick={toggleUnderline} title="Underline">
+	<button class:active={isActive('underline')} onclick={toggleUnderline} title="Underline (Ctrl+U)">
 		<u>U</u>
 	</button>
-	<button class:active={isActive('strike')} onclick={toggleStrike} title="Strikethrough">
+	<button class:active={isActive('strike')} onclick={toggleStrike} title="Strikethrough (Ctrl+S)">
 		<s>S</s>
 	</button>
-	<button class:active={isActive('highlight')} onclick={toggleHighlight} title="Highlight">
+	<button class:active={isActive('highlight')} onclick={toggleHighlight} title="Highlight (Ctrl+H)">
 		<span class="highlight-icon">H</span>
 	</button>
-	<button class:active={isActive('tomboyMonospace')} onclick={toggleMonospace} title="Monospace">
+	<button class:active={isActive('tomboyMonospace')} onclick={toggleMonospace} title="Monospace (Ctrl+M)">
 		<code>M</code>
 	</button>
 
@@ -89,7 +89,7 @@
 		{/if}
 	</div>
 
-	<button class:active={isActive('bulletList')} onclick={toggleBulletList} title="Bullet List">
+	<button class:active={isActive('bulletList')} onclick={toggleBulletList} title="Bullet List (Ctrl+L)">
 		•
 	</button>
 

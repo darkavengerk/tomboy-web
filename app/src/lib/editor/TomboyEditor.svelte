@@ -14,7 +14,8 @@
 	import { createTitleProvider } from "./autoLink/titleProvider.js";
 	import { autoLinkPluginKey } from "./autoLink/autoLinkPlugin.js";
 	import { insertTodayDate } from "./insertDate.js";
-	import { sinkListItemOnly, liftListItemOnly } from "./listItemDepth.js";
+	import { sinkListItemOnly, liftListItemOnly, isInList } from "./listItemDepth.js";
+	import { moveListItemUp, moveListItemDown } from "./listItemReorder.js";
 	import type { JSONContent } from "@tiptap/core";
 	import EditorContextMenu from "./EditorContextMenu.svelte";
 
@@ -182,23 +183,79 @@
 				handleKeyDown: (_view, event) => {
 					const ed = editor;
 					if (!ed) return false;
-					if ((event.ctrlKey || event.metaKey) && event.key === 'd' && !event.altKey && !event.shiftKey) {
-						event.preventDefault();
-						insertTodayDate(ed);
-						return true;
+
+					// --- Ctrl/Cmd shortcuts (no Alt, no Shift) ---
+					if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) {
+						switch (event.key) {
+							case 'd':
+								event.preventDefault();
+								insertTodayDate(ed);
+								return true;
+							case 's':
+								event.preventDefault();
+								ed.chain().focus().toggleStrike().run();
+								return true;
+							case 'h':
+								event.preventDefault();
+								ed.chain().focus().toggleHighlight().run();
+								return true;
+							case 'm':
+								event.preventDefault();
+								ed.chain().focus().toggleTomboyMonospace().run();
+								return true;
+							case 'l':
+								event.preventDefault();
+								ed.chain().focus().toggleBulletList().run();
+								return true;
+						}
 					}
+
+					// --- Alt+Arrow shortcuts (no Ctrl, no Shift) ---
 					if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
-						if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+						if (event.key === 'ArrowRight') {
 							event.preventDefault();
 							try {
-								if (event.key === 'ArrowRight') sinkListItemOnly(ed);
-								else liftListItemOnly(ed);
+								const sunk = sinkListItemOnly(ed);
+								if (!sunk && !isInList(ed)) {
+									ed.chain().focus().toggleBulletList().run();
+								}
 							} catch (err) {
 								console.error('[listItemDepth] operation failed:', err);
 							}
 							return true;
 						}
+						if (event.key === 'ArrowLeft') {
+							event.preventDefault();
+							try {
+								const lifted = liftListItemOnly(ed);
+								if (!lifted && isInList(ed)) {
+									ed.commands.liftListItem('listItem');
+								}
+							} catch (err) {
+								console.error('[listItemDepth] operation failed:', err);
+							}
+							return true;
+						}
+						if (event.key === 'ArrowUp') {
+							event.preventDefault();
+							try {
+								moveListItemUp(ed);
+							} catch (err) {
+								console.error('[listItemReorder] operation failed:', err);
+							}
+							return true;
+						}
+						if (event.key === 'ArrowDown') {
+							event.preventDefault();
+							try {
+								moveListItemDown(ed);
+							} catch (err) {
+								console.error('[listItemReorder] operation failed:', err);
+							}
+							return true;
+						}
 					}
+
 					return false;
 				},
 				handleClick: (view, pos, event) => {

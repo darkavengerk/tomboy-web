@@ -3,6 +3,7 @@
 	import { pushToast } from '$lib/stores/toast.js';
 	import { insertTodayDate } from './insertDate.js';
 	import { sinkListItemOnly, liftListItemOnly } from './listItemDepth.js';
+	import { moveListItemUp, moveListItemDown } from './listItemReorder.js';
 	import { tiptapToHtml, tiptapToPlainText, tiptapToMarkdown, copySelectionAsJson } from './copyFormatted.js';
 
 	interface Props {
@@ -131,6 +132,16 @@
 		sinkListItemOnly(editor);
 	}
 
+	function doMoveUp() {
+		close();
+		moveListItemUp(editor);
+	}
+
+	function doMoveDown() {
+		close();
+		moveListItemDown(editor);
+	}
+
 	function doOpenLink() {
 		close();
 		const info = linkInfo;
@@ -182,10 +193,12 @@
 	<button class="item" onclick={doPaste}>붙여넣기</button>
 	<div class="sep"></div>
 	<button class="item" onclick={doInsertDate}>오늘 날짜 삽입</button>
-	<button class="item" onclick={doToggleList}>리스트로 만들기</button>
+	<button class="item" onclick={doToggleList}>리스트로 만들기 (Ctrl+L)</button>
 	{#if inList}
 		<button class="item" onclick={doLift}>깊이 ↑ (Alt+←)</button>
 		<button class="item" onclick={doSink}>깊이 ↓ (Alt+→)</button>
+		<button class="item" onclick={doMoveUp}>위로 이동 (Alt+↑)</button>
+		<button class="item" onclick={doMoveDown}>아래로 이동 (Alt+↓)</button>
 	{/if}
 	{#if linkInfo}
 		<div class="sep"></div>

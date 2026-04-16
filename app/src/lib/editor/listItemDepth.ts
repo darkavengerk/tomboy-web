@@ -26,16 +26,25 @@ import { TextSelection } from 'prosemirror-state';
  *
  * See: @tiptap/extensions `skipTrailingNodeMeta` export.
  */
-const SKIP_TRAILING_NODE = 'skipTrailingNode';
+export const SKIP_TRAILING_NODE = 'skipTrailingNode';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 /** True if `node` is a bulletList or orderedList. */
-function isList(node: PMNode, editor: Editor): boolean {
+export function isList(node: PMNode, editor: Editor): boolean {
 	const { bulletList, orderedList } = editor.schema.nodes;
 	return node.type === bulletList || node.type === orderedList;
+}
+
+/** Check if the cursor is currently inside a list (at any depth). */
+export function isInList(editor: Editor): boolean {
+	const { $from } = editor.state.selection;
+	for (let d = $from.depth; d >= 0; d--) {
+		if (isList($from.node(d), editor)) return true;
+	}
+	return false;
 }
 
 /**
@@ -47,7 +56,7 @@ function isList(node: PMNode, editor: Editor): boolean {
  * This must be called AFTER the main content changes have been applied to
  * `tr`, so the positions are based on the already-modified `tr.doc`.
  */
-function removeTrailingParagraphIfPresent(
+export function removeTrailingParagraphIfPresent(
 	tr: import('prosemirror-state').Transaction,
 	editor: Editor
 ): void {
@@ -81,7 +90,7 @@ function toNodeArray(node: PMNode): PMNode[] {
  * content starts at absolute position `parentContentStart`.
  * `parentContentStart` = absolute pos of opening token + 1.
  */
-function childAbsStart(parent: PMNode, index: number, parentContentStart: number): number {
+export function childAbsStart(parent: PMNode, index: number, parentContentStart: number): number {
 	let pos = parentContentStart;
 	for (let i = 0; i < index; i++) {
 		pos += parent.child(i).nodeSize;
@@ -117,7 +126,7 @@ function stripNestedList(
 // Operation range
 // ---------------------------------------------------------------------------
 
-interface OperationRange {
+export interface OperationRange {
 	/** The deepest common ancestor list node */
 	list: PMNode;
 	/** Depth of the list in the document tree */
@@ -140,7 +149,7 @@ interface OperationRange {
  * When the selection is a single cursor, $from === $to and the range collapses
  * to startIndex === endIndex (single-item behavior).
  */
-function findOperationRange(editor: Editor): OperationRange | null {
+export function findOperationRange(editor: Editor): OperationRange | null {
 	const { $from, $to } = editor.state.selection;
 
 	const shared = $from.sharedDepth($to.pos);

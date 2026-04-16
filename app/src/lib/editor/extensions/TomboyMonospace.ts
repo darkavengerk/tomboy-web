@@ -55,7 +55,7 @@ export const TomboyMonospace = Mark.create({
 
 	addKeyboardShortcuts() {
 		return {
-			'Mod-Shift-m': () => this.editor.commands.toggleTomboyMonospace()
+			'Mod-m': () => this.editor.commands.toggleTomboyMonospace()
 		};
 	}
 });
