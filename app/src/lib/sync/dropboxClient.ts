@@ -106,6 +106,22 @@ export function clearTokens() {
 }
 
 /**
+ * Append `force_reapprove=true` to a Dropbox OAuth authorize URL (idempotent).
+ *
+ * Without this param, Dropbox silently re-grants previously-approved
+ * scopes when a user "reconnects" — if the app has since added new
+ * scopes, no consent screen shows and the new token lacks them. That
+ * makes scope migrations appear to "just work" from the UI perspective
+ * while API calls that need the new scope silently 401. Forcing the
+ * consent screen surfaces the migration to the user.
+ */
+export function forceReapproveUrl(authUrl: string): string {
+	if (/[?&]force_reapprove=true(?:&|$)/.test(authUrl)) return authUrl;
+	const separator = authUrl.includes('?') ? '&' : '?';
+	return authUrl + separator + 'force_reapprove=true';
+}
+
+/**
  * Start the OAuth PKCE flow.
  * Redirects the browser to Dropbox authorization page.
  */
@@ -134,7 +150,7 @@ export async function startAuth(redirectUri: string): Promise<void> {
 	const codeVerifier = auth.getCodeVerifier();
 	localStorage.setItem('tomboy-dropbox-code-verifier', codeVerifier);
 
-	window.location.href = authUrl as string;
+	window.location.href = forceReapproveUrl(authUrl as string);
 }
 
 /**
