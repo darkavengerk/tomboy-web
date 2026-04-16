@@ -107,6 +107,68 @@ describe('titleProvider', () => {
 		p.dispose();
 	});
 
+	it('invalidateCache does NOT notify onChange when the title set is unchanged', async () => {
+		// Same note list on both refreshes — simulates the common case where
+		// something unrelated invalidates the cache (new editor mount,
+		// toggleFavorite, body-only edit, …) without actually changing any
+		// note's title. onChange drives a full-document auto-link rescan on
+		// every open editor, so firing it here would be pure waste.
+		listNotesMock
+			.mockResolvedValueOnce([makeNote('a', 'Foo'), makeNote('b', 'Bar')])
+			.mockResolvedValueOnce([makeNote('a', 'Foo'), makeNote('b', 'Bar')]);
+
+		const p = createTitleProvider({});
+		await p.refresh();
+
+		const changed = vi.fn();
+		p.onChange(changed);
+
+		invalidateCache();
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(changed).not.toHaveBeenCalled();
+		p.dispose();
+	});
+
+	it('onChange still fires when only a title string changes (same guids, different text)', async () => {
+		listNotesMock
+			.mockResolvedValueOnce([makeNote('a', 'Foo')])
+			.mockResolvedValueOnce([makeNote('a', 'Foo Renamed')]);
+
+		const p = createTitleProvider({});
+		await p.refresh();
+
+		const changed = vi.fn();
+		p.onChange(changed);
+
+		invalidateCache();
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(changed).toHaveBeenCalled();
+		expect(p.getTitles()[0].original).toBe('Foo Renamed');
+		p.dispose();
+	});
+
+	it('onChange still fires when a note is reordered but set is equivalent — order alone is ignored', async () => {
+		// Equality check is order-independent — reordering with no content
+		// change should NOT fire onChange.
+		listNotesMock
+			.mockResolvedValueOnce([makeNote('a', 'Foo'), makeNote('b', 'Bar')])
+			.mockResolvedValueOnce([makeNote('b', 'Bar'), makeNote('a', 'Foo')]);
+
+		const p = createTitleProvider({});
+		await p.refresh();
+
+		const changed = vi.fn();
+		p.onChange(changed);
+
+		invalidateCache();
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(changed).not.toHaveBeenCalled();
+		p.dispose();
+	});
+
 	it('dispose() unsubscribes — further invalidations do not call listNotes again', async () => {
 		listNotesMock.mockResolvedValue([makeNote('a', 'Foo')]);
 		const p = createTitleProvider({});
