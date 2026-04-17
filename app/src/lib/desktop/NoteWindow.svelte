@@ -81,6 +81,7 @@
 	let notebookNames = $state<string[]>([]);
 	let isHomeState = $state(false);
 	let isScrollBottomState = $state(false);
+	let windowEl: HTMLDivElement | undefined = $state(undefined);
 
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	let pendingDoc: JSONContent | null = $state.raw(null);
@@ -190,10 +191,58 @@
 
 	function handleKeyDown(e: KeyboardEvent) {
 		if (e.key !== 'Escape') return;
-		// Let an open in-window menu / picker swallow Esc first.
-		if (menuAnchor || pickerOpen) return;
+		// Let any overlay (notebook picker, editor/note context menu,
+		// action sheet) swallow Esc first. Those are rendered as siblings
+		// of .note-window at the component root, so they don't appear in
+		// this subtree — a DOM query is the least brittle gate and also
+		// sidesteps cross-handler ordering with their svelte:window Esc
+		// listeners.
+		if (document.querySelector('.ctx-menu, .picker, .sheet')) return;
 		e.preventDefault();
 		void handleClose();
+	}
+
+	// When `openWindow` / `openWindowAt` for this guid fires (via link
+	// click, Ctrl+L new-note, or programmatic), desktopSession raises a
+	// focusRequest. Match it, focus the editor so Esc closes the
+	// newly-opened / newly-raised note, and flash the border to show the
+	// user where focus just landed.
+	$effect(() => {
+		const req = desktopSession.focusRequest;
+		if (!req || req.guid !== guid) return;
+		const ed = editorComponent?.getEditor();
+		if (!ed || ed.isDestroyed) return;
+		// Defer one frame so the newly-mounted window has a layout before
+		// we grab focus (avoids scroll jumps on tall canvases).
+		requestAnimationFrame(() => {
+			try {
+				ed.commands.focus();
+			} catch {
+				/* editor torn down between frames */
+			}
+			flashBorder();
+		});
+	});
+
+	function flashBorder(): void {
+		const el = windowEl;
+		if (!el || typeof el.animate !== 'function') return;
+		// WAAPI retriggers reliably on every call, unlike CSS animation
+		// classes which need a reflow dance. The base box-shadow comes
+		// from .note-window's CSS; we re-assert it in both keyframes so
+		// the animation interpolates only the blue ring.
+		const baseShadow = '0 8px 24px rgba(0, 0, 0, 0.5)';
+		el.animate(
+			[
+				{
+					boxShadow: `0 0 0 2px rgba(120, 180, 255, 0.95), ${baseShadow}`
+				},
+				{
+					boxShadow: `0 0 0 8px rgba(120, 180, 255, 0), ${baseShadow}`
+				}
+			],
+			{ duration: 450, easing: 'ease-out' }
+		);
 	}
 
 	function handleWindowPointerDown(e: PointerEvent) {
@@ -382,6 +431,7 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
+	bind:this={windowEl}
 	class="note-window"
 	style="left:{x}px; top:{y}px; width:{width}px; height:{height}px; z-index:{z};"
 	onpointerdowncapture={handleWindowPointerDown}

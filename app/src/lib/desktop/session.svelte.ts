@@ -92,6 +92,11 @@ let workspaces = $state<WorkspaceState[]>(
 	Array.from({ length: WORKSPACE_COUNT }, () => emptyWorkspace())
 );
 let currentWorkspaceIndex = $state(0);
+// Incrementing token consumed by NoteWindow to grab keyboard focus + play
+// the opened/refocus flash animation. Using a counter (instead of a guid)
+// means two consecutive requests for the same window still re-trigger.
+let focusRequest = $state<{ guid: string; token: number } | null>(null);
+let focusRequestCounter = 0;
 let loaded = false;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -362,6 +367,16 @@ export const desktopSession = {
 		return workspaces.map((ws, index) => ({ index, windowCount: ws.windows.length }));
 	},
 
+	/**
+	 * A (guid, token) pair NoteWindow watches to react to "please focus +
+	 * flash" signals from open/re-raise actions. The token is the piece
+	 * that actually re-triggers reactively — a second open of the same
+	 * guid still produces a fresh token.
+	 */
+	get focusRequest(): { guid: string; token: number } | null {
+		return focusRequest;
+	},
+
 	async load(): Promise<void> {
 		if (loaded) return;
 		loaded = true;
@@ -377,6 +392,7 @@ export const desktopSession = {
 		const existing = ws.windows.find((w) => w.guid === guid);
 		if (existing) {
 			bumpZ(ws, existing);
+			focusRequest = { guid, token: ++focusRequestCounter };
 			schedulePersist();
 			return;
 		}
@@ -393,6 +409,7 @@ export const desktopSession = {
 		};
 		ws.windows.push(win);
 		cacheGeometry(ws, win);
+		focusRequest = { guid, token: ++focusRequestCounter };
 		schedulePersist();
 	},
 
@@ -409,6 +426,7 @@ export const desktopSession = {
 		const existing = ws.windows.find((w) => w.guid === guid);
 		if (existing) {
 			bumpZ(ws, existing);
+			focusRequest = { guid, token: ++focusRequestCounter };
 			schedulePersist();
 			return;
 		}
@@ -425,6 +443,7 @@ export const desktopSession = {
 		};
 		ws.windows.push(win);
 		cacheGeometry(ws, win);
+		focusRequest = { guid, token: ++focusRequestCounter };
 		schedulePersist();
 	},
 
@@ -588,6 +607,8 @@ export const desktopSession = {
 	_reset(): void {
 		workspaces = Array.from({ length: WORKSPACE_COUNT }, () => emptyWorkspace());
 		currentWorkspaceIndex = 0;
+		focusRequest = null;
+		focusRequestCounter = 0;
 		loaded = false;
 		flushHooks.clear();
 		editorRegistry.clear();
