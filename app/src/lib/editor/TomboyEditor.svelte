@@ -32,7 +32,7 @@
 		currentGuid?: string | null;
 		enableContextMenu?: boolean;
 		/** Tomboy ISO creation date of the current note — used to render the
-		 *  "yyyy-mm-dd 생성됨" placeholder on the empty second line. */
+		 *  "yyyy-mm-dd" placeholder on the empty second line. */
 		createDate?: string | null;
 	}
 
@@ -112,7 +112,7 @@
 		if (!createDate) return null;
 		const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(createDate);
 		if (!m) return null;
-		return `${m[1]}-${m[2]}-${m[3]} 생성됨`;
+		return `${m[1]}-${m[2]}-${m[3]}`;
 	}
 
 	function scheduleAutoLinkScan(opts?: { full?: boolean }): void {

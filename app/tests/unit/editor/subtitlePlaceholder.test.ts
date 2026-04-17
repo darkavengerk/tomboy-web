@@ -46,19 +46,19 @@ describe('TomboySubtitlePlaceholder', () => {
 	it('decorates the empty second paragraph with the placeholder text', () => {
 		const editor = makeEditor({
 			content: docWithEmptySecondLine,
-			text: '2026-04-17 생성됨'
+			text: '2026-04-17'
 		});
 		// Cursor is at top by default — but TipTap focuses the end on init.
 		// Explicitly move selection to the very start (first paragraph).
 		editor.commands.setTextSelection(1);
 		expect(hasPlaceholderClass(editor)).toBe(true);
-		expect(placeholderAttr(editor)).toBe('2026-04-17 생성됨');
+		expect(placeholderAttr(editor)).toBe('2026-04-17');
 	});
 
 	it('hides the placeholder when the cursor is on the second paragraph', () => {
 		const editor = makeEditor({
 			content: docWithEmptySecondLine,
-			text: '2026-04-17 생성됨'
+			text: '2026-04-17'
 		});
 		// Position inside the second paragraph (after first para's close token).
 		// doc: [para "2026-04-17"(size 12), para empty(size 2), para empty(size 2)]
@@ -79,7 +79,7 @@ describe('TomboySubtitlePlaceholder', () => {
 					}
 				]
 			},
-			text: '2026-04-17 생성됨'
+			text: '2026-04-17'
 		});
 		editor.commands.setTextSelection(1);
 		expect(hasPlaceholderClass(editor)).toBe(false);
@@ -100,7 +100,7 @@ describe('TomboySubtitlePlaceholder', () => {
 				type: 'doc',
 				content: [{ type: 'paragraph', content: [{ type: 'text', text: 'solo' }] }]
 			},
-			text: '2026-04-17 생성됨'
+			text: '2026-04-17'
 		});
 		editor.commands.setTextSelection(1);
 		expect(hasPlaceholderClass(editor)).toBe(false);
@@ -115,7 +115,7 @@ describe('TomboySubtitlePlaceholder', () => {
 					{ type: 'paragraph', content: [{ type: 'text', text: 'x' }] }
 				]
 			},
-			text: '2026-04-17 생성됨'
+			text: '2026-04-17'
 		});
 		editor.commands.setTextSelection(1);
 		expect(hasPlaceholderClass(editor)).toBe(false);

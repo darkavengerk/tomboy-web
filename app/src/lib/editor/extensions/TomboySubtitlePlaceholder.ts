@@ -1,7 +1,7 @@
 /**
  * Node-decoration placeholder for the second top-level paragraph (the
  * "subtitle" slot). When the second paragraph is empty and the cursor is
- * NOT on it, a gray placeholder like `2026-04-17 생성됨` is shown — purely
+ * NOT on it, a gray placeholder like `2026-04-17` is shown — purely
  * a decoration, never written to the document, so no .note XML round-trip
  * impact. Disappears automatically when the user types content there or
  * moves the cursor into the line.
