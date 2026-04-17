@@ -193,7 +193,7 @@
 	<button class="item" onclick={doPaste}>붙여넣기</button>
 	<div class="sep"></div>
 	<button class="item" onclick={doInsertDate}>오늘 날짜 삽입</button>
-	<button class="item" onclick={doToggleList}>리스트로 만들기 (Ctrl+L)</button>
+	<button class="item" onclick={doToggleList}>리스트로 만들기</button>
 	{#if inList}
 		<button class="item" onclick={doLift}>깊이 ↑ (Alt+←)</button>
 		<button class="item" onclick={doSink}>깊이 ↓ (Alt+→)</button>
