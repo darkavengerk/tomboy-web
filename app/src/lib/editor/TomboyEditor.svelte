@@ -11,6 +11,7 @@
 	import { TomboyDatetime } from "./extensions/TomboyDatetime.js";
 	import { TomboyListItem } from "./extensions/TomboyListItem.js";
 	import { TomboyParagraph } from "./extensions/TomboyParagraph.js";
+	import { TomboySubtitlePlaceholder } from "./extensions/TomboySubtitlePlaceholder.js";
 	import { createTitleProvider } from "./autoLink/titleProvider.js";
 	import { autoLinkPluginKey } from "./autoLink/autoLinkPlugin.js";
 	import { createImagePreviewPlugin } from "./imagePreview/imagePreviewPlugin.js";
@@ -30,6 +31,9 @@
 		oninternallink?: (target: string) => void;
 		currentGuid?: string | null;
 		enableContextMenu?: boolean;
+		/** Tomboy ISO creation date of the current note — used to render the
+		 *  "yyyy-mm-dd 생성됨" placeholder on the empty second line. */
+		createDate?: string | null;
 	}
 
 	let {
@@ -38,6 +42,7 @@
 		oninternallink,
 		currentGuid = null,
 		enableContextMenu = false,
+		createDate = null,
 	}: Props = $props();
 
 	let ctxMenu = $state<{ x: number; y: number } | null>(null);
@@ -100,6 +105,16 @@
 		ed.view.dispatch(ed.state.tr.setMeta(autoLinkPluginKey, meta));
 	}
 
+	// Format a Tomboy ISO date (yyyy-MM-ddTHH:mm:ss.fffffff±HH:MM) as
+	// yyyy-mm-dd for the subtitle placeholder. Returns null for missing /
+	// unparseable inputs so the placeholder is simply skipped.
+	function subtitlePlaceholderText(): string | null {
+		if (!createDate) return null;
+		const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(createDate);
+		if (!m) return null;
+		return `${m[1]}-${m[2]}-${m[3]} 생성됨`;
+	}
+
 	function scheduleAutoLinkScan(opts?: { full?: boolean }): void {
 		if (opts?.full) autoLinkPendingFull = true;
 		cancelAutoLinkScan();
@@ -156,6 +171,9 @@
 				// produces a "Duplicate extension names" warning.
 				Highlight.configure({ multicolor: false }),
 				Placeholder.configure({ placeholder: "Start typing..." }),
+				TomboySubtitlePlaceholder.configure({
+					getPlaceholderText: subtitlePlaceholderText,
+				}),
 				TomboySize,
 				TomboyMonospace,
 				// TomboyDatetime registered before link extensions so PM ranks
@@ -551,6 +569,17 @@
 
 	/* Placeholder */
 	.tomboy-editor :global(.tiptap p.is-editor-empty:first-child::before) {
+		color: #adb5bd;
+		content: attr(data-placeholder);
+		float: left;
+		height: 0;
+		pointer-events: none;
+	}
+
+	/* Subtitle (second line) creation-date placeholder. Applied only when
+	   the second paragraph is empty and the cursor is not on it — see
+	   TomboySubtitlePlaceholder. */
+	.tomboy-editor :global(.tiptap p.tomboy-subtitle-placeholder::before) {
 		color: #adb5bd;
 		content: attr(data-placeholder);
 		float: left;

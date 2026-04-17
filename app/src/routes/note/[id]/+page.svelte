@@ -359,6 +359,7 @@
 				onchange={handleEditorChange}
 				oninternallink={handleInternalLink}
 				currentGuid={noteId}
+				createDate={note?.createDate ?? null}
 			/>
 		{/if}
 	</div>

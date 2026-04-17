@@ -12,7 +12,11 @@ export async function createNote(initialTitle?: string): Promise<NoteData> {
 	const note = createEmptyNote(guid);
 	if (initialTitle) {
 		note.title = initialTitle;
-		note.xmlContent = `<note-content version="0.1">${initialTitle}\n\n</note-content>`;
+		// When the title looks like yyyy-mm-dd, seed the subtitle slot (second
+		// line) with the year so date-titled notes have an auto-filled header.
+		const dateMatch = /^(\d{4})-\d{2}-\d{2}$/.exec(initialTitle);
+		const suffix = dateMatch ? `\n${dateMatch[1]}년\n` : `\n\n`;
+		note.xmlContent = `<note-content version="0.1">${initialTitle}${suffix}</note-content>`;
 	}
 	await noteStore.putNote(note);
 	invalidateCache();
