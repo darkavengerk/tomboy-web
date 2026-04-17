@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { Editor } from '@tiptap/core';
+import { Editor, type JSONContent } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { TomboyDatetime } from '$lib/editor/extensions/TomboyDatetime.js';
 import { formatDate, insertTodayDate } from '$lib/editor/insertDate.js';
@@ -53,7 +53,7 @@ describe('insertTodayDate', () => {
 		const editor = makeEditor();
 		insertTodayDate(editor, new Date(2026, 3, 15));
 
-		const json = editor.getJSON();
+		const json: JSONContent = editor.getJSON();
 		const para = json.content?.[0];
 		const text = para?.content?.[0];
 		expect(text?.type).toBe('text');

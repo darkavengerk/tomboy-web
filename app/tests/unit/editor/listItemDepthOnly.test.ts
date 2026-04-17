@@ -323,7 +323,7 @@ describe('sinkListItemOnly — ordered lists & mixed', () => {
 		);
 		placeCursorAt(editor, 'A');
 		expect(sinkListItemOnly(editor)).toBe(true);
-		const json = editor.getJSON();
+		const json: JSONContent = editor.getJSON();
 		const outerList = json.content?.[0];
 		expect(outerList?.type).toBe('orderedList');
 		const innerWrapper = outerList?.content?.[0]?.content?.[1];
@@ -1226,8 +1226,8 @@ describe('edge: trailing empty paragraph (TrailingNode simulation)', () => {
 		placeCursorAt(editor, 'A');
 		expect(liftListItemOnly(editor)).toBe(true);
 		// 'footer' paragraph should still be there.
-		const json = editor.getJSON();
-		const lastChild = json.content?.[json.content.length - 1];
+		const json: JSONContent = editor.getJSON();
+		const lastChild = json.content?.[json.content!.length - 1];
 		expect(lastChild?.type).toBe('paragraph');
 		expect(lastChild?.content?.[0]?.text).toBe('footer');
 	});
@@ -1508,7 +1508,7 @@ describe('edge: single-item lists', () => {
 		placeCursorAt(editor, 'A');
 		expect(liftListItemOnly(editor)).toBe(true);
 		// X should no longer have a sub-list.
-		const json = editor.getJSON();
+		const json: JSONContent = editor.getJSON();
 		const xItem = json.content?.[0]?.content?.[0];
 		expect(xItem?.content?.length).toBe(1); // only the paragraph, no sub-list
 		expect(outline(json)).toBe(['- X', '- A'].join('\n'));
