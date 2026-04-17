@@ -1,5 +1,10 @@
 <script lang="ts">
-	import type { SyncPlan, PlanSelection } from '$lib/sync/syncManager.js';
+	import type {
+		SyncPlan,
+		PlanSelection,
+		SyncProgress,
+		SyncProgressItem
+	} from '$lib/sync/syncManager.js';
 	import { revertNoteToServer } from '$lib/sync/syncManager.js';
 	import { pushToast } from '$lib/stores/toast.js';
 	import { goto } from '$app/navigation';
@@ -7,9 +12,30 @@
 	interface Props {
 		plan: SyncPlan;
 		selection: PlanSelection;
+		/**
+		 * Live sync progress. When set, per-row status indicators are shown and
+		 * interactive controls (checkboxes, revert, conflict radios) are disabled.
+		 * `null`/undefined puts the view in normal preview mode.
+		 */
+		progress?: SyncProgress | null;
 	}
 
-	let { plan, selection }: Props = $props();
+	let { plan, selection, progress = null }: Props = $props();
+
+	// Build a guid → SyncProgressItem map spanning both completed and current
+	// phases. Later phases overwrite earlier ones — so a note that appeared in
+	// 충돌 해결 then 업로드 shows its upload status.
+	let statusByGuid = $derived.by(() => {
+		const m = new Map<string, SyncProgressItem>();
+		if (!progress) return m;
+		for (const phase of progress.completedPhases) {
+			for (const item of phase.items) m.set(item.guid, item);
+		}
+		for (const item of progress.items) m.set(item.guid, item);
+		return m;
+	});
+
+	let isSyncing = $derived(progress !== null);
 
 	// Local checkbox state, initialized from plan (all selected by default)
 	let downloadSel = $state<Record<string, boolean>>({});
@@ -146,18 +172,21 @@
 	<section>
 		<h3 class="section-title">⬇ 다운로드 ({plan.toDownload.length})</h3>
 		{#each plan.toDownload as item (item.guid)}
-			<div class="plan-item">
+			{@const status = statusByGuid.get(item.guid)}
+			<div class="plan-item" class:row-done={status?.status === 'done'} class:row-error={status?.status === 'error'} class:row-active={status?.status === 'active'}>
 				<input
 					type="checkbox"
 					class="row-check"
 					bind:checked={downloadSel[item.guid]}
 					onclick={(e) => e.stopPropagation()}
+					disabled={isSyncing}
 					aria-label="선택"
 				/>
 				<button type="button" class="row-link" onclick={() => openNote(item.guid)}>
 					<span class="item-title">{item.title ?? item.guid}</span>
 					<span class="item-reason">{item.reason}</span>
 				</button>
+				{@render statusBadge(status)}
 			</div>
 		{/each}
 	</section>
@@ -168,42 +197,49 @@
 	<section>
 		<div class="section-head">
 			<h3 class="section-title">⬆ 업로드 ({uploadRemaining})</h3>
-			<button
-				class="revert-bulk-btn"
-				type="button"
-				disabled={bulkReverting || uploadRemaining === 0}
-				onclick={revertAllUploads}
-			>
-				{bulkReverting ? '되돌리는 중...' : '모두 변경 취소'}
-			</button>
+			{#if !isSyncing}
+				<button
+					class="revert-bulk-btn"
+					type="button"
+					disabled={bulkReverting || uploadRemaining === 0}
+					onclick={revertAllUploads}
+				>
+					{bulkReverting ? '되돌리는 중...' : '모두 변경 취소'}
+				</button>
+			{/if}
 		</div>
 		{#each plan.toUpload as item (item.guid)}
 			{#if !reverted[item.guid]}
+				{@const status = statusByGuid.get(item.guid)}
 				<div class="plan-item-row">
-					<div class="plan-item">
+					<div class="plan-item" class:row-done={status?.status === 'done'} class:row-error={status?.status === 'error'} class:row-active={status?.status === 'active'}>
 						<input
 							type="checkbox"
 							class="row-check"
 							bind:checked={uploadSel[item.guid]}
 							onclick={(e) => e.stopPropagation()}
+							disabled={isSyncing}
 							aria-label="선택"
 						/>
 						<button type="button" class="row-link" onclick={() => openNote(item.guid)}>
 							<span class="item-title">{item.title ?? item.guid}</span>
 							<span class="item-reason">{item.reason}</span>
 						</button>
+						{@render statusBadge(status)}
 					</div>
-					<button
-						class="revert-btn"
-						type="button"
-						disabled={reverting[item.guid] || bulkReverting || item.reason === 'new'}
-						title={item.reason === 'new'
-							? '새 노트는 서버에 없어 되돌릴 수 없습니다'
-							: '서버 버전으로 되돌리고 업로드 대상에서 제외합니다'}
-						onclick={() => revertOne(item.guid)}
-					>
-						{reverting[item.guid] ? '...' : '변경 취소'}
-					</button>
+					{#if !isSyncing}
+						<button
+							class="revert-btn"
+							type="button"
+							disabled={reverting[item.guid] || bulkReverting || item.reason === 'new'}
+							title={item.reason === 'new'
+								? '새 노트는 서버에 없어 되돌릴 수 없습니다'
+								: '서버 버전으로 되돌리고 업로드 대상에서 제외합니다'}
+							onclick={() => revertOne(item.guid)}
+						>
+							{reverting[item.guid] ? '...' : '변경 취소'}
+						</button>
+					{/if}
 				</div>
 			{/if}
 		{/each}
@@ -215,17 +251,20 @@
 	<section>
 		<h3 class="section-title">🗑 서버에서 삭제 ({plan.toDeleteRemote.length})</h3>
 		{#each plan.toDeleteRemote as item (item.guid)}
-			<div class="plan-item">
+			{@const status = statusByGuid.get(item.guid)}
+			<div class="plan-item" class:row-done={status?.status === 'done'} class:row-error={status?.status === 'error'} class:row-active={status?.status === 'active'}>
 				<input
 					type="checkbox"
 					class="row-check"
 					bind:checked={deleteRemoteSel[item.guid]}
 					onclick={(e) => e.stopPropagation()}
+					disabled={isSyncing}
 					aria-label="선택"
 				/>
 				<button type="button" class="row-link" onclick={() => openNote(item.guid)}>
 					<span class="item-title">{item.title ?? item.guid}</span>
 				</button>
+				{@render statusBadge(status)}
 			</div>
 		{/each}
 	</section>
@@ -236,17 +275,20 @@
 	<section>
 		<h3 class="section-title">🗑 로컬에서 삭제 ({plan.toDeleteLocal.length})</h3>
 		{#each plan.toDeleteLocal as item (item.guid)}
-			<div class="plan-item">
+			{@const status = statusByGuid.get(item.guid)}
+			<div class="plan-item" class:row-done={status?.status === 'done'} class:row-error={status?.status === 'error'} class:row-active={status?.status === 'active'}>
 				<input
 					type="checkbox"
 					class="row-check"
 					bind:checked={deleteLocalSel[item.guid]}
 					onclick={(e) => e.stopPropagation()}
+					disabled={isSyncing}
 					aria-label="선택"
 				/>
 				<span class="row-link row-link-disabled">
 					<span class="item-title">{item.title ?? item.guid}</span>
 				</span>
+				{@render statusBadge(status)}
 			</div>
 		{/each}
 	</section>
@@ -257,30 +299,36 @@
 	<section>
 		<h3 class="section-title">⚠️ 충돌 ({plan.conflicts.length})</h3>
 		<p class="conflict-help">선택한 버전이 최종적으로 남고, 반대쪽을 덮어씁니다.</p>
-			<div class="bulk-btns">
-				<button class="bulk-btn" onclick={() => {
-					for (const c of plan.conflicts) conflictChoice[c.guid] = 'local';
-				}}>
-					모두 로컬로 유지
-				</button>
-				<button class="bulk-btn" onclick={() => {
-					for (const c of plan.conflicts) conflictChoice[c.guid] = 'remote';
-				}}>
-					모두 서버로 덮어쓰기
-				</button>
-			</div>
+			{#if !isSyncing}
+				<div class="bulk-btns">
+					<button class="bulk-btn" onclick={() => {
+						for (const c of plan.conflicts) conflictChoice[c.guid] = 'local';
+					}}>
+						모두 로컬로 유지
+					</button>
+					<button class="bulk-btn" onclick={() => {
+						for (const c of plan.conflicts) conflictChoice[c.guid] = 'remote';
+					}}>
+						모두 서버로 덮어쓰기
+					</button>
+				</div>
+			{/if}
 			{#each plan.conflicts as conflict (conflict.guid)}
-				<fieldset class="conflict-item">
-					<legend class="conflict-title">{conflict.title ?? conflict.guid}</legend>
+				{@const status = statusByGuid.get(conflict.guid)}
+				<fieldset class="conflict-item" class:row-done={status?.status === 'done'} class:row-error={status?.status === 'error'} class:row-active={status?.status === 'active'}>
+					<legend class="conflict-title">
+						<span class="conflict-legend-text">{conflict.title ?? conflict.guid}</span>
+						{@render statusBadge(status)}
+					</legend>
 					<label class="radio-label">
-						<input type="radio" bind:group={conflictChoice[conflict.guid]} value="local" />
+						<input type="radio" bind:group={conflictChoice[conflict.guid]} value="local" disabled={isSyncing} />
 						<span>
 							내 버전 유지 (서버 덮어씀)
 							{#if conflict.localDate}<span class="date-badge">{conflict.localDate.slice(0, 10)}</span>{/if}
 						</span>
 					</label>
 					<label class="radio-label">
-						<input type="radio" bind:group={conflictChoice[conflict.guid]} value="remote" />
+						<input type="radio" bind:group={conflictChoice[conflict.guid]} value="remote" disabled={isSyncing} />
 						<span>
 							서버 버전으로 교체 (로컬 덮어씀)
 							{#if conflict.remoteDate}<span class="date-badge">{conflict.remoteDate.slice(0, 10)}</span>{/if}
@@ -291,6 +339,30 @@
 	</section>
 	{/if}
 </div>
+
+{#snippet statusBadge(status: SyncProgressItem | undefined)}
+	{#if status}
+		<span class="status-cell" aria-label={status.status}>
+			{#if status.status === 'pending'}
+				<span class="status-icon icon-pending" title="대기 중">·</span>
+			{:else if status.status === 'active'}
+				<span class="status-icon icon-active" title="진행 중"></span>
+			{:else if status.status === 'done'}
+				<span class="status-icon icon-done" title="완료">✓</span>
+			{:else if status.status === 'error'}
+				<span class="status-icon icon-error" title={status.error ?? '실패'}>✗</span>
+			{:else if status.status === 'retrying'}
+				<span class="status-icon icon-retrying" title="재시도 중">↻</span>
+			{/if}
+			{#if status.status === 'retrying' && status.retryWaitSec}
+				<span class="retry-badge">{status.retryWaitSec}초 후 재시도</span>
+			{/if}
+			{#if status.status === 'error' && status.error}
+				<span class="error-badge" title={status.error}>실패</span>
+			{/if}
+		</span>
+	{/if}
+{/snippet}
 
 <style>
 	.plan-view {
@@ -499,5 +571,105 @@
 		padding: 1px 5px;
 		border-radius: 4px;
 		margin-left: 4px;
+	}
+
+	/* ── Per-row sync status ───────────────────────────────────────────── */
+
+	.status-cell {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		flex-shrink: 0;
+		align-self: flex-start;
+		margin-top: 3px;
+	}
+
+	.status-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 16px;
+		height: 16px;
+		font-size: 0.85rem;
+		line-height: 1;
+	}
+
+	.icon-pending {
+		color: #ccc;
+		font-size: 1.2rem;
+		line-height: 1;
+	}
+
+	.icon-active {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--color-primary, #d05b10);
+		animation: sp-pulse 1s infinite;
+	}
+
+	.icon-done {
+		color: #2ecc71;
+	}
+
+	.icon-error {
+		color: var(--color-danger, #c62828);
+	}
+
+	.icon-retrying {
+		color: #e67e22;
+		animation: sp-spin 1s linear infinite;
+	}
+
+	@keyframes sp-pulse {
+		0%,
+		100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0.4;
+		}
+	}
+
+	@keyframes sp-spin {
+		from {
+			transform: rotate(0deg);
+		}
+		to {
+			transform: rotate(360deg);
+		}
+	}
+
+	.retry-badge {
+		font-size: 0.72rem;
+		color: #e67e22;
+		background: #fff8e1;
+		padding: 1px 6px;
+		border-radius: 4px;
+	}
+
+	.error-badge {
+		font-size: 0.72rem;
+		color: var(--color-danger, #c62828);
+		background: #ffeef0;
+		padding: 1px 6px;
+		border-radius: 4px;
+	}
+
+	.row-done :global(.item-title) {
+		color: var(--color-text-secondary, #999);
+	}
+
+	.row-error :global(.item-title) {
+		color: var(--color-danger, #c62828);
+	}
+
+	.row-active :global(.item-title) {
+		font-weight: 500;
+	}
+
+	.conflict-legend-text {
+		display: inline-block;
+		margin-right: 6px;
 	}
 </style>
