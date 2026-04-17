@@ -478,14 +478,15 @@
 	.tomboy-editor :global(.tiptap > p:first-child) {
 		font-size: 1.4em;
 		font-weight: bold;
-		margin-bottom: 0;
+		margin-bottom: -0.4em;
 	}
 
 	/* Second paragraph (body top) = subtitle slot: smaller, muted */
 	.tomboy-editor :global(.tiptap > p:nth-child(2)) {
-		font-size: 0.85em;
-		line-height: 1.25;
+		font-size: 0.8em;
+		line-height: 2.4;
 		color: #666;
+		vertical-align : top;
 	}
 
 	/* Tomboy size marks */
@@ -580,10 +581,11 @@
 	   the second paragraph is empty and the cursor is not on it — see
 	   TomboySubtitlePlaceholder. */
 	.tomboy-editor :global(.tiptap p.tomboy-subtitle-placeholder::before) {
-		color: #adb5bd;
+		color: #909090;
 		content: attr(data-placeholder);
 		float: left;
 		height: 0;
 		pointer-events: none;
+		font-size: 0.8em;
 	}
 </style>
