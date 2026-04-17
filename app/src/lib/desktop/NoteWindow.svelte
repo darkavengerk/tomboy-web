@@ -182,6 +182,14 @@
 		onclose(guid);
 	}
 
+	function handleKeyDown(e: KeyboardEvent) {
+		if (e.key !== 'Escape') return;
+		// Let an open in-window menu / picker swallow Esc first.
+		if (menuAnchor || pickerOpen) return;
+		e.preventDefault();
+		void handleClose();
+	}
+
 	function handleWindowPointerDown(e: PointerEvent) {
 		// Always raise-to-top on any pointer inside the window.
 		onfocus(guid);
@@ -351,6 +359,7 @@
 	class="note-window"
 	style="left:{x}px; top:{y}px; width:{width}px; height:{height}px; z-index:{z};"
 	onpointerdowncapture={handleWindowPointerDown}
+	onkeydown={handleKeyDown}
 >
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div

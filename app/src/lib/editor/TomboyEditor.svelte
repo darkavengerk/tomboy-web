@@ -218,10 +218,6 @@
 								event.preventDefault();
 								ed.chain().focus().toggleTomboyMonospace().run();
 								return true;
-							case 'l':
-								event.preventDefault();
-								ed.chain().focus().toggleBulletList().run();
-								return true;
 						}
 					}
 

@@ -16,7 +16,7 @@ afterEach(() => {
 
 /**
  * Create an editor with production-like extensions.
- * Keyboard shortcuts for Ctrl+S/H/L are handled via handleKeyDown in editorProps,
+ * Keyboard shortcuts for Ctrl+S/H/M are handled via handleKeyDown in editorProps,
  * matching how TomboyEditor.svelte wires them.
  */
 function makeEditor(content?: string): Editor {
@@ -51,10 +51,6 @@ function makeEditor(content?: string): Editor {
 						case 'm':
 							event.preventDefault();
 							editor.chain().focus().toggleTomboyMonospace().run();
-							return true;
-						case 'l':
-							event.preventDefault();
-							editor.chain().focus().toggleBulletList().run();
 							return true;
 					}
 				}
@@ -154,28 +150,6 @@ describe('Toolbar shortcuts — mark toggles', () => {
 });
 
 // ============================================================================
-//                        List toggle shortcut
-// ============================================================================
-
-describe('Toolbar shortcuts — list toggle', () => {
-	it('Ctrl+L toggles bullet list on', () => {
-		const editor = makeEditor();
-		editor.commands.setTextSelection(1);
-		pressKey(editor, 'l', { ctrlKey: true });
-		expect(editor.getJSON().content?.[0]?.type).toBe('bulletList');
-	});
-
-	it('Ctrl+L toggles bullet list off', () => {
-		const editor = makeEditor();
-		editor.commands.setTextSelection(1);
-		pressKey(editor, 'l', { ctrlKey: true });
-		expect(editor.getJSON().content?.[0]?.type).toBe('bulletList');
-		pressKey(editor, 'l', { ctrlKey: true });
-		expect(editor.getJSON().content?.[0]?.type).toBe('paragraph');
-	});
-});
-
-// ============================================================================
 //          Shortcut event consumption (browser default prevention)
 // ============================================================================
 
@@ -201,11 +175,11 @@ describe('Shortcuts consume the event (prevent browser defaults)', () => {
 		expect(handled).toBe(true);
 	});
 
-	it('Ctrl+L is consumed', () => {
+	it('Ctrl+L is not consumed by the editor (reserved for new-note-from-selection)', () => {
 		const editor = makeEditor();
 		editor.commands.setTextSelection(1);
 		const handled = pressKey(editor, 'l', { ctrlKey: true });
-		expect(handled).toBe(true);
+		expect(handled).toBe(false);
 	});
 });
 

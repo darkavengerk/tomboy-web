@@ -106,7 +106,7 @@
 		{/if}
 	</div>
 
-	<button class:active={isActive('bulletList')} onclick={toggleBulletList} title="Bullet List (Ctrl+L)">
+	<button class:active={isActive('bulletList')} onclick={toggleBulletList} title="Bullet List">
 		•
 	</button>
 
