@@ -145,11 +145,22 @@
 
 <style>
 	.app-shell {
+		/* Pin the shell to the visual viewport so the bottom toolbar lands
+		   right above the on-screen keyboard on every mobile browser.
+		   `--viewport-height` / `--viewport-offset-top` come from
+		   bindViewportHeight(); on browsers that don't shrink the layout
+		   viewport for the keyboard (iOS Safari, older Android Chrome,
+		   Samsung Internet) the visual viewport also scrolls within the
+		   layout viewport — using `position: fixed` with those variables
+		   keeps the shell aligned with what's actually visible, instead
+		   of leaving the toolbar floating mid-screen with empty body
+		   below it. */
+		position: fixed;
+		top: var(--viewport-offset-top, 0px);
+		left: 0;
+		right: 0;
 		height: 100vh;
 		height: 100dvh;
-		/* `--viewport-height` is set by bindViewportHeight() from
-		   window.visualViewport and shrinks when the mobile virtual
-		   keyboard is open, so the bottom toolbar stays visible. */
 		height: var(--viewport-height, 100dvh);
 		display: flex;
 		flex-direction: column;
@@ -160,6 +171,10 @@
 	   still needs a flex column container so its inner layout (which uses
 	   height:100%) sizes correctly. */
 	.chromeless {
+		position: fixed;
+		top: var(--viewport-offset-top, 0px);
+		left: 0;
+		right: 0;
 		height: 100vh;
 		height: 100dvh;
 		height: var(--viewport-height, 100dvh);
