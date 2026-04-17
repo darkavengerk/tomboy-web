@@ -32,7 +32,6 @@
 	import { sync } from '$lib/sync/syncManager.js';
 	import { pushToast } from '$lib/stores/toast.js';
 	import SyncPlanView from '$lib/components/SyncPlanView.svelte';
-	import SyncProgressView from '$lib/components/SyncProgressView.svelte';
 
 	type Tab = 'sync' | 'config' | 'advanced';
 	let activeTab = $state<Tab>('sync');
@@ -238,21 +237,18 @@
 
 	async function handleApplyPlan() {
 		if (!plan || !planSelection) return;
-		const savedPlan = plan;
-		const savedSelection = planSelection;
-		plan = null;
-		planSelection = null;
 		processing = true;
 		syncResult = null;
 		syncProgress = null;
 
-		syncResult = await applyPlan(savedPlan, savedSelection, (progress) => {
+		// Keep `plan` and `planSelection` set so the preview stays visible and
+		// the per-row progress indicators can overlay onto it.
+		const result = await applyPlan(plan, planSelection, (progress) => {
 			syncProgress = progress;
 		});
+		syncResult = result;
 
-		// Keep syncProgress set after completion so the detailed per-phase
-		// history stays visible — the user explicitly asked for this.
-		if (syncResult.status === 'success') {
+		if (result.status === 'success') {
 			const manifest = await getManifest();
 			if (manifest.lastSyncDate) {
 				lastSyncDate = new Date(manifest.lastSyncDate).toLocaleString('ko-KR');
@@ -261,7 +257,9 @@
 		processing = false;
 	}
 
-	function clearProgress() {
+	function clearPlan() {
+		plan = null;
+		planSelection = null;
 		syncProgress = null;
 		syncResult = null;
 	}
@@ -292,7 +290,7 @@
 		{#if activeTab === 'sync'}
 			<!-- ── 동기화 탭 ───────────────────────────────────────────────── -->
 			<section class="section">
-				{#if processing}
+				{#if processing && !plan}
 					<div class="status-card">
 						<span class="status-dot syncing"></span>
 						<span>처리 중...</span>
@@ -315,37 +313,34 @@
 
 					{#if plan && planSelection}
 						<div class="plan-section">
-							<SyncPlanView {plan} selection={planSelection} />
-							<button class="btn btn-primary" onclick={handleApplyPlan} disabled={processing}>
-								선택 항목 적용
-							</button>
-							<button
-								class="btn btn-secondary"
-								onclick={() => {
-									plan = null;
-									planSelection = null;
-								}}
-							>
-								취소
-							</button>
+							<SyncPlanView {plan} selection={planSelection} progress={syncProgress} />
+							{#if !syncProgress}
+								<!-- Preview mode: apply or cancel -->
+								<button class="btn btn-primary" onclick={handleApplyPlan} disabled={processing}>
+									선택 항목 적용
+								</button>
+								<button class="btn btn-secondary" onclick={clearPlan}>
+									취소
+								</button>
+							{:else if syncProgress.phase === 'done'}
+								<!-- Done: summary below + close button -->
+								<button class="btn btn-secondary clear-btn" onclick={clearPlan}>
+									닫기
+								</button>
+							{:else}
+								<!-- In progress -->
+								<div class="sync-progress-line">
+									<span class="progress-dot"></span>
+									<span>{syncProgress.phaseLabel} 진행 중...</span>
+								</div>
+							{/if}
 						</div>
 					{/if}
 
-					{#if syncStatus === 'syncing' && syncMessage && !syncProgress}
+					{#if syncStatus === 'syncing' && syncMessage && !syncProgress && !plan}
 						<div class="sync-progress-line">
 							<span class="progress-dot"></span>
 							<span>{syncMessage}</span>
-						</div>
-					{/if}
-
-					{#if syncProgress}
-						<div class="plan-section">
-							<SyncProgressView progress={syncProgress} />
-							{#if syncProgress.phase === 'done'}
-								<button class="btn btn-secondary clear-btn" onclick={clearProgress}>
-									지우기
-								</button>
-							{/if}
 						</div>
 					{/if}
 
