@@ -495,7 +495,6 @@
 	.toolbar-area {
 		flex-shrink: 0;
 		background: #f8f9fa;
-		padding-bottom: var(--safe-area-bottom);
 	}
 
 	.loading {
