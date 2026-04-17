@@ -7,6 +7,7 @@
 	import { page } from '$app/state';
 	import { createHistoryTracker } from '$lib/nav/history.js';
 	import { appMode, modeFromUrl } from '$lib/stores/appMode.svelte.js';
+	import { bindViewportHeight } from '$lib/viewport/viewportHeight.js';
 
 	let { children } = $props();
 
@@ -65,10 +66,13 @@
 		};
 		window.addEventListener('beforeinstallprompt', onInstallPrompt);
 
+		const unbindViewport = bindViewportHeight();
+
 		return () => {
 			window.removeEventListener('offline', goOffline);
 			window.removeEventListener('online', goOnline);
 			window.removeEventListener('beforeinstallprompt', onInstallPrompt);
+			unbindViewport();
 		};
 	});
 
@@ -131,6 +135,10 @@
 	.app-shell {
 		height: 100vh;
 		height: 100dvh;
+		/* `--viewport-height` is set by bindViewportHeight() from
+		   window.visualViewport and shrinks when the mobile virtual
+		   keyboard is open, so the bottom toolbar stays visible. */
+		height: var(--viewport-height, 100dvh);
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
@@ -142,6 +150,7 @@
 	.chromeless {
 		height: 100vh;
 		height: 100dvh;
+		height: var(--viewport-height, 100dvh);
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
