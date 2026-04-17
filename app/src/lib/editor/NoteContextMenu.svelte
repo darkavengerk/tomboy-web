@@ -9,7 +9,6 @@
 		| 'toggleFavorite'
 		| 'setHome'
 		| 'unsetHome'
-		| 'pickNotebook'
 		| 'toggleScrollBottom'
 		| 'compareWithServer';
 
@@ -101,9 +100,6 @@
 <div class="ctx-menu" style="right: {anchor.right}px; top: {anchor.top}px;" role="menu">
 	{#if view === 'main'}
 		{#if !confirmDelete}
-			<button class="item" onclick={() => onaction('pickNotebook')}>
-				<span class="icon">🗂</span>노트북 이동
-			</button>
 			<button class="item" onclick={() => onaction('toggleFavorite')}>
 				<span class="icon">{isFavoriteNote ? '★' : '☆'}</span>
 				{isFavoriteNote ? '즐겨찾기 해제' : '즐겨찾기'}

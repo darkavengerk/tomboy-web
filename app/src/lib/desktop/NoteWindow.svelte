@@ -12,8 +12,12 @@
 	import TomboyEditor from '$lib/editor/TomboyEditor.svelte';
 	import Toolbar from '$lib/editor/Toolbar.svelte';
 	import NoteContextMenu, { type ActionKind } from '$lib/editor/NoteContextMenu.svelte';
-	import NotebookPicker from '$lib/components/NotebookPicker.svelte';
-	import { assignNotebook, getNotebook } from '$lib/core/notebooks.js';
+	import {
+		assignNotebook,
+		createNotebook,
+		getNotebook,
+		listNotebooks
+	} from '$lib/core/notebooks.js';
 	import { setHomeNote, clearHomeNote, getHomeNoteGuid } from '$lib/core/home.js';
 	import { isScrollBottomNote, setScrollBottomNote } from '$lib/core/scrollBottom.js';
 	import { pushToast } from '$lib/stores/toast.js';
@@ -74,7 +78,7 @@
 	let editorContent: JSONContent | undefined = $state.raw(undefined);
 	let editorComponent: TomboyEditor | undefined = $state(undefined);
 	let menuAnchor = $state<{ right: number; top: number } | null>(null);
-	let pickerOpen = $state(false);
+	let notebookNames = $state<string[]>([]);
 	let isHomeState = $state(false);
 	let isScrollBottomState = $state(false);
 
@@ -105,6 +109,8 @@
 
 			const homeGuid = await getHomeNoteGuid();
 			isHomeState = homeGuid === guid;
+
+			notebookNames = await listNotebooks();
 
 			isScrollBottomState = await isScrollBottomNote(guid);
 			if (isScrollBottomState) {
@@ -310,11 +316,6 @@
 			return;
 		}
 
-		if (kind === 'pickNotebook') {
-			pickerOpen = true;
-			return;
-		}
-
 		if (kind === 'toggleScrollBottom') {
 			const next = !isScrollBottomState;
 			await setScrollBottomNote(note.guid, next);
@@ -332,7 +333,33 @@
 		}
 	}
 
-	async function handleNotebookSelect(name: string | null) {
+	async function handleNotebookChange(e: Event) {
+		const select = e.currentTarget as HTMLSelectElement;
+		const value = select.value;
+		const prev = currentNotebook;
+
+		if (value === '__new__') {
+			// Reset the select back to the current value while we prompt.
+			select.value = prev ?? '';
+			const raw = window.prompt('새 노트북 이름');
+			const name = raw?.trim();
+			if (!name) return;
+			try {
+				await createNotebook(name);
+			} catch (err) {
+				pushToast((err as Error).message || '노트북을 만들 수 없습니다.', { kind: 'error' });
+				return;
+			}
+			notebookNames = await listNotebooks();
+			await applyNotebook(name);
+			return;
+		}
+
+		const next = value === '' ? null : value;
+		await applyNotebook(next);
+	}
+
+	async function applyNotebook(name: string | null) {
 		if (!note) return;
 		if (saveTimer) {
 			clearTimeout(saveTimer);
@@ -342,7 +369,6 @@
 		await assignNotebook(note.guid, name);
 		const updated = await getNote(note.guid);
 		if (updated) note = updated;
-		pickerOpen = false;
 		pushToast('노트북이 변경되었습니다.');
 	}
 
@@ -396,6 +422,19 @@
 				onuploadimage={(file) => editorComponent?.uploadAndInsertImage(file)}
 			/>
 			{#if note}
+				<select
+					class="notebook-select"
+					value={currentNotebook ?? ''}
+					onchange={handleNotebookChange}
+					aria-label="노트북"
+					title="노트북"
+				>
+					<option value="">없음</option>
+					{#each notebookNames as n (n)}
+						<option value={n}>🗂 {n}</option>
+					{/each}
+					<option value="__new__">+ 새 노트북…</option>
+				</select>
 				<button
 					type="button"
 					class="menu-btn"
@@ -442,14 +481,6 @@
 		onaction={handleAction}
 		onclose={() => (menuAnchor = null)}
 		ongoto={handleActionGoto}
-	/>
-{/if}
-
-{#if pickerOpen && note}
-	<NotebookPicker
-		current={currentNotebook}
-		onselect={handleNotebookSelect}
-		onclose={() => (pickerOpen = false)}
 	/>
 {/if}
 
@@ -578,6 +609,25 @@
 
 	.menu-btn:hover {
 		background: #dee2e6;
+	}
+
+	.notebook-select {
+		flex-shrink: 0;
+		align-self: center;
+		max-width: 140px;
+		margin: 6px 2px 6px 4px;
+		padding: 4px 6px;
+		border: 1px solid #ced4da;
+		border-radius: 6px;
+		background: #fff;
+		color: #212529;
+		font-size: 0.82rem;
+		line-height: 1.2;
+		cursor: pointer;
+	}
+
+	.notebook-select:hover {
+		border-color: #adb5bd;
 	}
 
 	.body {
