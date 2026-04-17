@@ -68,10 +68,22 @@
 
 		const unbindViewport = bindViewportHeight();
 
+		// Alt 키 단독 입력 시 브라우저 메뉴바가 포커스되는 동작을 전역에서 억제.
+		// Alt+키 조합은 각각 별도 keydown을 받으므로 영향 없음.
+		const swallowAlt = (e: KeyboardEvent) => {
+			if (e.key === 'Alt' && !e.ctrlKey && !e.shiftKey && !e.metaKey) {
+				e.preventDefault();
+			}
+		};
+		window.addEventListener('keydown', swallowAlt);
+		window.addEventListener('keyup', swallowAlt);
+
 		return () => {
 			window.removeEventListener('offline', goOffline);
 			window.removeEventListener('online', goOnline);
 			window.removeEventListener('beforeinstallprompt', onInstallPrompt);
+			window.removeEventListener('keydown', swallowAlt);
+			window.removeEventListener('keyup', swallowAlt);
 			unbindViewport();
 		};
 	});
