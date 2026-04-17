@@ -24,6 +24,11 @@
 	import { moveListItemUp, moveListItemDown } from "./listItemReorder.js";
 	import type { JSONContent } from "@tiptap/core";
 	import EditorContextMenu from "./EditorContextMenu.svelte";
+	import {
+		tiptapToHtml,
+		tiptapToPlainText,
+		copySelectionAsJson,
+	} from "./copyFormatted.js";
 
 	interface Props {
 		content?: JSONContent;
@@ -51,6 +56,22 @@
 		if (!enableContextMenu) return;
 		e.preventDefault();
 		ctxMenu = { x: e.clientX, y: e.clientY };
+	}
+
+	// Intercept Ctrl/Cmd+C so the clipboard gets our cleaned-up serialization
+	// (same output as the context menu's "복사" item) instead of the browser's
+	// contenteditable default, which inflates paragraph breaks into double
+	// newlines in the plain-text flavor.
+	function handleCopy(e: ClipboardEvent) {
+		const ed = editor;
+		if (!ed || ed.isDestroyed) return;
+		if (ed.state.selection.empty) return;
+		const data = e.clipboardData;
+		if (!data) return;
+		const json = copySelectionAsJson(ed);
+		data.setData("text/html", tiptapToHtml(json));
+		data.setData("text/plain", tiptapToPlainText(json));
+		e.preventDefault();
 	}
 
 	let editorElement: HTMLDivElement;
@@ -462,6 +483,7 @@
 	bind:this={editorElement}
 	class="tomboy-editor"
 	oncontextmenu={handleContextMenu}
+	oncopy={handleCopy}
 ></div>
 
 {#if ctxMenu && editor}
