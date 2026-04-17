@@ -121,7 +121,10 @@
 		autoLinkTimer = setTimeout(() => {
 			autoLinkTimer = null;
 			const anyWin = window as unknown as {
-				requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+				requestIdleCallback?: (
+					cb: () => void,
+					opts?: { timeout: number },
+				) => number;
 			};
 			if (typeof anyWin.requestIdleCallback === "function") {
 				autoLinkIdleHandle = anyWin.requestIdleCallback(
@@ -218,30 +221,42 @@
 					if (!ed) return false;
 
 					// --- Ctrl/Cmd shortcuts (no Alt, no Shift) ---
-					if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) {
+					if (
+						(event.ctrlKey || event.metaKey) &&
+						!event.altKey &&
+						!event.shiftKey
+					) {
 						switch (event.key) {
-							case 'd':
+							case "d":
 								event.preventDefault();
 								insertTodayDate(ed);
 								return true;
-							case 's':
+							case "s":
 								event.preventDefault();
 								ed.chain().focus().toggleStrike().run();
 								return true;
-							case 'h':
+							case "h":
 								event.preventDefault();
 								ed.chain().focus().toggleHighlight().run();
 								return true;
-							case 'm':
+							case "m":
 								event.preventDefault();
-								ed.chain().focus().toggleTomboyMonospace().run();
+								ed.chain()
+									.focus()
+									.toggleTomboyMonospace()
+									.run();
 								return true;
 						}
 					}
 
 					// --- Alt+Arrow shortcuts (no Ctrl, no Shift) ---
-					if (event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
-						if (event.key === 'ArrowRight') {
+					if (
+						event.altKey &&
+						!event.ctrlKey &&
+						!event.metaKey &&
+						!event.shiftKey
+					) {
+						if (event.key === "ArrowRight") {
 							event.preventDefault();
 							try {
 								const sunk = sinkListItemOnly(ed);
@@ -249,37 +264,49 @@
 									ed.chain().focus().toggleBulletList().run();
 								}
 							} catch (err) {
-								console.error('[listItemDepth] operation failed:', err);
+								console.error(
+									"[listItemDepth] operation failed:",
+									err,
+								);
 							}
 							return true;
 						}
-						if (event.key === 'ArrowLeft') {
+						if (event.key === "ArrowLeft") {
 							event.preventDefault();
 							try {
 								const lifted = liftListItemOnly(ed);
 								if (!lifted && isInList(ed)) {
-									ed.commands.liftListItem('listItem');
+									ed.commands.liftListItem("listItem");
 								}
 							} catch (err) {
-								console.error('[listItemDepth] operation failed:', err);
+								console.error(
+									"[listItemDepth] operation failed:",
+									err,
+								);
 							}
 							return true;
 						}
-						if (event.key === 'ArrowUp') {
+						if (event.key === "ArrowUp") {
 							event.preventDefault();
 							try {
 								moveListItemUp(ed);
 							} catch (err) {
-								console.error('[listItemReorder] operation failed:', err);
+								console.error(
+									"[listItemReorder] operation failed:",
+									err,
+								);
 							}
 							return true;
 						}
-						if (event.key === 'ArrowDown') {
+						if (event.key === "ArrowDown") {
 							event.preventDefault();
 							try {
 								moveListItemDown(ed);
 							} catch (err) {
-								console.error('[listItemReorder] operation failed:', err);
+								console.error(
+									"[listItemReorder] operation failed:",
+									err,
+								);
 							}
 							return true;
 						}
@@ -418,9 +445,7 @@
 				.insertContent({
 					type: "text",
 					text: url,
-					marks: [
-						{ type: "tomboyUrlLink", attrs: { href: url } },
-					],
+					marks: [{ type: "tomboyUrlLink", attrs: { href: url } }],
 				})
 				.run();
 			pushToast("이미지 업로드 완료");
@@ -433,15 +458,19 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div bind:this={editorElement} class="tomboy-editor" oncontextmenu={handleContextMenu}></div>
+<div
+	bind:this={editorElement}
+	class="tomboy-editor"
+	oncontextmenu={handleContextMenu}
+></div>
 
 {#if ctxMenu && editor}
 	<EditorContextMenu
-		editor={editor}
+		{editor}
 		x={ctxMenu.x}
 		y={ctxMenu.y}
 		onclose={() => (ctxMenu = null)}
-		oninternallink={oninternallink}
+		{oninternallink}
 	/>
 {/if}
 
@@ -486,7 +515,8 @@
 		font-size: 0.8em;
 		line-height: 2.4;
 		color: #666;
-		vertical-align : top;
+		vertical-align: top;
+		padding-left: 0.1em;
 	}
 
 	/* Tomboy size marks */
