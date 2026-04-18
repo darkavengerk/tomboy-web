@@ -1,26 +1,25 @@
-// Track the visual viewport and expose it as CSS variables
-// `--viewport-height` / `--viewport-offset-top` on <html>. This exists so
-// mobile layouts can pin themselves to the area actually visible above the
-// on-screen keyboard.
+// Expose the on-screen keyboard height as `--keyboard-inset` on <html>, so
+// the app shell can pad its bottom by that amount and the toolbar always sits
+// right above the keyboard.
 //
-// Height alone (100dvh) is not enough:
-//   - iOS Safari treats the virtual keyboard as an overlay and never
-//     shrinks the layout/dynamic viewport for it.
-//   - Android Chrome only shrinks the layout viewport when the viewport
-//     meta has `interactive-widget=resizes-content`; older Chrome,
-//     Samsung Internet, and similar behave like iOS.
+// Why this shape (keyboard inset instead of pinning the shell to the visual
+// viewport height):
+//   - iOS Safari treats the virtual keyboard as an overlay and never shrinks
+//     the layout / dynamic viewport. `100dvh` alone leaves the toolbar under
+//     the keyboard.
+//   - Android Chrome shrinks the layout viewport only with
+//     `interactive-widget=resizes-content` — there the inset is 0 and this
+//     variable is a no-op.
+//   - Pinning the shell to `visualViewport.height` instead worked for the
+//     keyboard case but left a blank strip below the toolbar whenever the
+//     browser chrome (Safari URL bar) took space, and caused the shell to
+//     fight iOS's scroll-to-focus (jittering while scrolling inside an
+//     active editor because every `visualViewport.scroll` event repositioned
+//     the shell).
 //
-// And even with the correct height, on browsers that don't shrink the
-// layout viewport the browser scrolls the *visual* viewport within the
-// layout viewport to bring the focused input into view. A container
-// sized to `visualViewport.height` but anchored at the top of the layout
-// viewport then sits above the visible area — the toolbar floats
-// mid-screen with empty body showing below it. `visualViewport.offsetTop`
-// gives us that scroll amount so the shell can be pinned to the visible
-// area with `position: fixed; top: var(--viewport-offset-top)`.
-//
-// When the API is unavailable we leave the variables unset and callers
-// fall back via `var(--viewport-height, 100dvh)` / `var(--viewport-offset-top, 0px)`.
+// With `height: 100dvh` + `padding-bottom: var(--keyboard-inset)` the shell
+// fills the dynamic viewport normally and only shrinks from the bottom when
+// a real keyboard is open.
 
 export function bindViewportHeight(): () => void {
 	if (typeof window === 'undefined') return () => {};
@@ -30,18 +29,26 @@ export function bindViewportHeight(): () => void {
 	const root = document.documentElement;
 
 	const update = () => {
-		root.style.setProperty('--viewport-height', `${vv.height}px`);
-		root.style.setProperty('--viewport-offset-top', `${vv.offsetTop}px`);
+		// `innerHeight` tracks the layout viewport (shrinks with browser
+		// chrome on iOS Safari, shrinks with the keyboard on Android when
+		// `interactive-widget=resizes-content`). `vv.height` shrinks with
+		// the keyboard in addition to all of that. Their difference is the
+		// keyboard height on browsers that overlay the keyboard.
+		const inset = Math.max(0, window.innerHeight - vv.height);
+		// Small diffs come from URL-bar / tap-highlight transitions; the
+		// virtual keyboard is always well above ~120px. Filter the noise so
+		// the shell doesn't twitch while the browser chrome settles.
+		root.style.setProperty('--keyboard-inset', inset > 80 ? `${inset}px` : '0px');
 	};
 
 	update();
+	// Only `resize` — `scroll` fires continuously while iOS pans the visual
+	// viewport to keep the focused input visible, and reacting to it made
+	// the shell fight that adjustment (visible as rapid jitter).
 	vv.addEventListener('resize', update);
-	vv.addEventListener('scroll', update);
 
 	return () => {
 		vv.removeEventListener('resize', update);
-		vv.removeEventListener('scroll', update);
-		root.style.removeProperty('--viewport-height');
-		root.style.removeProperty('--viewport-offset-top');
+		root.style.removeProperty('--keyboard-inset');
 	};
 }

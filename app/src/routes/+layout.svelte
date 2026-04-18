@@ -145,23 +145,21 @@
 
 <style>
 	.app-shell {
-		/* Pin the shell to the visual viewport so the bottom toolbar lands
-		   right above the on-screen keyboard on every mobile browser.
-		   `--viewport-height` / `--viewport-offset-top` come from
-		   bindViewportHeight(); on browsers that don't shrink the layout
-		   viewport for the keyboard (iOS Safari, older Android Chrome,
-		   Samsung Internet) the visual viewport also scrolls within the
-		   layout viewport — using `position: fixed` with those variables
-		   keeps the shell aligned with what's actually visible, instead
-		   of leaving the toolbar floating mid-screen with empty body
-		   below it. */
+		/* Fill the dynamic viewport; when the on-screen keyboard is open,
+		   `--keyboard-inset` (set by bindViewportHeight) shrinks the
+		   content area from the bottom so the toolbar lands right above
+		   the keyboard. See lib/viewport/viewportHeight.ts for the
+		   rationale — pinning to `visualViewport.height` instead caused
+		   blank space when the Safari URL bar was visible and visibly
+		   fought iOS's scroll-to-focus. */
 		position: fixed;
-		top: var(--viewport-offset-top, 0px);
+		top: 0;
 		left: 0;
 		right: 0;
 		height: 100vh;
 		height: 100dvh;
-		height: var(--viewport-height, 100dvh);
+		padding-bottom: var(--keyboard-inset, 0px);
+		box-sizing: border-box;
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
@@ -172,12 +170,13 @@
 	   height:100%) sizes correctly. */
 	.chromeless {
 		position: fixed;
-		top: var(--viewport-offset-top, 0px);
+		top: 0;
 		left: 0;
 		right: 0;
 		height: 100vh;
 		height: 100dvh;
-		height: var(--viewport-height, 100dvh);
+		padding-bottom: var(--keyboard-inset, 0px);
+		box-sizing: border-box;
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
