@@ -18,7 +18,7 @@
 		isFavoriteNote?: boolean;
 		isHomeNote?: boolean;
 		isScrollBottomNote?: boolean;
-		anchor: { right: number; top: number };
+		anchor: { right: number; bottom: number };
 		onaction: (kind: ActionKind) => void;
 		onclose: () => void;
 		ongoto?: (guid: string) => void;
@@ -97,7 +97,7 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="ctx-backdrop" onclick={onclose}></div>
 
-<div class="ctx-menu" style="right: {anchor.right}px; top: {anchor.top}px;" role="menu">
+<div class="ctx-menu" style="right: {anchor.right}px; bottom: {anchor.bottom}px;" role="menu">
 	{#if view === 'main'}
 		{#if !confirmDelete}
 			<button class="item" onclick={() => onaction('toggleFavorite')}>

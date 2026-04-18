@@ -79,7 +79,7 @@
 	let saving = $state(false);
 	let editorContent: JSONContent | undefined = $state.raw(undefined);
 	let editorComponent: TomboyEditor | undefined = $state(undefined);
-	let menuAnchor = $state<{ right: number; top: number } | null>(null);
+	let menuAnchor = $state<{ right: number; bottom: number } | null>(null);
 	let notebookNames = $state<string[]>([]);
 	let isHomeState = $state(false);
 	let isScrollBottomState = $state(false);
@@ -307,7 +307,7 @@
 		const rect = btn.getBoundingClientRect();
 		menuAnchor = {
 			right: Math.max(4, window.innerWidth - rect.right),
-			top: rect.bottom + 4
+			bottom: Math.max(4, window.innerHeight - rect.top + 4)
 		};
 	}
 
@@ -555,7 +555,7 @@
 		/* Toolbar floats at the bottom; body reserves this much padding
 		   unconditionally so note content never hides behind it, even when
 		   unfocused (toolbar hidden). */
-		--toolbar-h: 48px;
+		--toolbar-h: 30px;
 	}
 
 	.title-bar {
