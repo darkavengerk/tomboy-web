@@ -377,6 +377,22 @@ export const desktopSession = {
 		return focusRequest;
 	},
 
+	/**
+	 * Guid of the topmost note window in the current workspace (highest raw
+	 * z among kind==='note'), or null if no notes are open. Used by
+	 * NoteWindow to show its toolbar only on the focused note — unfocused
+	 * notes reclaim the toolbar row for editor content.
+	 */
+	get focusedNoteGuid(): string | null {
+		const ws = current();
+		let top: DesktopWindowState | null = null;
+		for (const w of ws.windows) {
+			if (w.kind !== 'note') continue;
+			if (!top || w.z > top.z) top = w;
+		}
+		return top?.guid ?? null;
+	},
+
 	async load(): Promise<void> {
 		if (loaded) return;
 		loaded = true;

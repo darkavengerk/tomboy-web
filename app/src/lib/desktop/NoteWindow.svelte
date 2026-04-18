@@ -430,6 +430,7 @@
 	}
 
 	const titleDisplay = $derived(note?.title?.trim() || '제목 없음');
+	const isFocused = $derived(desktopSession.focusedNoteGuid === guid);
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -468,7 +469,26 @@
 		>✕</button>
 	</div>
 
-	{#if !loading && editorContent}
+	<div class="body">
+		{#if loading}
+			<div class="loading">로딩 중...</div>
+		{:else if editorContent}
+			<TomboyEditor
+				bind:this={editorComponent}
+				content={editorContent}
+				onchange={handleEditorChange}
+				oninternallink={handleInternalLink}
+				currentGuid={guid}
+				enableContextMenu={true}
+				createDate={note?.createDate ?? null}
+				sendListItemActive={sendActive}
+			/>
+		{:else}
+			<div class="loading">노트를 불러올 수 없습니다.</div>
+		{/if}
+	</div>
+
+	{#if !loading && editorContent && isFocused}
 		<div class="toolbar-slot">
 			<Toolbar
 				editor={getEditor()}
@@ -498,25 +518,6 @@
 			{/if}
 		</div>
 	{/if}
-
-	<div class="body">
-		{#if loading}
-			<div class="loading">로딩 중...</div>
-		{:else if editorContent}
-			<TomboyEditor
-				bind:this={editorComponent}
-				content={editorContent}
-				onchange={handleEditorChange}
-				oninternallink={handleInternalLink}
-				currentGuid={guid}
-				enableContextMenu={true}
-				createDate={note?.createDate ?? null}
-				sendListItemActive={sendActive}
-			/>
-		{:else}
-			<div class="loading">노트를 불러올 수 없습니다.</div>
-		{/if}
-	</div>
 
 	<ResizeHandles
 		base={() => ({ x, y, width, height })}
@@ -551,6 +552,10 @@
 		overflow: hidden;
 		min-width: 280px;
 		min-height: 240px;
+		/* Toolbar floats at the bottom; body reserves this much padding
+		   unconditionally so note content never hides behind it, even when
+		   unfocused (toolbar hidden). */
+		--toolbar-h: 48px;
 	}
 
 	.title-bar {
@@ -629,10 +634,14 @@
 	}
 
 	.toolbar-slot {
-		flex-shrink: 0;
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		height: var(--toolbar-h);
 		display: flex;
 		align-items: stretch;
-		border-bottom: 1px solid #dee2e6;
+		border-top: 1px solid #dee2e6;
 		background: #f8f9fa;
 	}
 
@@ -640,12 +649,6 @@
 		flex: 1;
 		min-width: 0;
 		border-top: none;
-	}
-
-	/* Flip the size-menu downward since the toolbar is now at the top. */
-	.toolbar-slot :global(.size-menu) {
-		top: 100%;
-		bottom: auto;
 	}
 
 	.menu-btn {
@@ -700,6 +703,14 @@
 	.body :global(.tomboy-editor) {
 		flex: 1;
 		min-height: 0;
+	}
+
+	/* Bottom margin lives INSIDE the editor's scrollable content (on the
+	   ProseMirror root), so scrolling to the bottom reveals empty space
+	   under the last line — the floating toolbar overlays that space
+	   instead of hiding text. Always present regardless of focus. */
+	.body :global(.tomboy-editor .tiptap) {
+		padding-bottom: var(--toolbar-h);
 	}
 
 	.loading {
