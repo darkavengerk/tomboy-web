@@ -506,8 +506,8 @@
 	}
 
 	.fab-random {
-		position: fixed;
-		bottom: calc(88px + var(--safe-area-bottom));
+		position: absolute;
+		bottom: 88px;
 		right: 20px;
 		width: 48px;
 		height: 48px;
@@ -528,8 +528,8 @@
 	}
 
 	.fab-today {
-		position: fixed;
-		bottom: calc(88px + var(--safe-area-bottom) + 56px);
+		position: absolute;
+		bottom: calc(88px + 56px);
 		right: 20px;
 		width: 48px;
 		height: 48px;
