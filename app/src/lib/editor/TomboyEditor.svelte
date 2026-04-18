@@ -15,6 +15,11 @@
 	import { createTitleProvider } from "./autoLink/titleProvider.js";
 	import { autoLinkPluginKey } from "./autoLink/autoLinkPlugin.js";
 	import { createImagePreviewPlugin } from "./imagePreview/imagePreviewPlugin.js";
+	import {
+		createSendListItemPlugin,
+		sendListItemPluginKey,
+	} from "./sendListItem/sendListItemPlugin.js";
+	import { transferListItem } from "./sendListItem/transferListItem.js";
 	import { extractImageFile } from "./imagePreview/extractImageFile.js";
 	import { uploadImageToDropbox } from "$lib/sync/imageUpload.js";
 	import { pushToast, dismissToast } from "$lib/stores/toast.js";
@@ -34,6 +39,9 @@
 		/** Tomboy ISO creation date of the current note — used to render the
 		 *  "yyyy-mm-dd" placeholder on the empty second line. */
 		createDate?: string | null;
+		/** When true, each listItem shows a floating "보내기" button that
+		 *  transfers it to the configured destination note. */
+		sendListItemActive?: boolean;
 	}
 
 	let {
@@ -43,6 +51,7 @@
 		currentGuid = null,
 		enableContextMenu = false,
 		createDate = null,
+		sendListItemActive = false,
 	}: Props = $props();
 
 	let ctxMenu = $state<{ x: number; y: number } | null>(null);
@@ -199,6 +208,20 @@
 					name: "tomboyImagePreview",
 					addProseMirrorPlugins() {
 						return [createImagePreviewPlugin()];
+					},
+				}),
+				Extension.create({
+					name: "tomboySendListItem",
+					addProseMirrorPlugins() {
+						return [
+							createSendListItemPlugin({
+								onSend: (liPos, liNode) => {
+									const ed = editor;
+									if (!ed) return;
+									void transferListItem(ed, liPos, liNode);
+								},
+							}),
+						];
 					},
 				}),
 			],
@@ -417,6 +440,20 @@
 		cancelAutoLinkScan();
 	});
 
+	// Toggle the "send list item" plugin's active flag whenever the parent's
+	// prop changes. Dispatched as a meta transaction so PM re-runs the
+	// decorations prop and mounts / unmounts the per-li buttons.
+	$effect(() => {
+		const active = sendListItemActive;
+		const ed = editor;
+		if (!ed || ed.isDestroyed) return;
+		const current = sendListItemPluginKey.getState(ed.state);
+		if (current?.active === active) return;
+		ed.view.dispatch(
+			ed.state.tr.setMeta(sendListItemPluginKey, { active }),
+		);
+	});
+
 	export function getEditor(): Editor | null {
 		return editor;
 	}
@@ -596,6 +633,40 @@
 	/* List items */
 	.tomboy-editor :global(ul) {
 		padding-left: 1.5em;
+	}
+
+	/* "보내기" mode: bigger bullets so the user sees the mode is active,
+	   and room on the right for the floating button. */
+	.tomboy-editor :global(.tomboy-send-active li) {
+		position: relative;
+		padding-right: 4.2em;
+		list-style: none;
+	}
+	.tomboy-editor :global(.tomboy-send-active li::before) {
+		content: "•";
+		position: absolute;
+		left: -1em;
+		top: 0;
+		color: #3465a4;
+		font-size: 1.4em;
+		line-height: 1;
+	}
+	.tomboy-editor :global(.tomboy-send-li-btn) {
+		position: absolute;
+		right: 0;
+		top: 0;
+		padding: 2px 8px;
+		font-size: 0.75rem;
+		line-height: 1.3;
+		background: #3465a4;
+		color: #fff;
+		border: none;
+		border-radius: 3px;
+		cursor: pointer;
+		user-select: none;
+	}
+	.tomboy-editor :global(.tomboy-send-li-btn:hover) {
+		background: #204a87;
 	}
 
 	/* Placeholder */

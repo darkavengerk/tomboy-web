@@ -8,6 +8,7 @@
 		loadWallpaper,
 		setWallpaper
 	} from './session.svelte.js';
+	import { installModKeyListeners } from './modKeys.svelte.js';
 	import { createNote } from '$lib/core/noteManager.js';
 
 	let ready = $state(false);
@@ -23,9 +24,11 @@
 
 		const handler = (e: KeyboardEvent) => onKey(e);
 		window.addEventListener('keydown', handler);
+		const uninstallModKeys = installModKeyListeners();
 
 		return () => {
 			window.removeEventListener('keydown', handler);
+			uninstallModKeys();
 			if (wallpaperUrl) {
 				URL.revokeObjectURL(wallpaperUrl);
 				wallpaperUrl = null;

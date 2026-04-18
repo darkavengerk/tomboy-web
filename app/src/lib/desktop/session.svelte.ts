@@ -502,6 +502,15 @@ export const desktopSession = {
 		// even if no move/resize happened during this session.
 		cacheGeometry(ws, ws.windows[idx]);
 		ws.windows.splice(idx, 1);
+		// Chain focus to the most-recently-focused remaining note so ESC can
+		// cascade closes. Raw z is already the focus-history stack (bumped by
+		// open/focus). Settings is skipped — it doesn't consume focusRequest.
+		let next: DesktopWindowState | null = null;
+		for (const w of ws.windows) {
+			if (w.kind !== 'note') continue;
+			if (!next || w.z > next.z) next = w;
+		}
+		if (next) focusRequest = { guid: next.guid, token: ++focusRequestCounter };
 		schedulePersist();
 	},
 
@@ -587,6 +596,11 @@ export const desktopSession = {
 		return () => {
 			if (editorRegistry.get(guid) === editor) editorRegistry.delete(guid);
 		};
+	},
+
+	/** Look up the Tiptap editor for an open window by guid, if any. */
+	getEditorForGuid(guid: string): Editor | null {
+		return editorRegistry.get(guid) ?? null;
 	},
 
 	/**

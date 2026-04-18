@@ -33,6 +33,8 @@
 		registerFlushHook,
 		desktopSession
 	} from './session.svelte.js';
+	import { modKeys } from './modKeys.svelte.js';
+	import { SEND_SOURCE_GUID } from '$lib/editor/sendListItem/transferListItem.js';
 
 	interface Props {
 		guid: string;
@@ -92,6 +94,7 @@
 
 	const isFavoriteState = $derived(note ? isFavorite(note) : false);
 	const currentNotebook = $derived(note ? getNotebook(note) : null);
+	const sendActive = $derived(guid === SEND_SOURCE_GUID && modKeys.ctrl);
 
 	function getEditor(): Editor | null {
 		return editorComponent?.getEditor() ?? null;
@@ -508,6 +511,7 @@
 				currentGuid={guid}
 				enableContextMenu={true}
 				createDate={note?.createDate ?? null}
+				sendListItemActive={sendActive}
 			/>
 		{:else}
 			<div class="loading">노트를 불러올 수 없습니다.</div>
@@ -648,7 +652,7 @@
 		flex-shrink: 0;
 		width: 36px;
 		height: 36px;
-		margin: 6px 8px 6px 4px;
+		margin: 0px 8px 0px 4px;
 		border: none;
 		background: transparent;
 		color: #495057;
@@ -666,7 +670,7 @@
 		flex-shrink: 0;
 		align-self: center;
 		max-width: 140px;
-		margin: 6px 2px 6px 4px;
+		margin: 0px 2px 0px 4px;
 		padding: 4px 6px;
 		border: 1px solid #ced4da;
 		border-radius: 6px;
