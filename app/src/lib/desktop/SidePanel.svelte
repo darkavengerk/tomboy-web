@@ -8,6 +8,8 @@
 		refreshNotebooksCache,
 		assignNotebook
 	} from '$lib/core/notebooks.js';
+	import { SLIPBOX_NOTEBOOK } from '$lib/sleepnote/validator.js';
+	import { createSlipNote } from '$lib/sleepnote/create.js';
 	import { searchNotes } from '$lib/search/noteSearch.js';
 	import {
 		getCachedNotes,
@@ -71,7 +73,10 @@
 	});
 
 	async function handleNew() {
-		const note = await createNote('새 노트');
+		const note =
+			selectedNotebook === SLIPBOX_NOTEBOOK
+				? await createSlipNote()
+				: await createNote('새 노트');
 		if (selectedNotebook) {
 			await assignNotebook(note.guid, selectedNotebook);
 		}
