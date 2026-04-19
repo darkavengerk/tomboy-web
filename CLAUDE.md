@@ -53,7 +53,10 @@ app/src/
 │   │   ├── note.ts                 # NoteData interface, Tomboy date format
 │   │   ├── noteArchiver.ts         # .note XML <-> NoteData
 │   │   ├── noteContentArchiver.ts  # <note-content> XML <-> TipTap JSON
-│   │   ├── noteManager.ts          # CRUD wrapper over noteStore
+│   │   ├── noteManager.ts          # CRUD wrapper; rename sweeps backlinks
+│   │   ├── titleRewrite.ts         # xml title/link rewrite + incoming-note dedupe
+│   │   ├── titleInvariantCheck.ts  # duplicate-title scanner for /admin dashboard
+│   │   ├── noteReloadBus.ts        # per-guid reload pubsub (used by rename sweep)
 │   │   ├── notebooks.ts            # notebook helpers (list, filter)
 │   │   └── home.ts                 # home-note pointer (appSettings-backed)
 │   ├── storage/
@@ -66,8 +69,9 @@ app/src/
 │   │   ├── manifest.ts             # local sync manifest in IndexedDB
 │   │   └── adminClient.ts          # manifest diff, per-note fetch, soft-rollback wrapper
 │   ├── editor/
-│   │   ├── TomboyEditor.svelte     # TipTap instance
+│   │   ├── TomboyEditor.svelte     # TipTap instance; blur-time title-uniqueness guard
 │   │   ├── Toolbar.svelte
+│   │   ├── titleUniqueGuard.ts     # title-conflict check, blur validator, save-path guard
 │   │   ├── extensions/             # TomboySize, TomboyMonospace, TomboyInternalLink, TomboyUrlLink
 │   │   └── autoLink/               # internal-link auto-detection (findTitleMatches, titleProvider, autoLinkPlugin)
 │   ├── components/
@@ -124,11 +128,83 @@ The TopNav and the 전체 filter bar size themselves with `clamp(min, Xvw, max)`
 
 - **Notes are stored in the user's browser IndexedDB** — server restarts / redeploys do not affect user data.
 - **`.note` XML format is preserved verbatim** for round-trip compatibility with Tomboy desktop.
+- **Titles are globally unique, case-sensitive, trimmed.** Internal-link marks store the destination note's *title*, so title lookups at every layer (auto-link, graph, `findNoteByTitle`) are exact-case. Renaming a note sweeps backlinks; import / sync-pull collisions auto-suffix `(2)`, `(3)`, … See "Title uniqueness & rename cascade" below.
 - **Sync is explicit only** — the user clicks "지금 동기화" in settings. No auto-sync on startup, focus, or save. (Auto-sync was removed intentionally; do not reintroduce without asking.)
 - **Sync protocol** follows Tomboy's revision scheme: server stores notes at `/{rev/100}/{rev}/{guid}.note` and a root `/manifest.xml` lists `(guid, rev)` pairs. `syncManager.sync()` is the authoritative implementation.
 - **Mobile-first, single-note-per-page** UI — avoid split views or desktop-only patterns.
 - **All UI strings are in Korean.** Match the existing tone.
 - **One nav entry is always selected.** When adding new top-level destinations, either make them a mode or leave the existing mode selected while there.
+
+## Title uniqueness & rename cascade
+
+Tomboy's internal-link marks store the destination note's **title** as text,
+not its guid. So the title is effectively the link identity — two notes with
+the same title would make every link ambiguous. The app enforces a single
+hard invariant: **trimmed titles are globally unique and compared with
+exact case**.
+
+**Enforcement surfaces** — every data-entry point into the note store funnels
+through one of these checks:
+
+- **Editor typing** — `TomboyEditor.svelte` fires a blur-time validator
+  (`titleUniqueGuard.handleTitleBlur`) when the cursor leaves the first
+  block. On collision it toasts, snaps the cursor back to the title line,
+  and latches the reported title so repeated blurs don't re-toast.
+- **Editor save** — `noteManager.updateNoteFromEditor` re-checks at save
+  time via `checkTitleConflict` and silently refuses the write on
+  collision (the UI is responsible for surfacing the error).
+- **Import** (`importNoteXml`) and **sync-pull** (`syncManager.applyIncomingRemoteNote`) —
+  both use `titleRewrite.prepareIncomingNoteForLocal`: if the incoming
+  title collides with a DIFFERENT local guid, suffix with ` (2)`, ` (3)`,
+  …, rewrite the first line inside `<note-content>`, mark `localDirty =
+  true` so the rename propagates back on next sync, and toast the rename.
+
+**Rename cascade** — when a title actually changes through the editor save
+path:
+
+1. `updateNoteFromEditor` persists the renamed note.
+2. `rewriteBacklinksForRename` scans every other non-deleted note and
+   literal-replaces `<link:internal>OLD</link:internal>` /
+   `<link:broken>OLD</link:broken>` with the new title. Each rewritten
+   note is written back via `putNote` (becoming `localDirty = true`), so
+   the sweep propagates on next sync.
+3. `noteReloadBus.emitNoteReload(affected)` fires for every rewritten
+   guid. Any open editor subscribed via `subscribeNoteReload` drops its
+   pending debounced doc and reloads from IDB — otherwise a stale
+   in-memory doc would clobber the rewrite on its next save.
+
+All title→guid lookups (the auto-link title index, `buildGraph`,
+`findNoteByTitle`, slip-note chain traversal via `mustGetByTitle`) are now
+**exact-case trimmed**. The one exception is `lib/sleepnote/validator.ts`,
+which is deliberately lenient (case-insensitive) because it is a
+reporting tool, not a data-mutation path.
+
+**Admin surface** — the `/admin` dashboard shows a "제목 중복 경고" block
+whenever `titleInvariantCheck.scanDuplicateTitles` finds 2+ notes sharing
+a trimmed title. The invariant is enforced prospectively by the
+surfaces above, but notes created before enforcement (or imported via
+direct IDB manipulation) may still violate it — the dashboard surfaces
+them so the user can merge/rename by hand.
+
+## Cross-window mutation pattern (desktop)
+
+Any operation that rewrites multiple notes at once — slip-note chain
+splicing is the current instance — must assume other windows may hold
+stale `pendingDoc` state for the same guids. The contract is:
+
+```ts
+await desktopSession.flushAll();           // drain pending editor saves
+const { affectedGuids } = await multiNoteOp(...);
+await desktopSession.reloadWindows(affectedGuids);
+```
+
+`flushAll` drains every `registerFlushHook`; `reloadWindows` fires every
+matching `registerReloadHook`. Both live in `lib/desktop/session.svelte.ts`
+and swallow per-hook errors so a single broken window can never stall the
+op. Note that `reloadHooks` (desktop session) and `noteReloadBus` (core)
+are **independent channels**: the first covers open editor windows for
+chain-type ops, the second is specifically for the rename backlink sweep
+so it works outside the desktop workspace too.
 
 ## Svelte 5 conventions
 

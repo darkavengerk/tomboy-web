@@ -24,7 +24,7 @@ import { ensureUniqueTitle, formatDateTimeTitle } from '$lib/core/noteManager.js
 import * as noteStore from '$lib/storage/noteStore.js';
 import { generateGuid } from '$lib/utils/guid.js';
 import { invalidateCache } from '$lib/stores/noteListCache.js';
-import { validateSlipNoteFormat, type SlipField } from './validator.js';
+import { SLIPBOX_NOTEBOOK, validateSlipNoteFormat, type SlipField } from './validator.js';
 
 interface FieldValue {
 	kind: 'none' | 'link';
@@ -147,6 +147,7 @@ export async function insertNewNoteAfter(
 	const newGuid = generateGuid();
 	const newNote = createEmptyNote(newGuid);
 	newNote.title = newTitle;
+	newNote.tags = [`system:notebook:${SLIPBOX_NOTEBOOK}`];
 	newNote.xmlContent = buildNewSlipNoteXml(
 		newTitle,
 		{ kind: 'link', target: current.title },
