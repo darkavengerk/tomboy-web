@@ -72,6 +72,32 @@
 			</div>
 		</section>
 
+		{#if adminCache.duplicateTitles.length > 0}
+			<section class="duplicate-titles warn">
+				<h2>⚠ 제목 중복 경고 ({adminCache.duplicateTitles.length}건)</h2>
+				<p class="hint">
+					동일한 제목을 가진 노트가 여러 개 있습니다. 자동 링크와 제목 변경 기능이 결정적으로
+					동작하려면 제목이 유일해야 합니다. 아래 노트들의 제목을 개별적으로 수정해 주세요.
+				</p>
+				<ul>
+					{#each adminCache.duplicateTitles as group}
+						<li>
+							<strong>{group.title}</strong>
+							<span class="muted">({group.notes.length}개)</span>
+							<ul>
+								{#each group.notes as n}
+									<li>
+										<a href="/note/{n.guid}">{n.guid.slice(0, 8)}…</a>
+										<span class="muted">{new Date(n.changeDate).toLocaleString('ko-KR')}</span>
+									</li>
+								{/each}
+							</ul>
+						</li>
+					{/each}
+				</ul>
+			</section>
+		{/if}
+
 		<section class="detail">
 			<h2>경로</h2>
 			<table>
@@ -191,4 +217,48 @@
 		text-decoration: none;
 	}
 	.actions a:hover { text-decoration: underline; }
+
+	.duplicate-titles.warn {
+		border-left: 3px solid #f59e0b;
+		background: #fffbeb;
+		padding: 16px 20px;
+		margin-bottom: 32px;
+		border-radius: 0 8px 8px 0;
+	}
+	.duplicate-titles h2 {
+		font-size: 0.95rem;
+		font-weight: 600;
+		margin: 0 0 8px 0;
+		color: #92400e;
+	}
+	.duplicate-titles .hint {
+		font-size: 0.85rem;
+		color: var(--color-text-secondary, #6b7280);
+		margin: 0 0 12px 0;
+	}
+	.duplicate-titles ul {
+		list-style: disc;
+		padding-left: 20px;
+		margin: 0;
+	}
+	.duplicate-titles ul ul {
+		list-style: circle;
+		margin-top: 4px;
+		margin-bottom: 8px;
+	}
+	.duplicate-titles li {
+		padding: 2px 0;
+		font-size: 0.9rem;
+	}
+	.duplicate-titles a {
+		color: var(--color-primary, #2563eb);
+		text-decoration: none;
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	}
+	.duplicate-titles a:hover { text-decoration: underline; }
+	.muted {
+		font-size: 0.8rem;
+		color: var(--color-text-secondary, #6b7280);
+		margin-left: 6px;
+	}
 </style>

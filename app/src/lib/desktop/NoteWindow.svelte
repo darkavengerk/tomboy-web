@@ -8,6 +8,7 @@
 		toggleFavorite,
 		isFavorite
 	} from '$lib/core/noteManager.js';
+	import { subscribeNoteReload } from '$lib/core/noteReloadBus.js';
 	import type { NoteData } from '$lib/core/note.js';
 	import TomboyEditor from '$lib/editor/TomboyEditor.svelte';
 	import Toolbar from '$lib/editor/Toolbar.svelte';
@@ -31,6 +32,7 @@
 		DESKTOP_WINDOW_MIN_WIDTH,
 		DESKTOP_WINDOW_MIN_HEIGHT,
 		registerFlushHook,
+		registerReloadHook,
 		desktopSession
 	} from './session.svelte.js';
 	import { modKeys } from './modKeys.svelte.js';
@@ -138,10 +140,15 @@
 		})();
 
 		// Register a flush hook so closeWindow() can persist unsaved edits.
-		const unregister = registerFlushHook(guid, () => flushSave());
+		const unregisterFlush = registerFlushHook(guid, () => flushSave());
+		// Register a reload hook so cross-window ops (slip-note chain
+		// splicing) can force this window to drop stale editor state
+		// and pick up neighbor-field updates the op wrote to IDB.
+		const unregisterReload = registerReloadHook(guid, () => externalReload());
 
 		return () => {
-			unregister();
+			unregisterFlush();
+			unregisterReload();
 			if (saveTimer) {
 				clearTimeout(saveTimer);
 				saveTimer = null;
@@ -159,6 +166,20 @@
 		const editor = ec.getEditor();
 		if (!editor) return;
 		const off = desktopSession.registerEditor(guid, editor);
+		return off;
+	});
+
+	// Subscribe to the note reload bus for this window's guid. Fires when
+	// another note's rename rewrote a <link:internal>Oldtitle</link:internal>
+	// mark inside THIS note's xml — we need to drop the pendingDoc (which
+	// still carries the old title) and refresh from IDB so the next
+	// debounced save doesn't clobber the sweep's fix. Independent of
+	// session.svelte.ts's reloadHooks (those are for slip-note chain ops).
+	$effect(() => {
+		const g = guid;
+		const off = subscribeNoteReload(g, async () => {
+			await externalReload();
+		});
 		return off;
 	});
 
@@ -214,12 +235,31 @@
 		}
 	}
 
+	/**
+	 * Called when another window's op has rewritten this note in IDB.
+	 * We cancel any pending debounced save (its doc is stale — the
+	 * fresh IDB content wins) and then reload as normal.
+	 */
+	async function externalReload(): Promise<void> {
+		if (saveTimer) {
+			clearTimeout(saveTimer);
+			saveTimer = null;
+		}
+		pendingDoc = null;
+		await reloadFromIdb();
+	}
+
 	async function handleSlipInsertAfter() {
 		if (!note) return;
 		try {
-			await flushBeforeOp();
-			const { newGuid } = await insertNewNoteAfter(note.guid);
-			await reloadFromIdb();
+			// Flush every open window so the op reads the freshest state
+			// and no other window has a stale pendingDoc waiting to land.
+			await desktopSession.flushAll();
+			const { newGuid, affectedGuids } = await insertNewNoteAfter(note.guid);
+			// Reload every affected open window (including this one) so
+			// neighbor-field writes aren't silently overwritten by a
+			// lingering pendingDoc somewhere.
+			await desktopSession.reloadWindows(affectedGuids);
 			desktopSession.openWindow(newGuid);
 		} catch (e) {
 			pushToast((e as Error).message ?? '새 슬립노트 추가 실패', { kind: 'error' });
@@ -229,10 +269,10 @@
 	async function handleSlipCut() {
 		if (!note) return;
 		try {
-			await flushBeforeOp();
-			await cutFromChain(note.guid);
+			await desktopSession.flushAll();
+			const { affectedGuids } = await cutFromChain(note.guid);
 			slipClipboard.set(note.guid);
-			await reloadFromIdb();
+			await desktopSession.reloadWindows(affectedGuids);
 			pushToast('슬립노트 체인에서 잘라냈습니다.');
 		} catch (e) {
 			pushToast((e as Error).message ?? '잘라내기 실패', { kind: 'error' });
@@ -244,10 +284,10 @@
 		const g = slipClipboard.cutGuid;
 		if (!g || g === note.guid) return;
 		try {
-			await flushBeforeOp();
-			await pasteAfter(g, note.guid);
+			await desktopSession.flushAll();
+			const { affectedGuids } = await pasteAfter(g, note.guid);
 			slipClipboard.clear();
-			await reloadFromIdb();
+			await desktopSession.reloadWindows(affectedGuids);
 			pushToast('슬립노트를 이 노트 뒤에 붙여넣었습니다.');
 		} catch (e) {
 			pushToast((e as Error).message ?? '붙여넣기 실패', { kind: 'error' });

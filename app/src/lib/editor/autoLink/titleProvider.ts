@@ -10,9 +10,13 @@
  * many editors mount at once (e.g. desktop workspace switching opens several
  * NoteWindow components in parallel). Each `createTitleProvider` call
  * returns a thin handle that layers its own `excludeGuid` filter and its own
- * `onChange` listeners over the shared entries array. An internal refcount
- * keeps the `invalidateCache` subscription alive only while at least one
- * provider is undisposed.
+ * `onChange` listeners over the shared entries array.
+ *
+ * The `onInvalidate` subscription is established on first use and lives for
+ * the life of the process (no refcount). This keeps the title→guid index
+ * fresh even when no editor is mounted, so code paths without an active
+ * provider (rename rewrite, import dup-check, blur-time validation) can
+ * rely on `lookupGuidByTitle` after awaiting `ensureTitleIndexReady`.
  */
 
 import { listNotes } from '$lib/core/noteManager.js';
@@ -26,7 +30,7 @@ export interface TitleProvider {
 	refresh(): Promise<void>;
 	/** Subscribe to refresh completions. Returns unsubscribe fn. */
 	onChange(cb: () => void): () => void;
-	/** Release the invalidation subscription for this handle. */
+	/** Release this handle's forward listener and its user listeners. Does NOT touch the shared module-level subscription. */
 	dispose(): void;
 }
 
@@ -45,9 +49,9 @@ export interface TitleProviderOptions {
 // --- Singleton state -----------------------------------------------------
 
 let sharedEntries: TitleEntry[] = [];
+let sharedByTitle = new Map<string, string>(); // title → guid (case-sensitive, first-wins)
 let sharedInFlight: Promise<void> | null = null;
 const sharedListeners = new Set<() => void>();
-let providerCount = 0;
 let invalidateOff: (() => void) | null = null;
 
 async function doSharedRefresh(): Promise<void> {
@@ -60,11 +64,21 @@ async function doSharedRefresh(): Promise<void> {
 			const trimmed = n.title.trim();
 			if (!trimmed) continue;
 			next.push({
-				titleLower: trimmed.toLocaleLowerCase(),
-				original: n.title,
+				title: trimmed,
 				guid: n.guid
 			});
 		}
+		// Build first-wins title→guid map. `listNotes()` returns notes
+		// sorted by changeDate DESC, so iterating first-wins gives
+		// "most-recently-changed wins" semantics on any stray duplicate
+		// title (the uniqueness invariant is enforced elsewhere but this
+		// keeps lookups deterministic when it is violated).
+		const nextByTitle = new Map<string, string>();
+		for (const e of next) {
+			if (!nextByTitle.has(e.title)) nextByTitle.set(e.title, e.guid);
+		}
+		sharedByTitle = nextByTitle;
+
 		// Skip the fan-out to subscribers when the title set is identical to
 		// what we had before. Many callers of invalidateCache() don't
 		// actually change the title list (toggleFavorite, a body-only edit
@@ -73,10 +87,7 @@ async function doSharedRefresh(): Promise<void> {
 		// single unnecessary broadcast in a workspace with N editors costs
 		// O(N * doc * titles) main-thread work with no observable effect.
 		//
-		// Equivalence is checked order-independently on (guid, titleLower,
-		// original). The sort order from listNotes() is `changeDate` desc,
-		// and most refreshes fire for reasons that don't alter changeDates,
-		// but we shouldn't *require* stable ordering to skip the broadcast.
+		// Equivalence is checked order-independently on (guid, title).
 		const unchanged = entriesEquivalent(sharedEntries, next);
 		sharedEntries = next;
 		if (unchanged) return;
@@ -95,8 +106,7 @@ function entriesEquivalent(a: TitleEntry[], b: TitleEntry[]): boolean {
 	for (const e of b) {
 		const match = byGuid.get(e.guid);
 		if (!match) return false;
-		if (match.titleLower !== e.titleLower) return false;
-		if (match.original !== e.original) return false;
+		if (match.title !== e.title) return false;
 	}
 	return true;
 }
@@ -106,13 +116,6 @@ function ensureSubscribed(): void {
 	invalidateOff = onInvalidate(() => {
 		void doSharedRefresh();
 	});
-}
-
-function maybeUnsubscribe(): void {
-	if (providerCount === 0 && invalidateOff) {
-		invalidateOff();
-		invalidateOff = null;
-	}
 }
 
 // --- Public factory ------------------------------------------------------
@@ -129,7 +132,6 @@ export function createTitleProvider(opts: TitleProviderOptions = {}): TitleProvi
 		for (const l of myListeners) l();
 	};
 	sharedListeners.add(forward);
-	providerCount++;
 	ensureSubscribed();
 
 	return {
@@ -149,9 +151,9 @@ export function createTitleProvider(opts: TitleProviderOptions = {}): TitleProvi
 			// Fast path: when the shared cache is already warm (another
 			// editor already fetched), skip the listNotes() round-trip.
 			// ensureSubscribed() has already registered the onInvalidate
-			// listener for this provider, so any real staleness (a note
-			// created / renamed / deleted anywhere in the app) will still
-			// refresh the cache via that subscription.
+			// listener, so any real staleness (a note created / renamed /
+			// deleted anywhere in the app) will still refresh the cache via
+			// that subscription.
 			if (sharedEntries.length > 0 && !sharedInFlight) return Promise.resolve();
 			return doSharedRefresh();
 		},
@@ -164,19 +166,56 @@ export function createTitleProvider(opts: TitleProviderOptions = {}): TitleProvi
 			disposed = true;
 			sharedListeners.delete(forward);
 			myListeners.clear();
-			providerCount--;
-			maybeUnsubscribe();
+			// Intentionally does NOT unsubscribe the module-level
+			// onInvalidate listener — the title→guid index must stay fresh
+			// for non-editor callers (rename rewrite, import dup-check).
 		}
 	};
+}
+
+// --- Module-level title→guid lookup --------------------------------------
+
+/**
+ * Case-sensitive title→guid lookup against the shared in-memory index.
+ *
+ * The input title is trimmed. Returns `null` when no note has that exact
+ * (trimmed, case-sensitive) title. Callers should `await ensureTitleIndexReady()`
+ * beforehand if they cannot be sure a provider has already warmed the cache
+ * — this function does NOT trigger a refresh on its own.
+ */
+export function lookupGuidByTitle(title: string): string | null {
+	const trimmed = title.trim();
+	if (!trimmed) return null;
+	return sharedByTitle.get(trimmed) ?? null;
+}
+
+/**
+ * Ensure the shared title→guid index is populated at least once.
+ *
+ * - Subscribes to `onInvalidate` if not already subscribed (so later edits
+ *   stay reflected).
+ * - Cold (no prior refresh, no in-flight fetch) → triggers a fresh
+ *   `listNotes()` and awaits it.
+ * - A refresh already in flight → awaits the existing fetch.
+ * - Warm (entries already populated) → resolves immediately with no I/O.
+ *
+ * Designed for code paths that have no editor mounted but still need
+ * `lookupGuidByTitle` (rename rewrite, blur-time dup-check, …).
+ */
+export async function ensureTitleIndexReady(): Promise<void> {
+	ensureSubscribed();
+	if (sharedInFlight) return sharedInFlight;
+	if (sharedEntries.length === 0) return doSharedRefresh();
+	return;
 }
 
 // --- Test-only reset -----------------------------------------------------
 
 export function _resetForTest(): void {
 	sharedEntries = [];
+	sharedByTitle = new Map();
 	sharedInFlight = null;
 	sharedListeners.clear();
-	providerCount = 0;
 	if (invalidateOff) {
 		invalidateOff();
 		invalidateOff = null;

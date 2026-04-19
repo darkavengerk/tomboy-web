@@ -13,10 +13,10 @@ vi.mock('$lib/storage/noteStore.js', () => ({
 	putNoteSynced: vi.fn(),
 	deleteNote: vi.fn(),
 	findNoteByTitle: vi.fn(async (title: string) => {
-		const needle = title.trim().toLowerCase();
+		const needle = title.trim();
 		if (!needle) return undefined;
 		return Array.from(store.values()).find(
-			(n) => !n.deleted && n.title.trim().toLowerCase() === needle
+			(n) => !n.deleted && n.title.trim() === needle
 		);
 	})
 }));

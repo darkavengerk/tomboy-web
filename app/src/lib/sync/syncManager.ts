@@ -9,12 +9,14 @@
  */
 
 import { parseNoteFromFile, serializeNote } from '$lib/core/noteArchiver.js';
-import { parseTomboyDate } from '$lib/core/note.js';
+import { parseTomboyDate, formatTomboyDate } from '$lib/core/note.js';
 import type { NoteData } from '$lib/core/note.js';
+import { prepareIncomingNoteForLocal } from '$lib/core/titleRewrite.js';
 import * as noteStore from '$lib/storage/noteStore.js';
 import { getManifest, saveManifest, clearManifest } from './manifest.js';
 import { invalidateCache } from '$lib/stores/noteListCache.js';
 import { refreshNotebooksCache } from '$lib/core/notebooks.js';
+import { pushToast } from '$lib/stores/toast.js';
 import {
 	downloadServerManifest,
 	downloadNoteAtRevision,
@@ -120,6 +122,42 @@ export function _resetForTest() {
 	syncing = false;
 	currentStatus = 'idle';
 }
+
+/**
+ * Apply an incoming remote note (download or conflict-remote-wins) to the
+ * local store, enforcing the title uniqueness invariant. If the note's
+ * title collides with a DIFFERENT local guid, suffix it, mark dirty, and
+ * toast; otherwise write with `putNoteSynced` as clean.
+ *
+ * Mutates `remoteNote` in place so the caller observes the final title /
+ * xmlContent / flags — the existing download loop reuses the object.
+ */
+async function applyIncomingRemoteNote(remoteNote: NoteData): Promise<void> {
+	const prepared = await prepareIncomingNoteForLocal(remoteNote, {
+		findByTitle: (title) => noteStore.findNoteByTitle(title),
+		now: () => formatTomboyDate(new Date())
+	});
+	if (prepared.renamed) {
+		// Reflect the rename on the caller's object too.
+		remoteNote.title = prepared.note.title;
+		remoteNote.xmlContent = prepared.note.xmlContent;
+		remoteNote.metadataChangeDate = prepared.note.metadataChangeDate;
+		remoteNote.localDirty = true;
+		remoteNote.deleted = false;
+		await noteStore.putNote(remoteNote);
+		pushToast(
+			`제목 중복 — '${prepared.from}' → '${prepared.to}' 로 이름 변경됨`,
+			{ kind: 'info' }
+		);
+		return;
+	}
+	remoteNote.localDirty = false;
+	remoteNote.deleted = false;
+	await noteStore.putNoteSynced(remoteNote);
+}
+
+/** Test-only export for applyIncomingRemoteNote. */
+export const _applyIncomingRemoteNoteForTest = applyIncomingRemoteNote;
 
 // ─── Plan computation ─────────────────────────────────────────────────────────
 
@@ -396,9 +434,7 @@ export async function applyPlan(
 					emitProgress('download', '다운로드', items);
 				});
 				const remoteNote = parseNoteFromFile(content, `${guid}.note`);
-				remoteNote.localDirty = false;
-				remoteNote.deleted = false;
-				await noteStore.putNoteSynced(remoteNote);
+				await applyIncomingRemoteNote(remoteNote);
 				localManifest.noteRevisions[guid] = rev;
 				result.downloaded++;
 				processedGuids.add(guid);
@@ -460,8 +496,7 @@ export async function applyPlan(
 				}
 
 				if (useRemote) {
-					remoteNote.localDirty = false;
-					await noteStore.putNoteSynced(remoteNote);
+					await applyIncomingRemoteNote(remoteNote);
 					localManifest.noteRevisions[conflict.guid] = rev;
 					result.downloaded++;
 					processedGuids.add(conflict.guid);

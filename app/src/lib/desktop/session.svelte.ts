@@ -101,6 +101,7 @@ let loaded = false;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 
 const flushHooks = new Map<string, () => Promise<void> | void>();
+const reloadHooks = new Map<string, () => Promise<void> | void>();
 const editorRegistry = new Map<string, Editor>();
 
 // --- Flush hooks ---------------------------------------------------------
@@ -135,6 +136,25 @@ async function runAllFlushHooks(guids: Iterable<string>): Promise<void> {
 		}
 	}
 	await Promise.all(tasks.map((p) => Promise.resolve(p).catch(() => {})));
+}
+
+// --- Reload hooks --------------------------------------------------------
+
+/**
+ * A window registers a reload hook so cross-window operations (slip-note
+ * chain splicing is the motivating case) can force it to discard any
+ * pending editor state and re-read the note from IDB. Without this, a
+ * stale pendingDoc in another window would overwrite the op's update to
+ * a neighbor note on its next debounced save.
+ */
+export function registerReloadHook(
+	guid: string,
+	fn: () => Promise<void> | void
+): () => void {
+	reloadHooks.set(guid, fn);
+	return () => {
+		if (reloadHooks.get(guid) === fn) reloadHooks.delete(guid);
+	};
 }
 
 // --- Persistence ---------------------------------------------------------
@@ -606,6 +626,39 @@ export const desktopSession = {
 		await this.switchWorkspace(next);
 	},
 
+	/**
+	 * Drain every registered flush hook. Used before a multi-note IDB
+	 * mutation (slip-note chain op) so any window's pending edits land
+	 * first and the op reads fresh state. A hook that throws — sync or
+	 * async — cannot block the others; a broken window must never stall
+	 * a chain op.
+	 */
+	async flushAll(): Promise<void> {
+		const tasks: Array<Promise<void>> = [];
+		for (const fn of flushHooks.values()) {
+			tasks.push(
+				(async () => fn())().catch(() => {})
+			);
+		}
+		await Promise.all(tasks);
+	},
+
+	/**
+	 * Force reload the given guids' open windows from IDB. Windows whose
+	 * guid isn't currently open are silently skipped.
+	 */
+	async reloadWindows(guids: Iterable<string>): Promise<void> {
+		const tasks: Array<Promise<void>> = [];
+		for (const guid of guids) {
+			const fn = reloadHooks.get(guid);
+			if (!fn) continue;
+			tasks.push(
+				(async () => fn())().catch(() => {})
+			);
+		}
+		await Promise.all(tasks);
+	},
+
 	/** Register a Tiptap editor instance keyed by window guid. */
 	registerEditor(guid: string, editor: Editor): () => void {
 		editorRegistry.set(guid, editor);
@@ -641,6 +694,7 @@ export const desktopSession = {
 		focusRequestCounter = 0;
 		loaded = false;
 		flushHooks.clear();
+		reloadHooks.clear();
 		editorRegistry.clear();
 		if (persistTimer) {
 			clearTimeout(persistTimer);

@@ -71,14 +71,14 @@
 	async function openBacklinks() {
 		view = 'backlinks';
 		backlinksLoading = true;
-		const titleLower = note.title.trim().toLowerCase();
+		const titleKey = note.title.trim();
 		const all = await getAllNotes();
 		backlinkNotes = all.filter((n) => {
 			if (n.guid === note.guid) return false;
-			const xml = n.xmlContent.toLowerCase();
+			const xml = n.xmlContent;
 			return (
-				xml.includes(`>${titleLower}</link:internal>`) ||
-				xml.includes(`>${titleLower}</link:broken>`)
+				xml.includes(`>${titleKey}</link:internal>`) ||
+				xml.includes(`>${titleKey}</link:broken>`)
 			);
 		});
 		backlinksLoading = false;

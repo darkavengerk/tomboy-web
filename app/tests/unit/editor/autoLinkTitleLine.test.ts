@@ -10,7 +10,7 @@ import type { TitleEntry } from '$lib/editor/autoLink/findTitleMatches.js';
 import { autoLinkPluginKey } from '$lib/editor/autoLink/autoLinkPlugin.js';
 
 function entry(title: string, guid = `guid-${title}`): TitleEntry {
-	return { titleLower: title.toLocaleLowerCase(), original: title, guid };
+	return { title, guid };
 }
 
 let currentEditor: Editor | null = null;

@@ -81,7 +81,7 @@ describe('load → refresh → serialize idempotence (spurious-save regression)'
 			'</note-content>';
 		const editor = makeEditor({
 			xml,
-			titles: [{ titleLower: 'foo', original: 'Foo', guid: 'other' }],
+			titles: [{ title: 'Foo', guid: 'other' }],
 			currentGuid: 'me'
 		});
 
@@ -150,7 +150,7 @@ it('mark nesting: strikethrough over an internal link does NOT get re-wrapped wi
 
 		const editor = makeEditor({
 			xml,
-			titles: [{ titleLower: 'foo', original: 'Foo', guid: 'foo-guid' }],
+			titles: [{ title: 'Foo', guid: 'foo-guid' }],
 			currentGuid: 'me'
 		});
 
@@ -178,7 +178,7 @@ it('mark nesting: strikethrough over an internal link does NOT get re-wrapped wi
 			'</note-content>';
 		const editor = makeEditor({
 			xml,
-			titles: [{ titleLower: 'linked', original: 'Linked', guid: 'linked-guid' }],
+			titles: [{ title: 'Linked', guid: 'linked-guid' }],
 			currentGuid: 'me'
 		});
 

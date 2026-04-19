@@ -123,10 +123,15 @@ function buildNewSlipNoteXml(title: string, prev: FieldValue, next: FieldValue):
  * chain. The new note inherits `current.다음` as its own `다음`, and
  * `current.다음` is rewritten to point at the new note. The old successor's
  * `이전` is updated to match.
+ *
+ * `affectedGuids` lists every note whose xmlContent was written, so the
+ * caller can force-reload open windows on those notes — otherwise a stale
+ * editor in another window would overwrite the op's update on its next
+ * debounced save.
  */
 export async function insertNewNoteAfter(
 	currentGuid: string
-): Promise<{ newGuid: string; newTitle: string }> {
+): Promise<{ newGuid: string; newTitle: string; affectedGuids: string[] }> {
 	const current = await mustGet(currentGuid);
 	const cur = mustBeValidSlipNote(current);
 
@@ -156,6 +161,8 @@ export async function insertNewNoteAfter(
 	});
 	await noteStore.putNote(currentUpdated);
 
+	const affectedGuids: string[] = [newGuid, currentGuid];
+
 	if (oldNext) {
 		const oldNextFields = mustBeValidSlipNote(oldNext);
 		const oldNextUpdated = withUpdatedFields(
@@ -164,10 +171,11 @@ export async function insertNewNoteAfter(
 			oldNextFields.next
 		);
 		await noteStore.putNote(oldNextUpdated);
+		affectedGuids.push(oldNext.guid);
 	}
 
 	invalidateCache();
-	return { newGuid, newTitle };
+	return { newGuid, newTitle, affectedGuids };
 }
 
 /**
@@ -175,13 +183,18 @@ export async function insertNewNoteAfter(
  * the target detached (prev=없음, next=없음). Safe to call on a detached
  * note; a no-op that still bumps the changeDate would be wasteful so this
  * function short-circuits when there are no links to touch.
+ *
+ * `affectedGuids` lists every note written (target + any spliced
+ * neighbors). Empty when the target was already detached.
  */
-export async function cutFromChain(guid: string): Promise<void> {
+export async function cutFromChain(
+	guid: string
+): Promise<{ affectedGuids: string[] }> {
 	const target = await mustGet(guid);
 	const tf = mustBeValidSlipNote(target);
 
 	// Nothing to cut.
-	if (tf.prev.kind === 'none' && tf.next.kind === 'none') return;
+	if (tf.prev.kind === 'none' && tf.next.kind === 'none') return { affectedGuids: [] };
 
 	let prevNeighbor: NoteData | undefined;
 	let nextNeighbor: NoteData | undefined;
@@ -192,24 +205,30 @@ export async function cutFromChain(guid: string): Promise<void> {
 		nextNeighbor = await mustGetByTitle(tf.next.target ?? '');
 	}
 
+	const affectedGuids: string[] = [];
+
 	if (prevNeighbor) {
 		const fields = mustBeValidSlipNote(prevNeighbor);
 		await noteStore.putNote(
 			withUpdatedFields(prevNeighbor, fields.prev, tf.next)
 		);
+		affectedGuids.push(prevNeighbor.guid);
 	}
 	if (nextNeighbor) {
 		const fields = mustBeValidSlipNote(nextNeighbor);
 		await noteStore.putNote(
 			withUpdatedFields(nextNeighbor, tf.prev, fields.next)
 		);
+		affectedGuids.push(nextNeighbor.guid);
 	}
 
 	await noteStore.putNote(
 		withUpdatedFields(target, { kind: 'none' }, { kind: 'none' })
 	);
+	affectedGuids.push(guid);
 
 	invalidateCache();
+	return { affectedGuids };
 }
 
 /**
@@ -217,11 +236,15 @@ export async function cutFromChain(guid: string): Promise<void> {
  * pasted note is still attached to another chain, it's spliced out first.
  * If the pasted note is already the immediate successor of target, nothing
  * is written.
+ *
+ * `affectedGuids` aggregates writes from the optional inner cut AND the
+ * paste itself, so a single `reloadWindows(affectedGuids)` call covers
+ * every note a caller should refresh.
  */
 export async function pasteAfter(
 	pastedGuid: string,
 	targetGuid: string
-): Promise<void> {
+): Promise<{ affectedGuids: string[] }> {
 	if (pastedGuid === targetGuid) {
 		throw new Error('자기 자신 뒤에 붙여넣을 수 없습니다');
 	}
@@ -241,12 +264,15 @@ export async function pasteAfter(
 		pfInitial.prev.kind === 'link' &&
 		titlesMatch(pfInitial.prev.target, targetInitial.title)
 	) {
-		return;
+		return { affectedGuids: [] };
 	}
+
+	const affected = new Set<string>();
 
 	// Detach pasted from its current chain if it's still linked.
 	if (pfInitial.prev.kind === 'link' || pfInitial.next.kind === 'link') {
-		await cutFromChain(pastedGuid);
+		const cutResult = await cutFromChain(pastedGuid);
+		for (const g of cutResult.affectedGuids) affected.add(g);
 	}
 
 	// Re-read target and pasted; the cut above may have rewritten either.
@@ -264,6 +290,8 @@ export async function pasteAfter(
 	await noteStore.putNote(
 		withUpdatedFields(target, tf.prev, { kind: 'link', target: pasted.title })
 	);
+	affected.add(targetGuid);
+
 	await noteStore.putNote(
 		withUpdatedFields(
 			pasted,
@@ -271,6 +299,8 @@ export async function pasteAfter(
 			tf.next
 		)
 	);
+	affected.add(pastedGuid);
+
 	if (oldNextOfTarget) {
 		const ff = mustBeValidSlipNote(oldNextOfTarget);
 		await noteStore.putNote(
@@ -280,7 +310,9 @@ export async function pasteAfter(
 				ff.next
 			)
 		);
+		affected.add(oldNextOfTarget.guid);
 	}
 
 	invalidateCache();
+	return { affectedGuids: [...affected] };
 }

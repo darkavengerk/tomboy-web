@@ -13,6 +13,7 @@
 		isFavorite,
 		listNotes
 	} from '$lib/core/noteManager.js';
+	import { subscribeNoteReload } from '$lib/core/noteReloadBus.js';
 	import type { NoteData } from '$lib/core/note.js';
 	import TomboyEditor from '$lib/editor/TomboyEditor.svelte';
 	import Toolbar from '$lib/editor/Toolbar.svelte';
@@ -69,6 +70,35 @@
 		const g = slipClipboard.cutGuid;
 		if (!g) { cutSlipTitle = null; return; }
 		getNote(g).then((n) => { cutSlipTitle = n?.title ?? null; });
+	});
+
+	// Subscribe to the note reload bus for the currently-loaded guid. Fires
+	// when another note's rename rewrote a <link:internal>Oldtitle</link:internal>
+	// mark inside THIS note's xml — we need to drop the in-memory pendingDoc
+	// (which still carries the old title) and refresh the editor from IDB,
+	// otherwise the next debounced save would clobber the sweep's fix.
+	$effect(() => {
+		const g = note?.guid;
+		if (!g) return;
+		const off = subscribeNoteReload(g, async () => {
+			// Cancel any pending debounced save so the stale doc it holds
+			// doesn't win the race with the fresh IDB content.
+			if (saveTimer) {
+				clearTimeout(saveTimer);
+				saveTimer = null;
+			}
+			pendingDoc = null;
+			const fresh = await getNote(g);
+			if (!fresh) return;
+			if (fresh.xmlContent === note?.xmlContent) return;
+			note = fresh;
+			// Swap content prop — TomboyEditor's $effect keyed on `content`
+			// performs the setContent + clearDirty dance. Fingerprint reset
+			// so the reloaded doc isn't immediately re-saved.
+			editorContent = getNoteEditorContent(fresh);
+			lastSavedDocFingerprint = null;
+		});
+		return off;
 	});
 
 	// Route 변경 시 에디터 콘텐츠 교체

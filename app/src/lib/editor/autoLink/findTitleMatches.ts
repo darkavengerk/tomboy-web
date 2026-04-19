@@ -8,10 +8,8 @@
  */
 
 export interface TitleEntry {
-	/** Lower-cased title (locale-lowered) used for matching. */
-	titleLower: string;
-	/** The original title, preserved for the resulting `target`. */
-	original: string;
+	/** Title used for matching (exact case). */
+	title: string;
 	/** GUID of the note this title belongs to. */
 	guid: string;
 }
@@ -53,40 +51,37 @@ export function findTitleMatches(
 	if (!text) return [];
 	const exclude = options.excludeGuid ?? null;
 
-	// Keep only non-empty, non-excluded titles; de-dup by titleLower.
+	// Keep only non-empty, non-excluded titles; de-dup by title.
 	const seen = new Set<string>();
 	const candidates: TitleEntry[] = [];
 	for (const entry of titles) {
-		const trimmed = entry.titleLower.trim();
+		const trimmed = entry.title.trim();
 		if (!trimmed) continue;
 		if (exclude !== null && entry.guid === exclude) continue;
 		if (seen.has(trimmed)) continue;
 		seen.add(trimmed);
-		candidates.push({ ...entry, titleLower: trimmed });
+		candidates.push({ ...entry, title: trimmed });
 	}
 	if (candidates.length === 0) return [];
 
 	// Sort longest-first so longer titles win overlaps.
-	candidates.sort((a, b) => b.titleLower.length - a.titleLower.length);
+	candidates.sort((a, b) => b.title.length - a.title.length);
 
-	// Pre-compute a lower-cased copy of `text` for case-insensitive matching.
-	const textLower = text.toLocaleLowerCase();
 	const matches: Match[] = [];
 
 	let cursor = 0;
 	outer: while (cursor < text.length) {
 		for (const cand of candidates) {
-			const needle = cand.titleLower;
+			const needle = cand.title;
 			if (needle.length === 0) continue;
 			if (cursor + needle.length > text.length) continue;
-			// Quick check first char
-			if (textLower.startsWith(needle, cursor)) {
+			if (text.startsWith(needle, cursor)) {
 				const from = cursor;
 				const to = cursor + needle.length;
 				const before = from > 0 ? text[from - 1] : undefined;
 				const after = to < text.length ? text[to] : undefined;
 				if (!isWordChar(before) && !isWordChar(after)) {
-					matches.push({ from, to, target: cand.original, guid: cand.guid });
+					matches.push({ from, to, target: cand.title, guid: cand.guid });
 					cursor = to;
 					continue outer;
 				}

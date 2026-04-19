@@ -14,6 +14,8 @@ import {
 } from '$lib/stores/noteListCache.js';
 import {
 	createTitleProvider,
+	lookupGuidByTitle,
+	ensureTitleIndexReady,
 	_resetForTest as _resetTitleProvider
 } from '$lib/editor/autoLink/titleProvider.js';
 
@@ -46,7 +48,7 @@ beforeEach(() => {
 });
 
 describe('titleProvider', () => {
-	it('refresh() populates entries with lower-cased titles', async () => {
+	it('refresh() populates entries with exact-case titles', async () => {
 		listNotesMock.mockResolvedValueOnce([
 			makeNote('a', 'Foo Bar'),
 			makeNote('b', 'Hello World')
@@ -57,9 +59,8 @@ describe('titleProvider', () => {
 		const titles = p.getTitles();
 		expect(titles).toHaveLength(2);
 		const byGuid = Object.fromEntries(titles.map((t) => [t.guid, t]));
-		expect(byGuid.a.original).toBe('Foo Bar');
-		expect(byGuid.a.titleLower).toBe('foo bar');
-		expect(byGuid.b.titleLower).toBe('hello world');
+		expect(byGuid.a.title).toBe('Foo Bar');
+		expect(byGuid.b.title).toBe('Hello World');
 		p.dispose();
 	});
 
@@ -145,7 +146,7 @@ describe('titleProvider', () => {
 		await new Promise((r) => setTimeout(r, 0));
 
 		expect(changed).toHaveBeenCalled();
-		expect(p.getTitles()[0].original).toBe('Foo Renamed');
+		expect(p.getTitles()[0].title).toBe('Foo Renamed');
 		p.dispose();
 	});
 
@@ -169,7 +170,11 @@ describe('titleProvider', () => {
 		p.dispose();
 	});
 
-	it('dispose() unsubscribes — further invalidations do not call listNotes again', async () => {
+	it('dispose() does NOT unsubscribe the shared invalidate listener (module-level)', async () => {
+		// The onInvalidate subscription is now permanent: it keeps the
+		// title→guid index fresh even when no editor is mounted, so that
+		// code paths without an active provider (rename rewrite, import
+		// dup-check) can still use lookupGuidByTitle / ensureTitleIndexReady.
 		listNotesMock.mockResolvedValue([makeNote('a', 'Foo')]);
 		const p = createTitleProvider({});
 		await p.refresh();
@@ -178,7 +183,8 @@ describe('titleProvider', () => {
 		p.dispose();
 		invalidateCache();
 		await new Promise((r) => setTimeout(r, 0));
-		expect(listNotesMock).toHaveBeenCalledTimes(1);
+		// Subscription persists — invalidate still drives a refresh.
+		expect(listNotesMock).toHaveBeenCalledTimes(2);
 	});
 
 	it('refresh() is a no-op when the shared cache is already warm', async () => {
@@ -247,5 +253,90 @@ describe('titleProvider', () => {
 		currentExclude = null;
 		expect(p.getTitles().map((t) => t.guid).sort()).toEqual(['a', 'b', 'c']);
 		p.dispose();
+	});
+
+	describe('title→guid index (lookupGuidByTitle / ensureTitleIndexReady)', () => {
+		it('lookupGuidByTitle returns the guid after refresh', async () => {
+			listNotesMock.mockResolvedValueOnce([
+				makeNote('a', 'Foo'),
+				makeNote('b', 'Bar')
+			]);
+			const p = createTitleProvider({});
+			await p.refresh();
+			expect(lookupGuidByTitle('Foo')).toBe('a');
+			expect(lookupGuidByTitle('Bar')).toBe('b');
+			p.dispose();
+		});
+
+		it('lookupGuidByTitle is case-sensitive — lowercased query misses a capitalized title', async () => {
+			listNotesMock.mockResolvedValueOnce([makeNote('a', 'Foo')]);
+			const p = createTitleProvider({});
+			await p.refresh();
+			expect(lookupGuidByTitle('foo')).toBeNull();
+			expect(lookupGuidByTitle('FOO')).toBeNull();
+			expect(lookupGuidByTitle('Foo')).toBe('a');
+			p.dispose();
+		});
+
+		it('lookupGuidByTitle returns null for a missing title', async () => {
+			listNotesMock.mockResolvedValueOnce([makeNote('a', 'Foo')]);
+			const p = createTitleProvider({});
+			await p.refresh();
+			expect(lookupGuidByTitle('NoSuch')).toBeNull();
+			p.dispose();
+		});
+
+		it('lookupGuidByTitle trims the input title', async () => {
+			listNotesMock.mockResolvedValueOnce([makeNote('a', 'Foo')]);
+			const p = createTitleProvider({});
+			await p.refresh();
+			expect(lookupGuidByTitle('  Foo  ')).toBe('a');
+			expect(lookupGuidByTitle('\tFoo\n')).toBe('a');
+			p.dispose();
+		});
+
+		it('invalidateCache that renames Foo→Bar updates the title→guid map', async () => {
+			listNotesMock
+				.mockResolvedValueOnce([makeNote('a', 'Foo')])
+				.mockResolvedValueOnce([makeNote('a', 'Bar')]);
+			const p = createTitleProvider({});
+			await p.refresh();
+			expect(lookupGuidByTitle('Foo')).toBe('a');
+
+			invalidateCache();
+			await new Promise((r) => setTimeout(r, 0));
+
+			expect(lookupGuidByTitle('Foo')).toBeNull();
+			expect(lookupGuidByTitle('Bar')).toBe('a');
+			p.dispose();
+		});
+
+		it('ensureTitleIndexReady triggers a listNotes call when cold, but is a no-op when warm', async () => {
+			listNotesMock.mockResolvedValue([makeNote('a', 'Foo')]);
+
+			// Cold: no provider, no prior refresh.
+			expect(listNotesMock).not.toHaveBeenCalled();
+			await ensureTitleIndexReady();
+			expect(listNotesMock).toHaveBeenCalledTimes(1);
+			expect(lookupGuidByTitle('Foo')).toBe('a');
+
+			// Warm: calling again should not re-fetch.
+			await ensureTitleIndexReady();
+			expect(listNotesMock).toHaveBeenCalledTimes(1);
+		});
+
+		it('on duplicate titles, the FIRST entry in listNotes() wins (most-recently-changed)', async () => {
+			// listNotes() already returns notes sorted by changeDate DESC,
+			// so iterating the array first-wins gives "most recent wins"
+			// semantics. We simulate that by putting the newer note first.
+			listNotesMock.mockResolvedValueOnce([
+				makeNote('newer', 'Dup'),
+				makeNote('older', 'Dup')
+			]);
+			const p = createTitleProvider({});
+			await p.refresh();
+			expect(lookupGuidByTitle('Dup')).toBe('newer');
+			p.dispose();
+		});
 	});
 });

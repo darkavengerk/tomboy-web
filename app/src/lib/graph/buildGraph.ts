@@ -47,9 +47,9 @@ export interface BuildGraphOptions {
  *
  * Resolution rules:
  * - Internal-link targets store the destination note's **title** (not GUID).
- *   We build a lowercase-trimmed title → GUID map. On collision, the most
- *   recently modified note wins (matches the behavior users see in the
- *   editor's auto-link picker).
+ *   We build a trimmed exact-case title → GUID map. The uniqueness invariant
+ *   (enforced elsewhere) means there is at most one note per title; if two
+ *   notes somehow share a title, the most recently modified one wins.
  * - Unresolvable / self-referential targets are dropped silently — they
  *   produce no edge.
  * - Edges are deduplicated per ordered (source, target) pair.
@@ -67,7 +67,7 @@ export function buildGraph(
 	const titleToGuid = new Map<string, string>();
 	const titleToChangeDate = new Map<string, string>();
 	for (const note of notes) {
-		const key = note.title.trim().toLowerCase();
+		const key = note.title.trim();
 		if (!key) continue;
 		const existing = titleToChangeDate.get(key);
 		if (existing === undefined || (note.changeDate ?? '') > existing) {
@@ -94,7 +94,7 @@ export function buildGraph(
 		}
 		const targets = extractInternalLinkTargets(doc);
 		for (const rawTarget of targets) {
-			const key = rawTarget.trim().toLowerCase();
+			const key = rawTarget.trim();
 			if (!key) continue;
 			const targetGuid = titleToGuid.get(key);
 			if (!targetGuid || targetGuid === note.guid) continue;

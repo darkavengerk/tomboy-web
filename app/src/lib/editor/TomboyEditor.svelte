@@ -17,6 +17,11 @@
 	import { ctrlEnterSplit } from "./ctrlEnterSplit.js";
 	import { createTitleProvider } from "./autoLink/titleProvider.js";
 	import { autoLinkPluginKey } from "./autoLink/autoLinkPlugin.js";
+	import {
+		handleTitleBlur,
+		isCursorInTitleBlock,
+		extractTitleText,
+	} from "./titleUniqueGuard.js";
 	import { createImagePreviewPlugin } from "./imagePreview/imagePreviewPlugin.js";
 	import {
 		createSendListItemPlugin,
@@ -174,6 +179,13 @@
 		}, AUTO_LINK_DEBOUNCE_MS);
 	}
 
+	// Blur-time title-conflict latch. Prevents the same conflict from
+	// re-toasting on every cursor wiggle in/out of the title line; cleared
+	// whenever the title text itself changes or the conflict resolves.
+	const lastConflictTitleRef: { current: string | null } = { current: null };
+	let lastTitleSnapshot = "";
+	let prevCursorInTitle: boolean | null = null;
+
 	onMount(() => {
 		// Use a dynamic excludeGuid callback so the provider follows note
 		// transitions without needing dispose + recreate. The editor
@@ -262,6 +274,13 @@
 				// to be persisted, so we always forward to onchange and let
 				// updateNoteFromEditor's XML-equality check absorb no-ops.
 				onchange?.(ed.getJSON());
+				// Clear the blur-conflict latch whenever the title text
+				// changes — a fresh title deserves a fresh toast on next blur.
+				const nowTitle = extractTitleText(ed.state.doc).trim();
+				if (nowTitle !== lastTitleSnapshot) {
+					lastTitleSnapshot = nowTitle;
+					lastConflictTitleRef.current = null;
+				}
 				scheduleAutoLinkScan();
 			},
 			editorProps: {
@@ -411,6 +430,29 @@
 					cut: handleClipboardCut,
 				},
 			},
+		});
+
+		// Seed the title snapshot so the onUpdate latch-clearing compares
+		// against the current title rather than an empty string.
+		lastTitleSnapshot = extractTitleText(editor.state.doc).trim();
+
+		// Title uniqueness blur validator. Fires when the cursor transitions
+		// OUT of the first block (title line). The editor is reused across
+		// note transitions, but so is `prevCursorInTitle` state — the seed
+		// `null` means the first selection update only sets the initial
+		// in/out flag without firing the validator.
+		editor.on("selectionUpdate", ({ editor: ed }) => {
+			const { from } = ed.state.selection;
+			const nowInTitle = isCursorInTitleBlock(ed.state.doc, from);
+			if (prevCursorInTitle === true && nowInTitle === false) {
+				void handleTitleBlur(
+					ed,
+					currentGuid,
+					pushToast,
+					lastConflictTitleRef,
+				);
+			}
+			prevCursorInTitle = nowInTitle;
 		});
 
 		// Seed the slip-note arrow storage with the current props. Subsequent

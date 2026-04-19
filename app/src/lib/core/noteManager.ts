@@ -1,9 +1,17 @@
 import { createEmptyNote, formatTomboyDate, type NoteData } from './note.js';
 import { serializeContent, extractTitleFromDoc, deserializeContent } from './noteContentArchiver.js';
 import { parseNote, serializeNote } from './noteArchiver.js';
+import {
+	prepareIncomingNoteForLocal,
+	rewriteInternalLinkRefsInXml
+} from './titleRewrite.js';
+import { emitNoteReload } from './noteReloadBus.js';
 import * as noteStore from '$lib/storage/noteStore.js';
 import { generateGuid } from '$lib/utils/guid.js';
 import { invalidateCache } from '$lib/stores/noteListCache.js';
+import { ensureTitleIndexReady } from '$lib/editor/autoLink/titleProvider.js';
+import { checkTitleConflict } from '$lib/editor/titleUniqueGuard.js';
+import { pushToast } from '$lib/stores/toast.js';
 import type { JSONContent } from '@tiptap/core';
 
 /** Format a Date as a plain `yyyy-mm-dd HH:mm` title — the default title
@@ -66,6 +74,20 @@ export async function updateNoteFromEditor(guid: string, doc: JSONContent): Prom
 	}
 
 	const titleChanged = newTitle !== note.title;
+	const oldTitle = note.title;
+
+	// Defensive title-uniqueness guard. The editor's blur validator is the
+	// primary UX surface for this (it toasts + snaps the cursor back so the
+	// user can edit), but code paths that bypass the editor — programmatic
+	// edits, transferListItem moving into a note, etc. — also funnel through
+	// this function, so we re-check here and silently refuse the write on a
+	// collision. The UI is responsible for surfacing the error.
+	if (titleChanged) {
+		await ensureTitleIndexReady();
+		const { conflict } = checkTitleConflict(newTitle, guid);
+		if (conflict) return note;
+	}
+
 	const now = formatTomboyDate(new Date());
 	note.xmlContent = newXmlContent;
 	note.title = newTitle;
@@ -80,8 +102,55 @@ export async function updateNoteFromEditor(guid: string, doc: JSONContent): Prom
 	// keystroke's debounced save triggers a full titleProvider refetch +
 	// full-doc auto-link rescan. List pages remount on navigation and
 	// refetch fresh data then.
-	if (titleChanged) invalidateCache();
+	if (titleChanged) {
+		invalidateCache();
+		// Rewrite backlinks: every OTHER note that stored
+		// <link:internal>oldTitle</link:internal> (or broken) still holds the
+		// OLD title as text — Tomboy's auto-link marks store the title
+		// string, not the target guid. Sweep them now so they resolve again
+		// on next load, and reload any open editors so an in-memory
+		// pendingDoc doesn't clobber our fix on the next debounced save.
+		const affected = await rewriteBacklinksForRename(oldTitle, newTitle, guid);
+		if (affected.length > 0) {
+			invalidateCache();
+			await emitNoteReload(affected);
+		}
+	}
 	return note;
+}
+
+/**
+ * Scan every non-deleted note (except `selfGuid`) and rewrite any
+ * `<link:internal>OLD</link:internal>` / `<link:broken>OLD</link:broken>`
+ * references to use `newTitle`. Updated notes land via `putNote` so they
+ * are `localDirty=true` and will upload on the next sync. Returns the list
+ * of affected guids.
+ */
+async function rewriteBacklinksForRename(
+	oldTitle: string,
+	newTitle: string,
+	selfGuid: string
+): Promise<string[]> {
+	if (oldTitle === newTitle) return [];
+	const all = await noteStore.getAllNotesIncludingTemplates();
+	const affected: string[] = [];
+	const now = formatTomboyDate(new Date());
+	for (const other of all) {
+		if (other.guid === selfGuid) continue;
+		if (other.deleted) continue;
+		const { xml, changed } = rewriteInternalLinkRefsInXml(
+			other.xmlContent,
+			oldTitle,
+			newTitle
+		);
+		if (!changed) continue;
+		other.xmlContent = xml;
+		other.changeDate = now;
+		other.metadataChangeDate = now;
+		await noteStore.putNote(other);
+		affected.push(other.guid);
+	}
+	return affected;
 }
 
 /** Delete a note (soft-delete for sync) */
@@ -105,19 +174,38 @@ export async function getNote(guid: string): Promise<NoteData | undefined> {
 	return noteStore.getNote(guid);
 }
 
-/** Find a note by its title (case-insensitive). */
+/** Find a note by its title (case-sensitive, trimmed). */
 export async function findNoteByTitle(title: string): Promise<NoteData | undefined> {
 	return noteStore.findNoteByTitle(title);
 }
 
-/** Import a .note XML string into IndexedDB */
+/** Import a .note XML string into IndexedDB.
+ *
+ * Enforces the case-sensitive title uniqueness invariant: if another LOCAL
+ * note (different guid) already owns this title, suffix with `(2)`,
+ * `(3)`, … and mark the imported copy dirty so the rename propagates back
+ * on the next sync. A toast notifies the user of the rename.
+ */
 export async function importNoteXml(xml: string, filename: string): Promise<NoteData> {
 	const guid = filename.replace(/\.note$/, '');
 	const uri = `note://tomboy/${guid}`;
-	const note = parseNote(xml, uri);
-	note.guid = guid;
-	note.localDirty = false;
-	await noteStore.putNoteSynced(note);
+	const parsed = parseNote(xml, uri);
+	parsed.guid = guid;
+	parsed.localDirty = false;
+
+	const { renamed, from, to, note } = await prepareIncomingNoteForLocal(parsed, {
+		findByTitle: (title) => noteStore.findNoteByTitle(title),
+		now: () => formatTomboyDate(new Date())
+	});
+
+	if (renamed) {
+		// localDirty=true is already set by prepareIncomingNoteForLocal; use
+		// putNote so the renamed note uploads on next sync.
+		await noteStore.putNote(note);
+		pushToast(`제목 중복 — '${from}' → '${to}' 로 이름 변경됨`, { kind: 'info' });
+	} else {
+		await noteStore.putNoteSynced(note);
+	}
 	return note;
 }
 

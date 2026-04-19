@@ -136,7 +136,7 @@
 			titleToGuid = new Map(
 				data.nodes
 					.filter((n) => !n.isCategory)
-					.map((n) => [n.title.trim().toLowerCase(), n.id])
+					.map((n) => [n.title.trim(), n.id])
 			);
 			backlinksByGuid = new Map<string, string[]>();
 			for (const l of data.links) {
@@ -769,7 +769,7 @@
 	}
 
 	function handleOpenLink(title: string) {
-		const key = title.trim().toLowerCase();
+		const key = title.trim();
 		const guid = titleToGuid.get(key);
 		if (!guid) return;
 		autoSelect = true;

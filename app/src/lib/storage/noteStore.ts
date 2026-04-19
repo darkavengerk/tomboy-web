@@ -87,14 +87,14 @@ export async function purgeAllLocal(): Promise<void> {
 	await db.clear('notes');
 }
 
-/** Find a non-deleted note by title (case-insensitive). Returns the most recently changed match. */
+/** Find a non-deleted note by title (exact case). Returns the most recently changed match if the uniqueness invariant is somehow violated. */
 export async function findNoteByTitle(title: string): Promise<NoteData | undefined> {
 	const db = await getDB();
 	const all = await db.getAll('notes');
-	const needle = title.trim().toLowerCase();
+	const needle = title.trim();
 	if (!needle) return undefined;
 	const matches = all.filter(
-		(n) => !n.deleted && n.title.trim().toLowerCase() === needle
+		(n) => !n.deleted && n.title.trim() === needle
 	);
 	if (matches.length === 0) return undefined;
 	matches.sort((a, b) => (b.changeDate > a.changeDate ? 1 : -1));

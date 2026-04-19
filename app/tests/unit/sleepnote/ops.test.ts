@@ -101,7 +101,7 @@ async function walkForward(startGuid: string): Promise<string[]> {
 describe('insertNewNoteAfter', () => {
 	it('inserts after a solo note (prev=없음, next=없음)', async () => {
 		const [a] = await persistChain(['A']);
-		const { newGuid, newTitle } = await insertNewNoteAfter(a.guid);
+		const { newGuid, newTitle, affectedGuids } = await insertNewNoteAfter(a.guid);
 
 		expect(newGuid).toBeTruthy();
 		expect(newTitle).toBeTruthy();
@@ -110,17 +110,23 @@ describe('insertNewNoteAfter', () => {
 		expect(await readFields(a.guid)).toEqual({ prev: '없음', next: newTitle });
 		expect(await readFields(newGuid)).toEqual({ prev: a.title, next: '없음' });
 		expect(await walkForward(a.guid)).toEqual([a.title, newTitle]);
+		// Solo insert has no oldNext to splice — only the new note and
+		// the current note get written.
+		expect(new Set(affectedGuids)).toEqual(new Set([newGuid, a.guid]));
 	});
 
 	it('inserts in the middle of a 3-note chain', async () => {
 		const [a, b, c] = await persistChain(['A', 'B', 'C']);
-		const { newGuid, newTitle } = await insertNewNoteAfter(b.guid);
+		const { newGuid, newTitle, affectedGuids } = await insertNewNoteAfter(b.guid);
 
 		expect(await readFields(a.guid)).toEqual({ prev: '없음', next: b.title });
 		expect(await readFields(b.guid)).toEqual({ prev: a.title, next: newTitle });
 		expect(await readFields(newGuid)).toEqual({ prev: b.title, next: c.title });
 		expect(await readFields(c.guid)).toEqual({ prev: newTitle, next: '없음' });
 		expect(await walkForward(a.guid)).toEqual([a.title, b.title, newTitle, c.title]);
+		// All three mutated notes (new, current, oldNext) must appear
+		// so the caller can reload every open window for them.
+		expect(new Set(affectedGuids)).toEqual(new Set([newGuid, b.guid, c.guid]));
 	});
 
 	it('inserts after the HEAD of a chain (A→B): result A→new→B', async () => {
@@ -201,12 +207,19 @@ describe('insertNewNoteAfter', () => {
 describe('cutFromChain', () => {
 	it('removes a middle note from A→B→C, leaving A→C and B detached', async () => {
 		const [a, b, c] = await persistChain(['A', 'B', 'C']);
-		await cutFromChain(b.guid);
+		const { affectedGuids } = await cutFromChain(b.guid);
 
 		expect(await readFields(a.guid)).toEqual({ prev: '없음', next: c.title });
 		expect(await readFields(c.guid)).toEqual({ prev: a.title, next: '없음' });
 		expect(await readFields(b.guid)).toEqual({ prev: '없음', next: '없음' });
 		expect(await walkForward(a.guid)).toEqual([a.title, c.title]);
+		expect(new Set(affectedGuids)).toEqual(new Set([a.guid, b.guid, c.guid]));
+	});
+
+	it('cutting a detached note reports no affected guids', async () => {
+		const [a] = await persistChain(['A']);
+		const { affectedGuids } = await cutFromChain(a.guid);
+		expect(affectedGuids).toEqual([]);
 	});
 
 	it('removes the HEAD from A→B→C: new chain B→C, A detached', async () => {
@@ -288,12 +301,34 @@ describe('pasteAfter', () => {
 		await putNote(b);
 		await putNote(c);
 
-		await pasteAfter(b.guid, a.guid);
+		const { affectedGuids } = await pasteAfter(b.guid, a.guid);
 
 		expect(await readFields(a.guid)).toEqual({ prev: '없음', next: 'B' });
 		expect(await readFields(b.guid)).toEqual({ prev: 'A', next: 'C' });
 		expect(await readFields(c.guid)).toEqual({ prev: 'B', next: '없음' });
 		expect(await walkForward(a.guid)).toEqual(['A', 'B', 'C']);
+		// This is the exact scenario the user hit: C must appear so its
+		// open window reloads and picks up the new `이전: B`.
+		expect(new Set(affectedGuids)).toEqual(new Set([a.guid, b.guid, c.guid]));
+	});
+
+	it('auto-detach during paste reports both the cut neighbors and the paste targets', async () => {
+		// A→B→C→D. Move B to after C → A→C→B→D.
+		// affectedGuids must include A (cut splice-out), C (paste target
+		// + cut splice-out), B (pasted), D (old next of target after cut).
+		const [a, b, c, d] = await persistChain(['A', 'B', 'C', 'D']);
+		const { affectedGuids } = await pasteAfter(b.guid, c.guid);
+		expect(await walkForward(a.guid)).toEqual(['A', 'C', 'B', 'D']);
+		expect(new Set(affectedGuids)).toEqual(
+			new Set([a.guid, b.guid, c.guid, d.guid])
+		);
+	});
+
+	it('fast-path no-op reports no affected guids', async () => {
+		// A→B→C: pasting B after A is a no-op (already positioned).
+		const [a, b] = await persistChain(['A', 'B', 'C']);
+		const { affectedGuids } = await pasteAfter(b.guid, a.guid);
+		expect(affectedGuids).toEqual([]);
 	});
 
 	it('pastes detached B after the TAIL of a chain', async () => {

@@ -16,6 +16,10 @@ import {
 	type TomboyServerManifest
 } from '$lib/sync/dropboxClient';
 import { getManifest, type SyncManifest } from '$lib/sync/manifest';
+import {
+	scanDuplicateTitles,
+	type DuplicateTitleGroup
+} from '$lib/core/titleInvariantCheck';
 
 export const ADMIN_PAGE_SIZE = 10;
 
@@ -32,6 +36,8 @@ interface AdminCacheState {
 	/** Next rev to attempt loading into `displayedRevs` (one below the lowest loaded). */
 	nextRevToLoad: number | null;
 	hasMore: boolean;
+	/** Groups of local notes sharing the same trimmed, case-sensitive title. */
+	duplicateTitles: DuplicateTitleGroup[];
 }
 
 export const adminCache = $state<AdminCacheState>({
@@ -43,7 +49,8 @@ export const adminCache = $state<AdminCacheState>({
 	manifestsByRev: new Map(),
 	displayedRevs: [],
 	nextRevToLoad: null,
-	hasMore: false
+	hasMore: false,
+	duplicateTitles: []
 });
 
 /**
@@ -59,9 +66,14 @@ export async function initAdminCache(forceRefresh = false): Promise<void> {
 	adminCache.loading = true;
 	adminCache.error = '';
 	try {
-		const [root, local] = await Promise.all([downloadServerManifest(), getManifest()]);
+		const [root, local, duplicates] = await Promise.all([
+			downloadServerManifest(),
+			getManifest(),
+			scanDuplicateTitles()
+		]);
 		adminCache.rootManifest = root;
 		adminCache.localManifest = local;
+		adminCache.duplicateTitles = duplicates;
 
 		// Seed the per-rev cache with the root manifest at its own rev.
 		if (root) {
@@ -169,4 +181,5 @@ export function resetAdminCache(): void {
 	adminCache.nextRevToLoad = null;
 	adminCache.hasMore = false;
 	adminCache.error = '';
+	adminCache.duplicateTitles = [];
 }

@@ -9,7 +9,7 @@ import { TomboyMonospace } from '$lib/editor/extensions/TomboyMonospace.js';
 import type { TitleEntry } from '$lib/editor/autoLink/findTitleMatches.js';
 
 function entry(title: string, guid = `guid-${title}`): TitleEntry {
-	return { titleLower: title.toLocaleLowerCase(), original: title, guid };
+	return { title, guid };
 }
 
 let currentEditor: Editor | null = null;

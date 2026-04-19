@@ -5,7 +5,7 @@ import {
 } from '$lib/editor/autoLink/findTitleMatches.js';
 
 function t(title: string, guid = `guid-${title}`): TitleEntry {
-	return { titleLower: title.toLocaleLowerCase(), original: title, guid };
+	return { title, guid };
 }
 
 describe('findTitleMatches — trivial inputs', () => {
@@ -98,18 +98,28 @@ describe('findTitleMatches — longest-match priority', () => {
 });
 
 describe('findTitleMatches — case sensitivity', () => {
-	it('matches case-insensitively but keeps target from the title entry', () => {
-		const m = findTitleMatches('FOO HERE', [t('Foo')]);
-		expect(m).toHaveLength(1);
-		expect(m[0].target).toBe('Foo');
-		expect(m[0].from).toBe(0);
-		expect(m[0].to).toBe(3);
+	it('matches exact case only — does NOT link uppercase text to a mixed-case title', () => {
+		expect(findTitleMatches('FOO HERE', [t('Foo')])).toEqual([]);
 	});
 
-	it('matches mixed-case title against mixed-case text', () => {
-		const m = findTitleMatches('Hello world', [t('HELLO')]);
+	it('does NOT link when only case differs', () => {
+		expect(findTitleMatches('Hello world', [t('HELLO')])).toEqual([]);
+	});
+
+	it('matches a title whose case matches the text exactly', () => {
+		const m = findTitleMatches('Hello world', [t('Hello')]);
 		expect(m).toHaveLength(1);
-		expect(m[0].target).toBe('HELLO');
+		expect(m[0].target).toBe('Hello');
+	});
+
+	it('treats differently-cased titles as distinct entries (both can match)', () => {
+		// Uniqueness invariant still allows "Foo" and "foo" to coexist —
+		// only exact-case text gets the link for each.
+		const m = findTitleMatches('Foo and foo', [t('Foo', 'a'), t('foo', 'b')]);
+		expect(m).toHaveLength(2);
+		const byTarget = Object.fromEntries(m.map((x) => [x.target, x]));
+		expect(byTarget.Foo?.guid).toBe('a');
+		expect(byTarget.foo?.guid).toBe('b');
 	});
 });
 

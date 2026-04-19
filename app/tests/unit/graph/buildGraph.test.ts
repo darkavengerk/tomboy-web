@@ -48,7 +48,7 @@ describe('buildGraph', () => {
 		expect(g.nodes.every((n) => n.size === 1)).toBe(true);
 	});
 
-	it('resolves internal links by title (case-insensitive) → guid', () => {
+	it('resolves internal links by title (exact case) → guid', () => {
 		const notes = [
 			makeNote('a', 'Alpha', ['Beta']),
 			makeNote('b', 'Beta')
@@ -56,6 +56,15 @@ describe('buildGraph', () => {
 		const g = buildGraph(notes);
 		expect(g.links).toHaveLength(1);
 		expect(g.links[0]).toEqual({ source: 'a', target: 'b' });
+	});
+
+	it('does NOT resolve a link when only case differs', () => {
+		const notes = [
+			makeNote('a', 'Alpha', ['beta']),
+			makeNote('b', 'Beta')
+		];
+		const g = buildGraph(notes);
+		expect(g.links).toEqual([]);
 	});
 
 	it('drops broken-target links (missing target title)', () => {
@@ -72,7 +81,7 @@ describe('buildGraph', () => {
 
 	it('deduplicates repeated (source, target) edges', () => {
 		const notes = [
-			makeNote('a', 'Alpha', ['Beta', 'Beta', 'beta']),
+			makeNote('a', 'Alpha', ['Beta', 'Beta', 'Beta']),
 			makeNote('b', 'Beta')
 		];
 		const g = buildGraph(notes);

@@ -11,7 +11,9 @@ vi.mock('$lib/sync/dropboxClient.js', () => ({
 vi.mock('$lib/storage/noteStore.js', () => ({
 	getAllNotesIncludingDeleted: vi.fn(async () => []),
 	putNoteSynced: vi.fn(async () => undefined),
-	purgeNote: vi.fn(async () => undefined)
+	putNote: vi.fn(async () => undefined),
+	purgeNote: vi.fn(async () => undefined),
+	findNoteByTitle: vi.fn(async () => undefined)
 }));
 
 vi.mock('$lib/sync/manifest.js', () => ({
