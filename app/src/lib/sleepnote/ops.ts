@@ -20,11 +20,11 @@ import {
 	type NoteData
 } from '$lib/core/note.js';
 import { deserializeContent, serializeContent } from '$lib/core/noteContentArchiver.js';
+import { ensureUniqueTitle, formatDateTimeTitle } from '$lib/core/noteManager.js';
 import * as noteStore from '$lib/storage/noteStore.js';
 import { generateGuid } from '$lib/utils/guid.js';
 import { invalidateCache } from '$lib/stores/noteListCache.js';
 import { validateSlipNoteFormat, type SlipField } from './validator.js';
-import { formatSlipNoteTitle } from './create.js';
 
 interface FieldValue {
 	kind: 'none' | 'link';
@@ -104,17 +104,6 @@ function mustBeValidSlipNote(note: NoteData): {
 	return { prev: fieldToValue(r.prev), next: fieldToValue(r.next) };
 }
 
-async function generateUniqueSlipTitle(baseDate: Date): Promise<string> {
-	const base = formatSlipNoteTitle(baseDate);
-	let candidate = base;
-	let n = 2;
-	while (await noteStore.findNoteByTitle(candidate)) {
-		candidate = `${base} (${n})`;
-		n++;
-	}
-	return candidate;
-}
-
 function buildNewSlipNoteXml(title: string, prev: FieldValue, next: FieldValue): string {
 	const prevLine =
 		prev.kind === 'link'
@@ -149,7 +138,7 @@ export async function insertNewNoteAfter(
 		mustBeValidSlipNote(oldNext);
 	}
 
-	const newTitle = await generateUniqueSlipTitle(new Date());
+	const newTitle = await ensureUniqueTitle(formatDateTimeTitle(new Date()));
 	const newGuid = generateGuid();
 	const newNote = createEmptyNote(newGuid);
 	newNote.title = newTitle;

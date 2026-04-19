@@ -6,18 +6,42 @@ import { generateGuid } from '$lib/utils/guid.js';
 import { invalidateCache } from '$lib/stores/noteListCache.js';
 import type { JSONContent } from '@tiptap/core';
 
+/** Format a Date as a plain `yyyy-mm-dd HH:mm` title — the default title
+ *  for every newly-created note. Matches `isSlipNoteTitle`, so a note can
+ *  later be added to the slip-box chain without renaming. */
+export function formatDateTimeTitle(date: Date): string {
+	const pad = (n: number) => String(n).padStart(2, '0');
+	const yyyy = date.getFullYear();
+	const MM = pad(date.getMonth() + 1);
+	const dd = pad(date.getDate());
+	const HH = pad(date.getHours());
+	const mm = pad(date.getMinutes());
+	return `${yyyy}-${MM}-${dd} ${HH}:${mm}`;
+}
+
+/** Append " (2)", " (3)", … until the title is not in use by any note. */
+export async function ensureUniqueTitle(base: string): Promise<string> {
+	let candidate = base;
+	let n = 2;
+	while (await noteStore.findNoteByTitle(candidate)) {
+		candidate = `${base} (${n})`;
+		n++;
+	}
+	return candidate;
+}
+
 /** Create a new note and persist it to IndexedDB */
 export async function createNote(initialTitle?: string): Promise<NoteData> {
 	const guid = generateGuid();
 	const note = createEmptyNote(guid);
-	if (initialTitle) {
-		note.title = initialTitle;
-		// When the title looks like yyyy-mm-dd, seed the subtitle slot (second
-		// line) with the year so date-titled notes have an auto-filled header.
-		const dateMatch = /^(\d{4})-\d{2}-\d{2}$/.exec(initialTitle);
-		const suffix = dateMatch ? `\n${dateMatch[1]}년\n` : `\n\n`;
-		note.xmlContent = `<note-content version="0.1">${initialTitle}${suffix}</note-content>`;
-	}
+	const title =
+		initialTitle ?? (await ensureUniqueTitle(formatDateTimeTitle(new Date())));
+	note.title = title;
+	// When the title looks like yyyy-mm-dd, seed the subtitle slot (second
+	// line) with the year so date-titled notes have an auto-filled header.
+	const dateMatch = /^(\d{4})-\d{2}-\d{2}$/.exec(title);
+	const suffix = dateMatch ? `\n${dateMatch[1]}년\n` : `\n\n`;
+	note.xmlContent = `<note-content version="0.1">${title}${suffix}</note-content>`;
 	await noteStore.putNote(note);
 	invalidateCache();
 	return note;

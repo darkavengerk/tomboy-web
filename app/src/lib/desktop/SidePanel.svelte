@@ -76,7 +76,7 @@
 		const note =
 			selectedNotebook === SLIPBOX_NOTEBOOK
 				? await createSlipNote()
-				: await createNote('새 노트');
+				: await createNote();
 		if (selectedNotebook) {
 			await assignNotebook(note.guid, selectedNotebook);
 		}
