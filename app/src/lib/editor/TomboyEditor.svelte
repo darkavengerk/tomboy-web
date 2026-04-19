@@ -14,6 +14,7 @@
 	import { TomboySubtitlePlaceholder } from "./extensions/TomboySubtitlePlaceholder.js";
 	import { SlipNoteArrows, type SlipNoteArrowsStorage } from "./extensions/SlipNoteArrows.js";
 	import { handleClipboardCopy, handleClipboardCut } from "./clipboardPlainText.js";
+	import { ctrlEnterSplit } from "./ctrlEnterSplit.js";
 	import { createTitleProvider } from "./autoLink/titleProvider.js";
 	import { autoLinkPluginKey } from "./autoLink/autoLinkPlugin.js";
 	import { createImagePreviewPlugin } from "./imagePreview/imagePreviewPlugin.js";
@@ -274,6 +275,15 @@
 						!event.altKey &&
 						!event.shiftKey
 					) {
+						// Ctrl+Enter: split at end of current line — i.e. keep
+						// the line the user is on intact, drop a fresh empty
+						// block (paragraph or list item) below, caret lands
+						// on it.
+						if (event.key === "Enter") {
+							event.preventDefault();
+							ctrlEnterSplit(ed);
+							return true;
+						}
 						switch (event.key) {
 							case "d":
 								event.preventDefault();
