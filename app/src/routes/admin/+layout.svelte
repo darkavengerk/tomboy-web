@@ -7,6 +7,7 @@
 		{ href: '/admin', label: '대시보드', exact: true },
 		{ href: '/admin/revisions', label: '리비전' },
 		{ href: '/admin/browse', label: '파일 탐색' },
+		{ href: '/admin/sleepnote', label: '슬립노트' },
 		{ href: '/admin/tools', label: '도구' }
 	];
 

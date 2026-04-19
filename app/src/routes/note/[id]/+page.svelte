@@ -18,6 +18,7 @@
 	import Toolbar from '$lib/editor/Toolbar.svelte';
 	import NoteActionSheet, { type ActionKind } from '$lib/editor/NoteActionSheet.svelte';
 	import NotebookPicker from '$lib/components/NotebookPicker.svelte';
+	import { SLIPBOX_NOTEBOOK } from '$lib/sleepnote/validator.js';
 	import type { JSONContent, Editor } from '@tiptap/core';
 	import { pushToast } from '$lib/stores/toast.js';
 	import { removeNoteRevision } from '$lib/sync/manifest.js';
@@ -57,6 +58,7 @@
 	const isFromHome = $derived(page.url.searchParams.get('from') === 'home');
 	const currentNotebook = $derived(note ? getNotebook(note) : null);
 	const isFavoriteNote = $derived(note ? isFavorite(note) : false);
+	const isSlipNote = $derived(currentNotebook === SLIPBOX_NOTEBOOK);
 
 	// Route 변경 시 에디터 콘텐츠 교체
 	//
@@ -360,6 +362,8 @@
 				oninternallink={handleInternalLink}
 				currentGuid={noteId}
 				createDate={note?.createDate ?? null}
+				isSlipNote={isSlipNote}
+				onslipnavigate={handleInternalLink}
 			/>
 		{/if}
 	</div>

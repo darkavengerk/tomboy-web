@@ -35,6 +35,7 @@
 	} from './session.svelte.js';
 	import { modKeys } from './modKeys.svelte.js';
 	import { SEND_SOURCE_GUID } from '$lib/editor/sendListItem/transferListItem.js';
+	import { SLIPBOX_NOTEBOOK } from '$lib/sleepnote/validator.js';
 
 	interface Props {
 		guid: string;
@@ -94,6 +95,7 @@
 
 	const isFavoriteState = $derived(note ? isFavorite(note) : false);
 	const currentNotebook = $derived(note ? getNotebook(note) : null);
+	const isSlipNote = $derived(currentNotebook === SLIPBOX_NOTEBOOK);
 	const sendActive = $derived(guid === SEND_SOURCE_GUID && modKeys.ctrl);
 
 	function getEditor(): Editor | null {
@@ -482,6 +484,8 @@
 				enableContextMenu={true}
 				createDate={note?.createDate ?? null}
 				sendListItemActive={sendActive}
+				isSlipNote={isSlipNote}
+				onslipnavigate={handleInternalLink}
 			/>
 		{:else}
 			<div class="loading">노트를 불러올 수 없습니다.</div>

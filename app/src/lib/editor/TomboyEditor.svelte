@@ -12,6 +12,7 @@
 	import { TomboyListItem } from "./extensions/TomboyListItem.js";
 	import { TomboyParagraph } from "./extensions/TomboyParagraph.js";
 	import { TomboySubtitlePlaceholder } from "./extensions/TomboySubtitlePlaceholder.js";
+	import { SlipNoteArrows, type SlipNoteArrowsStorage } from "./extensions/SlipNoteArrows.js";
 	import { createTitleProvider } from "./autoLink/titleProvider.js";
 	import { autoLinkPluginKey } from "./autoLink/autoLinkPlugin.js";
 	import { createImagePreviewPlugin } from "./imagePreview/imagePreviewPlugin.js";
@@ -42,6 +43,11 @@
 		/** When true, each listItem shows a floating "보내기" button that
 		 *  transfers it to the configured destination note. */
 		sendListItemActive?: boolean;
+		/** When true, decorates the 이전/다음 paragraphs with circular arrow
+		 *  buttons and hides the original text via CSS. */
+		isSlipNote?: boolean;
+		/** Called when the user clicks one of the slip-note arrows. */
+		onslipnavigate?: (target: string) => void;
 	}
 
 	let {
@@ -52,6 +58,8 @@
 		enableContextMenu = false,
 		createDate = null,
 		sendListItemActive = false,
+		isSlipNote = false,
+		onslipnavigate = () => {},
 	}: Props = $props();
 
 	let ctxMenu = $state<{ x: number; y: number } | null>(null);
@@ -224,6 +232,7 @@
 						];
 					},
 				}),
+				SlipNoteArrows,
 			],
 			content: content ?? {
 				type: "doc",
@@ -369,6 +378,13 @@
 			},
 		});
 
+		// Seed the slip-note arrow storage with the current props. Subsequent
+		// changes are synced via the $effect below.
+		const slipStorage = (editor.storage as unknown as Record<string, unknown>)
+			.slipNoteArrows as SlipNoteArrowsStorage;
+		slipStorage.enabled = isSlipNote;
+		slipStorage.onNavigate = onslipnavigate;
+
 		// Note: no initial scan on mount. The note's stored XML already
 		// carries the `<link:internal>` marks from its last save, so the
 		// deserialized doc shows links immediately. Any staleness (e.g.
@@ -452,6 +468,25 @@
 		ed.view.dispatch(
 			ed.state.tr.setMeta(sendListItemPluginKey, { active }),
 		);
+	});
+
+	// Sync slip-note arrow props to the extension storage and force the
+	// decorations plugin to recompute. Dispatching a no-op transaction is
+	// the cheapest way to re-run `props.decorations` without mutating the
+	// document.
+	$effect(() => {
+		const flag = isSlipNote;
+		const handler = onslipnavigate;
+		const ed = editor;
+		if (!ed || ed.isDestroyed) return;
+		const storage = (ed.storage as unknown as Record<string, unknown>)
+			.slipNoteArrows as SlipNoteArrowsStorage;
+		const changed =
+			storage.enabled !== flag || storage.onNavigate !== handler;
+		if (!changed) return;
+		storage.enabled = flag;
+		storage.onNavigate = handler;
+		ed.view.dispatch(ed.state.tr);
 	});
 
 	export function getEditor(): Editor | null {
@@ -667,6 +702,57 @@
 	}
 	.tomboy-editor :global(.tomboy-send-li-btn:hover) {
 		background: #204a87;
+	}
+
+	/* Slip-note prev/next row. Both arrows ride on block 2's line; the
+	   original `이전:` / `다음:` text stays in the doc but is hidden via
+	   font-size:0 + color:transparent, and block 3 is collapsed entirely.
+	   No extra vertical space — the paragraph's height is just the button
+	   height. */
+	.tomboy-editor :global(p.slipnote-combined-line) {
+		display: flex;
+		align-items: center;
+		margin: 0;
+		font-size: 0;
+		color: transparent;
+		line-height: 0;
+	}
+	.tomboy-editor :global(p.slipnote-combined-line a),
+	.tomboy-editor :global(p.slipnote-combined-line br) {
+		display: none;
+	}
+	.tomboy-editor :global(p.slipnote-hidden-line) {
+		display: none;
+	}
+	.tomboy-editor :global(.slipnote-arrow) {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 34px;
+		height: 34px;
+		padding: 0;
+		border: none;
+		border-radius: 50%;
+		background: rgba(0, 0, 0, 0.06);
+		color: #333;
+		font-size: 1rem;
+		line-height: 1;
+		cursor: pointer;
+		vertical-align: middle;
+	}
+	.tomboy-editor :global(.slipnote-arrow-next) {
+		margin-left: auto;
+	}
+	.tomboy-editor :global(.slipnote-arrow:disabled) {
+		opacity: 0.3;
+		cursor: default;
+		background: transparent;
+	}
+	.tomboy-editor :global(.slipnote-arrow:not(:disabled):hover) {
+		background: rgba(0, 0, 0, 0.12);
+	}
+	.tomboy-editor :global(.slipnote-arrow:not(:disabled):active) {
+		background: rgba(0, 0, 0, 0.18);
 	}
 
 	/* Placeholder */

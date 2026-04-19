@@ -40,12 +40,13 @@ app/src/
 │   ├── note/[id]/+page.svelte     # single note editor (one-note-per-page)
 │   ├── settings/+page.svelte      # Dropbox auth, manual sync, notes path
 │   └── admin/                     # desktop-only Dropbox sync admin (see "Admin page")
-│       ├── +layout.svelte         # sub-nav: 대시보드 / 리비전 / 파일 탐색 / 도구
+│       ├── +layout.svelte         # sub-nav: 대시보드 / 리비전 / 파일 탐색 / 슬립노트 / 도구
 │       ├── +page.svelte           # dashboard (server/local manifest summary)
 │       ├── revisions/+page.svelte         # paginated server revision list
 │       ├── revisions/[rev]/+page.svelte   # per-rev change diff + soft rollback
 │       ├── notes/[guid]/+page.svelte      # per-note history (scans loaded revs)
 │       ├── browse/+page.svelte            # raw Dropbox file tree browser
+│       ├── sleepnote/+page.svelte         # slip-note format checker (see tomboy-sleepnote)
 │       └── tools/+page.svelte             # local-IDB zip backup, full-history zip
 ├── lib/
 │   ├── core/
@@ -211,6 +212,14 @@ suppressed). `/desktop/graph` is documented in the `tomboy-graph` skill.
 See the **`tomboy-autolink`** skill. Lives in `app/src/lib/editor/autoLink/`;
 tests in `app/tests/unit/editor/`. Self-link suppression via `currentGuid`
 prop on `TomboyEditor.svelte`.
+
+## Slip-notes (슬립노트)
+
+See the **`tomboy-sleepnote`** skill. Notes in the `[0] Slip-Box` notebook form
+`이전`/`다음` linked-list chains rooted at the fixed index note (GUID
+`1c97d161-…` — same as `/sleepnote`). The `/admin/sleepnote` tab validates the
+strict format of every chain note; module lives at
+`app/src/lib/sleepnote/validator.ts`.
 
 ## Admin page
 
