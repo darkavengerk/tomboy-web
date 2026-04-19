@@ -317,3 +317,125 @@ export async function pasteAfter(
 	invalidateCache();
 	return { affectedGuids: [...affected] };
 }
+
+/**
+ * Detach `guid` from its previous neighbor only. Unlike `cutFromChain`,
+ * the target keeps its `다음` link and the whole downstream chain stays
+ * intact — the target simply becomes a new HEAD of that chain.
+ *
+ * Backs the "다른 곳에 연결" icon's phase-1: the user expects the chain
+ * beneath the target to travel with it.
+ *
+ * No-op when the target is already a HEAD (이전 = 없음); returns an
+ * empty `affectedGuids` so callers can tell nothing was written.
+ */
+export async function disconnectFromPrev(
+	guid: string
+): Promise<{ affectedGuids: string[] }> {
+	const target = await mustGet(guid);
+	const tf = mustBeValidSlipNote(target);
+
+	if (tf.prev.kind === 'none') return { affectedGuids: [] };
+
+	const prevNeighbor = await mustGetByTitle(tf.prev.target ?? '');
+	const pf = mustBeValidSlipNote(prevNeighbor);
+
+	const affected: string[] = [];
+
+	await noteStore.putNote(
+		withUpdatedFields(prevNeighbor, pf.prev, { kind: 'none' })
+	);
+	affected.push(prevNeighbor.guid);
+
+	await noteStore.putNote(
+		withUpdatedFields(target, { kind: 'none' }, tf.next)
+	);
+	affected.push(guid);
+
+	invalidateCache();
+	return { affectedGuids: affected };
+}
+
+/**
+ * Walk `source`'s downstream chain via `다음` links and return the set of
+ * trimmed titles encountered (including `source` itself). Used by
+ * `connectAfter` to detect loops. Stops silently on an invalid / broken
+ * intermediate — a broken downstream is not this op's concern; the
+ * important guarantee is that no title we'd visit matches the target.
+ */
+async function collectDownstreamTitles(source: NoteData): Promise<Set<string>> {
+	const titles = new Set<string>([source.title.trim()]);
+	const seenGuids = new Set<string>([source.guid]);
+	let cur: NoteData = source;
+	while (true) {
+		const r = validateSlipNoteFormat(cur);
+		if (r.issues.length > 0) break;
+		if (!r.next || r.next.kind !== 'link') break;
+		const next = await noteStore.findNoteByTitle(r.next.target ?? '');
+		if (!next || next.deleted) break;
+		if (seenGuids.has(next.guid)) break;
+		seenGuids.add(next.guid);
+		titles.add(next.title.trim());
+		cur = next;
+	}
+	return titles;
+}
+
+/**
+ * Attach `source` (and its entire downstream chain) immediately after
+ * `target`. Backs the "다른 곳에 연결" icon's phase-2 (paste).
+ *
+ * Preconditions (all throw on violation — no partial writes):
+ *   • source ≠ target
+ *   • both notes have valid slip-note format
+ *   • target is a TAIL (다음 = 없음) — otherwise the target's existing
+ *     successor would be orphaned
+ *   • source is a HEAD (이전 = 없음) — caller is expected to have run
+ *     `disconnectFromPrev(source)` first
+ *   • target is NOT anywhere in source's downstream chain — connecting
+ *     would create a loop
+ *
+ * Only the edge is written: `target.다음 = source` and
+ * `source.이전 = target`. Source's downstream notes are never touched,
+ * which is what makes this different from `pasteAfter` (that op splices
+ * a single detached note into the middle of a chain).
+ */
+export async function connectAfter(
+	sourceGuid: string,
+	targetGuid: string
+): Promise<{ affectedGuids: string[] }> {
+	if (sourceGuid === targetGuid) {
+		throw new Error('자기 자신에 연결할 수 없습니다');
+	}
+
+	const source = await mustGet(sourceGuid);
+	const target = await mustGet(targetGuid);
+	const sf = mustBeValidSlipNote(source);
+	const tf = mustBeValidSlipNote(target);
+
+	if (tf.next.kind === 'link') {
+		throw new Error(
+			`붙여넣을 노트("${target.title}")의 다음 링크가 이미 있어 연결할 수 없습니다 (TAIL이 아님)`
+		);
+	}
+	if (sf.prev.kind === 'link') {
+		throw new Error(
+			`연결할 노트("${source.title}")의 이전 링크가 남아 있습니다 (HEAD이 아님)`
+		);
+	}
+
+	const downstream = await collectDownstreamTitles(source);
+	if (downstream.has(target.title.trim())) {
+		throw new Error('연결하면 순환(loop)이 생깁니다');
+	}
+
+	await noteStore.putNote(
+		withUpdatedFields(target, tf.prev, { kind: 'link', target: source.title })
+	);
+	await noteStore.putNote(
+		withUpdatedFields(source, { kind: 'link', target: target.title }, sf.next)
+	);
+
+	invalidateCache();
+	return { affectedGuids: [targetGuid, sourceGuid] };
+}

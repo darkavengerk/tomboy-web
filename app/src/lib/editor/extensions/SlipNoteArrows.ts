@@ -24,14 +24,17 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 
 export interface SlipNoteArrowsStorage {
 	enabled: boolean;
-	onNavigate: (target: string) => void;
+	onNavigate: (target: string, direction: 'prev' | 'next') => void;
 	onInsertAfter: () => void;
 	onCut: () => void;
+	onConnect: () => void;
 	onPaste: () => void;
-	/** Whether the paste button should be enabled (clipboard has a cut note). */
+	/** Whether the paste button should be enabled (clipboard has any entry). */
 	canPaste: boolean;
-	/** Title of the currently cut note, for the paste button's tooltip. */
-	cutTitle: string | null;
+	/** Title of the currently clipboarded note, for the paste button's tooltip. */
+	clipboardTitle: string | null;
+	/** Mode of the current clipboard entry, for tooltip + intent. */
+	clipboardMode: 'cut' | 'connect' | null;
 }
 
 const pluginKey = new PluginKey('slipNoteArrows');
@@ -48,9 +51,11 @@ export const SlipNoteArrows = Extension.create<
 			onNavigate: () => {},
 			onInsertAfter: () => {},
 			onCut: () => {},
+			onConnect: () => {},
 			onPaste: () => {},
 			canPaste: false,
-			cutTitle: null
+			clipboardTitle: null,
+			clipboardMode: null
 		};
 	},
 
@@ -110,16 +115,18 @@ function buildDecorations(doc: PMNode, storage: SlipNoteArrowsStorage): Decorati
 		)
 	);
 
-	// Chain-edit action cluster between the arrows. Recreated when canPaste
-	// / cutTitle change so the paste button's disabled state stays fresh.
+	// Chain-edit action cluster between the arrows. Recreated when the
+	// clipboard state or the current note's TAIL-ness changes so the paste
+	// button's disabled state + tooltip stays fresh.
+	const isTail = next.target === null;
 	decorations.push(
 		Decoration.widget(
 			carrier.offset + 1,
-			makeActionsFactory(storage),
+			makeActionsFactory(storage, isTail),
 			{
 				side: 0,
 				ignoreSelection: true,
-				key: `slip-actions-${storage.canPaste ? 1 : 0}-${storage.cutTitle ?? ''}`
+				key: `slip-actions-${storage.canPaste ? 1 : 0}-${storage.clipboardMode ?? ''}-${storage.clipboardTitle ?? ''}-${isTail ? 't' : 'm'}`
 			}
 		)
 	);
@@ -174,7 +181,7 @@ function makeArrowFactory(
 	direction: 'prev' | 'next',
 	label: string,
 	target: string | null,
-	getHandler: () => (target: string) => void
+	getHandler: () => (target: string, direction: 'prev' | 'next') => void
 ): () => HTMLElement {
 	return () => {
 		const btn = document.createElement('button');
@@ -195,25 +202,32 @@ function makeArrowFactory(
 			e.preventDefault();
 			e.stopPropagation();
 			if (!target) return;
-			getHandler()(target);
+			getHandler()(target, direction);
 		});
 		return btn;
 	};
 }
 
 /**
- * Build the action-button cluster (insert-after / cut / paste). Buttons
- * read the live storage refs at click time so handler replacements via the
- * editor's $effect take effect without rebuilding the decoration.
+ * Build the action-button cluster (insert-after / cut / connect / paste).
+ * Buttons read the live storage refs at click time so handler replacements
+ * via the editor's $effect take effect without rebuilding the decoration.
+ *
+ * `isTail` reflects whether this note's 다음 is empty — used to disable
+ * the paste button in connect mode since connectAfter refuses non-TAIL
+ * targets.
  */
-function makeActionsFactory(storage: SlipNoteArrowsStorage): () => HTMLElement {
+function makeActionsFactory(
+	storage: SlipNoteArrowsStorage,
+	isTail: boolean
+): () => HTMLElement {
 	return () => {
 		const wrap = document.createElement('span');
 		wrap.className = 'slipnote-actions';
 		wrap.contentEditable = 'false';
 
 		const make = (
-			action: 'insert' | 'cut' | 'paste',
+			action: 'insert' | 'cut' | 'connect' | 'paste',
 			ariaLabel: string,
 			tooltip: string,
 			svg: string,
@@ -258,15 +272,45 @@ function makeActionsFactory(storage: SlipNoteArrowsStorage): () => HTMLElement {
 			() => storage.onCut()
 		);
 
-		const pasteTooltip = storage.canPaste
-			? `"${storage.cutTitle ?? ''}" 붙여넣기`
-			: '잘라낸 슬립노트가 없습니다';
+		make(
+			'connect',
+			'다른 곳에 연결',
+			'이 슬립노트와 그 이후 체인을 다른 곳에 연결 (이전 링크만 끊김)',
+			'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
+			false,
+			() => storage.onConnect()
+		);
+
+		// The paste button handles both clipboard modes. Cut-mode paste
+		// splices into the middle (no TAIL constraint). Connect-mode paste
+		// appends the source-plus-downstream at the end and requires a
+		// TAIL target — so we grey the button out on non-TAIL notes with
+		// an explanatory tooltip instead of letting the op throw at click
+		// time.
+		const mode = storage.clipboardMode;
+		const title = storage.clipboardTitle ?? '';
+		let pasteTooltip: string;
+		let pasteDisabled: boolean;
+		if (!storage.canPaste || mode === null) {
+			pasteTooltip = '잘라내거나 연결한 슬립노트가 없습니다';
+			pasteDisabled = true;
+		} else if (mode === 'cut') {
+			pasteTooltip = `"${title}" 이 노트 뒤에 붙여넣기 (잘라내기)`;
+			pasteDisabled = false;
+		} else if (mode === 'connect' && !isTail) {
+			pasteTooltip =
+				`"${title}" 연결: 이 노트의 다음 링크가 이미 있어 끝(TAIL)이 아닙니다`;
+			pasteDisabled = true;
+		} else {
+			pasteTooltip = `"${title}" 이 노트 뒤에 연결`;
+			pasteDisabled = false;
+		}
 		make(
 			'paste',
-			'붙여넣기',
+			mode === 'connect' ? '연결 (붙여넣기)' : '붙여넣기',
 			pasteTooltip,
 			'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>',
-			!storage.canPaste,
+			pasteDisabled,
 			() => storage.onPaste()
 		);
 

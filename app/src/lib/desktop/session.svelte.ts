@@ -519,6 +519,59 @@ export const desktopSession = {
 		this.openWindow(linked.guid);
 	},
 
+	/**
+	 * Open (or move) the note with the given title so it sits directly to the
+	 * right of the source window — used by the slip-note "다음" arrow so a
+	 * chain of notes cascades left-to-right without overlap. Clamps to the
+	 * viewport's right edge when the desired x would overflow. Applies to
+	 * already-open windows too (they are repositioned and raised).
+	 */
+	async openRightOf(fromGuid: string, targetTitle: string): Promise<void> {
+		const trimmed = targetTitle.trim();
+		if (!trimmed) return;
+		const linked = await findNoteByTitle(trimmed);
+		if (!linked || linked.deleted) {
+			pushToast(`'${trimmed}' 노트를 찾을 수 없습니다.`, { kind: 'error' });
+			return;
+		}
+		const ws = current();
+		const source = ws.windows.find((w) => w.guid === fromGuid);
+		if (!source) {
+			this.openWindow(linked.guid);
+			return;
+		}
+		const existing = ws.windows.find((w) => w.guid === linked.guid);
+		const cached = ws.geometryByGuid[linked.guid];
+		const width = existing?.width ?? cached?.width ?? DEFAULT_WIDTH;
+		const height = existing?.height ?? cached?.height ?? DEFAULT_HEIGHT;
+		const viewportW =
+			typeof window !== 'undefined' ? window.innerWidth - RAIL_WIDTH : 1200;
+		const maxX = Math.max(0, viewportW - width);
+		const x = Math.max(0, Math.min(source.x + source.width, maxX));
+		const y = Math.max(0, source.y);
+
+		if (existing) {
+			existing.x = Math.round(x);
+			existing.y = Math.round(y);
+			cacheGeometry(ws, existing);
+			bumpZ(ws, existing);
+		} else {
+			const win: DesktopWindowState = {
+				guid: linked.guid,
+				kind: 'note',
+				x: Math.round(x),
+				y: Math.round(y),
+				width,
+				height,
+				z: ++ws.nextZ
+			};
+			ws.windows.push(win);
+			cacheGeometry(ws, win);
+		}
+		focusRequest = { guid: linked.guid, token: ++focusRequestCounter };
+		schedulePersist();
+	},
+
 	focusWindow(guid: string): void {
 		const ws = current();
 		const win = ws.windows.find((w) => w.guid === guid);

@@ -54,17 +54,21 @@
 		 *  buttons and hides the original text via CSS. */
 		isSlipNote?: boolean;
 		/** Called when the user clicks one of the slip-note arrows. */
-		onslipnavigate?: (target: string) => void;
+		onslipnavigate?: (target: string, direction: 'prev' | 'next') => void;
 		/** Called when the user clicks the slip-note "insert after" (+) button. */
 		oninsertafter?: () => void;
 		/** Called when the user clicks the slip-note "cut" (✂) button. */
 		oncut?: () => void;
+		/** Called when the user clicks the slip-note "다른 곳에 연결" (link) button. */
+		onconnect?: () => void;
 		/** Called when the user clicks the slip-note "paste" button. */
 		onpaste?: () => void;
-		/** Enables the paste button — typically slipClipboard.hasCut && != current. */
+		/** Enables the paste button — typically slipClipboard.hasEntry && entry.guid != current. */
 		canPasteSlip?: boolean;
-		/** Title of the currently cut slip-note, for the paste button's tooltip. */
+		/** Title of the currently clipboarded slip-note, for the paste button's tooltip. */
 		cutSlipTitle?: string | null;
+		/** Mode of the clipboard entry: 'cut' changes paste behaviour + tooltip. */
+		slipClipboardMode?: 'cut' | 'connect' | null;
 	}
 
 	let {
@@ -79,9 +83,11 @@
 		onslipnavigate = () => {},
 		oninsertafter = () => {},
 		oncut = () => {},
+		onconnect = () => {},
 		onpaste = () => {},
 		canPasteSlip = false,
 		cutSlipTitle = null,
+		slipClipboardMode = null,
 	}: Props = $props();
 
 	let ctxMenu = $state<{ x: number; y: number } | null>(null);
@@ -463,9 +469,11 @@
 		slipStorage.onNavigate = onslipnavigate;
 		slipStorage.onInsertAfter = oninsertafter;
 		slipStorage.onCut = oncut;
+		slipStorage.onConnect = onconnect;
 		slipStorage.onPaste = onpaste;
 		slipStorage.canPaste = canPasteSlip;
-		slipStorage.cutTitle = cutSlipTitle;
+		slipStorage.clipboardTitle = cutSlipTitle;
+		slipStorage.clipboardMode = slipClipboardMode;
 
 		// Note: no initial scan on mount. The note's stored XML already
 		// carries the `<link:internal>` marks from its last save, so the
@@ -561,9 +569,11 @@
 		const navigate = onslipnavigate;
 		const insertAfter = oninsertafter;
 		const cut = oncut;
+		const connect = onconnect;
 		const paste = onpaste;
 		const canPaste = canPasteSlip;
-		const cutTitle = cutSlipTitle;
+		const clipboardTitle = cutSlipTitle;
+		const clipboardMode = slipClipboardMode;
 		const ed = editor;
 		if (!ed || ed.isDestroyed) return;
 		const storage = (ed.storage as unknown as Record<string, unknown>)
@@ -573,17 +583,21 @@
 			storage.onNavigate !== navigate ||
 			storage.onInsertAfter !== insertAfter ||
 			storage.onCut !== cut ||
+			storage.onConnect !== connect ||
 			storage.onPaste !== paste ||
 			storage.canPaste !== canPaste ||
-			storage.cutTitle !== cutTitle;
+			storage.clipboardTitle !== clipboardTitle ||
+			storage.clipboardMode !== clipboardMode;
 		if (!changed) return;
 		storage.enabled = flag;
 		storage.onNavigate = navigate;
 		storage.onInsertAfter = insertAfter;
 		storage.onCut = cut;
+		storage.onConnect = connect;
 		storage.onPaste = paste;
 		storage.canPaste = canPaste;
-		storage.cutTitle = cutTitle;
+		storage.clipboardTitle = clipboardTitle;
+		storage.clipboardMode = clipboardMode;
 		ed.view.dispatch(ed.state.tr);
 	});
 

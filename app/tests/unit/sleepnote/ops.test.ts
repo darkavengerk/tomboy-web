@@ -4,7 +4,9 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
 	insertNewNoteAfter,
 	cutFromChain,
-	pasteAfter
+	pasteAfter,
+	disconnectFromPrev,
+	connectAfter
 } from '$lib/sleepnote/ops.js';
 import { createEmptyNote, type NoteData } from '$lib/core/note.js';
 import { putNote, getNote } from '$lib/storage/noteStore.js';
@@ -441,5 +443,300 @@ describe('pasteAfter', () => {
 		// since the op may still re-serialize. Accept either.
 		void beforeC;
 		void afterC;
+	});
+});
+
+// ─── disconnectFromPrev ────────────────────────────────────────────────
+//
+// "Detach from the previous neighbor only" — the operation that backs the
+// "다른 곳에 연결" icon's phase-1. The target's `다음` chain (and every
+// downstream note) must stay intact; only the edge between target and its
+// prev neighbor is severed.
+
+describe('disconnectFromPrev', () => {
+	it('detaches B from A in A→B→C: A alone, B→C remains', async () => {
+		const [a, b, c] = await persistChain(['A', 'B', 'C']);
+		const { affectedGuids } = await disconnectFromPrev(b.guid);
+
+		expect(await readFields(a.guid)).toEqual({ prev: '없음', next: '없음' });
+		expect(await readFields(b.guid)).toEqual({ prev: '없음', next: 'C' });
+		expect(await readFields(c.guid)).toEqual({ prev: 'B', next: '없음' });
+		expect(await walkForward(a.guid)).toEqual(['A']);
+		expect(await walkForward(b.guid)).toEqual(['B', 'C']);
+		expect(new Set(affectedGuids)).toEqual(new Set([a.guid, b.guid]));
+	});
+
+	it('detaches TAIL from A→B→C: A→B remains, C isolated', async () => {
+		const [a, b, c] = await persistChain(['A', 'B', 'C']);
+		await disconnectFromPrev(c.guid);
+		expect(await readFields(a.guid)).toEqual({ prev: '없음', next: 'B' });
+		expect(await readFields(b.guid)).toEqual({ prev: 'A', next: '없음' });
+		expect(await readFields(c.guid)).toEqual({ prev: '없음', next: '없음' });
+	});
+
+	it('detaches middle of a 4-chain (C in A→B→C→D): A→B, C→D', async () => {
+		const [a, b, c, d] = await persistChain(['A', 'B', 'C', 'D']);
+		await disconnectFromPrev(c.guid);
+		expect(await readFields(a.guid)).toEqual({ prev: '없음', next: 'B' });
+		expect(await readFields(b.guid)).toEqual({ prev: 'A', next: '없음' });
+		expect(await readFields(c.guid)).toEqual({ prev: '없음', next: 'D' });
+		expect(await readFields(d.guid)).toEqual({ prev: 'C', next: '없음' });
+		expect(await walkForward(a.guid)).toEqual(['A', 'B']);
+		expect(await walkForward(c.guid)).toEqual(['C', 'D']);
+	});
+
+	it('calling on a HEAD is a no-op', async () => {
+		const [a] = await persistChain(['A', 'B', 'C']);
+		const { affectedGuids } = await disconnectFromPrev(a.guid);
+		expect(affectedGuids).toEqual([]);
+		expect(await walkForward(a.guid)).toEqual(['A', 'B', 'C']);
+	});
+
+	it('calling on a solo (prev=없음, next=없음) is a no-op', async () => {
+		const [a] = await persistChain(['A']);
+		const { affectedGuids } = await disconnectFromPrev(a.guid);
+		expect(affectedGuids).toEqual([]);
+		expect(await readFields(a.guid)).toEqual({ prev: '없음', next: '없음' });
+	});
+
+	it('preserves title and body', async () => {
+		const a = makeSlipNote('A', '없음', 'B');
+		const b = makeSlipNote('B', 'A', '없음', 'B본문');
+		await putNote(a);
+		await putNote(b);
+		await disconnectFromPrev(b.guid);
+		const after = await getNote(b.guid);
+		expect(after!.title).toBe('B');
+		expect(after!.xmlContent).toContain('B본문');
+	});
+
+	it("throws when target doesn't exist", async () => {
+		await expect(disconnectFromPrev('guid::missing')).rejects.toThrow(/찾을 수 없|not found/i);
+	});
+
+	it('throws when target has invalid slip format', async () => {
+		const n = createEmptyNote('guid::bad');
+		n.title = 'Bad';
+		n.xmlContent = `<note-content version="0.1">Bad\n\n본문</note-content>`;
+		await putNote(n);
+		await expect(disconnectFromPrev(n.guid)).rejects.toThrow(/형식/);
+	});
+
+	it('throws when the 이전 link target does not resolve', async () => {
+		const orphan = makeSlipNote('A', 'Ghost', '없음');
+		await putNote(orphan);
+		await expect(disconnectFromPrev(orphan.guid)).rejects.toThrow(/Ghost|찾을 수 없|not found/i);
+	});
+});
+
+// ─── connectAfter ──────────────────────────────────────────────────────
+//
+// "Attach source (and its entire downstream chain) after target" — the
+// operation that backs the "다른 곳에 연결" icon's phase-2.
+//
+// Preconditions, enforced by the op:
+//   • source ≠ target
+//   • source is a HEAD (이전 = 없음)
+//   • target is a TAIL (다음 = 없음)
+//   • target is NOT in source's downstream chain (no loop)
+//   • both notes have valid slip-note format
+
+describe('connectAfter', () => {
+	it('connects solo B after solo A: A→B', async () => {
+		const a = makeSlipNote('A', '없음', '없음');
+		const b = makeSlipNote('B', '없음', '없음');
+		await putNote(a);
+		await putNote(b);
+
+		const { affectedGuids } = await connectAfter(b.guid, a.guid);
+
+		expect(await readFields(a.guid)).toEqual({ prev: '없음', next: 'B' });
+		expect(await readFields(b.guid)).toEqual({ prev: 'A', next: '없음' });
+		expect(await walkForward(a.guid)).toEqual(['A', 'B']);
+		expect(new Set(affectedGuids)).toEqual(new Set([a.guid, b.guid]));
+	});
+
+	it('connects source-with-downstream (B→C) after TAIL F of D→E→F: D→E→F→B→C', async () => {
+		const [d, e, f] = await persistChain(['D', 'E', 'F']);
+		const b = makeSlipNote('B', '없음', 'C');
+		const c = makeSlipNote('C', 'B', '없음');
+		await putNote(b);
+		await putNote(c);
+
+		const { affectedGuids } = await connectAfter(b.guid, f.guid);
+
+		expect(await readFields(d.guid)).toEqual({ prev: '없음', next: 'E' });
+		expect(await readFields(e.guid)).toEqual({ prev: 'D', next: 'F' });
+		expect(await readFields(f.guid)).toEqual({ prev: 'E', next: 'B' });
+		expect(await readFields(b.guid)).toEqual({ prev: 'F', next: 'C' });
+		expect(await readFields(c.guid)).toEqual({ prev: 'B', next: '없음' });
+		expect(await walkForward(d.guid)).toEqual(['D', 'E', 'F', 'B', 'C']);
+		// Only target and source are rewritten; downstream (C) and upstream
+		// (D, E) are untouched.
+		expect(new Set(affectedGuids)).toEqual(new Set([f.guid, b.guid]));
+	});
+
+	it('connects a solo source to a chain TAIL (A→B, C solo) → A→B→C', async () => {
+		const [a, b] = await persistChain(['A', 'B']);
+		const c = makeSlipNote('C', '없음', '없음');
+		await putNote(c);
+
+		await connectAfter(c.guid, b.guid);
+
+		expect(await walkForward(a.guid)).toEqual(['A', 'B', 'C']);
+		expect(await readFields(b.guid)).toEqual({ prev: 'A', next: 'C' });
+		expect(await readFields(c.guid)).toEqual({ prev: 'B', next: '없음' });
+	});
+
+	it('throws when target has a 다음 link (not a TAIL)', async () => {
+		const [a, b] = await persistChain(['A', 'B']);
+		const x = makeSlipNote('X', '없음', '없음');
+		await putNote(x);
+		// A.다음 = B, so A is not a TAIL — connect must refuse.
+		await expect(connectAfter(x.guid, a.guid)).rejects.toThrow(/다음|tail|TAIL/);
+	});
+
+	it('throws when source has a 이전 link (not a HEAD)', async () => {
+		const [a, b, c] = await persistChain(['A', 'B', 'C']);
+		const x = makeSlipNote('X', '없음', '없음');
+		await putNote(x);
+		// B.이전 = A, so B is not a HEAD — caller must disconnectFromPrev first.
+		await expect(connectAfter(b.guid, x.guid)).rejects.toThrow(/이전|head|HEAD/);
+	});
+
+	it('refuses to connect a note to itself', async () => {
+		const [a] = await persistChain(['A']);
+		await expect(connectAfter(a.guid, a.guid)).rejects.toThrow(/자기 자신|self/i);
+	});
+
+	it('refuses when target is source\'s direct next (would loop)', async () => {
+		// A→B. connectAfter(A, B): B is A's direct downstream, and B is a TAIL.
+		// This would create A→B→A.
+		const a = makeSlipNote('A', '없음', 'B');
+		const b = makeSlipNote('B', 'A', '없음');
+		await putNote(a);
+		await putNote(b);
+		// A.이전 is 없음 (HEAD) and B.다음 is 없음 (TAIL), so the other
+		// preconditions pass — only the loop check can catch this.
+		await expect(connectAfter(a.guid, b.guid)).rejects.toThrow(/순환|loop|cycle/i);
+	});
+
+	it('refuses when target is deep in source\'s downstream chain', async () => {
+		// A→B→C→D→E→F. A is HEAD. F is TAIL and reachable from A → loop.
+		const [a, , , , , f] = await persistChain(['A', 'B', 'C', 'D', 'E', 'F']);
+		await expect(connectAfter(a.guid, f.guid)).rejects.toThrow(/순환|loop|cycle/i);
+	});
+
+	it("throws when source doesn't exist", async () => {
+		const [a] = await persistChain(['A']);
+		await expect(connectAfter('guid::missing', a.guid)).rejects.toThrow(/찾을 수 없|not found/i);
+	});
+
+	it("throws when target doesn't exist", async () => {
+		const b = makeSlipNote('B', '없음', '없음');
+		await putNote(b);
+		await expect(connectAfter(b.guid, 'guid::missing')).rejects.toThrow(/찾을 수 없|not found/i);
+	});
+
+	it('throws when target has invalid slip format', async () => {
+		const b = makeSlipNote('B', '없음', '없음');
+		await putNote(b);
+		const bad = createEmptyNote('guid::bad');
+		bad.title = 'Bad';
+		bad.xmlContent = `<note-content version="0.1">Bad\n\n본문</note-content>`;
+		await putNote(bad);
+		await expect(connectAfter(b.guid, bad.guid)).rejects.toThrow(/형식/);
+	});
+
+	it('throws when source has invalid slip format', async () => {
+		const [a] = await persistChain(['A']);
+		const bad = createEmptyNote('guid::bad');
+		bad.title = 'Bad';
+		bad.xmlContent = `<note-content version="0.1">Bad\n\n본문</note-content>`;
+		await putNote(bad);
+		await expect(connectAfter(bad.guid, a.guid)).rejects.toThrow(/형식/);
+	});
+
+	it('preserves title and body of both source and target', async () => {
+		const a = makeSlipNote('A', '없음', '없음', 'A본문');
+		const b = makeSlipNote('B', '없음', '없음', 'B본문');
+		await putNote(a);
+		await putNote(b);
+		await connectAfter(b.guid, a.guid);
+		const aa = await getNote(a.guid);
+		const bb = await getNote(b.guid);
+		expect(aa!.title).toBe('A');
+		expect(bb!.title).toBe('B');
+		expect(aa!.xmlContent).toContain('A본문');
+		expect(bb!.xmlContent).toContain('B본문');
+	});
+
+	it('both notes still pass validateSlipNoteFormat after connect', async () => {
+		const a = makeSlipNote('A', '없음', '없음');
+		const b = makeSlipNote('B', '없음', '없음');
+		await putNote(a);
+		await putNote(b);
+		await connectAfter(b.guid, a.guid);
+		expect(await formatIssues(a.guid)).toEqual([]);
+		expect(await formatIssues(b.guid)).toEqual([]);
+	});
+
+	it('downstream chain is left untouched (C body + fields unchanged)', async () => {
+		const [d, e, f] = await persistChain(['D', 'E', 'F']);
+		const b = makeSlipNote('B', '없음', 'C');
+		const c = makeSlipNote('C', 'B', '없음', 'C본문');
+		await putNote(b);
+		await putNote(c);
+
+		const beforeC = await getNote(c.guid);
+		await new Promise((r) => setTimeout(r, 15));
+		await connectAfter(b.guid, f.guid);
+		const afterC = await getNote(c.guid);
+		// C's xmlContent must not have been rewritten — its 이전 is still B,
+		// and connectAfter does not touch downstream notes.
+		expect(afterC!.xmlContent).toBe(beforeC!.xmlContent);
+		expect(afterC!.changeDate).toBe(beforeC!.changeDate);
+	});
+});
+
+// ─── disconnect + connect user flow ────────────────────────────────────
+//
+// The "다른 곳에 연결" feature is expressed through these two ops in
+// sequence: disconnectFromPrev(source) on icon-click, then connectAfter
+// (source, target) on paste. These tests mirror the user-facing scenarios
+// from the feature spec.
+
+describe('disconnect + connect (connect-to-another-place flow)', () => {
+	it('user scenario: A→B→C, D→E→F ⇒ disconnect B then connect B at F ⇒ A alone, D→E→F→B→C', async () => {
+		const [a, b, c] = await persistChain(['A', 'B', 'C']);
+		const [d, e, f] = await persistChain(['D', 'E', 'F']);
+
+		await disconnectFromPrev(b.guid);
+		await connectAfter(b.guid, f.guid);
+
+		expect(await walkForward(a.guid)).toEqual(['A']);
+		expect(await walkForward(d.guid)).toEqual(['D', 'E', 'F', 'B', 'C']);
+		expect(await readFields(a.guid)).toEqual({ prev: '없음', next: '없음' });
+		expect(await readFields(f.guid)).toEqual({ prev: 'E', next: 'B' });
+		expect(await readFields(b.guid)).toEqual({ prev: 'F', next: 'C' });
+		expect(await readFields(c.guid)).toEqual({ prev: 'B', next: '없음' });
+	});
+
+	it('reattaching a TAIL (disconnect C in A→B→C, then connect C at B) is a roundtrip to A→B→C', async () => {
+		const [a, b, c] = await persistChain(['A', 'B', 'C']);
+		await disconnectFromPrev(c.guid);
+		await connectAfter(c.guid, b.guid);
+		expect(await walkForward(a.guid)).toEqual(['A', 'B', 'C']);
+	});
+
+	it('disconnect a middle node then refuse to connect it back into its own downstream', async () => {
+		// A→B→C→D→E→F. Disconnect B → A alone, B→C→D→E→F.
+		// Connecting B back at F would form B→C→D→E→F→B → loop.
+		const [a, b, c, d, e, f] = await persistChain(['A', 'B', 'C', 'D', 'E', 'F']);
+		await disconnectFromPrev(b.guid);
+		// Sanity: A is alone, B is new HEAD.
+		expect(await walkForward(a.guid)).toEqual(['A']);
+		expect(await walkForward(b.guid)).toEqual(['B', 'C', 'D', 'E', 'F']);
+		await expect(connectAfter(b.guid, f.guid)).rejects.toThrow(/순환|loop|cycle/i);
 	});
 });

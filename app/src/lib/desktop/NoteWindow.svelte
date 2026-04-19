@@ -38,7 +38,13 @@
 	import { modKeys } from './modKeys.svelte.js';
 	import { SEND_SOURCE_GUID } from '$lib/editor/sendListItem/transferListItem.js';
 	import { SLIPBOX_NOTEBOOK } from '$lib/sleepnote/validator.js';
-	import { insertNewNoteAfter, cutFromChain, pasteAfter } from '$lib/sleepnote/ops.js';
+	import {
+		insertNewNoteAfter,
+		cutFromChain,
+		pasteAfter,
+		disconnectFromPrev,
+		connectAfter
+	} from '$lib/sleepnote/ops.js';
 	import { slipClipboard } from '$lib/sleepnote/clipboard.svelte.js';
 
 	interface Props {
@@ -102,11 +108,12 @@
 	const isSlipNote = $derived(currentNotebook === SLIPBOX_NOTEBOOK);
 	const sendActive = $derived(guid === SEND_SOURCE_GUID && modKeys.ctrl);
 	const canPasteSlip = $derived(
-		isSlipNote && slipClipboard.hasCut && slipClipboard.cutGuid !== guid
+		isSlipNote && slipClipboard.hasEntry && slipClipboard.guid !== guid
 	);
+	const slipClipboardMode = $derived(slipClipboard.mode);
 	let cutSlipTitle = $state<string | null>(null);
 	$effect(() => {
-		const g = slipClipboard.cutGuid;
+		const g = slipClipboard.guid;
 		if (!g) { cutSlipTitle = null; return; }
 		getNote(g).then((n) => { cutSlipTitle = n?.title ?? null; });
 	});
@@ -217,6 +224,24 @@
 		onopenlink(title);
 	}
 
+	// Slip-note 화살표는 직접 `openRightOf`로 흘려서, "다음" 클릭 시
+	// 체인이 왼→오 방향으로 겹치지 않게 펼쳐지도록 한다. "이전"은
+	// 기존 내부 링크 열기(이미 열려 있으면 포커스만 이동)로 처리.
+	async function handleSlipNavigate(target: string, direction: 'prev' | 'next') {
+		const title = target.trim();
+		if (!title) return;
+		if (saveTimer) {
+			clearTimeout(saveTimer);
+			saveTimer = null;
+			await flushSave();
+		}
+		if (direction === 'next') {
+			await desktopSession.openRightOf(guid, title);
+		} else {
+			onopenlink(title);
+		}
+	}
+
 	async function flushBeforeOp(): Promise<void> {
 		if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
 		await flushSave();
@@ -271,7 +296,7 @@
 		try {
 			await desktopSession.flushAll();
 			const { affectedGuids } = await cutFromChain(note.guid);
-			slipClipboard.set(note.guid);
+			slipClipboard.setCut(note.guid);
 			await desktopSession.reloadWindows(affectedGuids);
 			pushToast('슬립노트 체인에서 잘라냈습니다.');
 		} catch (e) {
@@ -279,16 +304,37 @@
 		}
 	}
 
-	async function handleSlipPaste() {
+	async function handleSlipConnect() {
 		if (!note) return;
-		const g = slipClipboard.cutGuid;
-		if (!g || g === note.guid) return;
 		try {
 			await desktopSession.flushAll();
-			const { affectedGuids } = await pasteAfter(g, note.guid);
+			const { affectedGuids } = await disconnectFromPrev(note.guid);
+			slipClipboard.setConnect(note.guid);
+			await desktopSession.reloadWindows(affectedGuids);
+			pushToast('다른 곳에 연결할 준비가 됐습니다. 대상 노트에서 붙여넣으세요.');
+		} catch (e) {
+			pushToast((e as Error).message ?? '연결 준비 실패', { kind: 'error' });
+		}
+	}
+
+	async function handleSlipPaste() {
+		if (!note) return;
+		const g = slipClipboard.guid;
+		const mode = slipClipboard.mode;
+		if (!g || g === note.guid || !mode) return;
+		try {
+			await desktopSession.flushAll();
+			const { affectedGuids } =
+				mode === 'cut'
+					? await pasteAfter(g, note.guid)
+					: await connectAfter(g, note.guid);
 			slipClipboard.clear();
 			await desktopSession.reloadWindows(affectedGuids);
-			pushToast('슬립노트를 이 노트 뒤에 붙여넣었습니다.');
+			pushToast(
+				mode === 'cut'
+					? '슬립노트를 이 노트 뒤에 붙여넣었습니다.'
+					: '슬립노트 체인을 이 노트 뒤에 연결했습니다.'
+			);
 		} catch (e) {
 			pushToast((e as Error).message ?? '붙여넣기 실패', { kind: 'error' });
 		}
@@ -594,12 +640,14 @@
 				createDate={note?.createDate ?? null}
 				sendListItemActive={sendActive}
 				isSlipNote={isSlipNote}
-				onslipnavigate={handleInternalLink}
+				onslipnavigate={handleSlipNavigate}
 				oninsertafter={handleSlipInsertAfter}
 				oncut={handleSlipCut}
+				onconnect={handleSlipConnect}
 				onpaste={handleSlipPaste}
 				canPasteSlip={canPasteSlip}
 				cutSlipTitle={cutSlipTitle}
+				slipClipboardMode={slipClipboardMode}
 			/>
 		{:else}
 			<div class="loading">노트를 불러올 수 없습니다.</div>

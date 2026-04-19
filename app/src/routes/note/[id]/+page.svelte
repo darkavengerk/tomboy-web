@@ -20,7 +20,13 @@
 	import NoteActionSheet, { type ActionKind } from '$lib/editor/NoteActionSheet.svelte';
 	import NotebookPicker from '$lib/components/NotebookPicker.svelte';
 	import { SLIPBOX_NOTEBOOK } from '$lib/sleepnote/validator.js';
-	import { insertNewNoteAfter, cutFromChain, pasteAfter } from '$lib/sleepnote/ops.js';
+	import {
+		insertNewNoteAfter,
+		cutFromChain,
+		pasteAfter,
+		disconnectFromPrev,
+		connectAfter
+	} from '$lib/sleepnote/ops.js';
 	import { slipClipboard } from '$lib/sleepnote/clipboard.svelte.js';
 	import type { JSONContent, Editor } from '@tiptap/core';
 	import { pushToast } from '$lib/stores/toast.js';
@@ -63,11 +69,12 @@
 	const isFavoriteNote = $derived(note ? isFavorite(note) : false);
 	const isSlipNote = $derived(currentNotebook === SLIPBOX_NOTEBOOK);
 	const canPasteSlip = $derived(
-		isSlipNote && slipClipboard.hasCut && slipClipboard.cutGuid !== noteId
+		isSlipNote && slipClipboard.hasEntry && slipClipboard.guid !== noteId
 	);
+	const slipClipboardMode = $derived(slipClipboard.mode);
 	let cutSlipTitle = $state<string | null>(null);
 	$effect(() => {
-		const g = slipClipboard.cutGuid;
+		const g = slipClipboard.guid;
 		if (!g) { cutSlipTitle = null; return; }
 		getNote(g).then((n) => { cutSlipTitle = n?.title ?? null; });
 	});
@@ -288,7 +295,7 @@
 		try {
 			await flushBeforeOp();
 			await cutFromChain(note.guid);
-			slipClipboard.set(note.guid);
+			slipClipboard.setCut(note.guid);
 			await reloadCurrentNoteFromIdb();
 			pushToast('슬립노트 체인에서 잘라냈습니다.');
 		} catch (e) {
@@ -296,16 +303,38 @@
 		}
 	}
 
-	async function handleSlipPaste() {
+	async function handleSlipConnect() {
 		if (!note) return;
-		const g = slipClipboard.cutGuid;
-		if (!g || g === note.guid) return;
 		try {
 			await flushBeforeOp();
-			await pasteAfter(g, note.guid);
+			await disconnectFromPrev(note.guid);
+			slipClipboard.setConnect(note.guid);
+			await reloadCurrentNoteFromIdb();
+			pushToast('다른 곳에 연결할 준비가 됐습니다. 대상 노트에서 붙여넣으세요.');
+		} catch (e) {
+			pushToast((e as Error).message ?? '연결 준비 실패', { kind: 'error' });
+		}
+	}
+
+	async function handleSlipPaste() {
+		if (!note) return;
+		const g = slipClipboard.guid;
+		const mode = slipClipboard.mode;
+		if (!g || g === note.guid || !mode) return;
+		try {
+			await flushBeforeOp();
+			if (mode === 'cut') {
+				await pasteAfter(g, note.guid);
+			} else {
+				await connectAfter(g, note.guid);
+			}
 			slipClipboard.clear();
 			await reloadCurrentNoteFromIdb();
-			pushToast('슬립노트를 이 노트 뒤에 붙여넣었습니다.');
+			pushToast(
+				mode === 'cut'
+					? '슬립노트를 이 노트 뒤에 붙여넣었습니다.'
+					: '슬립노트 체인을 이 노트 뒤에 연결했습니다.'
+			);
 		} catch (e) {
 			pushToast((e as Error).message ?? '붙여넣기 실패', { kind: 'error' });
 		}
@@ -470,9 +499,11 @@
 				onslipnavigate={handleInternalLink}
 				oninsertafter={handleSlipInsertAfter}
 				oncut={handleSlipCut}
+				onconnect={handleSlipConnect}
 				onpaste={handleSlipPaste}
 				canPasteSlip={canPasteSlip}
 				cutSlipTitle={cutSlipTitle}
+				slipClipboardMode={slipClipboardMode}
 			/>
 		{/if}
 	</div>
