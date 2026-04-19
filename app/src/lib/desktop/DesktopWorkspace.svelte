@@ -9,6 +9,7 @@
 		setWallpaper
 	} from './session.svelte.js';
 	import { installModKeyListeners } from './modKeys.svelte.js';
+	import { extractNoteGuidFromText, openNoteByGuid } from './openByClipboard.js';
 	import { createNote } from '$lib/core/noteManager.js';
 
 	let ready = $state(false);
@@ -24,10 +25,13 @@
 
 		const handler = (e: KeyboardEvent) => onKey(e);
 		window.addEventListener('keydown', handler);
+		const pasteHandler = (e: ClipboardEvent) => onPaste(e);
+		window.addEventListener('paste', pasteHandler);
 		const uninstallModKeys = installModKeyListeners();
 
 		return () => {
 			window.removeEventListener('keydown', handler);
+			window.removeEventListener('paste', pasteHandler);
 			uninstallModKeys();
 			if (wallpaperUrl) {
 				URL.revokeObjectURL(wallpaperUrl);
@@ -83,6 +87,27 @@
 		const x = Math.max(0, Math.round((vw - width) / 2));
 		const y = Math.max(0, Math.round((vh - height) / 2 - 60));
 		desktopSession.openWindowAt(note.guid, { x, y, width, height });
+	}
+
+	function isEditableTarget(target: EventTarget | null): boolean {
+		if (!(target instanceof HTMLElement)) return false;
+		const tag = target.tagName;
+		if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+		return target.isContentEditable;
+	}
+
+	// Native paste handler — fires synchronously for Ctrl/Cmd+V with the
+	// clipboard text already attached, so we can read it without triggering
+	// the async Clipboard API permission prompt. We only act when no editor
+	// or input owns focus (otherwise the normal paste must run unimpeded).
+	function onPaste(e: ClipboardEvent) {
+		if (desktopSession.getFocusedEditor()) return;
+		if (isEditableTarget(e.target)) return;
+		const text = e.clipboardData?.getData('text/plain') ?? '';
+		const guid = extractNoteGuidFromText(text);
+		if (!guid) return;
+		e.preventDefault();
+		void openNoteByGuid(guid);
 	}
 
 	function onKey(e: KeyboardEvent) {

@@ -85,6 +85,15 @@
 		return out;
 	}
 
+	async function copyGuid(guid: string) {
+		try {
+			await navigator.clipboard.writeText(guid);
+			pushToast(`GUID 복사됨: ${guid}`, { kind: 'info' });
+		} catch (e) {
+			pushToast('복사 실패: ' + String(e), { kind: 'error' });
+		}
+	}
+
 	function hasAnyIssues(s: ValidationSummary): boolean {
 		if (!s.indexFound) return true;
 		if (s.chains.some((c) => c.chainIssues.length > 0)) return true;
@@ -224,6 +233,7 @@
 					<thead>
 						<tr>
 							<th>제목</th>
+							<th>GUID</th>
 							<th>형식 문제</th>
 						</tr>
 					</thead>
@@ -232,6 +242,14 @@
 							<tr>
 								<td>
 									<a href={'/note/' + u.guid} class="note-link">{u.title}</a>
+								</td>
+								<td>
+									<button
+										class="guid-chip"
+										type="button"
+										title="클릭해서 GUID 복사"
+										onclick={() => copyGuid(u.guid)}
+									>{u.guid}</button>
 								</td>
 								<td>
 									{#if u.issues.length === 0}
@@ -436,4 +454,20 @@
 		color: #991b1b;
 	}
 	.ok-mark { color: #059669; font-size: 0.8rem; }
+	.guid-chip {
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: 0.72rem;
+		background: var(--color-bg-secondary, #f3f4f6);
+		border: 1px solid var(--color-border, #e5e7eb);
+		color: var(--color-text-secondary, #4b5563);
+		padding: 2px 6px;
+		border-radius: 4px;
+		cursor: pointer;
+	}
+	.guid-chip:hover {
+		background: #e0e7ff;
+		color: #3730a3;
+		border-color: #c7d2fe;
+	}
+	.guid-chip:active { transform: translateY(1px); }
 </style>
