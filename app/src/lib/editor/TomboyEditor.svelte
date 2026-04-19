@@ -13,6 +13,7 @@
 	import { TomboyParagraph } from "./extensions/TomboyParagraph.js";
 	import { TomboySubtitlePlaceholder } from "./extensions/TomboySubtitlePlaceholder.js";
 	import { SlipNoteArrows, type SlipNoteArrowsStorage } from "./extensions/SlipNoteArrows.js";
+	import { handleClipboardCopy, handleClipboardCut } from "./clipboardPlainText.js";
 	import { createTitleProvider } from "./autoLink/titleProvider.js";
 	import { autoLinkPluginKey } from "./autoLink/autoLinkPlugin.js";
 	import { createImagePreviewPlugin } from "./imagePreview/imagePreviewPlugin.js";
@@ -389,6 +390,15 @@
 					event.preventDefault();
 					void uploadAndInsertImage(file);
 					return true;
+				},
+				// Override PM's default clipboard path so Ctrl+C / Ctrl+X and the
+				// browser-level right-click copy/cut menu items all produce
+				// Tomboy-style plain text (single \n between blocks, no text/html).
+				// The native menu in our context menu also reaches this path when
+				// it delegates to document.execCommand('cut') / ('copy').
+				handleDOMEvents: {
+					copy: handleClipboardCopy,
+					cut: handleClipboardCut,
 				},
 			},
 		});
