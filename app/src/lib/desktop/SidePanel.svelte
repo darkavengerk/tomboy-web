@@ -5,7 +5,8 @@
 	import {
 		getCachedNotebooks,
 		filterByNotebook,
-		refreshNotebooksCache
+		refreshNotebooksCache,
+		assignNotebook
 	} from '$lib/core/notebooks.js';
 	import { searchNotes } from '$lib/search/noteSearch.js';
 	import {
@@ -71,6 +72,9 @@
 
 	async function handleNew() {
 		const note = await createNote('새 노트');
+		if (selectedNotebook) {
+			await assignNotebook(note.guid, selectedNotebook);
+		}
 		onopen(note.guid);
 	}
 
