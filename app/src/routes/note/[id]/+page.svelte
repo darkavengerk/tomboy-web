@@ -19,6 +19,8 @@
 	import NoteActionSheet, { type ActionKind } from '$lib/editor/NoteActionSheet.svelte';
 	import NotebookPicker from '$lib/components/NotebookPicker.svelte';
 	import { SLIPBOX_NOTEBOOK } from '$lib/sleepnote/validator.js';
+	import { insertNewNoteAfter, cutFromChain, pasteAfter } from '$lib/sleepnote/ops.js';
+	import { slipClipboard } from '$lib/sleepnote/clipboard.svelte.js';
 	import type { JSONContent, Editor } from '@tiptap/core';
 	import { pushToast } from '$lib/stores/toast.js';
 	import { removeNoteRevision } from '$lib/sync/manifest.js';
@@ -59,6 +61,15 @@
 	const currentNotebook = $derived(note ? getNotebook(note) : null);
 	const isFavoriteNote = $derived(note ? isFavorite(note) : false);
 	const isSlipNote = $derived(currentNotebook === SLIPBOX_NOTEBOOK);
+	const canPasteSlip = $derived(
+		isSlipNote && slipClipboard.hasCut && slipClipboard.cutGuid !== noteId
+	);
+	let cutSlipTitle = $state<string | null>(null);
+	$effect(() => {
+		const g = slipClipboard.cutGuid;
+		if (!g) { cutSlipTitle = null; return; }
+		getNote(g).then((n) => { cutSlipTitle = n?.title ?? null; });
+	});
 
 	// Route 변경 시 에디터 콘텐츠 교체
 	//
@@ -205,6 +216,69 @@
 		await flushSave();
 
 		goto(`/note/${target.guid}`);
+	}
+
+	/**
+	 * After a slip-note chain op mutates the current note's xmlContent in
+	 * IDB, the editor still holds the old doc. Flush any pending user edits
+	 * first (so we don't clobber them), then replace the editor content
+	 * from the fresh note.
+	 */
+	async function reloadCurrentNoteFromIdb(): Promise<void> {
+		if (!note) return;
+		const fresh = await getNote(note.guid);
+		if (!fresh) return;
+		note = fresh;
+		editorContent = getNoteEditorContent(fresh);
+		lastSavedDocFingerprint = null;
+		const ed = getEditor();
+		if (ed && editorContent) {
+			ed.commands.setContent(editorContent, { emitUpdate: false });
+		}
+	}
+
+	async function flushBeforeOp(): Promise<void> {
+		if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+		await flushSave();
+	}
+
+	async function handleSlipInsertAfter() {
+		if (!note) return;
+		try {
+			await flushBeforeOp();
+			const { newGuid } = await insertNewNoteAfter(note.guid);
+			goto(`/note/${newGuid}`);
+		} catch (e) {
+			pushToast((e as Error).message ?? '새 슬립노트 추가 실패', { kind: 'error' });
+		}
+	}
+
+	async function handleSlipCut() {
+		if (!note) return;
+		try {
+			await flushBeforeOp();
+			await cutFromChain(note.guid);
+			slipClipboard.set(note.guid);
+			await reloadCurrentNoteFromIdb();
+			pushToast('슬립노트 체인에서 잘라냈습니다.');
+		} catch (e) {
+			pushToast((e as Error).message ?? '잘라내기 실패', { kind: 'error' });
+		}
+	}
+
+	async function handleSlipPaste() {
+		if (!note) return;
+		const g = slipClipboard.cutGuid;
+		if (!g || g === note.guid) return;
+		try {
+			await flushBeforeOp();
+			await pasteAfter(g, note.guid);
+			slipClipboard.clear();
+			await reloadCurrentNoteFromIdb();
+			pushToast('슬립노트를 이 노트 뒤에 붙여넣었습니다.');
+		} catch (e) {
+			pushToast((e as Error).message ?? '붙여넣기 실패', { kind: 'error' });
+		}
 	}
 
 	async function handleAction(kind: ActionKind) {
@@ -364,6 +438,11 @@
 				createDate={note?.createDate ?? null}
 				isSlipNote={isSlipNote}
 				onslipnavigate={handleInternalLink}
+				oninsertafter={handleSlipInsertAfter}
+				oncut={handleSlipCut}
+				onpaste={handleSlipPaste}
+				canPasteSlip={canPasteSlip}
+				cutSlipTitle={cutSlipTitle}
 			/>
 		{/if}
 	</div>

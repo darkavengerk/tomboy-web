@@ -48,6 +48,16 @@
 		isSlipNote?: boolean;
 		/** Called when the user clicks one of the slip-note arrows. */
 		onslipnavigate?: (target: string) => void;
+		/** Called when the user clicks the slip-note "insert after" (+) button. */
+		oninsertafter?: () => void;
+		/** Called when the user clicks the slip-note "cut" (✂) button. */
+		oncut?: () => void;
+		/** Called when the user clicks the slip-note "paste" button. */
+		onpaste?: () => void;
+		/** Enables the paste button — typically slipClipboard.hasCut && != current. */
+		canPasteSlip?: boolean;
+		/** Title of the currently cut slip-note, for the paste button's tooltip. */
+		cutSlipTitle?: string | null;
 	}
 
 	let {
@@ -60,6 +70,11 @@
 		sendListItemActive = false,
 		isSlipNote = false,
 		onslipnavigate = () => {},
+		oninsertafter = () => {},
+		oncut = () => {},
+		onpaste = () => {},
+		canPasteSlip = false,
+		cutSlipTitle = null,
 	}: Props = $props();
 
 	let ctxMenu = $state<{ x: number; y: number } | null>(null);
@@ -384,6 +399,11 @@
 			.slipNoteArrows as SlipNoteArrowsStorage;
 		slipStorage.enabled = isSlipNote;
 		slipStorage.onNavigate = onslipnavigate;
+		slipStorage.onInsertAfter = oninsertafter;
+		slipStorage.onCut = oncut;
+		slipStorage.onPaste = onpaste;
+		slipStorage.canPaste = canPasteSlip;
+		slipStorage.cutTitle = cutSlipTitle;
 
 		// Note: no initial scan on mount. The note's stored XML already
 		// carries the `<link:internal>` marks from its last save, so the
@@ -476,16 +496,32 @@
 	// document.
 	$effect(() => {
 		const flag = isSlipNote;
-		const handler = onslipnavigate;
+		const navigate = onslipnavigate;
+		const insertAfter = oninsertafter;
+		const cut = oncut;
+		const paste = onpaste;
+		const canPaste = canPasteSlip;
+		const cutTitle = cutSlipTitle;
 		const ed = editor;
 		if (!ed || ed.isDestroyed) return;
 		const storage = (ed.storage as unknown as Record<string, unknown>)
 			.slipNoteArrows as SlipNoteArrowsStorage;
 		const changed =
-			storage.enabled !== flag || storage.onNavigate !== handler;
+			storage.enabled !== flag ||
+			storage.onNavigate !== navigate ||
+			storage.onInsertAfter !== insertAfter ||
+			storage.onCut !== cut ||
+			storage.onPaste !== paste ||
+			storage.canPaste !== canPaste ||
+			storage.cutTitle !== cutTitle;
 		if (!changed) return;
 		storage.enabled = flag;
-		storage.onNavigate = handler;
+		storage.onNavigate = navigate;
+		storage.onInsertAfter = insertAfter;
+		storage.onCut = cut;
+		storage.onPaste = paste;
+		storage.canPaste = canPaste;
+		storage.cutTitle = cutTitle;
 		ed.view.dispatch(ed.state.tr);
 	});
 
@@ -753,6 +789,42 @@
 	}
 	.tomboy-editor :global(.slipnote-arrow:not(:disabled):active) {
 		background: rgba(0, 0, 0, 0.18);
+	}
+
+	/* Chain-edit action cluster, sitting between the prev/next arrows. The
+	   wrapper centers itself in the flex row via auto side-margins, so the
+	   prev arrow stays flush left and next stays flush right (next keeps
+	   its own margin-left:auto for safety when the cluster is missing). */
+	.tomboy-editor :global(.slipnote-actions) {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		margin: 0 auto;
+	}
+	.tomboy-editor :global(.slipnote-action) {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		padding: 0;
+		border: none;
+		border-radius: 50%;
+		background: rgba(0, 0, 0, 0.04);
+		color: #555;
+		cursor: pointer;
+	}
+	.tomboy-editor :global(.slipnote-action:disabled) {
+		opacity: 0.25;
+		cursor: default;
+		background: transparent;
+	}
+	.tomboy-editor :global(.slipnote-action:not(:disabled):hover) {
+		background: rgba(0, 0, 0, 0.1);
+		color: #222;
+	}
+	.tomboy-editor :global(.slipnote-action:not(:disabled):active) {
+		background: rgba(0, 0, 0, 0.16);
 	}
 
 	/* Placeholder */
