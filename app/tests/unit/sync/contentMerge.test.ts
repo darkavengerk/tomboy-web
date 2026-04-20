@@ -55,6 +55,18 @@ describe('mergeNoteContent', () => {
 			}
 		});
 
+		it('merges edits on adjacent lines without a common anchor between them', () => {
+			// Regression: early anchor-based algorithm flagged this as a
+			// conflict because there was no stable base line between the two
+			// edits. Hunk-based diff3 handles it cleanly.
+			const base = wrap('T', ['alpha', 'beta']);
+			const local = wrap('T', ['ALPHA', 'beta']);
+			const remote = wrap('T', ['alpha', 'BETA']);
+			const res = mergeNoteContent(base, local, remote);
+			expect(res.clean).toBe(true);
+			if (res.clean) expect(res.merged).toBe(wrap('T', ['ALPHA', 'BETA']));
+		});
+
 		it('keeps a line that both sides deleted', () => {
 			const base = wrap('T', ['keep', 'drop', 'keep2']);
 			const local = wrap('T', ['keep', 'keep2']);

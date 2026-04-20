@@ -63,6 +63,10 @@ import { sync, _resetForTest } from '$lib/sync/syncManager.js';
 import * as dropboxClient from '$lib/sync/dropboxClient.js';
 import * as noteStore from '$lib/storage/noteStore.js';
 import * as manifest from '$lib/sync/manifest.js';
+import {
+	subscribeNoteReload,
+	_resetForTest as _resetReloadBusForTest
+} from '$lib/core/noteReloadBus.js';
 import type { NoteData } from '$lib/core/note.js';
 import type { TomboyServerManifest } from '$lib/sync/dropboxClient.js';
 
@@ -101,6 +105,7 @@ function makeServerManifest(overrides: Partial<TomboyServerManifest> = {}): Tomb
 beforeEach(() => {
 	vi.clearAllMocks();
 	_resetForTest();
+	_resetReloadBusForTest();
 	Object.defineProperty(navigator, 'onLine', { value: true, writable: true });
 	vi.mocked(dropboxClient.isAuthenticated).mockReturnValue(true);
 	vi.mocked(dropboxClient.downloadServerManifest).mockResolvedValue(makeServerManifest());
@@ -385,6 +390,70 @@ describe('syncManager', () => {
 		expect(result.merged).toBe(0);
 		// Local changeDate newer → upload wins
 		expect(result.uploaded).toBe(1);
+	});
+
+	it('emits noteReload for downloaded notes so open editors refresh', async () => {
+		vi.mocked(dropboxClient.downloadServerManifest).mockResolvedValue(
+			makeServerManifest({ notes: [{ guid: 'remote-guid', rev: 5 }] })
+		);
+		vi.mocked(noteStore.getAllNotesIncludingDeleted).mockResolvedValue([]);
+		vi.mocked(manifest.getManifest).mockResolvedValue({
+			id: 'manifest', lastSyncDate: '', lastSyncRev: 4, serverId: 'server-id-123',
+			noteRevisions: {}
+		});
+
+		const reloadFired = vi.fn();
+		subscribeNoteReload('remote-guid', reloadFired);
+
+		await sync();
+
+		expect(reloadFired).toHaveBeenCalledTimes(1);
+	});
+
+	it('emits noteReload for merged notes', async () => {
+		const base = '<note-content version="0.1">Test Note\nalpha\nbeta\n</note-content>';
+		const localXml = '<note-content version="0.1">Test Note\nALPHA\nbeta\n</note-content>';
+		const remoteXml = '<note-content version="0.1">Test Note\nalpha\nBETA\n</note-content>';
+
+		const localNote = makeNote({
+			guid: 'merge-guid',
+			xmlContent: localXml,
+			syncedXmlContent: base,
+			changeDate: '2024-05-01T00:00:00.0000000+00:00',
+			localDirty: true
+		});
+		vi.mocked(noteStore.getAllNotesIncludingDeleted).mockResolvedValue([localNote]);
+		vi.mocked(dropboxClient.downloadServerManifest).mockResolvedValue(
+			makeServerManifest({ revision: 5, notes: [{ guid: 'merge-guid', rev: 5 }] })
+		);
+		vi.mocked(manifest.getManifest).mockResolvedValue({
+			id: 'manifest', lastSyncDate: '', lastSyncRev: 4, serverId: 'server-id-123',
+			noteRevisions: { 'merge-guid': 4 }
+		});
+		vi.mocked(dropboxClient.downloadNoteAtRevision).mockResolvedValue(remoteXml);
+
+		const reloadFired = vi.fn();
+		subscribeNoteReload('merge-guid', reloadFired);
+
+		const result = await sync();
+
+		expect(result.merged).toBe(1);
+		expect(reloadFired).toHaveBeenCalledTimes(1);
+	});
+
+	it('does NOT emit noteReload for pure upload-only syncs', async () => {
+		const localNote = makeNote({ guid: 'upload-guid', localDirty: true });
+		vi.mocked(noteStore.getAllNotesIncludingDeleted).mockResolvedValue([localNote]);
+		vi.mocked(dropboxClient.downloadServerManifest).mockResolvedValue(
+			makeServerManifest({ revision: 5, notes: [] })
+		);
+
+		const reloadFired = vi.fn();
+		subscribeNoteReload('upload-guid', reloadFired);
+
+		await sync();
+
+		expect(reloadFired).not.toHaveBeenCalled();
 	});
 
 	it('no-op when already in sync', async () => {

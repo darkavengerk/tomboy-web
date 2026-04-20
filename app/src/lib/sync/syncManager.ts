@@ -18,6 +18,7 @@ import { invalidateCache } from '$lib/stores/noteListCache.js';
 import { refreshNotebooksCache } from '$lib/core/notebooks.js';
 import { pushToast } from '$lib/stores/toast.js';
 import { mergeNoteContent } from './contentMerge.js';
+import { emitNoteReload } from '$lib/core/noteReloadBus.js';
 import {
 	downloadServerManifest,
 	downloadNoteAtRevision,
@@ -428,6 +429,12 @@ export async function applyPlan(
 	for (const n of serverManifest.notes) serverNoteMap.set(n.guid, n.rev);
 
 	const processedGuids = new Set<string>();
+	// Guids whose local xmlContent was rewritten by sync (download, merge, or
+	// conflict-remote-wins). An editor opened on one of these guids is showing
+	// stale content; we `emitNoteReload` on them once all writes are flushed
+	// so both the mobile `/note/[id]` page and the desktop `NoteWindow` pick
+	// up the fresh XML from IDB.
+	const reloadGuids = new Set<string>();
 
 	// ── Download selected notes (sequential) ────────────────────────────────
 	const toDownloadSelected = plan.toDownload.filter((x) => sel.download.has(x.guid));
@@ -457,6 +464,7 @@ export async function applyPlan(
 				localManifest.noteRevisions[guid] = rev;
 				result.downloaded++;
 				processedGuids.add(guid);
+				reloadGuids.add(guid);
 				items[i].status = 'done';
 			} catch (err) {
 				items[i].status = 'error';
@@ -527,6 +535,7 @@ export async function applyPlan(
 					local.localDirty = true;
 					await noteStore.putNote(local);
 					sel.upload.add(conflict.guid);
+					reloadGuids.add(conflict.guid);
 					result.merged++;
 					items[i].status = 'done';
 				} else {
@@ -546,6 +555,7 @@ export async function applyPlan(
 						localManifest.noteRevisions[conflict.guid] = rev;
 						result.downloaded++;
 						processedGuids.add(conflict.guid);
+						reloadGuids.add(conflict.guid);
 					} else {
 						sel.upload.add(conflict.guid);
 					}
@@ -715,6 +725,7 @@ export async function applyPlan(
 				result.status = 'error';
 				localManifest.lastSyncDate = new Date().toISOString();
 				await saveManifest(localManifest);
+				if (reloadGuids.size > 0) await emitNoteReload(reloadGuids);
 				setStatus('error');
 				return result;
 			}
@@ -735,6 +746,7 @@ export async function applyPlan(
 				result.status = 'error';
 				localManifest.lastSyncDate = new Date().toISOString();
 				await saveManifest(localManifest);
+				if (reloadGuids.size > 0) await emitNoteReload(reloadGuids);
 				setStatus('error');
 				emitProgress('done', '완료', []);
 				return result;
@@ -763,6 +775,13 @@ export async function applyPlan(
 		} catch {
 			/* non-fatal */
 		}
+	}
+
+	// Notify any open editors whose IDB content was rewritten by this sync.
+	// Fires regardless of overall success so partially-applied reloads still
+	// reach the UI. Listener errors are swallowed inside emitNoteReload.
+	if (reloadGuids.size > 0) {
+		await emitNoteReload(reloadGuids);
 	}
 
 	setStatus(result.status === 'success' ? 'success' : 'error');

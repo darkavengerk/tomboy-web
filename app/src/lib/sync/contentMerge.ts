@@ -1,23 +1,21 @@
 /**
  * Line-based 3-way merge for a note's `<note-content>` XML.
  *
- * Used by `syncManager` to automatically resolve sync conflicts where
- * the local and remote sides edited different regions of the same note.
- * Falls back to the existing "pick one side" flow whenever the two sides
- * edited the same region or either side changed the title line.
+ * Used by `syncManager` to automatically resolve sync conflicts where the
+ * local and remote sides edited different regions of the same note. Falls
+ * back to the existing "pick one side" flow whenever the two sides edited
+ * overlapping base lines or either side changed the title line.
  *
- * Algorithm — classic diff3 on lines:
- *   1. Compute LCS(base, local) and LCS(base, remote). The intersection of
- *      the two on the base side gives "stable" anchor lines present and
- *      unchanged on all three sides.
- *   2. Walk the anchors in order. Between each consecutive pair of anchors
- *      we have three segments (the lines in base, local, remote between
- *      the matching anchors):
- *        - local == base   → take remote's segment (only remote edited).
- *        - remote == base  → take local's segment (only local edited).
- *        - local == remote → take either (both sides made the same edit).
- *        - otherwise       → real conflict; abort.
- *   3. Reassemble the merged line array.
+ * Algorithm — diff3-style hunk merge:
+ *   1. Compute LCS(base, local) and LCS(base, remote). Convert each into a
+ *      list of hunks, where a hunk is `{baseStart, baseEnd, replacement}` —
+ *      a contiguous range of base lines replaced by some target lines, or a
+ *      pure insertion when `baseStart === baseEnd`.
+ *   2. Walk `base` in order, interleaving the local and remote hunks. Two
+ *      hunks "overlap" iff both modify at least one common base line. If
+ *      they do, and the two replacements differ, it's a real conflict.
+ *      Non-overlapping modifications and pure insertions on either side
+ *      are applied in order.
  *
  * Title safety: if the derived title (first non-tag content of the first
  * line) differs between base and either side, we decline to merge. Title
@@ -30,6 +28,19 @@ import { extractTitleFromContent } from '$lib/core/noteArchiver.js';
 export type MergeResult =
 	| { clean: true; merged: string }
 	| { clean: false; reason: 'conflict' | 'title-changed' };
+
+interface Match {
+	base: number;
+	other: number;
+}
+
+interface Hunk {
+	/** First base line replaced, inclusive. Equals `baseEnd` for pure inserts. */
+	baseStart: number;
+	/** Last base line replaced, exclusive. */
+	baseEnd: number;
+	replacement: string[];
+}
 
 /**
  * 3-way merge the full xmlContent of a note. Line equality is exact.
@@ -51,51 +62,12 @@ export function mergeNoteContent(base: string, local: string, remote: string): M
 	const localLines = local.split('\n');
 	const remoteLines = remote.split('\n');
 
-	const localMatches = lcsMatches(baseLines, localLines);
-	const remoteMatches = lcsMatches(baseLines, remoteLines);
+	const localHunks = buildHunks(baseLines, localLines, lcsMatches(baseLines, localLines));
+	const remoteHunks = buildHunks(baseLines, remoteLines, lcsMatches(baseLines, remoteLines));
 
-	// Intersect on base index — these are the stable 3-way anchors.
-	const anchors = intersectAnchors(localMatches, remoteMatches);
-
-	// Sentinels so we can treat the regions before the first / after the
-	// last anchor uniformly.
-	anchors.push({ base: baseLines.length, local: localLines.length, remote: remoteLines.length });
-
-	const out: string[] = [];
-	let prev = { base: -1, local: -1, remote: -1 };
-	for (const anchor of anchors) {
-		const baseSeg = baseLines.slice(prev.base + 1, anchor.base);
-		const localSeg = localLines.slice(prev.local + 1, anchor.local);
-		const remoteSeg = remoteLines.slice(prev.remote + 1, anchor.remote);
-
-		const localEq = linesEqual(baseSeg, localSeg);
-		const remoteEq = linesEqual(baseSeg, remoteSeg);
-
-		if (localEq && remoteEq) {
-			// No edits in this region — baseSeg === localSeg === remoteSeg.
-			out.push(...baseSeg);
-		} else if (localEq) {
-			out.push(...remoteSeg);
-		} else if (remoteEq) {
-			out.push(...localSeg);
-		} else if (linesEqual(localSeg, remoteSeg)) {
-			out.push(...localSeg);
-		} else {
-			return { clean: false, reason: 'conflict' };
-		}
-
-		if (anchor.base < baseLines.length) {
-			out.push(baseLines[anchor.base]);
-		}
-		prev = anchor;
-	}
-
-	return { clean: true, merged: out.join('\n') };
-}
-
-interface Match {
-	base: number;
-	other: number;
+	const merged = mergeHunks(baseLines, localHunks, remoteHunks);
+	if (merged === null) return { clean: false, reason: 'conflict' };
+	return { clean: true, merged: merged.join('\n') };
 }
 
 /**
@@ -132,29 +104,110 @@ function lcsMatches(base: string[], other: string[]): Match[] {
 }
 
 /**
- * Intersect two LCS alignments on their base index to get anchors that
- * survive on all three sides. Returns triples of matching indices.
+ * Derive contiguous edit hunks from an LCS alignment. Regions between two
+ * adjacent LCS matches (or before the first / after the last match) where
+ * either side has non-matched lines become a single hunk replacing
+ * `base[baseStart..baseEnd)` with the corresponding target slice.
  */
-function intersectAnchors(
-	localMatches: Match[],
-	remoteMatches: Match[]
-): Array<{ base: number; local: number; remote: number }> {
-	const remoteByBase = new Map<number, number>();
-	for (const m of remoteMatches) remoteByBase.set(m.base, m.other);
-
-	const out: Array<{ base: number; local: number; remote: number }> = [];
-	let lastLocal = -1;
-	let lastRemote = -1;
-	for (const m of localMatches) {
-		const remoteIdx = remoteByBase.get(m.base);
-		if (remoteIdx === undefined) continue;
-		// Enforce ascending order on both other-axes; dropping out-of-order
-		// anchors keeps the merge regions well-formed.
-		if (m.other <= lastLocal || remoteIdx <= lastRemote) continue;
-		out.push({ base: m.base, local: m.other, remote: remoteIdx });
-		lastLocal = m.other;
-		lastRemote = remoteIdx;
+function buildHunks(base: string[], target: string[], matches: Match[]): Hunk[] {
+	const anchors: Match[] = [
+		{ base: -1, other: -1 },
+		...matches,
+		{ base: base.length, other: target.length }
+	];
+	const hunks: Hunk[] = [];
+	for (let k = 0; k < anchors.length - 1; k++) {
+		const cur = anchors[k];
+		const next = anchors[k + 1];
+		const baseStart = cur.base + 1;
+		const baseEnd = next.base;
+		const targetStart = cur.other + 1;
+		const targetEnd = next.other;
+		if (baseStart < baseEnd || targetStart < targetEnd) {
+			hunks.push({
+				baseStart,
+				baseEnd,
+				replacement: target.slice(targetStart, targetEnd)
+			});
+		}
 	}
+	return hunks;
+}
+
+/**
+ * Interleave `localHunks` and `remoteHunks` over `base`, returning the
+ * merged line array or `null` on conflict. Two hunks conflict when both
+ * cover at least one shared base line and their replacements differ.
+ */
+function mergeHunks(base: string[], localHunks: Hunk[], remoteHunks: Hunk[]): string[] | null {
+	const out: string[] = [];
+	let baseIdx = 0;
+	let i = 0;
+	let j = 0;
+
+	while (baseIdx < base.length || i < localHunks.length || j < remoteHunks.length) {
+		const local = i < localHunks.length ? localHunks[i] : null;
+		const remote = j < remoteHunks.length ? remoteHunks[j] : null;
+		const localHere = !!local && local.baseStart === baseIdx;
+		const remoteHere = !!remote && remote.baseStart === baseIdx;
+
+		if (localHere && remoteHere) {
+			const localModifies = local!.baseEnd > baseIdx;
+			const remoteModifies = remote!.baseEnd > baseIdx;
+
+			if (localModifies && remoteModifies) {
+				// Both hunks claim at least one base line here. Merge only if
+				// they cover the same range with the same replacement — any
+				// other form of overlap is a real conflict.
+				if (
+					local!.baseEnd === remote!.baseEnd &&
+					linesEqual(local!.replacement, remote!.replacement)
+				) {
+					out.push(...local!.replacement);
+					baseIdx = local!.baseEnd;
+					i++;
+					j++;
+				} else {
+					return null;
+				}
+			} else if (!localModifies && !remoteModifies) {
+				// Both sides insert at this exact position.
+				if (linesEqual(local!.replacement, remote!.replacement)) {
+					out.push(...local!.replacement);
+				} else {
+					// Two different insertions at the same cursor — ambiguous
+					// ordering, treat as conflict.
+					return null;
+				}
+				i++;
+				j++;
+			} else if (!localModifies) {
+				// Pure local insertion before remote's modify range; apply it
+				// first, then continue so remote's hunk fires next iteration.
+				out.push(...local!.replacement);
+				i++;
+			} else {
+				out.push(...remote!.replacement);
+				j++;
+			}
+		} else if (localHere) {
+			out.push(...local!.replacement);
+			baseIdx = local!.baseEnd;
+			i++;
+		} else if (remoteHere) {
+			out.push(...remote!.replacement);
+			baseIdx = remote!.baseEnd;
+			j++;
+		} else if (baseIdx < base.length) {
+			out.push(base[baseIdx]);
+			baseIdx++;
+		} else {
+			// No hunk at baseIdx === base.length means we have a stale hunk
+			// with baseStart > base.length — shouldn't happen, but guard.
+			break;
+		}
+	}
+
 	return out;
 }
 
