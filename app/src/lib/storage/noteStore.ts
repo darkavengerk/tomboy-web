@@ -25,16 +25,32 @@ export async function getNote(guid: string): Promise<NoteData | undefined> {
 	return db.get('notes', guid);
 }
 
-/** Insert or update a note, marking it as locally dirty */
+/**
+ * Insert or update a note, marking it as locally dirty.
+ *
+ * Preserves the existing `syncedXmlContent` baseline (set by the last
+ * `putNoteSynced`) — that is the common ancestor used for 3-way merge
+ * when a conflict is detected on next sync. If no prior row exists the
+ * baseline stays undefined (new local note that has never been synced).
+ */
 export async function putNote(note: NoteData): Promise<void> {
 	const db = await getDB();
-	await db.put('notes', { ...note, localDirty: true });
+	const existing = await db.get('notes', note.guid);
+	await db.put('notes', {
+		...note,
+		localDirty: true,
+		syncedXmlContent: existing?.syncedXmlContent ?? note.syncedXmlContent
+	});
 }
 
-/** Save a note without changing the dirty flag (used by sync) */
+/**
+ * Save a note without changing the dirty flag (used by sync).
+ * Also captures the current xmlContent as `syncedXmlContent` so it can
+ * serve as the common ancestor for future 3-way merges.
+ */
 export async function putNoteSynced(note: NoteData): Promise<void> {
 	const db = await getDB();
-	await db.put('notes', note);
+	await db.put('notes', { ...note, syncedXmlContent: note.xmlContent });
 }
 
 /** Soft-delete a note (tombstone for sync) */

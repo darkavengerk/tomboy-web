@@ -136,7 +136,7 @@
 			plan = p;
 			planSelection = sel;
 		} catch (e) {
-			syncResult = { status: 'error', uploaded: 0, downloaded: 0, deleted: 0, errors: [String(e)] };
+			syncResult = { status: 'error', uploaded: 0, downloaded: 0, deleted: 0, merged: 0, errors: [String(e)] };
 		} finally {
 			previewing = false;
 		}
@@ -347,7 +347,7 @@
 					{#if syncResult}
 						<div class="sync-result" class:error={syncResult.status === 'error'}>
 							<p>
-								업로드: {syncResult.uploaded} / 다운로드: {syncResult.downloaded} / 삭제: {syncResult.deleted}
+								업로드: {syncResult.uploaded} / 다운로드: {syncResult.downloaded} / 삭제: {syncResult.deleted}{#if syncResult.merged > 0} / 자동 머지: {syncResult.merged}{/if}
 							</p>
 							{#if syncResult.errors.length > 0}
 								<ul class="error-list">

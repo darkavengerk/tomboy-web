@@ -8,7 +8,7 @@
  *   - Conflict resolution: last-write-wins based on changeDate
  */
 
-import { parseNoteFromFile, serializeNote } from '$lib/core/noteArchiver.js';
+import { parseNoteFromFile, serializeNote, extractTitleFromContent } from '$lib/core/noteArchiver.js';
 import { parseTomboyDate, formatTomboyDate } from '$lib/core/note.js';
 import type { NoteData } from '$lib/core/note.js';
 import { prepareIncomingNoteForLocal } from '$lib/core/titleRewrite.js';
@@ -17,6 +17,8 @@ import { getManifest, saveManifest, clearManifest } from './manifest.js';
 import { invalidateCache } from '$lib/stores/noteListCache.js';
 import { refreshNotebooksCache } from '$lib/core/notebooks.js';
 import { pushToast } from '$lib/stores/toast.js';
+import { mergeNoteContent } from './contentMerge.js';
+import { emitNoteReload } from '$lib/core/noteReloadBus.js';
 import {
 	downloadServerManifest,
 	downloadNoteAtRevision,
@@ -33,6 +35,8 @@ export interface SyncResult {
 	uploaded: number;
 	downloaded: number;
 	deleted: number;
+	/** Conflicts resolved by 3-way content merge (not a pick-a-side). */
+	merged: number;
 	errors: string[];
 }
 
@@ -48,7 +52,7 @@ export interface SyncPlan {
 	toUpload: Array<SyncPlanItem & { reason: 'new' | 'updated' }>;
 	toDeleteRemote: SyncPlanItem[];
 	toDeleteLocal: SyncPlanItem[];
-	conflicts: Array<SyncPlanItem & { localDate: string; remoteDate: string; suggested: 'local' | 'remote' }>;
+	conflicts: Array<SyncPlanItem & { localDate: string; remoteDate: string; suggested: 'local' | 'remote' | 'merge'; canMerge: boolean }>;
 	/** Kept internally for applyPlan */
 	_serverManifest: TomboyServerManifest | null;
 }
@@ -58,7 +62,15 @@ export interface PlanSelection {
 	upload: Set<string>;
 	deleteRemote: Set<string>;
 	deleteLocal: Set<string>;
-	conflictChoice: Map<string, 'local' | 'remote'>;
+	/**
+	 * Per-conflict user override.
+	 *   'local'  → keep local, overwrite server
+	 *   'remote' → take server, overwrite local
+	 *   'merge'  → attempt 3-way content merge; falls back to the newer-date
+	 *              side if merge cannot be produced cleanly.
+	 * If unset, `applyPlan` tries `merge` first and falls back to newer-date.
+	 */
+	conflictChoice: Map<string, 'local' | 'remote' | 'merge'>;
 }
 
 // ─── Progress types ──────────────────────────────────────────────────────────
@@ -214,16 +226,24 @@ export async function computePlan(): Promise<SyncPlan> {
 		if (!local) {
 			toDownload.push({ guid, rev, reason: 'new' });
 		} else if (local.localDirty) {
-			// Both sides changed — conflict
+			// Both sides changed — conflict. Suggest auto-merge if a baseline
+			// is available; the actual merge attempt happens in applyPlan
+			// once the remote content has been downloaded.
+			const canMerge = typeof local.syncedXmlContent === 'string';
 			const localDate = parseTomboyDate(local.changeDate);
 			const remoteDate = new Date(0); // we don't know remote date without downloading
-			const suggested = localDate >= remoteDate ? 'local' : 'remote';
+			const suggested: 'local' | 'remote' | 'merge' = canMerge
+				? 'merge'
+				: localDate >= remoteDate
+					? 'local'
+					: 'remote';
 			conflicts.push({
 				guid,
 				title: local.title,
 				localDate: local.changeDate,
 				remoteDate: '', // filled after download in applyPlan
-				suggested
+				suggested,
+				canMerge
 			});
 			conflictGuids.add(guid);
 		} else {
@@ -290,7 +310,7 @@ export async function applyPlan(
 	onProgress?: SyncProgressCallback
 ): Promise<SyncResult> {
 	const sel = selection ?? selectAll(plan);
-	const result: SyncResult = { status: 'success', uploaded: 0, downloaded: 0, deleted: 0, errors: [] };
+	const result: SyncResult = { status: 'success', uploaded: 0, downloaded: 0, deleted: 0, merged: 0, errors: [] };
 
 	const completedPhases: SyncProgress['completedPhases'] = [];
 
@@ -409,6 +429,12 @@ export async function applyPlan(
 	for (const n of serverManifest.notes) serverNoteMap.set(n.guid, n.rev);
 
 	const processedGuids = new Set<string>();
+	// Guids whose local xmlContent was rewritten by sync (download, merge, or
+	// conflict-remote-wins). An editor opened on one of these guids is showing
+	// stale content; we `emitNoteReload` on them once all writes are flushed
+	// so both the mobile `/note/[id]` page and the desktop `NoteWindow` pick
+	// up the fresh XML from IDB.
+	const reloadGuids = new Set<string>();
 
 	// ── Download selected notes (sequential) ────────────────────────────────
 	const toDownloadSelected = plan.toDownload.filter((x) => sel.download.has(x.guid));
@@ -438,6 +464,7 @@ export async function applyPlan(
 				localManifest.noteRevisions[guid] = rev;
 				result.downloaded++;
 				processedGuids.add(guid);
+				reloadGuids.add(guid);
 				items[i].status = 'done';
 			} catch (err) {
 				items[i].status = 'error';
@@ -483,27 +510,98 @@ export async function applyPlan(
 				});
 				const remoteNote = parseNoteFromFile(content, `${conflict.guid}.note`);
 				const local = localByGuid.get(conflict.guid);
+				const canMerge = !!local?.syncedXmlContent;
 
-				let useRemote: boolean;
-				if (explicitChoice === 'remote') {
-					useRemote = true;
-				} else if (explicitChoice === 'local') {
-					useRemote = false;
-				} else {
-					const localDate = local ? parseTomboyDate(local.changeDate) : new Date(0);
-					const remoteDate = parseTomboyDate(remoteNote.changeDate);
-					useRemote = remoteDate > localDate;
-				}
+				// Four conflict-resolution paths:
+				//   'local'   → keep local, overwrite server
+				//   'remote'  → replace local with server
+				//   try-merge → explicit 'merge' or default-with-baseline; a
+				//               clean 3-way merge applies both sides. If the
+				//               merge fails, this note is left untouched and
+				//               an error is surfaced so the user can pick
+				//               'local' or 'remote' explicitly on a retry.
+				//   fallback  → no explicit choice AND no baseline (legacy
+				//               note from before the merge feature). Keep
+				//               the pre-existing newer-date behavior so a
+				//               direct `sync()` call still resolves it.
+				const shouldAttemptMerge =
+					explicitChoice === 'merge' || (explicitChoice === undefined && canMerge);
 
-				if (useRemote) {
+				if (explicitChoice === 'local') {
+					sel.upload.add(conflict.guid);
+					items[i].status = 'done';
+				} else if (explicitChoice === 'remote') {
 					await applyIncomingRemoteNote(remoteNote);
 					localManifest.noteRevisions[conflict.guid] = rev;
 					result.downloaded++;
 					processedGuids.add(conflict.guid);
+					reloadGuids.add(conflict.guid);
+					items[i].status = 'done';
+				} else if (shouldAttemptMerge) {
+					if (!canMerge) {
+						// Explicit 'merge' was requested but we never captured
+						// a baseline for this note. Nothing to do — report.
+						result.errors.push(
+							`충돌 '${conflict.title ?? conflict.guid}': 공통 기준점이 없어 자동 머지 불가. '내 버전 유지' 또는 '서버 버전으로 교체'를 선택해서 다시 시도하세요.`
+						);
+						items[i].status = 'error';
+						items[i].error = '자동 머지 불가 (기준점 없음)';
+					} else {
+						const attempt = mergeNoteContent(
+							local!.syncedXmlContent!,
+							local!.xmlContent,
+							remoteNote.xmlContent
+						);
+						if (attempt.clean) {
+							// Apply merged content locally and queue for upload.
+							// The existing upload path at the bottom of applyPlan
+							// picks this guid up via sel.upload.
+							local!.xmlContent = attempt.merged;
+							local!.title = extractTitleFromContent(attempt.merged);
+							const nowStr = formatTomboyDate(new Date());
+							local!.changeDate = nowStr;
+							local!.metadataChangeDate = nowStr;
+							local!.localDirty = true;
+							await noteStore.putNote(local!);
+							sel.upload.add(conflict.guid);
+							reloadGuids.add(conflict.guid);
+							result.merged++;
+							items[i].status = 'done';
+						} else {
+							// Merge failed. Leave the note untouched on both
+							// sides — the manifest revision stays at its
+							// pre-sync value so this note reappears as a
+							// conflict on the next sync, where the user can
+							// pick 'local' or 'remote' explicitly.
+							const reason =
+								attempt.reason === 'title-changed'
+									? '제목이 양쪽에서 다르게 바뀜'
+									: '같은 부분을 양쪽에서 다르게 편집';
+							result.errors.push(
+								`충돌 '${conflict.title ?? conflict.guid}': 자동 머지 실패 (${reason}). '내 버전 유지' 또는 '서버 버전으로 교체'를 선택해서 다시 시도하세요.`
+							);
+							items[i].status = 'error';
+							items[i].error = '자동 머지 실패';
+						}
+					}
 				} else {
-					sel.upload.add(conflict.guid);
+					// Legacy fallback (no baseline, no explicit choice) —
+					// preserve pre-feature newer-date semantics so direct
+					// `sync()` calls still resolve conflicts on notes that
+					// predate the baseline-capture code path.
+					const localDate = local ? parseTomboyDate(local.changeDate) : new Date(0);
+					const remoteDate = parseTomboyDate(remoteNote.changeDate);
+					if (remoteDate > localDate) {
+						await applyIncomingRemoteNote(remoteNote);
+						localManifest.noteRevisions[conflict.guid] = rev;
+						result.downloaded++;
+						processedGuids.add(conflict.guid);
+						reloadGuids.add(conflict.guid);
+					} else {
+						sel.upload.add(conflict.guid);
+					}
+					items[i].status = 'done';
 				}
-				items[i].status = 'done';
 			} catch (err) {
 				items[i].status = 'error';
 				items[i].error = String(err);
@@ -668,6 +766,7 @@ export async function applyPlan(
 				result.status = 'error';
 				localManifest.lastSyncDate = new Date().toISOString();
 				await saveManifest(localManifest);
+				if (reloadGuids.size > 0) await emitNoteReload(reloadGuids);
 				setStatus('error');
 				return result;
 			}
@@ -688,6 +787,7 @@ export async function applyPlan(
 				result.status = 'error';
 				localManifest.lastSyncDate = new Date().toISOString();
 				await saveManifest(localManifest);
+				if (reloadGuids.size > 0) await emitNoteReload(reloadGuids);
 				setStatus('error');
 				emitProgress('done', '완료', []);
 				return result;
@@ -716,6 +816,13 @@ export async function applyPlan(
 		} catch {
 			/* non-fatal */
 		}
+	}
+
+	// Notify any open editors whose IDB content was rewritten by this sync.
+	// Fires regardless of overall success so partially-applied reloads still
+	// reach the UI. Listener errors are swallowed inside emitNoteReload.
+	if (reloadGuids.size > 0) {
+		await emitNoteReload(reloadGuids);
 	}
 
 	setStatus(result.status === 'success' ? 'success' : 'error');
@@ -796,16 +903,16 @@ export async function revertNoteToServer(guid: string): Promise<RevertResult> {
  */
 export async function sync(): Promise<SyncResult> {
 	if (syncing) {
-		return { status: 'success', uploaded: 0, downloaded: 0, deleted: 0, errors: ['Sync already in progress'] };
+		return { status: 'success', uploaded: 0, downloaded: 0, deleted: 0, merged: 0, errors: ['Sync already in progress'] };
 	}
 
 	if (!navigator.onLine) {
 		setStatus('offline');
-		return { status: 'error', uploaded: 0, downloaded: 0, deleted: 0, errors: ['Offline'] };
+		return { status: 'error', uploaded: 0, downloaded: 0, deleted: 0, merged: 0, errors: ['Offline'] };
 	}
 
 	if (!isAuthenticated()) {
-		return { status: 'error', uploaded: 0, downloaded: 0, deleted: 0, errors: ['Not authenticated'] };
+		return { status: 'error', uploaded: 0, downloaded: 0, deleted: 0, merged: 0, errors: ['Not authenticated'] };
 	}
 
 	syncing = true;
@@ -822,6 +929,7 @@ export async function sync(): Promise<SyncResult> {
 			uploaded: 0,
 			downloaded: 0,
 			deleted: 0,
+			merged: 0,
 			errors: [String(err)]
 		};
 		setStatus('error', String(err));

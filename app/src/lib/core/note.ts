@@ -35,6 +35,13 @@ export interface NoteData {
 	localDirty: boolean;
 	/** Soft-delete tombstone for sync */
 	deleted: boolean;
+	/**
+	 * Snapshot of `xmlContent` as of the last successful sync. Used as the
+	 * common ancestor for 3-way merge when a conflict is detected. Absent
+	 * for notes that have never been synced (new local notes) or for rows
+	 * written before this field was introduced.
+	 */
+	syncedXmlContent?: string;
 }
 
 /** Create a blank NoteData with sensible defaults */
