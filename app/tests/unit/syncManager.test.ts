@@ -336,7 +336,7 @@ describe('syncManager', () => {
 		expect(mergedCall?.[0].xmlContent).toContain('GAMMA');
 	});
 
-	it('falls back to newer-date when merge would conflict', async () => {
+	it('errors out instead of silently overwriting when merge fails', async () => {
 		const base = '<note-content version="0.1">Test Note\nalpha\n</note-content>';
 		const localXml = '<note-content version="0.1">Test Note\nLOCAL-CHANGE\n</note-content>';
 		const remoteXml = '<note-content version="0.1">Test Note\nREMOTE-CHANGE\n</note-content>';
@@ -360,8 +360,55 @@ describe('syncManager', () => {
 
 		const result = await sync();
 
+		expect(result.status).toBe('error');
 		expect(result.merged).toBe(0);
-		expect(result.downloaded).toBe(1); // remote is newer → remote wins
+		expect(result.downloaded).toBe(0);
+		expect(result.uploaded).toBe(0);
+		// Error message mentions how to retry explicitly
+		expect(result.errors.some((e) => e.includes('자동 머지 실패'))).toBe(true);
+		// Local note was NOT modified, and manifest revision for the guid stays
+		// at the pre-sync value so the conflict reappears on the next sync.
+		expect(noteStore.putNote).not.toHaveBeenCalled();
+		const savedManifest = vi.mocked(manifest.saveManifest).mock.calls.at(-1)?.[0];
+		expect(savedManifest?.noteRevisions['conflict-guid']).toBe(4);
+	});
+
+	it('honors explicit local choice on merge failure when user retries', async () => {
+		const base = '<note-content version="0.1">Test Note\nalpha\n</note-content>';
+		const localXml = '<note-content version="0.1">Test Note\nLOCAL-CHANGE\n</note-content>';
+		const remoteXml = '<note-content version="0.1">Test Note\nREMOTE-CHANGE\n</note-content>';
+
+		const localNote = makeNote({
+			guid: 'conflict-guid',
+			xmlContent: localXml,
+			syncedXmlContent: base,
+			changeDate: '2024-05-01T00:00:00.0000000+00:00',
+			localDirty: true
+		});
+		vi.mocked(noteStore.getAllNotesIncludingDeleted).mockResolvedValue([localNote]);
+		vi.mocked(dropboxClient.downloadServerManifest).mockResolvedValue(
+			makeServerManifest({ revision: 5, notes: [{ guid: 'conflict-guid', rev: 5 }] })
+		);
+		vi.mocked(manifest.getManifest).mockResolvedValue({
+			id: 'manifest', lastSyncDate: '', lastSyncRev: 4, serverId: 'server-id-123',
+			noteRevisions: { 'conflict-guid': 4 }
+		});
+		vi.mocked(dropboxClient.downloadNoteAtRevision).mockResolvedValue(remoteXml);
+
+		const { computePlan, applyPlan } = await import('$lib/sync/syncManager.js');
+		const plan = await computePlan();
+		const selection = {
+			download: new Set<string>(),
+			upload: new Set<string>(),
+			deleteRemote: new Set<string>(),
+			deleteLocal: new Set<string>(),
+			conflictChoice: new Map<string, 'local' | 'remote' | 'merge'>([['conflict-guid', 'local']])
+		};
+		const result = await applyPlan(plan, selection);
+
+		expect(result.uploaded).toBe(1);
+		expect(result.downloaded).toBe(0);
+		expect(result.merged).toBe(0);
 	});
 
 	it('skips merge when no baseline is stored (pre-feature note)', async () => {
