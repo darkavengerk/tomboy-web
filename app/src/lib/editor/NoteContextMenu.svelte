@@ -2,6 +2,7 @@
 	import { getAllNotes } from '$lib/storage/noteStore.js';
 	import type { NoteData } from '$lib/core/note.js';
 	import { parseTomboyDate } from '$lib/core/note.js';
+	import { portal } from '$lib/utils/portal.js';
 
 	export type ActionKind =
 		| 'delete'
@@ -95,9 +96,14 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="ctx-backdrop" onclick={onclose}></div>
+<div class="ctx-backdrop" use:portal onclick={onclose}></div>
 
-<div class="ctx-menu" style="right: {anchor.right}px; bottom: {anchor.bottom}px;" role="menu">
+<div
+	class="ctx-menu"
+	use:portal
+	style="right: {anchor.right}px; bottom: {anchor.bottom}px;"
+	role="menu"
+>
 	{#if view === 'main'}
 		{#if !confirmDelete}
 			<button class="item" onclick={() => onaction('toggleFavorite')}>
