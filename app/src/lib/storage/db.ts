@@ -21,6 +21,7 @@ interface TomboyDB extends DBSchema {
 			openOnStartup: boolean;
 			localDirty: boolean;
 			deleted: boolean;
+			syncedXmlContent?: string;
 		};
 		indexes: {
 			'by-changeDate': string;
