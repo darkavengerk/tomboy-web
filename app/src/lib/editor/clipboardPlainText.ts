@@ -1,30 +1,35 @@
 /**
  * DOM-level copy / cut handlers that replace ProseMirror's default with a
- * Tomboy-shaped plain-text serialization. The default serializer joins
- * block boundaries with `\n\n`, which doesn't match how the .note XML
- * stores paragraph breaks (single `\n`) — the user sees the doubled
- * newlines as "extra line breaks" after pasting elsewhere.
+ * Tomboy-shaped clipboard payload.
  *
- * These handlers only set `text/plain` on the clipboard. No `text/html`
- * is emitted: the user's asked-for behavior is "plain text only, always",
- * which also sidesteps round-tripping rich formatting into other editors
- * that may interpret it unpredictably.
+ * Two flavors are written to the clipboard on every copy/cut:
+ *
+ *   - `text/plain` — the user-visible text, no markdown decoration. Block
+ *     boundaries (paragraph↔paragraph, list-item↔list-item) become a single
+ *     "\n" each. The default PM serializer uses "\n\n" between blocks, which
+ *     surfaces as "extra blank lines" after pasting into a text editor.
+ *
+ *   - `text/html` — minimal semantic HTML from `tiptapToHtml` (<p>, <ul>,
+ *     <li>, <strong>, etc; no inline styles or font attributes). Rich
+ *     editors prefer this representation and will merge a copied list item
+ *     into the destination list as a proper list item instead of inlining
+ *     "- " text.
  */
 
 import type { EditorView } from '@tiptap/pm/view';
 import type { Slice } from '@tiptap/pm/model';
 import type { JSONContent } from '@tiptap/core';
-import { tiptapToPlainText } from './copyFormatted.js';
+import { tiptapToPlainText, tiptapToHtml } from './copyFormatted.js';
 
-/** Convert a PM selection slice to Tomboy-style plain text (one \n per block). */
-function sliceToPlainText(slice: Slice): string {
+/** Convert a PM selection slice to a doc JSON, with trailing empty-paragraph cleanup. */
+function sliceToDoc(slice: Slice): JSONContent | null {
 	const raw = slice.content.toJSON() as JSONContent[] | undefined;
-	if (!raw || raw.length === 0) return '';
+	if (!raw || raw.length === 0) return null;
 	const nodes = [...raw];
 	// ProseMirror places an auto-inserted empty paragraph after a top-level
 	// list so the cursor can live past the list's end — same drop logic as
 	// noteContentArchiver.ts's serializeContent. Without this, copying a
-	// list via selectAll leaves a dangling trailing newline.
+	// list via selectAll leaves a dangling trailing newline / empty <p>.
 	if (nodes.length >= 2) {
 		const last = nodes[nodes.length - 1];
 		const secondLast = nodes[nodes.length - 2];
@@ -37,8 +42,12 @@ function sliceToPlainText(slice: Slice): string {
 			nodes.pop();
 		}
 	}
-	const json: JSONContent = { type: 'doc', content: nodes };
-	return tiptapToPlainText(json);
+	return { type: 'doc', content: nodes };
+}
+
+function writeClipboard(clipboardData: DataTransfer, doc: JSONContent): void {
+	clipboardData.setData('text/plain', tiptapToPlainText(doc));
+	clipboardData.setData('text/html', tiptapToHtml(doc));
 }
 
 export function handleClipboardCopy(view: EditorView, event: ClipboardEvent): boolean {
@@ -46,8 +55,10 @@ export function handleClipboardCopy(view: EditorView, event: ClipboardEvent): bo
 	if (sel.empty) return false;
 	const clipboardData = event.clipboardData;
 	if (!clipboardData) return false;
+	const doc = sliceToDoc(sel.content());
+	if (!doc) return false;
 	event.preventDefault();
-	clipboardData.setData('text/plain', sliceToPlainText(sel.content()));
+	writeClipboard(clipboardData, doc);
 	return true;
 }
 
@@ -56,8 +67,10 @@ export function handleClipboardCut(view: EditorView, event: ClipboardEvent): boo
 	if (sel.empty) return false;
 	const clipboardData = event.clipboardData;
 	if (!clipboardData) return false;
+	const doc = sliceToDoc(sel.content());
+	if (!doc) return false;
 	event.preventDefault();
-	clipboardData.setData('text/plain', sliceToPlainText(sel.content()));
+	writeClipboard(clipboardData, doc);
 	view.dispatch(view.state.tr.deleteSelection().scrollIntoView());
 	return true;
 }

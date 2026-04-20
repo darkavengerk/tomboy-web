@@ -245,11 +245,31 @@ so it works outside the desktop workspace too.
 
 ## Copy with format
 
-`lib/editor/copyFormatted.ts` — `tiptapToPlainText` / `tiptapToHtml` /
-`tiptapToMarkdown` export the current editor JSON (or a selection slice via
-`copySelectionAsJson`) in one of three formats. Markdown supports bold,
-italic, strike, monospace, url-link `[x](href)`, internal-link `[[x]]`,
-and bullet list nesting.
+`lib/editor/copyFormatted.ts` — four serializers consume editor JSON (or a
+selection slice via `copySelectionAsJson`):
+
+- `tiptapToPlainText` — bare text. List items emit only their content (no
+  `- ` prefix, no nesting indent) so pasting into another list merges
+  cleanly. One `\n` per block boundary.
+- `tiptapToStructuredText` — plain text that keeps list structure. Bullet
+  glyphs cycle by depth to mirror the browser's default `list-style-type`
+  cascade: `•` → `○` → `■` (clamped at depth 2+). Ordered lists use
+  `1. 2. 3.` Two-space indent per nesting level. Marks are stripped and
+  markdown meta chars are not escaped. Right-click → 형식 복사 → "리스트
+  형식 유지".
+- `tiptapToHtml` — minimal semantic HTML (`<p>`, `<ul>`, `<li>`, `<strong>`,
+  etc). Emitted alongside plain text on every Ctrl+C/X so rich editors
+  preserve list structure on paste.
+- `tiptapToMarkdown` — bold, italic, strike, monospace, url-link
+  `[x](href)`, internal-link `[[x]]`, and bullet list nesting. Top-level
+  blocks join with a single `\n` (mirrors the editor's line-per-block
+  display; strict markdown renderers that require `\n\n` between
+  paragraphs should use the HTML path instead).
+
+Clipboard (`lib/editor/clipboardPlainText.ts`) writes both `text/plain`
+(via `tiptapToPlainText`) and `text/html` (via `tiptapToHtml`) for Ctrl+C
+and Ctrl+X. The right-click context menu's main 복사 item does the same;
+the 형식 복사 submenu forces a single format via `writeText`.
 
 ## Desktop window resize & z-order
 

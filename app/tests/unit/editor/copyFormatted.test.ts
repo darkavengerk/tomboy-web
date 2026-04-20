@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
 	tiptapToPlainText,
+	tiptapToStructuredText,
 	tiptapToHtml,
 	tiptapToMarkdown
 } from '$lib/editor/copyFormatted.js';
@@ -36,7 +37,7 @@ describe('tiptapToPlainText', () => {
 		expect(tiptapToPlainText(json)).toBe('a\nb');
 	});
 
-	it('renders bullet lists with "- " prefix per item (single level)', () => {
+	it('emits list item text without "- " markers (so it pastes cleanly into another list)', () => {
 		const json = doc({
 			type: 'bulletList',
 			content: [
@@ -50,10 +51,10 @@ describe('tiptapToPlainText', () => {
 				}
 			]
 		});
-		expect(tiptapToPlainText(json)).toBe('- one\n- two');
+		expect(tiptapToPlainText(json)).toBe('one\ntwo');
 	});
 
-	it('indents nested list items by 2 spaces per level', () => {
+	it('flattens nested list items — no indentation added for nesting', () => {
 		const json = doc({
 			type: 'bulletList',
 			content: [
@@ -74,7 +75,7 @@ describe('tiptapToPlainText', () => {
 				}
 			]
 		});
-		expect(tiptapToPlainText(json)).toBe('- A\n  - B');
+		expect(tiptapToPlainText(json)).toBe('A\nB');
 	});
 
 	it('returns empty string for an empty doc', () => {
@@ -83,6 +84,82 @@ describe('tiptapToPlainText', () => {
 
 	it('accepts a partial JSON fragment (no type:doc wrapper)', () => {
 		expect(tiptapToPlainText(p('hi'))).toBe('hi');
+	});
+});
+
+describe('tiptapToStructuredText', () => {
+	it('keeps paragraph text as-is (one line per paragraph)', () => {
+		expect(tiptapToStructuredText(doc(p('one'), p('two')))).toBe('one\ntwo');
+	});
+
+	it('renders top-level bullet list with the • disc glyph', () => {
+		const json = doc({
+			type: 'bulletList',
+			content: [
+				{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'one' }] }] },
+				{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'two' }] }] }
+			]
+		});
+		expect(tiptapToStructuredText(json)).toBe('• one\n• two');
+	});
+
+	it('cycles bullet glyphs by depth to mirror browser default list-style', () => {
+		// Three levels deep: • → ○ → ■
+		const json = doc({
+			type: 'bulletList',
+			content: [
+				{
+					type: 'listItem',
+					content: [
+						{ type: 'paragraph', content: [{ type: 'text', text: 'A' }] },
+						{
+							type: 'bulletList',
+							content: [
+								{
+									type: 'listItem',
+									content: [
+										{ type: 'paragraph', content: [{ type: 'text', text: 'B' }] },
+										{
+											type: 'bulletList',
+											content: [
+												{
+													type: 'listItem',
+													content: [
+														{ type: 'paragraph', content: [{ type: 'text', text: 'C' }] }
+													]
+												}
+											]
+										}
+									]
+								}
+							]
+						}
+					]
+				}
+			]
+		});
+		expect(tiptapToStructuredText(json)).toBe('• A\n  ○ B\n    ■ C');
+	});
+
+	it('numbers ordered list items as "1. 2. 3."', () => {
+		const json = doc({
+			type: 'orderedList',
+			content: [
+				{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'first' }] }] },
+				{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'second' }] }] },
+				{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'third' }] }] }
+			]
+		});
+		expect(tiptapToStructuredText(json)).toBe('1. first\n2. second\n3. third');
+	});
+
+	it('strips marks — no bold/italic/etc markup appears', () => {
+		const json = doc(p('hi', [{ type: 'bold' }, { type: 'italic' }]));
+		expect(tiptapToStructuredText(json)).toBe('hi');
+	});
+
+	it('does not escape markdown meta chars', () => {
+		expect(tiptapToStructuredText(doc(p('5 * 3 = 15')))).toBe('5 * 3 = 15');
 	});
 });
 
@@ -179,8 +256,8 @@ describe('tiptapToMarkdown', () => {
 		expect(tiptapToMarkdown(json)).toBe('- A\n  - B\n- C');
 	});
 
-	it('renders multiple paragraphs separated by blank line', () => {
-		expect(tiptapToMarkdown(doc(p('first'), p('second')))).toBe('first\n\nsecond');
+	it('joins top-level blocks with a single newline (no extra blank line)', () => {
+		expect(tiptapToMarkdown(doc(p('first'), p('second')))).toBe('first\nsecond');
 	});
 
 	it('combines marks sensibly: bold+italic → ***x***', () => {

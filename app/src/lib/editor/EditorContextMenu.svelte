@@ -4,7 +4,13 @@
 	import { insertTodayDate } from './insertDate.js';
 	import { sinkListItemOnly, liftListItemOnly } from './listItemDepth.js';
 	import { moveListItemUp, moveListItemDown } from './listItemReorder.js';
-	import { tiptapToHtml, tiptapToPlainText, tiptapToMarkdown, copySelectionAsJson } from './copyFormatted.js';
+	import {
+		tiptapToHtml,
+		tiptapToPlainText,
+		tiptapToStructuredText,
+		tiptapToMarkdown,
+		copySelectionAsJson
+	} from './copyFormatted.js';
 
 	interface Props {
 		editor: Editor;
@@ -84,12 +90,13 @@
 		}
 	}
 
-	async function copyAs(format: 'html' | 'plain' | 'markdown') {
+	async function copyAs(format: 'html' | 'plain' | 'structured' | 'markdown') {
 		close();
 		const json = copySelectionAsJson(editor);
 		let text: string;
 		if (format === 'html') text = tiptapToHtml(json);
 		else if (format === 'plain') text = tiptapToPlainText(json);
+		else if (format === 'structured') text = tiptapToStructuredText(json);
 		else text = tiptapToMarkdown(json);
 		try {
 			await navigator.clipboard.writeText(text);
@@ -185,6 +192,7 @@
 			<div class="submenu" role="menu">
 				<button class="item" onclick={() => copyAs('html')}>HTML</button>
 				<button class="item" onclick={() => copyAs('plain')}>일반 텍스트</button>
+				<button class="item" onclick={() => copyAs('structured')}>리스트 형식 유지</button>
 				<button class="item" onclick={() => copyAs('markdown')}>Markdown</button>
 			</div>
 		{/if}

@@ -27,12 +27,21 @@ function getTextNodes(node: JSONContent): string {
 
 // ---------------------------------------------------------------------------
 // Plain text
+//
+// "Plain text" here means the user-visible text as it appears in the editor,
+// with no markdown-like decoration added. List items emit only their textual
+// content — no "- " bullets, no indentation for nesting. Block boundaries
+// (paragraph ↔ paragraph, list item ↔ list item) become a single "\n" each;
+// no "\n" is introduced that wasn't already visible as a line in the editor.
+//
+// Rationale: the right-click menu already offers a dedicated "Markdown" copy
+// path when the user wants list markers. This path is for the common case of
+// pasting into another list, where "- foo" would otherwise land as literal
+// text inside the receiving list item.
 // ---------------------------------------------------------------------------
 
-function plainNode(node: JSONContent, indent: number): string {
+function plainNode(node: JSONContent): string {
 	switch (node.type) {
-		case 'doc':
-			return plainChildren(node.content ?? [], indent);
 		case 'paragraph': {
 			const parts: string[] = [];
 			for (const child of node.content ?? []) {
@@ -41,63 +50,84 @@ function plainNode(node: JSONContent, indent: number): string {
 			}
 			return parts.join('');
 		}
-		case 'bulletList':
-		case 'orderedList':
-			return (node.content ?? []).map((li) => plainListItem(li, indent)).join('\n');
-		case 'listItem': {
-			// listItem can contain paragraphs + nested lists; handled by plainListItem
-			return plainListItem(node, indent);
-		}
 		case 'hardBreak':
 			return '\n';
+		case 'doc':
+		case 'bulletList':
+		case 'orderedList':
+		case 'listItem':
 		default:
-			return plainChildren(node.content ?? [], indent);
+			return (node.content ?? []).map(plainNode).join('\n');
 	}
 }
 
-function plainListItem(li: JSONContent, indent: number): string {
-	const prefix = ' '.repeat(indent * 2) + '- ';
+export function tiptapToPlainText(json: JSONContent): string {
+	return plainNode(json);
+}
+
+// ---------------------------------------------------------------------------
+// Structured text — plain text that preserves list bullets + indentation
+//
+// Halfway between `tiptapToPlainText` (bare text) and `tiptapToMarkdown`
+// (full markdown syntax). Useful for pasting into a text-only target where
+// the user wants the list to still read as a list.
+//
+// Bullet glyphs mirror the browser's default `list-style-type` cascade for
+// nested <ul>: disc (•) → circle (○) → square (■), cycling at deeper
+// levels. Ordered lists use "1. 2. 3." at every depth. Nesting indents
+// 2 spaces per level. Marks are stripped and markdown meta chars are not
+// escaped — the output is meant to read as text, not re-parse as markdown.
+// ---------------------------------------------------------------------------
+
+const BULLET_GLYPHS = ['•', '○', '■'] as const;
+
+function bulletFor(indent: number): string {
+	return BULLET_GLYPHS[Math.min(indent, BULLET_GLYPHS.length - 1)];
+}
+
+function structuredNode(node: JSONContent, indent: number): string {
+	switch (node.type) {
+		case 'paragraph': {
+			const parts: string[] = [];
+			for (const child of node.content ?? []) {
+				if (child.type === 'hardBreak') parts.push('\n');
+				else parts.push(getTextNodes(child));
+			}
+			return parts.join('');
+		}
+		case 'hardBreak':
+			return '\n';
+		case 'bulletList':
+			return (node.content ?? [])
+				.map((li) => structuredListItem(li, indent, `${bulletFor(indent)} `))
+				.join('\n');
+		case 'orderedList':
+			return (node.content ?? [])
+				.map((li, i) => structuredListItem(li, indent, `${i + 1}. `))
+				.join('\n');
+		case 'doc':
+		default:
+			return (node.content ?? []).map((c) => structuredNode(c, indent)).join('\n');
+	}
+}
+
+function structuredListItem(li: JSONContent, indent: number, marker: string): string {
+	const pad = '  '.repeat(indent);
 	const lines: string[] = [];
 	for (const child of li.content ?? []) {
 		if (child.type === 'paragraph') {
-			lines.push(prefix + getTextNodes(child));
+			lines.push(pad + marker + structuredNode(child, indent));
 		} else if (child.type === 'bulletList' || child.type === 'orderedList') {
-			const nested = (child.content ?? [])
-				.map((nestedLi) => plainListItem(nestedLi, indent + 1))
-				.join('\n');
-			lines.push(nested);
+			lines.push(structuredNode(child, indent + 1));
+		} else {
+			lines.push(pad + marker + structuredNode(child, indent));
 		}
 	}
 	return lines.join('\n');
 }
 
-function plainChildren(children: JSONContent[], indent: number): string {
-	const parts: string[] = [];
-	for (const child of children) {
-		if (child.type === 'bulletList' || child.type === 'orderedList') {
-			parts.push(plainNode(child, indent));
-		} else if (child.type === 'paragraph') {
-			parts.push(plainNode(child, indent));
-		} else {
-			parts.push(plainNode(child, indent));
-		}
-	}
-	return parts.join('\n');
-}
-
-export function tiptapToPlainText(json: JSONContent): string {
-	if (json.type !== 'doc') {
-		// Fragment: treat as a single node
-		return plainNode(json, 0);
-	}
-	const children = json.content ?? [];
-	if (children.length === 0) return '';
-	const parts: string[] = [];
-	for (const child of children) {
-		parts.push(plainNode(child, 0));
-	}
-	// Filter out the trailing empty string from trailing newlines inside lists
-	return parts.join('\n');
+export function tiptapToStructuredText(json: JSONContent): string {
+	return structuredNode(json, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -187,8 +217,9 @@ function mdNode(node: JSONContent, indent: number, insideList: boolean): string 
 			for (const child of node.content ?? []) {
 				parts.push(mdNode(child, 0, false));
 			}
-			// Paragraphs separated by blank line; lists are self-contained.
-			return parts.join('\n\n');
+			// One \n per block boundary — mirrors how the editor displays the
+			// note (one visible line per block) and matches tiptapToPlainText.
+			return parts.join('\n');
 		}
 		case 'text': {
 			const raw = node.text ?? '';
@@ -241,7 +272,11 @@ export function tiptapToMarkdown(json: JSONContent): string {
 	const children = json.content ?? [];
 	if (children.length === 0) return '';
 
-	// Separate top-level nodes: lists are joined with \n, paragraphs with \n\n.
+	// One \n per block boundary at the top level — the editor shows one
+	// visible line per block and the user wants the paste to land the same
+	// way. Strict markdown would need \n\n between paragraphs to render as
+	// separate paragraphs; if a target renderer re-flows single-newlines
+	// the user should use the HTML copy path instead.
 	const parts: string[] = [];
 	for (const child of children) {
 		if (child.type === 'bulletList' || child.type === 'orderedList') {
@@ -250,7 +285,7 @@ export function tiptapToMarkdown(json: JSONContent): string {
 			parts.push(mdNode(child, 0, false));
 		}
 	}
-	return parts.join('\n\n');
+	return parts.join('\n');
 }
 
 // ---------------------------------------------------------------------------

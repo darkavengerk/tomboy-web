@@ -110,7 +110,7 @@ describe('handleClipboardCopy', () => {
 		expect(text).toBe('hello');
 	});
 
-	it('copies a bullet list using "- " markers (one per line)', () => {
+	it('copies list items as bare text — no "- " markers, so pasting into another list merges cleanly', () => {
 		const editor = makeEditor(
 			docJson({
 				type: 'bulletList',
@@ -122,15 +122,34 @@ describe('handleClipboardCopy', () => {
 		);
 		editor.commands.selectAll();
 		const { text } = dispatchClipboardEvent(editor, 'copy');
-		expect(text).toBe('- one\n- two');
+		expect(text).toBe('one\ntwo');
 	});
 
-	it('does NOT write text/html — only text/plain (the user asked for clean text copies)', () => {
+	it('writes text/html alongside text/plain so rich editors preserve list structure on paste', () => {
+		const editor = makeEditor(
+			docJson({
+				type: 'bulletList',
+				content: [
+					{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'one' }] }] },
+					{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'two' }] }] }
+				]
+			})
+		);
+		editor.commands.selectAll();
+		const { text, html } = dispatchClipboardEvent(editor, 'copy');
+		expect(text).toBe('one\ntwo');
+		expect(html).toContain('<ul>');
+		expect(html).toContain('<li>');
+		expect(html).toContain('one');
+		expect(html).toContain('two');
+	});
+
+	it('emits semantic HTML for a plain paragraph (so paste lands as a paragraph, not a code block)', () => {
 		const editor = makeEditor(docJson(p('only text')));
 		editor.commands.selectAll();
 		const { text, html } = dispatchClipboardEvent(editor, 'copy');
 		expect(text).toBe('only text');
-		expect(html).toBe('');
+		expect(html).toContain('<p>only text</p>');
 	});
 
 	it('does nothing when the selection is empty', () => {
@@ -175,10 +194,10 @@ describe('handleClipboardCut', () => {
 		expect(JSON.stringify(editor.getJSON())).toBe(before);
 	});
 
-	it('does NOT write text/html on cut', () => {
+	it('writes text/html on cut (same payload as copy)', () => {
 		const editor = makeEditor(docJson(p('x')));
 		editor.commands.selectAll();
 		const { html } = dispatchClipboardEvent(editor, 'cut');
-		expect(html).toBe('');
+		expect(html).toContain('<p>x</p>');
 	});
 });
