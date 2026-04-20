@@ -298,7 +298,7 @@
 	{#if plan.conflicts.length > 0}
 	<section>
 		<h3 class="section-title">⚠️ 충돌 ({plan.conflicts.length})</h3>
-		<p class="conflict-help">자동 머지는 양쪽이 다른 부분을 편집한 경우에만 성공합니다. 같은 부분이 겹치면 최신 날짜 쪽으로 자동 폴백됩니다.</p>
+		<p class="conflict-help">자동 머지는 양쪽이 다른 부분을 편집한 경우에만 성공합니다. 같은 부분이 겹치면 실패로 보고되고, 해당 노트는 건드리지 않은 채 남습니다 — '내 버전 유지' 또는 '서버 버전으로 교체'를 선택해서 다시 시도하세요.</p>
 			{#if !isSyncing}
 				<div class="bulk-btns">
 					<button class="bulk-btn" onclick={() => {

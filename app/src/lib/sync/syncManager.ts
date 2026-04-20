@@ -510,47 +510,88 @@ export async function applyPlan(
 				});
 				const remoteNote = parseNoteFromFile(content, `${conflict.guid}.note`);
 				const local = localByGuid.get(conflict.guid);
+				const canMerge = !!local?.syncedXmlContent;
 
-				// Attempt 3-way merge when allowed (no explicit pick-a-side,
-				// local copy available, baseline captured at last sync).
-				let mergedXml: string | null = null;
-				if (explicitChoice !== 'local' && explicitChoice !== 'remote' && local?.syncedXmlContent) {
-					const attempt = mergeNoteContent(
-						local.syncedXmlContent,
-						local.xmlContent,
-						remoteNote.xmlContent
-					);
-					if (attempt.clean) mergedXml = attempt.merged;
-				}
+				// Four conflict-resolution paths:
+				//   'local'   → keep local, overwrite server
+				//   'remote'  → replace local with server
+				//   try-merge → explicit 'merge' or default-with-baseline; a
+				//               clean 3-way merge applies both sides. If the
+				//               merge fails, this note is left untouched and
+				//               an error is surfaced so the user can pick
+				//               'local' or 'remote' explicitly on a retry.
+				//   fallback  → no explicit choice AND no baseline (legacy
+				//               note from before the merge feature). Keep
+				//               the pre-existing newer-date behavior so a
+				//               direct `sync()` call still resolves it.
+				const shouldAttemptMerge =
+					explicitChoice === 'merge' || (explicitChoice === undefined && canMerge);
 
-				if (mergedXml !== null && local) {
-					// Apply merged content locally and queue for upload. The
-					// existing upload path at the bottom of applyPlan picks
-					// this guid up via sel.upload and calls serializeNote(local).
-					local.xmlContent = mergedXml;
-					local.title = extractTitleFromContent(mergedXml);
-					const nowStr = formatTomboyDate(new Date());
-					local.changeDate = nowStr;
-					local.metadataChangeDate = nowStr;
-					local.localDirty = true;
-					await noteStore.putNote(local);
+				if (explicitChoice === 'local') {
 					sel.upload.add(conflict.guid);
-					reloadGuids.add(conflict.guid);
-					result.merged++;
 					items[i].status = 'done';
-				} else {
-					let useRemote: boolean;
-					if (explicitChoice === 'remote') {
-						useRemote = true;
-					} else if (explicitChoice === 'local') {
-						useRemote = false;
+				} else if (explicitChoice === 'remote') {
+					await applyIncomingRemoteNote(remoteNote);
+					localManifest.noteRevisions[conflict.guid] = rev;
+					result.downloaded++;
+					processedGuids.add(conflict.guid);
+					reloadGuids.add(conflict.guid);
+					items[i].status = 'done';
+				} else if (shouldAttemptMerge) {
+					if (!canMerge) {
+						// Explicit 'merge' was requested but we never captured
+						// a baseline for this note. Nothing to do — report.
+						result.errors.push(
+							`충돌 '${conflict.title ?? conflict.guid}': 공통 기준점이 없어 자동 머지 불가. '내 버전 유지' 또는 '서버 버전으로 교체'를 선택해서 다시 시도하세요.`
+						);
+						items[i].status = 'error';
+						items[i].error = '자동 머지 불가 (기준점 없음)';
 					} else {
-						const localDate = local ? parseTomboyDate(local.changeDate) : new Date(0);
-						const remoteDate = parseTomboyDate(remoteNote.changeDate);
-						useRemote = remoteDate > localDate;
+						const attempt = mergeNoteContent(
+							local!.syncedXmlContent!,
+							local!.xmlContent,
+							remoteNote.xmlContent
+						);
+						if (attempt.clean) {
+							// Apply merged content locally and queue for upload.
+							// The existing upload path at the bottom of applyPlan
+							// picks this guid up via sel.upload.
+							local!.xmlContent = attempt.merged;
+							local!.title = extractTitleFromContent(attempt.merged);
+							const nowStr = formatTomboyDate(new Date());
+							local!.changeDate = nowStr;
+							local!.metadataChangeDate = nowStr;
+							local!.localDirty = true;
+							await noteStore.putNote(local!);
+							sel.upload.add(conflict.guid);
+							reloadGuids.add(conflict.guid);
+							result.merged++;
+							items[i].status = 'done';
+						} else {
+							// Merge failed. Leave the note untouched on both
+							// sides — the manifest revision stays at its
+							// pre-sync value so this note reappears as a
+							// conflict on the next sync, where the user can
+							// pick 'local' or 'remote' explicitly.
+							const reason =
+								attempt.reason === 'title-changed'
+									? '제목이 양쪽에서 다르게 바뀜'
+									: '같은 부분을 양쪽에서 다르게 편집';
+							result.errors.push(
+								`충돌 '${conflict.title ?? conflict.guid}': 자동 머지 실패 (${reason}). '내 버전 유지' 또는 '서버 버전으로 교체'를 선택해서 다시 시도하세요.`
+							);
+							items[i].status = 'error';
+							items[i].error = '자동 머지 실패';
+						}
 					}
-
-					if (useRemote) {
+				} else {
+					// Legacy fallback (no baseline, no explicit choice) —
+					// preserve pre-feature newer-date semantics so direct
+					// `sync()` calls still resolve conflicts on notes that
+					// predate the baseline-capture code path.
+					const localDate = local ? parseTomboyDate(local.changeDate) : new Date(0);
+					const remoteDate = parseTomboyDate(remoteNote.changeDate);
+					if (remoteDate > localDate) {
 						await applyIncomingRemoteNote(remoteNote);
 						localManifest.noteRevisions[conflict.guid] = rev;
 						result.downloaded++;
