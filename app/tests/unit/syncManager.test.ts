@@ -52,7 +52,11 @@ vi.mock('$lib/core/noteArchiver.js', () => ({
 		};
 	}),
 	serializeNote: vi.fn(() => '<note>xml</note>'),
-	filenameFromGuid: vi.fn((guid: string) => `${guid}.note`)
+	filenameFromGuid: vi.fn((guid: string) => `${guid}.note`),
+	extractTitleFromContent: vi.fn((xml: string) => {
+		const m = xml.match(/<note-content[^>]*>([^\n<]*)/);
+		return m ? m[1].trim() : '';
+	})
 }));
 
 import { sync, _resetForTest } from '$lib/sync/syncManager.js';
@@ -288,6 +292,99 @@ describe('syncManager', () => {
 
 		expect(result.uploaded).toBe(1);
 		expect(dropboxClient.initServerManifest).toHaveBeenCalled();
+	});
+
+	it('auto-merges when local and remote edited different regions', async () => {
+		const base = '<note-content version="0.1">Test Note\nalpha\nbeta\ngamma\n</note-content>';
+		const localXml = '<note-content version="0.1">Test Note\nALPHA\nbeta\ngamma\n</note-content>';
+		const remoteXml = '<note-content version="0.1">Test Note\nalpha\nbeta\nGAMMA\n</note-content>';
+
+		const localNote = makeNote({
+			guid: 'merge-guid',
+			xmlContent: localXml,
+			syncedXmlContent: base,
+			changeDate: '2024-05-01T00:00:00.0000000+00:00',
+			localDirty: true
+		});
+		vi.mocked(noteStore.getAllNotesIncludingDeleted).mockResolvedValue([localNote]);
+		vi.mocked(dropboxClient.downloadServerManifest).mockResolvedValue(
+			makeServerManifest({ revision: 5, notes: [{ guid: 'merge-guid', rev: 5 }] })
+		);
+		vi.mocked(manifest.getManifest).mockResolvedValue({
+			id: 'manifest', lastSyncDate: '', lastSyncRev: 4, serverId: 'server-id-123',
+			noteRevisions: { 'merge-guid': 4 }
+		});
+		vi.mocked(dropboxClient.downloadNoteAtRevision).mockResolvedValue(remoteXml);
+
+		const result = await sync();
+
+		expect(result.merged).toBe(1);
+		expect(result.uploaded).toBe(1);
+		expect(result.downloaded).toBe(0);
+		// The merged note was queued for upload via commitRevision
+		expect(dropboxClient.commitRevision).toHaveBeenCalled();
+		// putNote is called with the merged xmlContent (both edits applied)
+		const putNoteCalls = vi.mocked(noteStore.putNote).mock.calls;
+		const mergedCall = putNoteCalls.find(([n]) => n.guid === 'merge-guid');
+		expect(mergedCall).toBeDefined();
+		expect(mergedCall?.[0].xmlContent).toContain('ALPHA');
+		expect(mergedCall?.[0].xmlContent).toContain('GAMMA');
+	});
+
+	it('falls back to newer-date when merge would conflict', async () => {
+		const base = '<note-content version="0.1">Test Note\nalpha\n</note-content>';
+		const localXml = '<note-content version="0.1">Test Note\nLOCAL-CHANGE\n</note-content>';
+		const remoteXml = '<note-content version="0.1">Test Note\nREMOTE-CHANGE\n</note-content>';
+
+		const localNote = makeNote({
+			guid: 'conflict-guid',
+			xmlContent: localXml,
+			syncedXmlContent: base,
+			changeDate: '2024-05-01T00:00:00.0000000+00:00', // older than 2024-06-01 remote default
+			localDirty: true
+		});
+		vi.mocked(noteStore.getAllNotesIncludingDeleted).mockResolvedValue([localNote]);
+		vi.mocked(dropboxClient.downloadServerManifest).mockResolvedValue(
+			makeServerManifest({ revision: 5, notes: [{ guid: 'conflict-guid', rev: 5 }] })
+		);
+		vi.mocked(manifest.getManifest).mockResolvedValue({
+			id: 'manifest', lastSyncDate: '', lastSyncRev: 4, serverId: 'server-id-123',
+			noteRevisions: { 'conflict-guid': 4 }
+		});
+		vi.mocked(dropboxClient.downloadNoteAtRevision).mockResolvedValue(remoteXml);
+
+		const result = await sync();
+
+		expect(result.merged).toBe(0);
+		expect(result.downloaded).toBe(1); // remote is newer → remote wins
+	});
+
+	it('skips merge when no baseline is stored (pre-feature note)', async () => {
+		const localXml = '<note-content version="0.1">Test Note\nedited locally\n</note-content>';
+		const remoteXml = '<note-content version="0.1">Test Note\nedited remotely\n</note-content>';
+
+		const localNote = makeNote({
+			guid: 'nobase-guid',
+			xmlContent: localXml,
+			// No syncedXmlContent — baseline missing
+			changeDate: '2024-07-01T00:00:00.0000000+00:00', // newer than remote default
+			localDirty: true
+		});
+		vi.mocked(noteStore.getAllNotesIncludingDeleted).mockResolvedValue([localNote]);
+		vi.mocked(dropboxClient.downloadServerManifest).mockResolvedValue(
+			makeServerManifest({ revision: 5, notes: [{ guid: 'nobase-guid', rev: 5 }] })
+		);
+		vi.mocked(manifest.getManifest).mockResolvedValue({
+			id: 'manifest', lastSyncDate: '', lastSyncRev: 4, serverId: 'server-id-123',
+			noteRevisions: { 'nobase-guid': 4 }
+		});
+		vi.mocked(dropboxClient.downloadNoteAtRevision).mockResolvedValue(remoteXml);
+
+		const result = await sync();
+
+		expect(result.merged).toBe(0);
+		// Local changeDate newer → upload wins
+		expect(result.uploaded).toBe(1);
 	});
 
 	it('no-op when already in sync', async () => {

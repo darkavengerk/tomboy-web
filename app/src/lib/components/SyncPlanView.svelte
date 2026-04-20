@@ -42,7 +42,7 @@
 	let uploadSel = $state<Record<string, boolean>>({});
 	let deleteRemoteSel = $state<Record<string, boolean>>({});
 	let deleteLocalSel = $state<Record<string, boolean>>({});
-	let conflictChoice = $state<Record<string, 'local' | 'remote'>>({});
+	let conflictChoice = $state<Record<string, 'local' | 'remote' | 'merge'>>({});
 
 	// GUIDs that were reverted (server version pulled down) — hidden from the
 	// upload list without mutating the plan prop. Also cleared from uploadSel.
@@ -91,7 +91,7 @@
 	$effect(() => {
 		selection.conflictChoice = new Map(
 			Object.entries(conflictChoice)
-		) as Map<string, 'local' | 'remote'>;
+		) as Map<string, 'local' | 'remote' | 'merge'>;
 	});
 
 	// ── Revert handlers ──────────────────────────────────────────────────────
@@ -298,9 +298,14 @@
 	{#if plan.conflicts.length > 0}
 	<section>
 		<h3 class="section-title">⚠️ 충돌 ({plan.conflicts.length})</h3>
-		<p class="conflict-help">선택한 버전이 최종적으로 남고, 반대쪽을 덮어씁니다.</p>
+		<p class="conflict-help">자동 머지는 양쪽이 다른 부분을 편집한 경우에만 성공합니다. 같은 부분이 겹치면 최신 날짜 쪽으로 자동 폴백됩니다.</p>
 			{#if !isSyncing}
 				<div class="bulk-btns">
+					<button class="bulk-btn" onclick={() => {
+						for (const c of plan.conflicts) conflictChoice[c.guid] = c.canMerge ? 'merge' : c.suggested;
+					}}>
+						모두 자동 머지
+					</button>
 					<button class="bulk-btn" onclick={() => {
 						for (const c of plan.conflicts) conflictChoice[c.guid] = 'local';
 					}}>
@@ -320,6 +325,12 @@
 						<span class="conflict-legend-text">{conflict.title ?? conflict.guid}</span>
 						{@render statusBadge(status)}
 					</legend>
+					{#if conflict.canMerge}
+						<label class="radio-label">
+							<input type="radio" bind:group={conflictChoice[conflict.guid]} value="merge" disabled={isSyncing} />
+							<span>자동 머지 (겹치지 않는 변경을 합침)</span>
+						</label>
+					{/if}
 					<label class="radio-label">
 						<input type="radio" bind:group={conflictChoice[conflict.guid]} value="local" disabled={isSyncing} />
 						<span>

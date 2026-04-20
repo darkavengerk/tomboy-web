@@ -8,7 +8,7 @@
  *   - Conflict resolution: last-write-wins based on changeDate
  */
 
-import { parseNoteFromFile, serializeNote } from '$lib/core/noteArchiver.js';
+import { parseNoteFromFile, serializeNote, extractTitleFromContent } from '$lib/core/noteArchiver.js';
 import { parseTomboyDate, formatTomboyDate } from '$lib/core/note.js';
 import type { NoteData } from '$lib/core/note.js';
 import { prepareIncomingNoteForLocal } from '$lib/core/titleRewrite.js';
@@ -17,6 +17,7 @@ import { getManifest, saveManifest, clearManifest } from './manifest.js';
 import { invalidateCache } from '$lib/stores/noteListCache.js';
 import { refreshNotebooksCache } from '$lib/core/notebooks.js';
 import { pushToast } from '$lib/stores/toast.js';
+import { mergeNoteContent } from './contentMerge.js';
 import {
 	downloadServerManifest,
 	downloadNoteAtRevision,
@@ -33,6 +34,8 @@ export interface SyncResult {
 	uploaded: number;
 	downloaded: number;
 	deleted: number;
+	/** Conflicts resolved by 3-way content merge (not a pick-a-side). */
+	merged: number;
 	errors: string[];
 }
 
@@ -48,7 +51,7 @@ export interface SyncPlan {
 	toUpload: Array<SyncPlanItem & { reason: 'new' | 'updated' }>;
 	toDeleteRemote: SyncPlanItem[];
 	toDeleteLocal: SyncPlanItem[];
-	conflicts: Array<SyncPlanItem & { localDate: string; remoteDate: string; suggested: 'local' | 'remote' }>;
+	conflicts: Array<SyncPlanItem & { localDate: string; remoteDate: string; suggested: 'local' | 'remote' | 'merge'; canMerge: boolean }>;
 	/** Kept internally for applyPlan */
 	_serverManifest: TomboyServerManifest | null;
 }
@@ -58,7 +61,15 @@ export interface PlanSelection {
 	upload: Set<string>;
 	deleteRemote: Set<string>;
 	deleteLocal: Set<string>;
-	conflictChoice: Map<string, 'local' | 'remote'>;
+	/**
+	 * Per-conflict user override.
+	 *   'local'  → keep local, overwrite server
+	 *   'remote' → take server, overwrite local
+	 *   'merge'  → attempt 3-way content merge; falls back to the newer-date
+	 *              side if merge cannot be produced cleanly.
+	 * If unset, `applyPlan` tries `merge` first and falls back to newer-date.
+	 */
+	conflictChoice: Map<string, 'local' | 'remote' | 'merge'>;
 }
 
 // ─── Progress types ──────────────────────────────────────────────────────────
@@ -214,16 +225,24 @@ export async function computePlan(): Promise<SyncPlan> {
 		if (!local) {
 			toDownload.push({ guid, rev, reason: 'new' });
 		} else if (local.localDirty) {
-			// Both sides changed — conflict
+			// Both sides changed — conflict. Suggest auto-merge if a baseline
+			// is available; the actual merge attempt happens in applyPlan
+			// once the remote content has been downloaded.
+			const canMerge = typeof local.syncedXmlContent === 'string';
 			const localDate = parseTomboyDate(local.changeDate);
 			const remoteDate = new Date(0); // we don't know remote date without downloading
-			const suggested = localDate >= remoteDate ? 'local' : 'remote';
+			const suggested: 'local' | 'remote' | 'merge' = canMerge
+				? 'merge'
+				: localDate >= remoteDate
+					? 'local'
+					: 'remote';
 			conflicts.push({
 				guid,
 				title: local.title,
 				localDate: local.changeDate,
 				remoteDate: '', // filled after download in applyPlan
-				suggested
+				suggested,
+				canMerge
 			});
 			conflictGuids.add(guid);
 		} else {
@@ -290,7 +309,7 @@ export async function applyPlan(
 	onProgress?: SyncProgressCallback
 ): Promise<SyncResult> {
 	const sel = selection ?? selectAll(plan);
-	const result: SyncResult = { status: 'success', uploaded: 0, downloaded: 0, deleted: 0, errors: [] };
+	const result: SyncResult = { status: 'success', uploaded: 0, downloaded: 0, deleted: 0, merged: 0, errors: [] };
 
 	const completedPhases: SyncProgress['completedPhases'] = [];
 
@@ -484,26 +503,54 @@ export async function applyPlan(
 				const remoteNote = parseNoteFromFile(content, `${conflict.guid}.note`);
 				const local = localByGuid.get(conflict.guid);
 
-				let useRemote: boolean;
-				if (explicitChoice === 'remote') {
-					useRemote = true;
-				} else if (explicitChoice === 'local') {
-					useRemote = false;
-				} else {
-					const localDate = local ? parseTomboyDate(local.changeDate) : new Date(0);
-					const remoteDate = parseTomboyDate(remoteNote.changeDate);
-					useRemote = remoteDate > localDate;
+				// Attempt 3-way merge when allowed (no explicit pick-a-side,
+				// local copy available, baseline captured at last sync).
+				let mergedXml: string | null = null;
+				if (explicitChoice !== 'local' && explicitChoice !== 'remote' && local?.syncedXmlContent) {
+					const attempt = mergeNoteContent(
+						local.syncedXmlContent,
+						local.xmlContent,
+						remoteNote.xmlContent
+					);
+					if (attempt.clean) mergedXml = attempt.merged;
 				}
 
-				if (useRemote) {
-					await applyIncomingRemoteNote(remoteNote);
-					localManifest.noteRevisions[conflict.guid] = rev;
-					result.downloaded++;
-					processedGuids.add(conflict.guid);
-				} else {
+				if (mergedXml !== null && local) {
+					// Apply merged content locally and queue for upload. The
+					// existing upload path at the bottom of applyPlan picks
+					// this guid up via sel.upload and calls serializeNote(local).
+					local.xmlContent = mergedXml;
+					local.title = extractTitleFromContent(mergedXml);
+					const nowStr = formatTomboyDate(new Date());
+					local.changeDate = nowStr;
+					local.metadataChangeDate = nowStr;
+					local.localDirty = true;
+					await noteStore.putNote(local);
 					sel.upload.add(conflict.guid);
+					result.merged++;
+					items[i].status = 'done';
+				} else {
+					let useRemote: boolean;
+					if (explicitChoice === 'remote') {
+						useRemote = true;
+					} else if (explicitChoice === 'local') {
+						useRemote = false;
+					} else {
+						const localDate = local ? parseTomboyDate(local.changeDate) : new Date(0);
+						const remoteDate = parseTomboyDate(remoteNote.changeDate);
+						useRemote = remoteDate > localDate;
+					}
+
+					if (useRemote) {
+						await applyIncomingRemoteNote(remoteNote);
+						localManifest.noteRevisions[conflict.guid] = rev;
+						result.downloaded++;
+						processedGuids.add(conflict.guid);
+					} else {
+						sel.upload.add(conflict.guid);
+					}
+					items[i].status = 'done';
 				}
-				items[i].status = 'done';
 			} catch (err) {
 				items[i].status = 'error';
 				items[i].error = String(err);
@@ -796,16 +843,16 @@ export async function revertNoteToServer(guid: string): Promise<RevertResult> {
  */
 export async function sync(): Promise<SyncResult> {
 	if (syncing) {
-		return { status: 'success', uploaded: 0, downloaded: 0, deleted: 0, errors: ['Sync already in progress'] };
+		return { status: 'success', uploaded: 0, downloaded: 0, deleted: 0, merged: 0, errors: ['Sync already in progress'] };
 	}
 
 	if (!navigator.onLine) {
 		setStatus('offline');
-		return { status: 'error', uploaded: 0, downloaded: 0, deleted: 0, errors: ['Offline'] };
+		return { status: 'error', uploaded: 0, downloaded: 0, deleted: 0, merged: 0, errors: ['Offline'] };
 	}
 
 	if (!isAuthenticated()) {
-		return { status: 'error', uploaded: 0, downloaded: 0, deleted: 0, errors: ['Not authenticated'] };
+		return { status: 'error', uploaded: 0, downloaded: 0, deleted: 0, merged: 0, errors: ['Not authenticated'] };
 	}
 
 	syncing = true;
@@ -822,6 +869,7 @@ export async function sync(): Promise<SyncResult> {
 			uploaded: 0,
 			downloaded: 0,
 			deleted: 0,
+			merged: 0,
 			errors: [String(err)]
 		};
 		setStatus('error', String(err));
