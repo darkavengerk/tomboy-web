@@ -13,6 +13,7 @@
 	import { TomboyParagraph } from "./extensions/TomboyParagraph.js";
 	import { TomboySubtitlePlaceholder } from "./extensions/TomboySubtitlePlaceholder.js";
 	import { SlipNoteArrows, type SlipNoteArrowsStorage } from "./extensions/SlipNoteArrows.js";
+	import { DateArrows, type DateArrowsStorage } from "./extensions/DateArrows.js";
 	import { handleClipboardCopy, handleClipboardCut } from "./clipboardPlainText.js";
 	import { ctrlEnterSplit } from "./ctrlEnterSplit.js";
 	import { createTitleProvider } from "./autoLink/titleProvider.js";
@@ -69,6 +70,12 @@
 		cutSlipTitle?: string | null;
 		/** Mode of the clipboard entry: 'cut' changes paste behaviour + tooltip. */
 		slipClipboardMode?: 'cut' | 'connect' | null;
+		/** Title of the nearest earlier date-titled note (for the date arrow row). */
+		prevDateTitle?: string | null;
+		/** Title of the nearest later date-titled note (for the date arrow row). */
+		nextDateTitle?: string | null;
+		/** Called when the user clicks one of the date-navigation arrows. */
+		ondatenavigate?: (target: string, direction: 'prev' | 'next') => void;
 	}
 
 	let {
@@ -88,6 +95,9 @@
 		canPasteSlip = false,
 		cutSlipTitle = null,
 		slipClipboardMode = null,
+		prevDateTitle = null,
+		nextDateTitle = null,
+		ondatenavigate = () => {},
 	}: Props = $props();
 
 	let ctxMenu = $state<{ x: number; y: number } | null>(null);
@@ -153,8 +163,17 @@
 	// Format a Tomboy ISO date (yyyy-MM-ddTHH:mm:ss.fffffff±HH:MM) as
 	// yyyy-mm-dd for the subtitle placeholder. Returns null for missing /
 	// unparseable inputs so the placeholder is simply skipped.
+	//
+	// Also suppressed when the note's title is itself a yyyy-mm-dd string:
+	// the date-arrow row renders in the same visual slot and the creation-date
+	// hint would be redundant / overlap with the arrows.
 	function subtitlePlaceholderText(): string | null {
 		if (!createDate) return null;
+		const ed = editor;
+		if (ed && !ed.isDestroyed) {
+			const titleText = ed.state.doc.firstChild?.textContent.trim() ?? "";
+			if (/^\d{4}-\d{2}-\d{2}$/.test(titleText)) return null;
+		}
 		const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(createDate);
 		if (!m) return null;
 		return `${m[1]}-${m[2]}-${m[3]}`;
@@ -268,6 +287,7 @@
 					},
 				}),
 				SlipNoteArrows,
+				DateArrows,
 			],
 			content: content ?? {
 				type: "doc",
@@ -475,6 +495,16 @@
 		slipStorage.clipboardTitle = cutSlipTitle;
 		slipStorage.clipboardMode = slipClipboardMode;
 
+		// Seed the date-arrow storage with the current props. The extension
+		// self-gates on the title matching yyyy-mm-dd, so `enabled` stays on
+		// and the caller just feeds prev/next titles.
+		const dateStorage = (editor.storage as unknown as Record<string, unknown>)
+			.dateArrows as DateArrowsStorage;
+		dateStorage.enabled = true;
+		dateStorage.prevTitle = prevDateTitle;
+		dateStorage.nextTitle = nextDateTitle;
+		dateStorage.onNavigate = ondatenavigate;
+
 		// Note: no initial scan on mount. The note's stored XML already
 		// carries the `<link:internal>` marks from its last save, so the
 		// deserialized doc shows links immediately. Any staleness (e.g.
@@ -598,6 +628,29 @@
 		storage.canPaste = canPaste;
 		storage.clipboardTitle = clipboardTitle;
 		storage.clipboardMode = clipboardMode;
+		ed.view.dispatch(ed.state.tr);
+	});
+
+	// Sync date-arrow props to the extension storage. The decorations plugin
+	// re-runs on doc changes automatically (title-format gate); we only need
+	// to force a rebuild when prev/next targets or the navigate handler
+	// change while the doc is unchanged.
+	$effect(() => {
+		const prev = prevDateTitle;
+		const next = nextDateTitle;
+		const navigate = ondatenavigate;
+		const ed = editor;
+		if (!ed || ed.isDestroyed) return;
+		const storage = (ed.storage as unknown as Record<string, unknown>)
+			.dateArrows as DateArrowsStorage;
+		const changed =
+			storage.prevTitle !== prev ||
+			storage.nextTitle !== next ||
+			storage.onNavigate !== navigate;
+		if (!changed) return;
+		storage.prevTitle = prev;
+		storage.nextTitle = next;
+		storage.onNavigate = navigate;
 		ed.view.dispatch(ed.state.tr);
 	});
 
@@ -901,6 +954,43 @@
 	}
 	.tomboy-editor :global(.slipnote-action:not(:disabled):active) {
 		background: rgba(0, 0, 0, 0.16);
+	}
+
+	/* Date-title prev/next arrow row. Rendered as a block-level widget
+	   decoration between block 0 (title) and block 1, so it sits on its
+	   own line directly under the title. Not part of the persisted doc. */
+	.tomboy-editor :global(.datelink-arrow-row) {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin: 0;
+		padding: 0;
+		user-select: none;
+	}
+	.tomboy-editor :global(.datelink-arrow) {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 34px;
+		height: 34px;
+		padding: 0;
+		border: none;
+		border-radius: 50%;
+		background: rgba(0, 0, 0, 0.06);
+		color: #333;
+		line-height: 1;
+		cursor: pointer;
+	}
+	.tomboy-editor :global(.datelink-arrow:disabled) {
+		opacity: 0.3;
+		cursor: default;
+		background: transparent;
+	}
+	.tomboy-editor :global(.datelink-arrow:not(:disabled):hover) {
+		background: rgba(0, 0, 0, 0.12);
+	}
+	.tomboy-editor :global(.datelink-arrow:not(:disabled):active) {
+		background: rgba(0, 0, 0, 0.18);
 	}
 
 	/* Placeholder */

@@ -46,6 +46,8 @@
 		connectAfter
 	} from '$lib/sleepnote/ops.js';
 	import { slipClipboard } from '$lib/sleepnote/clipboard.svelte.js';
+	import { createTitleProvider } from '$lib/editor/autoLink/titleProvider.js';
+	import { findAdjacentDateNotes } from '$lib/editor/dateLink/findAdjacentDateNotes.js';
 
 	interface Props {
 		guid: string;
@@ -118,6 +120,22 @@
 		getNote(g).then((n) => { cutSlipTitle = n?.title ?? null; });
 	});
 
+	// Date-arrow adjacency — prev/next titles for yyyy-mm-dd-titled notes.
+	let dateAdjacency = $state<{ prev: string | null; next: string | null }>({
+		prev: null,
+		next: null
+	});
+	let dateTitleProvider: ReturnType<typeof createTitleProvider> | null = null;
+
+	function recomputeDateAdjacency(): void {
+		const t = note?.title;
+		if (!t || !dateTitleProvider) {
+			dateAdjacency = { prev: null, next: null };
+			return;
+		}
+		dateAdjacency = findAdjacentDateNotes(t, guid, dateTitleProvider.getTitles());
+	}
+
 	function getEditor(): Editor | null {
 		return editorComponent?.getEditor() ?? null;
 	}
@@ -153,9 +171,16 @@
 		// and pick up neighbor-field updates the op wrote to IDB.
 		const unregisterReload = registerReloadHook(guid, () => externalReload());
 
+		dateTitleProvider = createTitleProvider();
+		void dateTitleProvider.refresh().then(() => recomputeDateAdjacency());
+		const offDateChange = dateTitleProvider.onChange(() => recomputeDateAdjacency());
+
 		return () => {
 			unregisterFlush();
 			unregisterReload();
+			offDateChange();
+			dateTitleProvider?.dispose();
+			dateTitleProvider = null;
 			if (saveTimer) {
 				clearTimeout(saveTimer);
 				saveTimer = null;
@@ -163,6 +188,13 @@
 				void flushSave();
 			}
 		};
+	});
+
+	// Recompute adjacency when the current note's title changes (rename,
+	// slip-note chain op rewriting neighbours, etc.).
+	$effect(() => {
+		void note?.title;
+		recomputeDateAdjacency();
 	});
 
 	// Register the Tiptap editor with the session so global shortcuts
@@ -239,6 +271,24 @@
 			await desktopSession.openRightOf(guid, title);
 		} else {
 			onopenlink(title);
+		}
+	}
+
+	// Date-arrow navigation: symmetric cascade — "next" opens to the right
+	// of the source, "prev" to the left. Both reposition the target window
+	// even when it's already open, so the flow stays visually contiguous.
+	async function handleDateNavigate(target: string, direction: 'prev' | 'next') {
+		const title = target.trim();
+		if (!title) return;
+		if (saveTimer) {
+			clearTimeout(saveTimer);
+			saveTimer = null;
+			await flushSave();
+		}
+		if (direction === 'next') {
+			await desktopSession.openRightOf(guid, title);
+		} else {
+			await desktopSession.openLeftOf(guid, title);
 		}
 	}
 
@@ -648,6 +698,9 @@
 				canPasteSlip={canPasteSlip}
 				cutSlipTitle={cutSlipTitle}
 				slipClipboardMode={slipClipboardMode}
+				prevDateTitle={dateAdjacency.prev}
+				nextDateTitle={dateAdjacency.next}
+				ondatenavigate={handleDateNavigate}
 			/>
 		{:else}
 			<div class="loading">노트를 불러올 수 없습니다.</div>

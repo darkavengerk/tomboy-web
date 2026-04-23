@@ -521,6 +521,57 @@ export const desktopSession = {
 
 	/**
 	 * Open (or move) the note with the given title so it sits directly to the
+	 * LEFT of the source window — mirror of `openRightOf`, used by the
+	 * date-arrow "이전" button so prev/next navigation produces a symmetric
+	 * cascade. Clamps to the viewport's left edge (x ≥ 0) when the desired
+	 * x would overflow. Applies to already-open windows too (repositioned
+	 * and raised).
+	 */
+	async openLeftOf(fromGuid: string, targetTitle: string): Promise<void> {
+		const trimmed = targetTitle.trim();
+		if (!trimmed) return;
+		const linked = await findNoteByTitle(trimmed);
+		if (!linked || linked.deleted) {
+			pushToast(`'${trimmed}' 노트를 찾을 수 없습니다.`, { kind: 'error' });
+			return;
+		}
+		const ws = current();
+		const source = ws.windows.find((w) => w.guid === fromGuid);
+		if (!source) {
+			this.openWindow(linked.guid);
+			return;
+		}
+		const existing = ws.windows.find((w) => w.guid === linked.guid);
+		const cached = ws.geometryByGuid[linked.guid];
+		const width = existing?.width ?? cached?.width ?? DEFAULT_WIDTH;
+		const height = existing?.height ?? cached?.height ?? DEFAULT_HEIGHT;
+		const x = Math.max(0, source.x - width);
+		const y = Math.max(0, source.y);
+
+		if (existing) {
+			existing.x = Math.round(x);
+			existing.y = Math.round(y);
+			cacheGeometry(ws, existing);
+			bumpZ(ws, existing);
+		} else {
+			const win: DesktopWindowState = {
+				guid: linked.guid,
+				kind: 'note',
+				x: Math.round(x),
+				y: Math.round(y),
+				width,
+				height,
+				z: ++ws.nextZ
+			};
+			ws.windows.push(win);
+			cacheGeometry(ws, win);
+		}
+		focusRequest = { guid: linked.guid, token: ++focusRequestCounter };
+		schedulePersist();
+	},
+
+	/**
+	 * Open (or move) the note with the given title so it sits directly to the
 	 * right of the source window — used by the slip-note "다음" arrow so a
 	 * chain of notes cascades left-to-right without overlap. Clamps to the
 	 * viewport's right edge when the desired x would overflow. Applies to

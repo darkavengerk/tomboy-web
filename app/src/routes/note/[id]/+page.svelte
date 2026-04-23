@@ -15,6 +15,8 @@
 	} from '$lib/core/noteManager.js';
 	import { subscribeNoteReload } from '$lib/core/noteReloadBus.js';
 	import type { NoteData } from '$lib/core/note.js';
+	import { createTitleProvider } from '$lib/editor/autoLink/titleProvider.js';
+	import { findAdjacentDateNotes } from '$lib/editor/dateLink/findAdjacentDateNotes.js';
 	import TomboyEditor from '$lib/editor/TomboyEditor.svelte';
 	import Toolbar from '$lib/editor/Toolbar.svelte';
 	import NoteActionSheet, { type ActionKind } from '$lib/editor/NoteActionSheet.svelte';
@@ -78,6 +80,25 @@
 		if (!g) { cutSlipTitle = null; return; }
 		getNote(g).then((n) => { cutSlipTitle = n?.title ?? null; });
 	});
+
+	// Date-arrow adjacency — prev/next titles for yyyy-mm-dd-titled notes.
+	// Recomputed whenever the current note's title changes or the shared
+	// title index refreshes (create / rename / delete anywhere in the app).
+	let dateAdjacency = $state<{ prev: string | null; next: string | null }>({
+		prev: null,
+		next: null
+	});
+	let dateTitleProvider: ReturnType<typeof createTitleProvider> | null = null;
+
+	function recomputeDateAdjacency(): void {
+		const t = note?.title;
+		const id = noteId;
+		if (!t || !id || !dateTitleProvider) {
+			dateAdjacency = { prev: null, next: null };
+			return;
+		}
+		dateAdjacency = findAdjacentDateNotes(t, id, dateTitleProvider.getTitles());
+	}
 
 	// Subscribe to the note reload bus for the currently-loaded guid. Fires
 	// when another note's rename rewrote a <link:internal>Oldtitle</link:internal>
@@ -167,12 +188,27 @@
 	}
 
 	onMount(() => {
+		dateTitleProvider = createTitleProvider();
+		void dateTitleProvider.refresh().then(() => recomputeDateAdjacency());
+		const offDateChange = dateTitleProvider.onChange(() => recomputeDateAdjacency());
 		return () => {
+			offDateChange();
+			dateTitleProvider?.dispose();
+			dateTitleProvider = null;
 			if (saveTimer) {
 				clearTimeout(saveTimer);
 				flushSave();
 			}
 		};
+	});
+
+	// Recompute adjacency whenever the current note's title or the route's
+	// noteId changes. The provider itself fires onChange on list mutations,
+	// which is a separate path handled above.
+	$effect(() => {
+		void note?.title;
+		void noteId;
+		recomputeDateAdjacency();
 	});
 
 	function handleEditorChange(doc: JSONContent) {
@@ -504,6 +540,9 @@
 				canPasteSlip={canPasteSlip}
 				cutSlipTitle={cutSlipTitle}
 				slipClipboardMode={slipClipboardMode}
+				prevDateTitle={dateAdjacency.prev}
+				nextDateTitle={dateAdjacency.next}
+				ondatenavigate={handleInternalLink}
 			/>
 		{/if}
 	</div>
