@@ -24,7 +24,7 @@ import { onInvalidate } from '$lib/stores/noteListCache.js';
 import type { TitleEntry } from './findTitleMatches.js';
 
 export interface TitleProvider {
-	/** Current snapshot of title entries. Excludes blank titles / the excluded guid. */
+	/** Current snapshot of title entries. Excludes blank titles. */
 	getTitles(): TitleEntry[];
 	/** Re-fetch from the note store. Coalesces concurrent callers. */
 	refresh(): Promise<void>;
@@ -34,17 +34,7 @@ export interface TitleProvider {
 	dispose(): void;
 }
 
-export interface TitleProviderOptions {
-	/** Static guid to filter out of `getTitles()` (the current note). */
-	excludeGuid?: string | null;
-	/**
-	 * Dynamic variant of `excludeGuid` — consulted on every `getTitles()`
-	 * call so the filter can follow a note-transition without requiring
-	 * dispose + recreate of the provider. When provided, takes precedence
-	 * over the static `excludeGuid`.
-	 */
-	getExcludeGuid?: () => string | null;
-}
+export type TitleProviderOptions = Record<string, never>;
 
 // --- Singleton state -----------------------------------------------------
 
@@ -120,10 +110,7 @@ function ensureSubscribed(): void {
 
 // --- Public factory ------------------------------------------------------
 
-export function createTitleProvider(opts: TitleProviderOptions = {}): TitleProvider {
-	const staticExclude = opts.excludeGuid ?? null;
-	const readExclude =
-		opts.getExcludeGuid ?? (() => staticExclude);
+export function createTitleProvider(_opts: TitleProviderOptions = {}): TitleProvider {
 	let disposed = false;
 	const myListeners = new Set<() => void>();
 
@@ -137,14 +124,13 @@ export function createTitleProvider(opts: TitleProviderOptions = {}): TitleProvi
 	return {
 		getTitles() {
 			if (disposed) return [];
-			const excludeGuid = readExclude();
-			if (excludeGuid === null) return sharedEntries;
-			// Excluded case: build a filtered view. Callers may call this per
-			// scan, so filtering eagerly here (instead of relying on
-			// findTitleMatches' secondary filter) keeps the plugin's inner
-			// loop working on a smaller array when the current note is in a
-			// store with many other entries.
-			return sharedEntries.filter((e) => e.guid !== excludeGuid);
+			// The current-note filter intentionally lives in findTitleMatches
+			// (via its `excludeGuid` option) rather than here: the excluded
+			// title must still be visible to the matcher so it can claim its
+			// text region, preventing shorter overlapping titles from linking
+			// inside the current note's own title. A second filter here would
+			// hide it and reintroduce the inner-slice bug.
+			return sharedEntries;
 		},
 		refresh(): Promise<void> {
 			if (disposed) return Promise.resolve();

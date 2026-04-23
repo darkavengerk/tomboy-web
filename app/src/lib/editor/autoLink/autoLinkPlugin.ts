@@ -344,8 +344,8 @@ function applyInRange(
 		return false;
 	});
 
-	// Precompute a set of known titles for fast membership check in
-	// Pass 1's preservation logic (exact case).
+	// Precompute a set of known titles for fast membership check when
+	// validating existing link spans (exact case).
 	const knownTitles = new Set<string>();
 	for (const t of titles) {
 		const trimmed = t.title.trim();
@@ -353,29 +353,85 @@ function applyInRange(
 	}
 	const titlesKnown = knownTitles.size > 0;
 
-	for (const run of runs) {
-		// Build a "desired" array: for each char index, what target should the
-		// internal-link mark have? `null` means no mark.
-		const desired: (string | null)[] = new Array(run.text.length).fill(null);
-		// `locked[i]` = char i carries an existing mark we want to preserve
-		// (its span text still matches the mark's own `target` AND that
-		// target is a real loaded note title). New matches from findTitleMatches
-		// never overwrite locked regions — this keeps existing links stable
-		// even when the titles list is momentarily empty (e.g. right after
-		// setContent() while titles are still loading).
-		const locked: boolean[] = new Array(run.text.length).fill(false);
+	// Shape of every link-candidate span we greedily resolve below. Both
+	// "autolink matches from the title list" and "valid existing marks on the
+	// doc" go into the same pool so they compete on equal footing by length.
+	interface CandidateSpan {
+		from: number;
+		to: number;
+		/** Link target to apply; null means "claim this region, link nothing
+		 * here" (used for matches of the current note's own title so a
+		 * shorter overlapping title can't link inside it). */
+		target: string | null;
+		/**
+		 * Tie-break priority when two spans have equal length. Lower wins.
+		 * 0 = autolink match, 1 = existing link, 2 = excluded (claim-only).
+		 * Autolink wins ties because its target is drawn from the authoritative
+		 * title list; an equal-length existing span with the same target
+		 * yields identical output anyway.
+		 */
+		kindRank: 0 | 1 | 2;
+	}
 
-		// Pass 1: preserve existing link spans whose text still matches their
-		// target (exact case, with word-boundary check). Stale spans
-		// (text diverged from target via user editing) are left unlocked and
-		// with desired=null so they will be removed.
-		//
-		// An additional safety rule: if the title list IS loaded (non-empty),
-		// we also require the mark's `target` to match a known note title.
-		// This cleans up legacy "broken" marks whose target was polluted by
-		// earlier serialization bugs (e.g. `target="Title123"` where the real
-		// note is just "Title"). When titles are not yet loaded we skip the
-		// check so existing marks aren't wrongly stripped during async boot.
+	for (const run of runs) {
+		const desired: (string | null)[] = new Array(run.text.length).fill(null);
+		const assigned: boolean[] = new Array(run.text.length).fill(false);
+
+		const spans: CandidateSpan[] = [];
+
+		const hasSuppressedChar = (from: number, to: number): boolean => {
+			for (let i = from; i < to; i++) {
+				if (run.charMeta[i].suppressed) return true;
+			}
+			return false;
+		};
+
+		// (1a) Autolink matches to other notes. Passing `excludeGuid` here
+		//      gives us the "excluded region is claimed by the self-title, so
+		//      shorter overlapping titles never surface" guarantee, plus it
+		//      breaks duplicate-title ties in favour of the non-excluded
+		//      entry (see findTitleMatches' byTitle logic).
+		const matches = findTitleMatches(run.text, titles, {
+			excludeGuid: currentGuid
+		});
+		for (const m of matches) {
+			if (hasSuppressedChar(m.from, m.to)) continue;
+			spans.push({
+				from: m.from,
+				to: m.to,
+				target: m.target,
+				kindRank: 0
+			});
+		}
+
+		// (1b) Self-title claim regions. Compute them by running the matcher
+		//      against ONLY the current note's own title entries. These
+		//      aren't emitted as links (target=null), but they compete in the
+		//      greedy resolver — so a longer self-title still wipes any
+		//      shorter existing link inside it, even when the self-title
+		//      doesn't appear in (1a) at all.
+		if (currentGuid !== null) {
+			const selfEntries = titles.filter((t) => t.guid === currentGuid);
+			if (selfEntries.length > 0) {
+				const selfMatches = findTitleMatches(run.text, selfEntries);
+				for (const m of selfMatches) {
+					if (hasSuppressedChar(m.from, m.to)) continue;
+					spans.push({
+						from: m.from,
+						to: m.to,
+						target: null,
+						kindRank: 2
+					});
+				}
+			}
+		}
+
+		// (2) Valid existing-link spans. Walk the run, group consecutive
+		//     same-target chars, and keep the span only when it still passes
+		//     all our integrity checks: text matches the mark's `target`,
+		//     word boundaries hold, and (if titles are loaded) the target
+		//     resolves to a real note. A stale span is omitted, leaving its
+		//     chars unassigned so the emit loop strips the mark.
 		{
 			let p = 0;
 			while (p < run.text.length) {
@@ -404,28 +460,41 @@ function applyInRange(
 					!isWordChar(after) &&
 					(!titlesKnown || knownTitles.has(targetTrimmed));
 				if (stillValid) {
-					for (let k = p; k < q; k++) {
-						desired[k] = target;
-						locked[k] = true;
-					}
+					spans.push({
+						from: p,
+						to: q,
+						target: target,
+						kindRank: 1
+					});
 				}
 				p = q;
 			}
 		}
 
-		// Pass 2: scan for new auto-link matches, skipping suppressed marks
-		// and locked regions.
-		const matches = findTitleMatches(run.text, titles, { excludeGuid: currentGuid });
-		for (const m of matches) {
-			let skip = false;
-			for (let i = m.from; i < m.to; i++) {
-				if (run.charMeta[i].suppressed || locked[i]) {
-					skip = true;
+		// Greedy conflict resolution. Longest span wins; equal lengths fall
+		// back to kindRank (autolink > existing > claim-only). A span is
+		// dropped if it overlaps any already-assigned char — that guarantees
+		// a shorter link-candidate can't nibble at a longer one.
+		spans.sort((a, b) => {
+			const lenDiff = (b.to - b.from) - (a.to - a.from);
+			if (lenDiff !== 0) return lenDiff;
+			if (a.kindRank !== b.kindRank) return a.kindRank - b.kindRank;
+			return a.from - b.from;
+		});
+
+		for (const s of spans) {
+			let overlap = false;
+			for (let i = s.from; i < s.to; i++) {
+				if (assigned[i]) {
+					overlap = true;
 					break;
 				}
 			}
-			if (skip) continue;
-			for (let i = m.from; i < m.to; i++) desired[i] = m.target;
+			if (overlap) continue;
+			for (let i = s.from; i < s.to; i++) {
+				assigned[i] = true;
+				desired[i] = s.target;
+			}
 		}
 
 		// Walk runs of identical `desired` value; emit add/remove as needed.

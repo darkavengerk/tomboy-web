@@ -151,6 +151,33 @@ describe('findTitleMatches — exclusion', () => {
 	});
 });
 
+describe('findTitleMatches — excluded title still claims its region', () => {
+	it('does NOT match a shorter inner title inside an excluded longer title', () => {
+		// Scenario: the current note is titled "2026 A 구상" (self-excluded),
+		// and another note titled "A" exists. When the body contains the self
+		// title, we should NOT auto-link "A" to the other note — the longer
+		// title would have matched here, and a shorter inner slice linking
+		// elsewhere is surprising. The excluded title still claims its region.
+		const a = t('A', 'guid-a');
+		const self = t('2026 A 구상', 'guid-self');
+		const m = findTitleMatches('foo 2026 A 구상 bar', [a, self], {
+			excludeGuid: 'guid-self'
+		});
+		expect(m).toEqual([]);
+	});
+
+	it('still matches other titles outside the excluded region', () => {
+		const a = t('A', 'guid-a');
+		const self = t('2026 A 구상', 'guid-self');
+		const m = findTitleMatches('A and 2026 A 구상', [a, self], {
+			excludeGuid: 'guid-self'
+		});
+		expect(m).toHaveLength(1);
+		expect(m[0].target).toBe('A');
+		expect(m[0].from).toBe(0);
+	});
+});
+
 describe('findTitleMatches — multiple non-overlapping matches', () => {
 	it('matches two different titles in one text', () => {
 		const m = findTitleMatches('Foo and Bar together', [t('Foo'), t('Bar')]);

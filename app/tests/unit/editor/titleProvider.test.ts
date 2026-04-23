@@ -76,14 +76,19 @@ describe('titleProvider', () => {
 		p.dispose();
 	});
 
-	it('excludes the configured guid', async () => {
+	it('returns every non-blank note — current-note exclusion lives in findTitleMatches', async () => {
+		// The provider deliberately does NOT filter the "current" note out
+		// here. Exclusion is applied inside findTitleMatches so the excluded
+		// title can still claim its matched region (preventing a shorter
+		// overlapping title from linking inside the current note's own title
+		// when it appears in the body).
 		listNotesMock.mockResolvedValueOnce([
 			makeNote('self', 'Self'),
 			makeNote('other', 'Other')
 		]);
-		const p = createTitleProvider({ excludeGuid: 'self' });
+		const p = createTitleProvider();
 		await p.refresh();
-		expect(p.getTitles().map((t) => t.guid)).toEqual(['other']);
+		expect(p.getTitles().map((t) => t.guid).sort()).toEqual(['other', 'self']);
 		p.dispose();
 	});
 
@@ -229,28 +234,18 @@ describe('titleProvider', () => {
 		p.dispose();
 	});
 
-	it('getExcludeGuid callback is re-evaluated on every getTitles() call', async () => {
+	it('getTitles() stays pinned to the shared list across note transitions', async () => {
+		// Historically the provider carried its own `excludeGuid` filter so
+		// it could swap out the current note without recreating. That filter
+		// now lives in findTitleMatches (so the excluded title can still
+		// claim its region). The provider just returns the full list.
 		listNotesMock.mockResolvedValueOnce([
 			makeNote('a', 'Apple'),
 			makeNote('b', 'Banana'),
 			makeNote('c', 'Cherry')
 		]);
-		let currentExclude: string | null = 'a';
-		const p = createTitleProvider({
-			getExcludeGuid: () => currentExclude
-		});
+		const p = createTitleProvider();
 		await p.refresh();
-
-		// Initial: 'a' excluded.
-		expect(p.getTitles().map((t) => t.guid).sort()).toEqual(['b', 'c']);
-
-		// Swap the current note — no refresh / recreate required, the
-		// same provider handle keeps serving the new filter.
-		currentExclude = 'b';
-		expect(p.getTitles().map((t) => t.guid).sort()).toEqual(['a', 'c']);
-
-		// Null exclude → full list.
-		currentExclude = null;
 		expect(p.getTitles().map((t) => t.guid).sort()).toEqual(['a', 'b', 'c']);
 		p.dispose();
 	});

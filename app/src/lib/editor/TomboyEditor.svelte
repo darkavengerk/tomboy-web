@@ -238,14 +238,10 @@
 		window.addEventListener("blur", clearCtrl);
 		document.addEventListener("visibilitychange", clearCtrl);
 
-		// Use a dynamic excludeGuid callback so the provider follows note
-		// transitions without needing dispose + recreate. The editor
-		// instance is reused across notes (see $effect below), and the
-		// plugin also reads getCurrentGuid() on every scan, so the filter
-		// stays correct for the active note.
-		const titleProvider = createTitleProvider({
-			getExcludeGuid: () => currentGuid,
-		});
+		// The current-note filter is applied inside findTitleMatches via the
+		// plugin's getCurrentGuid() — the provider returns the full title
+		// list so the excluded title can still claim its matched region.
+		const titleProvider = createTitleProvider();
 		// Populate titles asynchronously; the plugin reads via getTitles() so
 		// late arrivals still auto-link pre-existing content via the refresh meta.
 		// refresh() is a fast-path no-op when sharedEntries is already warm

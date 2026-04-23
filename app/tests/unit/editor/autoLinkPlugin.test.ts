@@ -146,6 +146,148 @@ describe('autoLinkPlugin — exclusion', () => {
 	});
 });
 
+describe('autoLinkPlugin — length-priority policy', () => {
+	function editorWith(
+		titles: TitleEntry[],
+		currentGuid: string | null,
+		docJSON: unknown
+	): Editor {
+		const editor = new Editor({
+			extensions: [
+				Document,
+				Paragraph,
+				Text,
+				TomboyMonospace,
+				TomboyUrlLink,
+				TomboyInternalLink.configure({
+					getTitles: () => titles,
+					getCurrentGuid: () => currentGuid
+				})
+			],
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			content: docJSON as any
+		});
+		currentEditor = editor;
+		return editor;
+	}
+
+	it('replaces a shorter existing link when a longer title now covers the same span', () => {
+		// Precise setup: the mark is ONLY on "Foo" — the trailing text is
+		// unmarked. User had manually linked "Foo" to a valid note; later the
+		// new note "Foo Bar" appears. Under the length-priority policy the
+		// longer title wins and the short manual link is replaced.
+		const titles: TitleEntry[] = [entry('Foo'), entry('Foo Bar')];
+		const editor = editorWith(titles, null, {
+			type: 'doc',
+			content: [
+				{
+					type: 'paragraph',
+					content: [
+						{ type: 'text', text: 'prefix ' },
+						{
+							type: 'text',
+							text: 'Foo',
+							marks: [
+								{
+									type: 'tomboyInternalLink',
+									attrs: { target: 'Foo' }
+								}
+							]
+						},
+						{ type: 'text', text: ' Bar trailing' }
+					]
+				}
+			]
+		});
+
+		editor.view.dispatch(
+			editor.state.tr.setMeta(autoLinkPluginKey, { refresh: true })
+		);
+
+		const links = collectLinks(editor);
+		expect(links).toHaveLength(1);
+		expect(links[0].target).toBe('Foo Bar');
+	});
+
+	it('keeps a long existing link when no autolink match is longer', () => {
+		// Inverse guard: a precisely-bounded existing "Foo Bar" link must be
+		// preserved. The shorter "Foo" autolink must NOT carve it up.
+		const titles: TitleEntry[] = [entry('Foo'), entry('Foo Bar')];
+		const editor = editorWith(titles, null, {
+			type: 'doc',
+			content: [
+				{
+					type: 'paragraph',
+					content: [
+						{ type: 'text', text: 'prefix ' },
+						{
+							type: 'text',
+							text: 'Foo Bar',
+							marks: [
+								{
+									type: 'tomboyInternalLink',
+									attrs: { target: 'Foo Bar' }
+								}
+							]
+						},
+						{ type: 'text', text: ' tail' }
+					]
+				}
+			]
+		});
+
+		editor.view.dispatch(
+			editor.state.tr.setMeta(autoLinkPluginKey, { refresh: true })
+		);
+
+		const links = collectLinks(editor);
+		expect(links).toHaveLength(1);
+		expect(links[0].target).toBe('Foo Bar');
+	});
+
+	it('excluded current-note title wipes a shorter inner existing link', () => {
+		// Current note titled "2026 A 구상". A separate note "A" also exists.
+		// The body paragraph contains the self-title with "A" manually linked
+		// inside. The excluded (self) title claims the longer region, so the
+		// short "A" link inside must be stripped — no new link, no old link.
+		const currentGuid = 'guid-self';
+		const titles: TitleEntry[] = [
+			entry('A', 'guid-a'),
+			entry('2026 A 구상', currentGuid)
+		];
+		const editor = editorWith(titles, currentGuid, {
+			type: 'doc',
+			content: [
+				// First paragraph = title line (skipped by the plugin).
+				{ type: 'paragraph', content: [{ type: 'text', text: 'x' }] },
+				{
+					type: 'paragraph',
+					content: [
+						{ type: 'text', text: 'prefix 2026 ' },
+						{
+							type: 'text',
+							text: 'A',
+							marks: [
+								{
+									type: 'tomboyInternalLink',
+									attrs: { target: 'A' }
+								}
+							]
+						},
+						{ type: 'text', text: ' 구상 trailing' }
+					]
+				}
+			]
+		});
+
+		editor.view.dispatch(
+			editor.state.tr.setMeta(autoLinkPluginKey, { refresh: true })
+		);
+
+		expect(collectLinks(editor)).toHaveLength(0);
+	});
+});
+
 describe('autoLinkPlugin — inside other marks', () => {
 	it('does not auto-link inside a tomboyUrlLink mark', () => {
 		const editor = makeEditor({ titles: [entry('Foo Bar')] });

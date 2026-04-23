@@ -51,17 +51,32 @@ export function findTitleMatches(
 	if (!text) return [];
 	const exclude = options.excludeGuid ?? null;
 
-	// Keep only non-empty, non-excluded titles; de-dup by title.
-	const seen = new Set<string>();
-	const candidates: TitleEntry[] = [];
+	// Keep only non-empty titles; de-dup by title. Excluded titles stay in
+	// the candidate pool so they still claim their matched region — that way
+	// a shorter overlapping title can't link inside what is really "the
+	// current note's own title" appearing in the body. We just suppress
+	// emitting the match itself.
+	//
+	// On duplicate titles (violates the uniqueness invariant but can happen
+	// before enforcement — see "Title uniqueness" in CLAUDE.md), prefer a
+	// non-excluded entry so a legitimate target still gets linked instead of
+	// silently dropping the match.
+	const byTitle = new Map<string, TitleEntry>();
 	for (const entry of titles) {
 		const trimmed = entry.title.trim();
 		if (!trimmed) continue;
-		if (exclude !== null && entry.guid === exclude) continue;
-		if (seen.has(trimmed)) continue;
-		seen.add(trimmed);
-		candidates.push({ ...entry, title: trimmed });
+		const isExcluded = exclude !== null && entry.guid === exclude;
+		const existing = byTitle.get(trimmed);
+		if (!existing) {
+			byTitle.set(trimmed, { ...entry, title: trimmed });
+			continue;
+		}
+		const existingExcluded = exclude !== null && existing.guid === exclude;
+		if (existingExcluded && !isExcluded) {
+			byTitle.set(trimmed, { ...entry, title: trimmed });
+		}
 	}
+	const candidates: TitleEntry[] = Array.from(byTitle.values());
 	if (candidates.length === 0) return [];
 
 	// Sort longest-first so longer titles win overlaps.
@@ -81,7 +96,9 @@ export function findTitleMatches(
 				const before = from > 0 ? text[from - 1] : undefined;
 				const after = to < text.length ? text[to] : undefined;
 				if (!isWordChar(before) && !isWordChar(after)) {
-					matches.push({ from, to, target: cand.title, guid: cand.guid });
+					if (exclude === null || cand.guid !== exclude) {
+						matches.push({ from, to, target: cand.title, guid: cand.guid });
+					}
 					cursor = to;
 					continue outer;
 				}
