@@ -36,6 +36,11 @@
 	import { insertTodayDate } from "./insertDate.js";
 	import { sinkListItemOnly, liftListItemOnly, isInList } from "./listItemDepth.js";
 	import { moveListItemUp, moveListItemDown } from "./listItemReorder.js";
+	import {
+		TomboyTodoRegion,
+		moveTodoItem,
+		insertTodoBlock,
+	} from "./todoRegion/index.js";
 	import type { JSONContent } from "@tiptap/core";
 	import EditorContextMenu from "./EditorContextMenu.svelte";
 
@@ -110,6 +115,12 @@
 
 	let editorElement: HTMLDivElement;
 	let editor: Editor | null = $state(null);
+	// Ctrl/Cmd-held gate for the TODO/Done per-item buttons. Toggled only on
+	// the actual Control/Meta keys so typing with Ctrl held (Ctrl+S etc.)
+	// doesn't flicker the buttons. Reset on window blur / tab visibility
+	// change so a release that happens while the window isn't focused
+	// doesn't leave the gate stuck on.
+	let ctrlHeld = $state(false);
 
 	// Track the last content/guid we pushed into the editor. The $effect
 	// below only swaps the editor's doc when the parent actually navigates
@@ -212,6 +223,21 @@
 	let prevCursorInTitle: boolean | null = null;
 
 	onMount(() => {
+		// Track Ctrl/Cmd held state for the TODO/Done button hover gate.
+		const onKeyDownGlobal = (e: KeyboardEvent) => {
+			if (e.key === "Control" || e.key === "Meta") ctrlHeld = true;
+		};
+		const onKeyUpGlobal = (e: KeyboardEvent) => {
+			if (e.key === "Control" || e.key === "Meta") ctrlHeld = false;
+		};
+		const clearCtrl = () => {
+			ctrlHeld = false;
+		};
+		window.addEventListener("keydown", onKeyDownGlobal);
+		window.addEventListener("keyup", onKeyUpGlobal);
+		window.addEventListener("blur", clearCtrl);
+		document.addEventListener("visibilitychange", clearCtrl);
+
 		// Use a dynamic excludeGuid callback so the provider follows note
 		// transitions without needing dispose + recreate. The editor
 		// instance is reused across notes (see $effect below), and the
@@ -288,6 +314,13 @@
 				}),
 				SlipNoteArrows,
 				DateArrows,
+				TomboyTodoRegion.configure({
+					onMove: (liPos, fromKind) => {
+						const ed = editor;
+						if (!ed || ed.isDestroyed) return;
+						moveTodoItem(ed, liPos, fromKind);
+					},
+				}),
 			],
 			content: content ?? {
 				type: "doc",
@@ -348,6 +381,10 @@
 									.focus()
 									.toggleTomboyMonospace()
 									.run();
+								return true;
+							case "o":
+								event.preventDefault();
+								insertTodoBlock(ed);
 								return true;
 						}
 					}
@@ -522,6 +559,10 @@
 		});
 
 		return () => {
+			window.removeEventListener("keydown", onKeyDownGlobal);
+			window.removeEventListener("keyup", onKeyUpGlobal);
+			window.removeEventListener("blur", clearCtrl);
+			document.removeEventListener("visibilitychange", clearCtrl);
 			cancelAutoLinkScan();
 			offChange();
 			titleProvider.dispose();
@@ -698,6 +739,7 @@
 <div
 	bind:this={editorElement}
 	class="tomboy-editor"
+	class:tomboy-todo-ctrl-hold={ctrlHeld}
 	oncontextmenu={handleContextMenu}
 ></div>
 
@@ -1012,5 +1054,53 @@
 		height: 0;
 		pointer-events: none;
 		font-size: 0.8em;
+	}
+
+	/* TODO / Done region per-item buttons. The button is rendered as a
+	   widget decoration inside each `<li>` in a region; visibility is
+	   gated by (a) Ctrl/Cmd held on the window, reflected as the
+	   .tomboy-todo-ctrl-hold class on .tomboy-editor, AND (b) the li being
+	   hovered. Invisible and non-interactive otherwise so casual mouse
+	   movement can't trigger a completion. */
+	.tomboy-editor :global(li.tomboy-todo-item) {
+		position: relative;
+	}
+	.tomboy-editor :global(.tomboy-todo-complete-btn),
+	.tomboy-editor :global(.tomboy-todo-revert-btn) {
+		position: absolute;
+		right: 0;
+		top: 0;
+		padding: 2px 8px;
+		font-size: 0.75rem;
+		line-height: 1.3;
+		border: none;
+		border-radius: 3px;
+		cursor: pointer;
+		user-select: none;
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 0.1s;
+		z-index: 1;
+	}
+	.tomboy-editor :global(.tomboy-todo-complete-btn) {
+		background: #2e7d32;
+		color: #fff;
+	}
+	.tomboy-editor :global(.tomboy-todo-complete-btn:hover) {
+		background: #1b5e20;
+	}
+	.tomboy-editor :global(.tomboy-todo-revert-btn) {
+		background: #757575;
+		color: #fff;
+	}
+	.tomboy-editor :global(.tomboy-todo-revert-btn:hover) {
+		background: #555;
+	}
+	.tomboy-editor.tomboy-todo-ctrl-hold
+		:global(li.tomboy-todo-item:hover .tomboy-todo-complete-btn),
+	.tomboy-editor.tomboy-todo-ctrl-hold
+		:global(li.tomboy-todo-item:hover .tomboy-todo-revert-btn) {
+		opacity: 1;
+		pointer-events: auto;
 	}
 </style>
