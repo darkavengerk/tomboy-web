@@ -698,3 +698,151 @@ describe('moveUp with paragraph context', () => {
 		);
 	});
 });
+
+// ============================================================================
+//          Adjacent same-type lists are normalized before reorder
+// ============================================================================
+
+describe('adjacent same-type list normalization', () => {
+	it('alt-up at top of second adjacent ul crosses the boundary', () => {
+		// Two separate bullet lists that look like one:
+		//   - A
+		//   - B
+		//   - C   ← cursor (top of second list)
+		//   - D
+		// Expected: lists merge, then C swaps up past B → A, C, B, D.
+		const editor = makeEditor(
+			doc(ul(li(p('A')), li(p('B'))), ul(li(p('C')), li(p('D'))))
+		);
+		placeCursorAt(editor, 'C');
+		const result = moveListItemUp(editor);
+		expect(result).toBe(true);
+		expect(outline(editor.getJSON())).toBe(
+			['- A', '- C', '- B', '- D'].join('\n')
+		);
+		// The two lists must have merged into one node.
+		const json = editor.getJSON();
+		expect(json.content?.length).toBe(1);
+		expect(json.content?.[0]?.type).toBe('bulletList');
+	});
+
+	it('alt-down at bottom of first adjacent ul crosses the boundary', () => {
+		// - A
+		// - B   ← cursor (bottom of first list)
+		// - C
+		// - D
+		// Expected: lists merge, then B swaps down past C → A, C, B, D.
+		const editor = makeEditor(
+			doc(ul(li(p('A')), li(p('B'))), ul(li(p('C')), li(p('D'))))
+		);
+		placeCursorAt(editor, 'B');
+		const result = moveListItemDown(editor);
+		expect(result).toBe(true);
+		expect(outline(editor.getJSON())).toBe(
+			['- A', '- C', '- B', '- D'].join('\n')
+		);
+		const json = editor.getJSON();
+		expect(json.content?.length).toBe(1);
+	});
+
+	it('different list types stay separate (ul next to ol is not merged)', () => {
+		// - A
+		// - B   ← cursor (bottom of ul, ol follows)
+		// 1. C
+		// 2. D
+		// Expected: no merge — moveDown on B is a no-op.
+		const editor = makeEditor(
+			doc(ul(li(p('A')), li(p('B'))), ol(li(p('C')), li(p('D'))))
+		);
+		placeCursorAt(editor, 'B');
+		const before = outline(editor.getJSON());
+		const result = moveListItemDown(editor);
+		expect(result).toBe(false);
+		expect(outline(editor.getJSON())).toBe(before);
+		// Both lists must still exist as separate nodes of their original types.
+		const types = (editor.getJSON().content ?? []).map((c) => c.type);
+		expect(types).toContain('bulletList');
+		expect(types).toContain('orderedList');
+	});
+
+	it('two adjacent ordered lists merge for reorder', () => {
+		// 1. A
+		// 2. B   ← cursor
+		// 1. C
+		// 2. D
+		const editor = makeEditor(
+			doc(ol(li(p('A')), li(p('B'))), ol(li(p('C')), li(p('D'))))
+		);
+		placeCursorAt(editor, 'B');
+		const result = moveListItemDown(editor);
+		expect(result).toBe(true);
+		expect(outline(editor.getJSON())).toBe(
+			['- A', '- C', '- B', '- D'].join('\n')
+		);
+		const json = editor.getJSON();
+		expect(json.content?.length).toBe(1);
+		expect(json.content?.[0]?.type).toBe('orderedList');
+	});
+
+	it('three adjacent ul nodes — middle list normalizes both sides', () => {
+		// - A
+		// - B   ← cursor (middle list, only item)
+		// - C
+		// Three separate bulletList nodes; cursor sits in the middle one.
+		// Expected: all three merge, then B moves up past A → B, A, C.
+		const editor = makeEditor(
+			doc(ul(li(p('A'))), ul(li(p('B'))), ul(li(p('C'))))
+		);
+		placeCursorAt(editor, 'B');
+		const result = moveListItemUp(editor);
+		expect(result).toBe(true);
+		expect(outline(editor.getJSON())).toBe(['- B', '- A', '- C'].join('\n'));
+		expect(editor.getJSON().content?.length).toBe(1);
+	});
+
+	it('cursor inside text is preserved across normalize+move', () => {
+		// - Alpha
+		// - Beta   ← cursor at offset 2
+		// (next list)
+		// - Gamma
+		const editor = makeEditor(
+			doc(ul(li(p('Alpha')), li(p('Beta'))), ul(li(p('Gamma'))))
+		);
+		placeCursorAtOffset(editor, 'Beta', 2);
+		const result = moveListItemDown(editor);
+		expect(result).toBe(true);
+		const { $from } = editor.state.selection;
+		expect($from.parent.textContent).toBe('Beta');
+		expect($from.parentOffset).toBe(2);
+		expect(outline(editor.getJSON())).toBe(
+			['- Alpha', '- Gamma', '- Beta'].join('\n')
+		);
+	});
+
+	it('nested adjacent same-type lists inside a listItem are normalized', () => {
+		// - X
+		//   - A
+		//   - B   ← cursor (bottom of first nested ul)
+		//   (second nested ul)
+		//   - C
+		// Note: This requires a listItem to host multiple lists; the schema
+		// permits it and importing/pasting can create it.
+		const editor = makeEditor(
+			doc(
+				ul(
+					li(
+						p('X'),
+						ul(li(p('A')), li(p('B'))),
+						ul(li(p('C')))
+					)
+				)
+			)
+		);
+		placeCursorAt(editor, 'B');
+		const result = moveListItemDown(editor);
+		expect(result).toBe(true);
+		expect(outline(editor.getJSON())).toBe(
+			['- X', '  - A', '  - C', '  - B'].join('\n')
+		);
+	});
+});

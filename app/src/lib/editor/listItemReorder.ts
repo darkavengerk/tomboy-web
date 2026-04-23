@@ -15,7 +15,8 @@ import {
 	findOperationRange,
 	childAbsStart,
 	SKIP_TRAILING_NODE,
-	removeTrailingParagraphIfPresent
+	removeTrailingParagraphIfPresent,
+	normalizeAdjacentSameTypeLists
 } from './listItemDepth.js';
 
 /**
@@ -24,6 +25,7 @@ import {
  * Returns false if the first operated item is already at index 0, or not in a list.
  */
 export function moveListItemUp(editor: Editor): boolean {
+	normalizeAdjacentSameTypeLists(editor);
 	const range = findOperationRange(editor);
 	if (!range) return false;
 
@@ -99,6 +101,7 @@ export function moveListItemUp(editor: Editor): boolean {
  * Returns false if the last operated item is already at the end, or not in a list.
  */
 export function moveListItemDown(editor: Editor): boolean {
+	normalizeAdjacentSameTypeLists(editor);
 	const range = findOperationRange(editor);
 	if (!range) return false;
 

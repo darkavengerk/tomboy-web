@@ -123,6 +123,111 @@ function stripNestedList(
 }
 
 // ---------------------------------------------------------------------------
+// Adjacent same-type list normalization
+// ---------------------------------------------------------------------------
+
+/**
+ * If the cursor's nearest list has an immediately-adjacent sibling of the
+ * same list type (bulletList ↔ bulletList, orderedList ↔ orderedList) at
+ * either side within the same parent, merge them into a single list.
+ *
+ * Two visually-adjacent lists are almost always unintentional (paste/import
+ * residue). Merging them up-front lets the depth and reorder ops treat the
+ * apparent "single list" as one node, so alt+up/down at the boundary, sink,
+ * and lift all behave as the user expects.
+ *
+ * Returns true if a merge was performed (state changed), false otherwise.
+ *
+ * Cursor preservation: positions inside the cursor's original list are
+ * shifted by the total size of any prepended sibling's items; positions
+ * outside fall back to the transaction mapping.
+ */
+export function normalizeAdjacentSameTypeLists(editor: Editor): boolean {
+	const state = editor.state;
+	const { $from, $to } = state.selection;
+
+	let listDepth = -1;
+	for (let d = $from.depth; d >= 0; d--) {
+		if (isList($from.node(d), editor)) {
+			listDepth = d;
+			break;
+		}
+	}
+	if (listDepth <= 0) return false;
+
+	const list = $from.node(listDepth);
+	const listType = list.type;
+	const listContentStart = $from.start(listDepth);
+
+	const parent = $from.node(listDepth - 1);
+	const parentContentStart = $from.start(listDepth - 1);
+	const listIndex = $from.index(listDepth - 1);
+
+	const prev = listIndex > 0 ? parent.child(listIndex - 1) : null;
+	const next =
+		listIndex < parent.childCount - 1 ? parent.child(listIndex + 1) : null;
+
+	const prevMatches = prev !== null && prev.type === listType;
+	const nextMatches = next !== null && next.type === listType;
+
+	if (!prevMatches && !nextMatches) return false;
+
+	const mergedItems: PMNode[] = [];
+	let firstReplaceIndex = listIndex;
+	let lastReplaceIndex = listIndex;
+	let prevItemsSize = 0;
+	if (prevMatches && prev) {
+		prev.forEach((c) => {
+			mergedItems.push(c);
+			prevItemsSize += c.nodeSize;
+		});
+		firstReplaceIndex = listIndex - 1;
+	}
+	list.forEach((c) => mergedItems.push(c));
+	if (nextMatches && next) {
+		next.forEach((c) => mergedItems.push(c));
+		lastReplaceIndex = listIndex + 1;
+	}
+
+	const merged = listType.create(list.attrs, Fragment.fromArray(mergedItems));
+
+	const replaceStart = childAbsStart(parent, firstReplaceIndex, parentContentStart);
+	const replaceEnd = childAbsStart(parent, lastReplaceIndex + 1, parentContentStart);
+
+	// Cursor inside the original list maps 1:1 into the merged list, shifted
+	// by the new content offset (open token + prev's items).
+	const listContentEnd = listContentStart + list.content.size;
+	const shift = (replaceStart + 1 + prevItemsSize) - listContentStart;
+
+	const tr = state.tr;
+	tr.replaceWith(replaceStart, replaceEnd, merged);
+	tr.setMeta(SKIP_TRAILING_NODE, true);
+
+	const mapPos = (p: number): number => {
+		if (p >= listContentStart && p <= listContentEnd) return p + shift;
+		return tr.mapping.map(p);
+	};
+
+	try {
+		const docSize = tr.doc.content.size;
+		const clamp = (p: number) => Math.max(1, Math.min(p, docSize - 1));
+		if (state.selection.empty) {
+			const resolved = tr.doc.resolve(clamp(mapPos($from.pos)));
+			tr.setSelection(TextSelection.near(resolved));
+		} else {
+			const newFrom = clamp(mapPos($from.pos));
+			const newTo = clamp(mapPos($to.pos));
+			tr.setSelection(TextSelection.create(tr.doc, newFrom, newTo));
+		}
+	} catch {
+		// Leave PM's default selection if our manual restore fails.
+	}
+
+	editor.view.dispatch(tr);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
 // Operation range
 // ---------------------------------------------------------------------------
 
@@ -194,6 +299,7 @@ export function findOperationRange(editor: Editor): OperationRange | null {
  * Returns false if there is no previous sibling (cannot sink).
  */
 export function sinkListItemOnly(editor: Editor): boolean {
+	normalizeAdjacentSameTypeLists(editor);
 	const state = editor.state;
 	const { listItem: liType } = editor.schema.nodes;
 
@@ -363,6 +469,7 @@ export function sinkListItemOnly(editor: Editor): boolean {
  * Returns false if the items are already at the top list level (cannot lift).
  */
 export function liftListItemOnly(editor: Editor): boolean {
+	normalizeAdjacentSameTypeLists(editor);
 	const state = editor.state;
 	const { listItem: liType } = editor.schema.nodes;
 
