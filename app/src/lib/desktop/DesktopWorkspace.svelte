@@ -8,6 +8,7 @@
 		loadWallpaper,
 		setWallpaper
 	} from './session.svelte.js';
+	import { sidePanelLayout } from './sidePanelLayout.svelte.js';
 	import { installModKeyListeners } from './modKeys.svelte.js';
 	import { extractNoteGuidFromText, openNoteByGuid } from './openByClipboard.js';
 	import { createNote } from '$lib/core/noteManager.js';
@@ -82,7 +83,7 @@
 		const height = 520;
 		// x/y are canvas-local: (0, 0) is the top-left of the note area,
 		// which already sits to the right of the SidePanel rail.
-		const vw = window.innerWidth - 80;
+		const vw = window.innerWidth - sidePanelLayout.railWidth;
 		const vh = window.innerHeight;
 		const x = Math.max(0, Math.round((vw - width) / 2));
 		const y = Math.max(0, Math.round((vh - height) / 2 - 60));
@@ -169,7 +170,7 @@
 	}
 </script>
 
-<div class="desktop-root">
+<div class="desktop-root" style="--rail-width: {sidePanelLayout.railWidth}px;">
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="canvas"
@@ -236,11 +237,12 @@
 
 	.canvas {
 		position: fixed;
-		/* Reserve the SidePanel rail (80px) on the left. Notes use
-		   canvas-local coordinates: their stored (0, 0) corresponds to the
-		   canvas's top-left, so moving the panel between sides is a pure CSS
-		   change — no note coordinates need to migrate. */
-		left: 80px;
+		/* Reserve the SidePanel rail (user-resizable, see sidePanelLayout)
+		   on the left. Notes use canvas-local coordinates: their stored
+		   (0, 0) corresponds to the canvas's top-left, so moving or
+		   resizing the rail is a pure CSS change — no note coordinates need
+		   to migrate. */
+		left: var(--rail-width, 80px);
 		right: 0;
 		top: 0;
 		bottom: 0;

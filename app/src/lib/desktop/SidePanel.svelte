@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { listNotes, createNote, sortForList } from '$lib/core/noteManager.js';
+	import { listNotes, createNote, isFavorite } from '$lib/core/noteManager.js';
 	import type { NoteData } from '$lib/core/note.js';
+	import { parseTomboyDate } from '$lib/core/note.js';
 	import {
 		getCachedNotebooks,
 		filterByNotebook,
@@ -16,6 +17,21 @@
 		setCachedNotes,
 		onInvalidate
 	} from '$lib/stores/noteListCache.js';
+	import { recentOpens } from './recentOpens.svelte.js';
+	import {
+		sidePanelLayout,
+		RAIL_MIN_WIDTH,
+		RAIL_MAX_WIDTH,
+		MAIN_MIN_WIDTH,
+		MAIN_MAX_WIDTH
+	} from './sidePanelLayout.svelte.js';
+	import { startPointerDrag } from './dragResize.js';
+
+	// Workspace 1 (top-right of the 2x2 grid) is the dedicated slipnote
+	// workspace: entering it auto-selects the [0] Slip-Box notebook and
+	// pins the .main panel open so the user can navigate slipnotes
+	// without having to hover the rail every time.
+	const SLIPNOTE_WORKSPACE_INDEX = 1;
 
 	interface Props {
 		openGuids: Set<string>;
@@ -45,10 +61,27 @@
 		const filtered = filterByNotebook(allNotes, selectedNotebook);
 		const q = query.trim();
 		const base = q ? searchNotes(filtered, q, 200).map((r) => r.note) : filtered;
-		// Side panel is a "recents" surface — cap the list so long histories
-		// don't balloon the DOM. 30 is enough for quick access; users who
-		// need more can use search.
-		return sortForList(base, 'changeDate').slice(0, 30);
+		// Side panel is a "recents" surface ordered by when the user last
+		// opened a note in desktop mode (recentOpens, local-only). Notes
+		// without an open record fall back to changeDate. Pinned notes stay
+		// at the top regardless. Cap so long histories don't balloon DOM.
+		const recents = recentOpens.map;
+		const keyed = base.map((n) => {
+			const opened = recents[n.guid];
+			let key = opened ?? 0;
+			if (!opened) {
+				const t = parseTomboyDate(n.changeDate).getTime();
+				key = Number.isFinite(t) ? t : 0;
+			}
+			return { n, key };
+		});
+		keyed.sort((a, b) => {
+			const pa = isFavorite(a.n) ? 1 : 0;
+			const pb = isFavorite(b.n) ? 1 : 0;
+			if (pa !== pb) return pb - pa;
+			return b.key - a.key;
+		});
+		return keyed.slice(0, 50).map((x) => x.n);
 	});
 
 	async function refresh() {
@@ -86,15 +119,59 @@
 	function selectNotebook(name: string | null) {
 		selectedNotebook = name;
 	}
+
+	// Workspace switch resets the notebook filter: ws 1 snaps to
+	// [0] Slip-Box, every other workspace snaps to "전체" (null). The
+	// effect re-runs only when currentWorkspace changes, so manual chip
+	// clicks within a workspace are respected until the next switch.
+	$effect(() => {
+		selectedNotebook =
+			currentWorkspace === SLIPNOTE_WORKSPACE_INDEX ? SLIPBOX_NOTEBOOK : null;
+	});
+
+	const alwaysOpen = $derived(currentWorkspace === SLIPNOTE_WORKSPACE_INDEX);
+
+	let resizingRail = $state(false);
+	let resizingMain = $state(false);
+
+	function onRailResizeStart(e: PointerEvent) {
+		const start = sidePanelLayout.railWidth;
+		resizingRail = true;
+		startPointerDrag(e, {
+			onMove: (dx) => sidePanelLayout.setRailWidth(start + dx),
+			onEnd: () => {
+				resizingRail = false;
+			}
+		});
+	}
+
+	function onMainResizeStart(e: PointerEvent) {
+		const start = sidePanelLayout.mainWidth;
+		resizingMain = true;
+		startPointerDrag(e, {
+			onMove: (dx) => sidePanelLayout.setMainWidth(start + dx),
+			onEnd: () => {
+				resizingMain = false;
+			}
+		});
+	}
 </script>
 
-<aside class="side-panel" aria-label="노트 메뉴">
+<aside
+	class="side-panel"
+	class:always-open={alwaysOpen}
+	aria-label="노트 메뉴"
+	style="width: {sidePanelLayout.railWidth + sidePanelLayout.mainWidth}px;"
+>
 	<!--
 		Rail: always visible, hosts only the workspace switcher. Its width
 		defines how much of the canvas is permanently reserved on the right
 		(canvas is sized to stop exactly where the rail starts).
 	-->
-	<div class="rail">
+	<div
+		class="rail"
+		style="flex-basis: {sidePanelLayout.railWidth}px;"
+	>
 		<div class="workspace-switcher" role="group" aria-label="작업 공간">
 			{#each workspaceSummaries as ws (ws.index)}
 				<button
@@ -164,11 +241,51 @@
 	</div>
 
 	<!--
+		Rail resize handle: 6px-wide grip at the rail's right edge. Drag
+		changes the rail's flex-basis (and the canvas's left offset, via
+		sidePanelLayout). Sits above .main so it stays grabbable even when
+		the panel is collapsed.
+	-->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="resize-handle"
+		class:resizing={resizingRail}
+		role="separator"
+		aria-orientation="vertical"
+		aria-label="작업줄 크기 조절"
+		aria-valuenow={sidePanelLayout.railWidth}
+		aria-valuemin={RAIL_MIN_WIDTH}
+		aria-valuemax={RAIL_MAX_WIDTH}
+		style="left: {sidePanelLayout.railWidth}px;"
+		onpointerdown={onRailResizeStart}
+	></div>
+
+	<!--
+		Main resize handle: same grip at the .main column's right edge. Drag
+		updates mainWidth in sidePanelLayout. Always present (even when
+		.main is hover-collapsed) — visible/usable mainly in the slipnote
+		workspace where .main is pinned open.
+	-->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="resize-handle main-handle"
+		class:resizing={resizingMain}
+		role="separator"
+		aria-orientation="vertical"
+		aria-label="확장 영역 크기 조절"
+		aria-valuenow={sidePanelLayout.mainWidth}
+		aria-valuemin={MAIN_MIN_WIDTH}
+		aria-valuemax={MAIN_MAX_WIDTH}
+		style="left: {sidePanelLayout.railWidth + sidePanelLayout.mainWidth}px;"
+		onpointerdown={onMainResizeStart}
+	></div>
+
+	<!--
 		Main content: search, new-note, notebook chips, note list, footer.
 		Slides off-screen to the right when the panel is not hovered and
 		overlays the canvas on hover. Canvas geometry is unaffected.
 	-->
-	<div class="main">
+	<div class="main" style="flex-basis: {sidePanelLayout.mainWidth}px;">
 		<div class="header">
 			<input
 				type="search"
@@ -212,7 +329,7 @@
 		top: 0;
 		left: 0;
 		bottom: 0;
-		width: 300px;
+		/* width is set inline so it grows with the user-resizable rail. */
 		display: flex;
 		flex-direction: row;
 		color: #eee;
@@ -227,7 +344,8 @@
 	}
 
 	/* Rail: always-visible left column. Sits flush to the screen's left edge
-	   so the shrunk panel remains visible at all times. */
+	   so the shrunk panel remains visible at all times. flex-basis is set
+	   inline so the user-resizable width takes effect on every render. */
 	.rail {
 		flex: 0 0 80px;
 		background: #1a1a1a;
@@ -240,6 +358,26 @@
 		overflow: hidden;
 		min-height: 0;
 		pointer-events: auto;
+	}
+
+	/* Vertical drag grip at the rail's right edge. 6px hit target with a
+	   1px visible line so it doesn't fight the rail border for attention. */
+	.resize-handle {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		width: 6px;
+		margin-left: -2px;
+		cursor: ew-resize;
+		pointer-events: auto;
+		z-index: 1;
+		background: transparent;
+		transition: background 120ms ease;
+	}
+
+	.resize-handle:hover,
+	.resize-handle.resizing {
+		background: rgba(90, 153, 255, 0.35);
 	}
 
 	.rail-chips {
@@ -282,9 +420,11 @@
 
 	/* Main: revealed column to the right of the rail. When collapsed it is
 	   clipped away (not translated), so expanding reveals the hidden content
-	   growing out from behind the rail rather than sliding in as a block. */
+	   growing out from behind the rail rather than sliding in as a block.
+	   flex-basis is set inline so the user-resizable width takes effect on
+	   every render. */
 	.main {
-		flex: 1;
+		flex: 0 0 220px;
 		min-width: 0;
 		background: #1a1a1a;
 		border-right: 1px solid #333;
@@ -295,14 +435,27 @@
 		transition: clip-path 180ms ease;
 	}
 
-	/* Reveal triggers: hovering the always-visible rail, or keyboard focus
-	   anywhere in the panel. Once revealed, hovering .main itself keeps it
-	   open so the mouse can cross from rail into main without flicker. */
-	.rail:hover ~ .main,
-	.main:hover,
-	.side-panel:focus-within .main {
+	/* Reveal triggers: hovering ANY part of the side-panel (rail, either
+	   resize handle, or .main itself), or keyboard focus inside .main. The
+	   side-panel container has pointer-events: none, but :hover still
+	   propagates up from descendants whose pointer-events are auto, so this
+	   rule activates as soon as the mouse enters any interactive child and
+	   stays activated as it traverses between them — including across the
+	   resize handle that sits between rail and main. We deliberately do
+	   NOT match focus-within on the whole side-panel; chip /
+	   workspace-quadrant clicks in the rail would otherwise latch the
+	   panel open after the mouse leaves. */
+	.side-panel:hover .main,
+	.main:focus-within,
+	.side-panel.always-open .main {
 		clip-path: inset(0 0 0 0);
 		pointer-events: auto;
+	}
+
+	/* In the slipnote workspace .main is pinned open, so its drag transition
+	   would feel laggy when entering/leaving. Drop the transition here. */
+	.side-panel.always-open .main {
+		transition: none;
 	}
 
 	.header {
@@ -406,7 +559,7 @@
 		padding: 7px 12px;
 		background: transparent;
 		border: none;
-		border-left: 3px solid transparent;
+		border-right: 3px solid transparent;
 		color: #ddd;
 		text-align: left;
 		cursor: pointer;
@@ -421,7 +574,7 @@
 	}
 
 	.note-item.open {
-		border-left-color: #5a9;
+		border-right-color: #5a9;
 		background: #1f1f1f;
 		font-weight: 600;
 		color: #fff;

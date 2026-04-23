@@ -3,6 +3,8 @@ import { getNote, findNoteByTitle } from '$lib/core/noteManager.js';
 import { getHomeNote } from '$lib/core/home.js';
 import { getSetting, setSetting, deleteSetting } from '$lib/storage/appSettings.js';
 import { pushToast } from '$lib/stores/toast.js';
+import { recentOpens } from './recentOpens.svelte.js';
+import { sidePanelLayout } from './sidePanelLayout.svelte.js';
 
 const STORAGE_KEY = 'desktop:session';
 const WALLPAPER_KEY = 'desktop:wallpaper';
@@ -76,11 +78,14 @@ const DEFAULT_SETTINGS_HEIGHT = 640;
 const MIN_WIDTH = 280;
 const MIN_HEIGHT = 240;
 const STAGGER = 30;
-// Width reserved for the SidePanel rail. Note coordinates are stored in
-// canvas-local space (the canvas element already excludes this width), so
-// this constant is only used to size the usable viewport for staggering —
-// it is NOT added to stored x values.
-const RAIL_WIDTH = 80;
+// The SidePanel rail's width is user-resizable and persisted in
+// `sidePanelLayout`. Note coordinates stay canvas-local (the canvas
+// element already excludes the rail), so the live rail width is only used
+// here to size the usable viewport for staggering — it is NOT added to
+// stored x values.
+function railWidth(): number {
+	return sidePanelLayout.railWidth;
+}
 
 function emptyWorkspace(): WorkspaceState {
 	return { windows: [], geometryByGuid: {}, nextZ: 1 };
@@ -239,7 +244,7 @@ function staggeredFrom(ws: WorkspaceState, width: number, height: number): Geome
 	const baseX = 40;
 	const baseY = 80;
 	const i = ws.windows.length;
-	const viewportW = typeof window !== 'undefined' ? window.innerWidth - RAIL_WIDTH : 1200;
+	const viewportW = typeof window !== 'undefined' ? window.innerWidth - railWidth() : 1200;
 	const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800;
 	const x = (baseX + i * STAGGER) % Math.max(200, viewportW - width);
 	const y = (baseY + i * STAGGER) % Math.max(160, viewportH - height);
@@ -416,7 +421,7 @@ export const desktopSession = {
 	async load(): Promise<void> {
 		if (loaded) return;
 		loaded = true;
-		await loadPersisted();
+		await Promise.all([loadPersisted(), recentOpens.load(), sidePanelLayout.load()]);
 		if (current().windows.length === 0) {
 			const home = await getHomeNote();
 			if (home) this.openWindow(home.guid);
@@ -429,6 +434,7 @@ export const desktopSession = {
 		if (existing) {
 			bumpZ(ws, existing);
 			focusRequest = { guid, token: ++focusRequestCounter };
+			recentOpens.record(guid);
 			schedulePersist();
 			return;
 		}
@@ -446,6 +452,7 @@ export const desktopSession = {
 		ws.windows.push(win);
 		cacheGeometry(ws, win);
 		focusRequest = { guid, token: ++focusRequestCounter };
+		recentOpens.record(guid);
 		schedulePersist();
 	},
 
@@ -463,6 +470,7 @@ export const desktopSession = {
 		if (existing) {
 			bumpZ(ws, existing);
 			focusRequest = { guid, token: ++focusRequestCounter };
+			recentOpens.record(guid);
 			schedulePersist();
 			return;
 		}
@@ -480,6 +488,7 @@ export const desktopSession = {
 		ws.windows.push(win);
 		cacheGeometry(ws, win);
 		focusRequest = { guid, token: ++focusRequestCounter };
+		recentOpens.record(guid);
 		schedulePersist();
 	},
 
@@ -567,6 +576,7 @@ export const desktopSession = {
 			cacheGeometry(ws, win);
 		}
 		focusRequest = { guid: linked.guid, token: ++focusRequestCounter };
+		recentOpens.record(linked.guid);
 		schedulePersist();
 	},
 
@@ -596,7 +606,7 @@ export const desktopSession = {
 		const width = existing?.width ?? cached?.width ?? DEFAULT_WIDTH;
 		const height = existing?.height ?? cached?.height ?? DEFAULT_HEIGHT;
 		const viewportW =
-			typeof window !== 'undefined' ? window.innerWidth - RAIL_WIDTH : 1200;
+			typeof window !== 'undefined' ? window.innerWidth - railWidth() : 1200;
 		const maxX = Math.max(0, viewportW - width);
 		const x = Math.max(0, Math.min(source.x + source.width, maxX));
 		const y = Math.max(0, source.y);
@@ -620,6 +630,7 @@ export const desktopSession = {
 			cacheGeometry(ws, win);
 		}
 		focusRequest = { guid: linked.guid, token: ++focusRequestCounter };
+		recentOpens.record(linked.guid);
 		schedulePersist();
 	},
 
@@ -627,6 +638,11 @@ export const desktopSession = {
 		const ws = current();
 		const win = ws.windows.find((w) => w.guid === guid);
 		if (!win) return;
+		// Recents track every focus on a note window — clicking an already
+		// raised note still bumps it to the top of the SidePanel list. Done
+		// before the already-on-top early return so the timestamp updates
+		// even when no z-bump is needed.
+		if (win.kind === 'note') recentOpens.record(guid);
 		const topZ = ws.windows.reduce((m, w) => Math.max(m, w.z), 0);
 		if (win.z === topZ && win.z !== 0) return;
 		bumpZ(ws, win);
