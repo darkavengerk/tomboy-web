@@ -1,15 +1,16 @@
-let ctrlHeld = $state(false);
+let ctrlHeldByKey = $state(false);
+let ctrlLocked = $state(false);
 
 function reset(): void {
-	ctrlHeld = false;
+	ctrlHeldByKey = false;
 }
 
 function onKeyDown(e: KeyboardEvent): void {
-	if (e.key === 'Control' || e.ctrlKey) ctrlHeld = true;
+	if (e.key === 'Control' || e.ctrlKey) ctrlHeldByKey = true;
 }
 
 function onKeyUp(e: KeyboardEvent): void {
-	if (e.key === 'Control') ctrlHeld = false;
+	if (e.key === 'Control') ctrlHeldByKey = false;
 }
 
 let installCount = 0;
@@ -33,7 +34,19 @@ export function installModKeyListeners(): () => void {
 }
 
 export const modKeys = {
+	/** True while Ctrl is physically held OR the mobile Ctrl-lock is on. */
 	get ctrl(): boolean {
-		return ctrlHeld;
+		return ctrlHeldByKey || ctrlLocked;
+	},
+	/** True only when the mobile Ctrl-lock is toggled on. */
+	get ctrlLocked(): boolean {
+		return ctrlLocked;
+	},
+	toggleCtrlLock(): void {
+		ctrlLocked = !ctrlLocked;
+	},
+	setCtrlLock(v: boolean): void {
+		ctrlLocked = v;
 	}
 };
+

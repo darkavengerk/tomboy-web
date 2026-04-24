@@ -44,6 +44,7 @@
 	} from "./todoRegion/index.js";
 	import type { JSONContent } from "@tiptap/core";
 	import EditorContextMenu from "./EditorContextMenu.svelte";
+	import { modKeys, installModKeyListeners } from "$lib/desktop/modKeys.svelte.js";
 
 	interface Props {
 		content?: JSONContent;
@@ -116,12 +117,10 @@
 
 	let editorElement: HTMLDivElement;
 	let editor: Editor | null = $state(null);
-	// Ctrl/Cmd-held gate for the TODO/Done per-item buttons. Toggled only on
-	// the actual Control/Meta keys so typing with Ctrl held (Ctrl+S etc.)
-	// doesn't flicker the buttons. Reset on window blur / tab visibility
-	// change so a release that happens while the window isn't focused
-	// doesn't leave the gate stuck on.
-	let ctrlHeld = $state(false);
+	// Ctrl/Cmd-held gate for the TODO/Done per-item buttons. Unified with
+	// the shared modKeys state so the mobile "Ctrl 고정" toggle and the
+	// physical Ctrl/Cmd key both light up the same per-item actions.
+	const ctrlHeld = $derived(modKeys.ctrl);
 
 	// Track the last content/guid we pushed into the editor. The $effect
 	// below only swaps the editor's doc when the parent actually navigates
@@ -224,20 +223,10 @@
 	let prevCursorInTitle: boolean | null = null;
 
 	onMount(() => {
-		// Track Ctrl/Cmd held state for the TODO/Done button hover gate.
-		const onKeyDownGlobal = (e: KeyboardEvent) => {
-			if (e.key === "Control" || e.key === "Meta") ctrlHeld = true;
-		};
-		const onKeyUpGlobal = (e: KeyboardEvent) => {
-			if (e.key === "Control" || e.key === "Meta") ctrlHeld = false;
-		};
-		const clearCtrl = () => {
-			ctrlHeld = false;
-		};
-		window.addEventListener("keydown", onKeyDownGlobal);
-		window.addEventListener("keyup", onKeyUpGlobal);
-		window.addEventListener("blur", clearCtrl);
-		document.addEventListener("visibilitychange", clearCtrl);
+		// Shared Ctrl-held tracker (physical key + mobile Ctrl-lock). The
+		// listener module reference-counts installs so DesktopWorkspace and
+		// every editor can safely call it in parallel.
+		const uninstallModKeys = installModKeyListeners();
 
 		// The current-note filter is applied inside findTitleMatches via the
 		// plugin's getCurrentGuid() — the provider returns the full title
@@ -557,10 +546,7 @@
 		});
 
 		return () => {
-			window.removeEventListener("keydown", onKeyDownGlobal);
-			window.removeEventListener("keyup", onKeyUpGlobal);
-			window.removeEventListener("blur", clearCtrl);
-			document.removeEventListener("visibilitychange", clearCtrl);
+			uninstallModKeys();
 			cancelAutoLinkScan();
 			offChange();
 			titleProvider.dispose();
@@ -1100,5 +1086,18 @@
 		:global(li.tomboy-todo-item:hover .tomboy-todo-revert-btn) {
 		opacity: 1;
 		pointer-events: auto;
+	}
+
+	/* Touch devices have no reliable :hover, so when the mobile Ctrl-lock
+	   is on, reveal the TODO / 되돌리기 buttons for every item without
+	   requiring a hover. */
+	@media (hover: none), (pointer: coarse) {
+		.tomboy-editor.tomboy-todo-ctrl-hold
+			:global(li.tomboy-todo-item .tomboy-todo-complete-btn),
+		.tomboy-editor.tomboy-todo-ctrl-hold
+			:global(li.tomboy-todo-item .tomboy-todo-revert-btn) {
+			opacity: 1;
+			pointer-events: auto;
+		}
 	}
 </style>
