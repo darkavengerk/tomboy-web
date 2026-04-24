@@ -3,6 +3,7 @@
 	import { onMount } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import Toast from '$lib/components/Toast.svelte';
+	import ImageViewerModal from '$lib/components/ImageViewerModal.svelte';
 	import TopNav from '$lib/components/TopNav.svelte';
 	import { page } from '$app/state';
 	import { createHistoryTracker } from '$lib/nav/history.js';
@@ -112,6 +113,7 @@
 		{@render children()}
 	</div>
 	<Toast />
+	<ImageViewerModal />
 {:else}
 	{#if offline}
 		<div class="offline-banner" role="alert">
@@ -141,6 +143,7 @@
 		</div>
 	</div>
 	<Toast />
+	<ImageViewerModal />
 {/if}
 
 <style>
