@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { imageViewer } from '$lib/stores/imageViewer.svelte.js';
-	import type { Geometry } from '$lib/desktop/dragResize.js';
+	import { startPointerDrag, type Geometry } from '$lib/desktop/dragResize.js';
 	import ResizeHandles from '$lib/desktop/ResizeHandles.svelte';
 	import { portal } from '$lib/utils/portal.js';
 
@@ -10,9 +10,13 @@
 	let frame = $state<Geometry | null>(null);
 	let natural = $state<{ w: number; h: number } | null>(null);
 
-	const VIEWPORT_FRACTION = 0.7;
+	const INITIAL_MARGIN = 16;
 	const MIN_SIZE = 64;
-	const MAX_SCALE = 16; // relative to natural size; caps pinch/wheel zoom
+	// Zoom caps expressed in viewport units so the limits behave the same
+	// regardless of natural-size. A natural-scale cap would clamp tiny
+	// icons back below the initial fullscreen fit, shrinking them on any
+	// wheel tick — see git history.
+	const MAX_FRAME_VIEWPORT_FACTOR = 10;
 	const MIN_SCALE = 0.05;
 
 	function viewport(): { w: number; h: number } {
@@ -25,8 +29,8 @@
 	function clampedFrame(g: Geometry): Geometry {
 		if (!natural) return g;
 		const vp = viewport();
-		const maxW = natural.w * MAX_SCALE;
-		const maxH = natural.h * MAX_SCALE;
+		const maxW = vp.w * MAX_FRAME_VIEWPORT_FACTOR;
+		const maxH = vp.h * MAX_FRAME_VIEWPORT_FACTOR;
 		const minW = Math.max(MIN_SIZE, natural.w * MIN_SCALE);
 		const minH = Math.max(MIN_SIZE, natural.h * MIN_SCALE);
 		let { x, y, width, height } = g;
@@ -40,15 +44,16 @@
 
 	function fitInitial(w: number, h: number): Geometry {
 		const vp = viewport();
-		const maxW = vp.w * VIEWPORT_FRACTION;
-		const maxH = vp.h * VIEWPORT_FRACTION;
-		// Default to natural size; shrink uniformly if either axis overflows.
-		const ratio = Math.min(1, maxW / w, maxH / h);
+		const maxW = Math.max(MIN_SIZE, vp.w - INITIAL_MARGIN * 2);
+		const maxH = Math.max(MIN_SIZE, vp.h - INITIAL_MARGIN * 2);
+		// Fill the viewport as much as possible while preserving aspect ratio
+		// — uniformly scale (up OR down) until one axis touches the cap.
+		const ratio = Math.min(maxW / w, maxH / h);
 		const width = Math.max(MIN_SIZE, w * ratio);
 		const height = Math.max(MIN_SIZE, h * ratio);
 		return {
-			x: Math.max(0, (vp.w - width) / 2),
-			y: Math.max(0, (vp.h - height) / 2),
+			x: (vp.w - width) / 2,
+			y: (vp.h - height) / 2,
 			width,
 			height
 		};
@@ -76,7 +81,7 @@
 			// Best-effort fallback: size the frame to a square cap so the
 			// user still sees the broken-image icon at a sensible size.
 			const vp = viewport();
-			const side = Math.min(vp.w, vp.h) * VIEWPORT_FRACTION;
+			const side = Math.min(vp.w, vp.h) - INITIAL_MARGIN * 2;
 			natural = { w: side, h: side };
 			frame = fitInitial(side, side);
 		};
@@ -147,6 +152,9 @@
 	function onTouchStart(e: TouchEvent) {
 		if (!frame || e.touches.length !== 2) return;
 		e.preventDefault();
+		// A pan may already be in progress on the first finger. Abort it so
+		// the stale drag doesn't fight the pinch until the user lifts.
+		panCancelled = true;
 		const [t1, t2] = [e.touches[0], e.touches[1]];
 		const mid = midpoint(t1, t2);
 		pinch = {
@@ -167,6 +175,35 @@
 
 	function onTouchEnd(e: TouchEvent) {
 		if (e.touches.length < 2) pinch = null;
+	}
+
+	// --- Drag to pan ---
+	// Clicking-and-dragging the frame moves the whole image. If a pinch
+	// gesture kicks in mid-drag (second finger lands), we flip the
+	// cancelled flag so further pan moves are ignored until the user
+	// lifts and re-presses. Without this the pan's stale baseFrame would
+	// fight the pinch's scaleAround.
+	let panCancelled = $state(false);
+
+	function startPan(e: PointerEvent) {
+		if (!frame) return;
+		if (e.pointerType === 'touch' && pinch) return;
+		// Non-primary mouse buttons shouldn't pan.
+		if (e.pointerType === 'mouse' && e.button !== 0) return;
+		e.stopPropagation();
+		panCancelled = false;
+		const baseFrame = { ...frame };
+		startPointerDrag(e, {
+			onMove: (dx, dy) => {
+				if (panCancelled) return;
+				frame = clampedFrame({
+					x: baseFrame.x + dx,
+					y: baseFrame.y + dy,
+					width: baseFrame.width,
+					height: baseFrame.height
+				});
+			}
+		});
 	}
 
 	function onBackdropPointerDown(e: PointerEvent) {
@@ -198,6 +235,7 @@
 				ontouchmove={onTouchMove}
 				ontouchend={onTouchEnd}
 				ontouchcancel={onTouchEnd}
+				onpointerdown={startPan}
 			>
 				<img class="viewer-image" {src} alt="" draggable="false" />
 				<ResizeHandles
@@ -205,7 +243,14 @@
 					min={{ width: MIN_SIZE, height: MIN_SIZE }}
 					onresize={(g) => (frame = clampedFrame(g))}
 				/>
-				<button class="viewer-close" onclick={close} aria-label="닫기">✕</button>
+				<button
+					class="viewer-close"
+					onclick={close}
+					onpointerdown={(e) => e.stopPropagation()}
+					aria-label="닫기"
+				>
+					✕
+				</button>
 			</div>
 		{/if}
 	</div>
@@ -230,6 +275,11 @@
 		overflow: visible;
 		user-select: none;
 		touch-action: none;
+		cursor: grab;
+	}
+
+	.viewer-frame:active {
+		cursor: grabbing;
 	}
 
 	.viewer-frame:hover {
