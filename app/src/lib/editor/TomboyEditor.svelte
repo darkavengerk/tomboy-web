@@ -11,6 +11,7 @@
 	import { TomboyDatetime } from "./extensions/TomboyDatetime.js";
 	import { TomboyListItem } from "./extensions/TomboyListItem.js";
 	import { TomboyParagraph } from "./extensions/TomboyParagraph.js";
+	import { TomboyPunctuationReplace } from "./extensions/TomboyPunctuationReplace.js";
 	import { TomboySubtitlePlaceholder } from "./extensions/TomboySubtitlePlaceholder.js";
 	import { SlipNoteArrows, type SlipNoteArrowsStorage } from "./extensions/SlipNoteArrows.js";
 	import { DateArrows, type DateArrowsStorage } from "./extensions/DateArrows.js";
@@ -263,6 +264,7 @@
 				}),
 				TomboyParagraph,
 				TomboyListItem,
+				TomboyPunctuationReplace,
 				// Underline is bundled by StarterKit v3 — importing it again
 				// produces a "Duplicate extension names" warning.
 				Highlight.configure({ multicolor: false }),
