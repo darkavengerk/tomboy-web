@@ -378,21 +378,18 @@ export async function forceResubscribe(
 }
 
 /**
- * Subscribe to foreground push messages.
+ * Subscribe to foreground push messages — toast only.
  *
- * On iOS PWA, when the app is in the foreground, the OS does NOT
- * automatically render the FCM notification — only the SDK's `onMessage`
- * fires. To keep behavior consistent (the user sees a notification either
- * way), this also calls `serviceWorker.registration.showNotification`
- * directly. `onBackgroundMessage` in the SW handles the backgrounded case;
- * the two paths are mutually exclusive (FCM picks one based on app state),
- * so there's no duplication.
- *
- * `extraHandler` lets the caller add side-effects (e.g. toast, log) without
- * needing to opt into the system-notification rendering.
+ * iOS Web Push semantics:
+ *   - Background: OS auto-displays the FCM `notification.title/body` from
+ *     the payload. SW's onBackgroundMessage is for data routing only;
+ *     calling showNotification there produces a duplicate.
+ *   - Foreground: OS does NOT auto-display; FCM's `onMessage` fires on
+ *     the page. Showing a system notification while the user already has
+ *     the app open is intrusive, so we just toast.
  */
 export async function subscribeForegroundMessages(
-	extraHandler?: (payload: {
+	handler?: (payload: {
 		title?: string;
 		body?: string;
 		data?: Record<string, string>;
@@ -400,25 +397,12 @@ export async function subscribeForegroundMessages(
 ): Promise<() => void> {
 	const messaging = await getFirebaseMessaging();
 	if (!messaging) return () => {};
-	const unsub = onMessage(messaging, async (payload) => {
-		const title = payload.notification?.title ?? '알림';
-		const body = payload.notification?.body ?? '';
+	const unsub = onMessage(messaging, (payload) => {
+		const title = payload.notification?.title;
+		const body = payload.notification?.body;
 		const data = payload.data as Record<string, string> | undefined;
 		console.info('[schedule] foreground push', { title, body, data });
-		extraHandler?.({ title, body, data });
-
-		try {
-			const reg = await navigator.serviceWorker.ready;
-			await reg.showNotification(title, {
-				body,
-				icon: '/icons/icon.svg',
-				badge: '/icons/icon.svg',
-				tag: data?.itemId ?? data?.test ?? undefined,
-				data
-			});
-		} catch (err) {
-			console.warn('[schedule] foreground showNotification failed', err);
-		}
+		handler?.({ title, body, data });
 	});
 	return unsub;
 }

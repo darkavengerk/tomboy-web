@@ -43,64 +43,16 @@ const firebaseApp = initializeApp({
 });
 const messaging = getMessaging(firebaseApp);
 
-// Diagnostic mode: unconditionally show a notification on every push event.
-// This isolates "is the push event even reaching the SW?" from any
-// payload-parsing or FCM-SDK issues. If THIS doesn't display when FCM
-// reports success, then either the SW running on the device is stale
-// (older deploy without push handlers), or the push event isn't being
-// dispatched to this SW at all (Apple-side issue / OS setting).
-self.addEventListener('push', (event) => {
-	let preview = '<no data>';
-	try {
-		preview = event.data?.text() ?? '<no data>';
-	} catch (err) {
-		preview = `<unreadable: ${String(err)}>`;
-	}
-	console.info('[sw] raw push event fired', { preview, version: SW_VERSION_TAG });
-
-	let title = '🔔 PUSH RECEIVED';
-	let body = `SW ${version} got a push event.`;
-	let tag: string | undefined = `debug-${Date.now()}`;
-	try {
-		const data = JSON.parse(preview);
-		title = data?.notification?.title ?? title;
-		body = data?.notification?.body ?? body;
-		tag = data?.data?.itemId ?? data?.data?.test ?? tag;
-	} catch {
-		/* not JSON — keep debug defaults */
-	}
-
-	event.waitUntil(
-		self.registration.showNotification(title, {
-			body,
-			icon: '/icons/icon.svg',
-			badge: '/icons/icon.svg',
-			tag,
-			requireInteraction: false
-		})
-	);
-});
-
 self.addEventListener('pushsubscriptionchange', (event) => {
 	console.warn('[sw] pushsubscriptionchange — token needs refresh', event);
 });
 
-// Background-message handler (FCM SDK). Some browsers (notably WebKit-based
-// on iOS) auto-display FCM `notification` payloads; others require
-// explicit `showNotification`. Calling it explicitly here guarantees
-// consistency.
+// FCM background message — log only. iOS Web Push REQUIRES the payload's
+// `notification.title/body` and the OS auto-displays it; calling
+// `showNotification` here too produces a duplicate. The handler still
+// matters for `notificationclick` data routing and any non-iOS targets.
 onBackgroundMessage(messaging, (payload) => {
 	console.info('[sw] FCM background push', payload);
-	const title = payload.notification?.title ?? '일정';
-	const body = payload.notification?.body ?? '';
-	const data = payload.data ?? {};
-	void self.registration.showNotification(title, {
-		body,
-		icon: '/icons/icon.svg',
-		badge: '/icons/icon.svg',
-		tag: data.itemId ?? data.test ?? undefined,
-		data
-	});
 });
 
 self.addEventListener('notificationclick', (event) => {
