@@ -132,6 +132,10 @@
 		pushSubDiag = await getPushSubscriptionDiagnostics().catch(() => null);
 	}
 
+	async function refreshPushSubDiag() {
+		pushSubDiag = await getPushSubscriptionDiagnostics().catch(() => null);
+	}
+
 	async function onSelectScheduleNote(e: Event) {
 		const value = (e.target as HTMLSelectElement).value;
 		if (!value) {
@@ -165,9 +169,12 @@
 			pushToast(`알림 활성화 중 오류: ${String(err)}`, { kind: 'error' });
 		} finally {
 			notifyBusy = false;
-			// 진단 정보 갱신 (permission이 바뀌었을 수 있음)
+			// 진단 정보 갱신 (permission이 바뀌었을 수 있음 + push subscription
+			// 이 활성화 직후엔 일시적으로 null 일 수 있어 약간 지연 후 한 번 더)
 			const d = getNotificationDiagnostics();
 			notifyDiagText = `permission=${d.permission} standalone=${d.standalone} sw=${d.hasServiceWorker} api=${d.hasNotificationApi}`;
+			await refreshPushSubDiag();
+			setTimeout(() => void refreshPushSubDiag(), 500);
 		}
 	}
 
@@ -233,6 +240,7 @@
 			console.error('[schedule] sendTestPush threw', err);
 		} finally {
 			notifyBusy = false;
+			await refreshPushSubDiag();
 		}
 	}
 
@@ -272,6 +280,9 @@
 		});
 
 		void loadNotifyState();
+		// First page mount can race the SW activation. Re-check after a beat
+		// so a transient null subscription doesn't get pinned in the UI.
+		setTimeout(() => void refreshPushSubDiag(), 1500);
 
 		return unsub;
 	});
@@ -715,7 +726,16 @@
 				<p class="info-text small">상태: <code>{notifyDiagText}</code></p>
 				{#if pushSubDiag}
 					<details class="diag-details">
-						<summary>Push 구독 진단</summary>
+						<summary>
+							Push 구독 진단
+							<button
+								class="diag-refresh"
+								type="button"
+								onclick={(e) => {
+									e.preventDefault();
+									void refreshPushSubDiag();
+								}}>↻</button>
+						</summary>
 						<ul class="diag-list">
 							<li>구독 존재: <code>{pushSubDiag.hasSubscription}</code></li>
 							{#if pushSubDiag.endpointHost}
@@ -900,6 +920,16 @@
 		font-size: 0.8rem;
 		padding-left: 16px;
 		margin: 4px 0;
+	}
+
+	.diag-refresh {
+		margin-left: 8px;
+		padding: 2px 8px;
+		font-size: 0.85rem;
+		background: var(--color-bg-secondary, #f0f0f0);
+		border: 1px solid var(--color-border, #ccc);
+		border-radius: 4px;
+		cursor: pointer;
 	}
 
 	.diag-list li {
