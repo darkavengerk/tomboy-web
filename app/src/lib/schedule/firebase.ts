@@ -17,6 +17,7 @@ import { initializeApp, type FirebaseApp } from 'firebase/app';
 import {
 	getAuth,
 	signInWithCustomToken,
+	signOut,
 	type Auth,
 	type User
 } from 'firebase/auth';
@@ -81,12 +82,20 @@ export class DropboxNotConnectedError extends Error {
 }
 
 /**
- * Ensure Firebase Auth has a current user, signing in via Dropbox-bridged
- * custom token if needed. Throws DropboxNotConnectedError if the user
- * hasn't completed Dropbox OAuth yet.
+ * Ensure Firebase Auth has a Dropbox-bridged user. Anonymous sessions
+ * (left over from before the auth bridge was wired in) are force-signed-out
+ * so the next call goes through `dropboxAuthExchange` and the user lands
+ * on the stable `dbx-{account_id}` uid.
+ *
+ * Throws DropboxNotConnectedError if the user hasn't completed Dropbox
+ * OAuth yet.
  */
 export async function ensureSignedIn(): Promise<User> {
 	const auth = getFirebaseAuth();
+	if (auth.currentUser?.isAnonymous) {
+		console.info('[schedule] signing out leftover anonymous user');
+		await signOut(auth);
+	}
 	if (auth.currentUser) return auth.currentUser;
 
 	const dropboxToken = getDropboxAccessToken();
