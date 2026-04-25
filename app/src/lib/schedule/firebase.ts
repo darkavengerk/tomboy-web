@@ -1,29 +1,34 @@
 /**
  * Lazy Firebase init for the schedule-note push notification feature.
  *
- * All getters are memoised so the SDK is initialised exactly once per page,
- * and only when first needed (settings page, save hook, SW push). Tests stub
- * `$env/static/public` so calling `getFirebaseApp()` in unit tests is safe
- * even though tests never actually round-trip to Firebase.
+ * Authentication is bridged from Dropbox: we exchange the user's Dropbox
+ * access token for a Firebase Custom Auth token whose uid is derived from
+ * the Dropbox `account_id`. This way the same Dropbox account always maps
+ * to the same Firebase uid across every device, so all schedule items and
+ * device tokens land under one `users/{uid}/` namespace and any device
+ * can fire alarms for the shared schedule. Without a Dropbox connection,
+ * sign-in fails — notifications are gated on Dropbox auth.
  *
- * `getFirebaseMessaging()` returns null when the browser cannot support push
- * (e.g. iOS Safari before 16.4, or any browser where ServiceWorker /
+ * `getFirebaseMessaging()` returns null when the browser cannot support
+ * push (e.g. iOS Safari before 16.4, or any browser where ServiceWorker /
  * Notification APIs are missing). Callers must handle this.
  */
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import {
 	getAuth,
-	signInAnonymously,
+	signInWithCustomToken,
 	type Auth,
 	type User
 } from 'firebase/auth';
 import { getFirestore, type Firestore } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
 	getMessaging,
 	isSupported,
 	type Messaging
 } from 'firebase/messaging';
 import { env } from '$env/dynamic/public';
+import { getAccessToken as getDropboxAccessToken } from '$lib/sync/dropboxClient.js';
 
 let appSingleton: FirebaseApp | null = null;
 let authSingleton: Auth | null = null;
@@ -68,11 +73,32 @@ export function getVapidKey(): string {
 	return env.PUBLIC_FIREBASE_VAPID_KEY;
 }
 
-/** Sign in anonymously if no current user. Returns the resolved User. */
+export class DropboxNotConnectedError extends Error {
+	constructor() {
+		super('Dropbox not connected');
+		this.name = 'DropboxNotConnectedError';
+	}
+}
+
+/**
+ * Ensure Firebase Auth has a current user, signing in via Dropbox-bridged
+ * custom token if needed. Throws DropboxNotConnectedError if the user
+ * hasn't completed Dropbox OAuth yet.
+ */
 export async function ensureSignedIn(): Promise<User> {
 	const auth = getFirebaseAuth();
 	if (auth.currentUser) return auth.currentUser;
-	const cred = await signInAnonymously(auth);
+
+	const dropboxToken = getDropboxAccessToken();
+	if (!dropboxToken) throw new DropboxNotConnectedError();
+
+	const functions = getFunctions(getFirebaseApp(), 'asia-northeast3');
+	const exchange = httpsCallable<
+		{ dropboxAccessToken: string },
+		{ customToken: string; uid: string }
+	>(functions, 'dropboxAuthExchange');
+	const { data } = await exchange({ dropboxAccessToken: dropboxToken });
+	const cred = await signInWithCustomToken(auth, data.customToken);
 	return cred.user;
 }
 

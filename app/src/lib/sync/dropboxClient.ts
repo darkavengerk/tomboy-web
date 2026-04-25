@@ -76,6 +76,15 @@ export function isAuthenticated(): boolean {
 	return !!localStorage.getItem(STORAGE_KEY_ACCESS_TOKEN);
 }
 
+/**
+ * Return the current Dropbox access token, or null if not connected.
+ * Exposed so other modules (e.g. the schedule push pipeline) can pass
+ * the token to a server function for auth bridging.
+ */
+export function getAccessToken(): string | null {
+	return localStorage.getItem(STORAGE_KEY_ACCESS_TOKEN);
+}
+
 /** Get stored tokens */
 function getStoredTokens() {
 	return {

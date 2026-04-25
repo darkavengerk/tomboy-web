@@ -110,8 +110,10 @@
 			'서비스워커가 준비되지 않았습니다. 페이지를 새로고침한 뒤 다시 시도해주세요.',
 		'sw-timeout':
 			'서비스워커 활성화 대기 중 타임아웃. PWA를 강제 종료한 뒤 다시 열어주세요.',
+		'dropbox-not-connected':
+			'Dropbox 연결이 필요합니다. 동기화 탭에서 먼저 Dropbox에 연결해주세요. (같은 Dropbox 계정을 쓰는 모든 기기가 같은 일정을 공유합니다.)',
 		'auth-failed':
-			'Firebase 익명 로그인 실패. 네트워크 상태를 확인하고 다시 시도해주세요.',
+			'Firebase 로그인 실패. Dropbox 연결 상태와 네트워크를 확인하고 다시 시도해주세요.',
 		'token-failed': 'FCM 토큰 발급에 실패했습니다. 콘솔 로그를 확인하세요.',
 		'firestore-failed': 'Firestore에 토큰을 저장하지 못했습니다. 콘솔 로그를 확인하세요.'
 	};

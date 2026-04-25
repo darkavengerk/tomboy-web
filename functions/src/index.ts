@@ -8,6 +8,7 @@
  * notified=true so they don't fire again.
  */
 import { initializeApp } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
@@ -146,6 +147,77 @@ export const fireSchedules = onSchedule(
 		}
 
 		await Promise.all(writes);
+	}
+);
+
+/**
+ * `dropboxAuthExchange` — callable that takes a Dropbox access token,
+ * verifies it against the Dropbox API, and returns a Firebase Custom Auth
+ * token whose uid is derived from the Dropbox `account_id`.
+ *
+ * Why: we want the same Firebase uid across all devices that share a
+ * Dropbox account so schedule items and device tokens land under one
+ * users/{uid}/ namespace. Anonymous Auth gives a per-device uid which
+ * isolates data to that device — incompatible with multi-device alarms.
+ *
+ * The returned uid is `dbx-{sanitized account_id}`. Custom claims include
+ * the raw account_id and provider name for any future fanout logic.
+ */
+export const dropboxAuthExchange = onCall(
+	{ region: REGION, timeoutSeconds: 30, memory: '256MiB' },
+	async (request) => {
+		const { dropboxAccessToken } = (request.data ?? {}) as {
+			dropboxAccessToken?: string;
+		};
+		if (!dropboxAccessToken || typeof dropboxAccessToken !== 'string') {
+			throw new HttpsError('invalid-argument', 'dropboxAccessToken required');
+		}
+
+		// Verify the token with Dropbox. `users/get_current_account` is the
+		// canonical "who are you" endpoint and returns account_id (stable per
+		// Dropbox account, never changes for a user).
+		let account: { account_id?: string; name?: { display_name?: string } };
+		try {
+			const resp = await fetch(
+				'https://api.dropboxapi.com/2/users/get_current_account',
+				{
+					method: 'POST',
+					headers: { Authorization: `Bearer ${dropboxAccessToken}` }
+				}
+			);
+			if (!resp.ok) {
+				throw new HttpsError(
+					'unauthenticated',
+					`Dropbox token invalid (${resp.status})`
+				);
+			}
+			account = (await resp.json()) as typeof account;
+		} catch (err) {
+			if (err instanceof HttpsError) throw err;
+			throw new HttpsError('unavailable', `Dropbox API call failed: ${String(err)}`);
+		}
+
+		const accountId = account.account_id;
+		if (!accountId) {
+			throw new HttpsError('failed-precondition', 'No account_id in Dropbox response');
+		}
+
+		// Firebase uid: 1-128 chars, no fixed charset rules but practical safe set.
+		// Dropbox account_id starts with "dbid:" then base64url. Sanitize to
+		// `dbx-` prefix + alphanumerics from the original.
+		const sanitized = accountId.replace(/[^a-zA-Z0-9_-]/g, '_');
+		const uid = `dbx-${sanitized}`.slice(0, 128);
+
+		const customToken = await getAuth().createCustomToken(uid, {
+			provider: 'dropbox',
+			dropboxAccountId: accountId
+		});
+
+		logger.info('dropboxAuthExchange success', {
+			uid,
+			displayName: account.name?.display_name
+		});
+		return { customToken, uid };
 	}
 );
 

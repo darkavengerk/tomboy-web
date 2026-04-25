@@ -47,12 +47,32 @@ self.addEventListener('pushsubscriptionchange', (event) => {
 	console.warn('[sw] pushsubscriptionchange — token needs refresh', event);
 });
 
-// FCM background message — log only. iOS Web Push REQUIRES the payload's
-// `notification.title/body` and the OS auto-displays it; calling
-// `showNotification` here too produces a duplicate. The handler still
-// matters for `notificationclick` data routing and any non-iOS targets.
+// FCM background message handler.
+//
+// Platform asymmetry:
+//   - iOS Safari Web Push: the OS auto-renders the FCM `notification`
+//     payload BEFORE the SW handler fires; calling showNotification here
+//     would double up.
+//   - Desktop browsers (Chrome/Firefox/macOS Safari): no auto-render. SW
+//     MUST call showNotification or nothing appears.
+//
+// We branch on the platform so the same SW serves both targets correctly.
+const isIOSWebKit = /iPad|iPhone|iPod/.test(self.navigator.userAgent);
+
 onBackgroundMessage(messaging, (payload) => {
-	console.info('[sw] FCM background push', payload);
+	console.info('[sw] FCM background push', { payload, isIOSWebKit });
+	if (isIOSWebKit) return; // iOS handles display itself
+
+	const title = payload.notification?.title ?? '일정';
+	const body = payload.notification?.body ?? '';
+	const data = payload.data ?? {};
+	void self.registration.showNotification(title, {
+		body,
+		icon: '/icons/icon-192.png',
+		badge: '/icons/icon-192.png',
+		tag: data.itemId ?? data.test ?? undefined,
+		data
+	});
 });
 
 self.addEventListener('notificationclick', (event) => {

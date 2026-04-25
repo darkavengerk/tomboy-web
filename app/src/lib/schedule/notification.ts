@@ -11,6 +11,7 @@ import { deleteToken, getToken, onMessage } from 'firebase/messaging';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getSetting, setSetting, deleteSetting } from '$lib/storage/appSettings.js';
 import {
+	DropboxNotConnectedError,
 	ensureSignedIn,
 	getFirebaseApp,
 	getFirebaseMessaging,
@@ -19,6 +20,9 @@ import {
 import { firestoreScheduleClient } from './firestoreScheduleClient.js';
 import { getOrCreateInstallId } from './installId.js';
 import { getScheduleNoteGuid } from '$lib/core/schedule.js';
+import { clearScheduleSnapshot } from './scheduleSnapshot.js';
+
+const LAST_FB_UID_KEY = 'schedule.lastFirebaseUid';
 
 export interface TestPushDetail {
 	ok: boolean;
@@ -133,6 +137,7 @@ export type EnableFailReason =
 	| 'fcm-unsupported'
 	| 'sw-registration-failed'
 	| 'sw-timeout'
+	| 'dropbox-not-connected'
 	| 'auth-failed'
 	| 'token-failed'
 	| 'firestore-failed';
@@ -266,13 +271,33 @@ export async function enableNotifications(
 	const messaging = await getFirebaseMessaging();
 	if (!messaging) return { ok: false, reason: 'fcm-unsupported' };
 
-	step('익명 로그인');
+	step('Firebase 로그인 (Dropbox 인증 사용)');
+	let user;
 	try {
-		await withTimeout(ensureSignedIn(), 15_000, 'ensureSignedIn');
+		user = await withTimeout(ensureSignedIn(), 20_000, 'ensureSignedIn');
 	} catch (err) {
+		if (err instanceof DropboxNotConnectedError) {
+			return { ok: false, reason: 'dropbox-not-connected' };
+		}
 		console.error('[schedule] ensureSignedIn failed', err);
 		return { ok: false, reason: 'auth-failed', detail: String(err) };
 	}
+
+	// Migrate snapshot if uid changed since last enable. Otherwise the
+	// next save would diff against a snapshot uploaded under the old uid
+	// and skip uploading anything to Firestore under the new uid.
+	const lastUid = await getSetting<string>(LAST_FB_UID_KEY);
+	if (lastUid && lastUid !== user.uid) {
+		const scheduleNoteGuid = await getScheduleNoteGuid();
+		if (scheduleNoteGuid) {
+			console.info('[schedule] uid changed, clearing schedule snapshot for migration', {
+				lastUid,
+				newUid: user.uid
+			});
+			await clearScheduleSnapshot(scheduleNoteGuid);
+		}
+	}
+	await setSetting(LAST_FB_UID_KEY, user.uid);
 
 	step('FCM 토큰 발급');
 	let token: string;
