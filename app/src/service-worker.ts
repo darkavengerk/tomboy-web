@@ -28,11 +28,53 @@ const firebaseApp = initializeApp({
 });
 const messaging = getMessaging(firebaseApp);
 
-// Background-message handler. Some browsers (notably WebKit-based on iOS)
-// will auto-display FCM `notification` payloads, others require explicit
-// `showNotification`. Calling it explicitly here guarantees consistency.
+// Diagnostic: raw `push` event listener. Fires on EVERY web push delivered
+// to this SW, regardless of payload format. If FCM's onBackgroundMessage
+// doesn't fire but this does, the push is arriving but FCM SDK can't parse
+// it. If neither fires, the push isn't reaching the SW at all (subscription
+// stale, VAPID mismatch, or APNs dropped it).
+self.addEventListener('push', (event) => {
+	let preview = '<no data>';
+	try {
+		preview = event.data?.text() ?? '<no data>';
+	} catch (err) {
+		preview = `<unreadable: ${String(err)}>`;
+	}
+	console.info('[sw] raw push event', { preview });
+	// Fallback display so the user sees SOMETHING even if FCM SDK can't
+	// route this. Only render if no notification.title was already going to
+	// be shown by the FCM handler — but since we can't know in advance,
+	// rely on `tag` to dedup with the FCM-rendered one.
+	if (preview && preview !== '<no data>' && preview !== '<unreadable>') {
+		try {
+			const data = JSON.parse(preview);
+			const title = data?.notification?.title;
+			const body = data?.notification?.body;
+			if (title) {
+				event.waitUntil(
+					self.registration.showNotification(title, {
+						body: body ?? '',
+						icon: '/icons/icon.svg',
+						tag: data?.data?.itemId ?? data?.data?.test ?? 'fallback'
+					})
+				);
+			}
+		} catch {
+			// Not JSON — let FCM handle it.
+		}
+	}
+});
+
+self.addEventListener('pushsubscriptionchange', (event) => {
+	console.warn('[sw] pushsubscriptionchange — token needs refresh', event);
+});
+
+// Background-message handler (FCM SDK). Some browsers (notably WebKit-based
+// on iOS) auto-display FCM `notification` payloads; others require
+// explicit `showNotification`. Calling it explicitly here guarantees
+// consistency.
 onBackgroundMessage(messaging, (payload) => {
-	console.info('[sw] background push', payload);
+	console.info('[sw] FCM background push', payload);
 	const title = payload.notification?.title ?? '일정';
 	const body = payload.notification?.body ?? '';
 	const data = payload.data ?? {};

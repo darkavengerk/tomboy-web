@@ -20,10 +20,19 @@ import { firestoreScheduleClient } from './firestoreScheduleClient.js';
 import { getOrCreateInstallId } from './installId.js';
 import { getScheduleNoteGuid } from '$lib/core/schedule.js';
 
+export interface TestPushDetail {
+	ok: boolean;
+	messageId?: string;
+	errorCode?: string;
+	errorMessage?: string;
+	tokenPrefix?: string;
+}
+
 export interface TestPushResult {
 	tokenCount: number;
 	successCount: number;
 	failureCount: number;
+	details?: TestPushDetail[];
 	errors: string[];
 }
 

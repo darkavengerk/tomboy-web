@@ -122,16 +122,22 @@ export const fireSchedules = onSchedule(
 						scheduleNoteGuid: scheduleNoteGuid ?? ''
 					},
 					webpush: {
+						headers: { Urgency: 'high', TTL: '600' },
+						notification: { requireInteraction: false, tag: doc.id },
 						fcmOptions: scheduleNoteGuid
 							? { link: `/note/${scheduleNoteGuid}?from=notes` }
 							: undefined
 					}
 				});
+				const errs = result.responses
+					.map((r) => r.error?.message)
+					.filter(Boolean);
 				logger.info('fireSchedules sent', {
 					uid,
 					itemId: doc.id,
 					success: result.successCount,
-					failure: result.failureCount
+					failure: result.failureCount,
+					errors: errs
 				});
 			} catch (err) {
 				logger.error('fireSchedules send failed', { uid, itemId: doc.id, err });
@@ -174,24 +180,45 @@ export const sendTestPush = onCall(
 				title: '테스트 알림',
 				body: 'FCM 푸시가 정상적으로 도착했습니다.'
 			},
-			data: { test: 'true' }
+			data: { test: 'true' },
+			webpush: {
+				headers: {
+					// High urgency tells the push service (incl. APNs) to
+					// deliver immediately rather than batch.
+					Urgency: 'high',
+					// 5 min — short TTL so a stale subscription fails fast
+					// rather than queuing for days.
+					TTL: '300'
+				},
+				notification: {
+					requireInteraction: true,
+					tag: 'test-push'
+				}
+			}
 		});
 
-		const errorMessages = result.responses
-			.map((r) => r.error?.message)
-			.filter(Boolean);
+		const responseDetails = result.responses.map((r, i) => ({
+			ok: r.success,
+			messageId: r.messageId,
+			errorCode: r.error?.code,
+			errorMessage: r.error?.message,
+			tokenPrefix: tokens[i].slice(0, 16) + '…'
+		}));
 		logger.info('sendTestPush result', {
 			uid,
 			tokenCount: tokens.length,
 			success: result.successCount,
 			failure: result.failureCount,
-			errors: errorMessages
+			details: responseDetails
 		});
 		return {
 			tokenCount: tokens.length,
 			successCount: result.successCount,
 			failureCount: result.failureCount,
-			errors: errorMessages
+			details: responseDetails,
+			errors: responseDetails
+				.map((d) => d.errorMessage)
+				.filter(Boolean) as string[]
 		};
 	}
 );
