@@ -32,6 +32,7 @@ const messaging = getMessaging(firebaseApp);
 // will auto-display FCM `notification` payloads, others require explicit
 // `showNotification`. Calling it explicitly here guarantees consistency.
 onBackgroundMessage(messaging, (payload) => {
+	console.info('[sw] background push', payload);
 	const title = payload.notification?.title ?? '일정';
 	const body = payload.notification?.body ?? '';
 	const data = payload.data ?? {};
@@ -39,7 +40,7 @@ onBackgroundMessage(messaging, (payload) => {
 		body,
 		icon: '/icons/icon.svg',
 		badge: '/icons/icon.svg',
-		tag: data.itemId ?? undefined,
+		tag: data.itemId ?? data.test ?? undefined,
 		data
 	});
 });

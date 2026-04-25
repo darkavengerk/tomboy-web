@@ -13,10 +13,7 @@
 		installOnlineFlushListener,
 		flushIfEnabled
 	} from '$lib/schedule/flushScheduler.js';
-	import {
-		isNotificationsEnabled,
-		subscribeForegroundMessages
-	} from '$lib/schedule/notification.js';
+	import { subscribeForegroundMessages } from '$lib/schedule/notification.js';
 	import { pushToast } from '$lib/stores/toast.js';
 
 	let { children } = $props();
@@ -82,15 +79,14 @@
 		installOnlineFlushListener();
 		void flushIfEnabled();
 
-		// 앱이 포그라운드일 때 도착하는 푸시는 OS가 알림을 띄우지 않으므로
-		// 여기서 토스트로 노출. 알림이 비활성이면 구독도 안 함.
+		// 포그라운드 푸시 구독 — 사용자가 같은 세션에서 알림을 활성화한 직후 테스트
+		// 시 구독이 누락되지 않도록 무조건 호출. Firebase 미지원/미초기화면 no-op 반환.
+		// 핸들러는 시스템 알림 띄움(notification.ts) + 토스트 둘 다 표시.
 		let unsubFcm: (() => void) | undefined;
 		void (async () => {
-			if (await isNotificationsEnabled()) {
-				unsubFcm = await subscribeForegroundMessages(({ title, body }) => {
-					pushToast(`${title ?? '알림'} — ${body ?? ''}`, { kind: 'info' });
-				});
-			}
+			unsubFcm = await subscribeForegroundMessages(({ title, body }) => {
+				pushToast(`${title ?? '알림'} — ${body ?? ''}`, { kind: 'info' });
+			});
 		})();
 
 		// Alt 키 단독 입력 시 브라우저 메뉴바가 포커스되는 동작을 전역에서 억제.

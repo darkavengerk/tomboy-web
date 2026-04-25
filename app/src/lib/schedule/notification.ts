@@ -199,18 +199,48 @@ export async function disableNotifications(): Promise<void> {
 	await deleteSetting(FCM_TOKEN_KEY);
 }
 
-/** Subscribe to foreground push messages — caller decides what to render. */
+/**
+ * Subscribe to foreground push messages.
+ *
+ * On iOS PWA, when the app is in the foreground, the OS does NOT
+ * automatically render the FCM notification — only the SDK's `onMessage`
+ * fires. To keep behavior consistent (the user sees a notification either
+ * way), this also calls `serviceWorker.registration.showNotification`
+ * directly. `onBackgroundMessage` in the SW handles the backgrounded case;
+ * the two paths are mutually exclusive (FCM picks one based on app state),
+ * so there's no duplication.
+ *
+ * `extraHandler` lets the caller add side-effects (e.g. toast, log) without
+ * needing to opt into the system-notification rendering.
+ */
 export async function subscribeForegroundMessages(
-	handler: (payload: { title?: string; body?: string; data?: Record<string, string> }) => void
+	extraHandler?: (payload: {
+		title?: string;
+		body?: string;
+		data?: Record<string, string>;
+	}) => void
 ): Promise<() => void> {
 	const messaging = await getFirebaseMessaging();
 	if (!messaging) return () => {};
-	const unsub = onMessage(messaging, (payload) => {
-		handler({
-			title: payload.notification?.title,
-			body: payload.notification?.body,
-			data: payload.data as Record<string, string> | undefined
-		});
+	const unsub = onMessage(messaging, async (payload) => {
+		const title = payload.notification?.title ?? '알림';
+		const body = payload.notification?.body ?? '';
+		const data = payload.data as Record<string, string> | undefined;
+		console.info('[schedule] foreground push', { title, body, data });
+		extraHandler?.({ title, body, data });
+
+		try {
+			const reg = await navigator.serviceWorker.ready;
+			await reg.showNotification(title, {
+				body,
+				icon: '/icons/icon.svg',
+				badge: '/icons/icon.svg',
+				tag: data?.itemId ?? data?.test ?? undefined,
+				data
+			});
+		} catch (err) {
+			console.warn('[schedule] foreground showNotification failed', err);
+		}
 	});
 	return unsub;
 }
