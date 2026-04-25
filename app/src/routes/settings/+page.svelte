@@ -42,7 +42,9 @@
 		enableNotifications,
 		disableNotifications,
 		isNotificationsEnabled,
-		getStoredFcmToken
+		getStoredFcmToken,
+		getNotificationDiagnostics,
+		type EnableFailReason
 	} from '$lib/schedule/notification.js';
 	import { flushIfEnabled } from '$lib/schedule/flushScheduler.js';
 	import { getOrCreateInstallId } from '$lib/schedule/installId.js';
@@ -85,6 +87,23 @@
 	let notifyInstallId = $state('');
 	let notifyBusy = $state(false);
 	let notifyBrowserSupported = $state(true);
+	let notifyDiagText = $state('');
+
+	const FAIL_REASON_KO: Record<EnableFailReason, string> = {
+		'no-window': '브라우저 환경이 아닙니다.',
+		'no-notification-api': '브라우저가 알림 API를 지원하지 않습니다.',
+		'no-service-worker': '브라우저가 서비스워커를 지원하지 않습니다.',
+		'not-pwa-installed':
+			'iOS는 PWA를 홈 화면에 설치한 뒤 그 아이콘으로 실행해야 알림을 켤 수 있습니다.',
+		'permission-denied': '브라우저 알림 권한이 거부되었습니다. 시스템 설정에서 허용해주세요.',
+		'permission-default':
+			'권한 팝업이 닫히기 전에 응답되지 않았습니다. 다시 한 번 눌러주세요.',
+		'fcm-unsupported': '이 브라우저는 FCM Web Push를 지원하지 않습니다.',
+		'sw-registration-failed':
+			'서비스워커가 준비되지 않았습니다. 페이지를 새로고침한 뒤 다시 시도해주세요.',
+		'token-failed': 'FCM 토큰 발급에 실패했습니다. 콘솔 로그를 확인하세요.',
+		'firestore-failed': 'Firestore에 토큰을 저장하지 못했습니다. 콘솔 로그를 확인하세요.'
+	};
 
 	async function loadNotifyState() {
 		notifyNotes = (await listNotes()).map((n) => ({ guid: n.guid, title: n.title }));
@@ -96,6 +115,9 @@
 			typeof window !== 'undefined' &&
 			'Notification' in window &&
 			'serviceWorker' in navigator;
+		// Always-visible diagnostics so the user sees what's blocking activation.
+		const d = getNotificationDiagnostics();
+		notifyDiagText = `permission=${d.permission} standalone=${d.standalone} sw=${d.hasServiceWorker} api=${d.hasNotificationApi}`;
 	}
 
 	async function onSelectScheduleNote(e: Event) {
@@ -120,20 +142,19 @@
 				pushToast('알림이 활성화되었습니다.');
 				// 활성화되자마자 미발신 diff가 있으면 즉시 발송.
 				await flushIfEnabled();
-			} else if (r.reason === 'permission-denied') {
-				pushToast('브라우저 알림 권한이 거부되었습니다. 시스템 설정에서 허용해주세요.', {
-					kind: 'error'
-				});
-			} else if (r.reason === 'unsupported') {
-				pushToast('이 브라우저는 푸시 알림을 지원하지 않습니다. iOS는 PWA로 설치해야 합니다.', {
-					kind: 'error'
-				});
 			} else {
-				pushToast('알림 등록 실패', { kind: 'error' });
-				console.error('enableNotifications failed', r);
+				const message = FAIL_REASON_KO[r.reason] ?? `등록 실패: ${r.reason}`;
+				pushToast(message, { kind: 'error' });
+				console.error('[schedule] enableNotifications failed', r);
 			}
+		} catch (err) {
+			console.error('[schedule] onEnableNotify threw', err);
+			pushToast(`알림 활성화 중 오류: ${String(err)}`, { kind: 'error' });
 		} finally {
 			notifyBusy = false;
+			// 진단 정보 갱신 (permission이 바뀌었을 수 있음)
+			const d = getNotificationDiagnostics();
+			notifyDiagText = `permission=${d.permission} standalone=${d.standalone} sw=${d.hasServiceWorker} api=${d.hasNotificationApi}`;
 		}
 	}
 
@@ -622,6 +643,7 @@
 
 			<section class="section">
 				<h2>푸시 알림</h2>
+				<p class="info-text small">상태: <code>{notifyDiagText}</code></p>
 				{#if !notifyBrowserSupported}
 					<p class="info-text">
 						이 브라우저는 푸시 알림을 지원하지 않습니다. iOS에서는 PWA를 홈 화면에 설치하면
