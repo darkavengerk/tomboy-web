@@ -164,42 +164,72 @@ export const fireSchedules = onSchedule(
  * the raw account_id and provider name for any future fanout logic.
  */
 export const dropboxAuthExchange = onCall(
-	{ region: REGION, timeoutSeconds: 30, memory: '256MiB' },
+	{ region: REGION, timeoutSeconds: 30, memory: '256MiB', cors: true },
 	async (request) => {
+		logger.info('dropboxAuthExchange invoked', {
+			hasData: !!request.data,
+			authUid: request.auth?.uid ?? null
+		});
 		const { dropboxAccessToken } = (request.data ?? {}) as {
 			dropboxAccessToken?: string;
 		};
 		if (!dropboxAccessToken || typeof dropboxAccessToken !== 'string') {
+			logger.warn('dropboxAuthExchange: missing dropboxAccessToken');
 			throw new HttpsError('invalid-argument', 'dropboxAccessToken required');
 		}
 
 		// Verify the token with Dropbox. `users/get_current_account` is the
 		// canonical "who are you" endpoint and returns account_id (stable per
 		// Dropbox account, never changes for a user).
+		// Use explicit Content-Length: 0 to avoid 400 on environments where
+		// some HTTP clients omit it for body-less POSTs.
 		let account: { account_id?: string; name?: { display_name?: string } };
 		try {
 			const resp = await fetch(
 				'https://api.dropboxapi.com/2/users/get_current_account',
 				{
 					method: 'POST',
-					headers: { Authorization: `Bearer ${dropboxAccessToken}` }
+					headers: {
+						Authorization: `Bearer ${dropboxAccessToken}`,
+						'Content-Length': '0'
+					}
 				}
 			);
+			const bodyText = await resp.text();
 			if (!resp.ok) {
+				logger.warn('dropboxAuthExchange: Dropbox API rejected', {
+					status: resp.status,
+					body: bodyText.slice(0, 500)
+				});
 				throw new HttpsError(
 					'unauthenticated',
-					`Dropbox token invalid (${resp.status})`
+					`Dropbox token invalid (HTTP ${resp.status}): ${bodyText.slice(0, 200)}`
 				);
 			}
-			account = (await resp.json()) as typeof account;
+			try {
+				account = JSON.parse(bodyText);
+			} catch (err) {
+				logger.warn('dropboxAuthExchange: Dropbox response not JSON', {
+					body: bodyText.slice(0, 500)
+				});
+				throw new HttpsError('internal', 'Dropbox response not JSON');
+			}
 		} catch (err) {
 			if (err instanceof HttpsError) throw err;
-			throw new HttpsError('unavailable', `Dropbox API call failed: ${String(err)}`);
+			logger.error('dropboxAuthExchange: fetch failed', { err: String(err) });
+			throw new HttpsError(
+				'unavailable',
+				`Dropbox API call failed: ${String(err)}`
+			);
 		}
 
 		const accountId = account.account_id;
 		if (!accountId) {
-			throw new HttpsError('failed-precondition', 'No account_id in Dropbox response');
+			logger.warn('dropboxAuthExchange: no account_id in response', { account });
+			throw new HttpsError(
+				'failed-precondition',
+				'No account_id in Dropbox response'
+			);
 		}
 
 		// Firebase uid: 1-128 chars, no fixed charset rules but practical safe set.
@@ -208,16 +238,26 @@ export const dropboxAuthExchange = onCall(
 		const sanitized = accountId.replace(/[^a-zA-Z0-9_-]/g, '_');
 		const uid = `dbx-${sanitized}`.slice(0, 128);
 
-		const customToken = await getAuth().createCustomToken(uid, {
-			provider: 'dropbox',
-			dropboxAccountId: accountId
-		});
-
-		logger.info('dropboxAuthExchange success', {
-			uid,
-			displayName: account.name?.display_name
-		});
-		return { customToken, uid };
+		try {
+			const customToken = await getAuth().createCustomToken(uid, {
+				provider: 'dropbox',
+				dropboxAccountId: accountId
+			});
+			logger.info('dropboxAuthExchange success', {
+				uid,
+				displayName: account.name?.display_name
+			});
+			return { customToken, uid };
+		} catch (err) {
+			logger.error('dropboxAuthExchange: createCustomToken failed', {
+				err: String(err),
+				uid
+			});
+			throw new HttpsError(
+				'internal',
+				`createCustomToken failed: ${String(err)}`
+			);
+		}
 	}
 );
 

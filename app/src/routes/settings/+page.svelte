@@ -162,7 +162,8 @@
 				// 활성화되자마자 미발신 diff가 있으면 즉시 발송.
 				await flushIfEnabled();
 			} else {
-				const message = FAIL_REASON_KO[r.reason] ?? `등록 실패: ${r.reason}`;
+				const base = FAIL_REASON_KO[r.reason] ?? `등록 실패: ${r.reason}`;
+				const message = r.detail ? `${base} — ${r.detail}` : base;
 				pushToast(message, { kind: 'error' });
 				console.error('[schedule] enableNotifications failed', r);
 			}
