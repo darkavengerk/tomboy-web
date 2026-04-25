@@ -688,10 +688,29 @@
 						<strong>활성</strong> — 이 기기로 알림이 전송됩니다.
 					</p>
 					{#if notifyToken}
-						<p class="info-text small">
-							토큰: <code>{notifyToken.slice(0, 24)}…</code><br />
-							기기 ID: <code>{notifyInstallId}</code>
-						</p>
+						<p class="info-text small">기기 ID: <code>{notifyInstallId}</code></p>
+						<details class="token-details">
+							<summary>FCM 토큰 (Firebase 콘솔 직접 테스트용)</summary>
+							<textarea
+								class="token-textarea"
+								readonly
+								rows="4"
+								onclick={(e) => (e.target as HTMLTextAreaElement).select()}>{notifyToken}</textarea>
+							<button
+								class="btn btn-secondary"
+								type="button"
+								onclick={async () => {
+									try {
+										await navigator.clipboard.writeText(notifyToken ?? '');
+										pushToast('토큰을 클립보드에 복사했습니다.');
+									} catch {
+										pushToast('복사 실패 — 텍스트 영역에서 직접 선택해주세요.', { kind: 'error' });
+									}
+								}}
+							>
+								토큰 복사
+							</button>
+						</details>
 					{/if}
 					<div class="btn-row">
 						<button class="btn btn-secondary" onclick={onLocalTest} disabled={notifyBusy}>
@@ -783,6 +802,22 @@
 		flex-wrap: wrap;
 		gap: 8px;
 		margin-top: 8px;
+	}
+
+	.token-details {
+		margin-top: 12px;
+	}
+
+	.token-textarea {
+		width: 100%;
+		font-family: monospace;
+		font-size: 0.75rem;
+		padding: 6px 8px;
+		margin: 8px 0;
+		border: 1px solid var(--color-border, #ccc);
+		border-radius: 4px;
+		resize: vertical;
+		word-break: break-all;
 	}
 
 	.settings-tabs {

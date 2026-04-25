@@ -189,11 +189,10 @@ export const sendTestPush = onCall(
 					// 5 min — short TTL so a stale subscription fails fast
 					// rather than queuing for days.
 					TTL: '300'
-				},
-				notification: {
-					requireInteraction: true,
-					tag: 'test-push'
 				}
+				// Note: omitting `notification.requireInteraction` because
+				// iOS Safari rejects/ignores it on Web Push and some SDK
+				// versions silently drop the entire payload when present.
 			}
 		});
 
