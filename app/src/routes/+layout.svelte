@@ -9,6 +9,15 @@
 	import { createHistoryTracker } from '$lib/nav/history.js';
 	import { appMode, modeFromUrl } from '$lib/stores/appMode.svelte.js';
 	import { bindViewportHeight } from '$lib/viewport/viewportHeight.js';
+	import {
+		installOnlineFlushListener,
+		flushIfEnabled
+	} from '$lib/schedule/flushScheduler.js';
+	import {
+		isNotificationsEnabled,
+		subscribeForegroundMessages
+	} from '$lib/schedule/notification.js';
+	import { pushToast } from '$lib/stores/toast.js';
 
 	let { children } = $props();
 
@@ -69,6 +78,21 @@
 
 		const unbindViewport = bindViewportHeight();
 
+		// 일정 알림: 온라인 복귀 시 미발신 diff 자동 flush + 시작 시 한 번 시도.
+		installOnlineFlushListener();
+		void flushIfEnabled();
+
+		// 앱이 포그라운드일 때 도착하는 푸시는 OS가 알림을 띄우지 않으므로
+		// 여기서 토스트로 노출. 알림이 비활성이면 구독도 안 함.
+		let unsubFcm: (() => void) | undefined;
+		void (async () => {
+			if (await isNotificationsEnabled()) {
+				unsubFcm = await subscribeForegroundMessages(({ title, body }) => {
+					pushToast(`${title ?? '알림'} — ${body ?? ''}`, { kind: 'info' });
+				});
+			}
+		})();
+
 		// Alt 키 단독 입력 시 브라우저 메뉴바가 포커스되는 동작을 전역에서 억제.
 		// Alt+키 조합은 각각 별도 keydown을 받으므로 영향 없음.
 		const swallowAlt = (e: KeyboardEvent) => {
@@ -86,6 +110,7 @@
 			window.removeEventListener('keydown', swallowAlt);
 			window.removeEventListener('keyup', swallowAlt);
 			unbindViewport();
+			unsubFcm?.();
 		};
 	});
 

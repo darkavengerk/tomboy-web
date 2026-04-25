@@ -328,3 +328,44 @@ Quick map: routes in `app/src/routes/admin/`, shared cache in
 `lib/sync/{adminClient,dropboxClient}.ts`. Mobile-first / `clamp(...)` sizing
 invariant does **not** apply on these pages.
 
+## 일정 알림 (schedule-note push notifications)
+
+A user-designated note's list-item lines are parsed each save; matching
+`(date, time, label)` triples are diff'd and a Cloud Function fires Web Push
+30 min before each time-bearing event (or at 07:00 for date-only entries).
+See the **`tomboy-schedule`** skill for the full format spec, fire-time
+rules, ID model, and pipeline.
+
+Quick map:
+
+- `app/src/lib/schedule/` — parser, diff, Firestore client adapter, snapshot/
+  pending stores, notification orchestrator. Pure-function tests in
+  `app/tests/unit/schedule/`.
+- `app/src/lib/core/schedule.ts` — `getScheduleNoteGuid` / `setScheduleNote`,
+  mirrors `home.ts`.
+- `app/src/service-worker.ts` — Firebase init + `onBackgroundMessage` +
+  `notificationclick`.
+- `functions/src/index.ts` — `fireSchedules` Cloud Function (every 1 min,
+  `asia-northeast3`).
+- `firestore.rules`, `firestore.indexes.json` — security + collectionGroup
+  index for `(notified, fireAt)`.
+
+Hook: `noteManager.updateNoteFromEditor` calls `syncScheduleFromNote` after
+saving; if the saved guid is the schedule note, the diff lands in a single
+pending slot, and `flushIfEnabled()` drains it to Firestore (only when the
+user has explicitly enabled notifications).
+
+Invariants:
+
+- **Item id = `fnv1a64(date|hh:mm|label).hex16`.** Any text change mints a
+  new id, so edits are always `add+remove` pairs in Firestore. There is no
+  in-place "update" path.
+- **Firing window is 2 minutes** (`[fireAt, fireAt+2min)`). One missed
+  scheduler tick is absorbed; this also bounds the duplicate-fire risk
+  from label-only edits near fire-time.
+- **Snapshot promotion only on flush success.** Failed flushes leave both
+  pending and snapshot intact, so retry is safe (Firestore upsert/delete
+  are idempotent).
+- **One schedule note, one device** in v1, but the schema/Function already
+  multicast across `users/{uid}/devices/*`.
+

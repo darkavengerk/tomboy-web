@@ -13,6 +13,7 @@ import { ensureTitleIndexReady } from '$lib/editor/autoLink/titleProvider.js';
 import { checkTitleConflict } from '$lib/editor/titleUniqueGuard.js';
 import { pushToast } from '$lib/stores/toast.js';
 import { syncScheduleFromNote } from '$lib/schedule/syncSchedule.js';
+import { flushIfEnabled } from '$lib/schedule/flushScheduler.js';
 import type { JSONContent } from '@tiptap/core';
 
 /** Format a Date as a plain `yyyy-mm-dd HH:mm` title — the default title
@@ -118,12 +119,16 @@ export async function updateNoteFromEditor(guid: string, doc: JSONContent): Prom
 		}
 	}
 	// Schedule-note hook: if this guid is the user-designated schedule note,
-	// re-parse and stash the diff for the push-notification flusher. Wrapped
-	// in try/catch so a parser/IDB hiccup never blocks the actual note save.
+	// re-parse, stash the diff, and (when notifications are enabled) drain
+	// it to Firestore. Wrapped so a parser/IDB/network hiccup never blocks
+	// the actual note save.
 	try {
-		await syncScheduleFromNote(note, new Date());
+		const r = await syncScheduleFromNote(note, new Date());
+		if (r.isScheduleNote && (r.added > 0 || r.removed > 0)) {
+			await flushIfEnabled();
+		}
 	} catch (err) {
-		console.warn('[schedule] syncScheduleFromNote failed', err);
+		console.warn('[schedule] sync/flush failed', err);
 	}
 	return note;
 }

@@ -32,8 +32,22 @@
 	import { sync } from '$lib/sync/syncManager.js';
 	import { pushToast } from '$lib/stores/toast.js';
 	import SyncPlanView from '$lib/components/SyncPlanView.svelte';
+	import { listNotes } from '$lib/core/noteManager.js';
+	import {
+		getScheduleNoteGuid,
+		setScheduleNote,
+		clearScheduleNote
+	} from '$lib/core/schedule.js';
+	import {
+		enableNotifications,
+		disableNotifications,
+		isNotificationsEnabled,
+		getStoredFcmToken
+	} from '$lib/schedule/notification.js';
+	import { flushIfEnabled } from '$lib/schedule/flushScheduler.js';
+	import { getOrCreateInstallId } from '$lib/schedule/installId.js';
 
-	type Tab = 'sync' | 'config' | 'advanced';
+	type Tab = 'sync' | 'config' | 'notify' | 'advanced';
 	let activeTab = $state<Tab>('sync');
 
 	let authenticated = $state(false);
@@ -62,6 +76,75 @@
 	let restoringProfile = $state(false);
 	let loadingProfiles = $state(false);
 	let restoreConfirm = $state(false);
+
+	// ── 일정 알림 (notify 탭) ────────────────────────────────────────────
+	let notifyNotes = $state<{ guid: string; title: string }[]>([]);
+	let notifyScheduleGuid = $state<string | null>(null);
+	let notifyEnabled = $state(false);
+	let notifyToken = $state<string | undefined>(undefined);
+	let notifyInstallId = $state('');
+	let notifyBusy = $state(false);
+	let notifyBrowserSupported = $state(true);
+
+	async function loadNotifyState() {
+		notifyNotes = (await listNotes()).map((n) => ({ guid: n.guid, title: n.title }));
+		notifyScheduleGuid = (await getScheduleNoteGuid()) ?? null;
+		notifyEnabled = await isNotificationsEnabled();
+		notifyToken = await getStoredFcmToken();
+		notifyInstallId = await getOrCreateInstallId();
+		notifyBrowserSupported =
+			typeof window !== 'undefined' &&
+			'Notification' in window &&
+			'serviceWorker' in navigator;
+	}
+
+	async function onSelectScheduleNote(e: Event) {
+		const value = (e.target as HTMLSelectElement).value;
+		if (!value) {
+			await clearScheduleNote();
+			notifyScheduleGuid = null;
+		} else {
+			await setScheduleNote(value);
+			notifyScheduleGuid = value;
+			pushToast('일정 노트가 지정되었습니다. 다음 저장 시부터 일정이 추적됩니다.');
+		}
+	}
+
+	async function onEnableNotify() {
+		notifyBusy = true;
+		try {
+			const r = await enableNotifications();
+			if (r.ok) {
+				notifyEnabled = true;
+				notifyToken = r.token;
+				pushToast('알림이 활성화되었습니다.');
+				// 활성화되자마자 미발신 diff가 있으면 즉시 발송.
+				await flushIfEnabled();
+			} else if (r.reason === 'permission-denied') {
+				pushToast('브라우저 알림 권한이 거부되었습니다. 시스템 설정에서 허용해주세요.', {
+					kind: 'error'
+				});
+			} else if (r.reason === 'unsupported') {
+				pushToast('이 브라우저는 푸시 알림을 지원하지 않습니다. iOS는 PWA로 설치해야 합니다.', {
+					kind: 'error'
+				});
+			} else {
+				pushToast('알림 등록 실패', { kind: 'error' });
+				console.error('enableNotifications failed', r);
+			}
+		} finally {
+			notifyBusy = false;
+		}
+	}
+
+	async function onDisableNotify() {
+		notifyBusy = true;
+		await disableNotifications();
+		notifyEnabled = false;
+		notifyToken = undefined;
+		pushToast('알림이 비활성화되었습니다. (등록된 기기는 그대로 유지)');
+		notifyBusy = false;
+	}
 
 	onMount(() => {
 		notesPath = getNotesPath();
@@ -97,6 +180,8 @@
 			syncStatus = status;
 			if (message) syncMessage = message;
 		});
+
+		void loadNotifyState();
 
 		return unsub;
 	});
@@ -267,6 +352,7 @@
 	const tabs: { id: Tab; label: string }[] = [
 		{ id: 'sync', label: '동기화' },
 		{ id: 'config', label: '동기화 설정' },
+		{ id: 'notify', label: '알림' },
 		{ id: 'advanced', label: '고급' }
 	];
 </script>
@@ -515,6 +601,62 @@
 					{/if}
 				</section>
 			{/if}
+		{:else if activeTab === 'notify'}
+			<!-- ── 알림 탭 ─────────────────────────────────────────────────── -->
+			<section class="section">
+				<h2>일정 노트</h2>
+				<p class="info-text">
+					지정된 노트의 list-item 형식 일정을 자동으로 파싱해서, 시각이 적힌 일정은 30분 전,
+					날짜만 있는 일정은 당일 오전 7시에 알림을 보냅니다.
+				</p>
+				<label class="form-row">
+					<span class="form-label">대상 노트</span>
+					<select onchange={onSelectScheduleNote} value={notifyScheduleGuid ?? ''}>
+						<option value="">— 지정 안 함 —</option>
+						{#each notifyNotes as n (n.guid)}
+							<option value={n.guid}>{n.title}</option>
+						{/each}
+					</select>
+				</label>
+			</section>
+
+			<section class="section">
+				<h2>푸시 알림</h2>
+				{#if !notifyBrowserSupported}
+					<p class="info-text">
+						이 브라우저는 푸시 알림을 지원하지 않습니다. iOS에서는 PWA를 홈 화면에 설치하면
+						사용할 수 있습니다.
+					</p>
+				{:else if notifyEnabled}
+					<p class="info-text">
+						<strong>활성</strong> — 이 기기로 알림이 전송됩니다.
+					</p>
+					{#if notifyToken}
+						<p class="info-text small">
+							토큰: <code>{notifyToken.slice(0, 24)}…</code><br />
+							기기 ID: <code>{notifyInstallId}</code>
+						</p>
+					{/if}
+					<button class="btn btn-secondary" onclick={onDisableNotify} disabled={notifyBusy}>
+						{notifyBusy ? '...' : '알림 끄기'}
+					</button>
+				{:else}
+					<p class="info-text">
+						이 기기에서 알림을 받으려면 활성화가 필요합니다. 클릭하면 브라우저 권한 팝업이 뜹니다.
+					</p>
+					<button
+						class="btn btn-primary"
+						onclick={onEnableNotify}
+						disabled={notifyBusy || !notifyScheduleGuid}
+					>
+						{notifyBusy ? '...' : '알림 활성화'}
+					</button>
+					{#if !notifyScheduleGuid}
+						<p class="info-text small">먼저 위에서 일정 노트를 지정해주세요.</p>
+					{/if}
+				{/if}
+			</section>
+
 		{:else if activeTab === 'advanced'}
 			<!-- ── 고급 탭 ─────────────────────────────────────────────────── -->
 			{#if authenticated}
