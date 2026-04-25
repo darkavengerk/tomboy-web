@@ -8,15 +8,55 @@
  * the very first async step, before touching Firebase at all.
  */
 import { getToken, onMessage } from 'firebase/messaging';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getSetting, setSetting, deleteSetting } from '$lib/storage/appSettings.js';
 import {
 	ensureSignedIn,
+	getFirebaseApp,
 	getFirebaseMessaging,
 	getVapidKey
 } from './firebase.js';
 import { firestoreScheduleClient } from './firestoreScheduleClient.js';
 import { getOrCreateInstallId } from './installId.js';
 import { getScheduleNoteGuid } from '$lib/core/schedule.js';
+
+export interface TestPushResult {
+	tokenCount: number;
+	successCount: number;
+	failureCount: number;
+	errors: string[];
+}
+
+/**
+ * Calls the `sendTestPush` Cloud Function — immediate FCM round-trip for
+ * every registered device of the current user. Used by the "테스트 푸시"
+ * button to verify push delivery independently of the scheduler.
+ */
+export async function sendTestPush(): Promise<TestPushResult> {
+	await ensureSignedIn();
+	const functions = getFunctions(getFirebaseApp(), 'asia-northeast3');
+	const fn = httpsCallable<unknown, TestPushResult>(functions, 'sendTestPush');
+	const { data } = await fn({});
+	return data;
+}
+
+/** Locally trigger an SW notification — pure SW + iOS rendering test, no
+ * FCM/APNs round-trip. Useful to isolate "is the SW able to show
+ * notifications at all?" from "is FCM delivering messages?". */
+export async function showLocalTestNotification(): Promise<void> {
+	if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+		throw new Error('서비스워커 미지원');
+	}
+	if (Notification.permission !== 'granted') {
+		throw new Error(`알림 권한이 ${Notification.permission} 상태입니다.`);
+	}
+	const reg = await navigator.serviceWorker.ready;
+	await reg.showNotification('로컬 테스트', {
+		body: '서비스워커가 직접 띄운 알림입니다. (FCM 우회)',
+		icon: '/icons/icon.svg',
+		tag: 'local-test'
+	});
+}
 
 const NOTIF_ENABLED_KEY = 'schedule.notificationsEnabled';
 const FCM_TOKEN_KEY = 'schedule.fcmToken';

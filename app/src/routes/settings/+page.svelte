@@ -44,6 +44,8 @@
 		isNotificationsEnabled,
 		getStoredFcmToken,
 		getNotificationDiagnostics,
+		sendTestPush,
+		showLocalTestNotification,
 		type EnableFailReason
 	} from '$lib/schedule/notification.js';
 	import { flushIfEnabled } from '$lib/schedule/flushScheduler.js';
@@ -165,6 +167,38 @@
 		notifyToken = undefined;
 		pushToast('알림이 비활성화되었습니다. (등록된 기기는 그대로 유지)');
 		notifyBusy = false;
+	}
+
+	async function onLocalTest() {
+		try {
+			await showLocalTestNotification();
+			pushToast('로컬 알림 호출 완료 — 잠금화면/알림 센터를 확인하세요.');
+		} catch (err) {
+			pushToast(`로컬 알림 실패: ${String(err)}`, { kind: 'error' });
+		}
+	}
+
+	async function onFcmTest() {
+		notifyBusy = true;
+		try {
+			const r = await sendTestPush();
+			if (r.failureCount === 0 && r.successCount > 0) {
+				pushToast(
+					`FCM 전송 성공 (${r.successCount}/${r.tokenCount}) — 알림 도착 여부 확인하세요.`
+				);
+			} else {
+				pushToast(
+					`FCM 일부/전부 실패: 성공 ${r.successCount} / 실패 ${r.failureCount}. ${r.errors.join('; ')}`,
+					{ kind: 'error' }
+				);
+			}
+			console.info('[schedule] sendTestPush result', r);
+		} catch (err) {
+			pushToast(`FCM 호출 실패: ${String(err)}`, { kind: 'error' });
+			console.error('[schedule] sendTestPush threw', err);
+		} finally {
+			notifyBusy = false;
+		}
 	}
 
 	onMount(() => {
@@ -659,9 +693,21 @@
 							기기 ID: <code>{notifyInstallId}</code>
 						</p>
 					{/if}
-					<button class="btn btn-secondary" onclick={onDisableNotify} disabled={notifyBusy}>
-						{notifyBusy ? '...' : '알림 끄기'}
-					</button>
+					<div class="btn-row">
+						<button class="btn btn-secondary" onclick={onLocalTest} disabled={notifyBusy}>
+							로컬 테스트 알림
+						</button>
+						<button class="btn btn-secondary" onclick={onFcmTest} disabled={notifyBusy}>
+							{notifyBusy ? '...' : 'FCM 테스트 푸시'}
+						</button>
+						<button class="btn btn-secondary" onclick={onDisableNotify} disabled={notifyBusy}>
+							알림 끄기
+						</button>
+					</div>
+					<p class="info-text small">
+						로컬 테스트는 서비스워커가 직접 띄우는 알림(FCM 우회). FCM 테스트는 서버를 거쳐
+						실제 푸시 채널로 옴.
+					</p>
 				{:else}
 					<p class="info-text">
 						이 기기에서 알림을 받으려면 활성화가 필요합니다. 클릭하면 브라우저 권한 팝업이 뜹니다.
@@ -730,6 +776,13 @@
 		display: flex;
 		flex-direction: column;
 		height: 100%;
+	}
+
+	.btn-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin-top: 8px;
 	}
 
 	.settings-tabs {

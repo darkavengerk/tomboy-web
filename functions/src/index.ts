@@ -11,6 +11,7 @@ import { initializeApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { getMessaging } from 'firebase-admin/messaging';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { logger } from 'firebase-functions';
 
 initializeApp();
@@ -139,5 +140,58 @@ export const fireSchedules = onSchedule(
 		}
 
 		await Promise.all(writes);
+	}
+);
+
+/**
+ * `sendTestPush` — callable that sends a single test FCM message to every
+ * device registered for the calling user. Used by the settings-page "테스트
+ * 푸시" button to verify the full FCM round-trip independently of the
+ * scheduler. Returns counts so the UI can surface delivery status.
+ */
+export const sendTestPush = onCall(
+	{ region: REGION, timeoutSeconds: 30, memory: '256MiB' },
+	async (request) => {
+		const uid = request.auth?.uid;
+		if (!uid) throw new HttpsError('unauthenticated', '로그인이 필요합니다.');
+
+		const db = getFirestore();
+		const messaging = getMessaging();
+
+		const devices = await db.collection(`users/${uid}/devices`).get();
+		const tokens: string[] = [];
+		devices.forEach((d) => {
+			const t = (d.data() as { token?: string }).token;
+			if (t) tokens.push(t);
+		});
+		if (tokens.length === 0) {
+			throw new HttpsError('failed-precondition', '등록된 기기가 없습니다.');
+		}
+
+		const result = await messaging.sendEachForMulticast({
+			tokens,
+			notification: {
+				title: '테스트 알림',
+				body: 'FCM 푸시가 정상적으로 도착했습니다.'
+			},
+			data: { test: 'true' }
+		});
+
+		const errorMessages = result.responses
+			.map((r) => r.error?.message)
+			.filter(Boolean);
+		logger.info('sendTestPush result', {
+			uid,
+			tokenCount: tokens.length,
+			success: result.successCount,
+			failure: result.failureCount,
+			errors: errorMessages
+		});
+		return {
+			tokenCount: tokens.length,
+			successCount: result.successCount,
+			failureCount: result.failureCount,
+			errors: errorMessages
+		};
 	}
 );
