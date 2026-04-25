@@ -12,6 +12,7 @@ import { invalidateCache } from '$lib/stores/noteListCache.js';
 import { ensureTitleIndexReady } from '$lib/editor/autoLink/titleProvider.js';
 import { checkTitleConflict } from '$lib/editor/titleUniqueGuard.js';
 import { pushToast } from '$lib/stores/toast.js';
+import { syncScheduleFromNote } from '$lib/schedule/syncSchedule.js';
 import type { JSONContent } from '@tiptap/core';
 
 /** Format a Date as a plain `yyyy-mm-dd HH:mm` title — the default title
@@ -115,6 +116,14 @@ export async function updateNoteFromEditor(guid: string, doc: JSONContent): Prom
 			invalidateCache();
 			await emitNoteReload(affected);
 		}
+	}
+	// Schedule-note hook: if this guid is the user-designated schedule note,
+	// re-parse and stash the diff for the push-notification flusher. Wrapped
+	// in try/catch so a parser/IDB hiccup never blocks the actual note save.
+	try {
+		await syncScheduleFromNote(note, new Date());
+	} catch (err) {
+		console.warn('[schedule] syncScheduleFromNote failed', err);
 	}
 	return note;
 }
