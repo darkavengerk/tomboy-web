@@ -138,6 +138,7 @@ export type EnableFailReason =
 	| 'sw-registration-failed'
 	| 'sw-timeout'
 	| 'dropbox-not-connected'
+	| 'dropbox-scope-missing'
 	| 'auth-failed'
 	| 'token-failed'
 	| 'firestore-failed';
@@ -278,6 +279,13 @@ export async function enableNotifications(
 	} catch (err) {
 		if (err instanceof DropboxNotConnectedError) {
 			return { ok: false, reason: 'dropbox-not-connected' };
+		}
+		// Specific case for the one-time scope migration: server returned
+		// `failed-precondition: dropbox-scope-missing`. Surface a dedicated
+		// reason so the UI can guide the user to re-authenticate Dropbox.
+		const errStr = String(err);
+		if (errStr.includes('dropbox-scope-missing') || errStr.includes('missing_scope')) {
+			return { ok: false, reason: 'dropbox-scope-missing', detail: errStr };
 		}
 		console.error('[schedule] ensureSignedIn failed', err);
 		return { ok: false, reason: 'auth-failed', detail: String(err) };

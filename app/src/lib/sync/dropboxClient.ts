@@ -133,7 +133,11 @@ export async function startAuth(redirectUri: string): Promise<void> {
 			// Image upload needs to create a public shared link and,
 			// in the rare case a link already exists, list the existing one.
 			'sharing.write',
-			'sharing.read'
+			'sharing.read',
+			// account_info.read is required by `users/get_current_account`
+			// which the schedule push pipeline calls server-side to derive
+			// a stable Firebase Auth uid from the user's Dropbox account_id.
+			'account_info.read'
 		],
 		undefined,
 		true // usePKCE

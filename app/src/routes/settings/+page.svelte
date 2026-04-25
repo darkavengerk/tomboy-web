@@ -112,6 +112,8 @@
 			'서비스워커 활성화 대기 중 타임아웃. PWA를 강제 종료한 뒤 다시 열어주세요.',
 		'dropbox-not-connected':
 			'Dropbox 연결이 필요합니다. 동기화 탭에서 먼저 Dropbox에 연결해주세요. (같은 Dropbox 계정을 쓰는 모든 기기가 같은 일정을 공유합니다.)',
+		'dropbox-scope-missing':
+			'Dropbox 권한 갱신이 필요합니다. 동기화 탭에서 "연결 끊기" 후 다시 "Dropbox 연결" 을 눌러주세요. (account_info.read 권한이 추가됐습니다.)',
 		'auth-failed':
 			'Firebase 로그인 실패. Dropbox 연결 상태와 네트워크를 확인하고 다시 시도해주세요.',
 		'token-failed': 'FCM 토큰 발급에 실패했습니다. 콘솔 로그를 확인하세요.',

@@ -201,6 +201,15 @@ export const dropboxAuthExchange = onCall(
 					status: resp.status,
 					body: bodyText.slice(0, 500)
 				});
+				// Detect the missing-scope case so the client can guide the
+				// user to re-authenticate Dropbox (one-time migration when
+				// account_info.read scope was added to the OAuth request).
+				if (bodyText.includes('missing_scope')) {
+					throw new HttpsError(
+						'failed-precondition',
+						'dropbox-scope-missing'
+					);
+				}
 				throw new HttpsError(
 					'unauthenticated',
 					`Dropbox token invalid (HTTP ${resp.status}): ${bodyText.slice(0, 200)}`
