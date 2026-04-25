@@ -7,7 +7,7 @@
  * permission prompt as untrusted and silently drops it. So we call it as
  * the very first async step, before touching Firebase at all.
  */
-import { getToken, onMessage } from 'firebase/messaging';
+import { deleteToken, getToken, onMessage } from 'firebase/messaging';
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getSetting, setSetting, deleteSetting } from '$lib/storage/appSettings.js';
 import {
@@ -234,6 +234,26 @@ export async function enableNotifications(): Promise<EnableResult> {
 		return { ok: false, reason: 'token-failed', detail: String(err) };
 	}
 
+	// Sanity check: getToken may return a cached token from a prior session
+	// without actually re-creating the underlying pushManager subscription.
+	// On iOS PWA this is the most common cause of "token registered, FCM
+	// returns success, but no notification ever arrives" — there is simply
+	// no live push subscription for FCM to deliver to.
+	const subscription = await registration.pushManager.getSubscription();
+	if (!subscription) {
+		console.error(
+			'[schedule] getToken returned but pushManager has no subscription — push will silently fail'
+		);
+		return {
+			ok: false,
+			reason: 'token-failed',
+			detail: 'Push subscription was not created. Try the "Force 재구독" button.'
+		};
+	}
+	console.info('[schedule] push subscription confirmed', {
+		endpointHost: new URL(subscription.endpoint).host
+	});
+
 	try {
 		const installId = await getOrCreateInstallId();
 		const scheduleNoteGuid = await getScheduleNoteGuid();
@@ -255,6 +275,44 @@ export async function enableNotifications(): Promise<EnableResult> {
 export async function disableNotifications(): Promise<void> {
 	await deleteSetting(NOTIF_ENABLED_KEY);
 	await deleteSetting(FCM_TOKEN_KEY);
+}
+
+/**
+ * Aggressively reset push state and re-enable. Use when the device shows
+ * `hasSubscription: false` despite a stored token — the FCM SDK has a
+ * cached token that no longer corresponds to a live push subscription.
+ *
+ * Steps:
+ *   1. Unsubscribe any existing pushManager subscription (frees iOS state).
+ *   2. Tell FCM SDK to delete its cached token (so the next getToken call
+ *      actually re-subscribes).
+ *   3. Clear our local "enabled" flag and stored token.
+ *   4. Call enableNotifications() to start fresh.
+ */
+export async function forceResubscribe(): Promise<EnableResult> {
+	if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+		try {
+			const reg = await navigator.serviceWorker.ready;
+			const existing = await reg.pushManager.getSubscription();
+			if (existing) {
+				await existing.unsubscribe();
+				console.info('[schedule] unsubscribed existing push subscription');
+			}
+		} catch (err) {
+			console.warn('[schedule] unsubscribe step failed (continuing)', err);
+		}
+	}
+	try {
+		const messaging = await getFirebaseMessaging();
+		if (messaging) {
+			await deleteToken(messaging);
+			console.info('[schedule] FCM token cache cleared');
+		}
+	} catch (err) {
+		console.warn('[schedule] deleteToken failed (continuing)', err);
+	}
+	await disableNotifications();
+	return enableNotifications();
 }
 
 /**

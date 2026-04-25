@@ -41,6 +41,7 @@
 	import {
 		enableNotifications,
 		disableNotifications,
+		forceResubscribe,
 		isNotificationsEnabled,
 		getStoredFcmToken,
 		getNotificationDiagnostics,
@@ -179,6 +180,29 @@
 			pushToast('로컬 알림 호출 완료 — 잠금화면/알림 센터를 확인하세요.');
 		} catch (err) {
 			pushToast(`로컬 알림 실패: ${String(err)}`, { kind: 'error' });
+		}
+	}
+
+	async function onForceResubscribe() {
+		notifyBusy = true;
+		try {
+			const r = await forceResubscribe();
+			if (r.ok) {
+				notifyEnabled = true;
+				notifyToken = r.token;
+				pushToast('재구독 완료. 이제 FCM 테스트 푸시를 다시 시도해보세요.');
+				await loadNotifyState();
+			} else {
+				const msg = FAIL_REASON_KO[r.reason] ?? `재구독 실패: ${r.reason}`;
+				pushToast(msg, { kind: 'error' });
+				console.error('[schedule] forceResubscribe failed', r);
+			}
+		} catch (err) {
+			console.error('[schedule] forceResubscribe threw', err);
+			pushToast(`재구독 중 오류: ${String(err)}`, { kind: 'error' });
+		} finally {
+			notifyBusy = false;
+			await loadNotifyState();
 		}
 	}
 
@@ -753,13 +777,17 @@
 						<button class="btn btn-secondary" onclick={onFcmTest} disabled={notifyBusy}>
 							{notifyBusy ? '...' : 'FCM 테스트 푸시'}
 						</button>
+						<button class="btn btn-secondary" onclick={onForceResubscribe} disabled={notifyBusy}>
+							{notifyBusy ? '...' : 'Force 재구독'}
+						</button>
 						<button class="btn btn-secondary" onclick={onDisableNotify} disabled={notifyBusy}>
 							알림 끄기
 						</button>
 					</div>
 					<p class="info-text small">
 						로컬 테스트는 서비스워커가 직접 띄우는 알림(FCM 우회). FCM 테스트는 서버를 거쳐
-						실제 푸시 채널로 옴.
+						실제 푸시 채널로 옴. <strong>Force 재구독</strong>은 기존 push subscription 을 완전히
+						끊고 새로 만듦 — Push 구독 진단에서 "구독 존재: false"인 경우 이걸로 해결.
 					</p>
 				{:else}
 					<p class="info-text">
