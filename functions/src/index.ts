@@ -285,14 +285,29 @@ export const sendTestPush = onCall(
 		const db = getFirestore();
 		const messaging = getMessaging();
 
-		const devices = await db.collection(`users/${uid}/devices`).get();
+		let devicesSnap;
+		try {
+			devicesSnap = await db.collection(`users/${uid}/devices`).get();
+		} catch (err) {
+			logger.error('sendTestPush: Firestore query failed', {
+				uid,
+				err: String(err)
+			});
+			throw new HttpsError(
+				'internal',
+				`Firestore query failed: ${String(err)}`
+			);
+		}
 		const tokens: string[] = [];
-		devices.forEach((d) => {
+		devicesSnap.forEach((d) => {
 			const t = (d.data() as { token?: string }).token;
 			if (t) tokens.push(t);
 		});
 		if (tokens.length === 0) {
-			throw new HttpsError('failed-precondition', '등록된 기기가 없습니다.');
+			throw new HttpsError(
+				'failed-precondition',
+				'등록된 기기가 없습니다.'
+			);
 		}
 
 		const result = await messaging.sendEachForMulticast({
