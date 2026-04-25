@@ -115,12 +115,13 @@ self.addEventListener('notificationclick', (event) => {
 // ── Cache lifecycle (existing) ───────────────────────────────────────────
 
 self.addEventListener('install', (event) => {
-	event.waitUntil(
-		caches
-			.open(CACHE_NAME)
-			.then((cache) => cache.addAll(ASSETS))
-			.then(() => self.skipWaiting())
-	);
+	// Don't `cache.addAll(ASSETS)` here — it pre-fetches every build asset
+	// in parallel, and a single 404/timeout (or the network being slow on
+	// a freshly-installed PWA) rejects the whole install and prevents SW
+	// activation. That left `serviceWorker.ready` hanging during the
+	// notification-enable flow. Activation should be fast and unconditional;
+	// real caching is done lazily by the fetch handler below.
+	event.waitUntil(self.skipWaiting());
 });
 
 self.addEventListener('activate', (event) => {
