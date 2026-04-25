@@ -132,8 +132,41 @@ export type EnableFailReason =
 	| 'permission-default'
 	| 'fcm-unsupported'
 	| 'sw-registration-failed'
+	| 'sw-timeout'
+	| 'auth-failed'
 	| 'token-failed'
 	| 'firestore-failed';
+
+/**
+ * Wraps a promise with a deadline so a hanging step (e.g. iOS Safari
+ * sometimes never resolves `pushManager.subscribe()` if its push state
+ * gets into a weird half-installed mode) surfaces as a clear error
+ * instead of a silently-disabled button.
+ */
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+	return new Promise((resolve, reject) => {
+		const timer = setTimeout(() => {
+			reject(new Error(`timeout(${ms}ms): ${label}`));
+		}, ms);
+		p.then(
+			(v) => {
+				clearTimeout(timer);
+				resolve(v);
+			},
+			(e) => {
+				clearTimeout(timer);
+				reject(e);
+			}
+		);
+	});
+}
+
+/**
+ * Step-progress callback. The settings UI plumbs this through so the
+ * user sees which await is currently in flight (helps diagnose iOS hangs
+ * without devtools).
+ */
+export type EnableProgress = (step: string) => void;
 
 export async function isNotificationsEnabled(): Promise<boolean> {
 	return (await getSetting<boolean>(NOTIF_ENABLED_KEY)) === true;
@@ -180,7 +213,15 @@ export function getNotificationDiagnostics(): NotificationDiagnostics {
 	};
 }
 
-export async function enableNotifications(): Promise<EnableResult> {
+export async function enableNotifications(
+	onProgress?: EnableProgress
+): Promise<EnableResult> {
+	const step = (label: string) => {
+		console.info('[schedule] step:', label);
+		onProgress?.(label);
+	};
+
+	step('진단');
 	const diag = getNotificationDiagnostics();
 	console.info('[schedule] enableNotifications: diagnostics', diag);
 
@@ -188,8 +229,6 @@ export async function enableNotifications(): Promise<EnableResult> {
 	if (!diag.hasNotificationApi) return { ok: false, reason: 'no-notification-api' };
 	if (!diag.hasServiceWorker) return { ok: false, reason: 'no-service-worker' };
 
-	// iOS PWA gates Web Push behind home-screen install. Calling
-	// requestPermission outside standalone mode silently fails on iOS Safari.
 	const isLikelyIOS = /iPad|iPhone|iPod/.test(diag.userAgent);
 	if (isLikelyIOS && !diag.standalone) {
 		return { ok: false, reason: 'not-pwa-installed' };
@@ -198,6 +237,7 @@ export async function enableNotifications(): Promise<EnableResult> {
 	// CRITICAL: gesture-first. Call requestPermission as the very first
 	// async step. Any prior `await` would break iOS Safari's user-activation
 	// trust and the prompt would never appear.
+	step('권한 요청');
 	let permission: NotificationPermission;
 	try {
 		permission = await Notification.requestPermission();
@@ -209,24 +249,42 @@ export async function enableNotifications(): Promise<EnableResult> {
 	if (permission === 'denied') return { ok: false, reason: 'permission-denied' };
 	if (permission !== 'granted') return { ok: false, reason: 'permission-default' };
 
+	step('SW 준비');
 	let registration: ServiceWorkerRegistration;
 	try {
-		registration = await navigator.serviceWorker.ready;
+		registration = await withTimeout(
+			navigator.serviceWorker.ready,
+			15_000,
+			'serviceWorker.ready'
+		);
 	} catch (err) {
-		console.error('[schedule] sw not ready', err);
-		return { ok: false, reason: 'sw-registration-failed', detail: String(err) };
+		console.error('[schedule] SW not ready', err);
+		return { ok: false, reason: 'sw-timeout', detail: String(err) };
 	}
 
+	step('FCM 초기화');
 	const messaging = await getFirebaseMessaging();
 	if (!messaging) return { ok: false, reason: 'fcm-unsupported' };
 
+	step('익명 로그인');
+	try {
+		await withTimeout(ensureSignedIn(), 15_000, 'ensureSignedIn');
+	} catch (err) {
+		console.error('[schedule] ensureSignedIn failed', err);
+		return { ok: false, reason: 'auth-failed', detail: String(err) };
+	}
+
+	step('FCM 토큰 발급');
 	let token: string;
 	try {
-		await ensureSignedIn();
-		const t = await getToken(messaging, {
-			vapidKey: getVapidKey(),
-			serviceWorkerRegistration: registration
-		});
+		const t = await withTimeout(
+			getToken(messaging, {
+				vapidKey: getVapidKey(),
+				serviceWorkerRegistration: registration
+			}),
+			30_000,
+			'getToken'
+		);
 		if (!t) return { ok: false, reason: 'token-failed' };
 		token = t;
 	} catch (err) {
@@ -234,37 +292,39 @@ export async function enableNotifications(): Promise<EnableResult> {
 		return { ok: false, reason: 'token-failed', detail: String(err) };
 	}
 
-	// Sanity check: getToken may return a cached token from a prior session
-	// without actually re-creating the underlying pushManager subscription.
-	// On iOS PWA this is the most common cause of "token registered, FCM
-	// returns success, but no notification ever arrives" — there is simply
-	// no live push subscription for FCM to deliver to.
+	step('구독 검증');
 	const subscription = await registration.pushManager.getSubscription();
 	if (!subscription) {
 		console.error(
-			'[schedule] getToken returned but pushManager has no subscription — push will silently fail'
+			'[schedule] getToken returned but pushManager has no subscription'
 		);
 		return {
 			ok: false,
 			reason: 'token-failed',
-			detail: 'Push subscription was not created. Try the "Force 재구독" button.'
+			detail: 'Push subscription was not created. Try Force 재구독.'
 		};
 	}
 	console.info('[schedule] push subscription confirmed', {
 		endpointHost: new URL(subscription.endpoint).host
 	});
 
+	step('Firestore 디바이스 등록');
 	try {
 		const installId = await getOrCreateInstallId();
 		const scheduleNoteGuid = await getScheduleNoteGuid();
-		await firestoreScheduleClient.registerDevice({
-			installId,
-			token,
-			platform: navigator.userAgent,
-			scheduleNoteGuid
-		});
+		await withTimeout(
+			firestoreScheduleClient.registerDevice({
+				installId,
+				token,
+				platform: navigator.userAgent,
+				scheduleNoteGuid
+			}),
+			15_000,
+			'registerDevice'
+		);
 		await setSetting(FCM_TOKEN_KEY, token);
 		await setSetting(NOTIF_ENABLED_KEY, true);
+		step('완료');
 		return { ok: true, token };
 	} catch (err) {
 		console.error('[schedule] registerDevice failed', err);
@@ -289,7 +349,9 @@ export async function disableNotifications(): Promise<void> {
  *   3. Clear our local "enabled" flag and stored token.
  *   4. Call enableNotifications() to start fresh.
  */
-export async function forceResubscribe(): Promise<EnableResult> {
+export async function forceResubscribe(
+	onProgress?: EnableProgress
+): Promise<EnableResult> {
 	if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
 		try {
 			const reg = await navigator.serviceWorker.ready;
@@ -312,7 +374,7 @@ export async function forceResubscribe(): Promise<EnableResult> {
 		console.warn('[schedule] deleteToken failed (continuing)', err);
 	}
 	await disableNotifications();
-	return enableNotifications();
+	return enableNotifications(onProgress);
 }
 
 /**

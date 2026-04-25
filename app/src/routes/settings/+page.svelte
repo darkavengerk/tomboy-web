@@ -94,6 +94,7 @@
 	let notifyBrowserSupported = $state(true);
 	let notifyDiagText = $state('');
 	let pushSubDiag = $state<PushSubscriptionDiagnostics | null>(null);
+	let notifyStep = $state('');
 
 	const FAIL_REASON_KO: Record<EnableFailReason, string> = {
 		'no-window': '브라우저 환경이 아닙니다.',
@@ -107,6 +108,10 @@
 		'fcm-unsupported': '이 브라우저는 FCM Web Push를 지원하지 않습니다.',
 		'sw-registration-failed':
 			'서비스워커가 준비되지 않았습니다. 페이지를 새로고침한 뒤 다시 시도해주세요.',
+		'sw-timeout':
+			'서비스워커 활성화 대기 중 타임아웃. PWA를 강제 종료한 뒤 다시 열어주세요.',
+		'auth-failed':
+			'Firebase 익명 로그인 실패. 네트워크 상태를 확인하고 다시 시도해주세요.',
 		'token-failed': 'FCM 토큰 발급에 실패했습니다. 콘솔 로그를 확인하세요.',
 		'firestore-failed': 'Firestore에 토큰을 저장하지 못했습니다. 콘솔 로그를 확인하세요.'
 	};
@@ -141,8 +146,9 @@
 
 	async function onEnableNotify() {
 		notifyBusy = true;
+		notifyStep = '시작';
 		try {
-			const r = await enableNotifications();
+			const r = await enableNotifications((s) => (notifyStep = s));
 			if (r.ok) {
 				notifyEnabled = true;
 				notifyToken = r.token;
@@ -185,8 +191,9 @@
 
 	async function onForceResubscribe() {
 		notifyBusy = true;
+		notifyStep = '시작';
 		try {
-			const r = await forceResubscribe();
+			const r = await forceResubscribe((s) => (notifyStep = s));
 			if (r.ok) {
 				notifyEnabled = true;
 				notifyToken = r.token;
@@ -798,10 +805,13 @@
 						onclick={onEnableNotify}
 						disabled={notifyBusy || !notifyScheduleGuid}
 					>
-						{notifyBusy ? '...' : '알림 활성화'}
+						{notifyBusy ? `진행 중: ${notifyStep}` : '알림 활성화'}
 					</button>
 					{#if !notifyScheduleGuid}
 						<p class="info-text small">먼저 위에서 일정 노트를 지정해주세요.</p>
+					{/if}
+					{#if notifyBusy && notifyStep}
+						<p class="info-text small">현재 단계: <code>{notifyStep}</code></p>
 					{/if}
 				{/if}
 			</section>
