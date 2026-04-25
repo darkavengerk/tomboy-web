@@ -49,6 +49,55 @@ export async function sendTestPush(): Promise<TestPushResult> {
 	return data;
 }
 
+/** Inspect the underlying Web Push subscription. Lets us confirm the
+ * subscription is registered with the correct push service (e.g.
+ * `web.push.apple.com` for iOS Safari) and uses the same VAPID public key
+ * we expect. Mismatches here are the usual cause of "FCM accepts but device
+ * never receives" on iOS PWA. */
+export interface PushSubscriptionDiagnostics {
+	hasSubscription: boolean;
+	endpoint?: string;
+	endpointHost?: string;
+	expirationTime?: number | null;
+	applicationServerKeyPrefix?: string;
+	configuredVapidKeyPrefix: string;
+}
+
+export async function getPushSubscriptionDiagnostics(): Promise<PushSubscriptionDiagnostics> {
+	const configuredVapidKeyPrefix = (getVapidKey() ?? '').slice(0, 12);
+	if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+		return { hasSubscription: false, configuredVapidKeyPrefix };
+	}
+	const reg = await navigator.serviceWorker.ready;
+	const sub = await reg.pushManager.getSubscription();
+	if (!sub) return { hasSubscription: false, configuredVapidKeyPrefix };
+	const ask = sub.options?.applicationServerKey;
+	let applicationServerKeyPrefix: string | undefined;
+	if (ask) {
+		// applicationServerKey is an ArrayBuffer; render the first bytes as
+		// base64url for a coarse comparison with the VAPID key string.
+		const bytes = new Uint8Array(ask);
+		applicationServerKeyPrefix = btoa(String.fromCharCode(...bytes.slice(0, 9)))
+			.replace(/\+/g, '-')
+			.replace(/\//g, '_')
+			.replace(/=+$/, '');
+	}
+	let endpointHost: string | undefined;
+	try {
+		endpointHost = new URL(sub.endpoint).host;
+	} catch {
+		/* ignore */
+	}
+	return {
+		hasSubscription: true,
+		endpoint: sub.endpoint,
+		endpointHost,
+		expirationTime: sub.expirationTime,
+		applicationServerKeyPrefix,
+		configuredVapidKeyPrefix
+	};
+}
+
 /** Locally trigger an SW notification — pure SW + iOS rendering test, no
  * FCM/APNs round-trip. Useful to isolate "is the SW able to show
  * notifications at all?" from "is FCM delivering messages?". */

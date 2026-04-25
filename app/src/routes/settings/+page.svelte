@@ -44,9 +44,11 @@
 		isNotificationsEnabled,
 		getStoredFcmToken,
 		getNotificationDiagnostics,
+		getPushSubscriptionDiagnostics,
 		sendTestPush,
 		showLocalTestNotification,
-		type EnableFailReason
+		type EnableFailReason,
+		type PushSubscriptionDiagnostics
 	} from '$lib/schedule/notification.js';
 	import { flushIfEnabled } from '$lib/schedule/flushScheduler.js';
 	import { getOrCreateInstallId } from '$lib/schedule/installId.js';
@@ -90,6 +92,7 @@
 	let notifyBusy = $state(false);
 	let notifyBrowserSupported = $state(true);
 	let notifyDiagText = $state('');
+	let pushSubDiag = $state<PushSubscriptionDiagnostics | null>(null);
 
 	const FAIL_REASON_KO: Record<EnableFailReason, string> = {
 		'no-window': '브라우저 환경이 아닙니다.',
@@ -120,6 +123,7 @@
 		// Always-visible diagnostics so the user sees what's blocking activation.
 		const d = getNotificationDiagnostics();
 		notifyDiagText = `permission=${d.permission} standalone=${d.standalone} sw=${d.hasServiceWorker} api=${d.hasNotificationApi}`;
+		pushSubDiag = await getPushSubscriptionDiagnostics().catch(() => null);
 	}
 
 	async function onSelectScheduleNote(e: Event) {
@@ -678,6 +682,36 @@
 			<section class="section">
 				<h2>푸시 알림</h2>
 				<p class="info-text small">상태: <code>{notifyDiagText}</code></p>
+				{#if pushSubDiag}
+					<details class="diag-details">
+						<summary>Push 구독 진단</summary>
+						<ul class="diag-list">
+							<li>구독 존재: <code>{pushSubDiag.hasSubscription}</code></li>
+							{#if pushSubDiag.endpointHost}
+								<li>
+									Push 서비스: <code>{pushSubDiag.endpointHost}</code>
+									{#if pushSubDiag.endpointHost.includes('apple')}
+										✓ APNs
+									{:else}
+										⚠ APNs 아님 (iOS인데 다른 호스트면 PWA 미설치 가능성)
+									{/if}
+								</li>
+							{/if}
+							<li>설정된 VAPID 키 prefix: <code>{pushSubDiag.configuredVapidKeyPrefix}</code></li>
+							{#if pushSubDiag.applicationServerKeyPrefix}
+								<li>구독의 app server key prefix: <code>{pushSubDiag.applicationServerKeyPrefix}</code></li>
+							{/if}
+							<li>
+								설정 키와 일치 여부:
+								{#if pushSubDiag.applicationServerKeyPrefix && pushSubDiag.configuredVapidKeyPrefix.startsWith(pushSubDiag.applicationServerKeyPrefix)}
+									<strong>일치</strong>
+								{:else}
+									<strong style="color: red">불일치 — VAPID 키 mismatch</strong>
+								{/if}
+							</li>
+						</ul>
+					</details>
+				{/if}
 				{#if !notifyBrowserSupported}
 					<p class="info-text">
 						이 브라우저는 푸시 알림을 지원하지 않습니다. iOS에서는 PWA를 홈 화면에 설치하면
@@ -817,6 +851,21 @@
 		border: 1px solid var(--color-border, #ccc);
 		border-radius: 4px;
 		resize: vertical;
+		word-break: break-all;
+	}
+
+	.diag-details {
+		margin-top: 8px;
+	}
+
+	.diag-list {
+		font-size: 0.8rem;
+		padding-left: 16px;
+		margin: 4px 0;
+	}
+
+	.diag-list li {
+		margin: 2px 0;
 		word-break: break-all;
 	}
 
