@@ -333,8 +333,11 @@ invariant does **not** apply on these pages.
 A user-designated note's list-item lines are parsed each save; matching
 `(date, time, label)` triples are diff'd and a Cloud Function fires Web Push
 30 min before each time-bearing event (or at 07:00 for date-only entries).
-See the **`tomboy-schedule`** skill for the full format spec, fire-time
-rules, ID model, and pipeline.
+**All devices that share a Dropbox account share the same Firestore
+namespace**, so any device with notifications enabled can fire alarms for
+every device. See the **`tomboy-schedule`** skill for the full format
+spec, fire-time rules, ID model, auth bridge, PWA install requirements,
+and operational gotchas.
 
 Quick map:
 
@@ -343,20 +346,32 @@ Quick map:
   `app/tests/unit/schedule/`.
 - `app/src/lib/core/schedule.ts` — `getScheduleNoteGuid` / `setScheduleNote`,
   mirrors `home.ts`.
-- `app/src/service-worker.ts` — Firebase init + `onBackgroundMessage` +
-  `notificationclick`.
-- `functions/src/index.ts` — `fireSchedules` Cloud Function (every 1 min,
-  `asia-northeast3`).
-- `firestore.rules`, `firestore.indexes.json` — security + collectionGroup
-  index for `(notified, fireAt)`.
+- `app/src/service-worker.ts` — Firebase init via `$env/static/public` +
+  iOS-branched `onBackgroundMessage` + `notificationclick`. Uses PNG icons.
+- `functions/src/index.ts` — `fireSchedules` (1-min schedule),
+  `sendTestPush` (callable), `dropboxAuthExchange` (callable, mints
+  Firebase custom token from a Dropbox access token).
+- `firestore.rules`, `firestore.indexes.json` — uid-scoped security +
+  collectionGroup index for `(notified, fireAt)`.
+- `app/src/app.html`, `app/static/manifest.webmanifest`,
+  `app/static/icons/icon-{180,192,512}.png` — PWA install metadata
+  required for iOS to recognise the home-screen entry as a real PWA
+  with persistent push subscription.
 
 Hook: `noteManager.updateNoteFromEditor` calls `syncScheduleFromNote` after
 saving; if the saved guid is the schedule note, the diff lands in a single
 pending slot, and `flushIfEnabled()` drains it to Firestore (only when the
-user has explicitly enabled notifications).
+user has explicitly enabled notifications). Notes received via Dropbox sync
+do NOT trigger this hook — Firestore is updated only by direct editor saves
+on a notifications-enabled device. (Multi-device coverage relies on every
+participating device having notifications enabled, which lands them under
+the same `dbx-{account_id}` Firebase uid.)
 
 Invariants:
 
+- **Auth uid = `dbx-{sanitized Dropbox account_id}`** via custom token
+  minted by the `dropboxAuthExchange` Cloud Function. NOT anonymous.
+  Every device on the same Dropbox account = same uid = shared data.
 - **Item id = `fnv1a64(date|hh:mm|label).hex16`.** Any text change mints a
   new id, so edits are always `add+remove` pairs in Firestore. There is no
   in-place "update" path.
@@ -366,6 +381,12 @@ Invariants:
 - **Snapshot promotion only on flush success.** Failed flushes leave both
   pending and snapshot intact, so retry is safe (Firestore upsert/delete
   are idempotent).
-- **One schedule note, one device** in v1, but the schema/Function already
-  multicast across `users/{uid}/devices/*`.
+- **iOS auto-displays FCM `notification` payloads.** SW
+  `onBackgroundMessage` is iOS-branched: log-only on iOS, explicit
+  `showNotification` on desktop. Calling it on iOS too produces
+  duplicates (Apple's push pipeline renders the payload itself).
+- **PWA install metadata is load-bearing.** `apple-touch-icon` MUST be
+  PNG. SVG-only manifest icons make iOS treat the home-screen entry as
+  a Safari bookmark, breaking push subscription persistence across
+  PWA restarts.
 
