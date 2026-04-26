@@ -1,6 +1,6 @@
 ---
 name: tomboy-schedule
-description: Use when working on schedule-note push notifications. Covers the parser format (Korean date/time list-item lines under a `N월` section), fire-time rules (30 min before time-bearing items / 07:00 for date-only), the line-hash diff/upload pipeline, the Cloud Function firing window, FCM device registration, Dropbox-bridged Firebase Custom Auth, and PWA-install requirements. Files in `app/src/lib/schedule/`, `app/src/service-worker.ts`, `functions/src/`, plus PWA infra (manifest + apple-touch-icon).
+description: Use when working on schedule-note push notifications, the auto-weekday day-prefix helper, or the schedule-note "보내기" Ctrl-gate. Covers the parser format (Korean date/time list-item lines under a `N월` section), fire-time rules (30 min before time-bearing items / 07:00 for date-only), the line-hash diff/upload pipeline, the Cloud Function firing window, FCM device registration, Dropbox-bridged Firebase Custom Auth, PWA-install requirements, the auto-weekday plugin, and the focus-scoped send-list-item gate. Files in `app/src/lib/schedule/`, `app/src/lib/editor/autoWeekday/`, `app/src/lib/editor/sendListItem/`, `app/src/service-worker.ts`, `functions/src/`, plus PWA infra (manifest + apple-touch-icon).
 ---
 
 # 일정 알림 (schedule-note push notifications)
@@ -227,6 +227,10 @@ uses Admin SDK and bypasses rules.
 | `lib/schedule/flushScheduler.ts` | gated wrapper (only flushes when notifications enabled) + `online` listener |
 | `lib/schedule/notification.ts` | enableNotifications, forceResubscribe, sendTestPush, showLocalTestNotification, getNotificationDiagnostics, getPushSubscriptionDiagnostics |
 | `lib/schedule/installId.ts` | per-install UUID in `appSettings` |
+| `lib/schedule/autoWeekday.ts` | pure transforms: `getWeekdayChar`, `formatDayWithWeekday`, `transformDayPrefixLine`, `transformMultilineDayPrefix` |
+| `lib/editor/autoWeekday/autoWeekdayPlugin.ts` | ProseMirror plugin: `appendTransaction` runs the pure transform on doc-change AND on `setMeta(autoWeekdayPluginKey, { rescan: true })` |
+| `lib/editor/sendListItem/transferListItem.ts` | hardcoded `SEND_SOURCE_GUID` + `SEND_TARGET_GUID`; live-editor / IDB write path |
+| `lib/editor/sendListItem/sendActiveGate.ts` | pure `shouldSendListBeActive` — gates the "보내기" button by source-guid + Ctrl + window focus |
 | `lib/core/schedule.ts` | `getScheduleNoteGuid` / `setScheduleNote` (mirrors `home.ts`) |
 | `lib/sync/dropboxClient.ts` | `getAccessToken()` exposed for the auth bridge |
 | `routes/settings/+page.svelte` (notify tab) | Pick schedule note, enable/disable, push subscription diag, test buttons (local / FCM / Force 재구독), token copy |
@@ -272,12 +276,108 @@ uses Admin SDK and bypasses rules.
 - **Year boundary** — December content composed in November is not
   processed (only the current month section is). Acceptable per spec.
 
+## Auto-weekday day-prefix helper
+
+When the user types in the schedule note (and ONLY there), the editor
+auto-fills `(요일)` after a leading day number, and corrects malformed
+existing weekday parens. This is purely an editor-side ergonomic
+helper; it never touches Firestore directly. The note's normal
+save → `syncScheduleFromNote` path still applies after the rewrite.
+
+### Trigger paths
+
+1. **Single-line typing** — user types `12<space>` on a fresh list-item
+   line under a `N월` section → the appendTransaction rewrite produces
+   `12(<요일>) `. Caret stays after the inserted parens.
+2. **Multi-line paste / drop** — pasting multiple list items at once
+   produces a single docChanged tr with all the new items; the plugin
+   walks every list item under any month section and rewrites them in
+   one coalesced tr.
+3. **Scan-on-open** — when the editor's `isScheduleNote` prop flips
+   `false → true` (because `getScheduleNoteGuid()` resolves async after
+   the initial `setContent`), the editor dispatches
+   `tr.setMeta(autoWeekdayPluginKey, { rescan: true })`. The plugin
+   honours that meta even on non-docChanged transactions, so any
+   pre-existing wrong content gets corrected on first paint. Same
+   meta is fired after every subsequent `setContent` while
+   `autoWeekdayEnabled === true` (covers note switching in
+   `NoteWindow`, where the editor instance is reused across notes).
+
+### Pure transform contract (`lib/schedule/autoWeekday.ts`)
+
+`transformDayPrefixLine(input, year, month) → { changed, output }`:
+
+- Auto-fills `D ` → `D(요일) ` when the bare number is followed by
+  whitespace and the next char is not `(`.
+- Corrects ANY content inside the parens — wrong char (`12(월)` when
+  Apr 12 is actually 일), garbage (`12(?)`, `12(Wed)`, `12(수목)`),
+  empty (`12()`), extra whitespace (`12( 수 )`).
+- Collapses gap before parens: `12 (수) abc` → `12(<correct>) abc`.
+- Leading zero: `04` → day 4. Three+ digits (`100`) don't match.
+- Invalid days for the month (`31` in February) are LEFT UNCHANGED —
+  not the helper's job to flag them.
+- Idempotent. `transformMultilineDayPrefix` preserves `\n` / `\r\n`.
+
+### Plugin contract
+
+- `enabled: () => boolean` — closure-bound flag; the editor flips it
+  via `$effect` on the `isScheduleNote` prop.
+- `now: () => Date` — injected for test determinism.
+- `appendTransaction` returns `null` when no rewrites needed (avoids
+  infinite loops; the transform is idempotent over its own output).
+- All rewrites coalesced into ONE transaction; positions handled in
+  reverse order so prior replacements don't shift later ones.
+- `autoWeekdayPluginKey` is exported so callers can `setMeta` for the
+  rescan path.
+
+### Wiring (per route)
+
+| Route | Where `isScheduleNote` is computed |
+|-------|------------------------------------|
+| `/desktop/...` (NoteWindow) | `onMount` resolves `getScheduleNoteGuid()` and compares with `guid`; passes `isScheduleNote` to `<TomboyEditor>` |
+| `/note/[id]` (mobile) | Same resolution inside the note-loading async block; passes `isScheduleNote` |
+
+## "보내기" Ctrl gate
+
+Independent of auto-weekday but co-resident in this skill because both
+features hang off the same logical "schedule note". Each list item in
+the source note (`SEND_SOURCE_GUID = 'd5ef5481-…'`) shows a floating
+"보내기" button that transfers the item to `SEND_TARGET_GUID`. The
+gate now requires:
+
+```
+guid === SEND_SOURCE_GUID
+&& Ctrl held / mobile Ctrl-lock on
+&& this window is the focused note window  (desktop only)
+```
+
+The pure helper `shouldSendListBeActive({ guid, sourceGuid, ctrlHeld,
+focusedGuid, ignoreFocus })` lives at
+`lib/editor/sendListItem/sendActiveGate.ts`. Mobile passes
+`ignoreFocus: true` because the route is single-note-per-page —
+there's no focus ambiguity. The mobile route also calls
+`installModKeyListeners()` in `onMount` so the physical Ctrl key (on
+desktop browsers viewing the mobile route) updates the shared
+`modKeys` state; the same listeners power the Toolbar's Ctrl-lock
+toggle.
+
 ## Testing
 
-`app/tests/unit/schedule/` — 90+ unit tests as of finalization.
+`app/tests/unit/schedule/` + `app/tests/unit/editor/` — 200+ unit
+tests as of finalization (pre-existing schedule tests + 70+ new
+auto-weekday / send-active gate tests).
 
 - Pure parser tests (`parseKoreanTime`, `parseDayLine`,
   `extractCurrentMonth`) — synchronous, no IDB.
+- Pure auto-weekday tests (`autoWeekday.test.ts`) — `Date` math only,
+  no editor. Cover bare-fill, correction, idempotency, leap year,
+  CRLF, leading zero, English/multi-char garbage, gap before parens.
+- Plugin tests (`autoWeekdayPlugin.test.ts`) build a TipTap editor
+  with the plugin attached and assert doc-text deltas. Cover paste,
+  rescan-meta, year-boundary, mark dropping, nested listItems.
+- Send-gate tests (`sendActiveGate.test.ts`) cover the pure boolean
+  gate — desktop with focus, desktop without focus, mobile
+  (`ignoreFocus`), missing source guid, Ctrl off.
 - IDB-backed tests use `fake-indexeddb/auto` + `_resetDBForTest()` in
   `beforeEach`, mirroring `home.test.ts`.
 - The flush pipeline tests inject a fake `ScheduleRemoteClient` rather
