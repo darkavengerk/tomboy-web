@@ -266,6 +266,108 @@ describe('transformDayPrefixLine', () => {
 	});
 });
 
+describe('transformDayPrefixLine — improvement B edge cases', () => {
+	describe('B1: whitespace inside parens', () => {
+		it('"12( 수 ) 등산" → corrected to actual weekday', () => {
+			const result = transformDayPrefixLine('12( 수 ) 등산', Y, M);
+			expect(result.changed).toBe(true);
+			expect(result.output).toBe(`12(${APR12_WD}) 등산`);
+		});
+
+		it('"12(  일  ) abc" with extra spaces inside — corrected', () => {
+			const result = transformDayPrefixLine('12(  일  ) abc', Y, M);
+			// Apr 12 2026 is '일' — inner trims to '일' which equals correct weekday
+			// so changed = false only if inner === wd after trim
+			const wd = APR12_WD;
+			if (wd === '일') {
+				expect(result.changed).toBe(false);
+				expect(result.output).toBe('12(  일  ) abc');
+			} else {
+				expect(result.changed).toBe(true);
+				expect(result.output).toBe(`12(${wd}) abc`);
+			}
+		});
+	});
+
+	describe('B2: English weekday text in parens', () => {
+		it('"12(Wed) 등산" → corrected to actual weekday (Apr 12 2026)', () => {
+			const result = transformDayPrefixLine('12(Wed) 등산', Y, M);
+			expect(result.changed).toBe(true);
+			expect(result.output).toBe(`12(${APR12_WD}) 등산`);
+		});
+
+		it('"12(Sun) 등산" → corrected (Sun is English, replace with Korean)', () => {
+			const result = transformDayPrefixLine('12(Sun) 등산', Y, M);
+			expect(result.changed).toBe(true);
+			expect(result.output).toBe(`12(${APR12_WD}) 등산`);
+		});
+
+		it('"12(mon) 등산" → corrected (lowercase English)', () => {
+			const result = transformDayPrefixLine('12(mon) 등산', Y, M);
+			expect(result.changed).toBe(true);
+			expect(result.output).toBe(`12(${APR12_WD}) 등산`);
+		});
+	});
+
+	describe('B3: multiple chars in parens', () => {
+		it('"12(수목) 등산" → corrected (treat as garbage)', () => {
+			const result = transformDayPrefixLine('12(수목) 등산', Y, M);
+			expect(result.changed).toBe(true);
+			expect(result.output).toBe(`12(${APR12_WD}) 등산`);
+		});
+
+		it('"12(월화수) 등산" → corrected', () => {
+			const result = transformDayPrefixLine('12(월화수) 등산', Y, M);
+			expect(result.changed).toBe(true);
+			expect(result.output).toBe(`12(${APR12_WD}) 등산`);
+		});
+	});
+
+	describe('B4: whitespace before parens (space between number and open paren)', () => {
+		it('"12 (수) 등산" — space before parens → collapses to "12(<correct>) 등산"', () => {
+			const result = transformDayPrefixLine('12 (수) 등산', Y, M);
+			expect(result.changed).toBe(true);
+			expect(result.output).toBe(`12(${APR12_WD}) 등산`);
+		});
+
+		it('"12 (일) abc" where 일 is correct weekday — still corrects format (collapses gap)', () => {
+			// Even if the weekday char inside is correct, the gap means formatting is wrong.
+			const result = transformDayPrefixLine(`12 (${APR12_WD}) abc`, Y, M);
+			expect(result.changed).toBe(true);
+			expect(result.output).toBe(`12(${APR12_WD}) abc`);
+		});
+	});
+
+	describe('B5: leading zero in day number', () => {
+		it('"04 등산" → treated as day 4, fills weekday', () => {
+			const wd = expectedWeekday(Y, M, 4);
+			const result = transformDayPrefixLine('04 등산', Y, M);
+			expect(result.changed).toBe(true);
+			expect(result.output).toBe(`4(${wd}) 등산`);
+		});
+
+		it('"01 회의" → day 1', () => {
+			const wd = expectedWeekday(Y, M, 1);
+			const result = transformDayPrefixLine('01 회의', Y, M);
+			expect(result.changed).toBe(true);
+			expect(result.output).toBe(`1(${wd}) 회의`);
+		});
+
+		it('"09(수) abc" with leading zero + parens → corrected', () => {
+			const wd = expectedWeekday(Y, M, 9);
+			const result = transformDayPrefixLine('09(수) abc', Y, M);
+			const correct = wd === '수';
+			if (!correct) {
+				expect(result.changed).toBe(true);
+				expect(result.output).toBe(`9(${wd}) abc`);
+			} else {
+				// Still normalises the leading zero even if weekday was right
+				expect(result.output).toBe(`9(${wd}) abc`);
+			}
+		});
+	});
+});
+
 describe('transformMultilineDayPrefix', () => {
 	it('fills weekdays on each line', () => {
 		const input = ['12 산', '13 강', '14 '].join('\n');

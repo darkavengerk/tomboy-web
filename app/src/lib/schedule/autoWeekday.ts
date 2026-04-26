@@ -19,8 +19,10 @@ export function formatDayWithWeekday(year: number, month: number, day: number): 
 
 // Bare-number-then-space: optional leading ws, digits, one+ spaces, no opening paren next.
 const BARE_SPACE_RE = /^(\s*)(\d{1,2})(\s+)(?!\()(.*)$/;
-// Number-then-parens: optional leading ws, digits, parens group, rest.
+// Number-then-parens (no gap): optional leading ws, digits, parens group, rest.
 const WITH_PARENS_RE = /^(\s*)(\d{1,2})(\([^)]*\))(.*)$/;
+// Number-then-space-then-parens: gap between digit and open paren.
+const SPACE_BEFORE_PARENS_RE = /^(\s*)(\d{1,2})(\s+)(\([^)]*\))(.*)$/;
 
 export function transformDayPrefixLine(
 	input: string,
@@ -28,6 +30,18 @@ export function transformDayPrefixLine(
 	month: number
 ): { changed: boolean; output: string } {
 	const unchanged = { changed: false, output: input };
+
+	// Space-between-number-and-parens: "12 (수) 등산" → collapse gap + correct weekday.
+	// Must be checked before BARE_SPACE_RE so the lookahead logic in BARE_SPACE_RE
+	// (which rejects input where a paren follows the spaces) doesn't swallow this case.
+	const spaceParensMatch = SPACE_BEFORE_PARENS_RE.exec(input);
+	if (spaceParensMatch) {
+		const [, leadingWs, dayStr, , parensGroup, rest] = spaceParensMatch;
+		const day = parseInt(dayStr, 10);
+		if (!isValidDate(year, month, day)) return unchanged;
+		const wd = getWeekdayChar(year, month, day);
+		return { changed: true, output: `${leadingWs}${day}(${wd})${rest}` };
+	}
 
 	// Try bare-number + space first (no parens after the number).
 	const bareMatch = BARE_SPACE_RE.exec(input);
@@ -39,17 +53,16 @@ export function transformDayPrefixLine(
 		return { changed: true, output: `${leadingWs}${day}(${wd})${spaces}${rest}` };
 	}
 
-	// Try number + parens.
+	// Try number + parens (no gap between digit and open paren).
 	const parensMatch = WITH_PARENS_RE.exec(input);
 	if (parensMatch) {
 		const [, leadingWs, dayStr, parensGroup, rest] = parensMatch;
 		const day = parseInt(dayStr, 10);
 		if (!isValidDate(year, month, day)) return unchanged;
 		const wd = getWeekdayChar(year, month, day);
-		// parensGroup is like "(수)" — extract inner content.
-		const inner = parensGroup.slice(1, -1); // strip ( and )
-		if (inner === wd) return unchanged; // already correct
-		// Also handle case where inner is valid but wrong weekday, or garbage.
+		// Strip outer parens and trim inner whitespace for comparison.
+		const inner = parensGroup.slice(1, -1).trim();
+		if (inner === wd) return unchanged; // already correct (ignoring surrounding spaces)
 		return { changed: true, output: `${leadingWs}${day}(${wd})${rest}` };
 	}
 

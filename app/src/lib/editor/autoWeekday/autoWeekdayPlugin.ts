@@ -1,6 +1,8 @@
-import { Plugin } from '@tiptap/pm/state';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { Node as PMNode, Schema } from '@tiptap/pm/model';
 import { transformDayPrefixLine } from '$lib/schedule/autoWeekday.js';
+
+export const autoWeekdayPluginKey = new PluginKey<undefined>('autoWeekday');
 
 export interface AutoWeekdayPluginOptions {
 	now: () => Date;
@@ -119,57 +121,57 @@ function collectListItemRewrites(
 	});
 }
 
+function collectDocRewrites(
+	doc: PMNode,
+	year: number,
+	rewrites: Array<{ from: number; to: number; newText: string }>
+): void {
+	doc.forEach((topNode, topOffset, topIndex) => {
+		if (topNode.type.name !== 'bulletList' && topNode.type.name !== 'orderedList') return;
+
+		const listAbsPos = topOffset;
+
+		topNode.forEach((liNode, liOffset, liIndex) => {
+			if (liNode.type.name !== 'listItem') return;
+
+			const liText = nodeFirstParagraphText(liNode);
+			const selfMonth = MONTH_HEADER_RE.exec(liText);
+
+			let month: number | null;
+			if (selfMonth) {
+				month = null;
+			} else {
+				month = findMonthForListItem(topNode, topIndex, liIndex, doc);
+			}
+
+			const liAbsPos = listAbsPos + 1 + liOffset;
+			const effectiveMonth = selfMonth ? parseInt(selfMonth[1], 10) : month;
+
+			if (effectiveMonth === null && !selfMonth) return;
+
+			if (selfMonth) {
+				collectListItemRewrites(liNode, liAbsPos, null, year, rewrites);
+			} else {
+				collectListItemRewrites(liNode, liAbsPos, month, year, rewrites);
+			}
+		});
+	});
+}
+
 export function createAutoWeekdayPlugin(opts: AutoWeekdayPluginOptions): Plugin {
 	return new Plugin({
+		key: autoWeekdayPluginKey,
 		appendTransaction(trs, _oldState, newState) {
 			if (!opts.enabled()) return null;
-			if (!trs.some((tr) => tr.docChanged)) return null;
+
+			const rescan = trs.some((tr) => tr.getMeta(autoWeekdayPluginKey)?.rescan === true);
+			if (!rescan && !trs.some((tr) => tr.docChanged)) return null;
 
 			const { doc, schema } = newState;
 			const year = opts.now().getFullYear();
 
 			const rewrites: Array<{ from: number; to: number; newText: string }> = [];
-
-			doc.forEach((topNode, topOffset, topIndex) => {
-				if (topNode.type.name !== 'bulletList' && topNode.type.name !== 'orderedList') return;
-
-				const listAbsPos = topOffset;
-
-				topNode.forEach((liNode, liOffset, liIndex) => {
-					if (liNode.type.name !== 'listItem') return;
-
-					// For each top-level listItem, determine its month context.
-					// This can come from: a sibling listItem earlier in the same list,
-					// a doc-level paragraph/block before the list, or the listItem
-					// itself being a month header (in which case its nested items use it).
-					const liText = nodeFirstParagraphText(liNode);
-					const selfMonth = MONTH_HEADER_RE.exec(liText);
-
-					let month: number | null;
-					if (selfMonth) {
-						// This listItem IS a month header; don't transform it, but
-						// pass its month to nested children.
-						month = null;
-					} else {
-						month = findMonthForListItem(topNode, topIndex, liIndex, doc);
-					}
-
-					const liAbsPos = listAbsPos + 1 + liOffset;
-					// Pass month (may be null if the listItem is itself a month header).
-					// collectListItemRewrites handles the null case by only recursing.
-					const effectiveMonth = selfMonth ? parseInt(selfMonth[1], 10) : month;
-
-					// If there's no applicable month at all, skip.
-					if (effectiveMonth === null && !selfMonth) return;
-
-					if (selfMonth) {
-						// Process nested children with this listItem's own month.
-						collectListItemRewrites(liNode, liAbsPos, null, year, rewrites);
-					} else {
-						collectListItemRewrites(liNode, liAbsPos, month, year, rewrites);
-					}
-				});
-			});
+			collectDocRewrites(doc, year, rewrites);
 
 			if (rewrites.length === 0) return null;
 

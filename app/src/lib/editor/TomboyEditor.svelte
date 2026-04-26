@@ -30,7 +30,7 @@
 		sendListItemPluginKey,
 	} from "./sendListItem/sendListItemPlugin.js";
 	import { transferListItem } from "./sendListItem/transferListItem.js";
-	import { createAutoWeekdayPlugin } from "./autoWeekday/autoWeekdayPlugin.js";
+	import { createAutoWeekdayPlugin, autoWeekdayPluginKey } from "./autoWeekday/autoWeekdayPlugin.js";
 	import { extractImageFile } from "./imagePreview/extractImageFile.js";
 	import { uploadImageToDropbox } from "$lib/sync/imageUpload.js";
 	import { pushToast, dismissToast } from "$lib/stores/toast.js";
@@ -609,6 +609,11 @@
 				skip: true,
 			}),
 		);
+		if (autoWeekdayEnabled) {
+			ed.view.dispatch(
+				ed.state.tr.setMeta(autoWeekdayPluginKey, { rescan: true }),
+			);
+		}
 		// Any pending scan timer was for the previous note; drop it.
 		cancelAutoLinkScan();
 	});
@@ -691,11 +696,21 @@
 		ed.view.dispatch(ed.state.tr);
 	});
 
-	// Keep the closure-bound autoWeekday flag in sync with the prop. The plugin
-	// reads enabled() on every appendTransaction call, so updating the let is
-	// all that's needed — no transaction dispatch required.
+	// Keep the closure-bound autoWeekday flag in sync with the prop. When the
+	// flag flips from false→true (async resolution of getScheduleNoteGuid after
+	// setContent has already fired), dispatch a rescan so pre-existing malformed
+	// entries are fixed immediately without requiring a user keystroke.
 	$effect(() => {
+		const wasEnabled = autoWeekdayEnabled;
 		autoWeekdayEnabled = isScheduleNote;
+		if (!wasEnabled && isScheduleNote) {
+			const ed = editor;
+			if (ed && !ed.isDestroyed) {
+				ed.view.dispatch(
+					ed.state.tr.setMeta(autoWeekdayPluginKey, { rescan: true }),
+				);
+			}
+		}
 	});
 
 	export function getEditor(): Editor | null {

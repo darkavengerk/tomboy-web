@@ -3,7 +3,7 @@ import { Editor, Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { TomboyListItem } from '$lib/editor/extensions/TomboyListItem.js';
 import { TomboyParagraph } from '$lib/editor/extensions/TomboyParagraph.js';
-import { createAutoWeekdayPlugin } from '$lib/editor/autoWeekday/autoWeekdayPlugin.js';
+import { createAutoWeekdayPlugin, autoWeekdayPluginKey } from '$lib/editor/autoWeekday/autoWeekdayPlugin.js';
 import type { JSONContent } from '@tiptap/core';
 
 // Apr 12 2026 is a Sunday → '일'
@@ -473,5 +473,63 @@ describe('autoWeekdayPlugin — multi-line paste', () => {
 		expect(texts[0]).toBe(`1(${wd1}) 가`);
 		expect(texts[1]).toBe(`15(${wd2}) 나`);
 		expect(texts[2]).toBe(`30(${wd3}) 다`);
+	});
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 10. Rescan meta — scan-on-open without docChanged
+// ─────────────────────────────────────────────────────────────────────────────
+describe('autoWeekdayPlugin — rescan meta', () => {
+	it('rescan meta on a non-docChanged transaction triggers rewrite when enabled', () => {
+		const wd = expectedWeekday(YEAR, MONTH, 12);
+		const wrongWd = wd === '일' ? '월' : '일';
+		const editor = makeEditor(
+			doc(
+				p('4월'),
+				ul(li(`12(${wrongWd}) 등산`))
+			)
+		);
+
+		// Dispatch a meta-only transaction (no doc change).
+		editor.view.dispatch(
+			editor.state.tr.setMeta(autoWeekdayPluginKey, { rescan: true })
+		);
+
+		const texts = collectListTexts(editor.getJSON());
+		expect(texts[0]).toBe(`12(${wd}) 등산`);
+	});
+
+	it('rescan meta does nothing when disabled', () => {
+		const wrongWd = '월';
+		const editor = makeEditorDisabled(
+			doc(
+				p('4월'),
+				ul(li(`12(${wrongWd}) 등산`))
+			)
+		);
+
+		editor.view.dispatch(
+			editor.state.tr.setMeta(autoWeekdayPluginKey, { rescan: true })
+		);
+
+		const texts = collectListTexts(editor.getJSON());
+		expect(texts[0]).toBe(`12(${wrongWd}) 등산`);
+	});
+
+	it('rescan meta on doc with no list items returns null tr (no change, no loop)', () => {
+		const editor = makeEditor(
+			doc(p('just a paragraph'))
+		);
+
+		const stateBefore = editor.state;
+		editor.view.dispatch(
+			editor.state.tr.setMeta(autoWeekdayPluginKey, { rescan: true })
+		);
+
+		// No rewrites happened — doc content should be unchanged.
+		const texts = collectListTexts(editor.getJSON());
+		expect(texts).toHaveLength(0);
+		// Doc size should be the same.
+		expect(editor.state.doc.content.size).toBe(stateBefore.doc.content.size);
 	});
 });
