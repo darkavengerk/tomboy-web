@@ -61,8 +61,14 @@
 		/** When true, decorates the 이전/다음 paragraphs with circular arrow
 		 *  buttons and hides the original text via CSS. */
 		isSlipNote?: boolean;
-		/** Called when the user clicks one of the slip-note arrows. */
-		onslipnavigate?: (target: string, direction: 'prev' | 'next') => void;
+		/** Called when the user clicks one of the slip-note arrows. `replace`
+		 *  is true when Ctrl/Cmd was held — the caller should swap the
+		 *  source window for the target instead of cascading. */
+		onslipnavigate?: (
+			target: string,
+			direction: 'prev' | 'next',
+			replace: boolean
+		) => void;
 		/** Called when the user clicks the slip-note "insert after" (+) button. */
 		oninsertafter?: () => void;
 		/** Called when the user clicks the slip-note "cut" (✂) button. */
@@ -81,8 +87,14 @@
 		prevDateTitle?: string | null;
 		/** Title of the nearest later date-titled note (for the date arrow row). */
 		nextDateTitle?: string | null;
-		/** Called when the user clicks one of the date-navigation arrows. */
-		ondatenavigate?: (target: string, direction: 'prev' | 'next') => void;
+		/** Called when the user clicks one of the date-navigation arrows.
+		 *  `replace` is true when Ctrl/Cmd was held — the caller should
+		 *  swap the source window for the target instead of cascading. */
+		ondatenavigate?: (
+			target: string,
+			direction: 'prev' | 'next',
+			replace: boolean
+		) => void;
 	}
 
 	let {

@@ -581,6 +581,70 @@ export const desktopSession = {
 	},
 
 	/**
+	 * Replace the source window with the target note: open the target at
+	 * the source's top-left and close the source. Used by Ctrl+click on a
+	 * slip-note / date-note arrow (and Ctrl+,/Ctrl+. shortcuts) so the user
+	 * can step through a chain without piling up windows. The new note keeps
+	 * its own preferred size (cached or default); the alignment is top-left
+	 * with the source.
+	 */
+	async openReplacing(fromGuid: string, targetTitle: string): Promise<void> {
+		const trimmed = targetTitle.trim();
+		if (!trimmed) return;
+		const linked = await findNoteByTitle(trimmed);
+		if (!linked || linked.deleted) {
+			pushToast(`'${trimmed}' 노트를 찾을 수 없습니다.`, { kind: 'error' });
+			return;
+		}
+		if (linked.guid === fromGuid) return;
+		const ws = current();
+		const source = ws.windows.find((w) => w.guid === fromGuid);
+		if (!source) {
+			this.openWindow(linked.guid);
+			return;
+		}
+		const x = Math.max(0, Math.round(source.x));
+		const y = Math.max(0, Math.round(source.y));
+
+		const existing = ws.windows.find((w) => w.guid === linked.guid);
+		if (existing) {
+			existing.x = x;
+			existing.y = y;
+			cacheGeometry(ws, existing);
+			bumpZ(ws, existing);
+		} else {
+			const cached = ws.geometryByGuid[linked.guid];
+			const width = cached?.width ?? DEFAULT_WIDTH;
+			const height = cached?.height ?? DEFAULT_HEIGHT;
+			const win: DesktopWindowState = {
+				guid: linked.guid,
+				kind: 'note',
+				x,
+				y,
+				width,
+				height,
+				z: ++ws.nextZ
+			};
+			ws.windows.push(win);
+			cacheGeometry(ws, win);
+		}
+		focusRequest = { guid: linked.guid, token: ++focusRequestCounter };
+		recentOpens.record(linked.guid);
+
+		// Close the source window after the target is placed. Flush its
+		// pending edits first (mirrors closeWindow) so we never lose typed
+		// content. Geometry is already cached on the source's previous
+		// move/resize, so reopening it later restores its pose.
+		await runFlushHook(fromGuid);
+		const idx = ws.windows.findIndex((w) => w.guid === fromGuid);
+		if (idx >= 0) {
+			cacheGeometry(ws, ws.windows[idx]);
+			ws.windows.splice(idx, 1);
+		}
+		schedulePersist();
+	},
+
+	/**
 	 * Open (or move) the note with the given title so it sits directly to the
 	 * right of the source window — used by the slip-note "다음" arrow so a
 	 * chain of notes cascades left-to-right without overlap. Clamps to the
