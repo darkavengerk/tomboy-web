@@ -1048,6 +1048,28 @@
 	   movement can't trigger a completion. */
 	.tomboy-editor :global(li.tomboy-todo-item) {
 		position: relative;
+		border-radius: 3px;
+		transition: background-color 0.1s;
+	}
+	/* Wide notes make it easy to lose track of which row a button belongs
+	   to. While a row is hover-targeted (Ctrl held + cursor over the li),
+	   tint the row so the move target is unambiguous. The tint scope
+	   matches the move scope: depth-1 hover tints the whole category
+	   (including its nested children), depth-2 hover tints just that row. */
+	.tomboy-editor.tomboy-todo-ctrl-hold
+		:global(li.tomboy-todo-item:has(> .tomboy-todo-complete-btn):hover) {
+		background-color: rgba(46, 125, 50, 0.1);
+	}
+	.tomboy-editor.tomboy-todo-ctrl-hold
+		:global(li.tomboy-todo-item:has(> .tomboy-todo-revert-btn):hover) {
+		background-color: rgba(117, 117, 117, 0.15);
+	}
+	/* When a depth-2 child is hovered, the parent depth-1's tint and
+	   button are both suppressed (button rule below). Override the parent
+	   highlight here for parity. */
+	.tomboy-editor.tomboy-todo-ctrl-hold
+		:global(li.tomboy-todo-item:has(li.tomboy-todo-item:hover)) {
+		background-color: transparent;
 	}
 	.tomboy-editor :global(.tomboy-todo-complete-btn),
 	.tomboy-editor :global(.tomboy-todo-revert-btn) {
