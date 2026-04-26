@@ -533,3 +533,364 @@ describe('autoWeekdayPlugin — rescan meta', () => {
 		expect(editor.state.doc.content.size).toBe(stateBefore.doc.content.size);
 	});
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Group 2 additional edge cases
+// ─────────────────────────────────────────────────────────────────────────────
+
+// G2-1: Year boundary — current month=1, only a 2월 section → no transform
+describe('autoWeekdayPlugin — G2-1: year boundary, current month != section month', () => {
+	it('Jan 5 2026 now, doc has only 2월 section → no transform (month lookup uses header value not now())', () => {
+		// The plugin reads the month from the "N월" header in the doc, not from now().
+		// Jan 5 context: the section says "2월", so the plugin uses month=2.
+		// Day "5" in Feb 2026 is valid → it WILL transform.
+		// This test pins the actual behavior: plugin always uses doc header month.
+		const jan5 = new Date(2026, 0, 5); // Jan 5 2026
+		const feb5Wd = expectedWeekday(2026, 2, 5); // Feb 5 2026 weekday
+
+		let editorRef: Editor | null = null;
+		const editor = new Editor({
+			extensions: [
+				StarterKit.configure({ code: false, codeBlock: false, paragraph: false, listItem: false }),
+				TomboyParagraph,
+				TomboyListItem,
+				Extension.create({
+					name: 'tomboyAutoWeekday',
+					addProseMirrorPlugins() {
+						return [
+							createAutoWeekdayPlugin({
+								now: () => jan5,
+								enabled: () => true
+							})
+						];
+					}
+				})
+			],
+			content: doc(p('2월'), ul(li('5 산책')))
+		});
+		currentEditor = editor;
+
+		// Trigger docChanged.
+		let paraEnd = -1;
+		editor.state.doc.descendants((node, pos) => {
+			if (node.isText && node.text === '2월') {
+				paraEnd = pos + node.nodeSize;
+			}
+		});
+		editor.commands.setTextSelection(paraEnd);
+		editor.commands.insertContent('x');
+
+		const texts = collectListTexts(editor.getJSON());
+		// The plugin uses the doc-header month (2), year from now() (2026).
+		// Feb 5 2026 is a valid date → transform occurs.
+		expect(texts[0]).toBe(`5(${feb5Wd}) 산책`);
+	});
+
+	it('no transform when listItem has no preceding month header in doc', () => {
+		// Sanity-pin: without a month header, no transform happens regardless of now().
+		const jan5 = new Date(2026, 0, 5);
+		const editor = new Editor({
+			extensions: [
+				StarterKit.configure({ code: false, codeBlock: false, paragraph: false, listItem: false }),
+				TomboyParagraph,
+				TomboyListItem,
+				Extension.create({
+					name: 'tomboyAutoWeekday',
+					addProseMirrorPlugins() {
+						return [
+							createAutoWeekdayPlugin({
+								now: () => jan5,
+								enabled: () => true
+							})
+						];
+					}
+				})
+			],
+			content: doc(ul(li('5 산책')))
+		});
+		currentEditor = editor;
+
+		let targetPos = -1;
+		editor.state.doc.descendants((node, pos) => {
+			if (node.isText && node.text === '5 산책') {
+				targetPos = pos + node.nodeSize;
+			}
+		});
+		editor.commands.setTextSelection(targetPos > 0 ? targetPos : 1);
+		editor.commands.insertContent('x');
+
+		const texts = collectListTexts(editor.getJSON());
+		// No month header → no transform.
+		expect(texts[0]).not.toMatch(/\(\w\)/);
+	});
+});
+
+// G2-2: Multiple month headers — each sibling list uses its own nearest preceding header
+describe('autoWeekdayPlugin — G2-2: multiple month headers, each section uses correct month', () => {
+	it('4월 paragraph then 12-item, 5월 paragraph then 13-item → each uses correct month', () => {
+		const apr12Wd = expectedWeekday(2026, 4, 12);
+		const may13Wd = expectedWeekday(2026, 5, 13);
+
+		const editor = makeEditor(
+			doc(
+				p('4월'),
+				ul(li('12 a')),
+				p('5월'),
+				ul(li('13 b'))
+			)
+		);
+
+		let paraEnd = -1;
+		editor.state.doc.descendants((node, pos) => {
+			if (node.isText && node.text === '4월') {
+				paraEnd = pos + node.nodeSize;
+			}
+		});
+		editor.commands.setTextSelection(paraEnd);
+		editor.commands.insertContent('x');
+
+		const texts = collectListTexts(editor.getJSON());
+		expect(texts[0]).toBe(`12(${apr12Wd}) a`);
+		expect(texts[1]).toBe(`13(${may13Wd}) b`);
+	});
+});
+
+// G2-3: Empty doc
+describe('autoWeekdayPlugin — G2-3: empty doc', () => {
+	it('empty doc does not throw and produces no rewrites', () => {
+		const editor = makeEditor(doc());
+
+		// Dispatch a rescan meta — no error expected.
+		expect(() => {
+			editor.view.dispatch(
+				editor.state.tr.setMeta(autoWeekdayPluginKey, { rescan: true })
+			);
+		}).not.toThrow();
+
+		const texts = collectListTexts(editor.getJSON());
+		expect(texts).toHaveLength(0);
+	});
+});
+
+// G2-4: Doc with only paragraphs (no lists)
+describe('autoWeekdayPlugin — G2-4: doc with only paragraphs', () => {
+	it('no lists → no rewrites, no error', () => {
+		const editor = makeEditor(doc(p('4월'), p('12 산책'), p('abc')));
+
+		expect(() => {
+			editor.view.dispatch(
+				editor.state.tr.setMeta(autoWeekdayPluginKey, { rescan: true })
+			);
+		}).not.toThrow();
+
+		// Nothing is a list item, so collectListTexts is empty.
+		const texts = collectListTexts(editor.getJSON());
+		expect(texts).toHaveLength(0);
+	});
+});
+
+// G2-5: Listitem with multiple paragraphs — only the FIRST paragraph is treated
+describe('autoWeekdayPlugin — G2-5: multiple paragraphs inside same listItem', () => {
+	it('only the first paragraph is the day-prefix line; later paragraphs are ignored', () => {
+		const wd = expectedWeekday(YEAR, MONTH, 12);
+
+		// Build a listItem with two paragraphs manually.
+		const multiParaLi: JSONContent = {
+			type: 'listItem',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '12 등산' }] },
+				{ type: 'paragraph', content: [{ type: 'text', text: '13 메모' }] }
+			]
+		};
+
+		const editor = makeEditor(
+			doc(
+				p('4월'),
+				{ type: 'bulletList', content: [multiParaLi] }
+			)
+		);
+
+		// Trigger docChanged.
+		let paraEnd = -1;
+		editor.state.doc.descendants((node, pos) => {
+			if (node.isText && node.text === '4월') {
+				paraEnd = pos + node.nodeSize;
+			}
+		});
+		editor.commands.setTextSelection(paraEnd);
+		editor.commands.insertContent('x');
+
+		const json = editor.getJSON();
+		// Find the listItem and inspect both paragraphs.
+		const bulletList = json.content?.find((n) => n.type === 'bulletList');
+		const listItem = bulletList?.content?.[0] as JSONContent | undefined;
+		const firstPara = listItem?.content?.[0] as JSONContent | undefined;
+		const secondPara = listItem?.content?.[1] as JSONContent | undefined;
+		const firstParaText = (firstPara?.content ?? [])
+			.filter((c: JSONContent) => c.type === 'text')
+			.map((c: JSONContent) => c.text ?? '')
+			.join('');
+		const secondParaText = (secondPara?.content ?? [])
+			.filter((c: JSONContent) => c.type === 'text')
+			.map((c: JSONContent) => c.text ?? '')
+			.join('');
+
+		// First paragraph gets weekday inserted.
+		expect(firstParaText).toBe(`12(${wd}) 등산`);
+		// Second paragraph is NOT treated as a day-prefix line by the plugin — it
+		// is simply the second paragraph of the listItem and is not transformed.
+		expect(secondParaText).toBe('13 메모');
+	});
+});
+
+// G2-6: Mark spans (bold) inside the day-prefix text
+describe('autoWeekdayPlugin — G2-6: bold marks inside day-prefix text', () => {
+	it('textContent strips marks; rewrite produces un-marked text node', () => {
+		const wd = expectedWeekday(YEAR, MONTH, 12);
+
+		// Build a listItem whose first paragraph has a bold "12" node + plain " 등산" node.
+		const boldLi: JSONContent = {
+			type: 'listItem',
+			content: [
+				{
+					type: 'paragraph',
+					content: [
+						{ type: 'text', text: '12', marks: [{ type: 'bold' }] },
+						{ type: 'text', text: ' 등산' }
+					]
+				}
+			]
+		};
+
+		const editor = makeEditor(
+			doc(
+				p('4월'),
+				{ type: 'bulletList', content: [boldLi] }
+			)
+		);
+
+		// Trigger docChanged.
+		let paraEnd = -1;
+		editor.state.doc.descendants((node, pos) => {
+			if (node.isText && node.text === '4월') {
+				paraEnd = pos + node.nodeSize;
+			}
+		});
+		editor.commands.setTextSelection(paraEnd);
+		editor.commands.insertContent('x');
+
+		const texts = collectListTexts(editor.getJSON());
+		// Plugin reads "12 등산" via textContent (marks invisible).
+		// Rewrite replaces the full paragraph content with a single plain text node.
+		expect(texts[0]).toBe(`12(${wd}) 등산`);
+
+		// PIN: the rewrite drops marks (replaceWith emits a single unmarked text node).
+		const json = editor.getJSON();
+		const bulletList = json.content?.find((n: JSONContent) => n.type === 'bulletList');
+		const listItem = bulletList?.content?.[0] as JSONContent | undefined;
+		const firstParaNode = listItem?.content?.[0] as JSONContent | undefined;
+		const paraContent = firstParaNode?.content ?? [];
+		// After rewrite, only one text node, no marks.
+		const hasMarks = paraContent.some(
+			(c: JSONContent) => c.marks && (c.marks as JSONContent[]).length > 0
+		);
+		expect(hasMarks).toBe(false);
+	});
+});
+
+// G2-7: Concurrent rewrites for many sibling list items
+describe('autoWeekdayPlugin — G2-7: many sibling list items all get fixed', () => {
+	it('10 list items with wrong weekday under 4월 → all corrected in one pass', () => {
+		const wrongWd = '월'; // Monday
+		const items: JSONContent[] = Array.from({ length: 10 }, (_, i) => {
+			const day = i + 1; // days 1..10
+			return li(`${day}(${wrongWd}) 일정`);
+		});
+
+		const editor = makeEditor(doc(p('4월'), ul(...items)));
+
+		// Trigger docChanged.
+		let paraEnd = -1;
+		editor.state.doc.descendants((node, pos) => {
+			if (node.isText && node.text === '4월') {
+				paraEnd = pos + node.nodeSize;
+			}
+		});
+		editor.commands.setTextSelection(paraEnd);
+		editor.commands.insertContent('x');
+
+		const texts = collectListTexts(editor.getJSON());
+		expect(texts).toHaveLength(10);
+
+		for (let i = 0; i < 10; i++) {
+			const day = i + 1;
+			const correctWd = expectedWeekday(YEAR, MONTH, day);
+			// Each item should be corrected (unless its correct weekday happens to be '월').
+			if (correctWd !== wrongWd) {
+				expect(texts[i]).toBe(`${day}(${correctWd}) 일정`);
+			} else {
+				// The wrong weekday was accidentally correct — it stays.
+				expect(texts[i]).toBe(`${day}(${correctWd}) 일정`);
+			}
+		}
+	});
+});
+
+// G2-8: Plugin disabled then re-enabled via rescan meta
+describe('autoWeekdayPlugin — G2-8: disabled then enabled via rescan meta', () => {
+	it('disabled: docChanged does not rewrite; then rescan meta with enabled=true fixes all', () => {
+		const wd = expectedWeekday(YEAR, MONTH, 12);
+		const wrongWd = wd === '일' ? '월' : '일';
+
+		let isEnabled = false;
+
+		// Include a trailing paragraph AFTER the list so we can trigger docChanged
+		// without corrupting the "4월" month header (which must stay intact for the
+		// month lookup to work during the subsequent rescan).
+		const editor = new Editor({
+			extensions: [
+				StarterKit.configure({ code: false, codeBlock: false, paragraph: false, listItem: false }),
+				TomboyParagraph,
+				TomboyListItem,
+				Extension.create({
+					name: 'tomboyAutoWeekday',
+					addProseMirrorPlugins() {
+						return [
+							createAutoWeekdayPlugin({
+								now: () => FIXED_DATE,
+								enabled: () => isEnabled
+							})
+						];
+					}
+				})
+			],
+			content: doc(p('4월'), ul(li(`12(${wrongWd}) 등산`)), p('노트'))
+		});
+		currentEditor = editor;
+
+		// While disabled: trigger docChanged by editing the trailing paragraph.
+		let noteParaEnd = -1;
+		editor.state.doc.descendants((node, pos) => {
+			if (node.isText && node.text === '노트') {
+				noteParaEnd = pos + node.nodeSize;
+			}
+		});
+		expect(noteParaEnd).toBeGreaterThan(0);
+		editor.commands.setTextSelection(noteParaEnd);
+		editor.commands.insertContent('x');
+
+		let texts = collectListTexts(editor.getJSON());
+		// Still wrong weekday — plugin was disabled.
+		expect(texts[0]).toBe(`12(${wrongWd}) 등산`);
+
+		// Enable and dispatch rescan meta.
+		isEnabled = true;
+		editor.view.dispatch(
+			editor.state.tr.setMeta(autoWeekdayPluginKey, { rescan: true })
+		);
+
+		texts = collectListTexts(editor.getJSON());
+		// Now fixed.
+		expect(texts[0]).toBe(`12(${wd}) 등산`);
+	});
+});

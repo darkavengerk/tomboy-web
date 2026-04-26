@@ -83,4 +83,30 @@ describe('shouldSendListBeActive', () => {
 			})
 		).toBe(false);
 	});
+
+	// G3-1: ignoreFocus: undefined (treated as falsy) + focusedGuid matches → true
+	it('ignoreFocus: undefined (not passed) + focusedGuid matches → true', () => {
+		expect(
+			shouldSendListBeActive({
+				guid: SOURCE,
+				sourceGuid: SOURCE,
+				ctrlHeld: true,
+				focusedGuid: SOURCE
+				// ignoreFocus intentionally omitted
+			})
+		).toBe(true);
+	});
+
+	// G3-2: ignoreFocus: false (explicit) + focusedGuid matches → true
+	it('ignoreFocus: false (explicit) + focusedGuid matches → true', () => {
+		expect(
+			shouldSendListBeActive({
+				guid: SOURCE,
+				sourceGuid: SOURCE,
+				ctrlHeld: true,
+				focusedGuid: SOURCE,
+				ignoreFocus: false
+			})
+		).toBe(true);
+	});
 });
