@@ -259,7 +259,12 @@
 	// Slip-note 화살표는 직접 `openRightOf`로 흘려서, "다음" 클릭 시
 	// 체인이 왼→오 방향으로 겹치지 않게 펼쳐지도록 한다. "이전"은
 	// 기존 내부 링크 열기(이미 열려 있으면 포커스만 이동)로 처리.
-	async function handleSlipNavigate(target: string, direction: 'prev' | 'next') {
+	// `replace` (Ctrl/Cmd-click)는 이 창을 닫고 그 자리에 다음 노트를 연다.
+	async function handleSlipNavigate(
+		target: string,
+		direction: 'prev' | 'next',
+		replace: boolean
+	) {
 		const title = target.trim();
 		if (!title) return;
 		if (saveTimer) {
@@ -267,7 +272,9 @@
 			saveTimer = null;
 			await flushSave();
 		}
-		if (direction === 'next') {
+		if (replace) {
+			await desktopSession.openReplacing(guid, title);
+		} else if (direction === 'next') {
 			await desktopSession.openRightOf(guid, title);
 		} else {
 			onopenlink(title);
@@ -277,7 +284,12 @@
 	// Date-arrow navigation: symmetric cascade — "next" opens to the right
 	// of the source, "prev" to the left. Both reposition the target window
 	// even when it's already open, so the flow stays visually contiguous.
-	async function handleDateNavigate(target: string, direction: 'prev' | 'next') {
+	// `replace` (Ctrl/Cmd-click)는 이 창을 닫고 그 자리에 다음 노트를 연다.
+	async function handleDateNavigate(
+		target: string,
+		direction: 'prev' | 'next',
+		replace: boolean
+	) {
 		const title = target.trim();
 		if (!title) return;
 		if (saveTimer) {
@@ -285,7 +297,9 @@
 			saveTimer = null;
 			await flushSave();
 		}
-		if (direction === 'next') {
+		if (replace) {
+			await desktopSession.openReplacing(guid, title);
+		} else if (direction === 'next') {
 			await desktopSession.openRightOf(guid, title);
 		} else {
 			await desktopSession.openLeftOf(guid, title);

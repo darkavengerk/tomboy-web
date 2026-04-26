@@ -12,6 +12,11 @@
 	import { installModKeyListeners } from './modKeys.svelte.js';
 	import { extractNoteGuidFromText, openNoteByGuid } from './openByClipboard.js';
 	import { createNote } from '$lib/core/noteManager.js';
+	import {
+		parseSlipNeighbors,
+		type SlipNoteArrowsStorage
+	} from '$lib/editor/extensions/SlipNoteArrows.js';
+	import type { DateArrowsStorage } from '$lib/editor/extensions/DateArrows.js';
 
 	let ready = $state(false);
 	let wallpaperUrl = $state<string | null>(null);
@@ -142,6 +147,41 @@
 			if (!dir) return;
 			e.preventDefault();
 			void desktopSession.switchWorkspaceDir(dir);
+			return;
+		}
+		// Ctrl/Cmd+,  /  Ctrl/Cmd+.  — step through slip-note or date-note
+		// chain in "replace" mode: close the focused note window and open
+		// the prev/next note in its place. Mirrors the Ctrl-click behavior
+		// on the arrow buttons. Always preventDefault to suppress the
+		// browser's default Ctrl+, (preferences) shortcut even when no
+		// neighbour is available, so the user gets consistent behavior.
+		if (
+			(e.key === ',' || e.key === '.') &&
+			(e.ctrlKey || e.metaKey) &&
+			!e.altKey &&
+			!e.shiftKey
+		) {
+			const direction: 'prev' | 'next' = e.key === ',' ? 'prev' : 'next';
+			const focusedEditor = desktopSession.getFocusedEditor();
+			const guid = focusedEditor?.guid ?? desktopSession.focusedNoteGuid;
+			if (!guid) return;
+			const editor = focusedEditor?.editor ?? desktopSession.getEditorForGuid(guid);
+			if (!editor) return;
+			const storages = editor.storage as unknown as Record<string, unknown>;
+			let target: string | null = null;
+			const slip = storages.slipNoteArrows as SlipNoteArrowsStorage | undefined;
+			if (slip?.enabled) {
+				const neighbors = parseSlipNeighbors(editor.state.doc);
+				target = direction === 'prev' ? neighbors.prev : neighbors.next;
+			} else {
+				const dateArr = storages.dateArrows as DateArrowsStorage | undefined;
+				if (dateArr) {
+					target = direction === 'prev' ? dateArr.prevTitle : dateArr.nextTitle;
+				}
+			}
+			e.preventDefault();
+			if (!target) return;
+			void desktopSession.openReplacing(guid, target);
 		}
 	}
 

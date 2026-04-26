@@ -24,7 +24,12 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 
 export interface SlipNoteArrowsStorage {
 	enabled: boolean;
-	onNavigate: (target: string, direction: 'prev' | 'next') => void;
+	/**
+	 * `replace` is true when the user held Ctrl/Cmd while clicking — the
+	 * caller should close the source window and open the target in its
+	 * place instead of cascading sideways.
+	 */
+	onNavigate: (target: string, direction: 'prev' | 'next', replace: boolean) => void;
 	onInsertAfter: () => void;
 	onCut: () => void;
 	onConnect: () => void;
@@ -181,7 +186,7 @@ function makeArrowFactory(
 	direction: 'prev' | 'next',
 	label: string,
 	target: string | null,
-	getHandler: () => (target: string, direction: 'prev' | 'next') => void
+	getHandler: () => (target: string, direction: 'prev' | 'next', replace: boolean) => void
 ): () => HTMLElement {
 	return () => {
 		const btn = document.createElement('button');
@@ -202,10 +207,30 @@ function makeArrowFactory(
 			e.preventDefault();
 			e.stopPropagation();
 			if (!target) return;
-			getHandler()(target, direction);
+			getHandler()(target, direction, e.ctrlKey || e.metaKey);
 		});
 		return btn;
 	};
+}
+
+/**
+ * Read the slip-note `이전` / `다음` link targets from the doc — used by
+ * keyboard shortcuts that don't go through the click handler. Returns
+ * `{ prev: null, next: null }` when the doc isn't a well-formed slip note.
+ */
+export function parseSlipNeighbors(doc: PMNode): {
+	prev: string | null;
+	next: string | null;
+} {
+	const blocks: { block: PMNode; offset: number }[] = [];
+	doc.forEach((block, offset) => {
+		blocks.push({ block, offset });
+	});
+	if (blocks.length < 4) return { prev: null, next: null };
+	const prev = parseLabeledLine(blocks[2].block, '이전');
+	const next = parseLabeledLine(blocks[3].block, '다음');
+	if (!prev || !next) return { prev: null, next: null };
+	return { prev: prev.target, next: next.target };
 }
 
 /**

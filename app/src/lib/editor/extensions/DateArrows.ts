@@ -32,7 +32,12 @@ export interface DateArrowsStorage {
 	prevTitle: string | null;
 	/** Title of the nearest later date-titled note, or null when none. */
 	nextTitle: string | null;
-	onNavigate: (target: string, direction: 'prev' | 'next') => void;
+	/**
+	 * `replace` is true when the user held Ctrl/Cmd while clicking — the
+	 * caller should close the source window and open the target in its
+	 * place instead of cascading sideways.
+	 */
+	onNavigate: (target: string, direction: 'prev' | 'next', replace: boolean) => void;
 }
 
 const pluginKey = new PluginKey('dateArrows');
@@ -128,7 +133,7 @@ function makeArrow(
 		e.preventDefault();
 		e.stopPropagation();
 		if (!target) return;
-		storage.onNavigate(target, direction);
+		storage.onNavigate(target, direction, e.ctrlKey || e.metaKey);
 	});
 	return btn;
 }
