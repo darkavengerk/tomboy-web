@@ -1087,6 +1087,23 @@
 		opacity: 1;
 		pointer-events: auto;
 	}
+	/* When a depth-1 category contains the hovered depth-2 item, suppress
+	   its own button so only the deepest hovered item's button shows.
+	   Otherwise hovering a sub-item would surface BOTH buttons (the
+	   category one and the item one) at the same vertical area. */
+	.tomboy-editor.tomboy-todo-ctrl-hold
+		:global(
+				li.tomboy-todo-item:has(li.tomboy-todo-item:hover)
+					> .tomboy-todo-complete-btn
+			),
+	.tomboy-editor.tomboy-todo-ctrl-hold
+		:global(
+				li.tomboy-todo-item:has(li.tomboy-todo-item:hover)
+					> .tomboy-todo-revert-btn
+			) {
+		opacity: 0;
+		pointer-events: none;
+	}
 
 	/* Touch devices have no reliable :hover, so when the mobile Ctrl-lock
 	   is on, reveal the TODO / 되돌리기 buttons for every item without

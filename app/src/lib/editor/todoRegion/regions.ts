@@ -109,6 +109,106 @@ export function regionContainingPos(
 }
 
 /**
+ * A single targetable item in a TODO/Done region.
+ *
+ * `depth: 1` items are direct children of a region's top-level list.
+ * `depth: 2` items are direct children of a list nested one level inside a
+ * depth-1 listItem — they represent "sub-items under a category". Anything
+ * deeper than depth 2 is intentionally ignored: the feature treats depth-1
+ * as category and depth-2 as detail; deeper structure stays untouched.
+ *
+ * For depth-2 items, `parent` carries the depth-1 listItem that owns them
+ * plus the trimmed text of its first paragraph (the category label used to
+ * match against the target region when moving).
+ */
+export interface TodoItemRef {
+	liPos: number;
+	liNode: PMNode;
+	depth: 1 | 2;
+	region: TodoRegion;
+	/** Position of the list directly containing this li. */
+	containingListPos: number;
+	containingListNode: PMNode;
+	parent?: {
+		liPos: number;
+		liNode: PMNode;
+		categoryText: string;
+		nestedListPos: number;
+		nestedListNode: PMNode;
+	};
+}
+
+function categoryTextOf(li: PMNode): string {
+	const first = li.firstChild;
+	if (!first || first.type.name !== 'paragraph') return '';
+	return first.textContent.trim();
+}
+
+export function findTodoItems(regions: TodoRegion[]): TodoItemRef[] {
+	const items: TodoItemRef[] = [];
+	for (const region of regions) {
+		for (const list of region.lists) {
+			let liOffset = list.pos + 1;
+			list.node.forEach((li) => {
+				const liPos = liOffset;
+				items.push({
+					liPos,
+					liNode: li,
+					depth: 1,
+					region,
+					containingListPos: list.pos,
+					containingListNode: list.node
+				});
+
+				const categoryText = categoryTextOf(li);
+				let inLiOffset = liPos + 1;
+				li.forEach((sub) => {
+					if (
+						sub.type.name === 'bulletList' ||
+						sub.type.name === 'orderedList'
+					) {
+						const nestedListPos = inLiOffset;
+						let subLiOffset = nestedListPos + 1;
+						sub.forEach((subLi) => {
+							items.push({
+								liPos: subLiOffset,
+								liNode: subLi,
+								depth: 2,
+								region,
+								containingListPos: nestedListPos,
+								containingListNode: sub,
+								parent: {
+									liPos,
+									liNode: li,
+									categoryText,
+									nestedListPos,
+									nestedListNode: sub
+								}
+							});
+							subLiOffset += subLi.nodeSize;
+						});
+					}
+					inLiOffset += sub.nodeSize;
+				});
+
+				liOffset += li.nodeSize;
+			});
+		}
+	}
+	return items;
+}
+
+export function findTodoItemAt(
+	items: TodoItemRef[],
+	liPos: number
+): TodoItemRef | null {
+	for (const it of items) {
+		if (it.liPos === liPos) return it;
+	}
+	return null;
+}
+
+/**
  * Pair each TODO region with the next Done region after it (doc order). A
  * Done can only pair with the nearest earlier unpaired TODO; a TODO that has
  * no Done following it is left unmapped so the move command can create one.

@@ -9,7 +9,11 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
-import { findTodoRegions, type TodoRegionKind } from './regions.js';
+import {
+	findTodoItems,
+	findTodoRegions,
+	type TodoRegionKind
+} from './regions.js';
 
 export interface TodoRegionPluginOptions {
 	/** Invoked when a region-item button is clicked. */
@@ -56,30 +60,24 @@ function buildDecorations(
 ): DecorationSet {
 	const decos: Decoration[] = [];
 	const regions = findTodoRegions(doc);
-	for (const region of regions) {
-		for (const list of region.lists) {
-			// List content starts just after its opening token.
-			let offset = list.pos + 1;
-			list.node.forEach((li) => {
-				const liPos = offset;
-				const liEnd = liPos + li.nodeSize;
-				decos.push(
-					Decoration.node(liPos, liEnd, { class: 'tomboy-todo-item' })
-				);
-				decos.push(
-					Decoration.widget(
-						liPos + 1,
-						(view, getPos) => buildButton(view, getPos, region.kind, onMove),
-						{
-							side: -1,
-							ignoreSelection: true,
-							key: `tomboy-todo-btn-${region.kind}`
-						}
-					)
-				);
-				offset += li.nodeSize;
-			});
-		}
+	const items = findTodoItems(regions);
+	for (const it of items) {
+		const liPos = it.liPos;
+		const liEnd = liPos + it.liNode.nodeSize;
+		decos.push(
+			Decoration.node(liPos, liEnd, { class: 'tomboy-todo-item' })
+		);
+		decos.push(
+			Decoration.widget(
+				liPos + 1,
+				(view, getPos) => buildButton(view, getPos, it.region.kind, onMove),
+				{
+					side: -1,
+					ignoreSelection: true,
+					key: `tomboy-todo-btn-${it.region.kind}-d${it.depth}`
+				}
+			)
+		);
 	}
 	return DecorationSet.create(doc, decos);
 }
