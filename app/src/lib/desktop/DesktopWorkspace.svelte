@@ -30,13 +30,17 @@
 		})();
 
 		const handler = (e: KeyboardEvent) => onKey(e);
-		window.addEventListener('keydown', handler);
+		// `capture: true` so this handler runs BEFORE any inner contenteditable
+		// or TipTap plugin sees the key. Critical for Ctrl+. on Chrome
+		// (Windows/Linux), which the OS / browser otherwise turns into an
+		// emoji-picker invocation before our preventDefault has a chance.
+		window.addEventListener('keydown', handler, { capture: true });
 		const pasteHandler = (e: ClipboardEvent) => onPaste(e);
 		window.addEventListener('paste', pasteHandler);
 		const uninstallModKeys = installModKeyListeners();
 
 		return () => {
-			window.removeEventListener('keydown', handler);
+			window.removeEventListener('keydown', handler, { capture: true });
 			window.removeEventListener('paste', pasteHandler);
 			uninstallModKeys();
 			if (wallpaperUrl) {
@@ -161,6 +165,14 @@
 			!e.altKey &&
 			!e.shiftKey
 		) {
+			// Suppress browser/OS defaults (Ctrl+, → preferences,
+			// Ctrl+. → Chrome's emoji picker on Win/Linux) and stop the
+			// event from reaching TipTap's contenteditable handlers.
+			// `stopImmediatePropagation` also blocks any other listeners
+			// on the same element, including ones registered after ours.
+			e.preventDefault();
+			e.stopPropagation();
+			e.stopImmediatePropagation();
 			const direction: 'prev' | 'next' = e.key === ',' ? 'prev' : 'next';
 			const focusedEditor = desktopSession.getFocusedEditor();
 			const guid = focusedEditor?.guid ?? desktopSession.focusedNoteGuid;
@@ -179,7 +191,6 @@
 					target = direction === 'prev' ? dateArr.prevTitle : dateArr.nextTitle;
 				}
 			}
-			e.preventDefault();
 			if (!target) return;
 			void desktopSession.openReplacing(guid, target);
 		}
