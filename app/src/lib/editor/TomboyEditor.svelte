@@ -30,6 +30,7 @@
 		sendListItemPluginKey,
 	} from "./sendListItem/sendListItemPlugin.js";
 	import { transferListItem } from "./sendListItem/transferListItem.js";
+	import { createAutoWeekdayPlugin } from "./autoWeekday/autoWeekdayPlugin.js";
 	import { extractImageFile } from "./imagePreview/extractImageFile.js";
 	import { uploadImageToDropbox } from "$lib/sync/imageUpload.js";
 	import { pushToast, dismissToast } from "$lib/stores/toast.js";
@@ -61,6 +62,9 @@
 		/** When true, decorates the 이전/다음 paragraphs with circular arrow
 		 *  buttons and hides the original text via CSS. */
 		isSlipNote?: boolean;
+		/** When true, the auto-weekday plugin rewrites day-prefix lines in the
+		 *  schedule note. */
+		isScheduleNote?: boolean;
 		/** Called when the user clicks one of the slip-note arrows. */
 		onslipnavigate?: (target: string, direction: 'prev' | 'next') => void;
 		/** Called when the user clicks the slip-note "insert after" (+) button. */
@@ -94,6 +98,7 @@
 		createDate = null,
 		sendListItemActive = false,
 		isSlipNote = false,
+		isScheduleNote = false,
 		onslipnavigate = () => {},
 		oninsertafter = () => {},
 		oncut = () => {},
@@ -114,6 +119,11 @@
 		e.preventDefault();
 		ctxMenu = { x: e.clientX, y: e.clientY };
 	}
+
+	// Closure-bound flag read by the autoWeekday plugin via enabled(). Seeded
+	// to false here; the $effect below keeps it in sync with the prop so the
+	// plugin always reflects the current isScheduleNote value at call-time.
+	let autoWeekdayEnabled = false;
 
 	let editorElement: HTMLDivElement;
 	let editor: Editor | null = $state(null);
@@ -286,6 +296,17 @@
 									if (!ed) return;
 									void transferListItem(ed, liPos, liNode);
 								},
+							}),
+						];
+					},
+				}),
+				Extension.create({
+					name: "tomboyAutoWeekday",
+					addProseMirrorPlugins() {
+						return [
+							createAutoWeekdayPlugin({
+								now: () => new Date(),
+								enabled: () => autoWeekdayEnabled,
 							}),
 						];
 					},
@@ -668,6 +689,13 @@
 		storage.nextTitle = next;
 		storage.onNavigate = navigate;
 		ed.view.dispatch(ed.state.tr);
+	});
+
+	// Keep the closure-bound autoWeekday flag in sync with the prop. The plugin
+	// reads enabled() on every appendTransaction call, so updating the let is
+	// all that's needed — no transaction dispatch required.
+	$effect(() => {
+		autoWeekdayEnabled = isScheduleNote;
 	});
 
 	export function getEditor(): Editor | null {
