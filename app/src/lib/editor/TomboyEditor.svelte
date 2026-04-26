@@ -174,17 +174,8 @@
 	// Format a Tomboy ISO date (yyyy-MM-ddTHH:mm:ss.fffffff±HH:MM) as
 	// yyyy-mm-dd for the subtitle placeholder. Returns null for missing /
 	// unparseable inputs so the placeholder is simply skipped.
-	//
-	// Also suppressed when the note's title is itself a yyyy-mm-dd string:
-	// the date-arrow row renders in the same visual slot and the creation-date
-	// hint would be redundant / overlap with the arrows.
 	function subtitlePlaceholderText(): string | null {
 		if (!createDate) return null;
-		const ed = editor;
-		if (ed && !ed.isDestroyed) {
-			const titleText = ed.state.doc.firstChild?.textContent.trim() ?? "";
-			if (/^\d{4}-\d{2}-\d{2}$/.test(titleText)) return null;
-		}
 		const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(createDate);
 		if (!m) return null;
 		return `${m[1]}-${m[2]}-${m[3]}`;

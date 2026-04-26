@@ -1,26 +1,30 @@
 /**
  * Date-title prev/next arrows.
  *
- * When the first block's trimmed text matches `yyyy-mm-dd`, render a pair
- * of prev/next arrow buttons on their own line directly below the title.
- * Arrow targets (titles) are fed via extension storage from the parent
- * Svelte component, which computes them by filtering the shared title
- * index for date-format titles.
+ * When the first block's trimmed text parses as a date title (yyyy-mm-dd or
+ * `yyyy년 m월 d일`), render a pair of prev/next arrow buttons on their own
+ * line directly below the second top-level block (the subtitle slot). Arrow
+ * targets (titles) are fed via extension storage from the parent Svelte
+ * component, which computes them by filtering the shared title index for
+ * date-format titles.
  *
  * Decoration strategy: a single block-level widget placed at the position
- * between block 0 and block 1 (i.e. `firstBlock.nodeSize`) so it renders
- * on its own line, similar to the slip-note arrows but without a carrier
- * paragraph — the date arrows are pure UI, not part of the persisted doc.
+ * after block 1 (i.e. `block0.nodeSize + block1.nodeSize`) so the date note
+ * still gets its normal subtitle line, with the arrows appearing on the
+ * line below it. If the doc only has the title block, the arrows fall back
+ * to placement directly below the title.
  *
- * The decoration is keyed on the prev/next titles so that storage
- * updates (via a no-op transaction dispatched by the parent) force a
- * widget rebuild with fresh disabled states and click handlers.
+ * The decoration is keyed on the prev/next titles so that storage updates
+ * (via a no-op transaction dispatched by the parent) force a widget rebuild
+ * with fresh disabled states and click handlers.
  */
 
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
+
+import { parseDateTitle } from '../dateLink/findAdjacentDateNotes.js';
 
 export interface DateArrowsStorage {
 	enabled: boolean;
@@ -32,7 +36,6 @@ export interface DateArrowsStorage {
 }
 
 const pluginKey = new PluginKey('dateArrows');
-const DATE_TITLE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 export const DateArrows = Extension.create<
 	Record<string, never>,
@@ -68,10 +71,14 @@ export const DateArrows = Extension.create<
 function buildDecorations(doc: PMNode, storage: DateArrowsStorage): DecorationSet {
 	const first = doc.firstChild;
 	if (!first) return DecorationSet.empty;
-	const titleText = first.textContent.trim();
-	if (!DATE_TITLE_REGEX.test(titleText)) return DecorationSet.empty;
+	if (!parseDateTitle(first.textContent)) return DecorationSet.empty;
 
-	const pos = first.nodeSize;
+	// Place the arrow row AFTER the subtitle block (block 1) so the
+	// subtitle placeholder / user-typed second line still has its normal
+	// slot. Falls back to "directly below the title" when the doc has no
+	// second block yet.
+	const second = doc.maybeChild(1);
+	const pos = first.nodeSize + (second ? second.nodeSize : 0);
 	const decoration = Decoration.widget(
 		pos,
 		makeArrowRowFactory(storage),
