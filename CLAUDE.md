@@ -359,7 +359,9 @@ Quick map:
 - `app/src/lib/firebase/app.ts` — shared lazy Firebase singletons +
   `ensureSignedIn` (also used by the schedule feature).
 - `noteManager.ts` — calls `notifyNoteSaved(guid)` after every IDB write
-  (editor save, rename cascade, delete, favorite toggle).
+  (`createNote`, editor save, rename cascade, delete, favorite toggle).
+  `createNote` is hooked so a freshly-created (yet unedited) note is
+  reachable from other devices' link clicks before the user types anything.
 - `routes/note/[id]/+page.svelte` and `lib/desktop/NoteWindow.svelte` —
   call `attachOpenNote(guid)` on mount, `detachOpenNote(guid)` on unmount.
 - `routes/+layout.svelte` — calls `installRealNoteSync()` once at app start
@@ -383,6 +385,16 @@ Invariants:
   different purposes.
 - **Soft-delete only.** Tombstones (`deleted=true`) stay in Firestore so
   other devices can learn about deletions on next reconcile.
+  `noteStore.deleteNote` bumps `changeDate`/`metadataChangeDate` along
+  with `deleted=true` so the tombstone wins the conflict resolver's
+  timestamp ladder on the receiver — without that, the same-changeDate
+  tombstone would tie with the receiver's local row and the resolver's
+  `tie-prefers-local` fallback would silently undo the delete.
+- **Pull path fans out via `invalidateCache()`.** When
+  `reconcileWithRemote` decides `pull`, it calls `invalidateCache()`
+  after `putNoteSynced` so SidePanel, the auto-link title→guid index,
+  and the `/notes` list page refresh automatically. `noop` and `push`
+  paths leave IDB unchanged and skip the fan-out.
 - **Dropbox-pulled notes don't auto-push to Firestore.**
   `applyIncomingRemoteNote` writes via `putNoteSynced` and bypasses
   `notifyNoteSaved`. The next time the user opens the pulled note, the

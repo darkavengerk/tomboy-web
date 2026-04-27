@@ -17,6 +17,10 @@ import {
 	subscribeNoteReload,
 	_resetForTest as _resetReloadBus
 } from '$lib/core/noteReloadBus.js';
+import {
+	onInvalidate,
+	_resetForTest as _resetNoteListCache
+} from '$lib/stores/noteListCache.js';
 import type { FirestoreNotePayload } from '$lib/sync/firebase/notePayload.js';
 import type { JSONContent } from '@tiptap/core';
 import type { NoteData } from '$lib/core/note.js';
@@ -75,6 +79,7 @@ beforeEach(() => {
 	globalThis.indexedDB = new IDBFactory();
 	_resetDBForTest();
 	_resetReloadBus();
+	_resetNoteListCache();
 	_resetNoteSyncForTest();
 });
 
@@ -180,6 +185,73 @@ describe('orchestrator attach/detach realtime sync', () => {
 		unsubReload();
 	});
 
+	it('pull-side reconcile invalidates the note list cache', async () => {
+		// SidePanel, the auto-link title index, and the /notes list page all
+		// subscribe to noteListCache.onInvalidate. Without this fan-out, a
+		// remote change pulled into IDB stays invisible until the next manual
+		// refresh.
+		const push = vi.fn().mockResolvedValue(undefined);
+		const { subscribe, subs } = makeFakeSubscribe();
+		configureNoteSync({
+			push,
+			getNote: noteStore.getNote,
+			debounceMs: 30,
+			getUid: async () => 'dbx-u',
+			subscribeRemote: subscribe
+		});
+		setNoteSyncEnabled(true);
+
+		const n = await createNote('Old Local');
+		await updateNoteFromEditor(n.guid, docOf('Old Local', 'old body'));
+		const local = (await noteStore.getNote(n.guid))!;
+
+		const invalidated = vi.fn();
+		const off = onInvalidate(invalidated);
+
+		attachOpenNote(n.guid);
+		await tick(20);
+
+		const remote = payloadFromNote(local, {
+			title: 'Remote Newer',
+			xmlContent: '<note-content version="0.1">Remote Newer\n\nremote body</note-content>',
+			changeDate: '2099-12-31T23:59:59.0000000+09:00',
+			metadataChangeDate: '2099-12-31T23:59:59.0000000+09:00'
+		});
+		subs.get(n.guid)!.emit(remote);
+		await tick(20);
+
+		expect(invalidated).toHaveBeenCalled();
+		off();
+	});
+
+	it('noop reconcile does NOT invalidate the note list cache', async () => {
+		const push = vi.fn().mockResolvedValue(undefined);
+		const { subscribe, subs } = makeFakeSubscribe();
+		configureNoteSync({
+			push,
+			getNote: noteStore.getNote,
+			debounceMs: 30,
+			getUid: async () => 'dbx-u',
+			subscribeRemote: subscribe
+		});
+		setNoteSyncEnabled(true);
+
+		const n = await createNote('Same');
+		const local = (await noteStore.getNote(n.guid))!;
+
+		attachOpenNote(n.guid);
+		await tick(20);
+
+		const invalidated = vi.fn();
+		const off = onInvalidate(invalidated);
+
+		subs.get(n.guid)!.emit(payloadFromNote(local));
+		await tick(20);
+
+		expect(invalidated).not.toHaveBeenCalled();
+		off();
+	});
+
 	it('first remote=older snapshot pushes local (local-newer)', async () => {
 		const push = vi.fn().mockResolvedValue(undefined);
 		const { subscribe, subs } = makeFakeSubscribe();
@@ -226,8 +298,11 @@ describe('orchestrator attach/detach realtime sync', () => {
 		setNoteSyncEnabled(true);
 
 		const n = await createNote('Same');
+		await flushAllNoteSync();
 		const local = (await noteStore.getNote(n.guid))!;
 		const beforeChangeDate = local.changeDate;
+		// createNote itself now pushes; isolate the reconcile-side push count.
+		push.mockClear();
 
 		attachOpenNote(n.guid);
 		await tick(20);
