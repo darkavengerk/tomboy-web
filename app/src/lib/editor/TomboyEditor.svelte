@@ -1244,21 +1244,14 @@
 		position: relative;
 		display: block;
 		margin: 0.6em 0;
-		padding: 0.4em;
-		border: 1px solid #d0d7de;
-		border-radius: 6px;
-		background: #f6f8fa;
 		user-select: none;
 	}
 	.tomboy-editor :global(.tomboy-table-block-toggle) {
 		position: absolute;
-		top: 6px;
-		right: 8px;
+		top: 4px;
+		right: 4px;
 		display: inline-flex;
 		align-items: center;
-		padding: 2px 4px;
-		border-radius: 3px;
-		background: rgba(255, 255, 255, 0.85);
 		opacity: 0;
 		transition: opacity 0.12s;
 		cursor: pointer;
@@ -1279,9 +1272,6 @@
 		display: inline-flex;
 		align-items: center;
 		margin-left: 0.4em;
-		padding: 0 4px;
-		border-radius: 3px;
-		background: rgba(0, 0, 0, 0.04);
 		opacity: 0;
 		transition: opacity 0.12s;
 		cursor: pointer;
