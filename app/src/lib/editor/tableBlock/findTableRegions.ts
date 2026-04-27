@@ -10,17 +10,25 @@
  */
 
 import type { Node as PMNode } from '@tiptap/pm/model';
+import type { JSONContent } from '@tiptap/core';
 import {
 	detectFenceFormat,
 	isFenceClose,
 	parseTableRows,
+	parseInlineCells,
 	type TableFormat
 } from './parseTable.js';
 
 export interface TableRegion {
 	format: TableFormat;
-	/** Parsed body rows. Header is conventionally `rows[0]`. */
+	/** Parsed body rows as plain text (header at `rows[0]`) — kept for
+	 *  callers that don't need mark-aware cells. */
 	rows: string[][];
+	/** Body rows as inline-node arrays per cell — preserves marks (bold,
+	 *  italic, internal/url links, etc.) so the renderer can map them to
+	 *  real DOM elements instead of lossy text. Same shape as `rows`
+	 *  with one extra dimension. */
+	cells: JSONContent[][][];
 	/** Index of the opening-fence paragraph among the doc's top-level children. */
 	openParaIdx: number;
 	/** Index of the closing-fence paragraph among the doc's top-level children. */
@@ -38,6 +46,7 @@ interface ParaInfo {
 	from: number;
 	to: number;
 	text: string;
+	json: JSONContent;
 }
 
 function collectTopLevelParagraphs(doc: PMNode): ParaInfo[] {
@@ -51,7 +60,8 @@ function collectTopLevelParagraphs(doc: PMNode): ParaInfo[] {
 			idx,
 			from: offset,
 			to: offset + node.nodeSize,
-			text: node.textContent
+			text: node.textContent,
+			json: node.toJSON() as JSONContent
 		});
 	});
 	return out;
@@ -67,20 +77,32 @@ export function findTableRegions(doc: PMNode): TableRegion[] {
 			i++;
 			continue;
 		}
-		// Look for the next closing fence among subsequent paragraphs.
+		// Scan forward for the next closing fence. If we hit ANOTHER opening
+		// fence first, abort: the current open is unterminated, and we must
+		// not let its scan walk past a sibling open and steal that sibling's
+		// close — otherwise two stacked tables would merge into one. Resume
+		// the outer loop at j so the sibling open gets a clean scan.
 		let j = i + 1;
-		while (j < paras.length && !isFenceClose(paras[j].text)) j++;
-		if (j >= paras.length) {
-			// Unterminated fence — skip past the open and continue scanning.
-			// The dangling open could still later become a valid region as
-			// the user types, but we don't synthesise a region for it now.
-			i++;
+		let foundClose = false;
+		while (j < paras.length) {
+			if (isFenceClose(paras[j].text)) {
+				foundClose = true;
+				break;
+			}
+			if (detectFenceFormat(paras[j].text) !== null) break;
+			j++;
+		}
+		if (!foundClose) {
+			i = Math.max(j, i + 1);
 			continue;
 		}
-		const bodyLines = paras.slice(i + 1, j).map((p) => p.text);
+		const body = paras.slice(i + 1, j);
+		const bodyLines = body.map((p) => p.text);
+		const bodyJson = body.map((p) => p.json);
 		regions.push({
 			format: fmt,
 			rows: parseTableRows(bodyLines, fmt),
+			cells: parseInlineCells(bodyJson, fmt),
 			openParaIdx: paras[i].idx,
 			closeParaIdx: paras[j].idx,
 			openFromPos: paras[i].from,

@@ -6,12 +6,16 @@
  * line-level grammar (` ```csv ` / ` ```tsv ` … ` ``` `). The plugin never
  * mutates the doc on its own; it only adds DECORATIONS:
  *
- *  - When a region is "checked" (the default): an inline decoration spans
- *    every paragraph in the region with `display: none` styling, plus a
- *    widget decoration at the opening fence renders the table + checkbox.
- *  - When a region is "unchecked": the hide-decoration is omitted so the
- *    raw paragraphs are visible and editable. The widget decoration still
- *    appears, but reduced to just the checkbox so the user can re-check.
+ *  - When a region is "checked" (the default): node + inline decorations
+ *    collapse the source paragraphs to zero size, and a single widget
+ *    decoration at the opening-fence position renders the table on top.
+ *    A toggle checkbox sits absolutely top-right of that widget; CSS
+ *    keeps it `opacity:0` until `:hover`.
+ *  - When a region is "unchecked": no hide decorations, so the raw
+ *    paragraphs are visible and editable. The widget for this state is
+ *    a SHORT inline-block placed INSIDE the open-fence paragraph (at
+ *    `openFromPos + 1`); CSS floats it to the right edge of that line
+ *    and `:hover` reveals it. The user can re-check from there.
  *
  * Per-region toggle state is stored as a `Set<number>` of opening-fence
  * positions. Edits remap positions through `tr.mapping`, and a region
@@ -28,8 +32,9 @@ import {
 } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import type { Editor } from '@tiptap/core';
+import type { Editor, JSONContent } from '@tiptap/core';
 import { findTableRegions, type TableRegion } from './findTableRegions.js';
+import { renderInlinesToDom } from './renderInlines.js';
 
 interface PluginState {
 	regions: TableRegion[];
@@ -71,10 +76,9 @@ function buildDecorations(
 	for (const r of regions) {
 		const checked = !uncheckedOpens.has(r.openFromPos);
 		if (checked) {
-			// Hide the underlying source paragraphs by spanning them with an
-			// inline decoration that flags every text node inside the region.
-			// We expand to [openFromPos, closeToPos] so the fence lines and
-			// every body row are all hidden together.
+			// Hide source paragraphs: inline span hides text content, node
+			// deco collapses the surrounding <p>s to zero height so the
+			// region doesn't leave visible blank lines.
 			decos.push(
 				Decoration.inline(
 					r.openFromPos,
@@ -83,9 +87,6 @@ function buildDecorations(
 					{ inclusiveStart: false, inclusiveEnd: false }
 				)
 			);
-			// Also mark the surrounding paragraph nodes themselves so the
-			// hidden region collapses fully (an inline-only decoration would
-			// still leave each <p> as a block, producing visible empty lines).
 			decos.push(
 				Decoration.node(
 					r.openFromPos,
@@ -94,101 +95,130 @@ function buildDecorations(
 					{ inclusiveStart: false, inclusiveEnd: false }
 				)
 			);
+			// Block-level table widget overlaying the hidden source.
+			decos.push(
+				Decoration.widget(r.openFromPos, () => renderTableWidget(r), {
+					side: -1,
+					key: `tableBlock:${r.openFromPos}:on`
+				})
+			);
+		} else {
+			// Source visible. Inline-place a small floating-checkbox widget
+			// INSIDE the opening fence paragraph so it can ride at the right
+			// edge of the visible "```csv" line. `openFromPos + 1` is the
+			// first position after the paragraph's open boundary; side:-1
+			// keeps it before any text content there.
+			decos.push(
+				Decoration.widget(
+					r.openFromPos + 1,
+					() => renderFloatingToggle(r),
+					{
+						side: -1,
+						key: `tableBlock:${r.openFromPos}:off`
+					}
+				)
+			);
 		}
-		// Widget decoration at the opening-fence start. side:-1 keeps it on
-		// the line BEFORE the fence's content so it renders cleanly above
-		// the source paragraphs.
-		decos.push(
-			Decoration.widget(r.openFromPos, () => renderTableWidget(r, checked), {
-				side: -1,
-				key: `tableBlock:${r.openFromPos}:${checked ? 'on' : 'off'}`
-			})
-		);
 	}
 	return DecorationSet.create(doc, decos);
 }
 
 /**
- * Build the widget DOM for a region — a container holding the (rendered)
- * table plus a top-right checkbox that toggles the region's view mode.
- *
- * The click handler dispatches a plugin meta on the editor view it's
- * attached to. We discover the view via the `data-table-block-open` attr
- * we put on the wrapper: the plugin's keydown / mousedown hooks below
- * read the attr and know which region was clicked, but for the actual
- * checkbox click we attach the handler directly.
+ * Block-level widget for the CHECKED state — contains the rendered table
+ * plus a hover-revealed toggle checkbox absolutely positioned top-right
+ * of the widget. Clicks on the checkbox bubble up to the plugin's
+ * `handleDOMEvents.click` which reads `data-table-block-open` and
+ * dispatches the toggle meta.
  */
-function renderTableWidget(region: TableRegion, checked: boolean): HTMLElement {
+function renderTableWidget(region: TableRegion): HTMLElement {
 	const wrap = document.createElement('div');
 	wrap.className = 'tomboy-table-block-widget';
 	wrap.setAttribute('contenteditable', 'false');
 	wrap.setAttribute('data-table-block-open', String(region.openFromPos));
 
 	// Don't let mousedown on the widget chrome move the editor selection.
+	// Allow it on form controls and on links so they remain interactive.
 	wrap.addEventListener('mousedown', (e) => {
 		const target = e.target as HTMLElement;
-		// Allow normal interaction inside <input> / <button>.
-		if (target.tagName === 'INPUT' || target.tagName === 'BUTTON') return;
+		if (
+			target.tagName === 'INPUT' ||
+			target.tagName === 'BUTTON' ||
+			target.closest('a')
+		) {
+			return;
+		}
 		e.preventDefault();
 	});
-
-	const header = document.createElement('div');
-	header.className = 'tomboy-table-block-header';
 
 	const label = document.createElement('label');
 	label.className = 'tomboy-table-block-toggle';
 	const cb = document.createElement('input');
 	cb.type = 'checkbox';
-	cb.checked = checked;
+	cb.checked = true;
 	cb.setAttribute('data-table-block-toggle', '');
-	const span = document.createElement('span');
-	span.textContent = '표';
 	label.appendChild(cb);
-	label.appendChild(span);
-	header.appendChild(label);
+	wrap.appendChild(label);
 
-	wrap.appendChild(header);
+	wrap.appendChild(renderTable(region));
+	return wrap;
+}
 
-	if (checked) {
-		const table = renderTable(region);
-		wrap.appendChild(table);
-	}
+/**
+ * Inline floating widget for the UNCHECKED state — sits inside the open
+ * paragraph, CSS floats it to the right of the line, hover-revealed.
+ * Carries `data-table-block-open` so the same click handler fires.
+ */
+function renderFloatingToggle(region: TableRegion): HTMLElement {
+	const wrap = document.createElement('span');
+	wrap.className = 'tomboy-table-block-floating';
+	wrap.setAttribute('contenteditable', 'false');
+	wrap.setAttribute('data-table-block-open', String(region.openFromPos));
+	wrap.addEventListener('mousedown', (e) => {
+		const target = e.target as HTMLElement;
+		if (target.tagName === 'INPUT') return;
+		e.preventDefault();
+	});
 
+	const label = document.createElement('label');
+	const cb = document.createElement('input');
+	cb.type = 'checkbox';
+	cb.checked = false;
+	cb.setAttribute('data-table-block-toggle', '');
+	label.appendChild(cb);
+	wrap.appendChild(label);
 	return wrap;
 }
 
 function renderTable(region: TableRegion): HTMLTableElement {
 	const table = document.createElement('table');
 	table.className = 'tomboy-table-block-table';
-	if (region.rows.length === 0) {
-		// Show an empty placeholder so the toggle still has something to
-		// hang on the page.
+	if (region.cells.length === 0) {
 		const tr = table.insertRow();
 		const td = tr.insertCell();
 		td.textContent = '(빈 표)';
 		td.className = 'tomboy-table-block-empty';
 		return table;
 	}
-	const colCount = region.rows.reduce((m, r) => Math.max(m, r.length), 0);
+	const colCount = region.cells.reduce((m, r) => Math.max(m, r.length), 0);
 	const thead = document.createElement('thead');
 	const headTr = document.createElement('tr');
-	const headRow = region.rows[0];
+	const headRow = region.cells[0];
 	for (let c = 0; c < colCount; c++) {
 		const th = document.createElement('th');
-		th.textContent = headRow[c] ?? '';
+		appendCellInlines(th, headRow[c]);
 		headTr.appendChild(th);
 	}
 	thead.appendChild(headTr);
 	table.appendChild(thead);
 
-	if (region.rows.length > 1) {
+	if (region.cells.length > 1) {
 		const tbody = document.createElement('tbody');
-		for (let i = 1; i < region.rows.length; i++) {
-			const row = region.rows[i];
+		for (let i = 1; i < region.cells.length; i++) {
+			const row = region.cells[i];
 			const tr = document.createElement('tr');
 			for (let c = 0; c < colCount; c++) {
 				const td = document.createElement('td');
-				td.textContent = row[c] ?? '';
+				appendCellInlines(td, row[c]);
 				tr.appendChild(td);
 			}
 			tbody.appendChild(tr);
@@ -196,6 +226,14 @@ function renderTable(region: TableRegion): HTMLTableElement {
 		table.appendChild(tbody);
 	}
 	return table;
+}
+
+function appendCellInlines(
+	cell: HTMLElement,
+	inlines: JSONContent[] | undefined
+): void {
+	if (!inlines || inlines.length === 0) return;
+	cell.appendChild(renderInlinesToDom(inlines));
 }
 
 /**

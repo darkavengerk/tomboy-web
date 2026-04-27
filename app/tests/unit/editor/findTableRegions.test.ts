@@ -111,4 +111,22 @@ describe('findTableRegions', () => {
 		expect(regions).toHaveLength(1);
 		expect(regions[0].format).toBe('csv');
 	});
+
+	it('does not absorb a later table when the first one lacks a close', () => {
+		// Two ```csv opens with NO closing fence between them. The first open
+		// is unterminated — its scan must abort when it sees the next opening
+		// fence so the second open's body / close don't get merged into the
+		// first region. Otherwise multiple tables in one note can mix.
+		const ed = makeEditor(
+			paras('```csv', 'a, b', '```csv', 'c, d', '```')
+		);
+		const regions = findTableRegions(ed.state.doc);
+		expect(regions).toHaveLength(1);
+		expect(regions[0].rows).toEqual([['c', 'd']]);
+	});
+
+	it('treats two adjacent opens as both unterminated when no close follows', () => {
+		const ed = makeEditor(paras('```csv', '```tsv', 'a\tb'));
+		expect(findTableRegions(ed.state.doc)).toEqual([]);
+	});
 });

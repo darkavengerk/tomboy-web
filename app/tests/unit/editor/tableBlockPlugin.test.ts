@@ -217,6 +217,165 @@ describe('tableBlockPlugin — toggleTableBlock command', () => {
 	});
 });
 
+describe('tableBlockPlugin — hover-floating checkbox positioning', () => {
+	function findWidget(editor: Editor) {
+		const set = getState(editor)!.decorations;
+		const all = set.find();
+		return all.find(
+			(d) => (d as unknown as { type: { toDOM?: unknown } }).type.toDOM !== undefined
+		);
+	}
+
+	it('checked-mode widget sits at the region START so it overlays the hidden source', () => {
+		// In checked mode the source paragraphs are hidden (display:none) and
+		// the table widget renders in their place — the widget's natural flow
+		// position must be the region's open-fence position so the table
+		// appears where the user typed the fence.
+		const ed = makeEditor(['intro', '```csv', 'a, b', '```']);
+		const r0 = getState(ed)!.regions[0]!;
+		const widget = findWidget(ed)!;
+		expect(widget.from).toBe(r0.openFromPos);
+	});
+
+	it('unchecked-mode widget is INSIDE the open-fence paragraph (so it floats on its line)', () => {
+		const ed = makeEditor(['intro', '```csv', 'a, b', '```']);
+		const r0 = getState(ed)!.regions[0]!;
+		toggleTableBlock(ed, r0.openFromPos);
+
+		const widget = findWidget(ed)!;
+		// In unchecked mode the source line is visible; the checkbox needs
+		// to ride at the right edge of THAT line, so the widget is placed
+		// INSIDE the open paragraph (one position past the paragraph's open
+		// boundary) instead of ahead of it like in checked mode.
+		expect(widget.from).toBeGreaterThan(r0.openFromPos);
+		expect(widget.from).toBeLessThan(r0.openFromPos + (r0.openLine.length + 2));
+	});
+
+	it('the rendered widget DOM marks itself for hover-only visibility', () => {
+		// Either via a `tomboy-table-block-toggle` (checked mode, absolute
+		// inside the table widget) or `tomboy-table-block-floating` (unchecked
+		// mode, floats on the source line). Both should be opacity:0 by
+		// default; CSS unhides them on :hover. The DOM contract here is
+		// just: the toggle wrapper element exists with one of those classes.
+		const ed = makeEditor(['```csv', 'a, b', '```']);
+		const widget = findWidget(ed)!;
+		// @ts-expect-error — toDOM is the internal widget factory
+		const dom = (widget.type as { toDOM: (view: unknown) => HTMLElement }).toDOM({
+			root: document
+		});
+		const toggle = dom.querySelector(
+			'.tomboy-table-block-toggle, .tomboy-table-block-floating'
+		);
+		expect(toggle).not.toBeNull();
+	});
+});
+
+describe('tableBlockPlugin — cell content with marks', () => {
+	function widgetDom(editor: Editor): HTMLElement {
+		const widget = getState(editor)!
+			.decorations.find()
+			.find(
+				(d) => (d as unknown as { type: { toDOM?: unknown } }).type.toDOM !== undefined
+			)!;
+		// @ts-expect-error — toDOM is the internal widget factory
+		return (widget.type as { toDOM: (view: unknown) => HTMLElement }).toDOM({
+			root: document
+		});
+	}
+
+	// Editor extensions register the marks they need. We use TipTap's full
+	// schema by including bold etc. via the Highlight + Bold marks below.
+	// To avoid dragging in StarterKit, we declare the extensions ad-hoc.
+	it('renders a bold cell as <strong> in the table', async () => {
+		const { default: Bold } = await import('@tiptap/extension-bold');
+		const editor = new Editor({
+			extensions: [
+				Document,
+				Paragraph,
+				Text,
+				Bold,
+				Extension.create({
+					name: 'tomboyTableBlock',
+					addProseMirrorPlugins() {
+						return [createTableBlockPlugin()];
+					}
+				})
+			],
+			content: {
+				type: 'doc',
+				content: [
+					{ type: 'paragraph', content: [{ type: 'text', text: '```csv' }] },
+					{
+						type: 'paragraph',
+						content: [
+							{ type: 'text', text: 'plain, ' },
+							{ type: 'text', text: 'BOLD', marks: [{ type: 'bold' }] }
+						]
+					},
+					{ type: 'paragraph', content: [{ type: 'text', text: '```' }] }
+				]
+			}
+		});
+		currentEditor = editor;
+		const dom = widgetDom(editor);
+		const strong = dom.querySelector('table strong');
+		expect(strong?.textContent).toBe('BOLD');
+	});
+
+	it('renders an internal-link cell with data-link-target', async () => {
+		const { TomboyInternalLink } = await import(
+			'$lib/editor/extensions/TomboyInternalLink.js'
+		);
+		const editor = new Editor({
+			extensions: [
+				Document,
+				Paragraph,
+				Text,
+				TomboyInternalLink.configure({
+					getTitles: () => [{ title: 'Other Note', guid: 'g1' }]
+				}),
+				Extension.create({
+					name: 'tomboyTableBlock',
+					addProseMirrorPlugins() {
+						return [createTableBlockPlugin()];
+					}
+				})
+			],
+			content: {
+				type: 'doc',
+				content: [
+					{ type: 'paragraph', content: [{ type: 'text', text: '```csv' }] },
+					{
+						type: 'paragraph',
+						content: [
+							{ type: 'text', text: 'see, ' },
+							{
+								type: 'text',
+								text: 'Other Note',
+								marks: [
+									{
+										type: 'tomboyInternalLink',
+										attrs: { target: 'Other Note' }
+									}
+								]
+							}
+						]
+					},
+					{ type: 'paragraph', content: [{ type: 'text', text: '```' }] }
+				]
+			}
+		});
+		currentEditor = editor;
+		const dom = widgetDom(editor);
+		const link = dom.querySelector(
+			'table a[data-link-target="Other Note"]'
+		) as HTMLAnchorElement | null;
+		expect(link).not.toBeNull();
+		expect(link!.textContent).toBe('Other Note');
+	});
+
+});
+
 describe('tableBlockPlugin — state across edits', () => {
 	it('preserves unchecked status when content edits shift positions', () => {
 		// Insert a leading paragraph BEFORE the fence so the table block's

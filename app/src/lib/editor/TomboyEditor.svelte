@@ -1222,16 +1222,15 @@
 
 	/* CSV/TSV table block.
 
-	   When the region is "checked" (default), the source paragraphs (the
-	   ```csv fence, body rows, ``` fence) are hidden via two decorations:
-	   the inline `tomboy-table-block-hidden` zeros out their content, and
-	   the node-level `tomboy-table-block-hidden-block` collapses the
-	   surrounding <p> to no height so the layout closes up. The widget
-	   decoration injected by the plugin renders the table on top.
+	   Checked (default): inline+node hide decorations zero out the source
+	   paragraphs and a block-level widget renders the table in their place.
+	   The toggle checkbox is absolutely positioned at the widget's top
+	   right and stays at opacity:0 until the widget is :hover'd.
 
-	   When unchecked, the hide decorations are not emitted — paragraphs
-	   appear as ordinary text and are fully editable. The widget still
-	   shows so the user can re-check. */
+	   Unchecked: no hide decos, source visible. A small inline-block
+	   widget lives INSIDE the open-fence paragraph, floated to the right
+	   of the line; it too is opacity:0 until the user hovers the
+	   paragraph or the widget itself. */
 	.tomboy-editor :global(.tomboy-table-block-hidden) {
 		display: none;
 	}
@@ -1242,28 +1241,57 @@
 		overflow: hidden;
 	}
 	.tomboy-editor :global(.tomboy-table-block-widget) {
+		position: relative;
 		display: block;
 		margin: 0.6em 0;
-		padding: 0.5em 0.6em 0.6em;
+		padding: 0.4em;
 		border: 1px solid #d0d7de;
 		border-radius: 6px;
 		background: #f6f8fa;
 		user-select: none;
 	}
-	.tomboy-editor :global(.tomboy-table-block-header) {
-		display: flex;
-		justify-content: flex-end;
-		margin-bottom: 0.4em;
-	}
 	.tomboy-editor :global(.tomboy-table-block-toggle) {
+		position: absolute;
+		top: 6px;
+		right: 8px;
 		display: inline-flex;
 		align-items: center;
-		gap: 0.3em;
-		font-size: 0.8em;
-		color: #555;
+		padding: 2px 4px;
+		border-radius: 3px;
+		background: rgba(255, 255, 255, 0.85);
+		opacity: 0;
+		transition: opacity 0.12s;
 		cursor: pointer;
+		z-index: 1;
+	}
+	.tomboy-editor :global(.tomboy-table-block-widget:hover .tomboy-table-block-toggle) {
+		opacity: 1;
 	}
 	.tomboy-editor :global(.tomboy-table-block-toggle input) {
+		cursor: pointer;
+	}
+	/* Floating toggle for the unchecked state — sits inside the source
+	   paragraph and floats right. Hover-revealed: appears on either the
+	   surrounding paragraph hover (so the user can find it from anywhere
+	   on the line) or on direct hover of the widget. */
+	.tomboy-editor :global(.tomboy-table-block-floating) {
+		float: right;
+		display: inline-flex;
+		align-items: center;
+		margin-left: 0.4em;
+		padding: 0 4px;
+		border-radius: 3px;
+		background: rgba(0, 0, 0, 0.04);
+		opacity: 0;
+		transition: opacity 0.12s;
+		cursor: pointer;
+		user-select: none;
+	}
+	.tomboy-editor :global(p:hover > .tomboy-table-block-floating),
+	.tomboy-editor :global(.tomboy-table-block-floating:hover) {
+		opacity: 1;
+	}
+	.tomboy-editor :global(.tomboy-table-block-floating input) {
 		cursor: pointer;
 	}
 	.tomboy-editor :global(.tomboy-table-block-table) {
