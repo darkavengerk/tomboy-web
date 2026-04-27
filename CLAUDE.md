@@ -133,7 +133,7 @@ The TopNav and the 전체 filter bar size themselves with `clamp(min, Xvw, max)`
 - **`.note` XML format is preserved verbatim** for round-trip compatibility with Tomboy desktop.
 - **Titles are globally unique, case-sensitive, trimmed.** Internal-link marks store the destination note's *title*, so title lookups at every layer (auto-link, graph, `findNoteByTitle`) are exact-case. Renaming a note sweeps backlinks; import / sync-pull collisions auto-suffix `(2)`, `(3)`, … See "Title uniqueness & rename cascade" below.
 - **Dropbox sync is explicit only** — the user clicks "지금 동기화" in settings. No auto-sync on startup, focus, or save. (Auto-sync was removed intentionally; do not reintroduce without asking.) Dropbox is the **backup channel**.
-- **Firebase realtime note sync is opt-in, OFF by default.** When enabled, the open note streams in/out via Firestore. Closed notes are not in Firestore until someone opens them. See the **`tomboy-notesync`** skill.
+- **Firebase realtime note sync is opt-in, OFF by default.** When enabled, the open note streams in/out via Firestore, AND a collection-level cursor (`serverUpdatedAt > lastFirebaseSyncAt`) delivers catch-up + realtime updates for every other note that exists in Firestore. Notes that have never been opened on any Firebase-enabled device are not in Firestore. See the **`tomboy-notesync`** skill.
 - **Dropbox sync protocol** follows Tomboy's revision scheme: server stores notes at `/{rev/100}/{rev}/{guid}.note` and a root `/manifest.xml` lists `(guid, rev)` pairs. `syncManager.sync()` is the authoritative implementation.
 - **Mobile-first, single-note-per-page** UI — avoid split views or desktop-only patterns.
 - **All UI strings are in Korean.** Match the existing tone.
@@ -334,19 +334,28 @@ invariant does **not** apply on these pages.
 
 ## 파이어베이스 실시간 노트 동기화
 
-A second sync channel that runs alongside Dropbox. Notes the user has
-**opened at least once** are mirrored into Firestore at
-`users/{uid}/notes/{guid}`; while open, edits push within ~500 ms and
-remote changes pull in real time. Dropbox stays untouched as the backup
-channel and the authority for the never-opened-anywhere backlog. Default
-**OFF** — the user enables it explicitly in 설정 → 동기화 설정. See the
-**`tomboy-notesync`** skill for the full design.
+A second sync channel that runs alongside Dropbox. Three flows:
+
+1. **Push** — every IDB write (editor save, rename cascade, delete, favorite
+   toggle) gets debounced and pushed to `users/{uid}/notes/{guid}`.
+2. **Per-note attach** — while a note is open, a doc-level `onSnapshot`
+   keeps it in lockstep with other devices in real time.
+3. **Incremental collection sync** — a single live cursor over
+   `users/{uid}/notes` filtered by `serverUpdatedAt > lastFirebaseSyncAt`
+   delivers both the catch-up of changes accumulated while offline AND
+   realtime updates from other devices. This is what makes a note created
+   on device A reach device B without B having to open the note first.
+
+Dropbox stays untouched as the backup channel and the authority for the
+never-opened-anywhere backlog. Default **OFF** — the user enables it
+explicitly in 설정 → 동기화 설정. See the **`tomboy-notesync`** skill for
+the full design.
 
 Quick map:
 
 - `app/src/lib/sync/firebase/` — pure modules (`notePayload`,
-  `conflictResolver`, `pushQueue`, `openNoteRegistry`) plus the
-  orchestrator and the production Firestore wiring.
+  `conflictResolver`, `pushQueue`, `openNoteRegistry`, `incrementalSync`)
+  plus the orchestrator and the production Firestore wiring.
 - `app/src/lib/firebase/app.ts` — shared lazy Firebase singletons +
   `ensureSignedIn` (also used by the schedule feature).
 - `noteManager.ts` — calls `notifyNoteSaved(guid)` after every IDB write
@@ -356,6 +365,8 @@ Quick map:
 - `routes/+layout.svelte` — calls `installRealNoteSync()` once at app start
   to wire the orchestrator with real adapters and apply the persisted flag.
 - `routes/settings/+page.svelte` (config tab) — the toggle.
+- `appSettings.firebaseNotesLastSyncAt` (millis) — incremental sync
+  watermark; advanced after each batch, never regresses.
 
 Invariants:
 
@@ -365,12 +376,18 @@ Invariants:
 - **Last-write-wins on `changeDate`.** Tiebreaker: `metadataChangeDate`,
   then prefer-local. Equivalent payloads → `noop` (this is also how
   echo-of-our-own-write is suppressed; no separate tracker).
+- **Incremental cursor uses `serverUpdatedAt`, not `changeDate`.**
+  `changeDate` is a wall-clock ISO string — unsafe to range-query across
+  timezone offsets. `serverUpdatedAt` is server-side and monotonic.
+  Conflict resolution still uses `changeDate`; the two timestamps serve
+  different purposes.
 - **Soft-delete only.** Tombstones (`deleted=true`) stay in Firestore so
   other devices can learn about deletions on next reconcile.
 - **Dropbox-pulled notes don't auto-push to Firestore.**
   `applyIncomingRemoteNote` writes via `putNoteSynced` and bypasses
   `notifyNoteSaved`. The next time the user opens the pulled note, the
-  attach-side reconcile pushes it.
+  attach-side reconcile pushes it (and the incremental cursor on every
+  other Firebase-enabled device picks it up immediately after).
 - **1 MiB document limit.** `noteToFirestorePayload` enforces a
   conservative 900 KB ceiling on the JSON-serialized payload; oversized
   notes throw and are skipped by the queue.

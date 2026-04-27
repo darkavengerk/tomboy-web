@@ -20,6 +20,7 @@ function makePrim(overrides: Partial<FirestorePrimitives> = {}): FirestorePrimit
 		getDoc: vi.fn(async () => ({ exists: false } as DocSnapshot)),
 		setDoc: vi.fn(async () => undefined),
 		onSnapshot: vi.fn(() => () => undefined),
+		onNotesAfter: vi.fn(() => () => undefined),
 		serverTimestamp: () => SERVER_TS,
 		...overrides
 	};
@@ -176,5 +177,103 @@ describe('createNoteSyncClient.subscribeNoteDoc', () => {
 			expect.any(Function),
 			expect.any(Function)
 		);
+	});
+});
+
+describe('createNoteSyncClient.subscribeNoteCollection', () => {
+	it('passes the (uid, sinceMillis) bounds through to the primitive', () => {
+		const prim = makePrim();
+		const client = createNoteSyncClient(prim);
+		client.subscribeNoteCollection('dbx-u', 1234, () => undefined, () => undefined);
+		expect(prim.onNotesAfter).toHaveBeenCalledWith(
+			'dbx-u',
+			1234,
+			expect.any(Function),
+			expect.any(Function)
+		);
+	});
+
+	it('forwards parsed payloads + serverUpdatedAtMillis to the caller', () => {
+		let primCb:
+			| ((docs: Array<{ data: unknown; serverUpdatedAtMillis: number }>) => void)
+			| undefined;
+		const prim = makePrim({
+			onNotesAfter: vi.fn((_uid, _since, onNext) => {
+				primCb = onNext;
+				return () => undefined;
+			})
+		});
+		const client = createNoteSyncClient(prim);
+		const onChange = vi.fn();
+
+		client.subscribeNoteCollection('dbx-u', 0, onChange, () => undefined);
+
+		const p = validPayload();
+		primCb!([
+			{ data: { ...p, serverUpdatedAt: 't1' }, serverUpdatedAtMillis: 5000 }
+		]);
+
+		expect(onChange).toHaveBeenCalledTimes(1);
+		const batch = onChange.mock.calls[0][0] as Array<{
+			payload: FirestoreNotePayload;
+			serverUpdatedAtMillis: number;
+		}>;
+		expect(batch).toEqual([{ payload: p, serverUpdatedAtMillis: 5000 }]);
+	});
+
+	it('drops malformed docs from the batch, keeps valid ones', () => {
+		let primCb:
+			| ((docs: Array<{ data: unknown; serverUpdatedAtMillis: number }>) => void)
+			| undefined;
+		const prim = makePrim({
+			onNotesAfter: vi.fn((_uid, _since, onNext) => {
+				primCb = onNext;
+				return () => undefined;
+			})
+		});
+		const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+		const client = createNoteSyncClient(prim);
+		const onChange = vi.fn();
+		const p = validPayload();
+
+		client.subscribeNoteCollection('dbx-u', 0, onChange, () => undefined);
+
+		primCb!([
+			{ data: { broken: true }, serverUpdatedAtMillis: 1000 },
+			{ data: { ...p, serverUpdatedAt: 't1' }, serverUpdatedAtMillis: 2000 }
+		]);
+
+		expect(onChange).toHaveBeenCalledTimes(1);
+		const batch = onChange.mock.calls[0][0];
+		expect(batch).toHaveLength(1);
+		expect(batch[0].payload.guid).toBe(p.guid);
+		expect(warn).toHaveBeenCalled();
+		warn.mockRestore();
+	});
+
+	it('returns the primitive\'s unsubscribe handle', () => {
+		const unsub = vi.fn();
+		const prim = makePrim({
+			onNotesAfter: vi.fn(() => unsub)
+		});
+		const client = createNoteSyncClient(prim);
+		const ret = client.subscribeNoteCollection('dbx-u', 0, () => undefined, () => undefined);
+		expect(ret).toBe(unsub);
+	});
+
+	it('forwards subscription errors to onError', () => {
+		let primErr: ((e: Error) => void) | undefined;
+		const prim = makePrim({
+			onNotesAfter: vi.fn((_uid, _since, _onNext, onError) => {
+				primErr = onError;
+				return () => undefined;
+			})
+		});
+		const client = createNoteSyncClient(prim);
+		const onError = vi.fn();
+		client.subscribeNoteCollection('dbx-u', 0, () => undefined, onError);
+		const err = new Error('snap-failed');
+		primErr!(err);
+		expect(onError).toHaveBeenCalledWith(err);
 	});
 });

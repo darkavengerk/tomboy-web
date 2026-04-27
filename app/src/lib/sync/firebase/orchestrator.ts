@@ -28,6 +28,11 @@ import {
 	mergeRemoteIntoLocal,
 	type FirestoreNotePayload
 } from './notePayload.js';
+import {
+	createIncrementalSync,
+	type IncrementalSync,
+	type IncrementalSyncDeps
+} from './incrementalSync.js';
 import * as noteStore from '$lib/storage/noteStore.js';
 import { emitNoteReload } from '$lib/core/noteReloadBus.js';
 import type { NoteData } from '$lib/core/note.js';
@@ -46,6 +51,15 @@ export interface NoteSyncConfig {
 	getUid?: () => Promise<string | null>;
 	/** Subscribes to the remote doc; returns an unsubscribe handle. */
 	subscribeRemote?: RemoteSubscribe;
+	/**
+	 * Begin a live `users/{uid}/notes` listener for `serverUpdatedAt > since`.
+	 * Optional — when omitted, only per-note attach-side sync runs (legacy
+	 * behavior). When provided, the orchestrator starts an incremental sync
+	 * any time `setNoteSyncEnabled(true)` runs.
+	 */
+	subscribeNoteCollection?: IncrementalSyncDeps['subscribe'];
+	getLastSyncMillis?: IncrementalSyncDeps['getLastSyncMillis'];
+	setLastSyncMillis?: IncrementalSyncDeps['setLastSyncMillis'];
 }
 
 const DEFAULT_DEBOUNCE_MS = 400;
@@ -57,6 +71,10 @@ let getNoteFn: (g: string) => Promise<NoteData | undefined> = async () =>
 	undefined;
 let getUidFn: () => Promise<string | null> = async () => null;
 let subscribeRemoteFn: RemoteSubscribe | null = null;
+let subscribeNoteCollectionFn: IncrementalSyncDeps['subscribe'] | null = null;
+let getLastSyncMillisFn: IncrementalSyncDeps['getLastSyncMillis'] | null = null;
+let setLastSyncMillisFn: IncrementalSyncDeps['setLastSyncMillis'] | null = null;
+let incrementalSync: IncrementalSync | null = null;
 let debounceMs = DEFAULT_DEBOUNCE_MS;
 let enabled = false;
 
@@ -79,11 +97,52 @@ export function configureNoteSync(cfg: NoteSyncConfig): void {
 	if (cfg.debounceMs !== undefined) debounceMs = cfg.debounceMs;
 	if (cfg.getUid) getUidFn = cfg.getUid;
 	if (cfg.subscribeRemote) subscribeRemoteFn = cfg.subscribeRemote;
+	if (cfg.subscribeNoteCollection) subscribeNoteCollectionFn = cfg.subscribeNoteCollection;
+	if (cfg.getLastSyncMillis) getLastSyncMillisFn = cfg.getLastSyncMillis;
+	if (cfg.setLastSyncMillis) setLastSyncMillisFn = cfg.setLastSyncMillis;
 	queue = null; // rebuild with the new debounce/push
+	// Drop any prior incremental instance — its captured deps may be stale.
+	if (incrementalSync) {
+		incrementalSync.stop();
+		incrementalSync = null;
+	}
 }
 
 export function setNoteSyncEnabled(v: boolean): void {
 	enabled = v;
+	if (v) {
+		void startIncrementalIfPossible();
+	} else if (incrementalSync) {
+		incrementalSync.stop();
+	}
+}
+
+function ensureIncrementalSync(): IncrementalSync | null {
+	if (
+		!subscribeNoteCollectionFn ||
+		!getLastSyncMillisFn ||
+		!setLastSyncMillisFn
+	) {
+		return null;
+	}
+	if (!incrementalSync) {
+		incrementalSync = createIncrementalSync({
+			subscribe: subscribeNoteCollectionFn,
+			applyRemote: (payload) => reconcileWithRemote(payload.guid, payload),
+			getLastSyncMillis: getLastSyncMillisFn,
+			setLastSyncMillis: setLastSyncMillisFn
+		});
+	}
+	return incrementalSync;
+}
+
+async function startIncrementalIfPossible(): Promise<void> {
+	const inst = ensureIncrementalSync();
+	if (!inst) return;
+	const uid = await getUidFn().catch(() => null);
+	if (!uid) return;
+	if (!enabled) return; // race: disabled while we awaited uid
+	await inst.start(uid);
 }
 
 export function isNoteSyncEnabled(): boolean {
@@ -137,12 +196,23 @@ export function _resetNoteSyncForTest(): void {
 			/* swallow — test reset must not throw */
 		}
 	}
+	if (incrementalSync) {
+		try {
+			incrementalSync.stop();
+		} catch {
+			/* swallow */
+		}
+	}
 	registry = null;
 	queue = null;
+	incrementalSync = null;
 	pushFn = async () => undefined;
 	getNoteFn = async () => undefined;
 	getUidFn = async () => null;
 	subscribeRemoteFn = null;
+	subscribeNoteCollectionFn = null;
+	getLastSyncMillisFn = null;
+	setLastSyncMillisFn = null;
 	debounceMs = DEFAULT_DEBOUNCE_MS;
 	enabled = false;
 }

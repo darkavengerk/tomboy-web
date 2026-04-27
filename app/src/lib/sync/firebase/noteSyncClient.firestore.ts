@@ -4,15 +4,22 @@
  * stays out of unit tests — they construct the client with fake primitives.
  */
 import {
+	collection,
 	doc,
 	getDoc as fsGetDoc,
 	setDoc as fsSetDoc,
 	onSnapshot as fsOnSnapshot,
-	serverTimestamp as fsServerTimestamp
+	query,
+	where,
+	Timestamp,
+	serverTimestamp as fsServerTimestamp,
+	type DocumentData,
+	type QueryDocumentSnapshot
 } from 'firebase/firestore';
 import { ensureSignedIn, getFirebaseFirestore } from '$lib/firebase/app.js';
 import {
 	createNoteSyncClient,
+	type CollectionDocChange,
 	type FirestorePrimitives
 } from './noteSyncClient.js';
 
@@ -29,6 +36,36 @@ function primitives(): FirestorePrimitives {
 			return fsOnSnapshot(
 				doc(getFirebaseFirestore(), path),
 				(snap) => onNext({ exists: snap.exists(), data: snap.data() }),
+				onError
+			);
+		},
+		onNotesAfter(uid, sinceMillis, onNext, onError) {
+			const notesCol = collection(getFirebaseFirestore(), 'users', uid, 'notes');
+			const q = query(
+				notesCol,
+				where('serverUpdatedAt', '>', Timestamp.fromMillis(sinceMillis))
+			);
+			return fsOnSnapshot(
+				q,
+				(qsnap) => {
+					const docs: CollectionDocChange[] = [];
+					for (const change of qsnap.docChanges()) {
+						if (change.type !== 'added' && change.type !== 'modified') continue;
+						const change_doc = change.doc as QueryDocumentSnapshot<DocumentData>;
+						const data = change_doc.data();
+						const ts = data.serverUpdatedAt;
+						if (!ts || typeof (ts as Timestamp).toMillis !== 'function') {
+							// serverTimestamp() not yet finalised by the server — wait for
+							// the follow-up snapshot.
+							continue;
+						}
+						docs.push({
+							data,
+							serverUpdatedAtMillis: (ts as Timestamp).toMillis()
+						});
+					}
+					onNext(docs);
+				},
 				onError
 			);
 		},

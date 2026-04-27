@@ -26,6 +26,11 @@ export interface DocSnapshot {
 	data?: unknown;
 }
 
+export interface CollectionDocChange {
+	data: unknown;
+	serverUpdatedAtMillis: number;
+}
+
 export interface FirestorePrimitives {
 	getDoc(path: string): Promise<DocSnapshot>;
 	setDoc(path: string, data: Record<string, unknown>): Promise<void>;
@@ -34,7 +39,26 @@ export interface FirestorePrimitives {
 		onNext: (snap: DocSnapshot) => void,
 		onError: (err: Error) => void
 	): Unsubscribe;
+	/**
+	 * Live cursor over `users/{uid}/notes` filtered by
+	 * `serverUpdatedAt > sinceMillis`. Each emission delivers only the
+	 * incremental changes since the previous emission. Docs whose
+	 * `serverUpdatedAt` has not yet been finalised by the server (i.e. the
+	 * local optimistic write is in flight) are dropped — they'll arrive in a
+	 * subsequent emission once the server confirms.
+	 */
+	onNotesAfter(
+		uid: string,
+		sinceMillis: number,
+		onNext: (docs: CollectionDocChange[]) => void,
+		onError: (err: Error) => void
+	): Unsubscribe;
 	serverTimestamp(): unknown;
+}
+
+export interface NoteCollectionChange {
+	payload: FirestoreNotePayload;
+	serverUpdatedAtMillis: number;
 }
 
 export interface NoteSyncClient {
@@ -44,6 +68,19 @@ export interface NoteSyncClient {
 		uid: string,
 		guid: string,
 		onChange: (payload: FirestoreNotePayload | undefined) => void
+	): Unsubscribe;
+	/**
+	 * Subscribe to incremental changes in the user's note collection. Each
+	 * batch delivers payloads whose `serverUpdatedAt` is greater than
+	 * `sinceMillis` (and, for subsequent emissions, greater than what was
+	 * delivered before). Malformed docs are logged and dropped; the rest of
+	 * the batch still flows through.
+	 */
+	subscribeNoteCollection(
+		uid: string,
+		sinceMillis: number,
+		onChange: (changes: NoteCollectionChange[]) => void,
+		onError: (err: Error) => void
 	): Unsubscribe;
 }
 
@@ -98,5 +135,32 @@ export function createNoteSyncClient(prim: FirestorePrimitives): NoteSyncClient 
 		);
 	}
 
-	return { getNoteDoc, setNoteDoc, subscribeNoteDoc };
+	function subscribeNoteCollection(
+		uid: string,
+		sinceMillis: number,
+		onChange: (changes: NoteCollectionChange[]) => void,
+		onError: (err: Error) => void
+	): Unsubscribe {
+		return prim.onNotesAfter(
+			uid,
+			sinceMillis,
+			(docs) => {
+				const out: NoteCollectionChange[] = [];
+				for (const d of docs) {
+					try {
+						const { serverUpdatedAt: _omit, ...rest } =
+							(d.data as Record<string, unknown>) ?? {};
+						assertValidPayload(rest);
+						out.push({ payload: rest, serverUpdatedAtMillis: d.serverUpdatedAtMillis });
+					} catch (err) {
+						console.warn('[noteSyncClient] dropping malformed collection doc', err);
+					}
+				}
+				onChange(out);
+			},
+			onError
+		);
+	}
+
+	return { getNoteDoc, setNoteDoc, subscribeNoteDoc, subscribeNoteCollection };
 }
