@@ -14,6 +14,7 @@
 		flushIfEnabled
 	} from '$lib/schedule/flushScheduler.js';
 	import { subscribeForegroundMessages } from '$lib/schedule/notification.js';
+	import { installRealNoteSync } from '$lib/sync/firebase/install.js';
 	import { pushToast } from '$lib/stores/toast.js';
 
 	let { children } = $props();
@@ -78,6 +79,10 @@
 		// 일정 알림: 온라인 복귀 시 미발신 diff 자동 flush + 시작 시 한 번 시도.
 		installOnlineFlushListener();
 		void flushIfEnabled();
+
+		// 파이어베이스 노트 실시간 동기화: 저장된 토글 값을 읽어 활성화 상태로 복원.
+		// 토글이 OFF면 push/subscribe 모두 no-op 으로 비용 없음.
+		void installRealNoteSync();
 
 		// 포그라운드 푸시 구독 — 사용자가 같은 세션에서 알림을 활성화한 직후 테스트
 		// 시 구독이 누락되지 않도록 무조건 호출. Firebase 미지원/미초기화면 no-op 반환.

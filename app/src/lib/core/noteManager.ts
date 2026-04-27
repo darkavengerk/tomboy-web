@@ -14,6 +14,7 @@ import { checkTitleConflict } from '$lib/editor/titleUniqueGuard.js';
 import { pushToast } from '$lib/stores/toast.js';
 import { syncScheduleFromNote } from '$lib/schedule/syncSchedule.js';
 import { flushIfEnabled } from '$lib/schedule/flushScheduler.js';
+import { notifyNoteSaved } from '$lib/sync/firebase/orchestrator.js';
 import type { JSONContent } from '@tiptap/core';
 
 /** Format a Date as a plain `yyyy-mm-dd HH:mm` title — the default title
@@ -97,6 +98,7 @@ export async function updateNoteFromEditor(guid: string, doc: JSONContent): Prom
 	note.metadataChangeDate = now;
 
 	await noteStore.putNote(note);
+	notifyNoteSaved(guid);
 	// Only invalidate the shared note-list cache when the title changed.
 	// Body-only edits don't affect any derived views that matter while the
 	// user is actively typing (the title list for auto-linking, notebook
@@ -162,6 +164,7 @@ async function rewriteBacklinksForRename(
 		other.changeDate = now;
 		other.metadataChangeDate = now;
 		await noteStore.putNote(other);
+		notifyNoteSaved(other.guid);
 		affected.push(other.guid);
 	}
 	return affected;
@@ -170,6 +173,7 @@ async function rewriteBacklinksForRename(
 /** Delete a note (soft-delete for sync) */
 export async function deleteNoteById(guid: string): Promise<void> {
 	await noteStore.deleteNote(guid);
+	notifyNoteSaved(guid);
 	invalidateCache();
 }
 
@@ -241,6 +245,7 @@ export async function toggleFavorite(guid: string): Promise<NoteData | undefined
 	const now = formatTomboyDate(new Date());
 	n.metadataChangeDate = now;
 	await noteStore.putNote(n);
+	notifyNoteSaved(guid);
 	invalidateCache();
 	return n;
 }

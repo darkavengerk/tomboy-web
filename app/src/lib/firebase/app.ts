@@ -1,13 +1,18 @@
 /**
- * Lazy Firebase init for the schedule-note push notification feature.
+ * Shared lazy Firebase init.
+ *
+ * Originally introduced for the schedule-note push notification feature; now
+ * also backs Firestore-based realtime note sync. Lives in `$lib/firebase/`
+ * because both feature areas need the same singletons and the same
+ * Dropbox-bridged auth identity.
  *
  * Authentication is bridged from Dropbox: we exchange the user's Dropbox
  * access token for a Firebase Custom Auth token whose uid is derived from
  * the Dropbox `account_id`. This way the same Dropbox account always maps
- * to the same Firebase uid across every device, so all schedule items and
- * device tokens land under one `users/{uid}/` namespace and any device
- * can fire alarms for the shared schedule. Without a Dropbox connection,
- * sign-in fails — notifications are gated on Dropbox auth.
+ * to the same Firebase uid across every device, so all schedule items,
+ * device tokens, and synced notes land under one `users/{uid}/` namespace
+ * and any device can act on the shared data. Without a Dropbox connection,
+ * sign-in fails — every Firebase-backed feature is gated on Dropbox auth.
  *
  * `getFirebaseMessaging()` returns null when the browser cannot support
  * push (e.g. iOS Safari before 16.4, or any browser where ServiceWorker /
@@ -93,7 +98,7 @@ export class DropboxNotConnectedError extends Error {
 export async function ensureSignedIn(): Promise<User> {
 	const auth = getFirebaseAuth();
 	if (auth.currentUser?.isAnonymous) {
-		console.info('[schedule] signing out leftover anonymous user');
+		console.info('[firebase] signing out leftover anonymous user');
 		await signOut(auth);
 	}
 	if (auth.currentUser) return auth.currentUser;
