@@ -19,7 +19,7 @@ import {
 	Timestamp,
 	writeBatch
 } from 'firebase/firestore';
-import { ensureSignedIn, getFirebaseFirestore } from './firebase.js';
+import { ensureSignedIn, getFirebaseFirestore } from '$lib/firebase/app.js';
 import type { DeviceRegistration, ScheduleRemoteClient } from './scheduleClient.js';
 import type { ScheduleItem } from './buildScheduleItem.js';
 

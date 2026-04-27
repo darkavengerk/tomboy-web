@@ -14,6 +14,7 @@
 		listNotes
 	} from '$lib/core/noteManager.js';
 	import { subscribeNoteReload } from '$lib/core/noteReloadBus.js';
+	import { attachOpenNote, detachOpenNote } from '$lib/sync/firebase/orchestrator.js';
 	import type { NoteData } from '$lib/core/note.js';
 	import { createTitleProvider } from '$lib/editor/autoLink/titleProvider.js';
 	import { findAdjacentDateNotes } from '$lib/editor/dateLink/findAdjacentDateNotes.js';
@@ -135,6 +136,17 @@
 			lastSavedDocFingerprint = null;
 		});
 		return off;
+	});
+
+	// Realtime Firebase sync attach/detach. The orchestrator no-ops when the
+	// user hasn't enabled note sync, so this is cheap by default. Refcounted
+	// internally — multiple windows holding the same note share one
+	// subscription.
+	$effect(() => {
+		const id = noteId;
+		if (!id) return;
+		attachOpenNote(id);
+		return () => detachOpenNote(id);
 	});
 
 	// Route 변경 시 에디터 콘텐츠 교체

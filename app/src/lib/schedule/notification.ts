@@ -16,7 +16,7 @@ import {
 	getFirebaseApp,
 	getFirebaseMessaging,
 	getVapidKey
-} from './firebase.js';
+} from '$lib/firebase/app.js';
 import { firestoreScheduleClient } from './firestoreScheduleClient.js';
 import { getOrCreateInstallId } from './installId.js';
 import { getScheduleNoteGuid } from '$lib/core/schedule.js';

@@ -9,6 +9,7 @@
 		isFavorite
 	} from '$lib/core/noteManager.js';
 	import { subscribeNoteReload } from '$lib/core/noteReloadBus.js';
+	import { attachOpenNote, detachOpenNote } from '$lib/sync/firebase/orchestrator.js';
 	import type { NoteData } from '$lib/core/note.js';
 	import TomboyEditor from '$lib/editor/TomboyEditor.svelte';
 	import Toolbar from '$lib/editor/Toolbar.svelte';
@@ -172,6 +173,10 @@
 			}
 		})();
 
+		// Realtime Firebase sync attach/detach. No-op until the user enables
+		// note sync in settings.
+		attachOpenNote(guid);
+
 		// Register a flush hook so closeWindow() can persist unsaved edits.
 		const unregisterFlush = registerFlushHook(guid, () => flushSave());
 		// Register a reload hook so cross-window ops (slip-note chain
@@ -188,6 +193,7 @@
 		const offSlipChange = slipNoteGuids.onChange(() => recomputeDateAdjacency());
 
 		return () => {
+			detachOpenNote(guid);
 			unregisterFlush();
 			unregisterReload();
 			offDateChange();

@@ -53,6 +53,13 @@
 	} from '$lib/schedule/notification.js';
 	import { flushIfEnabled } from '$lib/schedule/flushScheduler.js';
 	import { getOrCreateInstallId } from '$lib/schedule/installId.js';
+	import { setSetting } from '$lib/storage/appSettings.js';
+	import {
+		FIREBASE_NOTES_ENABLED_KEY,
+		isFirebaseNotesEnabledSetting,
+		installRealNoteSync
+	} from '$lib/sync/firebase/install.js';
+	import { setNoteSyncEnabled } from '$lib/sync/firebase/orchestrator.js';
 
 	type Tab = 'sync' | 'config' | 'notify' | 'advanced';
 	let activeTab = $state<Tab>('sync');
@@ -83,6 +90,37 @@
 	let restoringProfile = $state(false);
 	let loadingProfiles = $state(false);
 	let restoreConfirm = $state(false);
+
+	// ── 파이어베이스 실시간 노트 동기화 ──────────────────────────────────
+	let firebaseNotesEnabled = $state(false);
+	let firebaseNotesBusy = $state(false);
+
+	async function loadFirebaseNotesState(): Promise<void> {
+		firebaseNotesEnabled = await isFirebaseNotesEnabledSetting();
+	}
+
+	async function handleFirebaseNotesToggle(): Promise<void> {
+		if (firebaseNotesBusy) return;
+		firebaseNotesBusy = true;
+		try {
+			const next = !firebaseNotesEnabled;
+			await setSetting(FIREBASE_NOTES_ENABLED_KEY, next);
+			// Make sure orchestrator is wired with real adapters before flipping on.
+			await installRealNoteSync();
+			setNoteSyncEnabled(next);
+			firebaseNotesEnabled = next;
+			pushToast(
+				next
+					? '파이어베이스 실시간 노트 동기화가 활성화되었습니다.'
+					: '파이어베이스 실시간 노트 동기화가 비활성화되었습니다.',
+				{ kind: 'info' }
+			);
+		} catch (err) {
+			pushToast(`설정 변경 실패: ${String(err)}`, { kind: 'error' });
+		} finally {
+			firebaseNotesBusy = false;
+		}
+	}
 
 	// ── 일정 알림 (notify 탭) ────────────────────────────────────────────
 	let notifyNotes = $state<{ guid: string; title: string }[]>([]);
@@ -285,6 +323,7 @@
 		});
 
 		void loadNotifyState();
+		void loadFirebaseNotesState();
 		// First page mount can race the SW activation. Re-check after a beat
 		// so a transient null subscription doesn't get pinned in the UI.
 		setTimeout(() => void refreshPushSubDiag(), 1500);
@@ -595,6 +634,29 @@
 					<p class="info-text">Dropbox에 노트를 백업하고 동기화합니다.</p>
 					<button class="btn btn-primary" onclick={handleConnect}>Dropbox 연결</button>
 				{/if}
+			</section>
+
+			<section class="section">
+				<h2>파이어베이스 실시간 동기화</h2>
+				<p class="info-text">
+					노트가 열려 있는 동안 변경사항이 즉시 파이어베이스에 반영되고, 다른 기기에서도 같은
+					노트가 열려 있으면 실시간으로 따라옵니다. Dropbox 동기화는 백업 채널로 그대로
+					유지됩니다.
+				</p>
+				<p class="info-text small">
+					같은 Dropbox 계정에 연결된 기기끼리만 공유됩니다. 충돌이 나면 수정 시각이 더 늦은 쪽이
+					이깁니다. 한 번도 열린 적 없는 노트는 파이어베이스에 올라가지 않으니 처음 한 번씩만
+					열어두면 됩니다.
+				</p>
+				<label class="form-row">
+					<input
+						type="checkbox"
+						checked={firebaseNotesEnabled}
+						disabled={firebaseNotesBusy}
+						onchange={() => void handleFirebaseNotesToggle()}
+					/>
+					<span class="form-label">실시간 동기화 사용</span>
+				</label>
 			</section>
 
 			<section class="section">
