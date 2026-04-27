@@ -1369,26 +1369,50 @@
 		display: none;
 	}
 
-	/* Ctrl-mode: structural edit chrome. The toggle checkbox is hidden
-	   (replaced by the action buttons), and per-cell X buttons + the two
-	   table-edge + buttons render. The widget reserves space on the
-	   right (col-add) and below (row-add) so the absolute-positioned +
-	   buttons don't sit on top of unrelated content. */
+	/* Ctrl-mode: structural edit chrome.
+	   Layout strategy: the widget becomes a 2x2 grid:
+	     ┌────────────┬───────┐
+	     │   table    │  +col │   ← +col spans full table HEIGHT
+	     ├────────────┼───────┤
+	     │   +row     │       │   ← +row spans full table WIDTH
+	     └────────────┴───────┘
+	   The toggle checkbox (hover-only in non-ctrl) is suppressed in
+	   favor of the structural-edit buttons. */
 	.tomboy-editor
 		:global(.tomboy-table-block-widget.tomboy-table-block-ctrl
 			.tomboy-table-block-toggle) {
 		display: none;
 	}
 	.tomboy-editor :global(.tomboy-table-block-widget.tomboy-table-block-ctrl) {
-		padding-right: 22px;
-		padding-bottom: 22px;
+		display: grid;
+		grid-template-columns: auto auto;
+		grid-template-rows: auto auto;
+		gap: 4px;
+		width: max-content;
+		max-width: 100%;
 	}
-	/* Per-cell action button (X). Positioned at the corner of its host
-	   <th> / <td>. Column-delete X sits at the top-right of header cells;
-	   row-delete X sits at the right of last-cell-of-row. They never
-	   overlap because column-delete X applies to the FIRST row only,
-	   and the row-delete X is on the right edge — for the first row's
-	   last cell both render but stagger via top/right offsets. */
+	.tomboy-editor
+		:global(.tomboy-table-block-widget.tomboy-table-block-ctrl
+			> .tomboy-table-block-table) {
+		grid-column: 1;
+		grid-row: 1;
+	}
+	.tomboy-editor
+		:global(.tomboy-table-block-widget.tomboy-table-block-ctrl
+			> .tomboy-table-block-add-col) {
+		grid-column: 2;
+		grid-row: 1;
+	}
+	.tomboy-editor
+		:global(.tomboy-table-block-widget.tomboy-table-block-ctrl
+			> .tomboy-table-block-add-row) {
+		grid-column: 1;
+		grid-row: 2;
+	}
+
+	/* Per-cell action button (X). Lives INSIDE the cell, top-right
+	   absolute. The cell carries `position: relative` so the X anchors
+	   to the cell box, not the table or the widget. */
 	.tomboy-editor :global(.tomboy-table-block-table th),
 	.tomboy-editor :global(.tomboy-table-block-table td) {
 		position: relative;
@@ -1402,54 +1426,40 @@
 		cursor: pointer;
 		user-select: none;
 	}
-	.tomboy-editor :global(.tomboy-table-block-del-col) {
-		position: absolute;
-		top: -10px;
-		right: -10px;
-		width: 18px;
-		height: 18px;
-		border-radius: 50%;
-		background: #c43e3e;
-		color: #fff;
-		font-size: 12px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		z-index: 2;
-	}
+	.tomboy-editor :global(.tomboy-table-block-del-col),
 	.tomboy-editor :global(.tomboy-table-block-del-row) {
 		position: absolute;
-		top: 50%;
-		right: -10px;
-		transform: translateY(-50%);
-		width: 18px;
-		height: 18px;
+		top: 2px;
+		right: 2px;
+		width: 16px;
+		height: 16px;
 		border-radius: 50%;
 		background: #c43e3e;
 		color: #fff;
-		font-size: 12px;
+		font-size: 11px;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		z-index: 2;
+		opacity: 0.8;
 	}
-	/* Stagger: a header cell that's ALSO the last column has both X
-	   buttons; nudge the row-delete down so it doesn't sit on the
-	   col-delete. */
-	.tomboy-editor
-		:global(.tomboy-table-block-table thead th .tomboy-table-block-del-row) {
-		top: 100%;
+	.tomboy-editor :global(.tomboy-table-block-del-col:hover),
+	.tomboy-editor :global(.tomboy-table-block-del-row:hover) {
+		opacity: 1;
 	}
+	/* Hover-preview highlight: the cells about to be removed. */
+	.tomboy-editor :global(.tomboy-table-block-target-row),
+	.tomboy-editor :global(.tomboy-table-block-target-col) {
+		background: rgba(196, 62, 62, 0.18) !important;
+	}
+
+	/* Insert-row / insert-col buttons fill their grid cell, so they
+	   match the table's width / height respectively. */
 	.tomboy-editor :global(.tomboy-table-block-add-col) {
-		position: absolute;
-		top: 0;
-		right: 0;
-		width: 20px;
-		height: 100%;
-		max-height: 28px;
+		min-width: 22px;
 		background: #2e7d32;
 		color: #fff;
-		font-size: 14px;
+		font-size: 18px;
 		font-weight: bold;
 		display: flex;
 		align-items: center;
@@ -1457,19 +1467,18 @@
 		border-radius: 3px;
 	}
 	.tomboy-editor :global(.tomboy-table-block-add-row) {
-		position: absolute;
-		bottom: 0;
-		left: 0;
-		width: 100%;
-		max-width: 60px;
-		height: 20px;
+		min-height: 22px;
 		background: #2e7d32;
 		color: #fff;
-		font-size: 14px;
+		font-size: 18px;
 		font-weight: bold;
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		border-radius: 3px;
+	}
+	.tomboy-editor :global(.tomboy-table-block-add-col:hover),
+	.tomboy-editor :global(.tomboy-table-block-add-row:hover) {
+		background: #1b5e20;
 	}
 </style>

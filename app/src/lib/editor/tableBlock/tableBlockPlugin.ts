@@ -108,6 +108,30 @@ function rebuildState(
 	return { regions, uncheckedOpens, editing, ctrlHeld, decorations };
 }
 
+/**
+ * Stable signature of a region's body content (per-row plain text).
+ * Folded into the widget's decoration `key` so PM rebuilds the widget
+ * DOM whenever a cell value changes — even if the change is same-length
+ * (which would otherwise leave open/close fence positions stable and
+ * trick PM into reusing the stale widget DOM, the bug that produced
+ * "X click only updates after Ctrl release"). FNV-1a 32-bit, plenty for
+ * an in-memory key.
+ */
+function regionContentHash(region: TableRegion): string {
+	let h = 2166136261;
+	for (const row of region.rows) {
+		for (const cell of row) {
+			for (let i = 0; i < cell.length; i++) {
+				h = (h ^ cell.charCodeAt(i)) >>> 0;
+				h = Math.imul(h, 16777619) >>> 0;
+			}
+			h = (h ^ 0x1f) >>> 0; // cell-end marker
+		}
+		h = (h ^ 0xff) >>> 0; // row-end marker
+	}
+	return h.toString(36);
+}
+
 function buildDecorations(
 	doc: PMNode,
 	regions: TableRegion[],
@@ -166,7 +190,7 @@ function buildDecorations(
 							editingHere
 								? `${editingHere.rowIdx}:${editingHere.colIdx}`
 								: 'none'
-						}:${showCtrlChrome ? 'ctrl' : 'plain'}`
+						}:${showCtrlChrome ? 'ctrl' : 'plain'}:${regionContentHash(r)}`
 					}
 				)
 			);
@@ -381,14 +405,16 @@ function fillCell(
 		host.appendChild(renderInlinesToDom(inlines));
 	}
 	if (!showCtrlChrome) return;
-	// Header row: column-delete X on every cell.
+	// Header row (rowIdx === 0): column-delete X on every cell.
 	if (rowIdx === 0) {
 		host.appendChild(
 			makeCellActionButton(view, region, 'del-col', colIdx, '×', '열 삭제')
 		);
 	}
-	// Last cell of every row: row-delete X.
-	if (colIdx === lastColIdx) {
+	// Last cell of every BODY row gets row-delete X. Header excluded
+	// per spec — the header is structural, deleting it would orphan
+	// the body's column meanings.
+	if (colIdx === lastColIdx && rowIdx > 0) {
 		host.appendChild(
 			makeCellActionButton(view, region, 'del-row', rowIdx, '×', '행 삭제')
 		);
@@ -400,6 +426,10 @@ function fillCell(
  * `index` identifies the row or column the action targets. The action
  * runs immediately on click — there's no separate confirmation since
  * the user can undo via Ctrl+Z.
+ *
+ * Hovering the button paints a `target-row` / `target-col` class on the
+ * cells that would be removed, so the user can preview the operation
+ * before clicking.
  */
 function makeCellActionButton(
 	view: EditorView,
@@ -417,6 +447,22 @@ function makeCellActionButton(
 	btn.setAttribute('contenteditable', 'false');
 	btn.title = title;
 	btn.textContent = glyph;
+
+	const targetClass =
+		action === 'del-row'
+			? 'tomboy-table-block-target-row'
+			: 'tomboy-table-block-target-col';
+	const targetAttr = action === 'del-row' ? 'data-table-block-row' : 'data-table-block-col';
+
+	function paintTargets(on: boolean): void {
+		const table = btn.closest('table');
+		if (!table) return;
+		const cells = table.querySelectorAll(`[${targetAttr}="${index}"]`);
+		cells.forEach((el) => el.classList.toggle(targetClass, on));
+	}
+
+	btn.addEventListener('mouseenter', () => paintTargets(true));
+	btn.addEventListener('mouseleave', () => paintTargets(false));
 	btn.addEventListener('mousedown', (e) => {
 		// Keep PM's selection where it was — don't move it onto the
 		// button's anchor.
@@ -425,6 +471,9 @@ function makeCellActionButton(
 	btn.addEventListener('click', (e) => {
 		e.preventDefault();
 		e.stopPropagation();
+		// Drop the highlight class — the cells are about to be removed
+		// anyway, but keep the DOM clean in case the deletion fails.
+		paintTargets(false);
 		const tr =
 			action === 'del-row'
 				? deleteRowOp(view.state, currentRegionFor(view, region), index)

@@ -13,6 +13,7 @@ import {
 	tableBlockPluginKey,
 	toggleTableBlock
 } from '$lib/editor/tableBlock/tableBlockPlugin.js';
+import { deleteColOp } from '$lib/editor/tableBlock/tableOps.js';
 
 let currentEditor: Editor | null = null;
 
@@ -678,13 +679,27 @@ describe('tableBlockPlugin — ctrl-mode editing chrome', () => {
 		expect(xs).toHaveLength(3);
 	});
 
-	it('renders a row-delete X on the last cell of each row when ctrlHeld', () => {
+	it('renders a row-delete X on the last cell of each BODY row (header excluded)', () => {
 		const ed = makeEditor(['```csv', 'a, b', 'c, d', 'e, f', '```']);
 		setCtrlHeld(ed, true);
 		const dom = widgetDom(ed);
-		// 3 rows total → 3 row-delete buttons (one per row's last cell).
+		// 3 rows total but only the 2 body rows get a row-delete X — the
+		// header row never deletes itself (the user opted out of that).
 		const xs = dom.querySelectorAll('[data-table-block-action="del-row"]');
-		expect(xs).toHaveLength(3);
+		expect(xs).toHaveLength(2);
+	});
+
+	it('emits NO row-delete X inside the <thead>', () => {
+		const ed = makeEditor(['```csv', 'a, b', 'c, d', '```']);
+		setCtrlHeld(ed, true);
+		const dom = widgetDom(ed);
+		expect(
+			dom.querySelectorAll('thead [data-table-block-action="del-row"]')
+		).toHaveLength(0);
+		// And the <tbody> still does have one.
+		expect(
+			dom.querySelectorAll('tbody [data-table-block-action="del-row"]')
+		).toHaveLength(1);
 	});
 
 	it('renders an append-column + button when ctrlHeld', () => {
@@ -752,11 +767,12 @@ describe('tableBlockPlugin — ctrl-mode action button behavior', () => {
 		const dom = widgetDom(ed);
 		document.body.appendChild(dom);
 
-		const rowButtons = dom.querySelectorAll(
-			'[data-table-block-action="del-row"]'
-		) as NodeListOf<HTMLElement>;
-		// Click the second row's delete button (rowIdx=1: "c, d").
-		rowButtons[1]!.dispatchEvent(
+		// Pick by index attribute — header has no del-row, so NodeList
+		// position would no longer equal the row index.
+		const rowBtn = dom.querySelector(
+			'[data-table-block-action="del-row"][data-table-block-index="1"]'
+		) as HTMLElement;
+		rowBtn.dispatchEvent(
 			new MouseEvent('click', { bubbles: true, cancelable: true })
 		);
 
@@ -805,6 +821,90 @@ describe('tableBlockPlugin — ctrl-mode action button behavior', () => {
 		expect(after.rows).toHaveLength(2);
 		expect(after.rows[1]).toEqual(['', '']);
 		dom.remove();
+	});
+
+	it('mouseenter on del-col tags every cell in that column for highlight', () => {
+		const ed = makeEditor(['```csv', 'a, b, c', 'd, e, f', '```']);
+		setCtrlHeld(ed, true);
+		const dom = widgetDom(ed);
+		document.body.appendChild(dom);
+
+		const colBtn = dom.querySelector(
+			'th[data-table-block-col="1"] [data-table-block-action="del-col"]'
+		) as HTMLElement;
+		expect(colBtn).not.toBeNull();
+		colBtn.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+
+		// Column 1 spans 2 rows (header + 1 body) → 2 highlighted cells.
+		const highlighted = dom.querySelectorAll(
+			'.tomboy-table-block-target-col'
+		);
+		expect(highlighted).toHaveLength(2);
+
+		colBtn.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+		expect(dom.querySelectorAll('.tomboy-table-block-target-col')).toHaveLength(
+			0
+		);
+
+		dom.remove();
+	});
+
+	it('mouseenter on del-row tags every cell in that row for highlight', () => {
+		const ed = makeEditor(['```csv', 'a, b, c', 'd, e, f', '```']);
+		setCtrlHeld(ed, true);
+		const dom = widgetDom(ed);
+		document.body.appendChild(dom);
+
+		// Row 1 (the only body row, "d, e, f") last cell holds the X.
+		const rowBtn = dom.querySelector(
+			'td[data-table-block-row="1"][data-table-block-col="2"] [data-table-block-action="del-row"]'
+		) as HTMLElement;
+		expect(rowBtn).not.toBeNull();
+		rowBtn.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+
+		// Row 1 has 3 cells → 3 highlighted.
+		const highlighted = dom.querySelectorAll(
+			'.tomboy-table-block-target-row'
+		);
+		expect(highlighted).toHaveLength(3);
+
+		rowBtn.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+		expect(dom.querySelectorAll('.tomboy-table-block-target-row')).toHaveLength(
+			0
+		);
+
+		dom.remove();
+	});
+
+	it('the widget decoration key changes when cell content changes', () => {
+		// Regression for: clicking a delete X did nothing visible until the
+		// user released Ctrl. Root cause was PM reusing the widget DOM
+		// because the widget key didn't reflect doc-content changes. The
+		// fix folds a content hash into the key — assert that two regions
+		// with different cell text produce different decoration keys.
+		const ed = makeEditor(['```csv', 'a, b', 'c, d', '```']);
+		setCtrlHeld(ed, true);
+		const widgetA = getState(ed)!
+			.decorations.find()
+			.find(
+				(d) => (d as unknown as { type: { toDOM?: unknown } }).type.toDOM !== undefined
+			)!;
+		const keyA = (widgetA as unknown as { type: { spec: { key: string } } })
+			.type.spec.key;
+
+		// Mutate the table by deleting a column.
+		const r = getState(ed)!.regions[0]!;
+		const tr = deleteColOp(ed.state, r, 1);
+		ed.view.dispatch(tr!);
+
+		const widgetB = getState(ed)!
+			.decorations.find()
+			.find(
+				(d) => (d as unknown as { type: { toDOM?: unknown } }).type.toDOM !== undefined
+			)!;
+		const keyB = (widgetB as unknown as { type: { spec: { key: string } } })
+			.type.spec.key;
+		expect(keyA).not.toBe(keyB);
 	});
 
 	it('clicking add-col appends an empty column to every row', () => {
