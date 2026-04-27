@@ -563,13 +563,16 @@
 		slipStorage.clipboardTitle = cutSlipTitle;
 		slipStorage.clipboardMode = slipClipboardMode;
 
-		// Seed the date-arrow storage with the current props. The extension
-		// self-gates on the title matching yyyy-mm-dd, so `enabled` stays on
-		// and the caller just feeds prev/next titles.
+		// Seed the date-arrow storage. `enabled` is the slip-vs-date
+		// segregation gate: slip notes use the slip-note arrows even when
+		// their title parses as a date, so we suppress date arrows on
+		// notes whose notebook is the Slip-Box. The extension still
+		// self-gates on the title matching a date format inside
+		// buildDecorations.
 		const dateStorage = (
 			editor.storage as unknown as Record<string, unknown>
 		).dateArrows as DateArrowsStorage;
-		dateStorage.enabled = true;
+		dateStorage.enabled = !isSlipNote;
 		dateStorage.prevTitle = prevDateTitle;
 		dateStorage.nextTitle = nextDateTitle;
 		dateStorage.onNavigate = ondatenavigate;
@@ -708,21 +711,24 @@
 
 	// Sync date-arrow props to the extension storage. The decorations plugin
 	// re-runs on doc changes automatically (title-format gate); we only need
-	// to force a rebuild when prev/next targets or the navigate handler
-	// change while the doc is unchanged.
+	// to force a rebuild when prev/next targets, the navigate handler, or
+	// the slip-vs-date gate (`enabled`) change while the doc is unchanged.
 	$effect(() => {
 		const prev = prevDateTitle;
 		const next = nextDateTitle;
 		const navigate = ondatenavigate;
+		const enabled = !isSlipNote;
 		const ed = editor;
 		if (!ed || ed.isDestroyed) return;
 		const storage = (ed.storage as unknown as Record<string, unknown>)
 			.dateArrows as DateArrowsStorage;
 		const changed =
+			storage.enabled !== enabled ||
 			storage.prevTitle !== prev ||
 			storage.nextTitle !== next ||
 			storage.onNavigate !== navigate;
 		if (!changed) return;
+		storage.enabled = enabled;
 		storage.prevTitle = prev;
 		storage.nextTitle = next;
 		storage.onNavigate = navigate;

@@ -153,27 +153,25 @@
 			void desktopSession.switchWorkspaceDir(dir);
 			return;
 		}
-		// Ctrl/Cmd+,  /  Ctrl/Cmd+.  — step through slip-note or date-note
+		// Ctrl/Cmd+[  /  Ctrl/Cmd+]  — step through slip-note or date-note
 		// chain in "replace" mode: close the focused note window and open
 		// the prev/next note in its place. Mirrors the Ctrl-click behavior
-		// on the arrow buttons. Always preventDefault to suppress the
-		// browser's default Ctrl+, (preferences) shortcut even when no
-		// neighbour is available, so the user gets consistent behavior.
+		// on the arrow buttons. Always preventDefault to suppress any
+		// browser/OS default for the combo even when no neighbour is
+		// available, so the user gets consistent behavior.
 		if (
-			(e.key === ',' || e.key === '.') &&
+			(e.key === '[' || e.key === ']') &&
 			(e.ctrlKey || e.metaKey) &&
 			!e.altKey &&
 			!e.shiftKey
 		) {
-			// Suppress browser/OS defaults (Ctrl+, → preferences,
-			// Ctrl+. → Chrome's emoji picker on Win/Linux) and stop the
-			// event from reaching TipTap's contenteditable handlers.
-			// `stopImmediatePropagation` also blocks any other listeners
-			// on the same element, including ones registered after ours.
+			// Suppress browser/OS defaults and stop the event from reaching
+			// TipTap's contenteditable handlers. `stopImmediatePropagation`
+			// also blocks any other listeners on the same element.
 			e.preventDefault();
 			e.stopPropagation();
 			e.stopImmediatePropagation();
-			const direction: 'prev' | 'next' = e.key === ',' ? 'prev' : 'next';
+			const direction: 'prev' | 'next' = e.key === '[' ? 'prev' : 'next';
 			const focusedEditor = desktopSession.getFocusedEditor();
 			const guid = focusedEditor?.guid ?? desktopSession.focusedNoteGuid;
 			if (!guid) return;
@@ -187,7 +185,7 @@
 				target = direction === 'prev' ? neighbors.prev : neighbors.next;
 			} else {
 				const dateArr = storages.dateArrows as DateArrowsStorage | undefined;
-				if (dateArr) {
+				if (dateArr?.enabled) {
 					target = direction === 'prev' ? dateArr.prevTitle : dateArr.nextTitle;
 				}
 			}

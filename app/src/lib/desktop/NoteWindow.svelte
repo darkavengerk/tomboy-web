@@ -48,6 +48,7 @@
 		connectAfter
 	} from '$lib/sleepnote/ops.js';
 	import { slipClipboard } from '$lib/sleepnote/clipboard.svelte.js';
+	import { slipNoteGuids } from '$lib/sleepnote/slipNoteGuids.js';
 	import { createTitleProvider } from '$lib/editor/autoLink/titleProvider.js';
 	import { findAdjacentDateNotes } from '$lib/editor/dateLink/findAdjacentDateNotes.js';
 
@@ -143,7 +144,14 @@
 			dateAdjacency = { prev: null, next: null };
 			return;
 		}
-		dateAdjacency = findAdjacentDateNotes(t, guid, dateTitleProvider.getTitles());
+		// Date notes never link to slip notes (and vice versa) — filter the
+		// title list so a slip note with a date-format title can't be the
+		// prev/next of a date note.
+		const slip = slipNoteGuids.get();
+		const titles = dateTitleProvider
+			.getTitles()
+			.filter((e) => !slip.has(e.guid));
+		dateAdjacency = findAdjacentDateNotes(t, guid, titles);
 	}
 
 	function getEditor(): Editor | null {
@@ -185,13 +193,18 @@
 		const unregisterReload = registerReloadHook(guid, () => externalReload());
 
 		dateTitleProvider = createTitleProvider();
-		void dateTitleProvider.refresh().then(() => recomputeDateAdjacency());
+		void Promise.all([
+			dateTitleProvider.refresh(),
+			slipNoteGuids.refresh()
+		]).then(() => recomputeDateAdjacency());
 		const offDateChange = dateTitleProvider.onChange(() => recomputeDateAdjacency());
+		const offSlipChange = slipNoteGuids.onChange(() => recomputeDateAdjacency());
 
 		return () => {
 			unregisterFlush();
 			unregisterReload();
 			offDateChange();
+			offSlipChange();
 			dateTitleProvider?.dispose();
 			dateTitleProvider = null;
 			if (saveTimer) {
