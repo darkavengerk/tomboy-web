@@ -35,6 +35,7 @@ import {
 } from './incrementalSync.js';
 import * as noteStore from '$lib/storage/noteStore.js';
 import { emitNoteReload } from '$lib/core/noteReloadBus.js';
+import { invalidateCache } from '$lib/stores/noteListCache.js';
 import type { NoteData } from '$lib/core/note.js';
 
 export type RemoteSubscribe = (
@@ -270,6 +271,12 @@ async function reconcileWithRemote(
 	} else if (decision.kind === 'pull' && remote) {
 		const merged = mergeRemoteIntoLocal(local, remote);
 		await noteStore.putNoteSynced(merged);
+		// Fan out to noteListCache subscribers (SidePanel, the auto-link
+		// title→guid index, the /notes list) so freshly-arrived remote
+		// notes appear without a manual refresh. Only fired on pull —
+		// noop / push paths leave IDB unchanged so there's nothing for
+		// these subscribers to learn.
+		invalidateCache();
 		await emitNoteReload([guid]);
 	}
 }

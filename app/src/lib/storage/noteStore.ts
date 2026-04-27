@@ -1,5 +1,5 @@
 import { getDB } from './db.js';
-import type { NoteData } from '$lib/core/note.js';
+import { formatTomboyDate, type NoteData } from '$lib/core/note.js';
 
 /** Get all non-deleted notes excluding templates, sorted by changeDate descending */
 export async function getAllNotes(): Promise<NoteData[]> {
@@ -53,13 +53,22 @@ export async function putNoteSynced(note: NoteData): Promise<void> {
 	await db.put('notes', { ...note, syncedXmlContent: note.xmlContent });
 }
 
-/** Soft-delete a note (tombstone for sync) */
+/** Soft-delete a note (tombstone for sync). Bumps changeDate /
+ * metadataChangeDate so cross-device conflict resolution treats the
+ * tombstone as strictly newer than the pre-delete row — without this,
+ * a same-changeDate tombstone would tie with the receiver's local row
+ * and the resolver's `tie-prefers-local` fallback would silently undo
+ * the delete on every other device.
+ */
 export async function deleteNote(guid: string): Promise<void> {
 	const db = await getDB();
 	const note = await db.get('notes', guid);
 	if (note) {
+		const now = formatTomboyDate(new Date());
 		note.deleted = true;
 		note.localDirty = true;
+		note.changeDate = now;
+		note.metadataChangeDate = now;
 		await db.put('notes', note);
 	}
 }

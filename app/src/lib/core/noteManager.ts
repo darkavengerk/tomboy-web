@@ -54,6 +54,12 @@ export async function createNote(initialTitle?: string): Promise<NoteData> {
 	const suffix = dateMatch ? `\n${dateMatch[1]}년\n` : `\n\n`;
 	note.xmlContent = `<note-content version="0.1">${title}${suffix}</note-content>`;
 	await noteStore.putNote(note);
+	// Push to Firestore even before the first edit. Otherwise a "create new
+	// note + drop a link to it from another note" workflow leaves the new
+	// note absent from Firestore — receiving devices see the link but
+	// cannot resolve it. The debounced push queue coalesces this with any
+	// follow-up edit that lands within the debounce window.
+	notifyNoteSaved(guid);
 	invalidateCache();
 	return note;
 }

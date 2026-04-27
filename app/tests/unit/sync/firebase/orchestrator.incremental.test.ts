@@ -14,6 +14,10 @@ import {
 	subscribeNoteReload,
 	_resetForTest as _resetReloadBus
 } from '$lib/core/noteReloadBus.js';
+import {
+	onInvalidate,
+	_resetForTest as _resetNoteListCache
+} from '$lib/stores/noteListCache.js';
 import type { FirestoreNotePayload } from '$lib/sync/firebase/notePayload.js';
 import type { JSONContent } from '@tiptap/core';
 import type { NoteData } from '$lib/core/note.js';
@@ -92,6 +96,7 @@ beforeEach(() => {
 	globalThis.indexedDB = new IDBFactory();
 	_resetDBForTest();
 	_resetReloadBus();
+	_resetNoteListCache();
 	_resetNoteSyncForTest();
 });
 
@@ -299,6 +304,47 @@ describe('orchestrator incremental collection sync', () => {
 		expect(reloadFired).toHaveBeenCalledTimes(1);
 
 		unsubReload();
+	});
+
+	it('a remote-only note pulled by the incremental listener invalidates the note list cache', async () => {
+		// SidePanel and the auto-link title index subscribe to
+		// noteListCache.onInvalidate. Without this fan-out, a brand-new note
+		// arriving via incremental sync stays invisible until the user
+		// refreshes.
+		const { subscribeNoteCollection, subs, getLastSyncMillis, setLastSyncMillis } =
+			makeIncrementalDeps();
+		configureNoteSync({
+			push: vi.fn().mockResolvedValue(undefined),
+			getNote: noteStore.getNote,
+			debounceMs: 30,
+			getUid: async () => 'dbx-u',
+			subscribeNoteCollection,
+			getLastSyncMillis,
+			setLastSyncMillis
+		});
+		setNoteSyncEnabled(true);
+		await tick();
+
+		const invalidated = vi.fn();
+		const off = onInvalidate(invalidated);
+
+		const remote: FirestoreNotePayload = {
+			guid: 'remote-only-2',
+			uri: 'note://tomboy/remote-only-2',
+			title: 'Brand New From Other Device',
+			xmlContent:
+				'<note-content version="0.1">Brand New From Other Device\n\n</note-content>',
+			createDate: '2026-04-27T09:00:00.0000000+09:00',
+			changeDate: '2026-04-27T10:00:00.0000000+09:00',
+			metadataChangeDate: '2026-04-27T10:00:00.0000000+09:00',
+			tags: [],
+			deleted: false
+		};
+		subs[0].onChange([{ payload: remote, serverUpdatedAtMillis: 1234 }]);
+		await tick();
+
+		expect(invalidated).toHaveBeenCalled();
+		off();
 	});
 
 	it('does nothing when getUid returns null', async () => {

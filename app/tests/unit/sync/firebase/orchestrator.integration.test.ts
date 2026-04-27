@@ -109,6 +109,61 @@ describe('updateNoteFromEditor → Firebase sync hook', () => {
 		expect(tomb.deleted).toBe(true);
 	});
 
+	it('pushes a freshly created note even before the user edits it', async () => {
+		// createNote without a follow-up edit must still propagate to other
+		// devices — otherwise a "create new note + drop a link to it from
+		// another note" workflow leaves the new note absent from Firestore,
+		// and the receiving device sees the link but cannot resolve it.
+		const push = vi.fn().mockResolvedValue(undefined);
+		const getNote = vi.fn(async (g: string) => noteStore.getNote(g));
+		configureNoteSync({ push, getNote, debounceMs: 50 });
+		setNoteSyncEnabled(true);
+
+		const n = await createNote('untouched');
+		await flushAllNoteSync();
+
+		expect(push).toHaveBeenCalledTimes(1);
+		const pushed = push.mock.calls[0][0] as NoteData;
+		expect(pushed.guid).toBe(n.guid);
+		expect(pushed.title).toBe('untouched');
+		expect(pushed.deleted).toBe(false);
+	});
+
+	it('deleteNoteById bumps changeDate so a cross-device tombstone wins on the receiver', async () => {
+		// Without bumping changeDate, the tombstone would arrive on the other
+		// device with the SAME changeDate as the local non-deleted row. The
+		// conflict resolver would then fall through to `tie-prefers-local`
+		// and push the local non-deleted state back, undoing the delete.
+		const push = vi.fn().mockResolvedValue(undefined);
+		const getNote = vi.fn(async (g: string) => noteStore.getNote(g));
+		configureNoteSync({ push, getNote, debounceMs: 50 });
+		setNoteSyncEnabled(true);
+
+		const n = await createNote('To-be-killed');
+		const before = (await noteStore.getNote(n.guid))!;
+		push.mockClear();
+
+		// Tomboy date format has 7-digit subsecond precision so two deletes
+		// in the same millisecond would still differ; but to be robust against
+		// fast machines, give the wall clock a small step.
+		await new Promise((r) => setTimeout(r, 5));
+
+		await deleteNoteById(n.guid);
+		await flushAllNoteSync();
+
+		const after = (await noteStore.getNote(n.guid))!;
+		expect(after.deleted).toBe(true);
+		expect(after.changeDate.localeCompare(before.changeDate)).toBeGreaterThan(0);
+		expect(after.metadataChangeDate.localeCompare(before.metadataChangeDate)).toBeGreaterThan(
+			0
+		);
+
+		expect(push).toHaveBeenCalledTimes(1);
+		const pushed = push.mock.calls[0][0] as NoteData;
+		expect(pushed.deleted).toBe(true);
+		expect(pushed.changeDate).toBe(after.changeDate);
+	});
+
 	it('pushes when toggling favorite (metadata change)', async () => {
 		const push = vi.fn().mockResolvedValue(undefined);
 		const getNote = vi.fn(async (g: string) => noteStore.getNote(g));

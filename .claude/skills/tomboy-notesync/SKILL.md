@@ -137,8 +137,13 @@ race between fetch + subscribe and a redundant network round-trip.
    - `{ kind: 'push', reason: 'remote-missing' | 'local-newer' | 'tie-prefers-local' }` — enqueue via the same push queue.
    - `{ kind: 'pull', reason: 'local-missing' | 'remote-newer' }` —
      `mergeRemoteIntoLocal(local, remote)` + `putNoteSynced(merged)` +
-     `emitNoteReload([guid])` so the open editor drops its pendingDoc and
-     swaps to the remote content.
+     `invalidateCache()` (so SidePanel, the auto-link title→guid index,
+     and the `/notes` list page see the new/changed note without a
+     manual refresh) + `emitNoteReload([guid])` (so the open editor for
+     that guid drops its pendingDoc and swaps to the remote content).
+     `invalidateCache` only fires on the pull path — `noop` and `push`
+     leave IDB unchanged so there's nothing for cache subscribers to
+     learn.
 
 Echo suppression for our own pushes is implicit: after we push, Firestore
 echoes the same payload we wrote, the equivalence check fires, and the
@@ -280,17 +285,40 @@ in `noteManager.ts`:
 
 | Function | Trigger |
 |----------|---------|
+| `createNote(initialTitle?)` | new (often empty) note — pushes so receivers can resolve a link to it before the user ever edits the body |
 | `updateNoteFromEditor(guid, doc)` | every editor save |
 | `rewriteBacklinksForRename(...)` | rename cascade — fires `notifyNoteSaved` per affected guid |
-| `deleteNoteById(guid)` | soft-delete (sets `deleted=true`) |
+| `deleteNoteById(guid)` | soft-delete (sets `deleted=true`); the underlying `noteStore.deleteNote` ALSO bumps `changeDate`/`metadataChangeDate` so the tombstone wins on the receiver |
 | `toggleFavorite(guid)` | `system:pinned` tag flip — picks up `metadataChangeDate` |
 
 Notes intentionally NOT hooked:
-- `createNote` — the new note immediately opens in the editor; the first
-  edit triggers push.
 - `importNoteXml` and `syncManager.applyIncomingRemoteNote` — Dropbox-channel
   writes; they don't run through Firebase. If the note is open, the next
   Firestore snapshot will reconcile.
+
+### Why `createNote` pushes
+
+The original design assumed a new note immediately gets edited, so the
+first edit's push covers it. That breaks the "create new note + drop a
+link to it from another note" workflow: device A creates "새 노트", switches
+to note B, adds a `<link:internal>새 노트</link:internal>` mark, saves B.
+Note B is pushed; note "새 노트" is **not** because it was never edited.
+Device B receives note B via incremental sync, sees the link, but
+`findNoteByTitle("새 노트")` returns undefined → "노트를 찾을 수 없습니다".
+Hooking `createNote` fixes this — the push queue's debounce coalesces
+the create-push with any follow-up edit at zero extra cost.
+
+### Why `deleteNote` bumps `changeDate`
+
+Soft-delete used to set only `deleted=true` + `localDirty=true`. After
+push, the receiver saw `(deleted=true, changeDate=T)` arrive against
+its local `(deleted=false, changeDate=T)`. The conflict resolver's
+ladder is: equivalence-check → `changeDate.localeCompare` → `metadataChangeDate.localeCompare`
+→ **`tie-prefers-local`**. With both timestamps tied, the receiver
+would push its non-deleted state back, silently undoing the delete on
+every device. Bumping both timestamps inside `deleteNote` makes the
+tombstone strictly newer, so the resolver's `remote-newer` branch
+fires and the delete propagates as expected.
 
 ## File map
 
