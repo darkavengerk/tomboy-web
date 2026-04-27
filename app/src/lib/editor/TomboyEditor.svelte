@@ -1305,4 +1305,23 @@
 		color: #888;
 		font-style: italic;
 	}
+	/* Per-cell editor: a contenteditable span injected into the active
+	   cell while the user is editing. Outline highlights the active slot;
+	   the surrounding table chrome stays as-is so the user retains
+	   spatial context (which row/column they're on). */
+	.tomboy-editor :global(.tomboy-table-block-cell-editor) {
+		display: inline-block;
+		min-width: 1ch;
+		outline: 2px solid #3465a4;
+		outline-offset: -2px;
+		background: #fff;
+		caret-color: #3465a4;
+	}
+	/* While a cell is being edited, suppress the hover-only chrome (toggle
+	   checkbox) so it doesn't flicker over the cell the user is editing. */
+	.tomboy-editor
+		:global(.tomboy-table-block-widget.tomboy-table-block-editing
+			.tomboy-table-block-toggle) {
+		display: none;
+	}
 </style>

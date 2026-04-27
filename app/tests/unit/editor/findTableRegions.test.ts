@@ -129,4 +129,41 @@ describe('findTableRegions', () => {
 		const ed = makeEditor(paras('```csv', '```tsv', 'a\tb'));
 		expect(findTableRegions(ed.state.doc)).toEqual([]);
 	});
+
+	it('exposes body paragraph ranges aligned with cells rows', () => {
+		const ed = makeEditor(paras('```csv', 'a, b', 'c, d', '```'));
+		const regions = findTableRegions(ed.state.doc);
+		const r = regions[0];
+		// Two body rows → two body paragraph ranges.
+		expect(r.bodyParaRanges).toHaveLength(2);
+
+		// Each entry's textBetween should yield the row's plain text.
+		const row0 = ed.state.doc.textBetween(
+			r.bodyParaRanges[0].textFrom,
+			r.bodyParaRanges[0].textTo,
+			''
+		);
+		const row1 = ed.state.doc.textBetween(
+			r.bodyParaRanges[1].textFrom,
+			r.bodyParaRanges[1].textTo,
+			''
+		);
+		expect(row0).toBe('a, b');
+		expect(row1).toBe('c, d');
+	});
+
+	it('skips blank body paragraphs in bodyParaRanges to keep alignment with cells', () => {
+		// Mirrors `parseInlineCells`'s blank-line skipping rule.
+		const ed = makeEditor(paras('```csv', 'a, b', '', '   ', 'c, d', '```'));
+		const regions = findTableRegions(ed.state.doc);
+		const r = regions[0];
+		expect(r.cells).toHaveLength(2); // sanity
+		expect(r.bodyParaRanges).toHaveLength(2);
+		const row1 = ed.state.doc.textBetween(
+			r.bodyParaRanges[1].textFrom,
+			r.bodyParaRanges[1].textTo,
+			''
+		);
+		expect(row1).toBe('c, d');
+	});
 });

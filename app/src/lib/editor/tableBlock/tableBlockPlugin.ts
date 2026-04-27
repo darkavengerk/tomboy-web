@@ -35,41 +35,72 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import type { Editor, JSONContent } from '@tiptap/core';
 import { findTableRegions, type TableRegion } from './findTableRegions.js';
 import { renderInlinesToDom } from './renderInlines.js';
+import { commitCellEdit, findCellEditRange } from './cellEdit.js';
+
+export interface CellEditTarget {
+	openFromPos: number;
+	rowIdx: number;
+	colIdx: number;
+}
 
 interface PluginState {
 	regions: TableRegion[];
 	uncheckedOpens: Set<number>;
+	editing: CellEditTarget | null;
 	decorations: DecorationSet;
 }
 
 interface Meta {
 	/** Toggle the region whose opening-fence position matches `openFromPos`. */
 	toggleAt?: number;
+	/** Enter cell-edit mode for `(openFromPos, rowIdx, colIdx)`. */
+	startEdit?: CellEditTarget;
+	/** Exit cell-edit mode (commit done by the caller's preceding tr). */
+	stopEdit?: true;
 }
 
 export const tableBlockPluginKey = new PluginKey<PluginState>('tomboyTableBlock');
 
 /**
- * Recompute `regions` for the current doc and reconcile `uncheckedOpens`.
- * `prevUnchecked` carries the Set already mapped through the current
- * transaction's mapping; we drop entries that don't line up with a real
- * opening fence anymore.
+ * Recompute `regions` for the current doc and reconcile `uncheckedOpens`
+ * + `editing`. `prevUnchecked` and `prevEditing` arrive already mapped
+ * through the current transaction's mapping; we drop entries that don't
+ * line up with an opening fence anymore. The editing target is also
+ * dropped if its row index drifted past the current row count.
  */
-function rebuildState(doc: PMNode, prevUnchecked: Set<number>): PluginState {
+function rebuildState(
+	doc: PMNode,
+	prevUnchecked: Set<number>,
+	prevEditing: CellEditTarget | null
+): PluginState {
 	const regions = findTableRegions(doc);
 	const validOpens = new Set(regions.map((r) => r.openFromPos));
 	const uncheckedOpens = new Set<number>();
 	for (const p of prevUnchecked) {
 		if (validOpens.has(p)) uncheckedOpens.add(p);
 	}
-	const decorations = buildDecorations(doc, regions, uncheckedOpens);
-	return { regions, uncheckedOpens, decorations };
+	let editing: CellEditTarget | null = null;
+	if (prevEditing) {
+		const r = regions.find((r) => r.openFromPos === prevEditing.openFromPos);
+		if (
+			r &&
+			!uncheckedOpens.has(r.openFromPos) &&
+			prevEditing.rowIdx < r.cells.length &&
+			prevEditing.colIdx <
+				r.cells[prevEditing.rowIdx].length
+		) {
+			editing = prevEditing;
+		}
+	}
+	const decorations = buildDecorations(doc, regions, uncheckedOpens, editing);
+	return { regions, uncheckedOpens, editing, decorations };
 }
 
 function buildDecorations(
 	doc: PMNode,
 	regions: TableRegion[],
-	uncheckedOpens: Set<number>
+	uncheckedOpens: Set<number>,
+	editing: CellEditTarget | null
 ): DecorationSet {
 	if (regions.length === 0) return DecorationSet.empty;
 	const decos: Decoration[] = [];
@@ -96,11 +127,24 @@ function buildDecorations(
 				)
 			);
 			// Block-level table widget overlaying the hidden source.
+			const editingHere =
+				editing && editing.openFromPos === r.openFromPos ? editing : null;
+			const editingText = editingHere
+				? cellTextForEdit(doc, r, editingHere.rowIdx, editingHere.colIdx)
+				: null;
 			decos.push(
-				Decoration.widget(r.openFromPos, () => renderTableWidget(r), {
-					side: -1,
-					key: `tableBlock:${r.openFromPos}:on`
-				})
+				Decoration.widget(
+					r.openFromPos,
+					() => renderTableWidget(r, editingHere, editingText ?? ''),
+					{
+						side: -1,
+						key: `tableBlock:${r.openFromPos}:on:${
+							editingHere
+								? `${editingHere.rowIdx}:${editingHere.colIdx}`
+								: 'none'
+						}`
+					}
+				)
 			);
 		} else {
 			// Source visible. Inline-place a small floating-checkbox widget
@@ -129,21 +173,32 @@ function buildDecorations(
  * of the widget. Clicks on the checkbox bubble up to the plugin's
  * `handleDOMEvents.click` which reads `data-table-block-open` and
  * dispatches the toggle meta.
+ *
+ * If `editingHere` is non-null the matching cell is rendered as a
+ * `contenteditable="true"` span (pre-filled with `editingText`), and
+ * the hover-only toggle chrome is suppressed via a marker class so
+ * the user can focus on the cell.
  */
-function renderTableWidget(region: TableRegion): HTMLElement {
+function renderTableWidget(
+	region: TableRegion,
+	editingHere: CellEditTarget | null,
+	editingText: string
+): HTMLElement {
 	const wrap = document.createElement('div');
 	wrap.className = 'tomboy-table-block-widget';
+	if (editingHere) wrap.classList.add('tomboy-table-block-editing');
 	wrap.setAttribute('contenteditable', 'false');
 	wrap.setAttribute('data-table-block-open', String(region.openFromPos));
 
 	// Don't let mousedown on the widget chrome move the editor selection.
-	// Allow it on form controls and on links so they remain interactive.
+	// Allow it on form controls, links, and the editing cell.
 	wrap.addEventListener('mousedown', (e) => {
 		const target = e.target as HTMLElement;
 		if (
 			target.tagName === 'INPUT' ||
 			target.tagName === 'BUTTON' ||
-			target.closest('a')
+			target.closest('a') ||
+			target.closest('[contenteditable="true"]')
 		) {
 			return;
 		}
@@ -159,7 +214,7 @@ function renderTableWidget(region: TableRegion): HTMLElement {
 	label.appendChild(cb);
 	wrap.appendChild(label);
 
-	wrap.appendChild(renderTable(region));
+	wrap.appendChild(renderTable(region, editingHere, editingText));
 	return wrap;
 }
 
@@ -189,7 +244,11 @@ function renderFloatingToggle(region: TableRegion): HTMLElement {
 	return wrap;
 }
 
-function renderTable(region: TableRegion): HTMLTableElement {
+function renderTable(
+	region: TableRegion,
+	editingHere: CellEditTarget | null,
+	editingText: string
+): HTMLTableElement {
 	const table = document.createElement('table');
 	table.className = 'tomboy-table-block-table';
 	if (region.cells.length === 0) {
@@ -205,7 +264,7 @@ function renderTable(region: TableRegion): HTMLTableElement {
 	const headRow = region.cells[0];
 	for (let c = 0; c < colCount; c++) {
 		const th = document.createElement('th');
-		appendCellInlines(th, headRow[c]);
+		fillCell(th, headRow[c], 0, c, editingHere, editingText);
 		headTr.appendChild(th);
 	}
 	thead.appendChild(headTr);
@@ -218,7 +277,7 @@ function renderTable(region: TableRegion): HTMLTableElement {
 			const tr = document.createElement('tr');
 			for (let c = 0; c < colCount; c++) {
 				const td = document.createElement('td');
-				appendCellInlines(td, row[c]);
+				fillCell(td, row[c], i, c, editingHere, editingText);
 				tr.appendChild(td);
 			}
 			tbody.appendChild(tr);
@@ -228,12 +287,48 @@ function renderTable(region: TableRegion): HTMLTableElement {
 	return table;
 }
 
-function appendCellInlines(
-	cell: HTMLElement,
-	inlines: JSONContent[] | undefined
+function fillCell(
+	host: HTMLElement,
+	inlines: JSONContent[] | undefined,
+	rowIdx: number,
+	colIdx: number,
+	editingHere: CellEditTarget | null,
+	editingText: string
 ): void {
+	host.setAttribute('data-table-block-row', String(rowIdx));
+	host.setAttribute('data-table-block-col', String(colIdx));
+	const isEditing =
+		!!editingHere &&
+		editingHere.rowIdx === rowIdx &&
+		editingHere.colIdx === colIdx;
+	if (isEditing) {
+		const editor = document.createElement('span');
+		editor.className = 'tomboy-table-block-cell-editor';
+		editor.setAttribute('contenteditable', 'true');
+		editor.setAttribute('data-table-block-editing', 'true');
+		editor.textContent = editingText;
+		host.appendChild(editor);
+		return;
+	}
 	if (!inlines || inlines.length === 0) return;
-	cell.appendChild(renderInlinesToDom(inlines));
+	host.appendChild(renderInlinesToDom(inlines));
+}
+
+/**
+ * Read the plain text that represents the editable slice of a cell —
+ * i.e. the text that `commitCellEdit` would replace. Used to pre-fill
+ * the contenteditable span when entering edit mode.
+ */
+function cellTextForEdit(
+	doc: PMNode,
+	region: TableRegion,
+	rowIdx: number,
+	colIdx: number
+): string | null {
+	const range = findCellEditRange(doc, region, rowIdx, colIdx);
+	if (!range) return null;
+	if (range.from === range.to) return '';
+	return doc.textBetween(range.from, range.to, '');
 }
 
 /**
@@ -249,17 +344,73 @@ export function toggleTableBlock(editor: Editor, openFromPos: number): void {
 	);
 }
 
+/**
+ * Begin editing a single cell of a table region. Called by the
+ * dblclick handler in `handleDOMEvents`; exposed for tests and any
+ * future programmatic entry points.
+ */
+export function enterCellEdit(editor: Editor, target: CellEditTarget): void {
+	editor.view.dispatch(
+		editor.state.tr.setMeta(tableBlockPluginKey, { startEdit: target } as Meta)
+	);
+}
+
+/** Cancel the current cell edit without modifying the doc. */
+export function cancelCellEdit(editor: Editor): void {
+	const st = tableBlockPluginKey.getState(editor.state);
+	if (!st?.editing) return;
+	editor.view.dispatch(
+		editor.state.tr.setMeta(tableBlockPluginKey, { stopEdit: true } as Meta)
+	);
+}
+
+/**
+ * Commit the current cell edit by replacing the active cell's range
+ * with `newText`. Bundles the doc replacement and the `stopEdit` meta
+ * into a single transaction so the rebuild sees both at once.
+ *
+ * Returns `false` if there is no active edit (caller decides whether
+ * that's a no-op or an error). Returns `true` after a successful
+ * dispatch.
+ */
+export function commitCellEditCommand(editor: Editor, newText: string): boolean {
+	const st = tableBlockPluginKey.getState(editor.state);
+	const editing = st?.editing;
+	if (!editing) return false;
+	const region = st!.regions.find((r) => r.openFromPos === editing.openFromPos);
+	if (!region) {
+		// Region went away under us — just clear the edit state.
+		cancelCellEdit(editor);
+		return false;
+	}
+	const tr = commitCellEdit(
+		editor.state,
+		region,
+		editing.rowIdx,
+		editing.colIdx,
+		newText
+	);
+	if (!tr) {
+		cancelCellEdit(editor);
+		return false;
+	}
+	tr.setMeta(tableBlockPluginKey, { stopEdit: true } as Meta);
+	editor.view.dispatch(tr);
+	return true;
+}
+
 export function createTableBlockPlugin(): Plugin<PluginState> {
 	return new Plugin<PluginState>({
 		key: tableBlockPluginKey,
 		state: {
 			init(_, state): PluginState {
-				return rebuildState(state.doc, new Set());
+				return rebuildState(state.doc, new Set(), null);
 			},
 			apply(tr, prev, _oldState, newState): PluginState {
 				const meta = tr.getMeta(tableBlockPluginKey) as Meta | undefined;
 				let unchecked = prev.uncheckedOpens;
-				let regionsDirty = tr.docChanged || meta !== undefined;
+				let editing: CellEditTarget | null = prev.editing;
+				const regionsDirty = tr.docChanged || meta !== undefined;
 
 				if (tr.docChanged) {
 					// Map every tracked unchecked-open through the doc edits so
@@ -270,19 +421,37 @@ export function createTableBlockPlugin(): Plugin<PluginState> {
 						mapped.add(m);
 					}
 					unchecked = mapped;
+					if (editing) {
+						editing = {
+							...editing,
+							openFromPos: tr.mapping.map(editing.openFromPos, -1)
+						};
+					}
 				}
 
 				if (meta?.toggleAt !== undefined) {
 					unchecked = new Set(unchecked);
 					if (unchecked.has(meta.toggleAt)) unchecked.delete(meta.toggleAt);
 					else unchecked.add(meta.toggleAt);
+					// A toggle cancels any in-progress edit.
+					editing = null;
+				}
+
+				if (meta?.startEdit) {
+					// Replace any current edit with the new target. The
+					// rebuilder validates that (rowIdx, colIdx) is in range.
+					editing = { ...meta.startEdit };
+				}
+
+				if (meta?.stopEdit) {
+					editing = null;
 				}
 
 				if (!regionsDirty) {
 					return prev;
 				}
 
-				return rebuildState(newState.doc, unchecked);
+				return rebuildState(newState.doc, unchecked, editing);
 			}
 		},
 		props: {
@@ -310,8 +479,134 @@ export function createTableBlockPlugin(): Plugin<PluginState> {
 					} as Meta);
 					view.dispatch(tr);
 					return true;
+				},
+				// Double-click on a body cell enters cell-edit mode for that
+				// cell. We resolve the target (region open + row/col) from
+				// the data attributes the renderer sprinkled on each
+				// `<th>` / `<td>`.
+				dblclick(view, event) {
+					const target = event.target as HTMLElement;
+					const cell = target.closest(
+						'th[data-table-block-row], td[data-table-block-row]'
+					) as HTMLElement | null;
+					if (!cell) return false;
+					const wrap = cell.closest('[data-table-block-open]') as HTMLElement | null;
+					if (!wrap) return false;
+					const open = Number(wrap.getAttribute('data-table-block-open'));
+					const rowIdx = Number(cell.getAttribute('data-table-block-row'));
+					const colIdx = Number(cell.getAttribute('data-table-block-col'));
+					if (!Number.isFinite(open) || !Number.isFinite(rowIdx) || !Number.isFinite(colIdx)) {
+						return false;
+					}
+					event.preventDefault();
+					event.stopPropagation();
+					view.dispatch(
+						view.state.tr.setMeta(tableBlockPluginKey, {
+							startEdit: { openFromPos: open, rowIdx, colIdx }
+						} as Meta)
+					);
+					// Defer focus to the next tick so PM has had a chance to
+					// re-render the widget with the contenteditable cell.
+					queueMicrotask(() => focusEditingCell(view.dom));
+					return true;
+				},
+				// Keys handled while inside the editing cell:
+				//  - Enter (without shift): commit
+				//  - Escape: cancel
+				//  - Tab handling could be added later for cell-to-cell jumps.
+				keydown(view, event) {
+					const target = event.target as HTMLElement | null;
+					if (!target?.closest('[data-table-block-editing="true"]')) return false;
+					if (event.key === 'Enter' && !event.shiftKey) {
+						event.preventDefault();
+						event.stopPropagation();
+						const text = target.closest('[data-table-block-editing="true"]')
+							?.textContent ?? '';
+						commitFromDom(view, text);
+						return true;
+					}
+					if (event.key === 'Escape') {
+						event.preventDefault();
+						event.stopPropagation();
+						view.dispatch(
+							view.state.tr.setMeta(tableBlockPluginKey, {
+								stopEdit: true
+							} as Meta)
+						);
+						return true;
+					}
+					return false;
+				},
+				focusout(view, event) {
+					const target = event.target as HTMLElement | null;
+					const cell = target?.closest(
+						'[data-table-block-editing="true"]'
+					) as HTMLElement | null;
+					if (!cell) return false;
+					// `relatedTarget` is the new focus owner; if it's still
+					// inside the editor's DOM, ignore — the user might just
+					// have dragged a selection and we don't want to commit
+					// prematurely. Otherwise commit on blur.
+					const next = (event as FocusEvent).relatedTarget as Node | null;
+					if (next && view.dom.contains(next)) return false;
+					commitFromDom(view, cell.textContent ?? '');
+					return false;
 				}
 			}
 		}
 	});
+}
+
+/**
+ * Read the active editing cell's textContent and dispatch a combined
+ * commit transaction (replace + stopEdit). Used by Enter/blur paths.
+ */
+function commitFromDom(
+	view: { state: EditorState; dispatch: (tr: Transaction) => void },
+	newText: string
+): void {
+	const st = tableBlockPluginKey.getState(view.state);
+	const editing = st?.editing;
+	if (!editing) return;
+	const region = st!.regions.find((r) => r.openFromPos === editing.openFromPos);
+	if (!region) {
+		view.dispatch(
+			view.state.tr.setMeta(tableBlockPluginKey, { stopEdit: true } as Meta)
+		);
+		return;
+	}
+	const tr = commitCellEdit(
+		view.state,
+		region,
+		editing.rowIdx,
+		editing.colIdx,
+		newText
+	);
+	if (!tr) {
+		view.dispatch(
+			view.state.tr.setMeta(tableBlockPluginKey, { stopEdit: true } as Meta)
+		);
+		return;
+	}
+	tr.setMeta(tableBlockPluginKey, { stopEdit: true } as Meta);
+	view.dispatch(tr);
+}
+
+/**
+ * After a startEdit dispatch, place focus inside the freshly rendered
+ * `[data-table-block-editing="true"]` span and select all of its text
+ * so the user can immediately overwrite or extend.
+ */
+function focusEditingCell(root: HTMLElement): void {
+	const cell = root.querySelector(
+		'[data-table-block-editing="true"]'
+	) as HTMLElement | null;
+	if (!cell) return;
+	cell.focus();
+	const sel = window.getSelection();
+	if (!sel) return;
+	const range = document.createRange();
+	range.selectNodeContents(cell);
+	sel.removeAllRanges();
+	sel.addRange(range);
 }

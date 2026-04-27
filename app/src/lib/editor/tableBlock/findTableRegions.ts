@@ -19,6 +19,20 @@ import {
 	type TableFormat
 } from './parseTable.js';
 
+/**
+ * Absolute position bounds of one body paragraph that contributed a row
+ * to `cells`. `from` / `to` are the paragraph node boundaries (`<p>` /
+ * `</p>` slots); `textFrom` / `textTo` are the inner text-content
+ * boundaries (just inside the paragraph's open/close tags). Cell-edit
+ * range computation works in the textFrom/textTo space.
+ */
+export interface BodyParaRange {
+	from: number;
+	to: number;
+	textFrom: number;
+	textTo: number;
+}
+
 export interface TableRegion {
 	format: TableFormat;
 	/** Parsed body rows as plain text (header at `rows[0]`) — kept for
@@ -29,6 +43,11 @@ export interface TableRegion {
 	 *  real DOM elements instead of lossy text. Same shape as `rows`
 	 *  with one extra dimension. */
 	cells: JSONContent[][][];
+	/** Per-row absolute paragraph ranges aligned with `cells` — same
+	 *  blank-paragraph skipping as `parseInlineCells`, so
+	 *  `bodyParaRanges[r]` describes the source paragraph that produced
+	 *  `cells[r]`. Used to compute cell-edit ranges. */
+	bodyParaRanges: BodyParaRange[];
 	/** Index of the opening-fence paragraph among the doc's top-level children. */
 	openParaIdx: number;
 	/** Index of the closing-fence paragraph among the doc's top-level children. */
@@ -99,10 +118,23 @@ export function findTableRegions(doc: PMNode): TableRegion[] {
 		const body = paras.slice(i + 1, j);
 		const bodyLines = body.map((p) => p.text);
 		const bodyJson = body.map((p) => p.json);
+		// Skip the same blank paragraphs `parseInlineCells` skips so
+		// `bodyParaRanges[r]` always refers to the source paragraph that
+		// produced `cells[r]`. Mirrors the rule "trim().length === 0 →
+		// skip" exactly.
+		const bodyParaRanges: BodyParaRange[] = body
+			.filter((p) => p.text.trim().length > 0)
+			.map((p) => ({
+				from: p.from,
+				to: p.to,
+				textFrom: p.from + 1,
+				textTo: p.to - 1
+			}));
 		regions.push({
 			format: fmt,
 			rows: parseTableRows(bodyLines, fmt),
 			cells: parseInlineCells(bodyJson, fmt),
+			bodyParaRanges,
 			openParaIdx: paras[i].idx,
 			closeParaIdx: paras[j].idx,
 			openFromPos: paras[i].from,

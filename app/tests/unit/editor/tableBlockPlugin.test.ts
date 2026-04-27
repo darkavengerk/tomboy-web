@@ -5,7 +5,10 @@ import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
 import { DecorationSet } from '@tiptap/pm/view';
 import {
+	cancelCellEdit,
+	commitCellEditCommand,
 	createTableBlockPlugin,
+	enterCellEdit,
 	tableBlockPluginKey,
 	toggleTableBlock
 } from '$lib/editor/tableBlock/tableBlockPlugin.js';
@@ -374,6 +377,163 @@ describe('tableBlockPlugin — cell content with marks', () => {
 		expect(link!.textContent).toBe('Other Note');
 	});
 
+});
+
+describe('tableBlockPlugin — cell-level edit mode', () => {
+	function widgetDom(editor: Editor): HTMLElement {
+		const w = getState(editor)!
+			.decorations.find()
+			.find(
+				(d) => (d as unknown as { type: { toDOM?: unknown } }).type.toDOM !== undefined
+			)!;
+		// @ts-expect-error — toDOM is the internal widget factory
+		return (w.type as { toDOM: (view: unknown) => HTMLElement }).toDOM({
+			root: document
+		});
+	}
+
+	it('starts with editing=null', () => {
+		const ed = makeEditor(['```csv', 'a, b', '```']);
+		expect(getState(ed)!.editing).toBeNull();
+	});
+
+	it('startEdit meta sets the editing state', () => {
+		const ed = makeEditor(['```csv', 'alpha, beta', '```']);
+		const r = getState(ed)!.regions[0]!;
+		ed.view.dispatch(
+			ed.state.tr.setMeta(tableBlockPluginKey, {
+				startEdit: { openFromPos: r.openFromPos, rowIdx: 0, colIdx: 1 }
+			})
+		);
+		const e = getState(ed)!.editing;
+		expect(e).not.toBeNull();
+		expect(e!.openFromPos).toBe(r.openFromPos);
+		expect(e!.rowIdx).toBe(0);
+		expect(e!.colIdx).toBe(1);
+	});
+
+	it('renders the editing cell as contenteditable=true and pre-fills its text', () => {
+		const ed = makeEditor(['```csv', 'alpha, beta', '```']);
+		const r = getState(ed)!.regions[0]!;
+		ed.view.dispatch(
+			ed.state.tr.setMeta(tableBlockPluginKey, {
+				startEdit: { openFromPos: r.openFromPos, rowIdx: 0, colIdx: 1 }
+			})
+		);
+		const dom = widgetDom(ed);
+		const editing = dom.querySelector(
+			'[data-table-block-editing="true"]'
+		) as HTMLElement | null;
+		expect(editing).not.toBeNull();
+		expect(editing!.getAttribute('contenteditable')).toBe('true');
+		expect(editing!.textContent).toBe('beta');
+	});
+
+	it('only the targeted cell is editable; the others remain plain', () => {
+		const ed = makeEditor(['```csv', 'alpha, beta, gamma', '```']);
+		const r = getState(ed)!.regions[0]!;
+		ed.view.dispatch(
+			ed.state.tr.setMeta(tableBlockPluginKey, {
+				startEdit: { openFromPos: r.openFromPos, rowIdx: 0, colIdx: 1 }
+			})
+		);
+		const dom = widgetDom(ed);
+		const editingCells = dom.querySelectorAll('[contenteditable="true"]');
+		expect(editingCells).toHaveLength(1);
+	});
+
+	it('stopEdit meta clears the editing state', () => {
+		const ed = makeEditor(['```csv', 'alpha, beta', '```']);
+		const r = getState(ed)!.regions[0]!;
+		ed.view.dispatch(
+			ed.state.tr.setMeta(tableBlockPluginKey, {
+				startEdit: { openFromPos: r.openFromPos, rowIdx: 0, colIdx: 0 }
+			})
+		);
+		ed.view.dispatch(
+			ed.state.tr.setMeta(tableBlockPluginKey, { stopEdit: true })
+		);
+		expect(getState(ed)!.editing).toBeNull();
+	});
+
+	it('toggling the table off cancels any in-progress edit', () => {
+		const ed = makeEditor(['```csv', 'alpha, beta', '```']);
+		const r = getState(ed)!.regions[0]!;
+		ed.view.dispatch(
+			ed.state.tr.setMeta(tableBlockPluginKey, {
+				startEdit: { openFromPos: r.openFromPos, rowIdx: 0, colIdx: 0 }
+			})
+		);
+		toggleTableBlock(ed, r.openFromPos);
+		expect(getState(ed)!.editing).toBeNull();
+	});
+
+	it('drops the edit state when the targeted region disappears', () => {
+		const ed = makeEditor(['```csv', 'alpha, beta', '```']);
+		const r = getState(ed)!.regions[0]!;
+		ed.view.dispatch(
+			ed.state.tr.setMeta(tableBlockPluginKey, {
+				startEdit: { openFromPos: r.openFromPos, rowIdx: 0, colIdx: 0 }
+			})
+		);
+		// Delete the closing fence so the region vanishes.
+		ed.commands.deleteRange({
+			from: r.closeToPos - 5,
+			to: r.closeToPos
+		});
+		expect(getState(ed)!.regions).toEqual([]);
+		expect(getState(ed)!.editing).toBeNull();
+	});
+});
+
+describe('tableBlockPlugin — cell-edit commit / cancel helpers', () => {
+	it('enterCellEdit puts the plugin into editing mode at the right slot', () => {
+		const ed = makeEditor(['```csv', 'alpha, beta', '```']);
+		const r = getState(ed)!.regions[0]!;
+		enterCellEdit(ed, { openFromPos: r.openFromPos, rowIdx: 0, colIdx: 1 });
+		expect(getState(ed)!.editing).toEqual({
+			openFromPos: r.openFromPos,
+			rowIdx: 0,
+			colIdx: 1
+		});
+	});
+
+	it('commitCellEditCommand replaces the cell text and exits edit mode', () => {
+		const ed = makeEditor(['```csv', 'alpha, beta', '```']);
+		const r = getState(ed)!.regions[0]!;
+		enterCellEdit(ed, { openFromPos: r.openFromPos, rowIdx: 0, colIdx: 1 });
+		const ok = commitCellEditCommand(ed, 'BETA');
+		expect(ok).toBe(true);
+		expect(getState(ed)!.editing).toBeNull();
+		const after = getState(ed)!.regions[0];
+		expect(after.rows).toEqual([['alpha', 'BETA']]);
+	});
+
+	it('commitCellEditCommand returns false when there is no active edit', () => {
+		const ed = makeEditor(['```csv', 'alpha, beta', '```']);
+		expect(commitCellEditCommand(ed, 'whatever')).toBe(false);
+	});
+
+	it('cancelCellEdit exits edit mode without modifying the doc', () => {
+		const ed = makeEditor(['```csv', 'alpha, beta', '```']);
+		const r = getState(ed)!.regions[0]!;
+		enterCellEdit(ed, { openFromPos: r.openFromPos, rowIdx: 0, colIdx: 1 });
+		const before = ed.state.doc.textContent;
+		cancelCellEdit(ed);
+		expect(getState(ed)!.editing).toBeNull();
+		expect(ed.state.doc.textContent).toBe(before);
+	});
+
+	it('starting a new edit while one is active swaps to the new target without committing', () => {
+		const ed = makeEditor(['```csv', 'alpha, beta', '```']);
+		const r = getState(ed)!.regions[0]!;
+		const before = ed.state.doc.textContent;
+		enterCellEdit(ed, { openFromPos: r.openFromPos, rowIdx: 0, colIdx: 0 });
+		enterCellEdit(ed, { openFromPos: r.openFromPos, rowIdx: 0, colIdx: 1 });
+		expect(getState(ed)!.editing!.colIdx).toBe(1);
+		// No commit happened — the doc text is unchanged.
+		expect(ed.state.doc.textContent).toBe(before);
+	});
 });
 
 describe('tableBlockPlugin — state across edits', () => {
