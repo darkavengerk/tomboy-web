@@ -50,6 +50,7 @@
 	import { Extension } from "@tiptap/core";
 	import { insertTodayDate } from "./insertDate.js";
 	import { deleteCurrentLine } from "./deleteLine.js";
+	import { insertTabAtCursor } from "./insertTab.js";
 	import {
 		sinkListItemOnly,
 		liftListItemOnly,
@@ -384,6 +385,27 @@
 				handleKeyDown: (_view, event) => {
 					const ed = editor;
 					if (!ed) return false;
+
+					// --- Tab → insert literal "\t" outside lists ---
+					// Browsers treat Tab in contenteditable as "move focus to
+					// next focusable element," which yanks focus out of the
+					// note. Override so notes behave like a regular text
+					// editor. Inside a list, defer to TipTap's sinkListItem
+					// keymap (and the surgical Alt+Arrow variants) so list
+					// indent still works.
+					if (
+						event.key === "Tab" &&
+						!event.ctrlKey &&
+						!event.metaKey &&
+						!event.altKey &&
+						!event.shiftKey
+					) {
+						if (insertTabAtCursor(ed)) {
+							event.preventDefault();
+							return true;
+						}
+						return false;
+					}
 
 					// --- Ctrl/Cmd shortcuts (no Alt, no Shift) ---
 					if (
@@ -845,6 +867,10 @@
 	.tomboy-editor :global(.tiptap) {
 		outline: none;
 		min-height: 100%;
+		/* Tab keystroke inserts a literal "\t" — render it at 4 chars wide
+		   so the indent looks like a normal text editor rather than the
+		   browser default of 8. */
+		tab-size: 4;
 	}
 
 	.tomboy-editor :global(.tiptap p) {
