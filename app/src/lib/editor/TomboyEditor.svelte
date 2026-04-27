@@ -48,6 +48,7 @@
 	import { pushToast, dismissToast } from "$lib/stores/toast.js";
 	import { Extension } from "@tiptap/core";
 	import { insertTodayDate } from "./insertDate.js";
+	import { deleteCurrentLine } from "./deleteLine.js";
 	import {
 		sinkListItemOnly,
 		liftListItemOnly,
@@ -415,6 +416,10 @@
 							case "o":
 								event.preventDefault();
 								insertTodoBlock(ed);
+								return true;
+							case "k":
+								event.preventDefault();
+								deleteCurrentLine(ed);
 								return true;
 						}
 					}
