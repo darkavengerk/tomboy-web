@@ -748,6 +748,7 @@
 				prevDateTitle={dateAdjacency.prev}
 				nextDateTitle={dateAdjacency.next}
 				ondatenavigate={handleDateNavigate}
+				noteFocused={isFocused}
 			/>
 		{:else}
 			<div class="loading">노트를 불러올 수 없습니다.</div>

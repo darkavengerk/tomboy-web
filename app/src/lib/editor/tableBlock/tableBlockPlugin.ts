@@ -320,6 +320,27 @@ function renderTable(
 ): HTMLTableElement {
 	const table = document.createElement('table');
 	table.className = 'tomboy-table-block-table';
+
+	// In ctrl mode the X buttons render with opacity:0; we surface only
+	// the ones that target the row/column under the cursor by toggling
+	// `tomboy-table-block-action-show` on them as the mouse moves over
+	// cells. Mouseover bubbles, so a single delegated listener on the
+	// table covers every cell — no per-cell wiring.
+	if (showCtrlChrome) {
+		table.addEventListener('mouseover', (e) => {
+			const cell = (e.target as HTMLElement).closest(
+				'th[data-table-block-row], td[data-table-block-row]'
+			) as HTMLElement | null;
+			if (!cell || !table.contains(cell)) return;
+			const row = cell.getAttribute('data-table-block-row');
+			const col = cell.getAttribute('data-table-block-col');
+			revealActionsForCell(table, row, col);
+		});
+		table.addEventListener('mouseleave', () => {
+			revealActionsForCell(table, null, null);
+		});
+	}
+
 	if (region.cells.length === 0) {
 		const tr = table.insertRow();
 		const td = tr.insertCell();
@@ -419,6 +440,32 @@ function fillCell(
 			makeCellActionButton(view, region, 'del-row', rowIdx, '×', '행 삭제')
 		);
 	}
+}
+
+/**
+ * Toggle `tomboy-table-block-action-show` on the X buttons that delete
+ * cell `(row, col)`'s row and column. Pass `null` for both to hide all
+ * X buttons (used on mouseleave). Restricting visibility to the
+ * hovered cell's row+column matches the per-cell-hover UX.
+ */
+function revealActionsForCell(
+	table: HTMLElement,
+	row: string | null,
+	col: string | null
+): void {
+	const all = table.querySelectorAll(
+		'.tomboy-table-block-del-col, .tomboy-table-block-del-row'
+	);
+	for (const el of all) el.classList.remove('tomboy-table-block-action-show');
+	if (row === null || col === null) return;
+	const colBtn = table.querySelector(
+		`.tomboy-table-block-del-col[data-table-block-index="${col}"]`
+	);
+	colBtn?.classList.add('tomboy-table-block-action-show');
+	const rowBtn = table.querySelector(
+		`.tomboy-table-block-del-row[data-table-block-index="${row}"]`
+	);
+	rowBtn?.classList.add('tomboy-table-block-action-show');
 }
 
 /**
@@ -537,9 +584,13 @@ function currentRegionFor(view: EditorView, fallback: TableRegion): TableRegion 
  * don't fire while the user is just cancelling a cell edit.
  *
  * Behaviour:
- *  - Enter (no shift): commit the typed text. Stop propagation.
- *  - Escape: cancel the edit (revert to pre-edit text). Stop propagation.
- *  - blur: cancel the edit (per UX: focus leaving = abandon).
+ *  - Enter (no shift): commit and move edit to the same column of the
+ *    next row. Shift+Enter reverses direction. At a row boundary, just
+ *    commit and exit edit mode (no wrap).
+ *  - Tab: commit and move edit to the next column of the same row.
+ *    Shift+Tab reverses direction. At a column boundary, exit.
+ *  - Escape: cancel the edit (revert to pre-edit text).
+ *  - blur: commit the edit. Click-away saves whatever the user typed.
  *  - Other keys: bubble normally so PM's input handling applies inside
  *    the contenteditable span (typing chars, arrow keys, etc.).
  */
@@ -551,10 +602,16 @@ function buildEditingCell(view: EditorView, initialText: string): HTMLElement {
 	span.textContent = initialText;
 
 	span.addEventListener('keydown', (e) => {
-		if (e.key === 'Enter' && !e.shiftKey) {
+		if (e.key === 'Enter') {
 			e.preventDefault();
 			e.stopPropagation();
-			commitFromDom(view, span.textContent ?? '');
+			commitAndAdvance(view, span.textContent ?? '', e.shiftKey ? -1 : 1, 0);
+			return;
+		}
+		if (e.key === 'Tab') {
+			e.preventDefault();
+			e.stopPropagation();
+			commitAndAdvance(view, span.textContent ?? '', 0, e.shiftKey ? -1 : 1);
 			return;
 		}
 		if (e.key === 'Escape') {
@@ -569,12 +626,11 @@ function buildEditingCell(view: EditorView, initialText: string): HTMLElement {
 		e.stopPropagation();
 	});
 
-	// Browser blur fires when focus leaves. Cancel-on-blur matches the
-	// "abandon on click-away" UX the user asked for.
+	// Click-away commits whatever the user typed.
 	span.addEventListener('blur', () => {
 		const st = tableBlockPluginKey.getState(view.state);
 		if (!st?.editing) return;
-		cancelFromDom(view);
+		commitFromDom(view, span.textContent ?? '');
 	});
 
 	return span;
@@ -845,6 +901,78 @@ function cancelFromDom(view: {
 	view.dispatch(
 		view.state.tr.setMeta(tableBlockPluginKey, { stopEdit: true } as Meta)
 	);
+}
+
+/**
+ * Commit the current cell's text AND optionally advance the edit
+ * cursor to a neighbouring cell (`drow`/`dcol` are signed offsets).
+ * Bundles the text replacement and the next `startEdit` into one
+ * transaction so the rebuild sees both atomically.
+ *
+ * If the destination cell is out of range (boundary of the table or a
+ * shorter ragged row), just commits and exits edit mode — no wrap.
+ */
+function commitAndAdvance(
+	view: EditorView,
+	newText: string,
+	drow: number,
+	dcol: number
+): void {
+	const st = tableBlockPluginKey.getState(view.state);
+	const editing = st?.editing;
+	if (!editing) return;
+	const region = st!.regions.find((r) => r.openFromPos === editing.openFromPos);
+	if (!region) {
+		cancelFromDom(view);
+		return;
+	}
+	const tr = commitCellEdit(
+		view.state,
+		region,
+		editing.rowIdx,
+		editing.colIdx,
+		newText
+	);
+	if (!tr) {
+		cancelFromDom(view);
+		return;
+	}
+	const next = nextEditTarget(region, editing, drow, dcol);
+	if (next) {
+		tr.setMeta(tableBlockPluginKey, { startEdit: next } as Meta);
+	} else {
+		tr.setMeta(tableBlockPluginKey, { stopEdit: true } as Meta);
+	}
+	view.dispatch(tr);
+	if (next) {
+		queueMicrotask(() => focusEditingCell(view.dom));
+	}
+}
+
+/**
+ * Resolve the next cell-edit target after `current`, given signed row
+ * and column deltas. Returns null when the destination is out of range
+ * (so callers exit edit mode rather than wrapping). The cell-edit
+ * commit doesn't change cell COUNTS (it only rewrites one cell's
+ * text), so the same `region.cells` shape is valid for the next
+ * target — no need to re-derive against the post-commit doc.
+ */
+function nextEditTarget(
+	region: TableRegion,
+	current: CellEditTarget,
+	drow: number,
+	dcol: number
+): CellEditTarget | null {
+	const newRow = current.rowIdx + drow;
+	const newCol = current.colIdx + dcol;
+	if (newRow < 0 || newRow >= region.cells.length) return null;
+	const cells = region.cells[newRow];
+	if (newCol < 0 || newCol >= cells.length) return null;
+	return {
+		openFromPos: current.openFromPos,
+		rowIdx: newRow,
+		colIdx: newCol
+	};
 }
 
 /**

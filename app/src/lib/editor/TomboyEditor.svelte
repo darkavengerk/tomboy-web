@@ -124,6 +124,12 @@
 			direction: "prev" | "next",
 			replace: boolean,
 		) => void;
+		/** Whether THIS note is the currently focused window (desktop) /
+		 *  the visible note (mobile). Defaults to true so single-note
+		 *  routes don't need to thread it. Gates table-block ctrl-mode
+		 *  so a Ctrl press doesn't activate edit chrome on every open
+		 *  note simultaneously. */
+		noteFocused?: boolean;
 	}
 
 	let {
@@ -147,6 +153,7 @@
 		prevDateTitle = null,
 		nextDateTitle = null,
 		ondatenavigate = () => {},
+		noteFocused = true,
 	}: Props = $props();
 
 	let ctxMenu = $state<{ x: number; y: number } | null>(null);
@@ -791,9 +798,11 @@
 
 	// Drive the table-block plugin's ctrl-mode chrome (X / + buttons on
 	// the rendered table) from the shared modKeys.ctrl rune so physical
-	// Ctrl AND the mobile Ctrl-lock both light up the editing UI.
+	// Ctrl AND the mobile Ctrl-lock both light up the editing UI. Gated
+	// by `noteFocused`: a Ctrl press shouldn't activate table chrome on
+	// every open note window simultaneously — only the focused one.
 	$effect(() => {
-		const held = ctrlHeld;
+		const held = ctrlHeld && noteFocused;
 		const ed = editor;
 		if (!ed || ed.isDestroyed) return;
 		setTableBlockCtrlHeld(ed, held);
@@ -1441,10 +1450,19 @@
 		align-items: center;
 		justify-content: center;
 		z-index: 2;
-		opacity: 0.8;
+		/* Hidden until the JS reveal logic adds .action-show on the X
+		   for the row+column under the cursor (see revealActionsForCell
+		   in the plugin). pointer-events:none avoids the X stealing
+		   hover when it's invisible. */
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 0.12s;
 	}
-	.tomboy-editor :global(.tomboy-table-block-del-col:hover),
-	.tomboy-editor :global(.tomboy-table-block-del-row:hover) {
+	.tomboy-editor :global(.tomboy-table-block-action-show) {
+		opacity: 0.85;
+		pointer-events: auto;
+	}
+	.tomboy-editor :global(.tomboy-table-block-action-show:hover) {
 		opacity: 1;
 	}
 	/* Hover-preview highlight: the cells about to be removed. */
@@ -1454,28 +1472,29 @@
 	}
 
 	/* Insert-row / insert-col buttons fill their grid cell, so they
-	   match the table's width / height respectively. */
+	   match the table's width / height respectively. Sized large enough
+	   to be a comfortable click target (~32px on the short axis). */
 	.tomboy-editor :global(.tomboy-table-block-add-col) {
-		min-width: 22px;
+		min-width: 32px;
 		background: #2e7d32;
 		color: #fff;
-		font-size: 18px;
+		font-size: 22px;
 		font-weight: bold;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		border-radius: 3px;
+		border-radius: 4px;
 	}
 	.tomboy-editor :global(.tomboy-table-block-add-row) {
-		min-height: 22px;
+		min-height: 32px;
 		background: #2e7d32;
 		color: #fff;
-		font-size: 18px;
+		font-size: 22px;
 		font-weight: bold;
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		border-radius: 3px;
+		border-radius: 4px;
 	}
 	.tomboy-editor :global(.tomboy-table-block-add-col:hover),
 	.tomboy-editor :global(.tomboy-table-block-add-row:hover) {

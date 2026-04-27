@@ -537,10 +537,9 @@ describe('tableBlockPlugin — Escape / blur behavior on the editing cell', () =
 		parent.remove();
 	});
 
-	it('blur (focusout) cancels the edit — doc text is unchanged', () => {
+	it('blur (focusout) commits the edit — typed text is written to the doc', () => {
 		const ed = makeEditor(['```csv', 'alpha, beta', '```']);
 		const r = getState(ed)!.regions[0]!;
-		const beforeText = ed.state.doc.textContent;
 		enterCellEdit(ed, { openFromPos: r.openFromPos, rowIdx: 0, colIdx: 1 });
 
 		const dom = widgetDom(ed);
@@ -549,21 +548,21 @@ describe('tableBlockPlugin — Escape / blur behavior on the editing cell', () =
 		) as HTMLElement | null;
 		expect(cell).not.toBeNull();
 
-		// Mutate the cell's text in-DOM (as if the user typed). Then blur:
-		// the listener should NOT commit those changes — it cancels.
-		cell!.textContent = 'TYPED-BUT-CANCELLED';
+		// Mutate the cell's text in-DOM (as if the user typed) then blur.
+		cell!.textContent = 'BETA-FROM-BLUR';
 		document.body.appendChild(dom);
 		cell!.dispatchEvent(new FocusEvent('blur', { bubbles: false }));
 
 		expect(getState(ed)!.editing).toBeNull();
-		// Doc text identical to before the edit started.
-		expect(ed.state.doc.textContent).toBe(beforeText);
+		expect(getState(ed)!.regions[0].rows).toEqual([
+			['alpha', 'BETA-FROM-BLUR']
+		]);
 
 		dom.remove();
 	});
 
-	it('Enter on the editing cell commits and stops bubbling', () => {
-		const ed = makeEditor(['```csv', 'alpha, beta', '```']);
+	it('Enter commits and moves edit to the same column of the next row', () => {
+		const ed = makeEditor(['```csv', 'alpha, beta', 'c, d', '```']);
 		const r = getState(ed)!.regions[0]!;
 		enterCellEdit(ed, { openFromPos: r.openFromPos, rowIdx: 0, colIdx: 1 });
 
@@ -589,11 +588,159 @@ describe('tableBlockPlugin — Escape / blur behavior on the editing cell', () =
 			})
 		);
 
-		expect(getState(ed)!.editing).toBeNull();
+		// Commit landed.
+		expect(getState(ed)!.regions[0].rows).toEqual([
+			['alpha', 'BETA'],
+			['c', 'd']
+		]);
+		// Editing moved to (rowIdx=1, colIdx=1).
+		expect(getState(ed)!.editing).toEqual({
+			openFromPos: r.openFromPos,
+			rowIdx: 1,
+			colIdx: 1
+		});
 		expect(outerEnterFired).toBe(false);
-		expect(getState(ed)!.regions[0].rows).toEqual([['alpha', 'BETA']]);
-
 		parent.remove();
+	});
+
+	it('Enter on the LAST row commits and exits edit mode', () => {
+		const ed = makeEditor(['```csv', 'a, b', 'c, d', '```']);
+		const r = getState(ed)!.regions[0]!;
+		enterCellEdit(ed, { openFromPos: r.openFromPos, rowIdx: 1, colIdx: 0 });
+
+		const dom = widgetDom(ed);
+		const cell = dom.querySelector(
+			'[data-table-block-editing="true"]'
+		) as HTMLElement | null;
+		cell!.textContent = 'C2';
+		document.body.appendChild(dom);
+
+		cell!.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: 'Enter',
+				bubbles: true,
+				cancelable: true
+			})
+		);
+
+		expect(getState(ed)!.editing).toBeNull();
+		expect(getState(ed)!.regions[0].rows).toEqual([
+			['a', 'b'],
+			['C2', 'd']
+		]);
+		dom.remove();
+	});
+
+	it('Shift+Enter commits and moves to the PREVIOUS row', () => {
+		const ed = makeEditor(['```csv', 'a, b', 'c, d', '```']);
+		const r = getState(ed)!.regions[0]!;
+		enterCellEdit(ed, { openFromPos: r.openFromPos, rowIdx: 1, colIdx: 0 });
+
+		const dom = widgetDom(ed);
+		const cell = dom.querySelector(
+			'[data-table-block-editing="true"]'
+		) as HTMLElement | null;
+		cell!.textContent = 'C2';
+		document.body.appendChild(dom);
+
+		cell!.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: 'Enter',
+				shiftKey: true,
+				bubbles: true,
+				cancelable: true
+			})
+		);
+
+		expect(getState(ed)!.editing).toEqual({
+			openFromPos: r.openFromPos,
+			rowIdx: 0,
+			colIdx: 0
+		});
+		dom.remove();
+	});
+
+	it('Tab commits and moves edit to the NEXT column of the same row', () => {
+		const ed = makeEditor(['```csv', 'a, b, c', '```']);
+		const r = getState(ed)!.regions[0]!;
+		enterCellEdit(ed, { openFromPos: r.openFromPos, rowIdx: 0, colIdx: 0 });
+
+		const dom = widgetDom(ed);
+		const cell = dom.querySelector(
+			'[data-table-block-editing="true"]'
+		) as HTMLElement | null;
+		cell!.textContent = 'A2';
+		document.body.appendChild(dom);
+
+		cell!.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: 'Tab',
+				bubbles: true,
+				cancelable: true
+			})
+		);
+
+		expect(getState(ed)!.editing).toEqual({
+			openFromPos: r.openFromPos,
+			rowIdx: 0,
+			colIdx: 1
+		});
+		expect(getState(ed)!.regions[0].rows).toEqual([['A2', 'b', 'c']]);
+		dom.remove();
+	});
+
+	it('Shift+Tab commits and moves edit to the PREVIOUS column', () => {
+		const ed = makeEditor(['```csv', 'a, b, c', '```']);
+		const r = getState(ed)!.regions[0]!;
+		enterCellEdit(ed, { openFromPos: r.openFromPos, rowIdx: 0, colIdx: 2 });
+
+		const dom = widgetDom(ed);
+		const cell = dom.querySelector(
+			'[data-table-block-editing="true"]'
+		) as HTMLElement | null;
+		cell!.textContent = 'C2';
+		document.body.appendChild(dom);
+
+		cell!.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: 'Tab',
+				shiftKey: true,
+				bubbles: true,
+				cancelable: true
+			})
+		);
+
+		expect(getState(ed)!.editing).toEqual({
+			openFromPos: r.openFromPos,
+			rowIdx: 0,
+			colIdx: 1
+		});
+		dom.remove();
+	});
+
+	it('Tab on the last column commits and exits edit mode (no wrap)', () => {
+		const ed = makeEditor(['```csv', 'a, b', '```']);
+		const r = getState(ed)!.regions[0]!;
+		enterCellEdit(ed, { openFromPos: r.openFromPos, rowIdx: 0, colIdx: 1 });
+
+		const dom = widgetDom(ed);
+		const cell = dom.querySelector(
+			'[data-table-block-editing="true"]'
+		) as HTMLElement | null;
+		cell!.textContent = 'B2';
+		document.body.appendChild(dom);
+
+		cell!.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: 'Tab',
+				bubbles: true,
+				cancelable: true
+			})
+		);
+
+		expect(getState(ed)!.editing).toBeNull();
+		expect(getState(ed)!.regions[0].rows).toEqual([['a', 'B2']]);
+		dom.remove();
 	});
 });
 
@@ -820,6 +967,94 @@ describe('tableBlockPlugin — ctrl-mode action button behavior', () => {
 		const after = getState(ed)!.regions[0];
 		expect(after.rows).toHaveLength(2);
 		expect(after.rows[1]).toEqual(['', '']);
+		dom.remove();
+	});
+
+	it('starts with NO X buttons revealed in ctrl mode (hidden until cell hover)', () => {
+		const ed = makeEditor(['```csv', 'a, b, c', 'd, e, f', '```']);
+		setCtrlHeld(ed, true);
+		const dom = widgetDom(ed);
+		// X buttons exist in the DOM but are hidden via the
+		// `tomboy-table-block-action-show` class being absent.
+		const buttons = dom.querySelectorAll(
+			'.tomboy-table-block-del-col, .tomboy-table-block-del-row'
+		);
+		expect(buttons.length).toBeGreaterThan(0);
+		const visible = dom.querySelectorAll('.tomboy-table-block-action-show');
+		expect(visible).toHaveLength(0);
+	});
+
+	it('mouseover on a cell reveals the X for THAT cell\'s row and column only', () => {
+		const ed = makeEditor(['```csv', 'a, b, c', 'd, e, f', 'g, h, i', '```']);
+		setCtrlHeld(ed, true);
+		const dom = widgetDom(ed);
+		document.body.appendChild(dom);
+
+		// Hover the (rowIdx=2, colIdx=1) body cell ("h").
+		const cell = dom.querySelector(
+			'td[data-table-block-row="2"][data-table-block-col="1"]'
+		) as HTMLElement;
+		cell.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+
+		// Exactly one col-delete X is shown (the one over column 1's
+		// header cell), and exactly one row-delete X is shown (the one
+		// inside row 2's last cell).
+		const shown = Array.from(
+			dom.querySelectorAll('.tomboy-table-block-action-show')
+		) as HTMLElement[];
+		expect(shown).toHaveLength(2);
+		const colShown = shown.find(
+			(b) => b.getAttribute('data-table-block-action') === 'del-col'
+		);
+		const rowShown = shown.find(
+			(b) => b.getAttribute('data-table-block-action') === 'del-row'
+		);
+		expect(colShown?.getAttribute('data-table-block-index')).toBe('1');
+		expect(rowShown?.getAttribute('data-table-block-index')).toBe('2');
+
+		dom.remove();
+	});
+
+	it('mouseover on the HEADER row reveals the col X but no row X (header has none)', () => {
+		const ed = makeEditor(['```csv', 'a, b', 'c, d', '```']);
+		setCtrlHeld(ed, true);
+		const dom = widgetDom(ed);
+		document.body.appendChild(dom);
+
+		const headerCell = dom.querySelector(
+			'th[data-table-block-row="0"][data-table-block-col="0"]'
+		) as HTMLElement;
+		headerCell.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+
+		const shown = Array.from(
+			dom.querySelectorAll('.tomboy-table-block-action-show')
+		) as HTMLElement[];
+		expect(shown).toHaveLength(1);
+		expect(shown[0].getAttribute('data-table-block-action')).toBe('del-col');
+
+		dom.remove();
+	});
+
+	it('mouseleave the table hides every revealed X', () => {
+		const ed = makeEditor(['```csv', 'a, b', 'c, d', '```']);
+		setCtrlHeld(ed, true);
+		const dom = widgetDom(ed);
+		document.body.appendChild(dom);
+
+		const cell = dom.querySelector(
+			'td[data-table-block-row="1"][data-table-block-col="1"]'
+		) as HTMLElement;
+		cell.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+		expect(
+			dom.querySelectorAll('.tomboy-table-block-action-show').length
+		).toBeGreaterThan(0);
+
+		const table = dom.querySelector('table') as HTMLElement;
+		table.dispatchEvent(new MouseEvent('mouseleave'));
+
+		expect(dom.querySelectorAll('.tomboy-table-block-action-show')).toHaveLength(
+			0
+		);
 		dom.remove();
 	});
 
