@@ -1,20 +1,34 @@
 ---
 name: tomboy-notesync
-description: Use when working on Firebase Firestore-based realtime note sync (`app/src/lib/sync/firebase/`). Covers the orchestrator (notifyNoteSaved / attachOpenNote / detachOpenNote), the per-guid debounced push queue, the openNoteRegistry refcounting, the conflictResolver (changeDate-based last-write-wins), the noteSyncClient Firestore wrapper, the Dropbox-bridged auth reuse, the settings toggle, and the gating model that keeps the feature OFF by default. Coexists with Dropbox sync (which stays as backup); does not replace it.
+description: Use when working on Firebase Firestore-based realtime note sync (`app/src/lib/sync/firebase/`). Covers the orchestrator (notifyNoteSaved / attachOpenNote / detachOpenNote), the per-guid debounced push queue, the openNoteRegistry refcounting, the conflictResolver (changeDate-based last-write-wins), the noteSyncClient Firestore wrapper, the incremental collection-level sync (serverUpdatedAt watermark), the Dropbox-bridged auth reuse, the settings toggle, and the gating model that keeps the feature OFF by default. Coexists with Dropbox sync (which stays as backup); does not replace it.
 ---
 
 # 파이어베이스 실시간 노트 동기화
 
-A second sync channel that runs alongside the existing Dropbox sync. Notes
-that the user has **opened at least once** are mirrored into Firestore; while
-they're open, every save is pushed and every remote change is pulled in real
-time. Dropbox sync is unchanged — it remains the backup channel and the
-authority for never-opened notes (the 2,000-note backlog).
+A second sync channel that runs alongside the existing Dropbox sync. The
+device mirrors three flows through Firestore:
 
-The user opted out of building a 2,000-note backfill: closed notes are not
-present in Firestore until the user opens them on some device. Other devices
-discover those notes through the Dropbox channel, then carry the realtime
-baton from there.
+1. **Push** — every IDB write (editor save, rename cascade, delete, favorite
+   toggle) on this device gets debounced and pushed.
+2. **Per-note attach** — while a note is open in an editor window, a
+   doc-level `onSnapshot` keeps it in lockstep with other devices in real
+   time.
+3. **Incremental collection sync** — a single live cursor over
+   `users/{uid}/notes` filtered by `serverUpdatedAt > lastSeen` delivers
+   both the catch-up of changes accumulated while offline AND realtime
+   updates that arrive while the listener is alive. This is what makes a
+   newly-created note on device A reach device B without device B having
+   to open it first.
+
+Dropbox sync is unchanged — it remains the backup channel and the
+authority for never-opened-anywhere notes.
+
+The user opted out of building a 2,000-note backfill of long-dormant notes:
+notes that have never been opened on any Firebase-enabled device are not in
+Firestore. Other devices discover those notes through the Dropbox channel,
+then carry the realtime baton from there. Once any device opens a note, it
+lands in Firestore and the incremental sync covers all other devices from
+that point on.
 
 ## Why this exists
 
@@ -64,9 +78,10 @@ app/src/lib/sync/firebase/
 ├── conflictResolver.ts        pure: changeDate → metadataChangeDate → tie-prefers-local
 ├── pushQueue.ts               per-guid debounced push, getNote-at-fire-time semantics
 ├── openNoteRegistry.ts        refcounted attach/detach + safe-unsubscribe
-├── noteSyncClient.ts          DI'd Firestore primitives (getDoc/setDoc/onSnapshot/serverTimestamp)
+├── incrementalSync.ts         pure: collection-level catch-up + live cursor on serverUpdatedAt
+├── noteSyncClient.ts          DI'd Firestore primitives (getDoc/setDoc/onSnapshot/onNotesAfter/serverTimestamp)
 ├── noteSyncClient.firestore.ts  real wiring against firebase/firestore SDK
-├── orchestrator.ts            module-level singleton: notifyNoteSaved, attachOpenNote, detachOpenNote
+├── orchestrator.ts            module-level singleton: notifyNoteSaved, attachOpenNote, detachOpenNote, start/stop incremental
 └── install.ts                 one-shot configure() + apply persisted enabled flag at startup
 ```
 
@@ -128,6 +143,60 @@ race between fetch + subscribe and a redundant network round-trip.
 Echo suppression for our own pushes is implicit: after we push, Firestore
 echoes the same payload we wrote, the equivalence check fires, and the
 conflict resolver returns `noop`. No tracker, no signature memory.
+
+### Incremental side — collection-level catch-up + live cursor
+
+The per-note attach listener only covers notes that are currently open in
+an editor. Without a third channel, a note created on device A while
+device B sits on a different note is invisible to B until B explicitly
+opens that note's guid — and B has no way to know the guid exists until
+the user clicks the broken link. The incremental sync closes that gap.
+
+`createIncrementalSync` (in `incrementalSync.ts`) keeps a single
+`onSnapshot` over `users/{uid}/notes` filtered by
+`serverUpdatedAt > lastFirebaseSyncAt`. The first emission delivers the
+catch-up batch (everything that changed while we were offline);
+subsequent emissions deliver realtime changes from other devices. Per
+emission:
+
+1. For each doc in the batch, run the same `reconcileWithRemote(guid,
+   payload)` that the per-note attach listener uses. Echo of our own
+   pushes resolves to `noop` via the equivalence check.
+2. Track `max(serverUpdatedAtMillis)` seen so far in the batch.
+3. After the batch is fully applied, persist that max to
+   `appSettings.firebaseNotesLastSyncAt` so the next session resumes
+   exactly where this one ended. The watermark never regresses — older
+   timestamps don't move it backwards.
+
+The lower bound is `serverUpdatedAt` (Firestore `Timestamp`, set by
+`serverTimestamp()` on every push), **not** `changeDate`. `changeDate`
+is a wall-clock ISO string that doesn't sort lexically across timezone
+offsets, so it's unsafe as a query predicate. `serverUpdatedAt` is
+server-side and monotonic.
+
+The lifecycle is driven by `setNoteSyncEnabled`:
+- `setNoteSyncEnabled(true)` reads the persisted watermark, fetches the
+  uid, and starts the listener. Idempotent — calling it twice while
+  running is a no-op.
+- `setNoteSyncEnabled(false)` synchronously unsubscribes.
+- `start(uid)` is async (it awaits `getLastSyncMillis`); if `stop()` runs
+  before the inner subscription resolves, the eventual handle is
+  cancelled (the `stopRequested` latch in `incrementalSync.ts`).
+
+Pending Firestore writes whose `serverTimestamp()` hasn't been finalised
+yet emit a snapshot with `serverUpdatedAt = null`. The firestore-wiring
+adapter drops those rows; they arrive in the follow-up snapshot once the
+server confirms.
+
+The per-note attach listener and the incremental listener can both fire
+for the same doc — they call the same `reconcileWithRemote`, which is
+idempotent under the conflict resolver. The duplicate IDB write is a
+no-op cost, not a correctness problem.
+
+**First-run cost on a new device**: the watermark starts at 0 so the
+initial query pulls every note that has ever been mirrored to Firestore.
+For a 2,000-note user with ~200 ever-opened notes, that's a few hundred
+KB — paid once. After that, only deltas.
 
 ## Conflict resolution rules
 
@@ -194,6 +263,12 @@ follows:
 - **Note never opened anywhere** → not in Firestore, lives in Dropbox only.
   Opening it on any device triggers the `attach → first snapshot →
   remote-missing → push` path that bootstraps the doc.
+- **Note created or edited on device A while device B sits on a different
+  note** → device A's push lands in Firestore. Device B's incremental
+  collection listener catches the doc on its next emission (effectively
+  realtime — usually within a second). Device B's IDB ends up with the
+  full note before the user ever needs to click a link to it. This is
+  what the incremental sync exists to cover.
 
 This is the intended steady state for a 2,000-note collection where only a
 handful are actively edited at any time.
@@ -225,10 +300,11 @@ Notes intentionally NOT hooked:
 | `lib/sync/firebase/conflictResolver.ts` | `resolveNoteConflict` — pure last-write-wins + tiebreakers |
 | `lib/sync/firebase/pushQueue.ts` | `createPushQueue({ debounceMs, push, getNote })` — per-guid debounce + flush/flushAll |
 | `lib/sync/firebase/openNoteRegistry.ts` | `createOpenNoteRegistry({ start })` — refcounted attach/detach with safe unsubscribe |
-| `lib/sync/firebase/noteSyncClient.ts` | `createNoteSyncClient(prim)` over injectable Firestore primitives + `noteDocPath` |
-| `lib/sync/firebase/noteSyncClient.firestore.ts` | real `firebase/firestore` adapter; `getCurrentNoteSyncUid` |
-| `lib/sync/firebase/orchestrator.ts` | module-level singleton: `notifyNoteSaved`, `attachOpenNote`, `detachOpenNote`, `setNoteSyncEnabled`, `flushAllNoteSync`, `_resetNoteSyncForTest` |
-| `lib/sync/firebase/install.ts` | startup glue: persisted-flag load, `configureNoteSync(...)`, `installRealNoteSync()` |
+| `lib/sync/firebase/incrementalSync.ts` | `createIncrementalSync({ subscribe, applyRemote, getLastSyncMillis, setLastSyncMillis })` — collection-level catch-up + live cursor on `serverUpdatedAt`; idempotent `start(uid)` / `stop()` |
+| `lib/sync/firebase/noteSyncClient.ts` | `createNoteSyncClient(prim)` over injectable Firestore primitives + `noteDocPath` + `subscribeNoteCollection` |
+| `lib/sync/firebase/noteSyncClient.firestore.ts` | real `firebase/firestore` adapter; `getCurrentNoteSyncUid`; `onNotesAfter` wraps `query(... where('serverUpdatedAt', '>', Timestamp.fromMillis(since)))` |
+| `lib/sync/firebase/orchestrator.ts` | module-level singleton: `notifyNoteSaved`, `attachOpenNote`, `detachOpenNote`, `setNoteSyncEnabled` (auto-starts/stops incremental), `flushAllNoteSync`, `_resetNoteSyncForTest` |
+| `lib/sync/firebase/install.ts` | startup glue: persisted-flag load, `configureNoteSync(...)` with watermark adapters reading/writing `firebaseNotesLastSyncAt`, `installRealNoteSync()` |
 | `lib/firebase/app.ts` | shared lazy Firebase singletons + `ensureSignedIn` (also used by `lib/schedule/`) |
 | `lib/core/noteManager.ts` | hooks: `notifyNoteSaved` calls in `updateNoteFromEditor`, rename cascade, `deleteNoteById`, `toggleFavorite` |
 | `routes/note/[id]/+page.svelte` | mobile attach/detach via `$effect` keyed on `noteId` |
@@ -238,19 +314,26 @@ Notes intentionally NOT hooked:
 
 ## Testing
 
-Tests in `app/tests/unit/sync/firebase/` (8 files, ~78 tests):
+Tests in `app/tests/unit/sync/firebase/` (10 files, ~100 tests):
 
-- **Pure**: `notePayload.test.ts`, `conflictResolver.test.ts` —
-  no IDB, no timers.
+- **Pure**: `notePayload.test.ts`, `conflictResolver.test.ts`,
+  `incrementalSync.test.ts` — no IDB, no timers. The incremental tests
+  inject fake `subscribe` / `applyRemote` / watermark fns and assert
+  start/stop lifecycle, watermark advancement, and start-after-stop
+  resume semantics.
 - **Timer-driven**: `pushQueue.test.ts`, `orchestrator.test.ts` —
   `vi.useFakeTimers()` plus async advance helpers.
 - **Refcounting**: `openNoteRegistry.test.ts` — synchronous, fakes only.
 - **DI'd Firestore**: `noteSyncClient.test.ts` — fakes
-  `FirestorePrimitives`, asserts payload shape and snapshot dispatch.
-- **Integration**: `orchestrator.integration.test.ts` and
-  `orchestrator.attach.test.ts` — fake-indexeddb + real noteManager calls,
-  injected fake `subscribeRemote`. Real timers (fake-indexeddb relies on
-  setTimeout for microtask scheduling and starves under fake timers).
+  `FirestorePrimitives` (including `onNotesAfter`), asserts payload
+  shape, snapshot dispatch, and collection-batch parsing with malformed
+  rows dropped.
+- **Integration**: `orchestrator.integration.test.ts`,
+  `orchestrator.attach.test.ts`, and
+  `orchestrator.incremental.test.ts` — fake-indexeddb + real noteManager
+  calls, injected fake `subscribeRemote` / `subscribeNoteCollection` /
+  watermark fns. Real timers (fake-indexeddb relies on setTimeout for
+  microtask scheduling and starves under fake timers).
 
 The production wiring file `noteSyncClient.firestore.ts` is **not**
 unit-tested; it's a thin pass-through to the real SDK. Manual verification:
@@ -272,13 +355,20 @@ on two devices, watch realtime propagation.
 
 - **No 2,000-note backfill.** Notes you've never opened on any
   Firebase-enabled device are not in Firestore. Live with it; the Dropbox
-  channel still has them.
+  channel still has them. Once any device opens such a note, it becomes
+  reachable to all other devices via the incremental collection sync.
+- **First-run incremental query is a full pull of Firestore-mirrored
+  notes.** A new device with a 0 watermark fetches every doc whose
+  `serverUpdatedAt` exists. Bounded by the actual Firestore footprint
+  (only ever-opened notes), so for typical use this is hundreds of KB,
+  not megabytes. Subsequent sessions only pull the delta.
 - **Backlink rewrites of closed notes don't reach other devices in
   real time.** The rename cascade enqueues pushes for every affected note,
   but if a target device hasn't opened those notes, the rewrite only lands
   in Firestore on the originating device's next attach. The receiving
   device picks it up the next time *it* opens those notes (or via
-  Dropbox sync).
+  Dropbox sync). With incremental sync enabled, the rewrites still flow
+  in via the collection cursor as soon as the originating device pushes.
 - **Dropbox-pulled notes don't auto-push to Firestore.**
   `applyIncomingRemoteNote` writes via `putNoteSynced` and intentionally
   bypasses `notifyNoteSaved`. If the user wants the freshly pulled note in
@@ -292,6 +382,12 @@ on two devices, watch realtime propagation.
 - **No size-cap UX.** A note that exceeds `MAX_FIRESTORE_NOTE_BYTES` throws
   inside the push queue's `onError` and gets logged but no user-facing
   toast. Rare in practice; revisit if it ever happens.
+- **Watermark uses `serverUpdatedAt`, not `changeDate`.** `changeDate` is
+  a wall-clock ISO string that doesn't sort lexically across timezone
+  offsets, so it's not safe as a Firestore range-query predicate. The
+  collection cursor uses `serverUpdatedAt` (Firestore `Timestamp`,
+  monotonic per server). Conflict resolution still uses `changeDate` —
+  the two timestamps serve different purposes.
 
 ## Operational notes
 

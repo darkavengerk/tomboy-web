@@ -6,7 +6,7 @@
  * state. Safe to call more than once (idempotent — subsequent calls just
  * re-apply).
  */
-import { getSetting } from '$lib/storage/appSettings.js';
+import { getSetting, setSetting } from '$lib/storage/appSettings.js';
 import * as noteStore from '$lib/storage/noteStore.js';
 import { configureNoteSync, setNoteSyncEnabled } from './orchestrator.js';
 import {
@@ -15,6 +15,7 @@ import {
 } from './noteSyncClient.firestore.js';
 
 const ENABLED_SETTING_KEY = 'firebaseNotesEnabled';
+const LAST_SYNC_MILLIS_KEY = 'firebaseNotesLastSyncAt';
 
 export async function isFirebaseNotesEnabledSetting(): Promise<boolean> {
 	const v = await getSetting<boolean>(ENABLED_SETTING_KEY);
@@ -48,6 +49,15 @@ export async function installRealNoteSync(): Promise<void> {
 		getNote: (g) => noteStore.getNote(g),
 		getUid: getCurrentNoteSyncUid,
 		subscribeRemote: (uid, guid, cb) => client.subscribeNoteDoc(uid, guid, cb),
+		subscribeNoteCollection: (uid, sinceMillis, onChange, onError) =>
+			client.subscribeNoteCollection(uid, sinceMillis, onChange, onError),
+		getLastSyncMillis: async () => {
+			const v = await getSetting<number>(LAST_SYNC_MILLIS_KEY);
+			return typeof v === 'number' ? v : 0;
+		},
+		setLastSyncMillis: async (m) => {
+			await setSetting(LAST_SYNC_MILLIS_KEY, m);
+		},
 		debounceMs: 500
 	});
 
