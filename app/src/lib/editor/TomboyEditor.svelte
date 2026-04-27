@@ -43,6 +43,7 @@
 		createAutoWeekdayPlugin,
 		autoWeekdayPluginKey,
 	} from "./autoWeekday/autoWeekdayPlugin.js";
+	import { createTableBlockPlugin } from "./tableBlock/tableBlockPlugin.js";
 	import { extractImageFile } from "./imagePreview/extractImageFile.js";
 	import { uploadImageToDropbox } from "$lib/sync/imageUpload.js";
 	import { pushToast, dismissToast } from "$lib/stores/toast.js";
@@ -340,6 +341,12 @@
 								enabled: () => autoWeekdayEnabled,
 							}),
 						];
+					},
+				}),
+				Extension.create({
+					name: "tomboyTableBlock",
+					addProseMirrorPlugins() {
+						return [createTableBlockPlugin()];
 					},
 				}),
 				SlipNoteArrows,
@@ -1211,5 +1218,73 @@
 			opacity: 1;
 			pointer-events: auto;
 		}
+	}
+
+	/* CSV/TSV table block.
+
+	   When the region is "checked" (default), the source paragraphs (the
+	   ```csv fence, body rows, ``` fence) are hidden via two decorations:
+	   the inline `tomboy-table-block-hidden` zeros out their content, and
+	   the node-level `tomboy-table-block-hidden-block` collapses the
+	   surrounding <p> to no height so the layout closes up. The widget
+	   decoration injected by the plugin renders the table on top.
+
+	   When unchecked, the hide decorations are not emitted — paragraphs
+	   appear as ordinary text and are fully editable. The widget still
+	   shows so the user can re-check. */
+	.tomboy-editor :global(.tomboy-table-block-hidden) {
+		display: none;
+	}
+	.tomboy-editor :global(p.tomboy-table-block-hidden-block) {
+		margin: 0;
+		padding: 0;
+		height: 0;
+		overflow: hidden;
+	}
+	.tomboy-editor :global(.tomboy-table-block-widget) {
+		display: block;
+		margin: 0.6em 0;
+		padding: 0.5em 0.6em 0.6em;
+		border: 1px solid #d0d7de;
+		border-radius: 6px;
+		background: #f6f8fa;
+		user-select: none;
+	}
+	.tomboy-editor :global(.tomboy-table-block-header) {
+		display: flex;
+		justify-content: flex-end;
+		margin-bottom: 0.4em;
+	}
+	.tomboy-editor :global(.tomboy-table-block-toggle) {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3em;
+		font-size: 0.8em;
+		color: #555;
+		cursor: pointer;
+	}
+	.tomboy-editor :global(.tomboy-table-block-toggle input) {
+		cursor: pointer;
+	}
+	.tomboy-editor :global(.tomboy-table-block-table) {
+		border-collapse: collapse;
+		width: 100%;
+		background: #fff;
+		font-size: 0.95em;
+	}
+	.tomboy-editor :global(.tomboy-table-block-table th),
+	.tomboy-editor :global(.tomboy-table-block-table td) {
+		border: 1px solid #d0d7de;
+		padding: 0.3em 0.6em;
+		text-align: left;
+		vertical-align: top;
+	}
+	.tomboy-editor :global(.tomboy-table-block-table th) {
+		background: #eaeef2;
+		font-weight: 600;
+	}
+	.tomboy-editor :global(.tomboy-table-block-empty) {
+		color: #888;
+		font-style: italic;
 	}
 </style>
