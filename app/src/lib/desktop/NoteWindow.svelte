@@ -20,6 +20,7 @@
 		listNotebooks
 	} from '$lib/core/notebooks.js';
 	import { setHomeNote, clearHomeNote, getHomeNoteGuid } from '$lib/core/home.js';
+	import { getScheduleNoteGuid } from '$lib/core/schedule.js';
 	import { isScrollBottomNote, setScrollBottomNote } from '$lib/core/scrollBottom.js';
 	import { pushToast } from '$lib/stores/toast.js';
 	import { removeNoteRevision } from '$lib/sync/manifest.js';
@@ -37,6 +38,7 @@
 	} from './session.svelte.js';
 	import { modKeys } from './modKeys.svelte.js';
 	import { SEND_SOURCE_GUID } from '$lib/editor/sendListItem/transferListItem.js';
+	import { shouldSendListBeActive } from '$lib/editor/sendListItem/sendActiveGate.js';
 	import { SLIPBOX_NOTEBOOK } from '$lib/sleepnote/validator.js';
 	import {
 		insertNewNoteAfter,
@@ -96,6 +98,7 @@
 	let notebookNames = $state<string[]>([]);
 	let isHomeState = $state(false);
 	let isScrollBottomState = $state(false);
+	let isScheduleNote = $state(false);
 	let windowEl: HTMLDivElement | undefined = $state(undefined);
 
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -108,7 +111,14 @@
 	const isFavoriteState = $derived(note ? isFavorite(note) : false);
 	const currentNotebook = $derived(note ? getNotebook(note) : null);
 	const isSlipNote = $derived(currentNotebook === SLIPBOX_NOTEBOOK);
-	const sendActive = $derived(guid === SEND_SOURCE_GUID && modKeys.ctrl);
+	const sendActive = $derived(
+		shouldSendListBeActive({
+			guid,
+			sourceGuid: SEND_SOURCE_GUID,
+			ctrlHeld: modKeys.ctrl,
+			focusedGuid: desktopSession.focusedNoteGuid
+		})
+	);
 	const canPasteSlip = $derived(
 		isSlipNote && slipClipboard.hasEntry && slipClipboard.guid !== guid
 	);
@@ -153,6 +163,9 @@
 
 			const homeGuid = await getHomeNoteGuid();
 			isHomeState = homeGuid === guid;
+
+			const schedGuid = await getScheduleNoteGuid();
+			isScheduleNote = schedGuid === guid;
 
 			notebookNames = await listNotebooks();
 
@@ -703,6 +716,7 @@
 				enableContextMenu={true}
 				createDate={note?.createDate ?? null}
 				sendListItemActive={sendActive}
+				isScheduleNote={isScheduleNote}
 				isSlipNote={isSlipNote}
 				onslipnavigate={handleSlipNavigate}
 				oninsertafter={handleSlipInsertAfter}

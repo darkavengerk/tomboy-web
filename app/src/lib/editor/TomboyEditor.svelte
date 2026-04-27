@@ -13,9 +13,18 @@
 	import { TomboyParagraph } from "./extensions/TomboyParagraph.js";
 	import { TomboyPunctuationReplace } from "./extensions/TomboyPunctuationReplace.js";
 	import { TomboySubtitlePlaceholder } from "./extensions/TomboySubtitlePlaceholder.js";
-	import { SlipNoteArrows, type SlipNoteArrowsStorage } from "./extensions/SlipNoteArrows.js";
-	import { DateArrows, type DateArrowsStorage } from "./extensions/DateArrows.js";
-	import { handleClipboardCopy, handleClipboardCut } from "./clipboardPlainText.js";
+	import {
+		SlipNoteArrows,
+		type SlipNoteArrowsStorage,
+	} from "./extensions/SlipNoteArrows.js";
+	import {
+		DateArrows,
+		type DateArrowsStorage,
+	} from "./extensions/DateArrows.js";
+	import {
+		handleClipboardCopy,
+		handleClipboardCut,
+	} from "./clipboardPlainText.js";
 	import { ctrlEnterSplit } from "./ctrlEnterSplit.js";
 	import { createTitleProvider } from "./autoLink/titleProvider.js";
 	import { autoLinkPluginKey } from "./autoLink/autoLinkPlugin.js";
@@ -30,12 +39,20 @@
 		sendListItemPluginKey,
 	} from "./sendListItem/sendListItemPlugin.js";
 	import { transferListItem } from "./sendListItem/transferListItem.js";
+	import {
+		createAutoWeekdayPlugin,
+		autoWeekdayPluginKey,
+	} from "./autoWeekday/autoWeekdayPlugin.js";
 	import { extractImageFile } from "./imagePreview/extractImageFile.js";
 	import { uploadImageToDropbox } from "$lib/sync/imageUpload.js";
 	import { pushToast, dismissToast } from "$lib/stores/toast.js";
 	import { Extension } from "@tiptap/core";
 	import { insertTodayDate } from "./insertDate.js";
-	import { sinkListItemOnly, liftListItemOnly, isInList } from "./listItemDepth.js";
+	import {
+		sinkListItemOnly,
+		liftListItemOnly,
+		isInList,
+	} from "./listItemDepth.js";
 	import { moveListItemUp, moveListItemDown } from "./listItemReorder.js";
 	import {
 		TomboyTodoRegion,
@@ -44,7 +61,10 @@
 	} from "./todoRegion/index.js";
 	import type { JSONContent } from "@tiptap/core";
 	import EditorContextMenu from "./EditorContextMenu.svelte";
-	import { modKeys, installModKeyListeners } from "$lib/desktop/modKeys.svelte.js";
+	import {
+		modKeys,
+		installModKeyListeners,
+	} from "$lib/desktop/modKeys.svelte.js";
 
 	interface Props {
 		content?: JSONContent;
@@ -66,9 +86,12 @@
 		 *  source window for the target instead of cascading. */
 		onslipnavigate?: (
 			target: string,
-			direction: 'prev' | 'next',
-			replace: boolean
+			direction: "prev" | "next",
+			replace: boolean,
 		) => void;
+		/** When true, the auto-weekday plugin rewrites day-prefix lines in the
+		 *  schedule note. */
+		isScheduleNote?: boolean;
 		/** Called when the user clicks the slip-note "insert after" (+) button. */
 		oninsertafter?: () => void;
 		/** Called when the user clicks the slip-note "cut" (✂) button. */
@@ -82,7 +105,7 @@
 		/** Title of the currently clipboarded slip-note, for the paste button's tooltip. */
 		cutSlipTitle?: string | null;
 		/** Mode of the clipboard entry: 'cut' changes paste behaviour + tooltip. */
-		slipClipboardMode?: 'cut' | 'connect' | null;
+		slipClipboardMode?: "cut" | "connect" | null;
 		/** Title of the nearest earlier date-titled note (for the date arrow row). */
 		prevDateTitle?: string | null;
 		/** Title of the nearest later date-titled note (for the date arrow row). */
@@ -92,8 +115,8 @@
 		 *  swap the source window for the target instead of cascading. */
 		ondatenavigate?: (
 			target: string,
-			direction: 'prev' | 'next',
-			replace: boolean
+			direction: "prev" | "next",
+			replace: boolean,
 		) => void;
 	}
 
@@ -106,6 +129,7 @@
 		createDate = null,
 		sendListItemActive = false,
 		isSlipNote = false,
+		isScheduleNote = false,
 		onslipnavigate = () => {},
 		oninsertafter = () => {},
 		oncut = () => {},
@@ -126,6 +150,11 @@
 		e.preventDefault();
 		ctxMenu = { x: e.clientX, y: e.clientY };
 	}
+
+	// Closure-bound flag read by the autoWeekday plugin via enabled(). Seeded
+	// to false here; the $effect below keeps it in sync with the prop so the
+	// plugin always reflects the current isScheduleNote value at call-time.
+	let autoWeekdayEnabled = false;
 
 	let editorElement: HTMLDivElement;
 	let editor: Editor | null = $state(null);
@@ -298,6 +327,17 @@
 									if (!ed) return;
 									void transferListItem(ed, liPos, liNode);
 								},
+							}),
+						];
+					},
+				}),
+				Extension.create({
+					name: "tomboyAutoWeekday",
+					addProseMirrorPlugins() {
+						return [
+							createAutoWeekdayPlugin({
+								now: () => new Date(),
+								enabled: () => autoWeekdayEnabled,
 							}),
 						];
 					},
@@ -510,8 +550,9 @@
 
 		// Seed the slip-note arrow storage with the current props. Subsequent
 		// changes are synced via the $effect below.
-		const slipStorage = (editor.storage as unknown as Record<string, unknown>)
-			.slipNoteArrows as SlipNoteArrowsStorage;
+		const slipStorage = (
+			editor.storage as unknown as Record<string, unknown>
+		).slipNoteArrows as SlipNoteArrowsStorage;
 		slipStorage.enabled = isSlipNote;
 		slipStorage.onNavigate = onslipnavigate;
 		slipStorage.onInsertAfter = oninsertafter;
@@ -525,8 +566,9 @@
 		// Seed the date-arrow storage with the current props. The extension
 		// self-gates on the title matching yyyy-mm-dd, so `enabled` stays on
 		// and the caller just feeds prev/next titles.
-		const dateStorage = (editor.storage as unknown as Record<string, unknown>)
-			.dateArrows as DateArrowsStorage;
+		const dateStorage = (
+			editor.storage as unknown as Record<string, unknown>
+		).dateArrows as DateArrowsStorage;
 		dateStorage.enabled = true;
 		dateStorage.prevTitle = prevDateTitle;
 		dateStorage.nextTitle = nextDateTitle;
@@ -600,6 +642,11 @@
 				skip: true,
 			}),
 		);
+		if (autoWeekdayEnabled) {
+			ed.view.dispatch(
+				ed.state.tr.setMeta(autoWeekdayPluginKey, { rescan: true }),
+			);
+		}
 		// Any pending scan timer was for the previous note; drop it.
 		cancelAutoLinkScan();
 	});
@@ -680,6 +727,23 @@
 		storage.nextTitle = next;
 		storage.onNavigate = navigate;
 		ed.view.dispatch(ed.state.tr);
+	});
+
+	// Keep the closure-bound autoWeekday flag in sync with the prop. When the
+	// flag flips from false→true (async resolution of getScheduleNoteGuid after
+	// setContent has already fired), dispatch a rescan so pre-existing malformed
+	// entries are fixed immediately without requiring a user keystroke.
+	$effect(() => {
+		const wasEnabled = autoWeekdayEnabled;
+		autoWeekdayEnabled = isScheduleNote;
+		if (!wasEnabled && isScheduleNote) {
+			const ed = editor;
+			if (ed && !ed.isDestroyed) {
+				ed.view.dispatch(
+					ed.state.tr.setMeta(autoWeekdayPluginKey, { rescan: true }),
+				);
+			}
+		}
 	});
 
 	export function getEditor(): Editor | null {
@@ -1118,14 +1182,14 @@
 	   category one and the item one) at the same vertical area. */
 	.tomboy-editor.tomboy-todo-ctrl-hold
 		:global(
-				li.tomboy-todo-item:has(li.tomboy-todo-item:hover)
-					> .tomboy-todo-complete-btn
-			),
+			li.tomboy-todo-item:has(li.tomboy-todo-item:hover)
+				> .tomboy-todo-complete-btn
+		),
 	.tomboy-editor.tomboy-todo-ctrl-hold
 		:global(
-				li.tomboy-todo-item:has(li.tomboy-todo-item:hover)
-					> .tomboy-todo-revert-btn
-			) {
+			li.tomboy-todo-item:has(li.tomboy-todo-item:hover)
+				> .tomboy-todo-revert-btn
+		) {
 		opacity: 0;
 		pointer-events: none;
 	}

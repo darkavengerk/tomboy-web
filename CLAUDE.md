@@ -339,11 +339,34 @@ every device. See the **`tomboy-schedule`** skill for the full format
 spec, fire-time rules, ID model, auth bridge, PWA install requirements,
 and operational gotchas.
 
+The schedule note also gets two editor-only conveniences (see the skill
+file for the full spec):
+
+- **Auto-weekday on day prefix** — typing `12 ` (digit + space) at the start
+  of a list-item under a `N월` section auto-fills `12(<요일>)`. Existing
+  malformed `(요일)` content (wrong char, English `Wed`, garbage, extra
+  whitespace, gap before parens) is corrected on every doc change AND on
+  note open via a `setMeta(autoWeekdayPluginKey, { rescan })` pass. Only
+  active when `currentGuid === scheduleNoteGuid` (passed as
+  `isScheduleNote` prop on `<TomboyEditor>`).
+- **"보내기" Ctrl gate is focus-scoped** — list items in the
+  `SEND_SOURCE_GUID` note show the "보내기" button only when (a) Ctrl is
+  held / mobile Ctrl-lock is on, AND (b) the source note window is the
+  focused window (desktop) / the visible note (mobile). On the mobile
+  route this also requires `installModKeyListeners()` to be wired in
+  `+page.svelte` so the physical Ctrl key updates `modKeys` state.
+
 Quick map:
 
 - `app/src/lib/schedule/` — parser, diff, Firestore client adapter, snapshot/
-  pending stores, notification orchestrator. Pure-function tests in
-  `app/tests/unit/schedule/`.
+  pending stores, notification orchestrator, **auto-weekday pure logic
+  (`autoWeekday.ts`)**. Pure-function tests in `app/tests/unit/schedule/`.
+- `app/src/lib/editor/autoWeekday/autoWeekdayPlugin.ts` — ProseMirror
+  plugin that orchestrates auto-fill / scan-on-open via the pure logic
+  above. Tests in `app/tests/unit/editor/autoWeekdayPlugin.test.ts`.
+- `app/src/lib/editor/sendListItem/sendActiveGate.ts` — pure
+  `shouldSendListBeActive` helper used by both desktop NoteWindow and
+  mobile route to gate the "보내기" buttons.
 - `app/src/lib/core/schedule.ts` — `getScheduleNoteGuid` / `setScheduleNote`,
   mirrors `home.ts`.
 - `app/src/service-worker.ts` — Firebase init via `$env/static/public` +

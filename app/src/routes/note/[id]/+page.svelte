@@ -37,7 +37,11 @@
 	import { sync } from '$lib/sync/syncManager.js';
 	import { assignNotebook, getNotebook } from '$lib/core/notebooks.js';
 	import { setHomeNote, clearHomeNote, getHomeNoteGuid } from '$lib/core/home.js';
+	import { getScheduleNoteGuid } from '$lib/core/schedule.js';
 	import { isScrollBottomNote, setScrollBottomNote } from '$lib/core/scrollBottom.js';
+	import { modKeys, installModKeyListeners } from '$lib/desktop/modKeys.svelte.js';
+	import { SEND_SOURCE_GUID } from '$lib/editor/sendListItem/transferListItem.js';
+	import { shouldSendListBeActive } from '$lib/editor/sendListItem/sendActiveGate.js';
 
 	// `$state.raw` for the large-content holders. Svelte's default deep
 	// proxy traps every property read, and TipTap's Editor walks the full
@@ -54,6 +58,7 @@
 	let pickerOpen = $state(false);
 	let isHomeNoteState = $state(false);
 	let isScrollBottomState = $state(false);
+	let isScheduleNoteState = $state(false);
 	let editorAreaEl: HTMLDivElement | undefined = $state(undefined);
 
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -74,6 +79,15 @@
 		isSlipNote && slipClipboard.hasEntry && slipClipboard.guid !== noteId
 	);
 	const slipClipboardMode = $derived(slipClipboard.mode);
+	const sendActive = $derived(
+		shouldSendListBeActive({
+			guid: noteId ?? '',
+			sourceGuid: SEND_SOURCE_GUID,
+			ctrlHeld: modKeys.ctrl,
+			focusedGuid: null,
+			ignoreFocus: true
+		})
+	);
 	let cutSlipTitle = $state<string | null>(null);
 	$effect(() => {
 		const g = slipClipboard.guid;
@@ -165,6 +179,9 @@
 			const homeGuid = await getHomeNoteGuid();
 			isHomeNoteState = homeGuid === id;
 
+			const schedGuid = await getScheduleNoteGuid();
+			isScheduleNoteState = schedGuid === id;
+
 			isScrollBottomState = await isScrollBottomNote(id);
 			if (isScrollBottomState) {
 				// Wait for the editor to apply the new doc + layout before
@@ -188,10 +205,12 @@
 	}
 
 	onMount(() => {
+		const uninstallModKeys = installModKeyListeners();
 		dateTitleProvider = createTitleProvider();
 		void dateTitleProvider.refresh().then(() => recomputeDateAdjacency());
 		const offDateChange = dateTitleProvider.onChange(() => recomputeDateAdjacency());
 		return () => {
+			uninstallModKeys();
 			offDateChange();
 			dateTitleProvider?.dispose();
 			dateTitleProvider = null;
@@ -532,6 +551,7 @@
 				currentGuid={noteId}
 				createDate={note?.createDate ?? null}
 				isSlipNote={isSlipNote}
+				isScheduleNote={isScheduleNoteState}
 				onslipnavigate={handleInternalLink}
 				oninsertafter={handleSlipInsertAfter}
 				oncut={handleSlipCut}
@@ -543,6 +563,7 @@
 				prevDateTitle={dateAdjacency.prev}
 				nextDateTitle={dateAdjacency.next}
 				ondatenavigate={handleInternalLink}
+				sendListItemActive={sendActive}
 			/>
 		{/if}
 	</div>
