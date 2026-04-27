@@ -30,12 +30,18 @@ import {
 	type EditorState,
 	type Transaction
 } from '@tiptap/pm/state';
-import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { Editor, JSONContent } from '@tiptap/core';
 import { findTableRegions, type TableRegion } from './findTableRegions.js';
 import { renderInlinesToDom } from './renderInlines.js';
 import { commitCellEdit, findCellEditRange } from './cellEdit.js';
+import {
+	appendColOp,
+	appendRowOp,
+	deleteColOp,
+	deleteRowOp
+} from './tableOps.js';
 
 export interface CellEditTarget {
 	openFromPos: number;
@@ -47,6 +53,9 @@ interface PluginState {
 	regions: TableRegion[];
 	uncheckedOpens: Set<number>;
 	editing: CellEditTarget | null;
+	/** True while Ctrl is held — gates the structural-edit chrome (X
+	 *  buttons on cells, + buttons on the table edges). */
+	ctrlHeld: boolean;
 	decorations: DecorationSet;
 }
 
@@ -57,6 +66,8 @@ interface Meta {
 	startEdit?: CellEditTarget;
 	/** Exit cell-edit mode (commit done by the caller's preceding tr). */
 	stopEdit?: true;
+	/** Set the ctrl-held flag. */
+	setCtrl?: boolean;
 }
 
 export const tableBlockPluginKey = new PluginKey<PluginState>('tomboyTableBlock');
@@ -71,7 +82,8 @@ export const tableBlockPluginKey = new PluginKey<PluginState>('tomboyTableBlock'
 function rebuildState(
 	doc: PMNode,
 	prevUnchecked: Set<number>,
-	prevEditing: CellEditTarget | null
+	prevEditing: CellEditTarget | null,
+	ctrlHeld: boolean
 ): PluginState {
 	const regions = findTableRegions(doc);
 	const validOpens = new Set(regions.map((r) => r.openFromPos));
@@ -92,15 +104,16 @@ function rebuildState(
 			editing = prevEditing;
 		}
 	}
-	const decorations = buildDecorations(doc, regions, uncheckedOpens, editing);
-	return { regions, uncheckedOpens, editing, decorations };
+	const decorations = buildDecorations(doc, regions, uncheckedOpens, editing, ctrlHeld);
+	return { regions, uncheckedOpens, editing, ctrlHeld, decorations };
 }
 
 function buildDecorations(
 	doc: PMNode,
 	regions: TableRegion[],
 	uncheckedOpens: Set<number>,
-	editing: CellEditTarget | null
+	editing: CellEditTarget | null,
+	ctrlHeld: boolean
 ): DecorationSet {
 	if (regions.length === 0) return DecorationSet.empty;
 	const decos: Decoration[] = [];
@@ -132,17 +145,28 @@ function buildDecorations(
 			const editingText = editingHere
 				? cellTextForEdit(doc, r, editingHere.rowIdx, editingHere.colIdx)
 				: null;
+			// Ctrl-mode chrome only renders when Ctrl is held AND no cell
+			// edit is in progress (so the user isn't bombarded with action
+			// buttons over the cell they're typing into).
+			const showCtrlChrome = ctrlHeld && !editingHere;
 			decos.push(
 				Decoration.widget(
 					r.openFromPos,
-					() => renderTableWidget(r, editingHere, editingText ?? ''),
+					(view) =>
+						renderTableWidget(
+							view,
+							r,
+							editingHere,
+							editingText ?? '',
+							showCtrlChrome
+						),
 					{
 						side: -1,
 						key: `tableBlock:${r.openFromPos}:on:${
 							editingHere
 								? `${editingHere.rowIdx}:${editingHere.colIdx}`
 								: 'none'
-						}`
+						}:${showCtrlChrome ? 'ctrl' : 'plain'}`
 					}
 				)
 			);
@@ -180,13 +204,16 @@ function buildDecorations(
  * the user can focus on the cell.
  */
 function renderTableWidget(
+	view: EditorView,
 	region: TableRegion,
 	editingHere: CellEditTarget | null,
-	editingText: string
+	editingText: string,
+	showCtrlChrome: boolean
 ): HTMLElement {
 	const wrap = document.createElement('div');
 	wrap.className = 'tomboy-table-block-widget';
 	if (editingHere) wrap.classList.add('tomboy-table-block-editing');
+	if (showCtrlChrome) wrap.classList.add('tomboy-table-block-ctrl');
 	wrap.setAttribute('contenteditable', 'false');
 	wrap.setAttribute('data-table-block-open', String(region.openFromPos));
 
@@ -214,7 +241,23 @@ function renderTableWidget(
 	label.appendChild(cb);
 	wrap.appendChild(label);
 
-	wrap.appendChild(renderTable(region, editingHere, editingText));
+	wrap.appendChild(
+		renderTable(view, region, editingHere, editingText, showCtrlChrome)
+	);
+
+	if (showCtrlChrome) {
+		// Append-row + button: positioned below the table, aligned with
+		// the first column. Append-col + button: at the top-right outside
+		// the table on the header row's line. Both are absolute-positioned
+		// against the widget wrapper (CSS).
+		wrap.appendChild(
+			makeActionButton(view, region, 'add-row', '+', '행 추가')
+		);
+		wrap.appendChild(
+			makeActionButton(view, region, 'add-col', '+', '열 추가')
+		);
+	}
+
 	return wrap;
 }
 
@@ -245,9 +288,11 @@ function renderFloatingToggle(region: TableRegion): HTMLElement {
 }
 
 function renderTable(
+	view: EditorView,
 	region: TableRegion,
 	editingHere: CellEditTarget | null,
-	editingText: string
+	editingText: string,
+	showCtrlChrome: boolean
 ): HTMLTableElement {
 	const table = document.createElement('table');
 	table.className = 'tomboy-table-block-table';
@@ -259,12 +304,24 @@ function renderTable(
 		return table;
 	}
 	const colCount = region.cells.reduce((m, r) => Math.max(m, r.length), 0);
+	const lastColIdx = colCount - 1;
 	const thead = document.createElement('thead');
 	const headTr = document.createElement('tr');
 	const headRow = region.cells[0];
 	for (let c = 0; c < colCount; c++) {
 		const th = document.createElement('th');
-		fillCell(th, headRow[c], 0, c, editingHere, editingText);
+		fillCell(
+			view,
+			th,
+			headRow[c],
+			0,
+			c,
+			lastColIdx,
+			editingHere,
+			editingText,
+			showCtrlChrome,
+			region
+		);
 		headTr.appendChild(th);
 	}
 	thead.appendChild(headTr);
@@ -277,7 +334,18 @@ function renderTable(
 			const tr = document.createElement('tr');
 			for (let c = 0; c < colCount; c++) {
 				const td = document.createElement('td');
-				fillCell(td, row[c], i, c, editingHere, editingText);
+				fillCell(
+					view,
+					td,
+					row[c],
+					i,
+					c,
+					lastColIdx,
+					editingHere,
+					editingText,
+					showCtrlChrome,
+					region
+				);
 				tr.appendChild(td);
 			}
 			tbody.appendChild(tr);
@@ -288,12 +356,16 @@ function renderTable(
 }
 
 function fillCell(
+	view: EditorView,
 	host: HTMLElement,
 	inlines: JSONContent[] | undefined,
 	rowIdx: number,
 	colIdx: number,
+	lastColIdx: number,
 	editingHere: CellEditTarget | null,
-	editingText: string
+	editingText: string,
+	showCtrlChrome: boolean,
+	region: TableRegion
 ): void {
 	host.setAttribute('data-table-block-row', String(rowIdx));
 	host.setAttribute('data-table-block-col', String(colIdx));
@@ -302,16 +374,161 @@ function fillCell(
 		editingHere.rowIdx === rowIdx &&
 		editingHere.colIdx === colIdx;
 	if (isEditing) {
-		const editor = document.createElement('span');
-		editor.className = 'tomboy-table-block-cell-editor';
-		editor.setAttribute('contenteditable', 'true');
-		editor.setAttribute('data-table-block-editing', 'true');
-		editor.textContent = editingText;
-		host.appendChild(editor);
+		host.appendChild(buildEditingCell(view, editingText));
 		return;
 	}
-	if (!inlines || inlines.length === 0) return;
-	host.appendChild(renderInlinesToDom(inlines));
+	if (inlines && inlines.length > 0) {
+		host.appendChild(renderInlinesToDom(inlines));
+	}
+	if (!showCtrlChrome) return;
+	// Header row: column-delete X on every cell.
+	if (rowIdx === 0) {
+		host.appendChild(
+			makeCellActionButton(view, region, 'del-col', colIdx, '×', '열 삭제')
+		);
+	}
+	// Last cell of every row: row-delete X.
+	if (colIdx === lastColIdx) {
+		host.appendChild(
+			makeCellActionButton(view, region, 'del-row', rowIdx, '×', '행 삭제')
+		);
+	}
+}
+
+/**
+ * Build a small per-cell action button (column-delete X, row-delete X).
+ * `index` identifies the row or column the action targets. The action
+ * runs immediately on click — there's no separate confirmation since
+ * the user can undo via Ctrl+Z.
+ */
+function makeCellActionButton(
+	view: EditorView,
+	region: TableRegion,
+	action: 'del-row' | 'del-col',
+	index: number,
+	glyph: string,
+	title: string
+): HTMLButtonElement {
+	const btn = document.createElement('button');
+	btn.type = 'button';
+	btn.className = `tomboy-table-block-action tomboy-table-block-${action}`;
+	btn.setAttribute('data-table-block-action', action);
+	btn.setAttribute('data-table-block-index', String(index));
+	btn.setAttribute('contenteditable', 'false');
+	btn.title = title;
+	btn.textContent = glyph;
+	btn.addEventListener('mousedown', (e) => {
+		// Keep PM's selection where it was — don't move it onto the
+		// button's anchor.
+		e.preventDefault();
+	});
+	btn.addEventListener('click', (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		const tr =
+			action === 'del-row'
+				? deleteRowOp(view.state, currentRegionFor(view, region), index)
+				: deleteColOp(view.state, currentRegionFor(view, region), index);
+		if (tr) view.dispatch(tr);
+	});
+	return btn;
+}
+
+/**
+ * Build a table-edge action button (append-row +, append-col +).
+ */
+function makeActionButton(
+	view: EditorView,
+	region: TableRegion,
+	action: 'add-row' | 'add-col',
+	glyph: string,
+	title: string
+): HTMLButtonElement {
+	const btn = document.createElement('button');
+	btn.type = 'button';
+	btn.className = `tomboy-table-block-action tomboy-table-block-${action}`;
+	btn.setAttribute('data-table-block-action', action);
+	btn.setAttribute('contenteditable', 'false');
+	btn.title = title;
+	btn.textContent = glyph;
+	btn.addEventListener('mousedown', (e) => {
+		e.preventDefault();
+	});
+	btn.addEventListener('click', (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		const cur = currentRegionFor(view, region);
+		const tr =
+			action === 'add-row' ? appendRowOp(view.state, cur) : appendColOp(view.state, cur);
+		view.dispatch(tr);
+	});
+	return btn;
+}
+
+/**
+ * The widget closure captures a snapshot of the region from when it was
+ * rendered, but by the time a button is clicked the region's positions
+ * may have shifted. Resolve the current region (matched by its open
+ * fence position) from the live plugin state. Falls back to the
+ * captured snapshot if the live lookup fails — keeps tests that don't
+ * round-trip through the plugin's state working.
+ */
+function currentRegionFor(view: EditorView, fallback: TableRegion): TableRegion {
+	const st = tableBlockPluginKey.getState(view.state);
+	const live = st?.regions.find((r) => r.openFromPos === fallback.openFromPos);
+	return live ?? fallback;
+}
+
+/**
+ * Build the contenteditable span for an active cell edit, with all its
+ * keyboard / blur handlers attached directly. Going through a direct
+ * listener (rather than the plugin's `handleDOMEvents`) lets us call
+ * `stopPropagation` BEFORE the event bubbles past the editor — needed so
+ * outer Escape consumers (e.g. the desktop note-window's close-on-Esc)
+ * don't fire while the user is just cancelling a cell edit.
+ *
+ * Behaviour:
+ *  - Enter (no shift): commit the typed text. Stop propagation.
+ *  - Escape: cancel the edit (revert to pre-edit text). Stop propagation.
+ *  - blur: cancel the edit (per UX: focus leaving = abandon).
+ *  - Other keys: bubble normally so PM's input handling applies inside
+ *    the contenteditable span (typing chars, arrow keys, etc.).
+ */
+function buildEditingCell(view: EditorView, initialText: string): HTMLElement {
+	const span = document.createElement('span');
+	span.className = 'tomboy-table-block-cell-editor';
+	span.setAttribute('contenteditable', 'true');
+	span.setAttribute('data-table-block-editing', 'true');
+	span.textContent = initialText;
+
+	span.addEventListener('keydown', (e) => {
+		if (e.key === 'Enter' && !e.shiftKey) {
+			e.preventDefault();
+			e.stopPropagation();
+			commitFromDom(view, span.textContent ?? '');
+			return;
+		}
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			e.stopPropagation();
+			cancelFromDom(view);
+			return;
+		}
+		// All other keys: prevent leakage to outer handlers (note-window
+		// shortcuts) but let the browser handle text input natively
+		// inside this contenteditable span.
+		e.stopPropagation();
+	});
+
+	// Browser blur fires when focus leaves. Cancel-on-blur matches the
+	// "abandon on click-away" UX the user asked for.
+	span.addEventListener('blur', () => {
+		const st = tableBlockPluginKey.getState(view.state);
+		if (!st?.editing) return;
+		cancelFromDom(view);
+	});
+
+	return span;
 }
 
 /**
@@ -352,6 +569,19 @@ export function toggleTableBlock(editor: Editor, openFromPos: number): void {
 export function enterCellEdit(editor: Editor, target: CellEditTarget): void {
 	editor.view.dispatch(
 		editor.state.tr.setMeta(tableBlockPluginKey, { startEdit: target } as Meta)
+	);
+}
+
+/**
+ * Push the latest ctrl-held state into the plugin. The TomboyEditor
+ * Svelte component drives this from the global `modKeys.ctrl` rune so
+ * the plugin's chrome reacts to physical Ctrl + the mobile Ctrl-lock.
+ */
+export function setCtrlHeld(editor: Editor, value: boolean): void {
+	const st = tableBlockPluginKey.getState(editor.state);
+	if (!st || st.ctrlHeld === value) return;
+	editor.view.dispatch(
+		editor.state.tr.setMeta(tableBlockPluginKey, { setCtrl: value } as Meta)
 	);
 }
 
@@ -404,12 +634,13 @@ export function createTableBlockPlugin(): Plugin<PluginState> {
 		key: tableBlockPluginKey,
 		state: {
 			init(_, state): PluginState {
-				return rebuildState(state.doc, new Set(), null);
+				return rebuildState(state.doc, new Set(), null, false);
 			},
 			apply(tr, prev, _oldState, newState): PluginState {
 				const meta = tr.getMeta(tableBlockPluginKey) as Meta | undefined;
 				let unchecked = prev.uncheckedOpens;
 				let editing: CellEditTarget | null = prev.editing;
+				let ctrlHeld = prev.ctrlHeld;
 				const regionsDirty = tr.docChanged || meta !== undefined;
 
 				if (tr.docChanged) {
@@ -447,11 +678,15 @@ export function createTableBlockPlugin(): Plugin<PluginState> {
 					editing = null;
 				}
 
+				if (typeof meta?.setCtrl === 'boolean') {
+					ctrlHeld = meta.setCtrl;
+				}
+
 				if (!regionsDirty) {
 					return prev;
 				}
 
-				return rebuildState(newState.doc, unchecked, editing);
+				return rebuildState(newState.doc, unchecked, editing, ctrlHeld);
 			}
 		},
 		props: {
@@ -483,7 +718,10 @@ export function createTableBlockPlugin(): Plugin<PluginState> {
 				// Double-click on a body cell enters cell-edit mode for that
 				// cell. We resolve the target (region open + row/col) from
 				// the data attributes the renderer sprinkled on each
-				// `<th>` / `<td>`.
+				// `<th>` / `<td>`. The Enter / Escape / blur handlers are
+				// attached directly on the editing cell DOM (see
+				// `buildEditingCell`) so they can stop propagation BEFORE
+				// outer Esc consumers (e.g. the desktop note-window) fire.
 				dblclick(view, event) {
 					const target = event.target as HTMLElement;
 					const cell = target.closest(
@@ -509,48 +747,6 @@ export function createTableBlockPlugin(): Plugin<PluginState> {
 					// re-render the widget with the contenteditable cell.
 					queueMicrotask(() => focusEditingCell(view.dom));
 					return true;
-				},
-				// Keys handled while inside the editing cell:
-				//  - Enter (without shift): commit
-				//  - Escape: cancel
-				//  - Tab handling could be added later for cell-to-cell jumps.
-				keydown(view, event) {
-					const target = event.target as HTMLElement | null;
-					if (!target?.closest('[data-table-block-editing="true"]')) return false;
-					if (event.key === 'Enter' && !event.shiftKey) {
-						event.preventDefault();
-						event.stopPropagation();
-						const text = target.closest('[data-table-block-editing="true"]')
-							?.textContent ?? '';
-						commitFromDom(view, text);
-						return true;
-					}
-					if (event.key === 'Escape') {
-						event.preventDefault();
-						event.stopPropagation();
-						view.dispatch(
-							view.state.tr.setMeta(tableBlockPluginKey, {
-								stopEdit: true
-							} as Meta)
-						);
-						return true;
-					}
-					return false;
-				},
-				focusout(view, event) {
-					const target = event.target as HTMLElement | null;
-					const cell = target?.closest(
-						'[data-table-block-editing="true"]'
-					) as HTMLElement | null;
-					if (!cell) return false;
-					// `relatedTarget` is the new focus owner; if it's still
-					// inside the editor's DOM, ignore — the user might just
-					// have dragged a selection and we don't want to commit
-					// prematurely. Otherwise commit on blur.
-					const next = (event as FocusEvent).relatedTarget as Node | null;
-					if (next && view.dom.contains(next)) return false;
-					commitFromDom(view, cell.textContent ?? '');
-					return false;
 				}
 			}
 		}
@@ -559,7 +755,7 @@ export function createTableBlockPlugin(): Plugin<PluginState> {
 
 /**
  * Read the active editing cell's textContent and dispatch a combined
- * commit transaction (replace + stopEdit). Used by Enter/blur paths.
+ * commit transaction (replace + stopEdit). Used by the Enter handler.
  */
 function commitFromDom(
 	view: { state: EditorState; dispatch: (tr: Transaction) => void },
@@ -590,6 +786,16 @@ function commitFromDom(
 	}
 	tr.setMeta(tableBlockPluginKey, { stopEdit: true } as Meta);
 	view.dispatch(tr);
+}
+
+/** Drop the in-progress cell edit without modifying the doc. */
+function cancelFromDom(view: {
+	state: EditorState;
+	dispatch: (tr: Transaction) => void;
+}): void {
+	view.dispatch(
+		view.state.tr.setMeta(tableBlockPluginKey, { stopEdit: true } as Meta)
+	);
 }
 
 /**

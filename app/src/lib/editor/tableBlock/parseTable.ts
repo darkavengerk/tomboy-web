@@ -48,17 +48,21 @@ export function isFenceClose(line: string): boolean {
  *  - tsv: split on `\t`, do NOT trim (whitespace inside cells matters
  *         for tab-separated data).
  *
- * Empty / whitespace-only lines are skipped so a stray blank line inside a
- * fenced block doesn't produce an all-empty row.
+ * Skip rule: a line is treated as a stray blank line ONLY if it is
+ * pure whitespace AND contains no separator character. So an
+ * intentionally-empty TSV row of `"\t\t"` (three empty cells) survives,
+ * even though `trim()` would reduce it to nothing — its tab structure
+ * is meaningful data.
  *
  * Ragged rows (different cell counts per row) are returned as-is — the
  * renderer is responsible for any padding so the parser never silently
  * loses data.
  */
 export function parseTableRows(lines: string[], format: TableFormat): string[][] {
+	const sep = format === 'csv' ? ',' : '\t';
 	const out: string[][] = [];
 	for (const raw of lines) {
-		if (raw.trim().length === 0) continue;
+		if (isBlankRow(raw, sep)) continue;
 		if (format === 'csv') {
 			out.push(raw.split(',').map((c) => c.trim()));
 		} else {
@@ -66,6 +70,17 @@ export function parseTableRows(lines: string[], format: TableFormat): string[][]
 		}
 	}
 	return out;
+}
+
+/**
+ * Shared "blank row" predicate used by both `parseTableRows` and
+ * `parseInlineCells`, plus by `findTableRegions` when filtering body
+ * paragraph ranges. Keeping the rule in one place ensures the three
+ * derivations (rows / cells / bodyParaRanges) stay aligned.
+ */
+export function isBlankRow(raw: string, separator: string): boolean {
+	if (raw.includes(separator)) return false;
+	return raw.trim().length === 0;
 }
 
 /**
@@ -162,7 +177,7 @@ export function parseInlineCells(
 			.filter((n) => n.type === 'text')
 			.map((n) => n.text ?? '')
 			.join('');
-		if (plain.trim().length === 0) continue;
+		if (isBlankRow(plain, sep)) continue;
 		const cells = splitInlinesByChar(inlines, sep);
 		rows.push(format === 'csv' ? cells.map((c) => trimInlines(c)) : cells);
 	}

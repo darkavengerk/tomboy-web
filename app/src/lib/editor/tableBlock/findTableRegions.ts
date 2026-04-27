@@ -13,6 +13,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import type { JSONContent } from '@tiptap/core';
 import {
 	detectFenceFormat,
+	isBlankRow,
 	isFenceClose,
 	parseTableRows,
 	parseInlineCells,
@@ -120,10 +121,11 @@ export function findTableRegions(doc: PMNode): TableRegion[] {
 		const bodyJson = body.map((p) => p.json);
 		// Skip the same blank paragraphs `parseInlineCells` skips so
 		// `bodyParaRanges[r]` always refers to the source paragraph that
-		// produced `cells[r]`. Mirrors the rule "trim().length === 0 →
-		// skip" exactly.
+		// produced `cells[r]`. Both use `isBlankRow` (a paragraph counts
+		// as blank only if it's pure whitespace AND has no separator).
+		const sep = fmt === 'csv' ? ',' : '\t';
 		const bodyParaRanges: BodyParaRange[] = body
-			.filter((p) => p.text.trim().length > 0)
+			.filter((p) => !isBlankRow(p.text, sep))
 			.map((p) => ({
 				from: p.from,
 				to: p.to,

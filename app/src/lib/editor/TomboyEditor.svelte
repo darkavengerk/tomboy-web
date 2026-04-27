@@ -43,7 +43,10 @@
 		createAutoWeekdayPlugin,
 		autoWeekdayPluginKey,
 	} from "./autoWeekday/autoWeekdayPlugin.js";
-	import { createTableBlockPlugin } from "./tableBlock/tableBlockPlugin.js";
+	import {
+		createTableBlockPlugin,
+		setCtrlHeld as setTableBlockCtrlHeld,
+	} from "./tableBlock/tableBlockPlugin.js";
 	import { extractImageFile } from "./imagePreview/extractImageFile.js";
 	import { uploadImageToDropbox } from "$lib/sync/imageUpload.js";
 	import { pushToast, dismissToast } from "$lib/stores/toast.js";
@@ -786,6 +789,16 @@
 		}
 	});
 
+	// Drive the table-block plugin's ctrl-mode chrome (X / + buttons on
+	// the rendered table) from the shared modKeys.ctrl rune so physical
+	// Ctrl AND the mobile Ctrl-lock both light up the editing UI.
+	$effect(() => {
+		const held = ctrlHeld;
+		const ed = editor;
+		if (!ed || ed.isDestroyed) return;
+		setTableBlockCtrlHeld(ed, held);
+	});
+
 	export function getEditor(): Editor | null {
 		return editor;
 	}
@@ -1354,5 +1367,109 @@
 		:global(.tomboy-table-block-widget.tomboy-table-block-editing
 			.tomboy-table-block-toggle) {
 		display: none;
+	}
+
+	/* Ctrl-mode: structural edit chrome. The toggle checkbox is hidden
+	   (replaced by the action buttons), and per-cell X buttons + the two
+	   table-edge + buttons render. The widget reserves space on the
+	   right (col-add) and below (row-add) so the absolute-positioned +
+	   buttons don't sit on top of unrelated content. */
+	.tomboy-editor
+		:global(.tomboy-table-block-widget.tomboy-table-block-ctrl
+			.tomboy-table-block-toggle) {
+		display: none;
+	}
+	.tomboy-editor :global(.tomboy-table-block-widget.tomboy-table-block-ctrl) {
+		padding-right: 22px;
+		padding-bottom: 22px;
+	}
+	/* Per-cell action button (X). Positioned at the corner of its host
+	   <th> / <td>. Column-delete X sits at the top-right of header cells;
+	   row-delete X sits at the right of last-cell-of-row. They never
+	   overlap because column-delete X applies to the FIRST row only,
+	   and the row-delete X is on the right edge — for the first row's
+	   last cell both render but stagger via top/right offsets. */
+	.tomboy-editor :global(.tomboy-table-block-table th),
+	.tomboy-editor :global(.tomboy-table-block-table td) {
+		position: relative;
+	}
+	.tomboy-editor :global(.tomboy-table-block-action) {
+		appearance: none;
+		border: none;
+		padding: 0;
+		font: inherit;
+		line-height: 1;
+		cursor: pointer;
+		user-select: none;
+	}
+	.tomboy-editor :global(.tomboy-table-block-del-col) {
+		position: absolute;
+		top: -10px;
+		right: -10px;
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		background: #c43e3e;
+		color: #fff;
+		font-size: 12px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 2;
+	}
+	.tomboy-editor :global(.tomboy-table-block-del-row) {
+		position: absolute;
+		top: 50%;
+		right: -10px;
+		transform: translateY(-50%);
+		width: 18px;
+		height: 18px;
+		border-radius: 50%;
+		background: #c43e3e;
+		color: #fff;
+		font-size: 12px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 2;
+	}
+	/* Stagger: a header cell that's ALSO the last column has both X
+	   buttons; nudge the row-delete down so it doesn't sit on the
+	   col-delete. */
+	.tomboy-editor
+		:global(.tomboy-table-block-table thead th .tomboy-table-block-del-row) {
+		top: 100%;
+	}
+	.tomboy-editor :global(.tomboy-table-block-add-col) {
+		position: absolute;
+		top: 0;
+		right: 0;
+		width: 20px;
+		height: 100%;
+		max-height: 28px;
+		background: #2e7d32;
+		color: #fff;
+		font-size: 14px;
+		font-weight: bold;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 3px;
+	}
+	.tomboy-editor :global(.tomboy-table-block-add-row) {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		width: 100%;
+		max-width: 60px;
+		height: 20px;
+		background: #2e7d32;
+		color: #fff;
+		font-size: 14px;
+		font-weight: bold;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 3px;
 	}
 </style>

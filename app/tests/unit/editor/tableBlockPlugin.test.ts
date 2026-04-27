@@ -9,6 +9,7 @@ import {
 	commitCellEditCommand,
 	createTableBlockPlugin,
 	enterCellEdit,
+	setCtrlHeld,
 	tableBlockPluginKey,
 	toggleTableBlock
 } from '$lib/editor/tableBlock/tableBlockPlugin.js';
@@ -486,6 +487,115 @@ describe('tableBlockPlugin — cell-level edit mode', () => {
 	});
 });
 
+describe('tableBlockPlugin — Escape / blur behavior on the editing cell', () => {
+	function widgetDom(editor: Editor): HTMLElement {
+		const w = getState(editor)!
+			.decorations.find()
+			.find(
+				(d) => (d as unknown as { type: { toDOM?: unknown } }).type.toDOM !== undefined
+			)!;
+		// @ts-expect-error — toDOM is the internal widget factory
+		return (w.type as { toDOM: (view: unknown) => HTMLElement }).toDOM(editor.view);
+	}
+
+	it('Escape on the editing cell cancels the edit AND stops bubbling', () => {
+		// Higher-level handlers (NoteWindow's `onkeydown` closes the note on
+		// Escape) sit ABOVE the editor in the DOM, so the cell's Escape
+		// must call stopPropagation to keep the note open. We simulate the
+		// outer handler with a mock listener and assert it never fires.
+		const ed = makeEditor(['```csv', 'alpha, beta', '```']);
+		const r = getState(ed)!.regions[0]!;
+		enterCellEdit(ed, { openFromPos: r.openFromPos, rowIdx: 0, colIdx: 1 });
+
+		const dom = widgetDom(ed);
+		const cell = dom.querySelector(
+			'[data-table-block-editing="true"]'
+		) as HTMLElement | null;
+		expect(cell).not.toBeNull();
+
+		// Wrap the widget in a parent that tracks bubbled keydowns —
+		// stand-in for NoteWindow's outer Escape handler.
+		const parent = document.createElement('div');
+		document.body.appendChild(parent);
+		parent.appendChild(dom);
+		let outerEscapeFired = false;
+		parent.addEventListener('keydown', (e) => {
+			if (e.key === 'Escape') outerEscapeFired = true;
+		});
+
+		const ev = new KeyboardEvent('keydown', {
+			key: 'Escape',
+			bubbles: true,
+			cancelable: true
+		});
+		cell!.dispatchEvent(ev);
+
+		expect(getState(ed)!.editing).toBeNull();
+		expect(outerEscapeFired).toBe(false);
+
+		parent.remove();
+	});
+
+	it('blur (focusout) cancels the edit — doc text is unchanged', () => {
+		const ed = makeEditor(['```csv', 'alpha, beta', '```']);
+		const r = getState(ed)!.regions[0]!;
+		const beforeText = ed.state.doc.textContent;
+		enterCellEdit(ed, { openFromPos: r.openFromPos, rowIdx: 0, colIdx: 1 });
+
+		const dom = widgetDom(ed);
+		const cell = dom.querySelector(
+			'[data-table-block-editing="true"]'
+		) as HTMLElement | null;
+		expect(cell).not.toBeNull();
+
+		// Mutate the cell's text in-DOM (as if the user typed). Then blur:
+		// the listener should NOT commit those changes — it cancels.
+		cell!.textContent = 'TYPED-BUT-CANCELLED';
+		document.body.appendChild(dom);
+		cell!.dispatchEvent(new FocusEvent('blur', { bubbles: false }));
+
+		expect(getState(ed)!.editing).toBeNull();
+		// Doc text identical to before the edit started.
+		expect(ed.state.doc.textContent).toBe(beforeText);
+
+		dom.remove();
+	});
+
+	it('Enter on the editing cell commits and stops bubbling', () => {
+		const ed = makeEditor(['```csv', 'alpha, beta', '```']);
+		const r = getState(ed)!.regions[0]!;
+		enterCellEdit(ed, { openFromPos: r.openFromPos, rowIdx: 0, colIdx: 1 });
+
+		const dom = widgetDom(ed);
+		const cell = dom.querySelector(
+			'[data-table-block-editing="true"]'
+		) as HTMLElement | null;
+		cell!.textContent = 'BETA';
+
+		const parent = document.createElement('div');
+		document.body.appendChild(parent);
+		parent.appendChild(dom);
+		let outerEnterFired = false;
+		parent.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter') outerEnterFired = true;
+		});
+
+		cell!.dispatchEvent(
+			new KeyboardEvent('keydown', {
+				key: 'Enter',
+				bubbles: true,
+				cancelable: true
+			})
+		);
+
+		expect(getState(ed)!.editing).toBeNull();
+		expect(outerEnterFired).toBe(false);
+		expect(getState(ed)!.regions[0].rows).toEqual([['alpha', 'BETA']]);
+
+		parent.remove();
+	});
+});
+
 describe('tableBlockPlugin — cell-edit commit / cancel helpers', () => {
 	it('enterCellEdit puts the plugin into editing mode at the right slot', () => {
 		const ed = makeEditor(['```csv', 'alpha, beta', '```']);
@@ -533,6 +643,187 @@ describe('tableBlockPlugin — cell-edit commit / cancel helpers', () => {
 		expect(getState(ed)!.editing!.colIdx).toBe(1);
 		// No commit happened — the doc text is unchanged.
 		expect(ed.state.doc.textContent).toBe(before);
+	});
+});
+
+describe('tableBlockPlugin — ctrl-mode editing chrome', () => {
+	function widgetDom(editor: Editor): HTMLElement {
+		const w = getState(editor)!
+			.decorations.find()
+			.find(
+				(d) => (d as unknown as { type: { toDOM?: unknown } }).type.toDOM !== undefined
+			)!;
+		// @ts-expect-error — toDOM is the internal widget factory
+		return (w.type as { toDOM: (view: unknown) => HTMLElement }).toDOM(editor.view);
+	}
+
+	it('starts with ctrlHeld=false', () => {
+		const ed = makeEditor(['```csv', 'a, b', '```']);
+		expect(getState(ed)!.ctrlHeld).toBe(false);
+	});
+
+	it('setCtrlHeld(true) flips ctrlHeld AND triggers a decoration rebuild', () => {
+		const ed = makeEditor(['```csv', 'a, b', '```']);
+		setCtrlHeld(ed, true);
+		expect(getState(ed)!.ctrlHeld).toBe(true);
+	});
+
+	it('renders a column-delete X on every header cell when ctrlHeld', () => {
+		const ed = makeEditor(['```csv', 'a, b, c', 'd, e, f', '```']);
+		setCtrlHeld(ed, true);
+		const dom = widgetDom(ed);
+		const xs = dom.querySelectorAll(
+			'th [data-table-block-action="del-col"]'
+		);
+		expect(xs).toHaveLength(3);
+	});
+
+	it('renders a row-delete X on the last cell of each row when ctrlHeld', () => {
+		const ed = makeEditor(['```csv', 'a, b', 'c, d', 'e, f', '```']);
+		setCtrlHeld(ed, true);
+		const dom = widgetDom(ed);
+		// 3 rows total → 3 row-delete buttons (one per row's last cell).
+		const xs = dom.querySelectorAll('[data-table-block-action="del-row"]');
+		expect(xs).toHaveLength(3);
+	});
+
+	it('renders an append-column + button when ctrlHeld', () => {
+		const ed = makeEditor(['```csv', 'a, b', '```']);
+		setCtrlHeld(ed, true);
+		const dom = widgetDom(ed);
+		expect(
+			dom.querySelector('[data-table-block-action="add-col"]')
+		).not.toBeNull();
+	});
+
+	it('renders an append-row + button when ctrlHeld', () => {
+		const ed = makeEditor(['```csv', 'a, b', '```']);
+		setCtrlHeld(ed, true);
+		const dom = widgetDom(ed);
+		expect(
+			dom.querySelector('[data-table-block-action="add-row"]')
+		).not.toBeNull();
+	});
+
+	it('emits no edit chrome when ctrlHeld is false', () => {
+		const ed = makeEditor(['```csv', 'a, b', '```']);
+		const dom = widgetDom(ed);
+		expect(dom.querySelectorAll('[data-table-block-action]')).toHaveLength(0);
+	});
+
+	it('hides the toggle checkbox while ctrlHeld is true', () => {
+		// The widget tags itself with `tomboy-table-block-ctrl` so CSS can
+		// suppress the hover-only checkbox; assert the marker class.
+		const ed = makeEditor(['```csv', 'a, b', '```']);
+		setCtrlHeld(ed, true);
+		const dom = widgetDom(ed);
+		expect(dom.classList.contains('tomboy-table-block-ctrl')).toBe(true);
+	});
+
+	it('suppresses ctrl-mode chrome while a cell is being edited', () => {
+		const ed = makeEditor(['```csv', 'a, b', '```']);
+		const r = getState(ed)!.regions[0]!;
+		setCtrlHeld(ed, true);
+		enterCellEdit(ed, { openFromPos: r.openFromPos, rowIdx: 0, colIdx: 0 });
+		const dom = widgetDom(ed);
+		// While editing, none of the action buttons should render — only
+		// the editing cell itself.
+		expect(dom.querySelectorAll('[data-table-block-action]')).toHaveLength(0);
+		expect(
+			dom.querySelector('[data-table-block-editing="true"]')
+		).not.toBeNull();
+	});
+});
+
+describe('tableBlockPlugin — ctrl-mode action button behavior', () => {
+	function widgetDom(editor: Editor): HTMLElement {
+		const w = getState(editor)!
+			.decorations.find()
+			.find(
+				(d) => (d as unknown as { type: { toDOM?: unknown } }).type.toDOM !== undefined
+			)!;
+		// @ts-expect-error — toDOM is the internal widget factory
+		return (w.type as { toDOM: (view: unknown) => HTMLElement }).toDOM(editor.view);
+	}
+
+	it('clicking del-row removes the matching row from the doc', () => {
+		const ed = makeEditor(['```csv', 'a, b', 'c, d', 'e, f', '```']);
+		setCtrlHeld(ed, true);
+		const dom = widgetDom(ed);
+		document.body.appendChild(dom);
+
+		const rowButtons = dom.querySelectorAll(
+			'[data-table-block-action="del-row"]'
+		) as NodeListOf<HTMLElement>;
+		// Click the second row's delete button (rowIdx=1: "c, d").
+		rowButtons[1]!.dispatchEvent(
+			new MouseEvent('click', { bubbles: true, cancelable: true })
+		);
+
+		const after = getState(ed)!.regions[0];
+		expect(after.rows).toEqual([
+			['a', 'b'],
+			['e', 'f']
+		]);
+		dom.remove();
+	});
+
+	it('clicking del-col removes the matching column', () => {
+		const ed = makeEditor(['```csv', 'a, b, c', 'd, e, f', '```']);
+		setCtrlHeld(ed, true);
+		const dom = widgetDom(ed);
+		document.body.appendChild(dom);
+
+		const colButtons = dom.querySelectorAll(
+			'[data-table-block-action="del-col"]'
+		) as NodeListOf<HTMLElement>;
+		// Delete column 1 (the "b/e" column).
+		colButtons[1]!.dispatchEvent(
+			new MouseEvent('click', { bubbles: true, cancelable: true })
+		);
+
+		const after = getState(ed)!.regions[0];
+		expect(after.rows).toEqual([
+			['a', 'c'],
+			['d', 'f']
+		]);
+		dom.remove();
+	});
+
+	it('clicking add-row appends an empty row', () => {
+		const ed = makeEditor(['```csv', 'a, b', '```']);
+		setCtrlHeld(ed, true);
+		const dom = widgetDom(ed);
+		document.body.appendChild(dom);
+
+		const btn = dom.querySelector(
+			'[data-table-block-action="add-row"]'
+		) as HTMLElement;
+		btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+		const after = getState(ed)!.regions[0];
+		expect(after.rows).toHaveLength(2);
+		expect(after.rows[1]).toEqual(['', '']);
+		dom.remove();
+	});
+
+	it('clicking add-col appends an empty column to every row', () => {
+		const ed = makeEditor(['```csv', 'a, b', 'c, d', '```']);
+		setCtrlHeld(ed, true);
+		const dom = widgetDom(ed);
+		document.body.appendChild(dom);
+
+		const btn = dom.querySelector(
+			'[data-table-block-action="add-col"]'
+		) as HTMLElement;
+		btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+		const after = getState(ed)!.regions[0];
+		expect(after.rows).toEqual([
+			['a', 'b', ''],
+			['c', 'd', '']
+		]);
+		dom.remove();
 	});
 });
 
