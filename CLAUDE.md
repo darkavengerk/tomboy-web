@@ -63,11 +63,14 @@ app/src/
 │   │   ├── db.ts                   # idb schema (DB: "tomboy-web")
 │   │   ├── noteStore.ts            # note persistence ops
 │   │   └── appSettings.ts          # small key/value store for app preferences
+│   ├── firebase/
+│   │   └── app.ts                  # shared Firebase singletons + Dropbox-bridged ensureSignedIn
 │   ├── sync/
 │   │   ├── dropboxClient.ts        # OAuth PKCE, Dropbox file ops, Tomboy manifest helpers
-│   │   ├── syncManager.ts          # revision-based bidirectional sync
+│   │   ├── syncManager.ts          # revision-based bidirectional sync (backup channel)
 │   │   ├── manifest.ts             # local sync manifest in IndexedDB
-│   │   └── adminClient.ts          # manifest diff, per-note fetch, soft-rollback wrapper
+│   │   ├── adminClient.ts          # manifest diff, per-note fetch, soft-rollback wrapper
+│   │   └── firebase/               # realtime note sync — Firestore (see tomboy-notesync)
 │   ├── editor/
 │   │   ├── TomboyEditor.svelte     # TipTap instance; blur-time title-uniqueness guard
 │   │   ├── Toolbar.svelte
@@ -129,8 +132,9 @@ The TopNav and the 전체 filter bar size themselves with `clamp(min, Xvw, max)`
 - **Notes are stored in the user's browser IndexedDB** — server restarts / redeploys do not affect user data.
 - **`.note` XML format is preserved verbatim** for round-trip compatibility with Tomboy desktop.
 - **Titles are globally unique, case-sensitive, trimmed.** Internal-link marks store the destination note's *title*, so title lookups at every layer (auto-link, graph, `findNoteByTitle`) are exact-case. Renaming a note sweeps backlinks; import / sync-pull collisions auto-suffix `(2)`, `(3)`, … See "Title uniqueness & rename cascade" below.
-- **Sync is explicit only** — the user clicks "지금 동기화" in settings. No auto-sync on startup, focus, or save. (Auto-sync was removed intentionally; do not reintroduce without asking.)
-- **Sync protocol** follows Tomboy's revision scheme: server stores notes at `/{rev/100}/{rev}/{guid}.note` and a root `/manifest.xml` lists `(guid, rev)` pairs. `syncManager.sync()` is the authoritative implementation.
+- **Dropbox sync is explicit only** — the user clicks "지금 동기화" in settings. No auto-sync on startup, focus, or save. (Auto-sync was removed intentionally; do not reintroduce without asking.) Dropbox is the **backup channel**.
+- **Firebase realtime note sync is opt-in, OFF by default.** When enabled, the open note streams in/out via Firestore. Closed notes are not in Firestore until someone opens them. See the **`tomboy-notesync`** skill.
+- **Dropbox sync protocol** follows Tomboy's revision scheme: server stores notes at `/{rev/100}/{rev}/{guid}.note` and a root `/manifest.xml` lists `(guid, rev)` pairs. `syncManager.sync()` is the authoritative implementation.
 - **Mobile-first, single-note-per-page** UI — avoid split views or desktop-only patterns.
 - **All UI strings are in Korean.** Match the existing tone.
 - **One nav entry is always selected.** When adding new top-level destinations, either make them a mode or leave the existing mode selected while there.
@@ -327,6 +331,54 @@ Quick map: routes in `app/src/routes/admin/`, shared cache in
 `lib/stores/adminCache.svelte.ts`, server-side ops in
 `lib/sync/{adminClient,dropboxClient}.ts`. Mobile-first / `clamp(...)` sizing
 invariant does **not** apply on these pages.
+
+## 파이어베이스 실시간 노트 동기화
+
+A second sync channel that runs alongside Dropbox. Notes the user has
+**opened at least once** are mirrored into Firestore at
+`users/{uid}/notes/{guid}`; while open, edits push within ~500 ms and
+remote changes pull in real time. Dropbox stays untouched as the backup
+channel and the authority for the never-opened-anywhere backlog. Default
+**OFF** — the user enables it explicitly in 설정 → 동기화 설정. See the
+**`tomboy-notesync`** skill for the full design.
+
+Quick map:
+
+- `app/src/lib/sync/firebase/` — pure modules (`notePayload`,
+  `conflictResolver`, `pushQueue`, `openNoteRegistry`) plus the
+  orchestrator and the production Firestore wiring.
+- `app/src/lib/firebase/app.ts` — shared lazy Firebase singletons +
+  `ensureSignedIn` (also used by the schedule feature).
+- `noteManager.ts` — calls `notifyNoteSaved(guid)` after every IDB write
+  (editor save, rename cascade, delete, favorite toggle).
+- `routes/note/[id]/+page.svelte` and `lib/desktop/NoteWindow.svelte` —
+  call `attachOpenNote(guid)` on mount, `detachOpenNote(guid)` on unmount.
+- `routes/+layout.svelte` — calls `installRealNoteSync()` once at app start
+  to wire the orchestrator with real adapters and apply the persisted flag.
+- `routes/settings/+page.svelte` (config tab) — the toggle.
+
+Invariants:
+
+- **Same uid as schedule** — `dbx-{sanitized account_id}`. Both features
+  share `users/{uid}/...` namespace under the existing
+  `firestore.rules` wildcard. No new function, no new index.
+- **Last-write-wins on `changeDate`.** Tiebreaker: `metadataChangeDate`,
+  then prefer-local. Equivalent payloads → `noop` (this is also how
+  echo-of-our-own-write is suppressed; no separate tracker).
+- **Soft-delete only.** Tombstones (`deleted=true`) stay in Firestore so
+  other devices can learn about deletions on next reconcile.
+- **Dropbox-pulled notes don't auto-push to Firestore.**
+  `applyIncomingRemoteNote` writes via `putNoteSynced` and bypasses
+  `notifyNoteSaved`. The next time the user opens the pulled note, the
+  attach-side reconcile pushes it.
+- **1 MiB document limit.** `noteToFirestorePayload` enforces a
+  conservative 900 KB ceiling on the JSON-serialized payload; oversized
+  notes throw and are skipped by the queue.
+
+Don't add an echo tracker, don't reintroduce Dropbox auto-sync to "fix"
+the closed-note Firestore gap, and don't reach into `firebase/firestore`
+outside `noteSyncClient.firestore.ts` — every other module consumes the
+`FirestorePrimitives` interface so it stays unit-testable.
 
 ## 일정 알림 (schedule-note push notifications)
 

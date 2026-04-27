@@ -66,7 +66,10 @@ trivially idempotent on retry.
 Firebase using a custom token whose uid is `dbx-{sanitized account_id}`,
 derived server-side from the user's Dropbox account. This way every
 device sharing a Dropbox account lands on the same Firebase uid and
-shares the `users/{uid}/schedule/*` namespace.
+shares the `users/{uid}/schedule/*` namespace. The same uid is reused
+by the realtime note-sync feature for `users/{uid}/notes/*` (see
+`tomboy-notesync` skill); both features call the same `ensureSignedIn()`
+in `lib/firebase/app.ts`.
 
 Flow:
 1. Client checks if a Dropbox access token exists (`dropboxClient.getAccessToken()`).
@@ -220,7 +223,7 @@ uses Admin SDK and bypasses rules.
 | `lib/schedule/scheduleSnapshot.ts` | per-noteGuid snapshot in `appSettings` |
 | `lib/schedule/schedulePending.ts` | single-slot pending state |
 | `lib/schedule/syncSchedule.ts` | parse + diff + write pending; invoked from noteManager |
-| `lib/schedule/firebase.ts` | lazy app/auth/firestore/messaging singletons + Dropbox-bridged ensureSignedIn |
+| `lib/firebase/app.ts` | shared lazy app/auth/firestore/messaging singletons + Dropbox-bridged `ensureSignedIn`. Promoted out of `lib/schedule/` so the realtime note-sync feature can reuse the same Firebase identity (see `tomboy-notesync` skill). |
 | `lib/schedule/firestoreScheduleClient.ts` | real `ScheduleRemoteClient` impl |
 | `lib/schedule/scheduleClient.ts` | adapter interface (let tests inject fakes) |
 | `lib/schedule/flushPendingSchedule.ts` | apply pending diff via client → promote snapshot |
