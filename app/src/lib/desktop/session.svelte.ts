@@ -77,7 +77,6 @@ const DEFAULT_SETTINGS_WIDTH = 460;
 const DEFAULT_SETTINGS_HEIGHT = 640;
 const MIN_WIDTH = 280;
 const MIN_HEIGHT = 240;
-const STAGGER = 30;
 // The SidePanel rail's width is user-resizable and persisted in
 // `sidePanelLayout`. Note coordinates stay canvas-local (the canvas
 // element already excludes the rail), so the live rail width is only used
@@ -233,21 +232,24 @@ function cacheGeometry(ws: WorkspaceState, win: DesktopWindowState): void {
 	};
 }
 
-function defaultGeometry(ws: WorkspaceState, kind: DesktopWindowKind): GeometrySnapshot {
+function defaultGeometry(kind: DesktopWindowKind): GeometrySnapshot {
 	if (kind === 'settings') {
-		return staggeredFrom(ws, DEFAULT_SETTINGS_WIDTH, DEFAULT_SETTINGS_HEIGHT);
+		return centeredFor(DEFAULT_SETTINGS_WIDTH, DEFAULT_SETTINGS_HEIGHT);
 	}
-	return staggeredFrom(ws, DEFAULT_WIDTH, DEFAULT_HEIGHT);
+	return centeredFor(DEFAULT_WIDTH, DEFAULT_HEIGHT);
 }
 
-function staggeredFrom(ws: WorkspaceState, width: number, height: number): GeometrySnapshot {
-	const baseX = 40;
-	const baseY = 80;
-	const i = ws.windows.length;
+/**
+ * Default geometry for a freshly-opened window with no cached pose: centered
+ * within the canvas (viewport minus the side rail). When the viewport is
+ * narrower than the requested size, the window pins to the canvas's top-left
+ * so we don't return negative coordinates.
+ */
+function centeredFor(width: number, height: number): GeometrySnapshot {
 	const viewportW = typeof window !== 'undefined' ? window.innerWidth - railWidth() : 1200;
 	const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800;
-	const x = (baseX + i * STAGGER) % Math.max(200, viewportW - width);
-	const y = (baseY + i * STAGGER) % Math.max(160, viewportH - height);
+	const x = Math.max(0, Math.round((viewportW - width) / 2));
+	const y = Math.max(0, Math.round((viewportH - height) / 2));
 	return { x, y, width, height };
 }
 
@@ -439,7 +441,7 @@ export const desktopSession = {
 			return;
 		}
 		const cached = ws.geometryByGuid[guid];
-		const geom = cached ?? defaultGeometry(ws, 'note');
+		const geom = cached ?? defaultGeometry('note');
 		const win: DesktopWindowState = {
 			guid,
 			kind: 'note',
@@ -502,7 +504,7 @@ export const desktopSession = {
 			return;
 		}
 		const cached = ws.geometryByGuid[guid];
-		const geom = cached ?? defaultGeometry(ws, 'settings');
+		const geom = cached ?? defaultGeometry('settings');
 		const win: DesktopWindowState = {
 			guid,
 			kind: 'settings',

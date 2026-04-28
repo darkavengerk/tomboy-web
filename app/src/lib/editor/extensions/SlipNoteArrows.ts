@@ -8,8 +8,10 @@
  *   • Inserts a cluster of chain-edit action buttons between the arrows:
  *     insert-new-after, cut, and paste (enabled only when the clipboard
  *     holds a cut note).
- *   • Collapses block 3 via `display: none` so the arrow pair occupies a
- *     single line.
+ *   • Collapses block 3 (`다음:` line) and block 4 (the structurally-
+ *     required trailing blank line) via `display: none` so the arrow pair
+ *     occupies a single line and the user can't accidentally delete the
+ *     blank line during editing.
  *
  * The original paragraph content stays in the document for round-trip XML;
  * only rendering is masked. Clicking an arrow calls
@@ -86,7 +88,7 @@ function buildDecorations(doc: PMNode, storage: SlipNoteArrowsStorage): Decorati
 		blocks.push({ block, offset });
 	});
 
-	if (blocks.length < 4) return DecorationSet.empty;
+	if (blocks.length < 5) return DecorationSet.empty;
 
 	const prev = parseLabeledLine(blocks[2].block, '이전');
 	const next = parseLabeledLine(blocks[3].block, '다음');
@@ -99,6 +101,11 @@ function buildDecorations(doc: PMNode, storage: SlipNoteArrowsStorage): Decorati
 	const decorations: Decoration[] = [];
 	const carrier = blocks[2];
 	const hidden = blocks[3];
+	// Block 4 is the structurally-required blank line after `다음:`. Hide
+	// it so the user can't drop the cursor on it and backspace away the
+	// invariant — the slip-note format check refuses to splice a chain
+	// whose blank-line separator is missing.
+	const trailingBlank = blocks[4];
 
 	decorations.push(
 		Decoration.node(
@@ -155,6 +162,22 @@ function buildDecorations(doc: PMNode, storage: SlipNoteArrowsStorage): Decorati
 			{ class: 'slipnote-hidden-line' }
 		)
 	);
+
+	// Hide the trailing blank line too, but only if it really IS a blank
+	// paragraph — if the user has typed real content there (a malformed
+	// slip note), leave it visible so the issue is recoverable.
+	if (
+		trailingBlank.block.type.name === 'paragraph' &&
+		trailingBlank.block.content.size === 0
+	) {
+		decorations.push(
+			Decoration.node(
+				trailingBlank.offset,
+				trailingBlank.offset + trailingBlank.block.nodeSize,
+				{ class: 'slipnote-hidden-line' }
+			)
+		);
+	}
 
 	return DecorationSet.create(doc, decorations);
 }
