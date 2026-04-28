@@ -15,6 +15,7 @@ import { pushToast } from '$lib/stores/toast.js';
 import { syncScheduleFromNote } from '$lib/schedule/syncSchedule.js';
 import { flushIfEnabled } from '$lib/schedule/flushScheduler.js';
 import { notifyNoteSaved } from '$lib/sync/firebase/orchestrator.js';
+import { buildDateNoteScheduleSeed } from '$lib/schedule/dateNoteSeed.js';
 import type { JSONContent } from '@tiptap/core';
 
 /** Format a Date as a plain `yyyy-mm-dd HH:mm` title — the default title
@@ -50,9 +51,28 @@ export async function createNote(initialTitle?: string): Promise<NoteData> {
 	note.title = title;
 	// When the title looks like yyyy-mm-dd, seed the subtitle slot (second
 	// line) with the year so date-titled notes have an auto-filled header.
-	const dateMatch = /^(\d{4})-\d{2}-\d{2}$/.exec(title);
+	const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(title);
 	const suffix = dateMatch ? `\n${dateMatch[1]}년\n` : `\n\n`;
 	note.xmlContent = `<note-content version="0.1">${title}${suffix}</note-content>`;
+	if (dateMatch) {
+		const year = Number(dateMatch[1]);
+		const month = Number(dateMatch[2]);
+		const day = Number(dateMatch[3]);
+		const seed = await buildDateNoteScheduleSeed(year, month, day);
+		if (seed.length > 0) {
+			const doc: JSONContent = {
+				type: 'doc',
+				content: [
+					{ type: 'paragraph', content: [{ type: 'text', text: title }] },
+					{ type: 'paragraph', content: [{ type: 'text', text: `${year}년` }] },
+					{ type: 'paragraph' },
+					...seed,
+					{ type: 'paragraph' }
+				]
+			};
+			note.xmlContent = serializeContent(doc);
+		}
+	}
 	await noteStore.putNote(note);
 	// Push to Firestore even before the first edit. Otherwise a "create new
 	// note + drop a link to it from another note" workflow leaves the new
