@@ -224,6 +224,20 @@
 		el.scrollTop = el.scrollHeight;
 	}
 
+	// Tap on whitespace anywhere in the editor area → focus at end of doc.
+	// Short notes leave a large empty region inside `.editor-area` below the
+	// content; without this, the user has to land precisely on text to bring
+	// up the keyboard. Clicks on the actual contenteditable (`.tiptap`) are
+	// left alone so the browser's native cursor placement still wins.
+	function handleEditorAreaClick(event: MouseEvent) {
+		const target = event.target as HTMLElement | null;
+		if (!target) return;
+		if (target.closest('.tiptap')) return;
+		const ed = getEditor();
+		if (!ed) return;
+		ed.commands.focus('end');
+	}
+
 	onMount(() => {
 		const uninstallModKeys = installModKeyListeners();
 		dateTitleProvider = createTitleProvider();
@@ -556,7 +570,9 @@
 		{/if}
 	</div>
 
-	<div class="editor-area" bind:this={editorAreaEl}>
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="editor-area" bind:this={editorAreaEl} onclick={handleEditorAreaClick}>
 		{#if loading}
 			<div class="loading">로딩 중...</div>
 		{:else if editorContent}
