@@ -65,8 +65,8 @@ export async function createNote(initialTitle?: string): Promise<NoteData> {
 				content: [
 					{ type: 'paragraph', content: [{ type: 'text', text: title }] },
 					{ type: 'paragraph', content: [{ type: 'text', text: `${year}년` }] },
-					{ type: 'paragraph' },
 					...seed,
+					{ type: 'paragraph' },
 					{ type: 'paragraph' }
 				]
 			};
