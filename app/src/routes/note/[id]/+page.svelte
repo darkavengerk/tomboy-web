@@ -23,6 +23,7 @@
 	import NoteActionSheet, { type ActionKind } from '$lib/editor/NoteActionSheet.svelte';
 	import NotebookPicker from '$lib/components/NotebookPicker.svelte';
 	import { SLIPBOX_NOTEBOOK } from '$lib/sleepnote/validator.js';
+	import { getSlipNoteLabel } from '$lib/sleepnote/indexLabel.js';
 	import {
 		insertNewNoteAfter,
 		cutFromChain,
@@ -95,6 +96,21 @@
 		const g = slipClipboard.guid;
 		if (!g) { cutSlipTitle = null; return; }
 		getNote(g).then((n) => { cutSlipTitle = n?.title ?? null; });
+	});
+
+	// Slip-note category label — text in the index list item before the link
+	// to this chain's HEAD. Resolved asynchronously after the note loads;
+	// shown as the empty-second-line placeholder instead of the create date.
+	let slipNoteLabel = $state<string | null>(null);
+	$effect(() => {
+		const id = noteId;
+		void note?.title;
+		if (!id || !isSlipNote) { slipNoteLabel = null; return; }
+		let cancelled = false;
+		getSlipNoteLabel(id)
+			.then((label) => { if (!cancelled) slipNoteLabel = label; })
+			.catch(() => { if (!cancelled) slipNoteLabel = null; });
+		return () => { cancelled = true; };
 	});
 
 	// Date-arrow adjacency — prev/next titles for yyyy-mm-dd-titled notes.
@@ -591,6 +607,7 @@
 				oninternallink={handleInternalLink}
 				currentGuid={noteId}
 				createDate={note?.createDate ?? null}
+				slipNoteLabel={slipNoteLabel}
 				isSlipNote={isSlipNote}
 				isScheduleNote={isScheduleNoteState}
 				onslipnavigate={handleInternalLink}

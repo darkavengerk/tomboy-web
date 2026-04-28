@@ -41,6 +41,7 @@
 	import { SEND_SOURCE_GUID } from '$lib/editor/sendListItem/transferListItem.js';
 	import { shouldSendListBeActive } from '$lib/editor/sendListItem/sendActiveGate.js';
 	import { SLIPBOX_NOTEBOOK } from '$lib/sleepnote/validator.js';
+	import { getSlipNoteLabel } from '$lib/sleepnote/indexLabel.js';
 	import {
 		insertNewNoteAfter,
 		cutFromChain,
@@ -130,6 +131,20 @@
 		const g = slipClipboard.guid;
 		if (!g) { cutSlipTitle = null; return; }
 		getNote(g).then((n) => { cutSlipTitle = n?.title ?? null; });
+	});
+
+	// Slip-note category label resolved from the slip-box index. See the
+	// mobile route for the matching effect; we keep them parallel so the
+	// placeholder works the same in both surfaces.
+	let slipNoteLabel = $state<string | null>(null);
+	$effect(() => {
+		void note?.title;
+		if (!isSlipNote) { slipNoteLabel = null; return; }
+		let cancelled = false;
+		getSlipNoteLabel(guid)
+			.then((label) => { if (!cancelled) slipNoteLabel = label; })
+			.catch(() => { if (!cancelled) slipNoteLabel = null; });
+		return () => { cancelled = true; };
 	});
 
 	// Date-arrow adjacency — prev/next titles for yyyy-mm-dd-titled notes.
@@ -734,6 +749,7 @@
 				currentGuid={guid}
 				enableContextMenu={true}
 				createDate={note?.createDate ?? null}
+				slipNoteLabel={slipNoteLabel}
 				sendListItemActive={sendActive}
 				isScheduleNote={isScheduleNote}
 				isSlipNote={isSlipNote}
@@ -762,26 +778,28 @@
 				onuploadimage={(file) => editorComponent?.uploadAndInsertImage(file)}
 			/>
 			{#if note}
-				<select
-					class="notebook-select"
-					value={currentNotebook ?? ''}
-					onchange={handleNotebookChange}
-					aria-label="노트북"
-					title="노트북"
-				>
-					<option value="">없음</option>
-					{#each notebookNames as n (n)}
-						<option value={n}>🗂 {n}</option>
-					{/each}
-					<option value="__new__">+ 새 노트북…</option>
-				</select>
-				<button
-					type="button"
-					class="menu-btn"
-					onclick={openMenu}
-					aria-label="더 보기"
-					title="더 보기"
-				>⋯</button>
+				<div class="toolbar-right">
+					<select
+						class="notebook-select"
+						value={currentNotebook ?? ''}
+						onchange={handleNotebookChange}
+						aria-label="노트북"
+						title="노트북"
+					>
+						<option value="">없음</option>
+						{#each notebookNames as n (n)}
+							<option value={n}>🗂 {n}</option>
+						{/each}
+						<option value="__new__">+ 새 노트북…</option>
+					</select>
+					<button
+						type="button"
+						class="menu-btn"
+						onclick={openMenu}
+						aria-label="더 보기"
+						title="더 보기"
+					>⋯</button>
+				</div>
 			{/if}
 		</div>
 	{/if}
@@ -912,10 +930,22 @@
 		background: #f8f9fa;
 	}
 
-	.toolbar-slot :global(.toolbar) {
-		flex: 1;
+	/* Left side: formatting buttons. Grow to push the right group flush
+	   right; shrink first when the window narrows so the notebook + menu
+	   stay visible. The drawer inside keeps its own overflow-x scroll. */
+	.toolbar-slot :global(.toolbar-wrap) {
+		flex: 1 1 0;
 		min-width: 0;
 		border-top: none;
+	}
+
+	/* Right side: notebook chip + ⋯ menu. Never shrinks — these are the
+	   user's primary affordances on the bottom bar. */
+	.toolbar-right {
+		flex-shrink: 0;
+		display: flex;
+		align-items: stretch;
+		border-left: 1px solid #e9ecef;
 	}
 
 	.menu-btn {
@@ -940,7 +970,7 @@
 		flex-shrink: 0;
 		align-self: center;
 		max-width: 140px;
-		margin: 0px 2px 0px 4px;
+		margin: 0px 2px 0px 8px;
 		padding: 4px 6px;
 		border: 1px solid #ced4da;
 		border-radius: 6px;

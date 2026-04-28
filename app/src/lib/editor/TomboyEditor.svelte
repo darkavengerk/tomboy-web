@@ -81,6 +81,10 @@
 		/** Tomboy ISO creation date of the current note — used to render the
 		 *  "yyyy-mm-dd" placeholder on the empty second line. */
 		createDate?: string | null;
+		/** Slip-note category label (text before the chain HEAD's link in
+		 *  the slip-box index). Takes precedence over the create-date
+		 *  placeholder for slip notes — for non-slip notes, leave null. */
+		slipNoteLabel?: string | null;
 		/** When true, each listItem shows a floating "보내기" button that
 		 *  transfers it to the configured destination note. */
 		sendListItemActive?: boolean;
@@ -139,6 +143,7 @@
 		currentGuid = null,
 		enableContextMenu = false,
 		createDate = null,
+		slipNoteLabel = null,
 		sendListItemActive = false,
 		isSlipNote = false,
 		isScheduleNote = false,
@@ -225,10 +230,12 @@
 		ed.view.dispatch(ed.state.tr.setMeta(autoLinkPluginKey, meta));
 	}
 
-	// Format a Tomboy ISO date (yyyy-MM-ddTHH:mm:ss.fffffff±HH:MM) as
-	// yyyy-mm-dd for the subtitle placeholder. Returns null for missing /
-	// unparseable inputs so the placeholder is simply skipped.
+	// Subtitle placeholder text for the empty second line. Slip notes show
+	// their chain's category label (resolved by the parent and passed via
+	// `slipNoteLabel`); regular notes show the creation date. Returns null
+	// when neither is available, so the placeholder is simply skipped.
 	function subtitlePlaceholderText(): string | null {
+		if (isSlipNote) return slipNoteLabel ?? null;
 		if (!createDate) return null;
 		const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(createDate);
 		if (!m) return null;
@@ -794,6 +801,18 @@
 				);
 			}
 		}
+	});
+
+	// Re-render the subtitle placeholder when the resolved slip-note label
+	// arrives. The placeholder is read from a closure inside the plugin's
+	// decorations pass, so a no-op transaction is enough to force a fresh
+	// pass without mutating the doc.
+	$effect(() => {
+		void slipNoteLabel;
+		void isSlipNote;
+		const ed = editor;
+		if (!ed || ed.isDestroyed) return;
+		ed.view.dispatch(ed.state.tr);
 	});
 
 	// Drive the table-block plugin's ctrl-mode chrome (X / + buttons on
