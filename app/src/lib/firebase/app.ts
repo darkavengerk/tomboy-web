@@ -34,7 +34,7 @@ import {
 	type Messaging
 } from 'firebase/messaging';
 import { env } from '$env/dynamic/public';
-import { getAccessToken as getDropboxAccessToken } from '$lib/sync/dropboxClient.js';
+import { getFreshAccessToken as getFreshDropboxAccessToken } from '$lib/sync/dropboxClient.js';
 
 let appSingleton: FirebaseApp | null = null;
 let authSingleton: Auth | null = null;
@@ -92,18 +92,28 @@ export class DropboxNotConnectedError extends Error {
  * so the next call goes through `dropboxAuthExchange` and the user lands
  * on the stable `dbx-{account_id}` uid.
  *
+ * Awaits `authStateReady()` first so a cold-start call doesn't race
+ * Firebase's IndexedDB persistence restore — without it, `currentUser`
+ * is briefly null after page load and we'd needlessly call the exchange
+ * (which then fails if the cached Dropbox access_token has expired).
+ *
+ * The Dropbox token is refreshed via `getFreshAccessToken()` before
+ * being handed to the exchange function, so a 4-hour-idle access_token
+ * doesn't cause an `expired_access_token` 401 from the Cloud Function.
+ *
  * Throws DropboxNotConnectedError if the user hasn't completed Dropbox
  * OAuth yet.
  */
 export async function ensureSignedIn(): Promise<User> {
 	const auth = getFirebaseAuth();
+	await auth.authStateReady();
 	if (auth.currentUser?.isAnonymous) {
 		console.info('[firebase] signing out leftover anonymous user');
 		await signOut(auth);
 	}
 	if (auth.currentUser) return auth.currentUser;
 
-	const dropboxToken = getDropboxAccessToken();
+	const dropboxToken = await getFreshDropboxAccessToken();
 	if (!dropboxToken) throw new DropboxNotConnectedError();
 
 	const functions = getFunctions(getFirebaseApp(), 'asia-northeast3');

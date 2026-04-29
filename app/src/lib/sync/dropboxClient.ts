@@ -85,6 +85,50 @@ export function getAccessToken(): string | null {
 	return localStorage.getItem(STORAGE_KEY_ACCESS_TOKEN);
 }
 
+/**
+ * Return a Dropbox access token that is guaranteed to be fresh, refreshing
+ * via the stored refresh_token if the cached access_token is at/near
+ * expiry. Use this whenever the token leaves the Dropbox SDK code path —
+ * e.g. when handing it to the `dropboxAuthExchange` Cloud Function — so a
+ * stale 4-hour-old token doesn't cause an `expired_access_token` 401.
+ *
+ * Returns null when there's nothing to refresh from (no stored access
+ * token) or when the refresh attempt itself failed (network down, refresh
+ * token revoked from the Dropbox account settings page, etc.).
+ */
+export async function getFreshAccessToken(): Promise<string | null> {
+	const { accessToken, refreshToken, expiresAt } = getStoredTokens();
+	if (!accessToken) return null;
+	// No refresh token (legacy install before `'offline'` scope) — best we
+	// can do is hand back what we have and let the caller surface the 401.
+	if (!refreshToken) return accessToken;
+
+	const auth = createAuth();
+	auth.setAccessToken(accessToken);
+	auth.setRefreshToken(refreshToken);
+	// SDK only triggers a refresh when it knows the token is past expiry.
+	// Missing stored expiresAt => assume expired so it refreshes.
+	const expiresAtDate = expiresAt ? new Date(Number(expiresAt)) : new Date(0);
+	auth.setAccessTokenExpiresAt(expiresAtDate);
+
+	try {
+		await auth.checkAndRefreshAccessToken();
+	} catch (err) {
+		console.warn('[dropbox] token refresh failed', err);
+		return null;
+	}
+
+	const fresh = auth.getAccessToken();
+	if (fresh && fresh !== accessToken) {
+		const newExpiresAt = auth.getAccessTokenExpiresAt();
+		const expiresInSec = newExpiresAt
+			? Math.max(0, Math.floor((newExpiresAt.getTime() - Date.now()) / 1000))
+			: undefined;
+		storeTokens(fresh, refreshToken, expiresInSec);
+	}
+	return fresh || null;
+}
+
 /** Get stored tokens */
 function getStoredTokens() {
 	return {
