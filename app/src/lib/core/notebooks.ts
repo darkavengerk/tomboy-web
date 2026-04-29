@@ -3,6 +3,8 @@ import { createEmptyNote, formatTomboyDate, type NoteData } from './note.js';
 import * as noteStore from '$lib/storage/noteStore.js';
 import { generateGuid } from '$lib/utils/guid.js';
 import { getSetting, setSetting } from '$lib/storage/appSettings.js';
+import { notifyNoteSaved } from '$lib/sync/firebase/orchestrator.js';
+import { invalidateCache } from '$lib/stores/noteListCache.js';
 
 const PREFIX = 'system:notebook:';
 const TEMPLATE = 'system:template';
@@ -60,6 +62,7 @@ export async function createNotebook(name: string): Promise<void> {
 	n.changeDate = now;
 	n.metadataChangeDate = now;
 	await noteStore.putNote(n);
+	notifyNoteSaved(n.guid);
 	await refreshNotebooksCache();
 }
 
@@ -73,6 +76,8 @@ export async function assignNotebook(guid: string, name: string | null): Promise
 	note.changeDate = now;
 	note.metadataChangeDate = now;
 	await noteStore.putNote(note);
+	notifyNoteSaved(guid);
+	invalidateCache();
 	await refreshNotebooksCache();
 }
 
@@ -91,16 +96,22 @@ export function filterByNotebook(notes: NoteData[], name: string | null): NoteDa
 /** Delete a notebook: removes template note + strips tag from member notes. */
 export async function deleteNotebook(name: string): Promise<void> {
 	const all = await noteStore.getAllNotesIncludingTemplates();
+	const now = formatTomboyDate(new Date());
 	for (const n of all) {
 		const isTemplate = n.tags.includes(TEMPLATE) && n.tags.includes(PREFIX + name);
 		if (isTemplate) {
 			await noteStore.deleteNote(n.guid);
+			notifyNoteSaved(n.guid);
 			continue;
 		}
 		if (n.tags.includes(PREFIX + name)) {
 			n.tags = n.tags.filter((t) => t !== PREFIX + name);
+			n.changeDate = now;
+			n.metadataChangeDate = now;
 			await noteStore.putNote(n);
+			notifyNoteSaved(n.guid);
 		}
 	}
+	invalidateCache();
 	await refreshNotebooksCache();
 }
