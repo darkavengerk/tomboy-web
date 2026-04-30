@@ -1,46 +1,75 @@
 import type { ParsedScheduleEntry } from './parseSchedule.js';
 
+export type ScheduleKind = 'morning' | 'pre1h' | 'at';
+
 export interface ScheduleItem {
-	/** Stable id derived from `(date, time, label)`. Any text change → new id. */
+	/** Stable id derived from `(date, time, label, kind)`. Any text or kind change → new id. */
 	id: string;
 	year: number;
 	month: number;
 	day: number;
 	hasTime: boolean;
 	label: string;
-	/** ISO-8601 (UTC) of the event itself. Date-only items use 00:00 local. */
+	/** Notification slot — one of:
+	 *  - `morning`: that day at 07:00 local. Always emitted.
+	 *  - `pre1h`  : 1 hour before the event time. Time-bearing entries only.
+	 *  - `at`     : exactly at the event time. Time-bearing entries only. */
+	kind: ScheduleKind;
+	/** ISO-8601 (UTC) of the event itself. Date-only entries use 00:00 local. */
 	eventAt: string;
-	/** ISO-8601 (UTC) of when to push the notification.
-	 *  Time-bearing: eventAt - 30 min.
-	 *  Date-only: that day at 07:00 local.  */
+	/** ISO-8601 (UTC) of when to push the notification. Slot-dependent (see `kind`). */
 	fireAt: string;
 }
 
-const PRE_NOTIFY_MS = 30 * 60_000;
+const PRE_NOTIFY_MS = 60 * 60_000;
+const MORNING_HOUR = 7;
 
 function localDate(year: number, month: number, day: number, h: number, m: number): Date {
 	// month is 1-based here; Date expects 0-based.
 	return new Date(year, month - 1, day, h, m, 0, 0);
 }
 
-export function buildScheduleItem(entry: ParsedScheduleEntry): ScheduleItem {
+/**
+ * Expand a parsed entry into all of its notification slots.
+ *
+ * - Date-only entry → 1 item (`morning` at 07:00).
+ * - Time-bearing entry → 3 items (`morning` at 07:00, `pre1h` at T-1h, `at` at T).
+ *
+ * Slot kind participates in the id hash so each slot has its own Firestore
+ * doc and the diff pipeline cleanly handles partial removals (the user
+ * editing a time changes the (time)-dependent ids of `pre1h`/`at` but not
+ * `morning`'s — diff handles it correctly because the morning slot's id
+ * also changes whenever date/label changes).
+ */
+export function buildScheduleItems(entry: ParsedScheduleEntry): ScheduleItem[] {
 	const { year, month, day, time, label } = entry;
 	const hasTime = time !== null;
 
-	let event: Date;
-	let fire: Date;
-	if (hasTime) {
-		event = localDate(year, month, day, time!.h, time!.m);
-		fire = new Date(event.getTime() - PRE_NOTIFY_MS);
-	} else {
-		event = localDate(year, month, day, 0, 0);
-		fire = localDate(year, month, day, 7, 0);
-	}
+	const morningEvent = hasTime
+		? localDate(year, month, day, time!.h, time!.m)
+		: localDate(year, month, day, 0, 0);
+	const morningFire = localDate(year, month, day, MORNING_HOUR, 0);
+	const morning = makeItem(entry, 'morning', morningEvent, morningFire);
 
+	if (!hasTime) return [morning];
+
+	const event = morningEvent;
+	const pre1h = makeItem(entry, 'pre1h', event, new Date(event.getTime() - PRE_NOTIFY_MS));
+	const at = makeItem(entry, 'at', event, event);
+	return [morning, pre1h, at];
+}
+
+function makeItem(
+	entry: ParsedScheduleEntry,
+	kind: ScheduleKind,
+	event: Date,
+	fire: Date
+): ScheduleItem {
+	const { year, month, day, time, label } = entry;
+	const hasTime = time !== null;
 	const idInput = `${year}-${pad(month)}-${pad(day)}|${
 		hasTime ? `${pad(time!.h)}:${pad(time!.m)}` : ''
-	}|${label}`;
-
+	}|${label}|${kind}`;
 	return {
 		id: hashId(idInput),
 		year,
@@ -48,6 +77,7 @@ export function buildScheduleItem(entry: ParsedScheduleEntry): ScheduleItem {
 		day,
 		hasTime,
 		label,
+		kind,
 		eventAt: event.toISOString(),
 		fireAt: fire.toISOString()
 	};

@@ -49,8 +49,10 @@ describe('noteManager.updateNoteFromEditor → schedule sync hook', () => {
 
 		const pending = await loadPendingScheduleState();
 		expect(pending?.noteGuid).toBe(note.guid);
-		expect(pending?.added).toHaveLength(1);
-		expect(pending?.added[0].label).toBe('등산');
+		// One time-bearing entry → 3 notification slots (morning / pre1h / at).
+		expect(pending?.added).toHaveLength(3);
+		expect(pending?.added.map((x) => x.label)).toEqual(['등산', '등산', '등산']);
+		expect(pending?.added.map((x) => x.kind).sort()).toEqual(['at', 'morning', 'pre1h']);
 	});
 
 	it('does NOT write pending state when editing an unrelated note', async () => {

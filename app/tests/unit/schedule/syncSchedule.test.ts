@@ -84,14 +84,17 @@ describe('syncScheduleFromNote', () => {
 		]));
 		const result = await syncScheduleFromNote(note, April25);
 		expect(result.isScheduleNote).toBe(true);
-		expect(result.added).toBe(2);
+		// 등산 7시 → 3 slots (morning/pre1h/at), 빨래 → 1 slot = 4 items.
+		expect(result.added).toBe(4);
 		expect(result.removed).toBe(0);
 
 		const pending = await loadPendingScheduleState();
 		expect(pending?.noteGuid).toBe('sched-guid');
-		expect(pending?.added.map((x) => x.label).sort()).toEqual(['등산', '빨래']);
+		expect(pending?.added.map((x) => x.label).sort()).toEqual([
+			'등산', '등산', '등산', '빨래'
+		]);
 		expect(pending?.removed).toEqual([]);
-		expect(pending?.curr).toHaveLength(2);
+		expect(pending?.curr).toHaveLength(4);
 	});
 
 	it('identical content: no diff, no pending written, no pending cleared', async () => {
@@ -108,7 +111,8 @@ describe('syncScheduleFromNote', () => {
 		const result = await syncScheduleFromNote(note, April25);
 		expect(result.added).toBe(0);
 		expect(result.removed).toBe(0);
-		expect(firstResult.added).toBe(1);
+		// Single time-bearing entry expands to 3 slots on first save.
+		expect(firstResult.added).toBe(3);
 	});
 
 	it('after snapshot seeded: edit produces add+remove in pending', async () => {
@@ -122,13 +126,16 @@ describe('syncScheduleFromNote', () => {
 		// Now user edits: change to "등산 8시"
 		const newNote = makeNote('sched-guid', noteDoc(['15(금) 등산 8시']));
 		const result = await syncScheduleFromNote(newNote, April25);
-		expect(result.added).toBe(1);
-		expect(result.removed).toBe(1);
+		// Time changed → all 3 slot ids change (time is in every slot's hash
+		// input, including `morning`, so two same-day same-label items with
+		// different times don't collide on the morning slot).
+		expect(result.added).toBe(3);
+		expect(result.removed).toBe(3);
 
 		const pending = await loadPendingScheduleState();
-		expect(pending?.added[0].label).toBe('등산');
-		expect(pending?.added[0].hasTime).toBe(true);
-		expect(pending?.removed[0].label).toBe('등산');
+		expect(pending?.added.every((x) => x.label === '등산')).toBe(true);
+		expect(pending?.added.every((x) => x.hasTime)).toBe(true);
+		expect(pending?.removed.every((x) => x.label === '등산')).toBe(true);
 	});
 
 	it('deleting an item: diff shows only remove', async () => {
@@ -143,8 +150,11 @@ describe('syncScheduleFromNote', () => {
 		const newNote = makeNote('sched-guid', noteDoc(['15 등산 7시']));
 		const result = await syncScheduleFromNote(newNote, April25);
 		expect(result.added).toBe(0);
+		// Date-only 빨래 contributes only its single `morning` slot.
 		expect(result.removed).toBe(1);
-		expect((await loadPendingScheduleState())?.removed[0].label).toBe('빨래');
+		const removed = (await loadPendingScheduleState())!.removed;
+		expect(removed[0].label).toBe('빨래');
+		expect(removed[0].kind).toBe('morning');
 	});
 
 	it('does NOT update snapshot itself (that is the flusher\'s job)', async () => {

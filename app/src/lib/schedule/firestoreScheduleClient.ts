@@ -8,8 +8,12 @@
  * `functions/src/fireSchedules.ts`.
  *
  * The schedule item Firestore shape:
- *   { fireAt: Timestamp, eventAt: Timestamp, label, hasTime, year, month, day,
- *     scheduleNoteGuid, notified: false, createdAt: serverTimestamp }
+ *   { fireAt: Timestamp, eventAt: Timestamp, label, hasTime, kind,
+ *     year, month, day, scheduleNoteGuid, notified: false,
+ *     createdAt: serverTimestamp }
+ *
+ * `kind` ∈ { 'morning', 'pre1h', 'at' } — drives the notification body's
+ * "오늘" / "1시간 뒤" / "지금" prefix in the Cloud Function.
  */
 import {
 	deleteDoc,
@@ -43,6 +47,7 @@ export const firestoreScheduleClient: ScheduleRemoteClient = {
 				eventAt: Timestamp.fromDate(new Date(it.eventAt)),
 				label: it.label,
 				hasTime: it.hasTime,
+				kind: it.kind,
 				year: it.year,
 				month: it.month,
 				day: it.day,

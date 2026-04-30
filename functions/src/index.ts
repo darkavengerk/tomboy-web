@@ -20,11 +20,17 @@ initializeApp();
 const FIRE_WINDOW_MINUTES = 2;
 const REGION = 'asia-northeast3';
 
+type ScheduleKind = 'morning' | 'pre1h' | 'at';
+
 interface ScheduleDoc {
 	fireAt: Timestamp;
 	eventAt: Timestamp;
 	label: string;
 	hasTime: boolean;
+	/** Notification slot — added when multi-slot firing landed. Older docs
+	 *  written before that change have no `kind`; we treat them as 'at'
+	 *  (the closest match to the legacy single-shot behavior). */
+	kind?: ScheduleKind;
 	year: number;
 	month: number;
 	day: number;
@@ -37,7 +43,12 @@ interface DeviceDoc {
 	scheduleNoteGuid?: string | null;
 }
 
-function formatBody(label: string, eventAt: Timestamp, hasTime: boolean): string {
+function formatBody(
+	label: string,
+	eventAt: Timestamp,
+	hasTime: boolean,
+	kind: ScheduleKind | undefined
+): string {
 	if (!hasTime) return label;
 	const d = eventAt.toDate();
 	// Render in KST regardless of where the function runs.
@@ -47,7 +58,18 @@ function formatBody(label: string, eventAt: Timestamp, hasTime: boolean): string
 		minute: '2-digit',
 		hour12: false
 	});
-	return `${fmt.format(d)} ${label}`;
+	const hhmm = fmt.format(d);
+	// Prefix tells the user which of the three daily pings this is.
+	// Legacy docs without a kind field are treated as 'at' (no prefix) —
+	// matches the pre-multi-slot single-shot wording.
+	switch (kind) {
+		case 'morning':
+			return `오늘 ${hhmm} ${label}`;
+		case 'pre1h':
+			return `1시간 뒤 ${hhmm} ${label}`;
+		default:
+			return `${hhmm} ${label}`;
+	}
 }
 
 export const fireSchedules = onSchedule(
@@ -111,7 +133,7 @@ export const fireSchedules = onSchedule(
 				continue;
 			}
 
-			const body = formatBody(data.label, data.eventAt, data.hasTime);
+			const body = formatBody(data.label, data.eventAt, data.hasTime, data.kind);
 			try {
 				const result = await messaging.sendEachForMulticast({
 					tokens,

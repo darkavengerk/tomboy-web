@@ -6,7 +6,7 @@
 import { deserializeContent } from '$lib/core/noteContentArchiver.js';
 import type { NoteData } from '$lib/core/note.js';
 import { getScheduleNoteGuid } from '$lib/core/schedule.js';
-import { buildScheduleItem } from './buildScheduleItem.js';
+import { buildScheduleItems } from './buildScheduleItem.js';
 import { diffSchedules } from './diff.js';
 import { parseScheduleNote } from './parseSchedule.js';
 import { loadScheduleSnapshot } from './scheduleSnapshot.js';
@@ -33,7 +33,7 @@ export async function syncScheduleFromNote(
 
 	const doc = deserializeContent(note.xmlContent);
 	const entries = parseScheduleNote(doc, now);
-	const curr = entries.map(buildScheduleItem);
+	const curr = entries.flatMap(buildScheduleItems);
 	const prev = await loadScheduleSnapshot(note.guid);
 	const diff = diffSchedules(prev, curr);
 

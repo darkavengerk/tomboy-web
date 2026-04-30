@@ -413,7 +413,11 @@ outside `noteSyncClient.firestore.ts` — every other module consumes the
 
 A user-designated note's list-item lines are parsed each save; matching
 `(date, time, label)` triples are diff'd and a Cloud Function fires Web Push
-30 min before each time-bearing event (or at 07:00 for date-only entries).
+on a per-slot schedule. Every entry expands into one or three notification
+slots: every entry (with or without a time) fires at 07:00 on the event
+day; entries with a time additionally fire 1 hour before the event AND
+exactly at the event time — three pings/day for time-bearing items, one
+for date-only.
 **All devices that share a Dropbox account share the same Firestore
 namespace**, so any device with notifications enabled can fire alarms for
 every device. See the **`tomboy-schedule`** skill for the full format

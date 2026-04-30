@@ -1,6 +1,6 @@
 ---
 name: tomboy-schedule
-description: Use when working on schedule-note push notifications, the auto-weekday day-prefix helper, or the schedule-note "보내기" Ctrl-gate. Covers the parser format (Korean date/time list-item lines under a `N월` section), fire-time rules (30 min before time-bearing items / 07:00 for date-only), the line-hash diff/upload pipeline, the Cloud Function firing window, FCM device registration, Dropbox-bridged Firebase Custom Auth, PWA-install requirements, the auto-weekday plugin, and the focus-scoped send-list-item gate. Files in `app/src/lib/schedule/`, `app/src/lib/editor/autoWeekday/`, `app/src/lib/editor/sendListItem/`, `app/src/service-worker.ts`, `functions/src/`, plus PWA infra (manifest + apple-touch-icon).
+description: Use when working on schedule-note push notifications, the auto-weekday day-prefix helper, or the schedule-note "보내기" Ctrl-gate. Covers the parser format (Korean date/time list-item lines under a `N월` section), the multi-slot fire rules (07:00 morning ping for every entry; time-bearing entries additionally ping 1 hour before AND at the event time), the line-hash diff/upload pipeline, the Cloud Function firing window, FCM device registration, Dropbox-bridged Firebase Custom Auth, PWA-install requirements, the auto-weekday plugin, and the focus-scoped send-list-item gate. Files in `app/src/lib/schedule/`, `app/src/lib/editor/autoWeekday/`, `app/src/lib/editor/sendListItem/`, `app/src/service-worker.ts`, `functions/src/`, plus PWA infra (manifest + apple-touch-icon).
 ---
 
 # 일정 알림 (schedule-note push notifications)
@@ -8,20 +8,23 @@ description: Use when working on schedule-note push notifications, the auto-week
 The user designates one note as the "schedule note". Its list items are
 parsed every save; matching `(date, time, label)` triples are diff'd
 against a stored snapshot, the delta is queued, and a Cloud Function
-drains the queue and fires Web Push 30 min before each time-bearing event
-(or at 07:00 on the event day for date-only entries). All devices that
-share a Dropbox account share the same Firestore namespace, so editing
-the schedule on the desktop notifies the iPhone and vice versa.
+drains the queue and fires Web Push on a per-slot schedule. Every entry
+expands into one or three notification slots: every entry pings at 07:00
+on the event day; entries with a time additionally ping 1 hour before
+AND exactly at the event time — three notifications per time-bearing
+event, one for date-only. All devices that share a Dropbox account share
+the same Firestore namespace, so editing the schedule on the desktop
+notifies the iPhone and vice versa.
 
 ## Format
 
 ```
 4월
   노트 열심히 만드는 달          ← ignored (no day prefix)
-  15(금) 등산 7시                ← fire 18:30 same day (PM default)
-  16(토) 빨래                    ← fire 07:00 on day 16
-  16(토) 친구 만나기 6시 반 집앞 ← fire 18:00, label "친구 만나기 집앞"
-  17(일) 쓰레기 버리기 7시 20분  ← fire 18:50, label "쓰레기 버리기"
+  15(금) 등산 7시                ← 3 pings: 07:00 / 18:00 / 19:00 (PM default)
+  16(토) 빨래                    ← 1 ping: 07:00 on day 16
+  16(토) 친구 만나기 6시 반 집앞 ← 3 pings: 07:00 / 17:30 / 18:30, label "친구 만나기 집앞"
+  17(일) 쓰레기 버리기 7시 20분  ← 3 pings: 07:00 / 18:20 / 19:20, label "쓰레기 버리기"
 ```
 
 Rules — enforced by `app/src/lib/schedule/parseSchedule.ts`:
@@ -46,19 +49,42 @@ Rules — enforced by `app/src/lib/schedule/parseSchedule.ts`:
 
 ## Fire-time rules
 
-- Time present → `fireAt = eventAt - 30 min`.
-- Date only (no time) → `eventAt = day at 00:00 local`,
-  `fireAt = day at 07:00 local`.
+Each parsed entry expands into one or three `ScheduleItem`s
+(`buildScheduleItems(entry) → ScheduleItem[]`). Every item has a
+`kind: 'morning' | 'pre1h' | 'at'` field that drives both the Firestore
+doc id and the Cloud Function's notification body prefix.
+
+- Date-only entry (no time) → 1 item:
+  - `kind='morning'`: `eventAt = day at 00:00 local`, `fireAt = day at 07:00 local`.
+- Time-bearing entry → 3 items, all sharing the same `eventAt`:
+  - `kind='morning'`: `fireAt = day at 07:00 local`.
+  - `kind='pre1h'`  : `fireAt = eventAt - 1 hour`.
+  - `kind='at'`     : `fireAt = eventAt` exactly.
 - KST (Asia/Seoul) is hardcoded for the current month-of-year arithmetic.
 
-## ID model — line hash, no "modified" operation
+There is no de-duplication when slots collide on wall time (e.g. a 07:00
+event would fire `morning` and `at` at the same minute, with `pre1h` at
+06:00). The user explicitly opted into "always 3 pings for time-bearing
+entries"; if collisions become annoying we can add a fireAt-based
+collapse later.
 
-`buildScheduleItem` derives id as
-`fnv1a64( "${year}-${MM}-${DD}|${hh}:${mm}|${label}" ).hex16chars`.
-Any change to date, time, or label mints a new id. Edits are therefore
-modeled as `{ removed: oldId, added: newId }` pairs — there is no
-"update" path through Firestore. This keeps `flushPendingSchedule`
-trivially idempotent on retry.
+## ID model — line hash, per slot, no "modified" operation
+
+Each slot's id is
+`fnv1a64( "${year}-${MM}-${DD}|${hh}:${mm}|${label}|${kind}" ).hex16chars`
+(empty `hh:mm` segment for date-only entries, which only emit `morning`).
+Any change to date, time, label, or slot kind mints a new id. Time
+participates in **every** slot's hash — including `morning` — so two
+same-day same-label entries with different times don't collide on the
+morning row in Firestore. Edits are therefore modeled as
+`{ removed: oldId, added: newId }` pairs — there is no "update" path
+through Firestore. This keeps `flushPendingSchedule` trivially idempotent
+on retry.
+
+Backwards compatibility: pre-multi-slot Firestore docs have no `kind`
+field. The Cloud Function falls back to the legacy `HH:MM label` body
+when `kind` is missing. After a user re-saves the schedule note, the
+diff naturally removes the legacy ids and uploads the new per-slot rows.
 
 ## Auth model — Dropbox account_id → Firebase Custom Token
 
@@ -218,7 +244,7 @@ uses Admin SDK and bypasses rules.
 | File | Purpose |
 |------|---------|
 | `lib/schedule/parseSchedule.ts` | TipTap doc → ParsedScheduleEntry[]; `parseKoreanTime`, `parseDayLine`, month section walker |
-| `lib/schedule/buildScheduleItem.ts` | Entry → ScheduleItem (eventAt, fireAt, hashed id) |
+| `lib/schedule/buildScheduleItem.ts` | `buildScheduleItems(entry) → ScheduleItem[]` — expands one parsed entry into 1 (date-only) or 3 (time-bearing) per-slot items, each with eventAt, fireAt, kind, and a kind-aware hashed id |
 | `lib/schedule/diff.ts` | `diffSchedules(prev, curr)` — set diff by id |
 | `lib/schedule/scheduleSnapshot.ts` | per-noteGuid snapshot in `appSettings` |
 | `lib/schedule/schedulePending.ts` | single-slot pending state |

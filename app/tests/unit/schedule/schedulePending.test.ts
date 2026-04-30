@@ -22,6 +22,7 @@ function item(id: string): ScheduleItem {
 		day: 15,
 		hasTime: true,
 		label: 'x',
+		kind: 'at',
 		eventAt: '2026-04-15T10:00:00.000Z',
 		fireAt: '2026-04-15T09:30:00.000Z'
 	};
