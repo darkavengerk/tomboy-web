@@ -7,6 +7,14 @@
         { "fieldPath": "notified", "order": "ASCENDING" },
         { "fieldPath": "fireAt", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "schedule",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "kind", "order": "ASCENDING" },
+        { "fieldPath": "eventAt", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

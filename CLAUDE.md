@@ -417,7 +417,10 @@ on a per-slot schedule. Every entry expands into one or three notification
 slots: every entry (with or without a time) fires at 07:00 on the event
 day; entries with a time additionally fire 1 hour before the event AND
 exactly at the event time — three pings/day for time-bearing items, one
-for date-only.
+for date-only. **Two summary pushes** also fire from the server: every
+Monday at 07:00 KST a "이번 주 일정" digest, and on the 1st of each month
+at 07:00 KST a "이번 달 일정" digest. Summaries are computed live from
+Firestore at fire time, so any device's edits show up.
 **All devices that share a Dropbox account share the same Firestore
 namespace**, so any device with notifications enabled can fire alarms for
 every device. See the **`tomboy-schedule`** skill for the full format

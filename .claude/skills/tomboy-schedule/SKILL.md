@@ -1,6 +1,6 @@
 ---
 name: tomboy-schedule
-description: Use when working on schedule-note push notifications, the auto-weekday day-prefix helper, or the schedule-note "보내기" Ctrl-gate. Covers the parser format (Korean date/time list-item lines under a `N월` section), the multi-slot fire rules (07:00 morning ping for every entry; time-bearing entries additionally ping 1 hour before AND at the event time), the line-hash diff/upload pipeline, the Cloud Function firing window, FCM device registration, Dropbox-bridged Firebase Custom Auth, PWA-install requirements, the auto-weekday plugin, and the focus-scoped send-list-item gate. Files in `app/src/lib/schedule/`, `app/src/lib/editor/autoWeekday/`, `app/src/lib/editor/sendListItem/`, `app/src/service-worker.ts`, `functions/src/`, plus PWA infra (manifest + apple-touch-icon).
+description: Use when working on schedule-note push notifications, the auto-weekday day-prefix helper, or the schedule-note "보내기" Ctrl-gate. Covers the parser format (Korean date/time list-item lines under a `N월` section), the multi-slot fire rules (07:00 morning ping for every entry; time-bearing entries additionally ping 1 hour before AND at the event time), the weekly + monthly summary pushes (Mon 07:00 KST / 1st 07:00 KST), the line-hash diff/upload pipeline, the Cloud Function firing window, FCM device registration, Dropbox-bridged Firebase Custom Auth, PWA-install requirements, the auto-weekday plugin, and the focus-scoped send-list-item gate. Files in `app/src/lib/schedule/`, `app/src/lib/editor/autoWeekday/`, `app/src/lib/editor/sendListItem/`, `app/src/service-worker.ts`, `functions/src/`, plus PWA infra (manifest + apple-touch-icon).
 ---
 
 # 일정 알림 (schedule-note push notifications)
@@ -161,6 +161,56 @@ the simplest way to cover both.
 - Click target: `webpush.fcmOptions.link = /note/{scheduleNoteGuid}?from=notes`
   (also propagated as `data.scheduleNoteGuid` for the SW handler).
 
+## Cloud Function — `fireWeeklySummary` / `fireMonthlySummary`
+
+`functions/src/index.ts` + `functions/src/summary.ts`. Two scheduled
+functions that send a digest of upcoming items:
+
+- `fireWeeklySummary` — cron `0 7 * * 1` (every Mon 07:00 KST). Range:
+  Mon 00:00 KST → next Mon 00:00 KST.
+- `fireMonthlySummary` — cron `0 7 1 * *` (1st of month 07:00 KST).
+  Range: 1st 00:00 KST → next 1st 00:00 KST.
+
+Pipeline (shared by both via `sendSummary(scope, now)`):
+
+1. `listAllUsersWithDevices()` — collectionGroup query on `devices`
+   buckets tokens + scheduleNoteGuid by parent uid. Single round trip.
+2. Per uid: query `users/{uid}/schedule` filtered by
+   `kind == 'morning' && eventAt ∈ [start, end)`, ordered by `eventAt`.
+   The `kind == 'morning'` filter dedupes the 1-or-3 slot expansion to
+   exactly one row per parsed entry.
+3. Empty → skip silently. Otherwise `formatSummaryBody` renders up to
+   `SUMMARY_BODY_MAX_ITEMS` (10) lines: `M/D(요일) 라벨` + ` HH:MM` if
+   the item has a time. Overflow appends `외 N건`.
+4. `sendEachForMulticast` with `tag: 'summary-week'` / `'summary-month'`
+   so the two pushes don't collapse on devices that get both at once
+   (1st-of-month happens to be a Monday).
+5. Click target: `/note/{scheduleNoteGuid}?from=notes` (same as
+   `fireSchedules`).
+
+Pure helpers in `summary.ts`:
+
+- `kstMidnightOf(at)` — UTC instant of midnight on `at`'s KST day.
+- `kstDayOfWeek(at)` — 0..6 (Sun..Sat) in KST.
+- `weekRangeKst(now)` / `monthRangeKst(now)` — `[start, end)` UTC pair.
+- `formatSummaryBody(items)` — multi-line body string with overflow tail.
+
+Required Firestore index (per-user `users/{uid}/schedule` query — NOT
+collectionGroup): composite `(kind ASC, eventAt ASC)` declared in
+`firestore.indexes.json` with `queryScope: COLLECTION`.
+
+Notes:
+
+- **Legacy items** (pre-multi-slot, no `kind` field) are excluded from
+  summaries until the next save re-uploads them as per-slot rows.
+- **Stale month bug** — the parser only processes the section matching
+  `now.getMonth()+1`. If the user composes a `5월` section in April but
+  never re-saves on/after May 1, `users/{uid}/schedule` has no May rows
+  and the May 1 monthly summary will be empty for that user. Existing
+  parser limitation; not specific to summaries.
+- **No `notified` flag** on summary sends — the cron schedule is the
+  fire gate. A scheduler skip means a missed digest, not a deferred one.
+
 ## Cloud Function — `sendTestPush`
 
 Callable. Sends an immediate FCM message to every registered device of
@@ -264,8 +314,9 @@ uses Admin SDK and bypasses rules.
 | `lib/sync/dropboxClient.ts` | `getAccessToken()` exposed for the auth bridge |
 | `routes/settings/+page.svelte` (notify tab) | Pick schedule note, enable/disable, push subscription diag, test buttons (local / FCM / Force 재구독), token copy |
 | `service-worker.ts` | Firebase init via `$env/static/public` + iOS-branched onBackgroundMessage + notificationclick |
-| `functions/src/index.ts` | fireSchedules + sendTestPush + dropboxAuthExchange |
-| `firestore.rules` / `firestore.indexes.json` | uid-scoped security + (notified, fireAt) index |
+| `functions/src/index.ts` | fireSchedules + fireWeeklySummary + fireMonthlySummary + sendTestPush + dropboxAuthExchange |
+| `functions/src/summary.ts` | pure helpers: kstMidnightOf / kstDayOfWeek / weekRangeKst / monthRangeKst / formatSummaryBody |
+| `firestore.rules` / `firestore.indexes.json` | uid-scoped security + (notified, fireAt) collectionGroup index + (kind, eventAt) per-collection index for summary queries |
 | `app.html`, `static/manifest.webmanifest`, `static/icons/icon-{180,192,512}.png` | PWA install metadata for iOS |
 
 ## Settings UI structure (`/settings` → 알림 tab)

@@ -6,6 +6,11 @@
  * window and that haven't been notified yet, sends a Web Push for each via
  * FCM to all of the owning user's registered devices, then marks them
  * notified=true so they don't fire again.
+ *
+ * `fireWeeklySummary` (Mon 07:00 KST) and `fireMonthlySummary` (1st 07:00
+ * KST) bundle the upcoming week's / month's schedule items into a single
+ * push per user. They read live Firestore state at fire time so any
+ * device's edits are reflected.
  */
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
@@ -14,6 +19,12 @@ import { getMessaging } from 'firebase-admin/messaging';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { logger } from 'firebase-functions';
+import {
+	formatSummaryBody,
+	monthRangeKst,
+	weekRangeKst,
+	type SummaryItem
+} from './summary';
 
 initializeApp();
 
@@ -377,5 +388,149 @@ export const sendTestPush = onCall(
 				.map((d) => d.errorMessage)
 				.filter(Boolean) as string[]
 		};
+	}
+);
+
+/**
+ * Weekly + monthly summary push.
+ *
+ * Fires one notification per user listing the events whose `eventAt`
+ * falls in the upcoming week (Mon..next Mon) or month (1st..1st of next
+ * month) in KST. Reads `users/{uid}/schedule` live at fire time so the
+ * payload is always up-to-date with the latest edits from any device.
+ *
+ * Per-event dedup: each entry is stored as 1 (date-only) or 3 (time-bearing)
+ * `ScheduleItem` rows differing only by `kind`. The summary query filters
+ * `kind == 'morning'`, which exists exactly once per parsed entry.
+ *
+ * Legacy items written before the multi-slot landing have no `kind` field
+ * and are excluded from summaries until the next save re-uploads them.
+ */
+type SummaryScope = 'week' | 'month';
+
+interface UserPushContext {
+	tokens: string[];
+	scheduleNoteGuid: string | null;
+}
+
+async function listAllUsersWithDevices(): Promise<Map<string, UserPushContext>> {
+	const db = getFirestore();
+	const all = await db.collectionGroup('devices').get();
+	const result = new Map<string, UserPushContext>();
+	all.forEach((doc) => {
+		const uid = doc.ref.parent.parent?.id;
+		if (!uid) return;
+		const data = doc.data() as DeviceDoc;
+		let ctx = result.get(uid);
+		if (!ctx) {
+			ctx = { tokens: [], scheduleNoteGuid: null };
+			result.set(uid, ctx);
+		}
+		if (data.token) ctx.tokens.push(data.token);
+		if (data.scheduleNoteGuid && !ctx.scheduleNoteGuid) {
+			ctx.scheduleNoteGuid = data.scheduleNoteGuid;
+		}
+	});
+	return result;
+}
+
+async function sendSummary(scope: SummaryScope, now: Date): Promise<void> {
+	const db = getFirestore();
+	const messaging = getMessaging();
+	const { start, end } = scope === 'week' ? weekRangeKst(now) : monthRangeKst(now);
+	const title = scope === 'week' ? '이번 주 일정' : '이번 달 일정';
+
+	const userCtx = await listAllUsersWithDevices();
+	if (userCtx.size === 0) {
+		logger.debug('summary: no users with devices', { scope });
+		return;
+	}
+
+	for (const [uid, ctx] of userCtx) {
+		if (ctx.tokens.length === 0) continue;
+
+		const itemsSnap = await db
+			.collection(`users/${uid}/schedule`)
+			.where('kind', '==', 'morning')
+			.where('eventAt', '>=', Timestamp.fromDate(start))
+			.where('eventAt', '<', Timestamp.fromDate(end))
+			.orderBy('eventAt')
+			.get();
+		if (itemsSnap.empty) {
+			logger.debug('summary: no items for user', { uid, scope });
+			continue;
+		}
+
+		const items: SummaryItem[] = itemsSnap.docs.map((d) => {
+			const data = d.data() as ScheduleDoc;
+			return {
+				eventAt: data.eventAt.toDate(),
+				hasTime: data.hasTime,
+				month: data.month,
+				day: data.day,
+				label: data.label
+			};
+		});
+		const body = formatSummaryBody(items);
+		if (!body) continue;
+
+		try {
+			const result = await messaging.sendEachForMulticast({
+				tokens: ctx.tokens,
+				notification: { title, body },
+				data: {
+					summary: scope,
+					scheduleNoteGuid: ctx.scheduleNoteGuid ?? ''
+				},
+				webpush: {
+					headers: { Urgency: 'high', TTL: '600' },
+					// Distinct tag per scope so the weekly + monthly pushes
+					// don't collapse on devices that get both at once (1st-of-
+					// month happens to be a Monday).
+					notification: { requireInteraction: false, tag: `summary-${scope}` },
+					fcmOptions: ctx.scheduleNoteGuid
+						? { link: `/note/${ctx.scheduleNoteGuid}?from=notes` }
+						: undefined
+				}
+			});
+			logger.info('summary sent', {
+				uid,
+				scope,
+				itemCount: items.length,
+				success: result.successCount,
+				failure: result.failureCount
+			});
+		} catch (err) {
+			logger.error('summary send failed', { uid, scope, err: String(err) });
+		}
+	}
+}
+
+export const fireWeeklySummary = onSchedule(
+	{
+		// Every Monday at 07:00 KST. Same wall-clock minute as the morning
+		// per-event pings; distinct tag keeps both visible.
+		schedule: '0 7 * * 1',
+		timeZone: 'Asia/Seoul',
+		region: REGION,
+		timeoutSeconds: 120,
+		memory: '256MiB'
+	},
+	async () => {
+		await sendSummary('week', new Date());
+	}
+);
+
+export const fireMonthlySummary = onSchedule(
+	{
+		// 1st of every month at 07:00 KST.
+		schedule: '0 7 1 * *',
+		timeZone: 'Asia/Seoul',
+		region: REGION,
+		timeoutSeconds: 120,
+		memory: '256MiB'
+	},
+	async () => {
+		await sendSummary('month', new Date());
 	}
 );
