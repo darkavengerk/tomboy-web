@@ -783,10 +783,19 @@
 		justify-content: center;
 		cursor: pointer;
 		z-index: 10;
+		transition: opacity 0.15s;
 	}
 
 	.fab-random:active {
 		transform: scale(0.93);
+	}
+
+	/* 에디터에 포커스가 있을 때(모바일에서 키보드가 올라와 있는 상태)에는
+	   하단 FAB이 입력을 가려 방해만 되므로 숨긴다. */
+	.editor-area:focus-within ~ .fab-today,
+	.editor-area:focus-within ~ .fab-random {
+		opacity: 0;
+		pointer-events: none;
 	}
 
 	.fab-today {
@@ -805,6 +814,7 @@
 		justify-content: center;
 		cursor: pointer;
 		z-index: 10;
+		transition: opacity 0.15s;
 	}
 
 	.fab-today:active {
