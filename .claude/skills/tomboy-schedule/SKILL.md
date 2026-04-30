@@ -30,9 +30,14 @@ notifies the iPhone and vice versa.
 Rules — enforced by `app/src/lib/schedule/parseSchedule.ts`:
 
 - **Month section** — any block (paragraph or top-level listItem) whose
-  trimmed text is exactly `\d+월`. Only the section matching
-  `now.getMonth()+1` is processed; other-month sections are ignored.
-- **Year** — implicit. Always `now.getFullYear()`.
+  trimmed text is exactly `\d+월`. The parser processes BOTH the current
+  month (`now.getMonth()+1`) and the next month, so items composed ahead
+  of time land in Firestore before the boundary (the 1st-of-month
+  summary push and morning pings need this). Sections for any other
+  month (past or 2+ months out) are ignored.
+- **Year** — implicit. Current-month entries get `now.getFullYear()`;
+  the next-month section gets the same year except December → January
+  rolls over to `now.getFullYear() + 1`.
 - **Day prefix** — required. `\d{1,2}` optionally followed by `(요일)`,
   then a space (or end), then label. Day must be a real date for the
   current month (Apr 31 → ignored; Feb 30 → ignored).
@@ -203,11 +208,11 @@ Notes:
 
 - **Legacy items** (pre-multi-slot, no `kind` field) are excluded from
   summaries until the next save re-uploads them as per-slot rows.
-- **Stale month bug** — the parser only processes the section matching
-  `now.getMonth()+1`. If the user composes a `5월` section in April but
-  never re-saves on/after May 1, `users/{uid}/schedule` has no May rows
-  and the May 1 monthly summary will be empty for that user. Existing
-  parser limitation; not specific to summaries.
+- **3+ months ahead** — the parser covers current + next month only.
+  Items composed for July while still in April aren't uploaded to
+  Firestore, so a July 1 summary fired before any May/June save would
+  miss them. Most users compose at most one month ahead, so this is
+  acceptable. To extend coverage, widen the loop in `parseScheduleNote`.
 - **No `notified` flag** on summary sends — the cron schedule is the
   fire gate. A scheduler skip means a missed digest, not a deferred one.
 
@@ -353,8 +358,13 @@ uses Admin SDK and bypasses rules.
   edit mints a new id. If the edit happens *during* the 2-minute firing
   window, the new id would also be eligible to fire. Documented; not
   fixed.
-- **Year boundary** — December content composed in November is not
-  processed (only the current month section is). Acceptable per spec.
+- **3+ months ahead** — the parser now covers current + next month
+  (with December → January year rollover) so a normal "compose May
+  during April" workflow works. But items composed for July while
+  still in April aren't uploaded until the user re-saves in May or
+  later. Most users don't compose more than one month ahead, so this
+  is acceptable; widening the loop in `parseScheduleNote` extends it
+  if needed.
 
 ## Auto-weekday day-prefix helper
 

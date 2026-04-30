@@ -117,27 +117,44 @@ export interface ParsedScheduleEntry {
 }
 
 export function parseScheduleNote(doc: JSONContent, now: Date): ParsedScheduleEntry[] {
-	const year = now.getFullYear();
-	const month = now.getMonth() + 1;
-	const lines = extractCurrentMonthListItems(doc, now);
+	const currYear = now.getFullYear();
+	const currMonth = now.getMonth() + 1;
+	// Also process the NEXT month so items composed ahead of time are
+	// uploaded to Firestore before the month boundary. Without this, the
+	// 1st-of-month summary push (and morning pings for events on the 1st)
+	// would miss anything the user prepared in advance, because the parser
+	// otherwise sees only `currentMonth`. December rolls over to January
+	// of the following year.
+	const nextMonth = currMonth === 12 ? 1 : currMonth + 1;
+	const nextYear = currMonth === 12 ? currYear + 1 : currYear;
+
 	const result: ParsedScheduleEntry[] = [];
-	for (const line of lines) {
-		const parsed = parseDayLine(line, year, month);
-		if (!parsed) continue;
-		result.push({
-			year,
-			month,
-			day: parsed.day,
-			time: parsed.time,
-			label: parsed.label,
-			rawLine: line
-		});
+	for (const { year, month } of [
+		{ year: currYear, month: currMonth },
+		{ year: nextYear, month: nextMonth }
+	]) {
+		const lines = extractMonthListItems(doc, month);
+		for (const line of lines) {
+			const parsed = parseDayLine(line, year, month);
+			if (!parsed) continue;
+			result.push({
+				year,
+				month,
+				day: parsed.day,
+				time: parsed.time,
+				label: parsed.label,
+				rawLine: line
+			});
+		}
 	}
 	return result;
 }
 
 export function extractCurrentMonthListItems(doc: JSONContent, now: Date): string[] {
-	const targetMonth = now.getMonth() + 1;
+	return extractMonthListItems(doc, now.getMonth() + 1);
+}
+
+function extractMonthListItems(doc: JSONContent, targetMonth: number): string[] {
 	const blocks = linearizeDoc(doc);
 	const result: string[] = [];
 	let collecting = false;

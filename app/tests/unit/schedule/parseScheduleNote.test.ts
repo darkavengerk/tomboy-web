@@ -67,7 +67,8 @@ describe('parseScheduleNote (integration)', () => {
 		});
 	});
 
-	it('ignores items in non-current-month sections', () => {
+	it('ignores items in past-month sections', () => {
+		// 3월 is the previous month; only 4월 (current) + any 5월 (next) are processed.
 		const d = doc(
 			p('3월'),
 			ul(li('1(일) 옛 일정 7시')),
@@ -79,9 +80,47 @@ describe('parseScheduleNote (integration)', () => {
 		expect(result[0].day).toBe(15);
 	});
 
-	it('returns [] when no current-month section exists', () => {
+	it('also processes the next month section so summaries land before the boundary', () => {
+		const d = doc(
+			p('4월'),
+			ul(li('15(금) 등산 7시')),
+			p('5월'),
+			ul(li('1(금) 휴가'), li('3 운동 8시'))
+		);
+		const result = parseScheduleNote(d, April25);
+		expect(result).toHaveLength(3);
+		expect(result.map((r) => ({ year: r.year, month: r.month, day: r.day }))).toEqual([
+			{ year: 2026, month: 4, day: 15 },
+			{ year: 2026, month: 5, day: 1 },
+			{ year: 2026, month: 5, day: 3 }
+		]);
+	});
+
+	it('returns next-month items even when no current-month section exists', () => {
+		// User has only started filling next month; treat those as upcoming.
 		const d = doc(p('5월'), ul(li('1 휴가')));
+		const result = parseScheduleNote(d, April25);
+		expect(result).toHaveLength(1);
+		expect(result[0]).toMatchObject({ year: 2026, month: 5, day: 1, label: '휴가' });
+	});
+
+	it('returns [] when neither current nor next month section exists', () => {
+		const d = doc(p('7월'), ul(li('1 휴가')));
 		expect(parseScheduleNote(d, April25)).toEqual([]);
+	});
+
+	it('December → January rolls the year over for the next-month section', () => {
+		const dec15_2026 = new Date(2026, 11, 15);
+		const d = doc(
+			p('12월'),
+			ul(li('25(금) 크리스마스 7시')),
+			p('1월'),
+			ul(li('1(금) 새해'))
+		);
+		const result = parseScheduleNote(d, dec15_2026);
+		expect(result).toHaveLength(2);
+		expect(result[0]).toMatchObject({ year: 2026, month: 12, day: 25 });
+		expect(result[1]).toMatchObject({ year: 2027, month: 1, day: 1 });
 	});
 
 	it('uses now.getFullYear() for the year field', () => {
