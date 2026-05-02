@@ -114,7 +114,7 @@ Steps:
 2. Copy verbatim to `static/codegraph.json`.
 3. Read `git config --get remote.origin.url` and normalize to `https://github.com/<owner>/<repo>` (strip trailing `.git`, convert SSH to HTTPS).
 4. Read `git rev-parse --abbrev-ref HEAD`. If `HEAD` (detached), default to `main`.
-5. Read `../graphify-out/GRAPH_REPORT.md` and extract community labels via regex matching `^### Community (\d+): (.+)$`. Emit `static/codegraph-communities.json` (`{ "11": "Note List & Generic Helpers", ... }`).
+5. Read `../graphify-out/GRAPH_REPORT.md` and extract community labels via regex matching `^### Community (\d+) - "(.+)"$` (the actual graphify report format: dash separator, label quoted). Emit `static/codegraph-communities.json` (`{ "11": "Note List & Generic Helpers", ... }`).
 6. Write `static/codegraph-meta.json`:
    ```json
    {
