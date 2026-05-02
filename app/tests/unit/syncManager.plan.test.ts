@@ -156,6 +156,50 @@ describe('computePlan', () => {
 		expect(plan.toUpload[0].guid).toBe('dirty');
 	});
 
+	it('uploads a clean note that the Dropbox channel has never seen (Firebase-arrived note)', async () => {
+		// Simulates a note delivered to this device by Firebase realtime sync:
+		// localDirty=false (written via putNoteSynced), and not in either the
+		// server manifest or localManifest.noteRevisions. The Dropbox backup
+		// channel must still pick it up.
+		const fbArrived = makeNote({ guid: 'fb-arrived', localDirty: false });
+		vi.mocked(noteStore.getAllNotesIncludingDeleted).mockResolvedValue([fbArrived]);
+		vi.mocked(dropboxClient.downloadServerManifest).mockResolvedValue(
+			makeServerManifest({ notes: [] })
+		);
+		vi.mocked(manifest.getManifest).mockResolvedValue({
+			id: 'manifest', lastSyncDate: '', lastSyncRev: 5, serverId: 'server-id-123',
+			noteRevisions: {}
+		});
+
+		const plan = await computePlan();
+
+		expect(plan.toUpload).toHaveLength(1);
+		expect(plan.toUpload[0].guid).toBe('fb-arrived');
+		expect(plan.toUpload[0].reason).toBe('new');
+		expect(plan.toDeleteLocal).toHaveLength(0);
+	});
+
+	it('does NOT upload a clean note that was previously synced and then deleted on the server', async () => {
+		// Once-synced note (in localManifest) that disappeared from server
+		// must go to toDeleteLocal, not toUpload — distinguishes "never seen"
+		// from "deleted upstream".
+		const local = makeNote({ guid: 'gone', localDirty: false });
+		vi.mocked(noteStore.getAllNotesIncludingDeleted).mockResolvedValue([local]);
+		vi.mocked(dropboxClient.downloadServerManifest).mockResolvedValue(
+			makeServerManifest({ notes: [] })
+		);
+		vi.mocked(manifest.getManifest).mockResolvedValue({
+			id: 'manifest', lastSyncDate: '', lastSyncRev: 5, serverId: 'server-id-123',
+			noteRevisions: { gone: 5 }
+		});
+
+		const plan = await computePlan();
+
+		expect(plan.toUpload).toHaveLength(0);
+		expect(plan.toDeleteLocal).toHaveLength(1);
+		expect(plan.toDeleteLocal[0].guid).toBe('gone');
+	});
+
 	it('lists local tombstones under toDeleteRemote', async () => {
 		const deleted = makeNote({ guid: 'del', deleted: true });
 		vi.mocked(noteStore.getAllNotesIncludingDeleted).mockResolvedValue([deleted]);

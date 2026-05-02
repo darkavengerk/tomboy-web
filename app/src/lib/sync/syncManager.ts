@@ -269,12 +269,20 @@ export async function computePlan(): Promise<SyncPlan> {
 			}
 			continue;
 		}
-		if (!local.localDirty) continue;
 		if (conflictGuids.has(guid)) continue; // handled above
+		const onServer = serverNoteMap.has(guid);
+		// Notes arriving via Firebase realtime sync are written clean
+		// (`localDirty=false`) and never touch the Dropbox manifest, so
+		// without this branch the Dropbox channel would silently miss them.
+		// Upload any note that has never been seen by Dropbox (not on server
+		// AND not in localManifest), regardless of dirty flag — Dropbox is
+		// the backup channel and must hold every live note.
+		const everSyncedToServer = guid in localManifest.noteRevisions;
+		if (!local.localDirty && (onServer || everSyncedToServer)) continue;
 		toUpload.push({
 			guid,
 			title: local.title,
-			reason: serverNoteMap.has(guid) ? 'updated' : 'new'
+			reason: onServer ? 'updated' : 'new'
 		});
 	}
 
