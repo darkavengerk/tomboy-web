@@ -592,10 +592,8 @@
 			window.removeEventListener('wheel', wheelForwarder, { capture: true });
 			window.removeEventListener('keydown', onMovementKey);
 			canvasEl.removeEventListener('click', handleCanvasClick);
-			halo.geometry.dispose();
-			(halo.material as { dispose: () => void }).dispose();
-			hoverHalo.geometry.dispose();
-			(hoverHalo.material as { dispose: () => void }).dispose();
+			selectionHalo.dispose();
+			hoverHaloHandle.dispose();
 			fps.dispose();
 			fpsRef = null;
 			graph._destructor();
