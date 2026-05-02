@@ -13,6 +13,13 @@
 		findCenterNode,
 		findAimedNode
 	} from '$lib/desktop/graphCommon/selectionPickers.js';
+	import {
+		createSelectionHalo,
+		createHoverHalo,
+		applyPulse,
+		PULSE_DURATION_MS
+	} from '$lib/desktop/graphCommon/haloFactory.js';
+	import ReticleOverlay from '$lib/desktop/graphCommon/ReticleOverlay.svelte';
 	import NoteWindow from '$lib/desktop/NoteWindow.svelte';
 	import type { ForceGraph3DInstance } from '3d-force-graph';
 
@@ -351,33 +358,12 @@
 		// billboarded toward the camera. On click it scales up briefly as
 		// feedback. A second, dimmer "hover" halo marks whatever node is
 		// currently under the reticle — a preview of what a click would pick.
-		const PULSE_DURATION_MS = 420;
-		const halo = new THREE.Mesh(
-			new THREE.RingGeometry(1, 1.08, 64),
-			new THREE.MeshBasicMaterial({
-				color: 0x5ad6ff,
-				side: THREE.DoubleSide,
-				transparent: true,
-				opacity: 0.55,
-				depthWrite: false
-			})
-		);
-		halo.visible = false;
-		halo.renderOrder = 999;
+		const selectionHalo = createSelectionHalo();
+		const halo = selectionHalo.mesh;
 		graph.scene().add(halo);
 
-		const hoverHalo = new THREE.Mesh(
-			new THREE.RingGeometry(1, 1.08, 48),
-			new THREE.MeshBasicMaterial({
-				color: 0xffffff,
-				side: THREE.DoubleSide,
-				transparent: true,
-				opacity: 0.22,
-				depthWrite: false
-			})
-		);
-		hoverHalo.visible = false;
-		hoverHalo.renderOrder = 998;
+		const hoverHaloHandle = createHoverHalo();
+		const hoverHalo = hoverHaloHandle.mesh;
 		graph.scene().add(hoverHalo);
 
 		// `let` (not `const`) because a rebuild via the category toggle
@@ -442,12 +428,7 @@
 			halo.position.set(n.x, n.y ?? 0, n.z ?? 0);
 			halo.lookAt(camera.position);
 			const baseRadius = haloRadiusFor(n.size);
-			let pulse = 1;
-			if (t < pulseUntil) {
-				const remaining = (pulseUntil - t) / PULSE_DURATION_MS; // 1 → 0
-				pulse = 1 + remaining * 0.45;
-			}
-			halo.scale.setScalar(baseRadius * pulse);
+			applyPulse(halo, baseRadius, t, pulseUntil);
 			halo.rotateZ(0.008);
 		}
 
@@ -862,18 +843,7 @@
 		<div class="hint">크기·색상 = 링크 수 (로그 스케일)</div>
 	</div>
 
-	<!-- Reticle marks the aim point used for nearest-note / center-node
-	     calculations. `pointer-events: none` so it never eats canvas input. -->
-	<div class="hud" aria-hidden="true">
-		<svg class="reticle" viewBox="-20 -20 40 40">
-			<circle cx="0" cy="0" r="7" />
-			<circle cx="0" cy="0" r="1.2" />
-			<line x1="-16" y1="0" x2="-10" y2="0" />
-			<line x1="10" y1="0" x2="16" y2="0" />
-			<line x1="0" y1="-16" x2="0" y2="-10" />
-			<line x1="0" y1="10" x2="0" y2="16" />
-		</svg>
-	</div>
+	<ReticleOverlay />
 
 	<div class="fps-hint" class:paused={!fpsLocked && !loading}>
 		{#if fpsLocked}
@@ -1146,33 +1116,6 @@
 		height: 100%;
 		background: linear-gradient(90deg, #3a7a50, #5ab378);
 		transition: width 100ms linear;
-	}
-
-	/* Heads-up display overlay — pointer-events: none so it never eats
-	   canvas clicks. Holds the centered reticle marking the aim point. */
-	.hud {
-		position: absolute;
-		inset: 0;
-		pointer-events: none;
-		z-index: 15;
-	}
-
-	.reticle {
-		position: absolute;
-		top: 50%;
-		left: 50%;
-		width: 40px;
-		height: 40px;
-		transform: translate(-50%, -50%);
-		stroke: rgba(230, 237, 243, 0.55);
-		stroke-width: 1.2;
-		fill: none;
-		mix-blend-mode: screen;
-	}
-
-	.reticle circle:nth-child(2) {
-		fill: rgba(230, 237, 243, 0.75);
-		stroke: none;
 	}
 
 	.fps-hint {
