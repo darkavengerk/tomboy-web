@@ -9,6 +9,10 @@
 		updateLabelOpacity,
 		type LabelEntry
 	} from '$lib/desktop/graphCommon/labelLod.js';
+	import {
+		findCenterNode,
+		findAimedNode
+	} from '$lib/desktop/graphCommon/selectionPickers.js';
 	import NoteWindow from '$lib/desktop/NoteWindow.svelte';
 	import type { ForceGraph3DInstance } from '3d-force-graph';
 
@@ -16,12 +20,6 @@
 	// switch the displayed note. Short enough to feel responsive, long enough
 	// to avoid thrashing the TipTap editor while flying through a crowd.
 	const SWITCH_DEBOUNCE_MS = 350;
-
-	// "Aim point" offset: distance calculations use a point this far ahead of
-	// the camera instead of the camera itself, so notes you're *looking at*
-	// win over notes immediately beside/behind you. Gives the spacefarer
-	// feeling of approaching whatever is in your sights.
-	const AIM_OFFSET = 40;
 
 	let container: HTMLDivElement;
 	let loading = $state(true);
@@ -281,7 +279,7 @@
 			// Click = whatever's precisely at the reticle, distance-agnostic.
 			// If nothing is under the crosshair, the click is a no-op (we
 			// stay locked; auto-select still shows whatever it picked).
-			const id = findCenterNode();
+			const id = pickCenter();
 			if (id) {
 				autoSelect = true;
 				// Flip to center-follow mode so the next updateNearest tick
@@ -400,47 +398,25 @@
 			pulseUntil = performance.now() + PULSE_DURATION_MS;
 		}
 
-		// Scratch vectors reused across frames for projection math.
-		const ndcCenter = new THREE.Vector3();
-
-		/**
-		 * "What's near the reticle" lookup: any node whose projected
-		 * screen position is within CENTER_PICK_RADIUS_PX of the crosshair
-		 * counts as a candidate. Among candidates, we pick the one closest
-		 * to the center in screen-space (not depth) so small nodes in the
-		 * distance aren't lost to larger ones off to the side. A strict
-		 * "reticle-inside-sphere" test made far-away tiny nodes almost
-		 * impossible to target.
-		 */
-		const CENTER_PICK_RADIUS_PX = 50;
-		function findCenterNode(): string | null {
-			camera.updateMatrixWorld();
-			const w = graph.width();
-			const h = graph.height();
-			const halfW = w / 2;
-			const halfH = h / 2;
-			const threshSq = CENTER_PICK_RADIUS_PX * CENTER_PICK_RADIUS_PX;
-
-			let bestId: string | null = null;
-			let bestDistSq = Infinity;
-			for (const n of liveNodes) {
-				if (n.isCategory) continue; // categories aren't selectable
-				if (n.x === undefined) continue;
-				ndcCenter.set(n.x, n.y ?? 0, n.z ?? 0);
-				ndcCenter.project(camera);
-				// z outside [-1, 1] = behind camera or past far plane.
-				if (ndcCenter.z < -1 || ndcCenter.z > 1) continue;
-				// NDC → pixel distance from screen center (reticle = 0,0).
-				const px = ndcCenter.x * halfW;
-				const py = ndcCenter.y * halfH;
-				const dSq = px * px + py * py;
-				if (dSq <= threshSq && dSq < bestDistSq) {
-					bestDistSq = dSq;
-					bestId = n.id;
-				}
-			}
-			return bestId;
-		}
+		// Scratch buffers reused across frames so the per-RAF picker calls
+		// allocate nothing. A single shared `pickerOpts` object keeps the
+		// `filter` callback identity stable too.
+		const centerScratch = { ndc: new THREE.Vector3() };
+		const aimedScratch = {
+			forward: new THREE.Vector3(),
+			tmpPoint: new THREE.Vector3(),
+			frustum: new THREE.Frustum(),
+			projMatrix: new THREE.Matrix4()
+		};
+		const isSelectableNote = (n: GraphNode) => !n.isCategory;
+		const pickerOpts = { filter: isSelectableNote };
+		const rendererSize = { width: 0, height: 0 };
+		const pickCenter = () => {
+			rendererSize.width = graph.width();
+			rendererSize.height = graph.height();
+			return findCenterNode(liveNodes, camera, rendererSize, centerScratch, pickerOpts);
+		};
+		const pickAimed = () => findAimedNode(liveNodes, camera, aimedScratch, pickerOpts);
 
 		/**
 		 * Size the two halos consistently. Inner ring radius equals the
@@ -491,7 +467,7 @@
 		let currentCenterId: string | null = null;
 
 		function updateHoverHalo() {
-			const id = findCenterNode();
+			const id = pickCenter();
 			currentCenterId = id;
 			// Don't double-ring the selected node — the brighter selected
 			// halo already marks it.
@@ -573,50 +549,10 @@
 
 		let candidateGuid: string | null = null;
 		let candidateSince = 0;
-		const forwardVec = new THREE.Vector3();
-		const frustum = new THREE.Frustum();
-		const projMatrix = new THREE.Matrix4();
-		const tmpPoint = new THREE.Vector3();
-
-		/**
-		 * Find the on-screen node closest to the aim point (40 units along
-		 * the camera's forward direction). Returns null when the frustum
-		 * is empty, which is how we skip selection while the user is
-		 * staring into empty space.
-		 */
-		function findAimedNode(): string | null {
-			camera.updateMatrixWorld();
-			projMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-			frustum.setFromProjectionMatrix(projMatrix);
-
-			camera.getWorldDirection(forwardVec);
-			const ax = camera.position.x + forwardVec.x * AIM_OFFSET;
-			const ay = camera.position.y + forwardVec.y * AIM_OFFSET;
-			const az = camera.position.z + forwardVec.z * AIM_OFFSET;
-
-			let bestId: string | null = null;
-			let bestD2 = Infinity;
-			for (const n of liveNodes) {
-				if (n.isCategory) continue; // categories aren't selectable
-				if (n.x === undefined) continue;
-				tmpPoint.set(n.x, n.y ?? 0, n.z ?? 0);
-				if (!frustum.containsPoint(tmpPoint)) continue;
-				const dx = ax - tmpPoint.x;
-				const dy = ay - tmpPoint.y;
-				const dz = az - tmpPoint.z;
-				const d2 = dx * dx + dy * dy + dz * dz;
-				if (d2 < bestD2) {
-					bestD2 = d2;
-					bestId = n.id;
-				}
-			}
-			return bestId;
-		}
 
 		function updateNearest(now: number) {
 			if (!autoSelect) return;
-			const bestId =
-				selectionMode === 'center' ? findCenterNode() : findAimedNode();
+			const bestId = selectionMode === 'center' ? pickCenter() : pickAimed();
 			// In center mode a reticle over empty space returns null — keep
 			// the current selection so the last-clicked note stays on screen
 			// instead of blanking out as you sweep past gaps.
