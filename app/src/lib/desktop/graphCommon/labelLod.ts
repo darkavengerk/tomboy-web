@@ -1,6 +1,6 @@
 export interface LabelEntry {
 	node: { x?: number; y?: number; z?: number };
-	label: { visible: boolean; material: { opacity: number } };
+	label: { visible: boolean; material: { opacity: number; transparent: boolean } };
 	isHub: boolean;
 }
 

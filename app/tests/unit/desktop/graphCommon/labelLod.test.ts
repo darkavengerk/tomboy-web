@@ -14,7 +14,7 @@ function makeEntry(
 ): LabelEntry {
 	return {
 		node: { x, y, z },
-		label: { visible, material: { opacity } },
+		label: { visible, material: { opacity, transparent: !isHub } },
 		isHub
 	};
 }
@@ -60,7 +60,7 @@ describe('updateLabelOpacity', () => {
 	it('node without x is skipped', () => {
 		const entry: LabelEntry = {
 			node: { y: 0, z: 0 },
-			label: { visible: false, material: { opacity: 0 } },
+			label: { visible: false, material: { opacity: 0, transparent: true } },
 			isHub: false
 		};
 		updateLabelOpacity([entry], 0, 0, 0, 100);
@@ -79,7 +79,7 @@ describe('updateLabelOpacity', () => {
 	it('y and z default to 0 when omitted on the node', () => {
 		const entry: LabelEntry = {
 			node: { x: 0 },
-			label: { visible: false, material: { opacity: 0 } },
+			label: { visible: false, material: { opacity: 0, transparent: true } },
 			isHub: false
 		};
 		// Camera at (0, 0, 0), node at (0, undefined→0, undefined→0) → d=0.
