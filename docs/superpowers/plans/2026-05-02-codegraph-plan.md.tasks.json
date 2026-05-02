@@ -1,0 +1,83 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-02-codegraph-plan.md",
+  "tasks": [
+    {
+      "id": 12,
+      "subject": "Task 1: Move FpsControls.ts into graphCommon/",
+      "status": "pending",
+      "description": "**Goal:** Identity move of FpsControls.ts from lib/graph/ to lib/desktop/graphCommon/, fix the one import in /desktop/graph route, manually verify pointer-lock + WASD + Shift sprint behavior unchanged.\n\n**Files:**\n- Create: app/src/lib/desktop/graphCommon/FpsControls.ts\n- Delete: app/src/lib/graph/FpsControls.ts\n- Modify: app/src/routes/desktop/graph/+page.svelte:7\n\n```json:metadata\n{\"files\":[\"app/src/lib/desktop/graphCommon/FpsControls.ts\",\"app/src/lib/graph/FpsControls.ts\",\"app/src/routes/desktop/graph/+page.svelte\"],\"verifyCommand\":\"cd app && npm run check\",\"acceptanceCriteria\":[\"FpsControls.ts no longer in lib/graph/\",\"Identical content in lib/desktop/graphCommon/\",\"npm run check passes\",\"Manual: pointer lock + WASD + Shift unchanged on /desktop/graph\"]}\n```"
+    },
+    {
+      "id": 13,
+      "subject": "Task 2: Extract label LOD into graphCommon/labelLod.ts",
+      "status": "pending",
+      "blockedBy": [12],
+      "description": "**Goal:** Pull inline updateLabelVisibility from /desktop/graph into a pure helper updateLabelOpacity(entries, camX, camY, camZ, baseDistance), with full unit tests.\n\n```json:metadata\n{\"files\":[\"app/src/lib/desktop/graphCommon/labelLod.ts\",\"app/tests/unit/desktop/graphCommon/labelLod.test.ts\",\"app/src/routes/desktop/graph/+page.svelte\"],\"verifyCommand\":\"cd app && npm run check && npm run test -- labelLod\",\"acceptanceCriteria\":[\"updateLabelOpacity exported and pure\",\"4 tests pass\",\"Hubs untouched\",\"Manual: label fade unchanged\"]}\n```"
+    },
+    {
+      "id": 14,
+      "subject": "Task 3: Extract selection pickers into graphCommon/selectionPickers.ts",
+      "status": "pending",
+      "blockedBy": [13],
+      "description": "**Goal:** Move findCenterNode and findAimedNode into shared module accepting optional filter callback.\n\n```json:metadata\n{\"files\":[\"app/src/lib/desktop/graphCommon/selectionPickers.ts\",\"app/tests/unit/desktop/graphCommon/selectionPickers.test.ts\",\"app/src/routes/desktop/graph/+page.svelte\"],\"verifyCommand\":\"cd app && npm run check && npm run test -- selectionPickers\",\"acceptanceCriteria\":[\"findCenterNode/findAimedNode exported with optional filter\",\"7 tests pass\",\"Note graph passes filter: n => !n.isCategory\"]}\n```"
+    },
+    {
+      "id": 15,
+      "subject": "Task 4: Extract halos and reticle into graphCommon/",
+      "status": "pending",
+      "blockedBy": [14],
+      "description": "**Goal:** Move halo Mesh builders into haloFactory.ts and reticle SVG into ReticleOverlay.svelte.\n\n```json:metadata\n{\"files\":[\"app/src/lib/desktop/graphCommon/haloFactory.ts\",\"app/src/lib/desktop/graphCommon/ReticleOverlay.svelte\",\"app/src/routes/desktop/graph/+page.svelte\"],\"verifyCommand\":\"cd app && npm run check\",\"acceptanceCriteria\":[\"createSelectionHalo: cyan 0.55 renderOrder 999\",\"createHoverHalo: white 0.22 renderOrder 998\",\"ReticleOverlay: pointer-events:none\"]}\n```"
+    },
+    {
+      "id": 16,
+      "subject": "Task 5: Codegraph types + loadCodegraphData loader",
+      "status": "pending",
+      "description": "**Goal:** Define types + LoadResult discriminated union and implement loadCodegraphData() with parallel fetch and degree/size computation.\n\n```json:metadata\n{\"files\":[\"app/src/lib/codegraph/codegraphTypes.ts\",\"app/src/lib/codegraph/loadCodegraphData.ts\",\"app/tests/unit/codegraph/loadCodegraphData.test.ts\"],\"verifyCommand\":\"cd app && npm run check && npm run test -- loadCodegraphData\",\"acceptanceCriteria\":[\"Types match spec lines 153-191\",\"8 tests pass\",\"Hyperedges dropped\"]}\n```"
+    },
+    {
+      "id": 17,
+      "subject": "Task 6: nodeColor.ts (golden-angle hue per community)",
+      "status": "pending",
+      "description": "**Goal:** nodeColor(community) returns hsl((community * 137.5) % 360, 60%, 55%).\n\n```json:metadata\n{\"files\":[\"app/src/lib/codegraph/nodeColor.ts\",\"app/tests/unit/codegraph/nodeColor.test.ts\"],\"verifyCommand\":\"cd app && npm run test -- nodeColor\",\"acceptanceCriteria\":[\"Deterministic\",\"60% sat, 55% lightness\",\"Hue diff between 0 and 1 >= 30 deg\"]}\n```"
+    },
+    {
+      "id": 18,
+      "subject": "Task 7: edgeStyle.ts (relation-keyed RGBA + confidence alpha)",
+      "status": "pending",
+      "description": "**Goal:** Pure helper edgeStyle(relation, confidence) -> {r,g,b,a}.\n\n```json:metadata\n{\"files\":[\"app/src/lib/codegraph/edgeStyle.ts\",\"app/tests/unit/codegraph/edgeStyle.test.ts\"],\"verifyCommand\":\"cd app && npm run test -- edgeStyle\",\"acceptanceCriteria\":[\"Spec table values exact\",\"Alpha multipliers correct\",\"AMBIGUOUS warm shift\",\"Channel clamp\"]}\n```"
+    },
+    {
+      "id": 19,
+      "subject": "Task 8: githubLink.ts (build blob URL with line hash)",
+      "status": "pending",
+      "description": "**Goal:** githubLink(meta, sourceFile, sourceLocation) builds <repoUrl>/blob/<branch>/<path>#L<line>.\n\n```json:metadata\n{\"files\":[\"app/src/lib/codegraph/githubLink.ts\",\"app/tests/unit/codegraph/githubLink.test.ts\"],\"verifyCommand\":\"cd app && npm run test -- githubLink\",\"acceptanceCriteria\":[\"normalizeRepoUrl handles SSH and HTTPS\",\"null sourceFile -> null\",\"null sourceLocation -> no #L\"]}\n```"
+    },
+    {
+      "id": 20,
+      "subject": "Task 9: sync-codegraph.mjs script + npm entry + .gitignore",
+      "status": "pending",
+      "description": "**Goal:** Dev-only Node script. NOTE: spec says regex ^### Community (\\d+): (.+)$ but actual GRAPH_REPORT.md uses dash + quoted form. Implements both.\n\n```json:metadata\n{\"files\":[\"app/scripts/sync-codegraph.mjs\",\"app/tests/unit/scripts/sync-codegraph.test.ts\",\"app/package.json\",\".gitignore\"],\"verifyCommand\":\"cd app && npm run test -- sync-codegraph\",\"acceptanceCriteria\":[\"Friendly error + exit 1 when missing\",\"Korean error string matches spec\",\"3 JSON files emitted\",\"Both header forms parsed\"]}\n```"
+    },
+    {
+      "id": 21,
+      "subject": "Task 10: CodeNodePanel.svelte (right-side detail panel)",
+      "status": "pending",
+      "description": "**Goal:** 420x60vh fixed-position panel with header + grouped neighbor list.\n\n```json:metadata\n{\"files\":[\"app/src/lib/desktop/components/CodeNodePanel.svelte\"],\"verifyCommand\":\"cd app && npm run check\",\"acceptanceCriteria\":[\"Position fixed 420x60vh bottom-right\",\"Community chip uses nodeColor background\",\"GitHub button disabled when sourceFile empty\",\"Items sorted EXTRACTED -> INFERRED -> AMBIGUOUS -> A->Z\"]}\n```"
+    },
+    {
+      "id": 22,
+      "subject": "Task 11: /desktop/codegraph/+page.svelte (the route)",
+      "status": "pending",
+      "blockedBy": [12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
+      "description": "**Goal:** Wire data loader, graphCommon modules, and CodeNodePanel into the desktop-only 3D viewer.\n\n```json:metadata\n{\"files\":[\"app/src/routes/desktop/codegraph/+page.svelte\"],\"verifyCommand\":\"cd app && npm run check\",\"acceptanceCriteria\":[\"Loader runs first, errors render without ForceGraph3D init\",\"Selection state machine matches spec\",\"Click flips center mode + pulse, movement key flips back to aim\",\"Panel x halts auto-select, chip restores\"]}\n```"
+    },
+    {
+      "id": 23,
+      "subject": "Task 12: Add codegraph launcher button to SidePanel.svelte",
+      "status": "pending",
+      "blockedBy": [22],
+      "description": "**Goal:** Add 코드 그래프 anchor in the rail between 그래프 and 설정.\n\n```json:metadata\n{\"files\":[\"app/src/lib/desktop/SidePanel.svelte\"],\"verifyCommand\":\"cd app && npm run check\",\"acceptanceCriteria\":[\"Anchor with target=_blank rel=noopener\",\"Sits between 그래프 and 설정\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-02T00:00:00Z"
+}
