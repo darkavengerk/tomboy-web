@@ -5,6 +5,10 @@
 	import { buildGraph, type GraphData, type GraphNode } from '$lib/graph/buildGraph.js';
 	import { SLEEP_NOTE_GUID } from '$lib/graph/constants.js';
 	import { FpsControls } from '$lib/desktop/graphCommon/FpsControls.js';
+	import {
+		updateLabelOpacity,
+		type LabelEntry
+	} from '$lib/desktop/graphCommon/labelLod.js';
 	import NoteWindow from '$lib/desktop/NoteWindow.svelte';
 	import type { ForceGraph3DInstance } from '3d-force-graph';
 
@@ -153,16 +157,9 @@
 
 		// Distance-LOD for node titles. Four buckets by node size:
 		//   tier 4 (size ≥ 1.8, hubs): always on, full opacity
-		//   tiers 1-3                : distance-only fade (see updateLabelVisibility)
-		// Tier 4 labels skip the `labelEntries` array entirely — they're set
-		// visible once and never touched.
-		type LabelEntry = {
-			node: GraphNode & { x?: number; y?: number; z?: number };
-			label: {
-				visible: boolean;
-				material: { opacity: number; transparent: boolean };
-			};
-		};
+		//   tiers 1-3                : distance-only fade (see updateLabelOpacity)
+		// All labels are pushed into `labelEntries`; hub/category entries
+		// carry `isHub: true` so the LOD helper skips them every frame.
 		const labelEntries: LabelEntry[] = [];
 		function isHubLabel(size: number): boolean {
 			return size >= 1.6;
@@ -229,20 +226,23 @@
 				group.add(label);
 
 				// Register for distance-based LOD. Hubs (tier 4) and
-				// category nodes stay on permanently; others need
+				// category nodes stay on permanently — they're pushed with
+				// `isHub: true` so the helper skips them. Others need
 				// `transparent: true` so we can fade them, and start hidden —
 				// the first RAF tick toggles them based on camera distance.
-				if (node.isCategory || isHubLabel(node.size)) {
+				const hub = node.isCategory || isHubLabel(node.size);
+				if (hub) {
 					label.visible = true;
 				} else {
 					label.material.transparent = true;
 					label.material.opacity = 0;
 					label.visible = false;
-					labelEntries.push({
-						node: node as GraphNode & { x?: number; y?: number; z?: number },
-						label: label as LabelEntry['label']
-					});
 				}
+				labelEntries.push({
+					node: node as GraphNode & { x?: number; y?: number; z?: number },
+					label: label as LabelEntry['label'],
+					isHub: hub
+				});
 				return group;
 			})
 			.nodeThreeObjectExtend(false)
@@ -476,37 +476,13 @@
 		}
 
 		function updateLabelVisibility() {
-			const cx = camera.position.x;
-			const cy = camera.position.y;
-			const cz = camera.position.z;
-			const base = labelBaseDistance;
-			// Hot-path comparisons use squared distance to avoid sqrt; we
-			// only call sqrt inside the fade band for the actual opacity.
-			const baseSq = base * base;
-			const fadeEndSq = 4 * baseSq; // (2 × base)²
-			for (let i = 0; i < labelEntries.length; i++) {
-				const entry = labelEntries[i];
-				const n = entry.node;
-				if (n.x === undefined) continue;
-				const dx = cx - n.x;
-				const dy = cy - (n.y ?? 0);
-				const dz = cz - (n.z ?? 0);
-				const d2 = dx * dx + dy * dy + dz * dz;
-				const mat = entry.label.material;
-				if (d2 >= fadeEndSq) {
-					if (entry.label.visible) entry.label.visible = false;
-					continue;
-				}
-				if (!entry.label.visible) entry.label.visible = true;
-				if (d2 <= baseSq) {
-					if (mat.opacity !== 1) mat.opacity = 1;
-				} else {
-					// Linear fade from 1 (at base) to 0 (at 2×base), keyed
-					// on raw distance so the gradient feels even.
-					const d = Math.sqrt(d2);
-					mat.opacity = (2 * base - d) / base;
-				}
-			}
+			updateLabelOpacity(
+				labelEntries,
+				camera.position.x,
+				camera.position.y,
+				camera.position.z,
+				labelBaseDistance
+			);
 		}
 
 		// Shared per-frame "what's under the reticle" cache. Written by
