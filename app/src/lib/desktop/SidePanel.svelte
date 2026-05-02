@@ -231,6 +231,15 @@
 			aria-label="노트 그래프"
 		>그래프</a>
 
+		<a
+			class="rail-settings rail-codegraph"
+			href="/desktop/codegraph"
+			target="_blank"
+			rel="noopener"
+			title="코드 그래프 (새 탭)"
+			aria-label="코드 그래프"
+		>코드 그래프</a>
+
 		<button
 			type="button"
 			class="rail-settings"
@@ -627,7 +636,13 @@
 		margin-top: auto;
 	}
 
-	.rail-graph + .rail-settings {
+	.rail-codegraph {
+		display: block;
+		text-decoration: none;
+		margin-top: 0;
+	}
+
+	.rail-graph ~ .rail-settings {
 		margin-top: 0;
 	}
 </style>
