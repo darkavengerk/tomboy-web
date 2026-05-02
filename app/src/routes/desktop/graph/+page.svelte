@@ -4,7 +4,7 @@
 	import { getHomeNoteGuid } from '$lib/core/home.js';
 	import { buildGraph, type GraphData, type GraphNode } from '$lib/graph/buildGraph.js';
 	import { SLEEP_NOTE_GUID } from '$lib/graph/constants.js';
-	import { FpsControls } from '$lib/graph/FpsControls.js';
+	import { FpsControls } from '$lib/desktop/graphCommon/FpsControls.js';
 	import NoteWindow from '$lib/desktop/NoteWindow.svelte';
 	import type { ForceGraph3DInstance } from '3d-force-graph';
 
