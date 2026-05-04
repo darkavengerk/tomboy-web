@@ -1,0 +1,690 @@
+{
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/app.d.ts": {
+    "mtime": 1775979894.4437196,
+    "hash": "78b56494b3f78d7f9bacda13678f159e"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/service-worker.ts": {
+    "mtime": 1777105152.5312042,
+    "hash": "8b6a861049f0329fefe33f6842dc27b8"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/index.ts": {
+    "mtime": 1775979894.4442964,
+    "hash": "ffcb0e97b69eb555d5739e9efe961ca0"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/components/NotebookChips.svelte": {
+    "mtime": 1775979894.4438336,
+    "hash": "d5cd0131ae711c441019bd27d01c91f9"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/components/TabBar.svelte": {
+    "mtime": 1775979894.4438336,
+    "hash": "9d52e9db7d789429cf8bc3974b0262b8"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/components/Toast.svelte": {
+    "mtime": 1775979894.4438336,
+    "hash": "0dd81a4da64e713e256dca72ff99dfce"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/components/NoteList.svelte": {
+    "mtime": 1776493723.9380424,
+    "hash": "d61cf4e0dc370dec9e9d4062571816d6"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/components/NotebookPicker.svelte": {
+    "mtime": 1776493723.9381661,
+    "hash": "19a5cff3e02a0ecc78027e536240406f"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/components/SyncProgressView.svelte": {
+    "mtime": 1776493723.9428618,
+    "hash": "8138b8805d275044f54fb9b065e19193"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/components/TopNav.svelte": {
+    "mtime": 1776493723.9429107,
+    "hash": "a79728507b41219716e1258b834786d2"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/components/SyncPlanView.svelte": {
+    "mtime": 1776670816.5000777,
+    "hash": "9194265e960c33eedb25258e5eb6e8da"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/components/ImageViewerModal.svelte": {
+    "mtime": 1777092651.693201,
+    "hash": "c4c76a063296dd05b83c65345dc07626"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/core/noteContentArchiver.ts": {
+    "mtime": 1776075716.4432979,
+    "hash": "ddb716433b317ff1f1e507ac91d0e3bd"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/core/scrollBottom.ts": {
+    "mtime": 1776229771.6804178,
+    "hash": "7a6c253cc4595a63e726ecdb35e4bb06"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/core/home.ts": {
+    "mtime": 1776493723.9429812,
+    "hash": "6ca6a7885d0fe04bab09ba2eca1b2c8e"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/core/noteArchiver.ts": {
+    "mtime": 1776493723.9430811,
+    "hash": "0b3b3903c61af18e16067daff4f4a374"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/core/noteReloadBus.ts": {
+    "mtime": 1776602367.8740182,
+    "hash": "ccb0ba765171cc3bf0cd902da9a6e81a"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/core/titleInvariantCheck.ts": {
+    "mtime": 1776602367.8740704,
+    "hash": "2b7bdcabc794cb189cc8a84040a0fdaf"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/core/titleRewrite.ts": {
+    "mtime": 1776602367.8740993,
+    "hash": "39bcca0e100b8654a014c14a553abb99"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/core/note.ts": {
+    "mtime": 1776670816.5000777,
+    "hash": "003ef38f1e1bba81e8da9ac869c61b40"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/core/schedule.ts": {
+    "mtime": 1777092651.693828,
+    "hash": "aac22e9fd0ecccdaa3e559bd2cb9d800"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/core/noteManager.ts": {
+    "mtime": 1777351173.6567888,
+    "hash": "1261ef2bd2d2a7e756457d0413913d64"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/core/notebooks.ts": {
+    "mtime": 1777431957.9627428,
+    "hash": "3da4482da89622338ce59b00f1984987"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/insertDate.ts": {
+    "mtime": 1776244585.0468705,
+    "hash": "e6af6991965aaad7fb231b9d1b55ac7c"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/NoteActionSheet.svelte": {
+    "mtime": 1776602367.8744106,
+    "hash": "d287b0009dedba600108455a750de510"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/ctrlEnterSplit.ts": {
+    "mtime": 1776602367.8749104,
+    "hash": "20312ea77a2f666161bec5e413734657"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/titleUniqueGuard.ts": {
+    "mtime": 1776602367.8749893,
+    "hash": "9cc4157f45207d3f89cfe4b0c8b26945"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/NoteContextMenu.svelte": {
+    "mtime": 1776662366.9669144,
+    "hash": "82bb643068fcbc7a571c302f23b5c1eb"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/clipboardPlainText.ts": {
+    "mtime": 1776671950.9920554,
+    "hash": "5d13703753bf3c6de423f58572e93f3c"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/EditorContextMenu.svelte": {
+    "mtime": 1776672435.7065063,
+    "hash": "6a746d0a55b6c51901cb412ee089256a"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/copyFormatted.ts": {
+    "mtime": 1776672652.227941,
+    "hash": "93c83b841fe4ce1c059f8b18869698b9"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/listItemReorder.ts": {
+    "mtime": 1776912815.7451289,
+    "hash": "c9b5939ba3d965c95625733b775b85b7"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/listItemDepth.ts": {
+    "mtime": 1776912828.021269,
+    "hash": "bc031b3eee24369f61404b069715c8e2"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/Toolbar.svelte": {
+    "mtime": 1777092651.693828,
+    "hash": "1d484fe323d8b3d263a8578c6cee4d6d"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/deleteLine.ts": {
+    "mtime": 1777272357.629838,
+    "hash": "7d07327f09e6bf5907a10203d0af0666"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/insertTab.ts": {
+    "mtime": 1777272377.0678465,
+    "hash": "a14fbf603c077a205309736a8d16d940"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/TomboyEditor.svelte": {
+    "mtime": 1777347561.0874257,
+    "hash": "e6522566f4d9b20b1a8e8ac457c31ff2"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/extensions/TomboySize.ts": {
+    "mtime": 1775979894.4442964,
+    "hash": "3ee471fed653e961587bd3189d4c5a0c"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/extensions/TomboyListItem.ts": {
+    "mtime": 1776071148.487076,
+    "hash": "871f66ae82369b362575573f0854e22a"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/extensions/TomboyParagraph.ts": {
+    "mtime": 1776071155.822161,
+    "hash": "b5d1d03fdb8beb601e1a7ee8870c0614"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/extensions/TomboyDatetime.ts": {
+    "mtime": 1776073964.0801284,
+    "hash": "875bf0908dbe0a9b3ae57c1f2794696b"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/extensions/TomboyUrlLink.ts": {
+    "mtime": 1776073981.0003238,
+    "hash": "81f91abd15de6c20ab53874930b0a1db"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/extensions/TomboyInternalLink.ts": {
+    "mtime": 1776229771.680816,
+    "hash": "0df6341115333b25b72f196d5506aaf5"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/extensions/TomboyMonospace.ts": {
+    "mtime": 1776390192.5386586,
+    "hash": "c4bbd1bfbc7cb242d1fc8473dbf9ace9"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/extensions/TomboySubtitlePlaceholder.ts": {
+    "mtime": 1776393647.0756643,
+    "hash": "ef026beadd5edc09f32acee993787449"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/extensions/TomboyPunctuationReplace.ts": {
+    "mtime": 1777092651.693828,
+    "hash": "e9f28d966e79861d53f172b4493c6efc"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/extensions/DateArrows.ts": {
+    "mtime": 1777191299.1176038,
+    "hash": "fb5e4df80606fc5138a258523207c996"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/extensions/SlipNoteArrows.ts": {
+    "mtime": 1777347561.0875182,
+    "hash": "e66c9792e6d1eaf555e62e04d3923609"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/autoLink/titleProvider.ts": {
+    "mtime": 1776930087.130734,
+    "hash": "f861512f10632b8535c99af8078db787"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/autoLink/findTitleMatches.ts": {
+    "mtime": 1776930175.1047547,
+    "hash": "583d9d60a9fc562644d1b6730ddc237e"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/autoLink/autoLinkPlugin.ts": {
+    "mtime": 1776931473.6698015,
+    "hash": "c824d2af33dce568b336da16b643647a"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/imagePreview/extractImageFile.ts": {
+    "mtime": 1776390192.5386586,
+    "hash": "9a4d56eb3ffcdd55bd3d532d6444bce7"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/imagePreview/isImageUrl.ts": {
+    "mtime": 1776493723.9439285,
+    "hash": "b90b548292bd223068bab85eb891677e"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/imagePreview/imagePreviewPlugin.ts": {
+    "mtime": 1777092651.694491,
+    "hash": "ca9cce554e89c0b02309f68ffb071083"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/sendListItem/transferListItem.ts": {
+    "mtime": 1776495762.8432384,
+    "hash": "471a1afafc0038d9148b8131e66cf378"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/sendListItem/sendListItemPlugin.ts": {
+    "mtime": 1776495437.5654042,
+    "hash": "63263b480eac85a8cd6e426459874921"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/sendListItem/sendActiveGate.ts": {
+    "mtime": 1777269334.2285678,
+    "hash": "06828c8db8c01e6d18baa2b8b6ef2536"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/dateLink/findAdjacentDateNotes.ts": {
+    "mtime": 1777172928.5254838,
+    "hash": "ee7dd9aa0b84fff70d0caba6fe2e5949"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/todoRegion/index.ts": {
+    "mtime": 1776906326.2454247,
+    "hash": "a7e4ff2f91b306dafc1b989dfa743c3d"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/todoRegion/commands.ts": {
+    "mtime": 1777170916.367076,
+    "hash": "8d72fa265af5a22dccc90b6c3c5e9d3e"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/todoRegion/plugin.ts": {
+    "mtime": 1777170916.367169,
+    "hash": "34044b4f03e4275e5bdfe4a0e963f26f"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/todoRegion/regions.ts": {
+    "mtime": 1777170916.36721,
+    "hash": "4814250ae1002f62da56d4ee4c9e0c76"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/autoWeekday/autoWeekdayPlugin.ts": {
+    "mtime": 1777269334.2285678,
+    "hash": "c40f1e431ff812e0b34e04c517f3353e"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/tableBlock/cellEdit.ts": {
+    "mtime": 1777272369.1046417,
+    "hash": "8da296c2e2d6df098bb05b62745d4ad6"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/tableBlock/renderInlines.ts": {
+    "mtime": 1777272369.1049807,
+    "hash": "056f0a018e122b44f121693da51e4b32"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/tableBlock/findTableRegions.ts": {
+    "mtime": 1777281331.6356516,
+    "hash": "ccd186b5806306a5980f037f5a8bb185"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/tableBlock/parseTable.ts": {
+    "mtime": 1777281331.635781,
+    "hash": "2da7b51ce436c14909615ee5981f27d6"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/tableBlock/tableBlockPlugin.ts": {
+    "mtime": 1777281331.6358292,
+    "hash": "39ded0da0cb5b5fed543e4cbc8893a48"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/tableBlock/tableOps.ts": {
+    "mtime": 1777281331.6359127,
+    "hash": "eee33cf4a11abd3a499e11ac944c8cb4"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/nav/history.ts": {
+    "mtime": 1775979894.4442964,
+    "hash": "21094cd85379ef05f8013f9daaf58d30"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/search/noteSearch.ts": {
+    "mtime": 1776493723.9439676,
+    "hash": "a108a1b54386fd048ed355e001d7e280"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/storage/appSettings.ts": {
+    "mtime": 1776064614.176856,
+    "hash": "6eaef68fed0b7e1b3650e652cfc5f69c"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/storage/db.ts": {
+    "mtime": 1776670816.5014603,
+    "hash": "125235498b3932255d15bebf633c250c"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/storage/noteStore.ts": {
+    "mtime": 1777281341.2135487,
+    "hash": "cc5eb7147718419c386749797f96ca81"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/stores/noteListCache.ts": {
+    "mtime": 1775979894.4445493,
+    "hash": "0d8645ac6a31c9b0db030e3035d20c6b"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/stores/toast.ts": {
+    "mtime": 1775979894.4445493,
+    "hash": "0bf6ddf2787b7324a61683e6e2e259cf"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/stores/appMode.svelte.ts": {
+    "mtime": 1776493723.9441085,
+    "hash": "d9c140cd73ddd8653587fe3467400bb5"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/stores/adminCache.svelte.ts": {
+    "mtime": 1776602367.8753166,
+    "hash": "fd171c3f9d5560baf076f26a6888269b"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/stores/imageViewer.svelte.ts": {
+    "mtime": 1777092651.6948884,
+    "hash": "b80708d7cdec22ef0cc29e7d67de204b"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/utils/guid.ts": {
+    "mtime": 1775979894.4446313,
+    "hash": "c8206f66bc168116f162e301a6244678"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/utils/portal.ts": {
+    "mtime": 1776662359.042823,
+    "hash": "81e16c0dd06de45a64d436a075edf0e5"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/ResizeHandles.svelte": {
+    "mtime": 1776244585.0463836,
+    "hash": "bcc1518b42800cdb7cd11c0c436dd6dd"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/SettingsWindow.svelte": {
+    "mtime": 1776244585.0463836,
+    "hash": "f843d837bbd1f10f8edd8119b008894c"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/dragResize.ts": {
+    "mtime": 1776244585.0463836,
+    "hash": "6ac650ae450a732dfad56d333b9e378c"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/openByClipboard.ts": {
+    "mtime": 1776603356.4092815,
+    "hash": "620e83ecea28bd84cc5ca570b64188d4"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/recentOpens.svelte.ts": {
+    "mtime": 1776908083.7108476,
+    "hash": "47b79afdbebc3c21acfce1101254a124"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/sidePanelLayout.svelte.ts": {
+    "mtime": 1776909067.177235,
+    "hash": "25cdbb8904fc71ac9b148bf570787ef3"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/modKeys.svelte.ts": {
+    "mtime": 1777092651.693828,
+    "hash": "5eee46890f49f8a6f902499521e6b429"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/DesktopWorkspace.svelte": {
+    "mtime": 1777265223.9969618,
+    "hash": "2257dbc9f6eea94bf39442c3f2c4dc2d"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/NoteWindow.svelte": {
+    "mtime": 1777347561.0868983,
+    "hash": "bb5ab6f7421ad5487869b2a1bf40f5cd"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/session.svelte.ts": {
+    "mtime": 1777347561.0870075,
+    "hash": "61adfa7a8d19d208908cd59ec58d23c7"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/SidePanel.svelte": {
+    "mtime": 1777720083.290735,
+    "hash": "e6507ca39439f2bc7c18440c6cd779ac"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/graphCommon/FpsControls.ts": {
+    "mtime": 1776229771.680816,
+    "hash": "aa45c5c812807dbe54d14b09a8b83c1b"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/graphCommon/labelLod.ts": {
+    "mtime": 1777717604.819874,
+    "hash": "bbfaac045a1a6dab1ac474faa2899052"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/graphCommon/selectionPickers.ts": {
+    "mtime": 1777717824.4060836,
+    "hash": "930ece9361e67e6a925488357091cad0"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/graphCommon/haloFactory.ts": {
+    "mtime": 1777718347.7828956,
+    "hash": "cc1f43d2d4fe06bf44540e0702cc072a"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/graphCommon/ReticleOverlay.svelte": {
+    "mtime": 1777718353.268969,
+    "hash": "4361f00c9ac3f1c95d616609fba71944"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/components/CodeNodePanel.svelte": {
+    "mtime": 1777719615.1641896,
+    "hash": "2a8278c40669a570ef76c73ab9e58a34"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/graph/constants.ts": {
+    "mtime": 1776229771.6810179,
+    "hash": "a09284a247b9003c407b16143d8069be"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/graph/extractInternalLinks.ts": {
+    "mtime": 1776229771.6810179,
+    "hash": "ef402f18cf7d45d2c04e2def1876b32c"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/graph/plainText.ts": {
+    "mtime": 1776229771.6810179,
+    "hash": "0708d5afa679a0d8f7aa1030482bf717"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/graph/buildGraph.ts": {
+    "mtime": 1776602367.8750997,
+    "hash": "197643140496e15ed23301a9a86073cc"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/viewport/viewportHeight.ts": {
+    "mtime": 1776473107.2971911,
+    "hash": "77d3fa07e98bcb967e278517cf7bcd09"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/adminClient.ts": {
+    "mtime": 1776493723.9441085,
+    "hash": "7c6c3b5868acdf3feddcd23fc9542869"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/concurrency.ts": {
+    "mtime": 1776493723.944167,
+    "hash": "a5dae72bb1c3786f41f23f884c361290"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/diffNote.ts": {
+    "mtime": 1776493723.944167,
+    "hash": "f2a1bfcff2aff82dcc60e9b04b6dff4f"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/imageUpload.ts": {
+    "mtime": 1776493723.9442132,
+    "hash": "0a53343888520a43fabd4e8f73553ea3"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/manifest.ts": {
+    "mtime": 1776493723.9442132,
+    "hash": "976ea888d9939071e5eb3424ab5ab5c9"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/settingsSync.ts": {
+    "mtime": 1776493723.9442132,
+    "hash": "dd3ba35425207b01a07e044af73298d3"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/contentMerge.ts": {
+    "mtime": 1776670816.5015767,
+    "hash": "854fd1e6b709062ca2e046c67f9b1e14"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/syncManager.ts": {
+    "mtime": 1776670816.501743,
+    "hash": "4a8189f556730943e5c9d15dbe788c7a"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/dropboxClient.ts": {
+    "mtime": 1777432164.6800866,
+    "hash": "4a5b36294aace551a486f2c4bb538983"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/firebase/conflictResolver.ts": {
+    "mtime": 1777265962.7683597,
+    "hash": "df9399fa083b7ac6ef1d45b9cc9b09d9"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/firebase/notePayload.ts": {
+    "mtime": 1777265962.768489,
+    "hash": "010f95d9db14e1c04360a84e233ab78b"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/firebase/openNoteRegistry.ts": {
+    "mtime": 1777265962.768489,
+    "hash": "28d0553d2c80146166e1875ca6d2db53"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/firebase/pushQueue.ts": {
+    "mtime": 1777265962.768489,
+    "hash": "14bdf239f53c0ba24c9bb1a7613ac300"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/firebase/incrementalSync.ts": {
+    "mtime": 1777278189.144123,
+    "hash": "017c8fd5c8e3a30b617d2c2fd75e6175"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/firebase/install.ts": {
+    "mtime": 1777278189.1442597,
+    "hash": "27a8f65ce254645746c6b6a5398277b1"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/firebase/noteSyncClient.firestore.ts": {
+    "mtime": 1777278189.1444452,
+    "hash": "ee73afdb5b6d8b91b5ef6792a817b59b"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/firebase/noteSyncClient.ts": {
+    "mtime": 1777278189.144571,
+    "hash": "c32c4ce3c23dcc5cab8bd448d0b88c82"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/firebase/orchestrator.ts": {
+    "mtime": 1777281341.2137034,
+    "hash": "a23aae1255ac27f33ef22b4c1b57752b"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sleepnote/validator.ts": {
+    "mtime": 1776561223.9414232,
+    "hash": "fb355a3e62492c018a837fe51e3570be"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sleepnote/create.ts": {
+    "mtime": 1776602367.8751824,
+    "hash": "133b1ee2d6dc800b07605c0587d73ac8"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sleepnote/ops.ts": {
+    "mtime": 1776605358.2314744,
+    "hash": "448b6c3433a0d6f3af7d05340e093d1c"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sleepnote/clipboard.svelte.ts": {
+    "mtime": 1776605378.9637244,
+    "hash": "bd5fd78e223a0fee7f109864be3f45c4"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sleepnote/slipNoteGuids.ts": {
+    "mtime": 1777265223.9969618,
+    "hash": "7e3839e00bbf816537fb854e478ac1d8"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sleepnote/indexLabel.ts": {
+    "mtime": 1777347561.0876944,
+    "hash": "f930ded04551f0b28edfc141e4fc04e1"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/schedule/diff.ts": {
+    "mtime": 1777092651.6946325,
+    "hash": "9c7078bfb693fc0f5f588a418ae58b21"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/schedule/flushPendingSchedule.ts": {
+    "mtime": 1777092651.6946325,
+    "hash": "ff8e03fc19c193fa7cf0c78b9d229d90"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/schedule/flushScheduler.ts": {
+    "mtime": 1777092651.6946325,
+    "hash": "7de01d23015a98389cf7fb6e9bae45ae"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/schedule/installId.ts": {
+    "mtime": 1777092651.6946325,
+    "hash": "8cdb64a6efad3fd331ecb69c3e62d3d5"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/schedule/scheduleClient.ts": {
+    "mtime": 1777092651.6948884,
+    "hash": "908b316879d499fe202cb0507db7fae2"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/schedule/schedulePending.ts": {
+    "mtime": 1777092651.6948884,
+    "hash": "d911d5ca4accd81a84c92e5cdd910353"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/schedule/scheduleSnapshot.ts": {
+    "mtime": 1777092651.6948884,
+    "hash": "6671dce0e7b9d0e04984ac2997227e9e"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/schedule/notification.ts": {
+    "mtime": 1777265962.7683597,
+    "hash": "dac7b5131362ed0efb08d74e9f9374ee"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/schedule/autoWeekday.ts": {
+    "mtime": 1777269334.2292857,
+    "hash": "f4ab11bad45623f750139716ae663af5"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/schedule/dateNoteSeed.ts": {
+    "mtime": 1777350438.2316103,
+    "hash": "44db59a565a6145cf7e800e0198f3929"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/schedule/buildScheduleItem.ts": {
+    "mtime": 1777536128.076997,
+    "hash": "3227f0d8bba2ba17731c0f29b6ba9e8d"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/schedule/firestoreScheduleClient.ts": {
+    "mtime": 1777536128.076997,
+    "hash": "8619c5ae1e879a60efb36fcfc78236eb"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/schedule/syncSchedule.ts": {
+    "mtime": 1777536128.078284,
+    "hash": "79ee77f327ec7581b709fb01b6732bb2"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/schedule/parseSchedule.ts": {
+    "mtime": 1777539047.5977035,
+    "hash": "4c70b0e2c998f8dd0e7fe77084a4ffd5"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/firebase/app.ts": {
+    "mtime": 1777432164.6796215,
+    "hash": "8419ffb2f6791d1d523f102e92a0d2d1"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/codegraph/codegraphTypes.ts": {
+    "mtime": 1777718799.02728,
+    "hash": "3226c0848802c8f1b94a3ba109e8f03f"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/codegraph/loadCodegraphData.ts": {
+    "mtime": 1777718822.274561,
+    "hash": "e3b1e542d346de474ad6da8a6a8cd9ca"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/codegraph/nodeColor.ts": {
+    "mtime": 1777719102.8122416,
+    "hash": "83835ad74aeea550ed78e22e62a54d7d"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/codegraph/edgeStyle.ts": {
+    "mtime": 1777719123.3914862,
+    "hash": "021eaf41552e5ac0e728d86245c51809"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/codegraph/githubLink.ts": {
+    "mtime": 1777719148.253782,
+    "hash": "4d281303044d96fde0a35182b205a67e"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/+layout.ts": {
+    "mtime": 1775979894.4447505,
+    "hash": "d519d19c7b253b50a6c56a3cf1f6462b"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/+page.ts": {
+    "mtime": 1775979894.4447505,
+    "hash": "57ecbf9715a859df15d2507905352014"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/+page.svelte": {
+    "mtime": 1776493723.9461966,
+    "hash": "518e2c2ee8381e79d4401695b162daa2"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/+layout.svelte": {
+    "mtime": 1777265962.7687469,
+    "hash": "e6b7ec744eb8cfb2c45b4177f682e2e3"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/note/[id]/+page.ts": {
+    "mtime": 1775979894.4448552,
+    "hash": "e7b0e83eacc1321b3a006a975acafa45"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/note/[id]/+page.svelte": {
+    "mtime": 1777536128.0788434,
+    "hash": "87563a1f59c037f97792a5b328046947"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/note/[id]/compare/+page.svelte": {
+    "mtime": 1776493723.9485273,
+    "hash": "5a396b074a834f4a367aeac43689acf6"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/notes/+page.svelte": {
+    "mtime": 1776493723.9486918,
+    "hash": "0c209b5a275134eeb1f324227615c24d"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/settings/+page.ts": {
+    "mtime": 1775979894.4449542,
+    "hash": "e7b0e83eacc1321b3a006a975acafa45"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/settings/+page.svelte": {
+    "mtime": 1777265962.7689085,
+    "hash": "e471a0abe534d180bd8d21348652db37"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/sleepnote/+page.svelte": {
+    "mtime": 1776229771.6812596,
+    "hash": "57ce053db7280e02f9ddbe5e613d4154"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/desktop/+page.svelte": {
+    "mtime": 1776057235.7034273,
+    "hash": "64a37af736d67af575719c4c694eca40"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/desktop/graph/+page.svelte": {
+    "mtime": 1777718678.6858003,
+    "hash": "e438aa1114812b910118ca193eca77eb"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/desktop/codegraph/+page.svelte": {
+    "mtime": 1777720030.0011075,
+    "hash": "ecdb5c82d5f3297b8c20083d0058b591"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/admin/+layout.svelte": {
+    "mtime": 1776559925.8343835,
+    "hash": "b6628ea26fc96db29eb463ef27108ded"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/admin/+page.svelte": {
+    "mtime": 1776602367.8757167,
+    "hash": "f238f849e4e4c7b7133b682ca2fc2c69"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/admin/browse/+page.svelte": {
+    "mtime": 1776493723.9471664,
+    "hash": "63e25e338203fb5ffbda8af20dab2822"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/admin/notes/[guid]/+page.svelte": {
+    "mtime": 1776493723.9478033,
+    "hash": "252145f32bfa6785019df64eeeeee8dd"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/admin/revisions/+page.svelte": {
+    "mtime": 1776493723.9478033,
+    "hash": "6caf7208206fd7b83fb01eb74db6ee5d"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/admin/revisions/[rev]/+page.svelte": {
+    "mtime": 1776493723.9479213,
+    "hash": "f4bd722eb9230e51ff88b54422819e31"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/admin/tools/+page.svelte": {
+    "mtime": 1776493723.9479213,
+    "hash": "43ca98453e4e9d57115f57c8267c8fac"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/admin/sleepnote/+page.svelte": {
+    "mtime": 1776603615.1594186,
+    "hash": "793bf7d90d00819ae5a54fd9973f1548"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/stores/notes.ts": {
+    "mtime": 1775979894.4449542,
+    "hash": "421c2c08dad8c5f4f4e65e94cc007896"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/app.html": {
+    "mtime": 1777098643.0636787,
+    "hash": "3d9dd0f1e629747006122224239463bf"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/assets/favicon.svg": {
+    "mtime": 1775979894.4437652,
+    "hash": "a0d1b540c1b9a2a920d5f6cae983118a"
+  }
+}
