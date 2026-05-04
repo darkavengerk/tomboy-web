@@ -1,0 +1,21 @@
+# Caddy config that fronts the terminal bridge with TLS.
+# Replace `term.example.com` with your DDNS hostname.
+#
+# Caddy automatically obtains and renews a Let's Encrypt cert for the host
+# below as long as port 80 + 443 are reachable from the internet.
+
+term.example.com {
+    encode gzip
+
+    # Pass everything to the bridge container; WebSocket upgrade is
+    # handled transparently by reverse_proxy.
+    reverse_proxy 127.0.0.1:3000
+
+    # Defense in depth: drop unexpected methods.
+    @bad method CONNECT TRACE
+    respond @bad 405
+
+    # Browsers must not cache auth-bearing responses.
+    header /login Cache-Control "no-store"
+    header /health Cache-Control "no-store"
+}

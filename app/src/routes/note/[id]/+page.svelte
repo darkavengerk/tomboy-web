@@ -20,6 +20,11 @@
 	import { findAdjacentDateNotes } from '$lib/editor/dateLink/findAdjacentDateNotes.js';
 	import TomboyEditor from '$lib/editor/TomboyEditor.svelte';
 	import Toolbar from '$lib/editor/Toolbar.svelte';
+	import TerminalView from '$lib/editor/terminal/TerminalView.svelte';
+	import {
+		parseTerminalNote,
+		type TerminalNoteSpec
+	} from '$lib/editor/terminal/parseTerminalNote.js';
 	import NoteActionSheet, { type ActionKind } from '$lib/editor/NoteActionSheet.svelte';
 	import NotebookPicker from '$lib/components/NotebookPicker.svelte';
 	import { SLIPBOX_NOTEBOOK } from '$lib/sleepnote/validator.js';
@@ -63,6 +68,12 @@
 	let isScrollBottomState = $state(false);
 	let isScheduleNoteState = $state(false);
 	let editorAreaEl: HTMLDivElement | undefined = $state(undefined);
+	// Terminal-note state: detected at note load time. `terminalEditMode`
+	// is a per-load override that lets the user fall back to the regular
+	// editor on a recognised terminal note.
+	let terminalSpec: TerminalNoteSpec | null = $state.raw(null);
+	let terminalEditMode = $state(false);
+	const showTerminal = $derived(!!terminalSpec && !terminalEditMode);
 
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	let loadedGuid: string | null = null;
@@ -163,6 +174,7 @@
 			// performs the setContent + clearDirty dance. Fingerprint reset
 			// so the reloaded doc isn't immediately re-saved.
 			editorContent = getNoteEditorContent(fresh);
+			terminalSpec = parseTerminalNote(editorContent);
 			lastSavedDocFingerprint = null;
 		});
 		return off;
@@ -210,6 +222,8 @@
 			}
 			note = loaded;
 			editorContent = getNoteEditorContent(loaded);
+			terminalSpec = parseTerminalNote(editorContent);
+			terminalEditMode = false;
 			loading = false;
 
 			const homeGuid = await getHomeNoteGuid();
@@ -377,6 +391,7 @@
 		if (!fresh) return;
 		note = fresh;
 		editorContent = getNoteEditorContent(fresh);
+		terminalSpec = parseTerminalNote(editorContent);
 		lastSavedDocFingerprint = null;
 		const ed = getEditor();
 		if (ed && editorContent) {
@@ -591,6 +606,13 @@
 	<div class="editor-area" bind:this={editorAreaEl} onclick={handleEditorAreaClick}>
 		{#if loading}
 			<div class="loading">로딩 중...</div>
+		{:else if showTerminal && terminalSpec}
+			{#key noteId}
+				<TerminalView
+					spec={terminalSpec}
+					onedit={() => (terminalEditMode = true)}
+				/>
+			{/key}
 		{:else if editorContent}
 			<!--
 				No {#key noteId} — TomboyEditor stays mounted across note
@@ -626,13 +648,15 @@
 		{/if}
 	</div>
 
-	<div class="toolbar-area">
-		<Toolbar
-			editor={getEditor()}
-			onextractnote={handleExtractNote}
-			onuploadimage={(file) => editorComponent?.uploadAndInsertImage(file)}
-		/>
-	</div>
+	{#if !showTerminal}
+		<div class="toolbar-area">
+			<Toolbar
+				editor={getEditor()}
+				onextractnote={handleExtractNote}
+				onuploadimage={(file) => editorComponent?.uploadAndInsertImage(file)}
+			/>
+		</div>
+	{/if}
 
 	{#if isFromHome}
 		<button class="fab-today" onclick={gotoToday} aria-label="오늘 날짜 노트">📅</button>
