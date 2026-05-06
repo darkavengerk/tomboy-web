@@ -22,10 +22,11 @@ Wants=network-online.target
 Image=localhost/term-bridge:latest
 ContainerName=term-bridge
 Network=host
+UserNS=keep-id
 EnvironmentFile=%h/.config/term-bridge.env
 # Mount the user's SSH config + keys read-only so `ssh other-host` from
 # inside the container uses the same agent/known_hosts the shell would.
-Volume=%h/.ssh:/home/node/.ssh:ro,Z
+Volume=%h/.ssh:/home/node/.ssh:ro,z
 ReadOnly=true
 NoNewPrivileges=true
 DropCapability=ALL

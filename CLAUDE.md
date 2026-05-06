@@ -513,71 +513,63 @@ Rules:
 
 ## 터미널 노트 (SSH terminal in a note)
 
-A note whose body is **exactly 1 or 2 plain-text lines** matching:
+A note whose body is **exactly 1 or 2 non-empty paragraphs** matching:
 
 ```
 ssh://[user@]host[:port]
 bridge: wss://my-pc.example.com/ws    # optional
 ```
 
-is opened as an `xterm.js` terminal instead of the regular editor. The
-title can be anything; only the body is constrained. Anything more than 2
-non-empty body lines, any list/markup, or a malformed scheme falls back to
-a regular note. The note's `.note` XML stores plain text — Tomboy desktop
-sees a normal note and Dropbox/Firebase sync are unchanged.
+is opened as an `xterm.js` terminal instead of the regular editor. Title
+is unconstrained; the body is. A 3rd non-empty paragraph, any list/markup,
+or a malformed scheme falls back to a regular note. The `.note` XML stores
+plain text — Tomboy desktop sees a normal note and Dropbox/Firebase sync
+are unchanged. **Terminal output is never persisted** — it lives only in
+the open xterm scrollback. The header's "편집 모드" toggle swaps the view
+back to `TomboyEditor` for that page-load only.
 
-Terminal output is **not** persisted: it lives only in the xterm scrollback
-of the open window. The note body remains the 2 metadata lines. The header
-has a "편집 모드" toggle that swaps the view back to `TomboyEditor` for
-that page-load only — to convert a note out of terminal mode you edit it
-to no longer match the format.
-
-When `bridge:` is omitted, the app uses `appSettings.defaultTerminalBridge`
-(set in 설정 → 동기화 설정 → 터미널 브릿지). Login is a one-time POST to
-the bridge's `/login` which returns an HMAC-signed token; the token lives
-in `appSettings.terminalBridgeToken` and is sent in the first WS message
-(and as `Authorization: Bearer ...` for `/health`). No cookies — that
-sidesteps the `Secure` / `SameSite=None` requirement so the bridge works
-over plain `ws://` on a LAN IP without a TLS cert.
-
-The matching server lives at the repo root in `bridge/` — a Node + `ws` +
-`node-pty` service. For `ssh://localhost` it spawns a login shell directly;
-otherwise it execs `ssh user@host -p port` and lets the PTY handle auth
-prompts. See `bridge/README.md` for the deployment recipe (Podman Quadlet
-on Bazzite, fronted by Caddy).
+The matching WebSocket bridge lives at the repo root in `bridge/` — Node +
+`ws` + `node-pty`, deployed as a rootless Podman + Quadlet container
+fronted by Caddy. See the **`tomboy-terminal`** skill for the WS protocol,
+the Bearer-token auth flow, the SSH spawn modes (`!t.user` vs ssh path),
+the deployment recipe, the SELinux + user-namespace constraints, host-side
+sshd requirements, and Vercel cross-origin notes.
 
 Quick map:
 
-- `app/src/lib/editor/terminal/parseTerminalNote.ts` — pure parser
-  (TipTap doc → spec | null). Tests in `app/tests/unit/editor/`.
-- `app/src/lib/editor/terminal/wsClient.ts` — WebSocket protocol wrapper.
-- `app/src/lib/editor/terminal/TerminalView.svelte` — xterm + FitAddon.
-- `app/src/lib/editor/terminal/bridgeSettings.ts` — appSettings glue +
-  `/login`/`/logout`/`/health` HTTP helpers.
+- `app/src/lib/editor/terminal/` — `parseTerminalNote.ts`, `wsClient.ts`,
+  `TerminalView.svelte`, `bridgeSettings.ts`. Parser tests in
+  `app/tests/unit/editor/`.
 - `routes/note/[id]/+page.svelte` and `lib/desktop/NoteWindow.svelte` —
   branch between `TerminalView` and `TomboyEditor` based on
-  `parseTerminalNote(editorContent)` at load (and after IDB reloads).
-- `routes/settings/+page.svelte` (config tab, "터미널 브릿지" 섹션) —
-  default bridge URL + login form.
-- `bridge/` — server (`src/server.ts`, `src/auth.ts`, `src/pty.ts`),
-  Containerfile, `deploy/term-bridge.container` Quadlet unit,
-  `deploy/Caddyfile`.
+  `parseTerminalNote(editorContent)` at load and after every IDB reload.
+- `routes/settings/+page.svelte` (config tab → "터미널 브릿지") — default
+  bridge URL + login form.
+- `bridge/` — `src/server.ts`, `src/auth.ts`, `src/pty.ts`, `Containerfile`,
+  `deploy/term-bridge.container` (Quadlet), `deploy/Caddyfile`.
 
 Invariants:
 
-- **Note body has at most 2 non-empty lines** in terminal mode. Any 3rd
-  line means it's no longer a terminal note — by design, so users can opt
-  out simply by typing more.
-- **No credentials in the note.** The parser intentionally rejects
-  malformed lines but does not "validate" SSH passwords or keys — those
-  flow through the PTY. Don't add a "password:" field to the note format.
-- **Terminal output is ephemeral.** It is never written back to
-  `xmlContent`. Closing or navigating away discards the scrollback.
-- **Bearer-token auth, no cookies.** `/login` returns
-  `{ token: "<issuedAtMs>.<hmac>" }`; the app stores it in
-  `appSettings.terminalBridgeToken`. Sent on the first WS message and
-  on `/health` via `Authorization: Bearer ...`. Never put the password
-  in the note, the URL, or the WebSocket frame.
+- **Note body has at most 2 non-empty paragraphs** in terminal mode. A
+  3rd line means it's no longer a terminal note — by design, so the user
+  opts out simply by typing more.
+- **No credentials in the note.** Auth flows through the PTY directly.
+  Don't add a `password:` field to the note format.
+- **Terminal output is ephemeral.** Never written back to `xmlContent`.
+- **Bearer tokens, not cookies.** Stored in
+  `appSettings.terminalBridgeToken`. Sent on the first WS frame and on
+  `/health` via `Authorization: Bearer ...`. Never put the password in
+  the note, the URL, or any WS frame.
+- **`BRIDGE_SECRET` is stable across restarts.** Rotating it invalidates
+  every issued token; clients see `unauthorized` on the next WS connect.
+- **`ssh://localhost` ≠ `ssh://user@localhost`.** The former takes the
+  in-container login-shell path (`!t.user` is the gate); the latter
+  forces ssh through the host's sshd. The containerized deployment
+  relies on the latter — write `ssh://you@localhost` for notes that
+  target the bridge's host.
+- **Containerized rootless Podman deployment requires `Network=host`,
+  `UserNS=keep-id`, and `:z` (lowercase) on the `.ssh` bind mount.** Any
+  one missing breaks key auth or container-to-host loopback.
 - **The bridge has full shell access** to whatever host runs it.
   `BRIDGE_PASSWORD` is the only line of defense — front it with TLS +
   fail2ban while it's publicly reachable.
