@@ -21,7 +21,7 @@ Wants=network-online.target
 [Container]
 Image=localhost/term-bridge:latest
 ContainerName=term-bridge
-PublishPort=127.0.0.1:3000:3000
+Network=host
 EnvironmentFile=%h/.config/term-bridge.env
 # Mount the user's SSH config + keys read-only so `ssh other-host` from
 # inside the container uses the same agent/known_hosts the shell would.
