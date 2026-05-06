@@ -60,6 +60,13 @@
 		installRealNoteSync
 	} from '$lib/sync/firebase/install.js';
 	import { setNoteSyncEnabled } from '$lib/sync/firebase/orchestrator.js';
+	import {
+		getDefaultTerminalBridge,
+		setDefaultTerminalBridge,
+		loginBridge,
+		logoutBridge,
+		checkBridgeAuth
+	} from '$lib/editor/terminal/bridgeSettings.js';
 
 	type Tab = 'sync' | 'config' | 'notify' | 'advanced';
 	let activeTab = $state<Tab>('sync');
@@ -90,6 +97,74 @@
 	let restoringProfile = $state(false);
 	let loadingProfiles = $state(false);
 	let restoreConfirm = $state(false);
+
+	// ── 터미널 브릿지 ─────────────────────────────────────────────────
+	let terminalBridgeUrl = $state('');
+	let terminalBridgeSaved = $state(false);
+	let terminalBridgePassword = $state('');
+	let terminalBridgeAuthed = $state<boolean | null>(null); // null = unknown
+	let terminalBridgeBusy = $state(false);
+	let terminalBridgeMessage = $state('');
+
+	async function loadTerminalBridgeState(): Promise<void> {
+		const v = await getDefaultTerminalBridge();
+		terminalBridgeUrl = v ?? '';
+		await refreshTerminalBridgeAuth();
+	}
+
+	async function refreshTerminalBridgeAuth(): Promise<void> {
+		if (!terminalBridgeUrl.trim()) {
+			terminalBridgeAuthed = null;
+			return;
+		}
+		try {
+			terminalBridgeAuthed = await checkBridgeAuth(terminalBridgeUrl);
+		} catch {
+			terminalBridgeAuthed = false;
+		}
+	}
+
+	async function handleSaveTerminalBridge(): Promise<void> {
+		const v = terminalBridgeUrl.trim();
+		await setDefaultTerminalBridge(v || undefined);
+		terminalBridgeSaved = true;
+		setTimeout(() => (terminalBridgeSaved = false), 1500);
+		await refreshTerminalBridgeAuth();
+	}
+
+	async function handleTerminalBridgeLogin(): Promise<void> {
+		if (terminalBridgeBusy) return;
+		const v = terminalBridgeUrl.trim();
+		if (!v) {
+			terminalBridgeMessage = '브릿지 URL을 먼저 입력하세요.';
+			return;
+		}
+		terminalBridgeBusy = true;
+		terminalBridgeMessage = '';
+		try {
+			const ok = await loginBridge(v, terminalBridgePassword);
+			if (ok) {
+				terminalBridgePassword = '';
+				terminalBridgeAuthed = true;
+				terminalBridgeMessage = '로그인되었습니다.';
+			} else {
+				terminalBridgeAuthed = false;
+				terminalBridgeMessage = '로그인 실패 (비밀번호 또는 브릿지 URL 확인).';
+			}
+		} catch (err) {
+			terminalBridgeMessage = `오류: ${(err as Error).message}`;
+		} finally {
+			terminalBridgeBusy = false;
+		}
+	}
+
+	async function handleTerminalBridgeLogout(): Promise<void> {
+		const v = terminalBridgeUrl.trim();
+		if (!v) return;
+		await logoutBridge(v);
+		terminalBridgeAuthed = false;
+		terminalBridgeMessage = '로그아웃되었습니다.';
+	}
 
 	// ── 파이어베이스 실시간 노트 동기화 ──────────────────────────────────
 	let firebaseNotesEnabled = $state(false);
@@ -291,6 +366,7 @@
 		notesPath = getNotesPath();
 		settingsPath = getSettingsPath();
 		imagesPath = getImagesPath();
+		void loadTerminalBridgeState();
 
 		(async () => {
 			// Check if we're returning from OAuth callback
@@ -769,6 +845,70 @@
 					{/if}
 				</section>
 			{/if}
+
+			<section class="section">
+				<h2>터미널 브릿지</h2>
+				<p class="info-text">
+					터미널 노트(<code>ssh://...</code> 형식)를 열 때 사용할 기본 브릿지 URL을 설정합니다.
+					노트 본문에 <code>bridge:</code> 줄이 없으면 이 값이 사용됩니다.
+					브릿지에 한 번 로그인하면 쿠키가 저장되어 모든 터미널 노트에서 재사용됩니다.
+				</p>
+
+				<div class="path-row">
+					<input
+						class="path-input"
+						type="text"
+						placeholder="wss://my-pc.duckdns.org:443"
+						bind:value={terminalBridgeUrl}
+						onkeydown={(e) => e.key === 'Enter' && handleSaveTerminalBridge()}
+					/>
+					<button class="btn-save" onclick={handleSaveTerminalBridge}>
+						{terminalBridgeSaved ? '저장됨' : '저장'}
+					</button>
+				</div>
+
+				<div class="profile-row">
+					<input
+						class="path-input"
+						type="password"
+						placeholder="브릿지 비밀번호"
+						autocomplete="current-password"
+						bind:value={terminalBridgePassword}
+						onkeydown={(e) => e.key === 'Enter' && handleTerminalBridgeLogin()}
+					/>
+					<button
+						class="btn btn-primary profile-btn"
+						onclick={handleTerminalBridgeLogin}
+						disabled={terminalBridgeBusy || !terminalBridgeUrl.trim()}
+					>
+						{terminalBridgeBusy ? '로그인 중...' : '로그인'}
+					</button>
+				</div>
+
+				<div class="profile-row">
+					<span class="info-text small">
+						상태:
+						{#if terminalBridgeAuthed === true}
+							<code>인증됨</code>
+						{:else if terminalBridgeAuthed === false}
+							<code>로그아웃됨</code>
+						{:else}
+							<code>—</code>
+						{/if}
+					</span>
+					<button
+						class="btn btn-secondary profile-btn"
+						onclick={handleTerminalBridgeLogout}
+						disabled={terminalBridgeAuthed !== true}
+					>
+						로그아웃
+					</button>
+				</div>
+
+				{#if terminalBridgeMessage}
+					<p class="info-text small">{terminalBridgeMessage}</p>
+				{/if}
+			</section>
 		{:else if activeTab === 'notify'}
 			<!-- ── 알림 탭 ─────────────────────────────────────────────────── -->
 			<section class="section">

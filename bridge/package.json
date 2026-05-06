@@ -1,0 +1,21 @@
+{
+  "name": "tomboy-term-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "WebSocket→PTY bridge for tomboy-web's terminal-note feature.",
+  "scripts": {
+    "build": "tsc -p .",
+    "start": "node dist/server.js",
+    "dev": "tsc -p . --watch & node --watch dist/server.js"
+  },
+  "dependencies": {
+    "@types/node": "^22.0.0",
+    "node-pty": "^1.0.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.6.0"
+  }
+}

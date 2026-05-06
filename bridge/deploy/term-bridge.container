@@ -1,0 +1,40 @@
+# Podman Quadlet unit for the tomboy-web terminal bridge.
+#
+# Install:
+#   1. Build the image:
+#        cd bridge && podman build -t term-bridge:latest .
+#   2. Drop this file at ~/.config/containers/systemd/term-bridge.container
+#   3. Create ~/.config/term-bridge.env with the required env vars:
+#        BRIDGE_PASSWORD=...
+#        BRIDGE_SECRET=...        (32+ random bytes, e.g. `openssl rand -hex 32`)
+#        BRIDGE_ALLOWED_ORIGIN=https://your-app-domain
+#   4. systemctl --user daemon-reload
+#      systemctl --user enable --now term-bridge.service
+#   5. Make sure linger is enabled so the container survives logout:
+#        loginctl enable-linger $USER
+
+[Unit]
+Description=tomboy-web terminal bridge
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=localhost/term-bridge:latest
+ContainerName=term-bridge
+PublishPort=127.0.0.1:3000:3000
+EnvironmentFile=%h/.config/term-bridge.env
+# Mount the user's SSH config + keys read-only so `ssh other-host` from
+# inside the container uses the same agent/known_hosts the shell would.
+Volume=%h/.ssh:/home/node/.ssh:ro,Z
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=ALL
+Tmpfs=/tmp:rw,size=64m
+# Reverse-proxied by Caddy/nginx on the host; no public bind here.
+
+[Service]
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

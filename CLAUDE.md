@@ -510,3 +510,71 @@ Rules:
 - If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
 - For cross-module "how does X relate to Y" questions, prefer `graphify query "<question>"`, `graphify path "<A>" "<B>"`, or `graphify explain "<concept>"` over grep — these traverse the graph's EXTRACTED + INFERRED edges instead of scanning files
 - After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)
+
+## 터미널 노트 (SSH terminal in a note)
+
+A note whose body is **exactly 1 or 2 plain-text lines** matching:
+
+```
+ssh://[user@]host[:port]
+bridge: wss://my-pc.example.com/ws    # optional
+```
+
+is opened as an `xterm.js` terminal instead of the regular editor. The
+title can be anything; only the body is constrained. Anything more than 2
+non-empty body lines, any list/markup, or a malformed scheme falls back to
+a regular note. The note's `.note` XML stores plain text — Tomboy desktop
+sees a normal note and Dropbox/Firebase sync are unchanged.
+
+Terminal output is **not** persisted: it lives only in the xterm scrollback
+of the open window. The note body remains the 2 metadata lines. The header
+has a "편집 모드" toggle that swaps the view back to `TomboyEditor` for
+that page-load only — to convert a note out of terminal mode you edit it
+to no longer match the format.
+
+When `bridge:` is omitted, the app uses `appSettings.defaultTerminalBridge`
+(set in 설정 → 동기화 설정 → 터미널 브릿지). Login is a one-time POST to
+the bridge's `/login`; the resulting `term_auth` cookie is reused for every
+subsequent terminal note.
+
+The matching server lives at the repo root in `bridge/` — a Node + `ws` +
+`node-pty` service. For `ssh://localhost` it spawns a login shell directly;
+otherwise it execs `ssh user@host -p port` and lets the PTY handle auth
+prompts. See `bridge/README.md` for the deployment recipe (Podman Quadlet
+on Bazzite, fronted by Caddy).
+
+Quick map:
+
+- `app/src/lib/editor/terminal/parseTerminalNote.ts` — pure parser
+  (TipTap doc → spec | null). Tests in `app/tests/unit/editor/`.
+- `app/src/lib/editor/terminal/wsClient.ts` — WebSocket protocol wrapper.
+- `app/src/lib/editor/terminal/TerminalView.svelte` — xterm + FitAddon.
+- `app/src/lib/editor/terminal/bridgeSettings.ts` — appSettings glue +
+  `/login`/`/logout`/`/health` HTTP helpers.
+- `routes/note/[id]/+page.svelte` and `lib/desktop/NoteWindow.svelte` —
+  branch between `TerminalView` and `TomboyEditor` based on
+  `parseTerminalNote(editorContent)` at load (and after IDB reloads).
+- `routes/settings/+page.svelte` (config tab, "터미널 브릿지" 섹션) —
+  default bridge URL + login form.
+- `bridge/` — server (`src/server.ts`, `src/auth.ts`, `src/pty.ts`),
+  Containerfile, `deploy/term-bridge.container` Quadlet unit,
+  `deploy/Caddyfile`.
+
+Invariants:
+
+- **Note body has at most 2 non-empty lines** in terminal mode. Any 3rd
+  line means it's no longer a terminal note — by design, so users can opt
+  out simply by typing more.
+- **No credentials in the note.** The parser intentionally rejects
+  malformed lines but does not "validate" SSH passwords or keys — those
+  flow through the PTY. Don't add a "password:" field to the note format.
+- **Terminal output is ephemeral.** It is never written back to
+  `xmlContent`. Closing or navigating away discards the scrollback.
+- **Cookie auth, not in-band tokens.** The `term_auth` cookie is
+  `HttpOnly; Secure; SameSite=None`, set by `/login`, automatically
+  attached to the `wss://` upgrade. Never put the password in the note,
+  the URL, or the WebSocket frame.
+- **The bridge has full shell access** to whatever host runs it.
+  `BRIDGE_PASSWORD` is the only line of defense — front it with TLS +
+  fail2ban while it's publicly reachable.
+

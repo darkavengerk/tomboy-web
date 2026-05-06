@@ -13,6 +13,11 @@
 	import type { NoteData } from '$lib/core/note.js';
 	import TomboyEditor from '$lib/editor/TomboyEditor.svelte';
 	import Toolbar from '$lib/editor/Toolbar.svelte';
+	import TerminalView from '$lib/editor/terminal/TerminalView.svelte';
+	import {
+		parseTerminalNote,
+		type TerminalNoteSpec
+	} from '$lib/editor/terminal/parseTerminalNote.js';
 	import NoteContextMenu, { type ActionKind } from '$lib/editor/NoteContextMenu.svelte';
 	import {
 		assignNotebook,
@@ -103,6 +108,9 @@
 	let isScrollBottomState = $state(false);
 	let isScheduleNote = $state(false);
 	let windowEl: HTMLDivElement | undefined = $state(undefined);
+	let terminalSpec: TerminalNoteSpec | null = $state.raw(null);
+	let terminalEditMode = $state(false);
+	const showTerminal = $derived(!!terminalSpec && !terminalEditMode);
 
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	let pendingDoc: JSONContent | null = $state.raw(null);
@@ -183,6 +191,8 @@
 			}
 			note = loaded;
 			editorContent = getNoteEditorContent(loaded);
+			terminalSpec = parseTerminalNote(editorContent);
+			terminalEditMode = false;
 			loading = false;
 
 			const homeGuid = await getHomeNoteGuid();
@@ -364,6 +374,7 @@
 		if (!fresh) return;
 		note = fresh;
 		editorContent = getNoteEditorContent(fresh);
+		terminalSpec = parseTerminalNote(editorContent);
 		lastSavedDocFingerprint = null;
 		const ed = getEditor();
 		if (ed && editorContent) {
@@ -740,6 +751,13 @@
 	<div class="body">
 		{#if loading}
 			<div class="loading">로딩 중...</div>
+		{:else if showTerminal && terminalSpec}
+			{#key guid}
+				<TerminalView
+					spec={terminalSpec}
+					onedit={() => (terminalEditMode = true)}
+				/>
+			{/key}
 		{:else if editorContent}
 			<TomboyEditor
 				bind:this={editorComponent}
@@ -771,7 +789,7 @@
 		{/if}
 	</div>
 
-	{#if !loading && editorContent && isFocused}
+	{#if !loading && editorContent && isFocused && !showTerminal}
 		<div class="toolbar-slot">
 			<Toolbar
 				editor={getEditor()}
