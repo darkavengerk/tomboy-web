@@ -91,8 +91,11 @@ mkdir -p ~/.config/containers/systemd
 cp deploy/term-bridge.container ~/.config/containers/systemd/
 
 # 4. Reload + start.
+#    Quadlet-generated units can't be `enable`d directly — systemd treats
+#    them as transient. Auto-start at boot is handled by the [Install]
+#    section in the .container file plus `loginctl enable-linger`.
 systemctl --user daemon-reload
-systemctl --user enable --now term-bridge.service
+systemctl --user start term-bridge.service
 
 # 5. Survive logout / reboot.
 loginctl enable-linger $USER
