@@ -115,6 +115,23 @@ Caddy (also as a Podman container or rpm-ostree `caddy` package) with the
 sample [`deploy/Caddyfile`](deploy/Caddyfile). Caddy auto-issues a Let's
 Encrypt certificate.
 
+#### Letting rootless Caddy bind to 80/443
+
+Rootless Podman runs the container as your unprivileged user. The kernel's
+default `net.ipv4.ip_unprivileged_port_start=1024` blocks binding 80/443,
+which is what Caddy needs for HTTPS + the ACME HTTP-01 challenge. Lower
+the floor:
+
+```bash
+sudo sysctl net.ipv4.ip_unprivileged_port_start=80
+echo 'net.ipv4.ip_unprivileged_port_start=80' | sudo tee /etc/sysctl.d/99-rootless-ports.conf
+```
+
+Run Caddy with `Network=host` so its `reverse_proxy 127.0.0.1:3000` can
+reach the bridge container on the host's loopback. With `Network=host`,
+Quadlet `PublishPort=` lines are ignored (the container shares the host
+namespace) — don't list them.
+
 ### Port forwarding
 
 Forward your router's external `443/tcp` → Bazzite's Caddy port. firewalld
