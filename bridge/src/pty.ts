@@ -21,14 +21,22 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 
 /**
  * Spawn a PTY for the given target.
- *  - Local target → just a login shell on the bridge host.
- *  - Remote target → `ssh user@host -p port`. Auth (key/password) flows
+ *  - Local target with no user → just a login shell on the bridge host.
+ *    (Useful when the bridge runs natively as the target user.)
+ *  - Otherwise → `ssh user@host -p port`. Auth (key/password) flows
  *    through the PTY directly; we don't broker credentials.
+ *
+ * The `!t.user` guard matters when the bridge runs inside a container:
+ * `ssh://localhost` would otherwise drop into the container's own shell
+ * (running as the unprivileged container user) instead of the operator's
+ * actual host account. Writing `ssh://you@localhost` routes through ssh,
+ * which — together with `Network=host` on the container — hits the host's
+ * sshd and gives a real login shell as `you`.
  */
 export function spawnForTarget(t: SshTarget, cols: number, rows: number): IPty {
 	const isLocal =
-		LOCAL_HOSTS.has(t.host) ||
-		t.host.toLowerCase() === hostname().toLowerCase();
+		!t.user &&
+		(LOCAL_HOSTS.has(t.host) || t.host.toLowerCase() === hostname().toLowerCase());
 
 	const env = sanitizedEnv();
 	if (isLocal) {

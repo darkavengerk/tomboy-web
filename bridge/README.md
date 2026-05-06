@@ -160,8 +160,38 @@ existing keys / `known_hosts` / `config` work as-is. **No credentials are ever
 brokered through the bridge** — `ssh` prompts for passwords and key
 passphrases on the PTY, exactly like a normal terminal.
 
-For `ssh://localhost` the bridge spawns `bash -l` directly and skips `ssh`
-entirely.
+### "I want a shell as my own user, on this same machine"
+
+The bridge runs as an unprivileged container user (`node`), so a literal
+`ssh://localhost` would drop you into the container's shell — not what you
+want for personal use. Instead, write the note as:
+
+```
+ssh://your-username@localhost
+```
+
+The bridge then runs `ssh your-username@localhost` from inside the
+container. With `Network=host` on the term-bridge Quadlet, that hits the
+host's sshd directly (127.0.0.1:22 is the host's loopback, not the
+container's). Setup on the host:
+
+```bash
+# 1. Make sure sshd is running.
+sudo systemctl enable --now sshd
+
+# 2. Optional but recommended: self-trust your own SSH key so you don't
+#    have to type a password every time you open a terminal note.
+ssh-keygen -t ed25519               # if you don't have a key yet
+cat ~/.ssh/id_ed25519.pub >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+
+# 3. First connection will prompt to trust the host key — answer "yes"
+#    once and it's remembered.
+```
+
+(`ssh://localhost` without a user is still useful when running the bridge
+**natively** under your own account — without a container — where the
+bridge process already IS your user.)
 
 ---
 
