@@ -524,8 +524,11 @@ to no longer match the format.
 
 When `bridge:` is omitted, the app uses `appSettings.defaultTerminalBridge`
 (set in 설정 → 동기화 설정 → 터미널 브릿지). Login is a one-time POST to
-the bridge's `/login`; the resulting `term_auth` cookie is reused for every
-subsequent terminal note.
+the bridge's `/login` which returns an HMAC-signed token; the token lives
+in `appSettings.terminalBridgeToken` and is sent in the first WS message
+(and as `Authorization: Bearer ...` for `/health`). No cookies — that
+sidesteps the `Secure` / `SameSite=None` requirement so the bridge works
+over plain `ws://` on a LAN IP without a TLS cert.
 
 The matching server lives at the repo root in `bridge/` — a Node + `ws` +
 `node-pty` service. For `ssh://localhost` it spawns a login shell directly;
@@ -560,10 +563,11 @@ Invariants:
   flow through the PTY. Don't add a "password:" field to the note format.
 - **Terminal output is ephemeral.** It is never written back to
   `xmlContent`. Closing or navigating away discards the scrollback.
-- **Cookie auth, not in-band tokens.** The `term_auth` cookie is
-  `HttpOnly; Secure; SameSite=None`, set by `/login`, automatically
-  attached to the `wss://` upgrade. Never put the password in the note,
-  the URL, or the WebSocket frame.
+- **Bearer-token auth, no cookies.** `/login` returns
+  `{ token: "<issuedAtMs>.<hmac>" }`; the app stores it in
+  `appSettings.terminalBridgeToken`. Sent on the first WS message and
+  on `/health` via `Authorization: Bearer ...`. Never put the password
+  in the note, the URL, or the WebSocket frame.
 - **The bridge has full shell access** to whatever host runs it.
   `BRIDGE_PASSWORD` is the only line of defense — front it with TLS +
   fail2ban while it's publicly reachable.

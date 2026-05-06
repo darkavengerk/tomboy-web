@@ -24,21 +24,24 @@ inside the session.
 
 ### HTTP
 
-| Method | Path     | Notes                                                       |
-|--------|----------|-------------------------------------------------------------|
-| POST   | `/login` | Body: `{"password": "..."}` → sets `term_auth` cookie.      |
-| POST   | `/logout`| Clears the cookie.                                          |
-| GET    | `/health`| Returns `{"authed": bool}` based on the cookie.             |
+| Method | Path     | Notes                                                                      |
+|--------|----------|----------------------------------------------------------------------------|
+| POST   | `/login` | Body: `{"password": "..."}` → returns `{"token": "..."}` (30-day HMAC).    |
+| GET    | `/health`| `Authorization: Bearer <token>` → returns `{"authed": bool}`.              |
 
-CORS is allow-listed to `BRIDGE_ALLOWED_ORIGIN`. The cookie is
-`HttpOnly; Secure; SameSite=None; Max-Age=30 days`.
+CORS is allow-listed to `BRIDGE_ALLOWED_ORIGIN`. **No cookies** — the token
+is sent explicitly per request, so the bridge works over plain `ws://` on
+a LAN IP without needing a TLS certificate. (Logout = client just drops
+the stored token.)
 
 ### WebSocket `/ws`
 
-The cookie is verified on the upgrade. After `OPEN`, the client sends:
+The browser cannot set custom headers on a WS upgrade, so the token rides
+in the first client message. The bridge accepts the upgrade, then waits
+up to 5 seconds for a valid `connect` frame; otherwise it closes.
 
 ```jsonc
-{"type": "connect", "target": "ssh://user@host:22", "cols": 100, "rows": 30}
+{"type": "connect", "target": "ssh://user@host:22", "token": "<...>", "cols": 100, "rows": 30}
 {"type": "data",    "d": "ls\r"}
 {"type": "resize",  "cols": 100, "rows": 30}
 ```
@@ -108,12 +111,19 @@ curl -s http://127.0.0.1:3000/health
 # → {"authed":false}
 ```
 
-### TLS in front of the bridge
+### TLS in front of the bridge (optional)
 
-Cookies require `Secure`, so the public-facing endpoint must be HTTPS. Use
-Caddy (also as a Podman container or rpm-ostree `caddy` package) with the
-sample [`deploy/Caddyfile`](deploy/Caddyfile). Caddy auto-issues a Let's
-Encrypt certificate.
+Bearer-token auth means **TLS is not strictly required** — the bridge
+accepts plain `ws://` on a LAN IP, which is fine for personal "open
+the note app on phone in same Wi-Fi" use. The trade-offs of plain HTTP:
+
+- The token is sent in the first WS message — anyone sniffing the LAN
+  could capture it (and the SSH session contents).
+- Browsers block `ws://` from `https://` pages (mixed content). If the
+  note app is served from Vercel/HTTPS, the bridge MUST be `wss://`.
+
+If you want HTTPS anyway, Caddy in front of the bridge gets you a
+Let's Encrypt certificate. See [`deploy/Caddyfile`](deploy/Caddyfile).
 
 #### Letting rootless Caddy bind to 80/443
 
@@ -182,11 +192,12 @@ BRIDGE_PASSWORD=test BRIDGE_SECRET=$(openssl rand -hex 16) \
 Then in another shell:
 
 ```bash
-curl -i -c jar.txt -H 'Origin: http://localhost:5173' \
+TOKEN=$(curl -s -H 'Origin: http://localhost:5173' \
   -H 'Content-Type: application/json' \
-  -d '{"password":"test"}' http://127.0.0.1:3000/login
+  -d '{"password":"test"}' http://127.0.0.1:3000/login | jq -r .token)
 
-curl -b jar.txt http://127.0.0.1:3000/health
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:3000/health
+# → {"authed":true}
 ```
 
 ---
