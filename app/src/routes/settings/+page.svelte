@@ -159,9 +159,7 @@
 	}
 
 	async function handleTerminalBridgeLogout(): Promise<void> {
-		const v = terminalBridgeUrl.trim();
-		if (!v) return;
-		await logoutBridge(v);
+		await logoutBridge();
 		terminalBridgeAuthed = false;
 		terminalBridgeMessage = '로그아웃되었습니다.';
 	}

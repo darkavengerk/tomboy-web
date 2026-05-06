@@ -5,7 +5,10 @@
 	import '@xterm/xterm/css/xterm.css';
 	import { TerminalWsClient, type WsClientStatus } from './wsClient.js';
 	import type { TerminalNoteSpec } from './parseTerminalNote.js';
-	import { getDefaultTerminalBridge } from './bridgeSettings.js';
+	import {
+		getDefaultTerminalBridge,
+		getTerminalBridgeToken
+	} from './bridgeSettings.js';
 
 	type Props = {
 		spec: TerminalNoteSpec;
@@ -23,6 +26,7 @@
 	let fit: FitAddon | null = null;
 	let client: TerminalWsClient | null = null;
 	let resizeObserver: ResizeObserver | null = null;
+	let resolvedToken: string | null = null;
 
 	onMount(async () => {
 		const bridge = spec.bridge ?? (await getDefaultTerminalBridge());
@@ -33,6 +37,13 @@
 			return;
 		}
 		resolvedBridge = bridge;
+		const token = await getTerminalBridgeToken();
+		if (!token) {
+			status = 'error';
+			statusMessage = '브릿지에 로그인하지 않았습니다. 설정 → 동기화 설정 → 터미널 브릿지에서 로그인하세요.';
+			return;
+		}
+		resolvedToken = token;
 
 		term = new Terminal({
 			// Linux first (DejaVu/Liberation ship on most distros incl. Bazzite),
@@ -67,6 +78,7 @@
 		client = new TerminalWsClient({
 			bridge,
 			target: spec.target,
+			token,
 			cols: term.cols,
 			rows: term.rows,
 			onData: (chunk) => term?.write(chunk),
@@ -103,7 +115,7 @@
 	});
 
 	function reconnect() {
-		if (!resolvedBridge) return;
+		if (!resolvedBridge || !resolvedToken) return;
 		client?.close();
 		term?.reset();
 		status = 'connecting';
@@ -111,6 +123,7 @@
 		client = new TerminalWsClient({
 			bridge: resolvedBridge,
 			target: spec.target,
+			token: resolvedToken,
 			cols: term?.cols ?? 80,
 			rows: term?.rows ?? 24,
 			onData: (chunk) => term?.write(chunk),

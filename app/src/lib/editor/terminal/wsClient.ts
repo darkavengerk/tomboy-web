@@ -3,6 +3,7 @@ export type WsClientStatus = 'connecting' | 'open' | 'closed' | 'error';
 interface ClientOptions {
 	bridge: string;
 	target: string;
+	token: string;
 	cols: number;
 	rows: number;
 	onData: (chunk: string) => void;
@@ -57,6 +58,7 @@ export class TerminalWsClient {
 				JSON.stringify({
 					type: 'connect',
 					target: this.opts.target,
+					token: this.opts.token,
 					cols: this.opts.cols,
 					rows: this.opts.rows
 				})
