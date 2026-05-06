@@ -35,8 +35,14 @@
 		resolvedBridge = bridge;
 
 		term = new Terminal({
-			fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+			// Linux first (DejaVu/Liberation ship on most distros incl. Bazzite),
+			// then macOS/Windows, then the generic keyword. xterm.js measures
+			// 'M' to derive cell width — if the named font is missing the
+			// browser falls back to a proportional font and cells come out
+			// twice as wide as the actual glyphs.
+			fontFamily: '"DejaVu Sans Mono", "Liberation Mono", Menlo, Consolas, ui-monospace, monospace',
 			fontSize: 14,
+			letterSpacing: 0,
 			cursorBlink: true,
 			theme: { background: '#1e1e1e' },
 			scrollback: 5000,
@@ -46,7 +52,16 @@
 		term.loadAddon(fit);
 		if (xtermContainer) {
 			term.open(xtermContainer);
-			try { fit.fit(); } catch { /* ignore */ }
+			// Wait for the real font to load before measuring — otherwise
+			// cell width is computed against the fallback (often a
+			// proportional font) and every glyph gets ~one extra cell of
+			// trailing space.
+			const refit = () => { try { fit?.fit(); } catch { /* ignore */ } };
+			refit();
+			void document.fonts.ready.then(() => {
+				refit();
+				if (term && client) client.resize(term.cols, term.rows);
+			});
 		}
 
 		client = new TerminalWsClient({
