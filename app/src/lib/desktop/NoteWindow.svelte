@@ -67,6 +67,11 @@
 		height: number;
 		z: number;
 		pinned?: boolean;
+		/** True when this window's workspace is the currently visible one.
+		 *  Hidden (`active=false`) windows still hold their TipTap / terminal
+		 *  state in memory, but skip Firebase attach and global editor
+		 *  registration so they aren't mistaken for the user's focus target. */
+		active?: boolean;
 		onfocus: (guid: string) => void;
 		onclose: (guid: string) => void;
 		onmove: (guid: string, x: number, y: number) => void;
@@ -82,6 +87,7 @@
 		height,
 		z,
 		pinned = false,
+		active = true,
 		onfocus,
 		onclose,
 		onmove,
@@ -211,11 +217,10 @@
 			}
 		})();
 
-		// Realtime Firebase sync attach/detach. No-op until the user enables
-		// note sync in settings.
-		attachOpenNote(guid);
-
 		// Register a flush hook so closeWindow() can persist unsaved edits.
+		// Stays registered for the window's entire lifetime so multi-window
+		// ops (`flushAll`) can drain pending edits even from windows whose
+		// workspace isn't currently visible.
 		const unregisterFlush = registerFlushHook(guid, () => flushSave());
 		// Register a reload hook so cross-window ops (slip-note chain
 		// splicing) can force this window to drop stale editor state
@@ -231,7 +236,6 @@
 		const offSlipChange = slipNoteGuids.onChange(() => recomputeDateAdjacency());
 
 		return () => {
-			detachOpenNote(guid);
 			unregisterFlush();
 			unregisterReload();
 			offDateChange();
@@ -247,6 +251,16 @@
 		};
 	});
 
+	// Realtime Firebase sync attach/detach is gated on `active` so a
+	// hidden workspace's note window doesn't keep an onSnapshot open. The
+	// effect cleanup also runs on real unmount (close button), so an
+	// explicit detach in onMount cleanup isn't needed.
+	$effect(() => {
+		if (!active) return;
+		attachOpenNote(guid);
+		return () => detachOpenNote(guid);
+	});
+
 	// Recompute adjacency when the current note's title changes (rename,
 	// slip-note chain op rewriting neighbours, etc.).
 	$effect(() => {
@@ -255,8 +269,12 @@
 	});
 
 	// Register the Tiptap editor with the session so global shortcuts
-	// (Ctrl+L) can access the current selection.
+	// (Ctrl+L) can access the current selection. Hidden workspace windows
+	// don't register — otherwise two windows for the same guid (one per
+	// workspace) would collide in the registry's last-write-wins map and
+	// `getFocusedEditor` could resolve to an off-screen instance.
 	$effect(() => {
+		if (!active) return;
 		const ec = editorComponent;
 		if (!ec) return;
 		const editor = ec.getEditor();
@@ -492,6 +510,10 @@
 	$effect(() => {
 		const req = desktopSession.focusRequest;
 		if (!req || req.guid !== guid) return;
+		// A hidden workspace window must never steal focus. Same guid open
+		// in two workspaces is rare but possible; only the active one
+		// should react to the focusRequest.
+		if (!active) return;
 		const ed = editorComponent?.getEditor();
 		if (!ed || ed.isDestroyed) return;
 		// Defer one frame so the newly-mounted window has a layout before
@@ -716,6 +738,7 @@
 <div
 	bind:this={windowEl}
 	class="note-window"
+	class:hidden={!active}
 	style="left:{x}px; top:{y}px; width:{width}px; height:{height}px; z-index:{z};"
 	onpointerdowncapture={handleWindowPointerDown}
 	onkeydown={handleKeyDown}
@@ -859,6 +882,13 @@
 		   unconditionally so note content never hides behind it, even when
 		   unfocused (toolbar hidden). */
 		--toolbar-h: 30px;
+	}
+
+	/* Windows belonging to an inactive workspace stay mounted so editor
+	   state and terminal connections survive workspace switches, but are
+	   completely hidden from layout, hit-testing, and focus. */
+	.note-window.hidden {
+		display: none;
 	}
 
 	.title-bar {

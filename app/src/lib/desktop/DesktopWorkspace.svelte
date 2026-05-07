@@ -231,7 +231,15 @@
 			<img class="wallpaper" src={wallpaperUrl} alt="" aria-hidden="true" />
 		{/if}
 		{#if ready}
-			{#each desktopSession.windows as win (win.guid)}
+			<!-- Render every workspace's windows at once and hide non-active
+			     ones via CSS. Switching workspaces becomes a pure visibility
+			     toggle — TipTap editors, terminal WS connections, and all
+			     in-memory state survive the switch. Firebase attach and the
+			     global editor registry are gated on `active` so only the
+			     visible workspace is "live". -->
+			{#each desktopSession.allWorkspaceWindows as item (item.workspaceIndex + ':' + item.window.guid)}
+				{@const win = item.window}
+				{@const active = item.workspaceIndex === desktopSession.currentWorkspace}
 				{#if win.kind === 'settings'}
 					<SettingsWindow
 						x={win.x}
@@ -240,6 +248,7 @@
 						height={win.height}
 						z={(win.pinned ? 1_000_000 : 0) + win.z}
 						pinned={win.pinned}
+						active={active}
 						onfocus={handleFocus}
 						onclose={handleClose}
 						onmove={handleMove}
@@ -254,6 +263,7 @@
 						height={win.height}
 						z={(win.pinned ? 1_000_000 : 0) + win.z}
 						pinned={win.pinned}
+						active={active}
 						onfocus={handleFocus}
 						onclose={handleClose}
 						onmove={handleMove}

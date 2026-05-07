@@ -15,14 +15,27 @@
 		height: number;
 		z: number;
 		pinned?: boolean;
+		/** Hidden via CSS when the owning workspace isn't visible. */
+		active?: boolean;
 		onfocus: (guid: string) => void;
 		onclose: (guid: string) => void;
 		onmove: (guid: string, x: number, y: number) => void;
 		onresize: (guid: string, width: number, height: number) => void;
 	}
 
-	let { x, y, width, height, z, pinned = false, onfocus, onclose, onmove, onresize }: Props =
-		$props();
+	let {
+		x,
+		y,
+		width,
+		height,
+		z,
+		pinned = false,
+		active = true,
+		onfocus,
+		onclose,
+		onmove,
+		onresize
+	}: Props = $props();
 
 	const guid = SETTINGS_WINDOW_GUID;
 
@@ -61,6 +74,7 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
 	class="settings-window"
+	class:hidden={!active}
 	style="left:{x}px; top:{y}px; width:{width}px; height:{height}px; z-index:{z};"
 	onpointerdowncapture={handleFocus}
 >
@@ -108,6 +122,10 @@
 		overflow: hidden;
 		min-width: 280px;
 		min-height: 240px;
+	}
+
+	.settings-window.hidden {
+		display: none;
 	}
 
 	.title-bar {
