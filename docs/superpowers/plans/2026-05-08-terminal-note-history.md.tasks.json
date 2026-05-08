@@ -16,13 +16,13 @@
     {
       "id": 2,
       "subject": "Task 2: TerminalWsClient.sendCommand",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Add `sendCommand(text, autoExecute)` re-input helper.\n\n**Files:**\n- Modify: `app/src/lib/editor/terminal/wsClient.ts`\n- Test: `app/tests/unit/editor/wsClientSendCommand.test.ts`\n\n**Verify:** `cd app && npm run test -- wsClientSendCommand --run`\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/wsClient.ts\", \"app/tests/unit/editor/wsClientSendCommand.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- wsClientSendCommand --run\", \"acceptanceCriteria\": [\"sendCommand without CR\", \"sendCommand with CR\", \"no-op when ws closed\"]}\n```"
     },
     {
       "id": 3,
       "subject": "Task 3: historyStore — read-modify-write with debounce",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "**Goal:** `historyStore.ts` with append/remove/clear + 500ms debounce per-guid + serialized chain. Pure helpers exported for tests.\n\n**Files:**\n- Create: `app/src/lib/editor/terminal/historyStore.ts`\n- Test: `app/tests/unit/editor/historyStore.test.ts`\n\n**Verify:** `cd app && npm run test -- historyStore --run`\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/historyStore.ts\", \"app/tests/unit/editor/historyStore.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- historyStore --run\", \"acceptanceCriteria\": [\"move-to-top dedup\", \"cap 50 FIFO\", \"silent ABORT on non-terminal note\", \"creates history: section if absent\", \"notifyNoteSaved + emitNoteReload after write\", \"500ms debounce coalesces\", \"flushTerminalHistoryNow flushes immediately\", \"whitespace-prefix rejected\"]}\n```"
     },

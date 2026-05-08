@@ -72,10 +72,11 @@ async function flushOne(guid: string): Promise<void> {
 	}
 	const batch = p.queue;
 	p.queue = [];
-	if (batch.length === 0) return;
-	// Chain so concurrent appendCommandToTerminalHistory calls land in
-	// order. We swallow per-batch errors to avoid stalling the chain.
+	// Chain unconditionally so every flushOne call serialises against any
+	// in-flight write. The empty-batch check moves inside so we still
+	// await the chain even when there is nothing new to write.
 	p.chain = p.chain.then(async () => {
+		if (batch.length === 0) return;
 		try {
 			await applyBatch(guid, batch);
 		} catch (err) {

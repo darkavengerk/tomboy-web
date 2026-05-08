@@ -196,4 +196,15 @@ describe('historyStore — IDB integration', () => {
 		expect(after?.xmlContent).not.toContain('>b<'); // crude check — the trimmed value 'b' should no longer be a list-item text
 		expect(after?.xmlContent).toContain('c');
 	});
+
+	it('removeCommandFromTerminalHistory waits for pending append', async () => {
+		const guid = 'g-serial';
+		await seedTerminalNote(guid, []);
+		appendCommandToTerminalHistory(guid, 'cmd'); // queued, not flushed
+		// removeCommandFromTerminalHistory must flush the queue first, then remove index 0
+		await removeCommandFromTerminalHistory(guid, 0);
+		const after = await getNote(guid);
+		// 'cmd' was appended then removed — history should be empty
+		expect(after?.xmlContent).not.toContain('cmd');
+	});
 });
