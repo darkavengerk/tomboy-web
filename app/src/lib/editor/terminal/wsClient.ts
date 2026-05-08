@@ -99,6 +99,15 @@ export class TerminalWsClient {
 		}
 	}
 
+	/**
+	 * Re-input helper used by the history panel. `autoExecute=false` types
+	 * the text into the prompt without pressing Enter; `autoExecute=true`
+	 * appends `\r` so the shell runs it immediately.
+	 */
+	sendCommand(text: string, autoExecute: boolean): void {
+		this.send(autoExecute ? text + '\r' : text);
+	}
+
 	resize(cols: number, rows: number): void {
 		if (this.ws && this.ws.readyState === WebSocket.OPEN) {
 			this.ws.send(JSON.stringify({ type: 'resize', cols, rows }));
