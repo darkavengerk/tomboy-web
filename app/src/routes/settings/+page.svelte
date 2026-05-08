@@ -145,7 +145,7 @@ __th_emit_C() {
 __th_arm() { __th_user_cmd_pending=1; }
 
 PS1='\\[$(__th_osc A)\\]'"$PS1"'\\[$(__th_osc B)\\]'
-PROMPT_COMMAND='__th_osc "D;$?"; '"\${PROMPT_COMMAND:-}"'; __th_arm'
+PROMPT_COMMAND='__th_osc "D;$?"'"\${PROMPT_COMMAND:+; \$PROMPT_COMMAND}"'; __th_arm'
 trap '__th_emit_C "$BASH_COMMAND"' DEBUG`;
 
 	async function loadTerminalBridgeState(): Promise<void> {
