@@ -6,11 +6,25 @@ export interface Osc133Event {
 	kind: Osc133Kind;
 	/** Exit code, only set for kind 'D' when the payload supplied one. */
 	exitCode?: number;
+	/**
+	 * Command text supplied by the shell (kind 'C' only, optional). When
+	 * present, callers should prefer this over buffer scraping — it is
+	 * exact and not subject to tmux redraw timing issues.
+	 *
+	 * Encoded as hex in the wire format: `OSC 133 ; C ; <hex> ST`.
+	 */
+	commandText?: string;
 }
 
 /**
  * Parse the body of an OSC 133 sequence (i.e. the part after `]133;`).
- * Examples: `A`, `B`, `C`, `D`, `D;0`, `D;130`. Anything else returns null.
+ *
+ * Recognised payloads:
+ * - `A`, `B`, `C`, `D` — standard markers
+ * - `D;0`, `D;130` — D with exit code
+ * - `C;<hex>` — extended C with the command text hex-encoded (our extension)
+ *
+ * Anything else returns null.
  */
 export function parseOsc133Payload(payload: string): Osc133Event | null {
 	if (!payload) return null;
@@ -22,7 +36,30 @@ export function parseOsc133Payload(payload: string): Osc133Event | null {
 		if (Number.isInteger(code)) return { kind: 'D', exitCode: code };
 		return { kind: 'D' };
 	}
+	if (head === 'C' && parts.length > 1) {
+		const decoded = decodeHex(parts[1]);
+		if (decoded !== null) return { kind: 'C', commandText: decoded };
+		return { kind: 'C' };
+	}
 	return { kind: head };
+}
+
+/**
+ * Decode an even-length string of `[0-9a-fA-F]` pairs into a UTF-8 string.
+ * Returns null on malformed input.
+ */
+function decodeHex(hex: string): string | null {
+	if (hex.length === 0 || hex.length % 2 !== 0) return null;
+	if (!/^[0-9a-fA-F]+$/.test(hex)) return null;
+	const bytes = new Uint8Array(hex.length / 2);
+	for (let i = 0; i < hex.length; i += 2) {
+		bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+	}
+	try {
+		return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+	} catch {
+		return null;
+	}
 }
 
 export interface CommandExtractionInput {

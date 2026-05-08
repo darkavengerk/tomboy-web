@@ -27,6 +27,27 @@ describe('parseOsc133Payload', () => {
 		expect(parseOsc133Payload('')).toBeNull();
 		expect(parseOsc133Payload('AA')).toBeNull();
 	});
+
+	it('parses C with hex-encoded command text', () => {
+		// 'ls -la' = 6c 73 20 2d 6c 61
+		expect(parseOsc133Payload('C;6c73202d6c61')).toEqual({
+			kind: 'C',
+			commandText: 'ls -la'
+		});
+	});
+
+	it('parses C with hex-encoded UTF-8 (Korean)', () => {
+		// '안녕' = ec 95 88 eb 85 95
+		expect(parseOsc133Payload('C;ec9588eb8595')).toEqual({
+			kind: 'C',
+			commandText: '안녕'
+		});
+	});
+
+	it('falls back to plain C when hex is malformed', () => {
+		expect(parseOsc133Payload('C;notHex')).toEqual({ kind: 'C' });
+		expect(parseOsc133Payload('C;abc')).toEqual({ kind: 'C' }); // odd length
+	});
 });
 
 describe('extractCommand', () => {

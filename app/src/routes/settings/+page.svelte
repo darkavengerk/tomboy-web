@@ -129,9 +129,16 @@ __th_osc() {
     printf '\\e]133;%s\\a' "$1"
   fi
 }
+__th_emit_C() {
+  # Hex-encode the command so tmux passthrough timing can't desync the
+  # buffer scrape — the shell tells xterm exactly what's running.
+  local hex
+  hex=$(printf '%s' "$1" | od -An -tx1 | tr -d ' \\n')
+  __th_osc "C;$hex"
+}
 PS1='\\[$(__th_osc A)\\]'"$PS1"'\\[$(__th_osc B)\\]'
 PROMPT_COMMAND='__th_osc "D;$?"; '"\${PROMPT_COMMAND:-}"
-trap '__th_osc C' DEBUG`;
+trap '__th_emit_C "$BASH_COMMAND"' DEBUG`;
 
 	async function loadTerminalBridgeState(): Promise<void> {
 		const v = await getDefaultTerminalBridge();

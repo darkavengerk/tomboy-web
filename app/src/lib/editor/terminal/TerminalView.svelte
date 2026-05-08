@@ -160,8 +160,10 @@
 				const buf = term!.buffer.active;
 				osc.onCommandStart(buf.cursorY + buf.baseY, buf.cursorX);
 			} else if (evt.kind === 'C') {
+				// Always advance state machine for cleanup; result is only used
+				// when the shell didn't supply commandText.
 				const buf = term!.buffer.active;
-				const cmd = osc.consumeCommandOnExecute(
+				const scraped = osc.consumeCommandOnExecute(
 					buf.cursorY + buf.baseY,
 					buf.cursorX,
 					(row) => {
@@ -169,6 +171,10 @@
 						return line ? line.translateToString(true) : '';
 					}
 				);
+				// Prefer shell-supplied command text (works inside tmux where
+				// buffer scrape is unreliable due to redraw timing). Fall back
+				// to buffer scrape when the legacy snippet is in use.
+				const cmd = evt.commandText !== undefined ? evt.commandText : scraped;
 				if (cmd && shouldRecordCommand(cmd, blocklist)) {
 					appendCommandToTerminalHistory(guid, cmd);
 				}
