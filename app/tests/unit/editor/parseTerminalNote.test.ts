@@ -384,4 +384,21 @@ describe('parseTerminalNote — multi-section history', () => {
 		const out = parseTerminalNote(doc);
 		expect(out?.history).toEqual(['a', 'shared', 'b']);
 	});
+
+	it('rejects duplicate section keys (fail closed on malformed input)', () => {
+		const doc = {
+			type: 'doc',
+			content: [
+				paragraph('Title'),
+				paragraph('ssh://localhost'),
+				{ type: 'paragraph' },
+				paragraph('history:'),
+				listOf(['a']),
+				{ type: 'paragraph' },
+				paragraph('history:'),
+				listOf(['b'])
+			]
+		};
+		expect(parseTerminalNote(doc)).toBeNull();
+	});
 });

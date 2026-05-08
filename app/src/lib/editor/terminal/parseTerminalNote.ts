@@ -93,6 +93,7 @@ export function parseTerminalNote(doc: JSONContent | null | undefined): Terminal
 		} else if (i < bodyBlocks.length && paragraphText(bodyBlocks[i]) === null) {
 			return null;
 		}
+		if (histories.has(key)) return null;
 		histories.set(key, items);
 	}
 
