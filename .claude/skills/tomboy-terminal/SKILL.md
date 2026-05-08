@@ -297,8 +297,8 @@ the home host. Two things to update:
   in notes that target the bridge's host.
 - **`history:` (non-tmux) and `history:tmux:<window_id>:` are independent buckets.** Dedup, 50-cap, and debounce all apply per-bucket. Never introduce cross-bucket dedup.
 - **Window key uses `@<window_id>` only** — session_id is intentionally not part of the key. Keys stay stable for the lifetime of a tmux window, which matches the user's working unit.
-- **OSC 133 `;W;<id>` is an optional fast-path signal.** The store must work correctly with only `;C;<hex>;<id>` (lazy fallback) — the `after-select-window` hook is an opt-in for instant panel switching.
-- **The `after-select-window` hook is the user's responsibility.** Without it, the panel switches buckets when the next command is captured. The base shell snippet alone is sufficient for correctness.
+- **PS1 polls the shell context on every prompt.** The shell snippet emits `OSC 133 ; W ; <window_id>` (inside tmux) or `OSC 133 ; W` (outside) at every prompt. This single signal handles tmux start, last-shell exit, attach, window switch, and outside-tmux automatically — `currentWindowKey` is always in sync with what the next command will do. `;C;<hex>;<id>` payload (or its absence) is the secondary correctness baseline.
+- **`after-select-window` and `client-attached` hooks are optional micro-optimizations.** They only matter for two no-prompt-redraw transitions (window switch while idle; attach while the active shell already sat at a prompt) where they reduce panel-update latency from "next prompt" to "instant." Detach is the one transition we can't catch instantly — the panel updates on the user's next prompt in the outside shell.
 - **Empty sections are dropped on serialize.** Both `clearTerminalHistory(guid, key)` and item-removal-to-empty leave the section header out of the doc. Do not "preserve" an empty header.
 - **The bridge has full shell access** to whatever host runs it.
   `BRIDGE_PASSWORD` is the only line of defense — front it with TLS +

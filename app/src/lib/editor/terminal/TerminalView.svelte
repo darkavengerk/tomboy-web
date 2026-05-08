@@ -178,14 +178,19 @@
 					}
 				);
 				const cmd = evt.commandText !== undefined ? evt.commandText : scraped;
-				if (evt.windowId) {
-					currentWindowKey = 'tmux:' + evt.windowId;
-				}
+				// winId present → inside tmux; absent → outside tmux (or
+				// tmux-unaware shell). Reset on absence so commands run after
+				// `tmux exit` go to the non-tmux bucket instead of bleeding
+				// into the last-attached window's bucket.
+				currentWindowKey = evt.windowId ? 'tmux:' + evt.windowId : null;
 				if (cmd && shouldRecordCommand(cmd, blocklist)) {
 					appendCommandToTerminalHistory(guid, cmd, currentWindowKey ?? undefined);
 				}
 			} else if (evt.kind === 'W') {
-				if (evt.windowId) currentWindowKey = 'tmux:' + evt.windowId;
+				// PS1 emits W on every prompt: with id while inside tmux,
+				// bare otherwise. This single signal handles every tmux
+				// start/exit/attach/window-change case automatically.
+				currentWindowKey = evt.windowId ? 'tmux:' + evt.windowId : null;
 			}
 			// kind 'D' is ignored for now.
 			return true; // suppress xterm output of the OSC sequence

@@ -153,16 +153,34 @@ __th_emit_C() {
   __th_osc "$payload"
 }
 
+# Reports the current shell context on every prompt. The history panel uses
+# this to switch buckets after tmux start/exit/detach/attach/window-change
+# without any tmux.conf hook required.
+__th_emit_W() {
+  if [ -n "$TMUX" ]; then
+    local id; id=$(tmux display -p '#{window_id}' 2>/dev/null)
+    __th_osc "W;$id"
+  else
+    __th_osc "W"
+  fi
+}
+
 PS0='$(: > "$__th_state_file" 2>/dev/null
        [ -n "$TMUX" ] && tmux display -p "#{window_id}" \\
          > "\${__th_state_file}.win" 2>/dev/null)'
-PS1='\\[$(__th_osc A)\\]'"$PS1"'\\[$(__th_osc B)\\]'
+PS1='\\[$(__th_osc A)$(__th_emit_W)\\]'"$PS1"'\\[$(__th_osc B)\\]'
 PROMPT_COMMAND='rm -f "$__th_state_file" "\${__th_state_file}.win" 2>/dev/null
                 __th_osc "D;$?"'"\${PROMPT_COMMAND:+; \$PROMPT_COMMAND}"
 trap '__th_emit_C "$BASH_COMMAND"' DEBUG`;
 
-	const tmuxHookSnippet = `# Append to ~/.tmux.conf (optional — for instant panel sync on window switch)
-set-hook -g after-select-window 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{window_id}\\\\a\\\\e\\\\\\\\\\" > #{client_tty}"'`;
+	const tmuxHookSnippet = `# Append to ~/.tmux.conf (optional — reduces panel-update latency).
+# The bash snippet above polls the current shell context on every prompt,
+# so most cases (tmux start/exit, next-command in a switched window) are
+# handled automatically. These hooks make two transitions instant instead
+# of next-prompt: window switch (you stop typing in win @1, switch to @2)
+# and tmux attach (you reconnect to a running session).
+set-hook -g after-select-window 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{window_id}\\\\a\\\\e\\\\\\\\\\" > #{client_tty}"'
+set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{window_id}\\\\a\\\\e\\\\\\\\\\" > #{client_tty}"'`;
 
 	async function loadTerminalBridgeState(): Promise<void> {
 		const v = await getDefaultTerminalBridge();

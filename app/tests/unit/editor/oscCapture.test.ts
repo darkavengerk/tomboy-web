@@ -54,9 +54,11 @@ describe('parseOsc133Payload', () => {
 		expect(parseOsc133Payload('W;@42')).toEqual({ kind: 'W', windowId: '@42' });
 	});
 
-	it('rejects W without an id', () => {
-		expect(parseOsc133Payload('W')).toBeNull();
-		expect(parseOsc133Payload('W;')).toBeNull();
+	it('parses bare W as the outside-tmux signal', () => {
+		// PS1 emits `W` (no id) every prompt while outside tmux. The panel
+		// uses this to switch back to the non-tmux bucket after tmux exit.
+		expect(parseOsc133Payload('W')).toEqual({ kind: 'W' });
+		expect(parseOsc133Payload('W;')).toEqual({ kind: 'W' });
 	});
 
 	it('parses C with hex command and window id', () => {

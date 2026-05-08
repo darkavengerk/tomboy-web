@@ -37,9 +37,11 @@ export function parseOsc133Payload(payload: string): Osc133Event | null {
 	const head = parts[0];
 	if (head !== 'A' && head !== 'B' && head !== 'C' && head !== 'D' && head !== 'W') return null;
 	if (head === 'W') {
+		// `W;<id>` → tmux window id; bare `W` or `W;` → shell is outside
+		// tmux. The empty form is the "exit-tmux" signal that tells the
+		// panel to switch back to the non-tmux bucket.
 		const id = parts[1];
-		if (!id) return null;
-		return { kind: 'W', windowId: id };
+		return id ? { kind: 'W', windowId: id } : { kind: 'W' };
 	}
 	if (head === 'D' && parts.length > 1) {
 		const code = Number(parts[1]);
