@@ -43,7 +43,7 @@
     {
       "id": 6,
       "subject": "Task 6: Settings — new \"터미널\" tab",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [0],
       "description": "**Goal:** New tab between 동기화 설정 and 알림. Move bridge UI here. Add 명령어 히스토리 + 셸 통합 + 보안 sections.\n\n**Files:**\n- Modify: `app/src/routes/settings/+page.svelte`\n\n**Verify:** `cd app && npm run check` && manual `/settings` test\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"Tab type extended\", \"tabs order sync/config/terminal/notify/advanced\", \"bridge UI moved verbatim (h2→브릿지 연결)\", \"history checkboxes + blocklist textarea + reset\", \"snippet code block + 복사 button\", \"보안 안내 section\"]}\n```"
     },

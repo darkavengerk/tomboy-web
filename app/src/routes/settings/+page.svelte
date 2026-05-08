@@ -67,8 +67,17 @@
 		logoutBridge,
 		checkBridgeAuth
 	} from '$lib/editor/terminal/bridgeSettings.js';
+	import {
+		getTerminalHistoryPanelOpenDesktop,
+		setTerminalHistoryPanelOpenDesktop,
+		getTerminalHistoryPanelOpenMobile,
+		setTerminalHistoryPanelOpenMobile,
+		getTerminalHistoryBlocklist,
+		setTerminalHistoryBlocklist,
+		TERMINAL_HISTORY_BLOCKLIST_DEFAULT
+	} from '$lib/storage/appSettings.js';
 
-	type Tab = 'sync' | 'config' | 'notify' | 'advanced';
+	type Tab = 'sync' | 'config' | 'terminal' | 'notify' | 'advanced';
 	let activeTab = $state<Tab>('sync');
 
 	let authenticated = $state(false);
@@ -105,6 +114,24 @@
 	let terminalBridgeAuthed = $state<boolean | null>(null); // null = unknown
 	let terminalBridgeBusy = $state(false);
 	let terminalBridgeMessage = $state('');
+
+	// ── 터미널 히스토리 설정 ──────────────────────────────────────────
+	let termHistOpenDesktop = $state(true);
+	let termHistOpenMobile = $state(false);
+	let termHistBlocklistText = $state('');
+	let snippetCopied = $state(false);
+
+	const shellSnippet = `# Append to ~/.bashrc (or ~/.zshrc)
+__th_osc() {
+  if [ -n "$TMUX" ]; then
+    printf '\\ePtmux;\\e\\e]133;%s\\a\\e\\\\' "$1"
+  else
+    printf '\\e]133;%s\\a' "$1"
+  fi
+}
+PS1='\\[$(__th_osc A)\\]'"$PS1"'\\[$(__th_osc B)\\]'
+PROMPT_COMMAND='__th_osc "D;$?"; '"\${PROMPT_COMMAND:-}"
+trap '__th_osc C' DEBUG`;
 
 	async function loadTerminalBridgeState(): Promise<void> {
 		const v = await getDefaultTerminalBridge();
@@ -162,6 +189,39 @@
 		await logoutBridge();
 		terminalBridgeAuthed = false;
 		terminalBridgeMessage = '로그아웃되었습니다.';
+	}
+
+	async function loadTerminalHistorySettings(): Promise<void> {
+		termHistOpenDesktop = await getTerminalHistoryPanelOpenDesktop();
+		termHistOpenMobile = await getTerminalHistoryPanelOpenMobile();
+		const list = await getTerminalHistoryBlocklist();
+		termHistBlocklistText = list.join(', ');
+	}
+
+	async function saveTermHistOpenDesktop(): Promise<void> {
+		await setTerminalHistoryPanelOpenDesktop(termHistOpenDesktop);
+	}
+	async function saveTermHistOpenMobile(): Promise<void> {
+		await setTerminalHistoryPanelOpenMobile(termHistOpenMobile);
+	}
+	async function saveTermHistBlocklist(): Promise<void> {
+		const items = termHistBlocklistText
+			.split(',')
+			.map((s) => s.trim())
+			.filter((s) => s !== '');
+		await setTerminalHistoryBlocklist(items);
+	}
+	async function resetTermHistBlocklist(): Promise<void> {
+		termHistBlocklistText = TERMINAL_HISTORY_BLOCKLIST_DEFAULT.join(', ');
+		await setTerminalHistoryBlocklist([...TERMINAL_HISTORY_BLOCKLIST_DEFAULT]);
+	}
+
+	async function copySnippet(): Promise<void> {
+		await navigator.clipboard.writeText(shellSnippet);
+		snippetCopied = true;
+		setTimeout(() => {
+			snippetCopied = false;
+		}, 2000);
 	}
 
 	// ── 파이어베이스 실시간 노트 동기화 ──────────────────────────────────
@@ -365,6 +425,7 @@
 		settingsPath = getSettingsPath();
 		imagesPath = getImagesPath();
 		void loadTerminalBridgeState();
+		void loadTerminalHistorySettings();
 
 		(async () => {
 			// Check if we're returning from OAuth callback
@@ -571,6 +632,7 @@
 	const tabs: { id: Tab; label: string }[] = [
 		{ id: 'sync', label: '동기화' },
 		{ id: 'config', label: '동기화 설정' },
+		{ id: 'terminal', label: '터미널' },
 		{ id: 'notify', label: '알림' },
 		{ id: 'advanced', label: '고급' }
 	];
@@ -843,13 +905,14 @@
 					{/if}
 				</section>
 			{/if}
-
+		{:else if activeTab === 'terminal'}
+			<!-- ── 터미널 탭 ───────────────────────────────────────────────── -->
 			<section class="section">
-				<h2>터미널 브릿지</h2>
+				<h2>브릿지 연결</h2>
 				<p class="info-text">
 					터미널 노트(<code>ssh://...</code> 형식)를 열 때 사용할 기본 브릿지 URL을 설정합니다.
 					노트 본문에 <code>bridge:</code> 줄이 없으면 이 값이 사용됩니다.
-					브릿지에 한 번 로그인하면 쿠키가 저장되어 모든 터미널 노트에서 재사용됩니다.
+					브릿지에 한 번 로그인하면 토큰이 저장되어 모든 터미널 노트에서 재사용됩니다.
 				</p>
 
 				<div class="path-row">
@@ -906,6 +969,55 @@
 				{#if terminalBridgeMessage}
 					<p class="info-text small">{terminalBridgeMessage}</p>
 				{/if}
+			</section>
+
+			<section class="section">
+				<h2>명령어 히스토리</h2>
+				<p class="info-text">
+					터미널 노트 우측 패널에 표시되는 최근 명령어 목록입니다. 노트 본문에
+					저장되어 모든 디바이스에서 공유됩니다. 최대 50개까지 보관됩니다.
+				</p>
+
+				<label class="profile-row">
+					<input type="checkbox" bind:checked={termHistOpenDesktop} onchange={saveTermHistOpenDesktop} />
+					<span>데스크톱에서 패널 기본 열림</span>
+				</label>
+				<label class="profile-row">
+					<input type="checkbox" bind:checked={termHistOpenMobile} onchange={saveTermHistOpenMobile} />
+					<span>모바일에서 패널 기본 열림</span>
+				</label>
+
+				<p class="info-text small">기록하지 않을 명령어 (첫 토큰 기준, 콤마 구분)</p>
+				<textarea
+					class="path-input"
+					rows="2"
+					bind:value={termHistBlocklistText}
+					onblur={saveTermHistBlocklist}
+				></textarea>
+				<button class="btn btn-secondary" onclick={resetTermHistBlocklist}>기본값으로 되돌리기</button>
+			</section>
+
+			<section class="section">
+				<h2>셸 통합 (OSC 133)</h2>
+				<p class="info-text">
+					히스토리 캡처에는 원격 셸에 1회 설정이 필요합니다. 아래 스니펫을
+					원격의 <code>~/.bashrc</code> (또는 <code>~/.zshrc</code>) 끝에
+					추가하세요.
+				</p>
+				<pre class="snippet"><code>{shellSnippet}</code></pre>
+				<button class="btn btn-secondary" onclick={copySnippet}>{snippetCopied ? '복사됨' : '복사'}</button>
+				<p class="info-text small">
+					tmux 사용 시: 스니펫이 <code>$TMUX</code> 환경변수를 자동 감지하여
+					DCS 패스스루로 래핑하므로 <code>tmux.conf</code> 수정은 필요 없습니다.
+				</p>
+			</section>
+
+			<section class="section">
+				<h2>보안 안내</h2>
+				<ul class="info-text">
+					<li>명령어 히스토리는 노트 본문에 평문으로 저장되어 Dropbox/Firestore와 동기화됩니다. <strong>비밀번호를 명령 인자로 입력하지 마세요</strong>.</li>
+					<li>공백 또는 탭으로 시작하는 명령은 캡처되지 않습니다 (<code>HISTCONTROL=ignorespace</code> 관행). 일회성으로 민감한 명령을 숨기고 싶다면 명령 앞에 공백을 한 칸 두고 입력하세요.</li>
+				</ul>
 			</section>
 		{:else if activeTab === 'notify'}
 			<!-- ── 알림 탭 ─────────────────────────────────────────────────── -->
@@ -1417,5 +1529,16 @@
 		padding-left: 16px;
 		font-size: 0.8rem;
 		color: var(--color-danger);
+	}
+
+	.snippet {
+		background: #111;
+		color: #cfe;
+		padding: 8px;
+		border-radius: 4px;
+		font-size: 0.78rem;
+		overflow-x: auto;
+		white-space: pre;
+		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 	}
 </style>
