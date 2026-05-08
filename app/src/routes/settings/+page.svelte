@@ -122,6 +122,8 @@
 	let snippetCopied = $state(false);
 
 	const shellSnippet = `# Append to ~/.bashrc (or ~/.zshrc)
+__th_user_cmd_pending=0
+
 __th_osc() {
   if [ -n "$TMUX" ]; then
     printf '\\ePtmux;\\e\\e]133;%s\\a\\e\\\\' "$1"
@@ -129,15 +131,21 @@ __th_osc() {
     printf '\\e]133;%s\\a' "$1"
   fi
 }
+
 __th_emit_C() {
-  # Hex-encode the command so tmux passthrough timing can't desync the
-  # buffer scrape — the shell tells xterm exactly what's running.
+  # Only emit for user-typed commands. PROMPT_COMMAND internals leave
+  # the flag unset, so their DEBUG fires are silently skipped.
+  [ "$__th_user_cmd_pending" = "1" ] || return
+  __th_user_cmd_pending=0
   local hex
   hex=$(printf '%s' "$1" | od -An -tx1 | tr -d ' \\n')
   __th_osc "C;$hex"
 }
+
+__th_arm() { __th_user_cmd_pending=1; }
+
 PS1='\\[$(__th_osc A)\\]'"$PS1"'\\[$(__th_osc B)\\]'
-PROMPT_COMMAND='__th_osc "D;$?"; '"\${PROMPT_COMMAND:-}"
+PROMPT_COMMAND='__th_osc "D;$?"; '"\${PROMPT_COMMAND:-}"'; __th_arm'
 trap '__th_emit_C "$BASH_COMMAND"' DEBUG`;
 
 	async function loadTerminalBridgeState(): Promise<void> {
