@@ -10,8 +10,21 @@
 		getTerminalBridgeToken
 	} from './bridgeSettings.js';
 	import { Osc133State, parseOsc133Payload, shouldRecordCommand } from './oscCapture.js';
-	import { appendCommandToTerminalHistory, flushTerminalHistoryNow } from './historyStore.js';
-	import { getTerminalHistoryBlocklist } from '$lib/storage/appSettings.js';
+	import { appendCommandToTerminalHistory, flushTerminalHistoryNow, removeCommandFromTerminalHistory, clearTerminalHistory } from './historyStore.js';
+	import {
+		getTerminalHistoryBlocklist,
+		getTerminalHistoryPanelOpenDesktop,
+		setTerminalHistoryPanelOpenDesktop,
+		getTerminalHistoryPanelOpenMobile,
+		setTerminalHistoryPanelOpenMobile,
+		getTerminalShellIntegrationBannerDismissed,
+		setTerminalShellIntegrationBannerDismissed
+	} from '$lib/storage/appSettings.js';
+	import { subscribeNoteReload } from '$lib/core/noteReloadBus.js';
+	import { getNote } from '$lib/storage/noteStore.js';
+	import { deserializeContent } from '$lib/core/noteContentArchiver.js';
+	import { parseTerminalNote } from './parseTerminalNote.js';
+	import HistoryPanel from './HistoryPanel.svelte';
 
 	type Props = {
 		spec: TerminalNoteSpec;
@@ -28,14 +41,68 @@
 
 	let shellIntegrationDetected = $state(false);
 
+	let history: string[] = $state([]);
+	let panelOpen = $state(false);
+	let isMobile = $state(false);
+	let shellHintDismissed = $state(false);
+	let shellHintVisible = $state(false);
+
 	let term: Terminal | null = null;
 	let fit: FitAddon | null = null;
 	let client: TerminalWsClient | null = null;
 	let resizeObserver: ResizeObserver | null = null;
 	let resolvedToken: string | null = null;
 	let onPageHide: (() => void) | null = null;
+	let unsubReload: (() => void) | null = null;
+
+	async function reloadHistory(): Promise<void> {
+		const note = await getNote(guid);
+		if (!note) return;
+		const doc = deserializeContent(note.xmlContent);
+		const parsed = parseTerminalNote(doc);
+		history = parsed?.history ?? [];
+	}
+
+	async function togglePanel(): Promise<void> {
+		panelOpen = !panelOpen;
+		if (isMobile) await setTerminalHistoryPanelOpenMobile(panelOpen);
+		else await setTerminalHistoryPanelOpenDesktop(panelOpen);
+	}
+
+	function onPanelSend(text: string): void {
+		client?.sendCommand(text, false);
+		term?.focus();
+	}
+	function onPanelSendNow(text: string): void {
+		client?.sendCommand(text, true);
+		term?.focus();
+	}
+	async function onPanelDelete(index: number): Promise<void> {
+		await removeCommandFromTerminalHistory(guid, index);
+		await reloadHistory();
+	}
+	async function onPanelClear(): Promise<void> {
+		await clearTerminalHistory(guid);
+		await reloadHistory();
+	}
+	function onPanelClose(): void {
+		void togglePanel();
+	}
+	async function dismissShellHint(): Promise<void> {
+		shellHintVisible = false;
+		shellHintDismissed = true;
+		await setTerminalShellIntegrationBannerDismissed(true);
+	}
 
 	onMount(async () => {
+		isMobile = window.matchMedia && !window.matchMedia('(min-width: 768px)').matches;
+		panelOpen = isMobile
+			? await getTerminalHistoryPanelOpenMobile()
+			: await getTerminalHistoryPanelOpenDesktop();
+		shellHintDismissed = await getTerminalShellIntegrationBannerDismissed();
+		await reloadHistory();
+		unsubReload = subscribeNoteReload(guid, () => reloadHistory());
+
 		const bridge = spec.bridge ?? (await getDefaultTerminalBridge());
 		if (!bridge) {
 			bridgeMissing = true;
@@ -133,6 +200,12 @@
 		});
 		client.connect();
 
+		setTimeout(() => {
+			if (!shellIntegrationDetected && !shellHintDismissed) {
+				shellHintVisible = true;
+			}
+		}, 30_000);
+
 		term.onData((data) => client?.send(data));
 		term.onResize(({ cols, rows }) => client?.resize(cols, rows));
 
@@ -146,6 +219,8 @@
 	});
 
 	onDestroy(() => {
+		unsubReload?.();
+		unsubReload = null;
 		if (onPageHide) {
 			window.removeEventListener('pagehide', onPageHide);
 			onPageHide = null;
@@ -185,7 +260,7 @@
 	}
 </script>
 
-<div class="terminal-page">
+<div class="terminal-page" class:panel-open={panelOpen} class:mobile={isMobile}>
 	<div class="terminal-header">
 		<div class="meta">
 			<div class="line"><span class="label">target</span><code>{spec.target}</code></div>
@@ -196,6 +271,9 @@
 			{/if}
 		</div>
 		<div class="actions">
+			<button type="button" class="toggle" onclick={togglePanel}>
+				히스토리 ({history.length})
+			</button>
 			<span class="status status-{status}">
 				{#if status === 'connecting'}연결 중…
 				{:else if status === 'open'}연결됨
@@ -211,7 +289,29 @@
 		<div class="banner" class:banner-error={status === 'error' || bridgeMissing}>{statusMessage}</div>
 	{/if}
 
-	<div class="xterm-host" bind:this={xtermContainer}></div>
+	{#if shellHintVisible}
+		<div class="banner banner-hint">
+			셸 통합이 감지되지 않았습니다. 명령어가 자동으로 기록되지 않습니다.
+			<a href="/settings#terminal" target="_self">설정 안내 보기</a>
+			<button type="button" class="banner-close" onclick={dismissShellHint}>×</button>
+		</div>
+	{/if}
+
+	<div class="body">
+		<div class="xterm-host" bind:this={xtermContainer}></div>
+		{#if panelOpen}
+			<HistoryPanel
+				count={history.length}
+				items={history}
+				onsend={onPanelSend}
+				onsendNow={onPanelSendNow}
+				ondelete={onPanelDelete}
+				onclear={onPanelClear}
+				onclose={onPanelClose}
+				{onedit}
+			/>
+		{/if}
+	</div>
 </div>
 
 <style>
@@ -286,6 +386,16 @@
 		cursor: not-allowed;
 	}
 
+	.actions .toggle {
+		background: #3a3a3a;
+		color: #ddd;
+		border: 1px solid #555;
+		border-radius: 4px;
+		padding: 3px 8px;
+		font-size: 0.78rem;
+		cursor: pointer;
+	}
+
 	.status {
 		font-size: 0.72rem;
 		padding: 2px 6px;
@@ -306,10 +416,54 @@
 
 	.banner-error { background: #5a1e1e; }
 
+	.banner-hint {
+		background: #3a3a4a;
+		color: #ddd;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.banner-hint a { color: #9bf; }
+	.banner-close {
+		margin-left: auto;
+		background: transparent;
+		border: none;
+		color: #aaa;
+		cursor: pointer;
+		font-size: 1rem;
+	}
+
+	.body {
+		flex: 1;
+		display: flex;
+		min-height: 0;
+	}
+
+	/* Desktop (default): panel on the right */
+	.body :global(.history-panel) {
+		width: 240px;
+		flex-shrink: 0;
+	}
+
 	.xterm-host {
 		flex: 1;
 		padding: 4px;
 		overflow: hidden;
+	}
+
+	/* Mobile: panel becomes a bottom sheet ~50% height */
+	.terminal-page.mobile.panel-open .body {
+		flex-direction: column;
+	}
+	.terminal-page.mobile.panel-open .xterm-host {
+		flex: 1 1 50%;
+		min-height: 0;
+	}
+	.terminal-page.mobile.panel-open .body :global(.history-panel) {
+		width: auto;
+		flex: 1 1 50%;
+		border-left: none;
+		border-top: 1px solid #111;
 	}
 
 	/* xterm sets width:100% on its inner viewport but needs a definite

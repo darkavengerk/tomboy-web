@@ -29,14 +29,14 @@
     {
       "id": 4,
       "subject": "Task 4: OSC 133 capture + command extraction",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [0, 3],
       "description": "**Goal:** Hook xterm OSC parser. On ;C, scrape buffer, sanitize, filter, dispatch to historyStore.\n\n**Files:**\n- Create: `app/src/lib/editor/terminal/oscCapture.ts`\n- Modify: `app/src/lib/editor/terminal/TerminalView.svelte`\n- Modify (callers add `guid` prop): `app/src/routes/note/[id]/+page.svelte`, `app/src/lib/desktop/NoteWindow.svelte`\n- Test: `app/tests/unit/editor/oscCapture.test.ts`\n\n**Verify:** `cd app && npm run test -- oscCapture --run && cd app && npm run check`\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/oscCapture.ts\", \"app/src/lib/editor/terminal/TerminalView.svelte\", \"app/src/routes/note/[id]/+page.svelte\", \"app/src/lib/desktop/NoteWindow.svelte\", \"app/tests/unit/editor/oscCapture.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- oscCapture --run && cd app && npm run check\", \"acceptanceCriteria\": [\"helper tests pass\", \"OSC handler returns true (no render)\", \"both callers pass guid prop\", \"shellIntegrationDetected flips on first OSC\"]}\n```"
     },
     {
       "id": 5,
       "subject": "Task 5: HistoryPanel + TerminalView UI integration",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [0, 2, 3, 4],
       "description": "**Goal:** Render panel; toggle button; desktop=240px right column (default open), mobile=bottom sheet (default closed). Click=stage, Shift+click=execute. Long-press/right-click menu. 30s shell-integration banner.\n\n**Files:**\n- Create: `app/src/lib/editor/terminal/HistoryPanel.svelte`\n- Modify: `app/src/lib/editor/terminal/TerminalView.svelte`\n\n**Verify:** `cd app && npm run check` && manual smoke test\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/HistoryPanel.svelte\", \"app/src/lib/editor/terminal/TerminalView.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"toggle persists per platform\", \"click/Shift+click correct\", \"long-press 500ms with vibrate\", \"banner shows after 30s if undetected\", \"banner dismiss persists\", \"subscribes noteReloadBus\"]}\n```"
     },
