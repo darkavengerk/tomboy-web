@@ -121,8 +121,8 @@
 	let termHistBlocklistText = $state('');
 	let snippetCopied = $state(false);
 
-	const shellSnippet = `# Append to ~/.bashrc (or ~/.zshrc)
-__th_user_cmd_pending=0
+	const shellSnippet = `# Append to ~/.bashrc (bash 4.4+; zsh users need a different snippet)
+__th_state_file="\${XDG_RUNTIME_DIR:-/tmp}/.th_state_$$"
 
 __th_osc() {
   if [ -n "$TMUX" ]; then
@@ -133,19 +133,19 @@ __th_osc() {
 }
 
 __th_emit_C() {
-  # Only emit for user-typed commands. PROMPT_COMMAND internals leave
-  # the flag unset, so their DEBUG fires are silently skipped.
-  [ "$__th_user_cmd_pending" = "1" ] || return
-  __th_user_cmd_pending=0
+  # PS0 (fires after Enter, before exec) creates the state file. The very
+  # next DEBUG is the user's command — capture and clear. PROMPT_COMMAND
+  # internals fire DEBUG without the file present, so they're skipped.
+  [ -e "$__th_state_file" ] || return
+  rm -f "$__th_state_file"
   local hex
   hex=$(printf '%s' "$1" | od -An -tx1 | tr -d ' \\n')
   __th_osc "C;$hex"
 }
 
-__th_arm() { __th_user_cmd_pending=1; }
-
+PS0='$(: > "$__th_state_file" 2>/dev/null)'
 PS1='\\[$(__th_osc A)\\]'"$PS1"'\\[$(__th_osc B)\\]'
-PROMPT_COMMAND='__th_osc "D;$?"'"\${PROMPT_COMMAND:+; \$PROMPT_COMMAND}"'; __th_arm'
+PROMPT_COMMAND='rm -f "$__th_state_file" 2>/dev/null; __th_osc "D;$?"'"\${PROMPT_COMMAND:+; \$PROMPT_COMMAND}"
 trap '__th_emit_C "$BASH_COMMAND"' DEBUG`;
 
 	async function loadTerminalBridgeState(): Promise<void> {
