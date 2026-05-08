@@ -50,7 +50,7 @@
     {
       "id": 7,
       "subject": "Task 7: CLAUDE.md & tomboy-terminal skill update",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [5],
       "description": "**Goal:** Reflect format extension + invariants in CLAUDE.md and tomboy-terminal skill file.\n\n**Files:**\n- Modify: `CLAUDE.md`\n- Modify: tomboy-terminal SKILL.md (path resolved at start)\n\n**Verify:** `grep -n 'OSC 133' CLAUDE.md && grep -n 'history:' CLAUDE.md`\n\n```json:metadata\n{\"files\": [\"CLAUDE.md\"], \"verifyCommand\": \"grep -n 'OSC 133' CLAUDE.md && grep -n 'history:' CLAUDE.md\", \"acceptanceCriteria\": [\"body invariant updated for optional history\", \"6 new invariants added from spec §7\", \"quick map lists historyStore.ts/oscCapture.ts/HistoryPanel.svelte\", \"skill file mirrors changes\"]}\n```"
     }
