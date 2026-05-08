@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
 import 'fake-indexeddb/auto';
+import { IDBFactory } from 'fake-indexeddb';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
 	getTerminalHistoryPanelOpenDesktop,
 	setTerminalHistoryPanelOpenDesktop,
@@ -12,6 +13,12 @@ import {
 	TERMINAL_HISTORY_BLOCKLIST_DEFAULT
 } from '$lib/storage/appSettings.js';
 import { setSetting } from '$lib/storage/appSettings.js';
+import { _resetDBForTest } from '$lib/storage/db.js';
+
+beforeEach(() => {
+	globalThis.indexedDB = new IDBFactory();
+	_resetDBForTest();
+});
 
 describe('terminal history settings — defaults', () => {
 	it('panel open desktop defaults true', async () => {
@@ -40,6 +47,16 @@ describe('terminal history settings — round-trip', () => {
 	it('blocklist trims and filters empties', async () => {
 		await setTerminalHistoryBlocklist(['  ls  ', '', 'cat']);
 		expect(await getTerminalHistoryBlocklist()).toEqual(['ls', 'cat']);
+	});
+
+	it('panel open mobile persists', async () => {
+		await setTerminalHistoryPanelOpenMobile(true);
+		expect(await getTerminalHistoryPanelOpenMobile()).toBe(true);
+	});
+
+	it('banner dismissed persists', async () => {
+		await setTerminalShellIntegrationBannerDismissed(true);
+		expect(await getTerminalShellIntegrationBannerDismissed()).toBe(true);
 	});
 
 	it('blocklist falls back to defaults when stored value is corrupted', async () => {
