@@ -3,7 +3,8 @@ import {
 	splitTerminalDoc,
 	applyCommandsToDoc,
 	removeItemFromDoc,
-	clearHistoryFromDoc
+	clearHistoryFromDoc,
+	splitTerminalDocByKey
 } from '$lib/editor/terminal/historyStore.js';
 import type { JSONContent } from '@tiptap/core';
 
@@ -206,5 +207,102 @@ describe('historyStore — IDB integration', () => {
 		const after = await getNote(guid);
 		// 'cmd' was appended then removed — history should be empty
 		expect(after?.xmlContent).not.toContain('cmd');
+	});
+});
+
+describe('historyStore — multi-section helpers', () => {
+	function metaWithSections(sections: Record<string, string[]>): JSONContent {
+		const blocks: JSONContent[] = [
+			{ type: 'paragraph', content: [{ type: 'text', text: 'Title' }] },
+			{ type: 'paragraph', content: [{ type: 'text', text: 'ssh://localhost' }] }
+		];
+		const keys = Object.keys(sections).sort((a, b) => {
+			if (a === '') return -1;
+			if (b === '') return 1;
+			return a.localeCompare(b);
+		});
+		for (const key of keys) {
+			blocks.push({ type: 'paragraph' });
+			const headerText = key === '' ? 'history:' : `history:${key}:`;
+			blocks.push({ type: 'paragraph', content: [{ type: 'text', text: headerText }] });
+			blocks.push({
+				type: 'bulletList',
+				content: sections[key].map((t) => ({
+					type: 'listItem',
+					content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }]
+				}))
+			});
+		}
+		return { type: 'doc', content: blocks };
+	}
+
+	it('splitTerminalDocByKey returns all buckets and pre blocks', () => {
+		const doc = metaWithSections({ '': ['out1'], 'tmux:@1': ['in1', 'in2'] });
+		const split = splitTerminalDocByKey(doc);
+		expect(split.histories.get('')).toEqual(['out1']);
+		expect(split.histories.get('tmux:@1')).toEqual(['in1', 'in2']);
+		expect(split.pre.length).toBe(2);
+	});
+
+	it('applyCommandsToDoc to non-tmux key leaves tmux section untouched', () => {
+		const doc = metaWithSections({ '': ['old'], 'tmux:@1': ['win-a'] });
+		const out = applyCommandsToDoc(doc, ['fresh']);
+		const split = splitTerminalDocByKey(out);
+		expect(split.histories.get('')).toEqual(['fresh', 'old']);
+		expect(split.histories.get('tmux:@1')).toEqual(['win-a']);
+	});
+
+	it('applyCommandsToDoc to tmux key leaves other buckets untouched', () => {
+		const doc = metaWithSections({ '': ['out1'], 'tmux:@1': ['a'] });
+		const out = applyCommandsToDoc(doc, ['b'], 'tmux:@1');
+		const split = splitTerminalDocByKey(out);
+		expect(split.histories.get('')).toEqual(['out1']);
+		expect(split.histories.get('tmux:@1')).toEqual(['b', 'a']);
+	});
+
+	it('applyCommandsToDoc creates a new tmux section when missing', () => {
+		const doc = metaWithSections({ '': ['outer'] });
+		const out = applyCommandsToDoc(doc, ['htop'], 'tmux:@2');
+		const split = splitTerminalDocByKey(out);
+		expect(split.histories.get('')).toEqual(['outer']);
+		expect(split.histories.get('tmux:@2')).toEqual(['htop']);
+	});
+
+	it('clearHistoryFromDoc on a single key drops only that section', () => {
+		const doc = metaWithSections({ '': ['x'], 'tmux:@1': ['y'] });
+		const out = clearHistoryFromDoc(doc, 'tmux:@1');
+		const split = splitTerminalDocByKey(out);
+		expect(split.histories.get('')).toEqual(['x']);
+		expect(split.histories.has('tmux:@1')).toBe(false);
+	});
+
+	it('clearHistoryFromDoc default key drops the non-tmux section only', () => {
+		const doc = metaWithSections({ '': ['x'], 'tmux:@1': ['y'] });
+		const out = clearHistoryFromDoc(doc);
+		const split = splitTerminalDocByKey(out);
+		expect(split.histories.has('')).toBe(false);
+		expect(split.histories.get('tmux:@1')).toEqual(['y']);
+	});
+
+	it('removeItemFromDoc removes from the targeted bucket only', () => {
+		const doc = metaWithSections({ '': ['a', 'b'], 'tmux:@1': ['x'] });
+		const out = removeItemFromDoc(doc, 0, 'tmux:@1');
+		const split = splitTerminalDocByKey(out);
+		expect(split.histories.get('')).toEqual(['a', 'b']);
+		expect(split.histories.has('tmux:@1')).toBe(false); // emptied → header dropped
+	});
+
+	it('caps each bucket independently at 50', () => {
+		const fifty = Array.from({ length: 50 }, (_, i) => `cmd${i}`);
+		let doc = metaWithSections({ '': fifty.slice() });
+		doc = applyCommandsToDoc(doc, ['fresh-outer']);
+		let split = splitTerminalDocByKey(doc);
+		expect(split.histories.get('')?.length).toBe(50);
+		expect(split.histories.get('')?.[0]).toBe('fresh-outer');
+
+		doc = applyCommandsToDoc(doc, ['t1'], 'tmux:@1');
+		split = splitTerminalDocByKey(doc);
+		expect(split.histories.get('')?.length).toBe(50);
+		expect(split.histories.get('tmux:@1')).toEqual(['t1']);
 	});
 });

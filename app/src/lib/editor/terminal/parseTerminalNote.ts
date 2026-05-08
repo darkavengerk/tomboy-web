@@ -20,7 +20,7 @@ export interface TerminalNoteSpec {
 
 const SSH_RE = /^ssh:\/\/(?:([^@\s/]+)@)?([^:\s/]+)(?::(\d{1,5}))?\/?\s*$/;
 const BRIDGE_RE = /^bridge:\s*(wss?:\/\/\S+)\s*$/;
-const HISTORY_HEADER_RE = /^history:(?:tmux:([A-Za-z0-9@$:_-]+):)?$/;
+export const HISTORY_HEADER_RE = /^history:(?:tmux:([A-Za-z0-9@$:_-]+):)?$/;
 
 export function parseTerminalNote(doc: JSONContent | null | undefined): TerminalNoteSpec | null {
 	if (!doc || doc.type !== 'doc' || !Array.isArray(doc.content)) return null;

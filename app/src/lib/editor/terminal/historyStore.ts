@@ -4,9 +4,8 @@ import { formatTomboyDate } from '$lib/core/note.js';
 import { deserializeContent, serializeContent } from '$lib/core/noteContentArchiver.js';
 import { emitNoteReload } from '$lib/core/noteReloadBus.js';
 import { notifyNoteSaved } from '$lib/sync/firebase/orchestrator.js';
-import { parseTerminalNote } from './parseTerminalNote.js';
+import { parseTerminalNote, HISTORY_HEADER_RE } from './parseTerminalNote.js';
 
-const HISTORY_HEADER = 'history:';
 const HISTORY_CAP = 50;
 const DEBOUNCE_MS = 500;
 
@@ -18,53 +17,66 @@ interface PendingState {
 
 const pending = new Map<string, PendingState>();
 
-function getOrInitPending(guid: string): PendingState {
-	let p = pending.get(guid);
+function pendingKey(guid: string, windowKey: string): string {
+	return `${guid} ${windowKey}`;
+}
+
+function getOrInitPending(guid: string, windowKey: string): PendingState {
+	const k = pendingKey(guid, windowKey);
+	let p = pending.get(k);
 	if (!p) {
 		p = { queue: [], timer: null, chain: Promise.resolve() };
-		pending.set(guid, p);
+		pending.set(k, p);
 	}
 	return p;
 }
 
-/**
- * Append a captured command to the terminal note's history. Debounced
- * 500ms per guid; coalesces multiple appends into a single read-modify-write.
- *
- * If the note is no longer a terminal note (parseTerminalNote returns null)
- * the queued command is silently dropped on flush.
- *
- * Commands that are empty after trim, or that start with whitespace
- * (HISTCONTROL=ignorespace convention) are rejected here as a defensive
- * second check — primary filtering is in oscCapture.
- */
-export function appendCommandToTerminalHistory(guid: string, command: string): void {
+function normalizeKey(windowKey?: string): string {
+	return windowKey ?? '';
+}
+
+export function appendCommandToTerminalHistory(
+	guid: string,
+	command: string,
+	windowKey?: string
+): void {
 	if (command === '' || /^\s/.test(command)) return;
 	const trimmed = command.trim();
 	if (trimmed === '') return;
-	const p = getOrInitPending(guid);
+	const key = normalizeKey(windowKey);
+	const p = getOrInitPending(guid, key);
 	p.queue.push(trimmed);
 	if (p.timer) clearTimeout(p.timer);
 	p.timer = setTimeout(() => {
-		void flushOne(guid);
+		void flushOne(guid, key);
 	}, DEBOUNCE_MS);
 }
 
 /**
  * Flush the debounced queue NOW. Without arguments, flushes every queued
- * guid. With a guid, flushes only that one.
+ * guid. With a guid, flushes only that one (all window keys for that guid).
  */
 export async function flushTerminalHistoryNow(guid?: string): Promise<void> {
 	if (guid) {
-		await flushOne(guid);
+		const matchPrefix = `${guid} `;
+		const keys = Array.from(pending.keys()).filter((k) => k.startsWith(matchPrefix));
+		await Promise.all(
+			keys.map((k) => flushOne(guid, k.slice(matchPrefix.length)))
+		);
 		return;
 	}
-	const guids = Array.from(pending.keys());
-	await Promise.all(guids.map((g) => flushOne(g)));
+	const allKeys = Array.from(pending.keys());
+	await Promise.all(
+		allKeys.map((k) => {
+			const idx = k.indexOf(' ');
+			return flushOne(k.slice(0, idx), k.slice(idx + 1));
+		})
+	);
 }
 
-async function flushOne(guid: string): Promise<void> {
-	const p = pending.get(guid);
+async function flushOne(guid: string, windowKey: string): Promise<void> {
+	const k = pendingKey(guid, windowKey);
+	const p = pending.get(k);
 	if (!p) return;
 	if (p.timer) {
 		clearTimeout(p.timer);
@@ -78,7 +90,7 @@ async function flushOne(guid: string): Promise<void> {
 	p.chain = p.chain.then(async () => {
 		if (batch.length === 0) return;
 		try {
-			await applyBatch(guid, batch);
+			await applyBatch(guid, batch, windowKey);
 		} catch (err) {
 			console.warn('[terminalHistory] flush failed', err);
 		}
@@ -86,14 +98,14 @@ async function flushOne(guid: string): Promise<void> {
 	await p.chain;
 }
 
-async function applyBatch(guid: string, commands: string[]): Promise<void> {
+async function applyBatch(guid: string, commands: string[], windowKey: string): Promise<void> {
 	const note = await getNote(guid);
 	if (!note || note.deleted) return;
 	const doc = deserializeContent(note.xmlContent);
 	const spec = parseTerminalNote(doc);
 	if (!spec) return; // not a terminal note (anymore) — drop
 
-	const next = applyCommandsToDoc(doc, commands);
+	const next = applyCommandsToDoc(doc, commands, windowKey || undefined);
 	const newXml = serializeContent(next);
 	if (newXml === note.xmlContent) return;
 	const now = formatTomboyDate(new Date());
@@ -106,23 +118,26 @@ async function applyBatch(guid: string, commands: string[]): Promise<void> {
 }
 
 /**
- * Remove the history item at `index`. Index is into the current list
- * (most-recent-first ordering). No-op if out of range.
+ * Remove the history item at `index` within the targeted bucket.
+ * Index is into the bucket's list (most-recent-first ordering). No-op if out of range.
  */
 export async function removeCommandFromTerminalHistory(
 	guid: string,
-	index: number
+	index: number,
+	windowKey?: string
 ): Promise<void> {
+	const key = normalizeKey(windowKey);
 	// Flush any pending appends first so the index the caller saw is
 	// consistent with what we mutate.
-	await flushOne(guid);
+	await flushOne(guid, key);
 	const note = await getNote(guid);
 	if (!note || note.deleted) return;
 	const doc = deserializeContent(note.xmlContent);
 	const spec = parseTerminalNote(doc);
 	if (!spec) return;
-	if (index < 0 || index >= spec.history.length) return;
-	const next = removeItemFromDoc(doc, index);
+	const items = spec.histories.get(key) ?? [];
+	if (index < 0 || index >= items.length) return;
+	const next = removeItemFromDoc(doc, index, key || undefined);
 	const newXml = serializeContent(next);
 	if (newXml === note.xmlContent) return;
 	const now = formatTomboyDate(new Date());
@@ -134,14 +149,16 @@ export async function removeCommandFromTerminalHistory(
 	await emitNoteReload([guid]);
 }
 
-export async function clearTerminalHistory(guid: string): Promise<void> {
-	await flushOne(guid);
+export async function clearTerminalHistory(guid: string, windowKey?: string): Promise<void> {
+	const key = normalizeKey(windowKey);
+	await flushOne(guid, key);
 	const note = await getNote(guid);
 	if (!note || note.deleted) return;
 	const doc = deserializeContent(note.xmlContent);
 	const spec = parseTerminalNote(doc);
-	if (!spec || spec.history.length === 0) return;
-	const next = clearHistoryFromDoc(doc);
+	if (!spec) return;
+	if (!spec.histories.has(key)) return;
+	const next = clearHistoryFromDoc(doc, key || undefined);
 	const newXml = serializeContent(next);
 	if (newXml === note.xmlContent) return;
 	const now = formatTomboyDate(new Date());
@@ -155,41 +172,75 @@ export async function clearTerminalHistory(guid: string): Promise<void> {
 
 // ── Pure doc helpers (exported for tests) ──────────────────────────────
 
-interface SplitDoc {
-	pre: JSONContent[]; // title + meta paragraphs (everything before history)
-	historyItems: string[]; // current items
-	hasHistorySection: boolean;
+interface SplitDocByKey {
+	pre: JSONContent[];
+	histories: Map<string, string[]>;
 }
 
-export function splitTerminalDoc(doc: JSONContent): SplitDoc {
-	const out: SplitDoc = { pre: [], historyItems: [], hasHistorySection: false };
+export function splitTerminalDocByKey(doc: JSONContent): SplitDocByKey {
+	const out: SplitDocByKey = { pre: [], histories: new Map() };
 	if (!Array.isArray(doc.content)) return out;
 	const blocks = doc.content;
 	let i = 0;
+
+	// pre = everything before the first history header (excluding trailing empty paragraphs)
 	while (i < blocks.length) {
 		const b = blocks[i];
-		if (b.type === 'paragraph') {
-			const t = paragraphTextSimple(b);
-			if (t.trim() === HISTORY_HEADER) {
-				out.hasHistorySection = true;
-				i++;
-				// Skip empty paragraphs immediately after the header.
-				while (i < blocks.length && blocks[i].type === 'paragraph' && paragraphTextSimple(blocks[i]).trim() === '') {
-					i++;
-				}
-				if (i < blocks.length && blocks[i].type === 'bulletList') {
-					out.historyItems = extractListItems(blocks[i]);
-					i++;
-				}
-				// Anything after the list is dropped — the parser would
-				// have rejected it, but in writers we tolerate by ignoring.
-				break;
-			}
-		}
+		if (b.type === 'paragraph' && HISTORY_HEADER_RE.test(paragraphTextSimple(b).trim())) break;
 		out.pre.push(b);
 		i++;
 	}
+	// Trim trailing empty paragraphs from pre (visual separators before first history section)
+	while (out.pre.length > 0) {
+		const last = out.pre[out.pre.length - 1];
+		if (last.type === 'paragraph' && paragraphTextSimple(last).trim() === '') {
+			out.pre.pop();
+		} else {
+			break;
+		}
+	}
+
+	while (i < blocks.length) {
+		const b = blocks[i];
+		if (b.type !== 'paragraph') {
+			i++;
+			continue;
+		}
+		const t = paragraphTextSimple(b).trim();
+		const m = HISTORY_HEADER_RE.exec(t);
+		if (!m) {
+			i++;
+			continue;
+		}
+		const key = m[1] ? `tmux:${m[1]}` : '';
+		i++;
+		while (i < blocks.length && blocks[i].type === 'paragraph' && paragraphTextSimple(blocks[i]).trim() === '') {
+			i++;
+		}
+		let items: string[] = [];
+		if (i < blocks.length && blocks[i].type === 'bulletList') {
+			items = extractListItems(blocks[i]);
+			i++;
+		}
+		out.histories.set(key, items);
+	}
 	return out;
+}
+
+interface SplitDoc {
+	pre: JSONContent[]; // title + meta paragraphs (everything before history)
+	historyItems: string[]; // current items (non-tmux bucket only)
+	hasHistorySection: boolean;
+}
+
+/** Legacy single-section view — returns the non-tmux bucket only. Back-compat alias. */
+export function splitTerminalDoc(doc: JSONContent): SplitDoc {
+	const split = splitTerminalDocByKey(doc);
+	return {
+		pre: split.pre,
+		historyItems: split.histories.get('') ?? [],
+		hasHistorySection: split.histories.has('')
+	};
 }
 
 function paragraphTextSimple(p: JSONContent): string {
@@ -218,11 +269,12 @@ function extractListItems(list: JSONContent): string[] {
 	return items;
 }
 
-function buildHistorySection(items: string[]): JSONContent[] {
+function buildSection(key: string, items: string[]): JSONContent[] {
 	if (items.length === 0) return [];
+	const header = key === '' ? 'history:' : `history:${key}:`;
 	return [
 		{ type: 'paragraph' }, // visual separator before header
-		{ type: 'paragraph', content: [{ type: 'text', text: HISTORY_HEADER }] },
+		{ type: 'paragraph', content: [{ type: 'text', text: header }] },
 		{
 			type: 'bulletList',
 			content: items.map((t) => ({
@@ -233,9 +285,27 @@ function buildHistorySection(items: string[]): JSONContent[] {
 	];
 }
 
-export function applyCommandsToDoc(doc: JSONContent, commands: string[]): JSONContent {
-	const split = splitTerminalDoc(doc);
-	let items = split.historyItems.slice();
+function buildAllSections(histories: Map<string, string[]>): JSONContent[] {
+	const keys = Array.from(histories.keys()).sort((a, b) => {
+		if (a === '') return -1;
+		if (b === '') return 1;
+		return a.localeCompare(b);
+	});
+	const out: JSONContent[] = [];
+	for (const k of keys) {
+		out.push(...buildSection(k, histories.get(k) ?? []));
+	}
+	return out;
+}
+
+export function applyCommandsToDoc(
+	doc: JSONContent,
+	commands: string[],
+	windowKey?: string
+): JSONContent {
+	const key = normalizeKey(windowKey);
+	const split = splitTerminalDocByKey(doc);
+	let items = (split.histories.get(key) ?? []).slice();
 	for (const cmd of commands) {
 		const trimmed = cmd.trim();
 		if (trimmed === '') continue;
@@ -244,20 +314,34 @@ export function applyCommandsToDoc(doc: JSONContent, commands: string[]): JSONCo
 		items.unshift(trimmed);
 		if (items.length > HISTORY_CAP) items = items.slice(0, HISTORY_CAP);
 	}
-	return { type: 'doc', content: [...split.pre, ...buildHistorySection(items)] };
+	const next = new Map(split.histories);
+	if (items.length === 0) next.delete(key);
+	else next.set(key, items);
+	return { type: 'doc', content: [...split.pre, ...buildAllSections(next)] };
 }
 
-export function removeItemFromDoc(doc: JSONContent, index: number): JSONContent {
-	const split = splitTerminalDoc(doc);
-	if (index < 0 || index >= split.historyItems.length) return doc;
-	const items = split.historyItems.slice();
+export function removeItemFromDoc(
+	doc: JSONContent,
+	index: number,
+	windowKey?: string
+): JSONContent {
+	const key = normalizeKey(windowKey);
+	const split = splitTerminalDocByKey(doc);
+	const items = (split.histories.get(key) ?? []).slice();
+	if (index < 0 || index >= items.length) return doc;
 	items.splice(index, 1);
-	return { type: 'doc', content: [...split.pre, ...buildHistorySection(items)] };
+	const next = new Map(split.histories);
+	if (items.length === 0) next.delete(key);
+	else next.set(key, items);
+	return { type: 'doc', content: [...split.pre, ...buildAllSections(next)] };
 }
 
-export function clearHistoryFromDoc(doc: JSONContent): JSONContent {
-	const split = splitTerminalDoc(doc);
-	return { type: 'doc', content: split.pre };
+export function clearHistoryFromDoc(doc: JSONContent, windowKey?: string): JSONContent {
+	const key = normalizeKey(windowKey);
+	const split = splitTerminalDocByKey(doc);
+	const next = new Map(split.histories);
+	next.delete(key);
+	return { type: 'doc', content: [...split.pre, ...buildAllSections(next)] };
 }
 
 /** Test-only reset of pending state. */
