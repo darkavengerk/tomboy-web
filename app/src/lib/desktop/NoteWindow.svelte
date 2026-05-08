@@ -755,6 +755,7 @@
 			{#key guid}
 				<TerminalView
 					spec={terminalSpec}
+					{guid}
 					onedit={() => (terminalEditMode = true)}
 				/>
 			{/key}

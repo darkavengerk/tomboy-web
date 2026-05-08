@@ -9,12 +9,16 @@
 		getDefaultTerminalBridge,
 		getTerminalBridgeToken
 	} from './bridgeSettings.js';
+	import { Osc133State, parseOsc133Payload, shouldRecordCommand } from './oscCapture.js';
+	import { appendCommandToTerminalHistory, flushTerminalHistoryNow } from './historyStore.js';
+	import { getTerminalHistoryBlocklist } from '$lib/storage/appSettings.js';
 
 	type Props = {
 		spec: TerminalNoteSpec;
+		guid: string;
 		onedit: () => void;
 	};
-	let { spec, onedit }: Props = $props();
+	let { spec, guid, onedit }: Props = $props();
 
 	let xtermContainer: HTMLDivElement | undefined = $state();
 	let status: WsClientStatus = $state('connecting');
@@ -22,11 +26,14 @@
 	let resolvedBridge: string | null = $state(null);
 	let bridgeMissing = $state(false);
 
+	let shellIntegrationDetected = $state(false);
+
 	let term: Terminal | null = null;
 	let fit: FitAddon | null = null;
 	let client: TerminalWsClient | null = null;
 	let resizeObserver: ResizeObserver | null = null;
 	let resolvedToken: string | null = null;
+	let onPageHide: (() => void) | null = null;
 
 	onMount(async () => {
 		const bridge = spec.bridge ?? (await getDefaultTerminalBridge());
@@ -59,6 +66,40 @@
 			scrollback: 5000,
 			convertEol: false
 		});
+
+		const osc = new Osc133State();
+		const blocklist: string[] = await getTerminalHistoryBlocklist();
+
+		term.parser.registerOscHandler(133, (data: string) => {
+			const evt = parseOsc133Payload(data);
+			if (!evt) return false; // let xterm render — defensive; unknown payloads
+			if (!shellIntegrationDetected) shellIntegrationDetected = true;
+			if (evt.kind === 'A') {
+				osc.onPromptStart();
+			} else if (evt.kind === 'B') {
+				const buf = term!.buffer.active;
+				osc.onCommandStart(buf.cursorY + buf.baseY, buf.cursorX);
+			} else if (evt.kind === 'C') {
+				const buf = term!.buffer.active;
+				const cmd = osc.consumeCommandOnExecute(
+					buf.cursorY + buf.baseY,
+					buf.cursorX,
+					(row) => {
+						const line = buf.getLine(row);
+						return line ? line.translateToString(true) : '';
+					}
+				);
+				if (cmd && shouldRecordCommand(cmd, blocklist)) {
+					appendCommandToTerminalHistory(guid, cmd);
+				}
+			}
+			// kind 'D' is ignored for now.
+			return true; // suppress xterm output of the OSC sequence
+		});
+
+		onPageHide = () => { void flushTerminalHistoryNow(guid); };
+		window.addEventListener('pagehide', onPageHide);
+
 		fit = new FitAddon();
 		term.loadAddon(fit);
 		if (xtermContainer) {
@@ -105,6 +146,12 @@
 	});
 
 	onDestroy(() => {
+		if (onPageHide) {
+			window.removeEventListener('pagehide', onPageHide);
+			onPageHide = null;
+		}
+		// Best-effort flush so commands captured shortly before navigation aren't lost.
+		void flushTerminalHistoryNow(guid);
 		resizeObserver?.disconnect();
 		resizeObserver = null;
 		client?.close();

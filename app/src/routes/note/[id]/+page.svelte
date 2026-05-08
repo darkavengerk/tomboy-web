@@ -610,6 +610,7 @@
 			{#key noteId}
 				<TerminalView
 					spec={terminalSpec}
+					guid={noteId ?? ''}
 					onedit={() => (terminalEditMode = true)}
 				/>
 			{/key}
