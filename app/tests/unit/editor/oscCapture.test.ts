@@ -48,6 +48,31 @@ describe('parseOsc133Payload', () => {
 		expect(parseOsc133Payload('C;notHex')).toEqual({ kind: 'C' });
 		expect(parseOsc133Payload('C;abc')).toEqual({ kind: 'C' }); // odd length
 	});
+
+	it('parses W with window id', () => {
+		expect(parseOsc133Payload('W;@1')).toEqual({ kind: 'W', windowId: '@1' });
+		expect(parseOsc133Payload('W;@42')).toEqual({ kind: 'W', windowId: '@42' });
+	});
+
+	it('rejects W without an id', () => {
+		expect(parseOsc133Payload('W')).toBeNull();
+		expect(parseOsc133Payload('W;')).toBeNull();
+	});
+
+	it('parses C with hex command and window id', () => {
+		expect(parseOsc133Payload('C;6c73202d6c61;@1')).toEqual({
+			kind: 'C',
+			commandText: 'ls -la',
+			windowId: '@1'
+		});
+	});
+
+	it('preserves window id when hex is malformed', () => {
+		expect(parseOsc133Payload('C;notHex;@1')).toEqual({
+			kind: 'C',
+			windowId: '@1'
+		});
+	});
 });
 
 describe('extractCommand', () => {

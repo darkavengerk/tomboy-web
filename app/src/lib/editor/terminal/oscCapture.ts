@@ -1,6 +1,6 @@
 /** Pure helpers for OSC 133 shell-integration capture. No xterm import here. */
 
-export type Osc133Kind = 'A' | 'B' | 'C' | 'D';
+export type Osc133Kind = 'A' | 'B' | 'C' | 'D' | 'W';
 
 export interface Osc133Event {
 	kind: Osc133Kind;
@@ -14,6 +14,11 @@ export interface Osc133Event {
 	 * Encoded as hex in the wire format: `OSC 133 ; C ; <hex> ST`.
 	 */
 	commandText?: string;
+	/**
+	 * tmux window id (e.g. `@1`). Set on `W` events and on `C` events whose
+	 * payload was `C;<hex>;<id>`. Absent when the shell is not in tmux.
+	 */
+	windowId?: string;
 }
 
 /**
@@ -30,7 +35,12 @@ export function parseOsc133Payload(payload: string): Osc133Event | null {
 	if (!payload) return null;
 	const parts = payload.split(';');
 	const head = parts[0];
-	if (head !== 'A' && head !== 'B' && head !== 'C' && head !== 'D') return null;
+	if (head !== 'A' && head !== 'B' && head !== 'C' && head !== 'D' && head !== 'W') return null;
+	if (head === 'W') {
+		const id = parts[1];
+		if (!id) return null;
+		return { kind: 'W', windowId: id };
+	}
 	if (head === 'D' && parts.length > 1) {
 		const code = Number(parts[1]);
 		if (Number.isInteger(code)) return { kind: 'D', exitCode: code };
@@ -38,8 +48,11 @@ export function parseOsc133Payload(payload: string): Osc133Event | null {
 	}
 	if (head === 'C' && parts.length > 1) {
 		const decoded = decodeHex(parts[1]);
-		if (decoded !== null) return { kind: 'C', commandText: decoded };
-		return { kind: 'C' };
+		const windowId = parts[2] || undefined;
+		const ev: Osc133Event = { kind: 'C' };
+		if (decoded !== null) ev.commandText = decoded;
+		if (windowId) ev.windowId = windowId;
+		return ev;
 	}
 	return { kind: head };
 }
