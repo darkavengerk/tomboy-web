@@ -54,9 +54,15 @@
 	let resolvedToken: string | null = null;
 	let onPageHide: (() => void) | null = null;
 	let unsubReload: (() => void) | null = null;
+	let bannerTimer: ReturnType<typeof setTimeout> | null = null;
+	let mql: MediaQueryList | null = null;
+	let updateMobile: (() => void) | null = null;
+	let unmounted = false;
 
 	async function reloadHistory(): Promise<void> {
+		if (unmounted) return;
 		const note = await getNote(guid);
+		if (unmounted) return;
 		if (!note) return;
 		const doc = deserializeContent(note.xmlContent);
 		const parsed = parseTerminalNote(doc);
@@ -95,13 +101,20 @@
 	}
 
 	onMount(async () => {
-		isMobile = window.matchMedia && !window.matchMedia('(min-width: 768px)').matches;
+		mql = window.matchMedia ? window.matchMedia('(min-width: 768px)') : null;
+		updateMobile = () => { isMobile = !(mql?.matches ?? true); };
+		updateMobile();
+		mql?.addEventListener('change', updateMobile);
 		panelOpen = isMobile
 			? await getTerminalHistoryPanelOpenMobile()
 			: await getTerminalHistoryPanelOpenDesktop();
 		shellHintDismissed = await getTerminalShellIntegrationBannerDismissed();
 		await reloadHistory();
-		unsubReload = subscribeNoteReload(guid, () => reloadHistory());
+		if (unmounted) return;
+		unsubReload = subscribeNoteReload(guid, () => {
+			if (unmounted) return;
+			void reloadHistory();
+		});
 
 		const bridge = spec.bridge ?? (await getDefaultTerminalBridge());
 		if (!bridge) {
@@ -200,7 +213,7 @@
 		});
 		client.connect();
 
-		setTimeout(() => {
+		bannerTimer = setTimeout(() => {
 			if (!shellIntegrationDetected && !shellHintDismissed) {
 				shellHintVisible = true;
 			}
@@ -219,6 +232,16 @@
 	});
 
 	onDestroy(() => {
+		unmounted = true;
+		if (bannerTimer) {
+			clearTimeout(bannerTimer);
+			bannerTimer = null;
+		}
+		if (mql && updateMobile) {
+			mql.removeEventListener('change', updateMobile);
+		}
+		mql = null;
+		updateMobile = null;
 		unsubReload?.();
 		unsubReload = null;
 		if (onPageHide) {
