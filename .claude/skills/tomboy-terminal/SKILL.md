@@ -5,19 +5,24 @@ description: Use when working on the terminal-note feature — a note whose body
 
 # 터미널 노트 (SSH terminal in a note)
 
-A note whose body is **exactly 1 or 2 non-empty paragraphs** matching:
+A note whose body is **1–2 metadata paragraphs + an optional `history:` section** matching:
 
 ```
 ssh://[user@]host[:port]
 bridge: wss://my-pc.example.com/ws        # optional
+                                           # optional blank
+history:                                   # optional
+- ls -la
+- sudo systemctl restart caddy
 ```
 
 is opened as an `xterm.js` terminal instead of the regular editor. The
-title can be anything; only the body is constrained. Any third non-empty
-paragraph, any list/markup, or a malformed scheme falls back to a regular
-note. The note's `.note` XML stores plain text — Tomboy desktop sees a
-normal note and Dropbox/Firebase sync are unchanged. **Terminal output is
-never persisted**; it lives only in the open xterm scrollback.
+title can be anything; only the body is constrained. A 3rd free paragraph
+(or any non-history block), any list/markup outside the history section,
+or a malformed scheme falls back to a regular note. The note's `.note`
+XML stores plain text — Tomboy desktop sees a normal note and
+Dropbox/Firebase sync are unchanged. **Terminal output is never
+persisted**; it lives only in the open xterm scrollback.
 
 The header has a "편집 모드" toggle that swaps the view back to
 `TomboyEditor` for that page-load only — to convert a note out of terminal
@@ -49,9 +54,12 @@ const BRIDGE_RE = /^bridge:\s*(wss?:\/\/\S+)\s*$/;
 | `lib/editor/terminal/wsClient.ts` | WebSocket protocol wrapper. |
 | `lib/editor/terminal/TerminalView.svelte` | xterm.js + FitAddon, header (target/bridge/status/끊김/재연결/편집 모드). |
 | `lib/editor/terminal/bridgeSettings.ts` | `appSettings` glue + `/login` `/logout` `/health` HTTP helpers. |
+| `lib/editor/terminal/historyStore.ts` | Read-modify-write history mutation + per-guid serialization + 500ms debounce. |
+| `lib/editor/terminal/oscCapture.ts` | Pure OSC 133 parser / command-extraction helpers. |
+| `lib/editor/terminal/HistoryPanel.svelte` | Desktop side panel + mobile bottom sheet UI for the captured history. |
 | `routes/note/[id]/+page.svelte` | Mobile route — branches on `parseTerminalNote(editorContent)` at load and after every IDB reload. |
 | `lib/desktop/NoteWindow.svelte` | Desktop route — same branch. |
-| `routes/settings/+page.svelte` (config tab → "터미널 브릿지") | Default bridge URL + login form. |
+| `routes/settings/+page.svelte` (config tab → "터미널") | Bridge URL + login form + history settings + shell-integration snippet. |
 
 `TerminalView` short-circuits on mount: if no bridge URL → "브릿지 URL이
 설정되지 않았습니다." banner; if no token → "브릿지에 로그인하지
@@ -257,9 +265,15 @@ the home host. Two things to update:
 
 ## Invariants
 
-- **Note body has at most 2 non-empty paragraphs in terminal mode.**
-  Any 3rd line means it's no longer a terminal note — by design, so
-  users opt out simply by typing more.
+- **Note body = 1–2 metadata paragraphs + (optional) `history:` section.**
+  A 3rd free paragraph (or any non-history block) means it's no longer a
+  terminal note — by design, so users opt out simply by typing more.
+- **`history:` header text is fixed** — exactly that string, not localized.
+- **History items are plain text only.** Marks ignored, nested lists ignored.
+- **History capacity = 50, FIFO + move-to-top dedup.** Older items are dropped when a new command pushes the list past the cap.
+- **Re-input does not auto-press Enter.** Click stages text into the prompt; Shift+click sends `\r`. The user explicitly executes.
+- **Whitespace-prefixed commands are NOT captured** (HISTCONTROL=ignorespace convention). Use a leading space to keep a one-off command out of history.
+- **OSC 133 shell integration is opt-in per remote** — without the snippet installed, capture is NO-OP and the existing terminal note behaviour is 100% unchanged.
 - **No credentials in the note.** The parser intentionally rejects
   malformed lines but does not validate SSH passwords or keys — those
   flow through the PTY. Don't add a `password:` field to the note

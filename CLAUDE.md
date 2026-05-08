@@ -513,20 +513,25 @@ Rules:
 
 ## 터미널 노트 (SSH terminal in a note)
 
-A note whose body is **exactly 1 or 2 non-empty paragraphs** matching:
+A note whose body is **1–2 metadata paragraphs + an optional `history:` section** matching:
 
 ```
 ssh://[user@]host[:port]
 bridge: wss://my-pc.example.com/ws    # optional
+                                       # optional blank
+history:                               # optional
+- ls -la
+- sudo systemctl restart caddy
 ```
 
 is opened as an `xterm.js` terminal instead of the regular editor. Title
-is unconstrained; the body is. A 3rd non-empty paragraph, any list/markup,
-or a malformed scheme falls back to a regular note. The `.note` XML stores
-plain text — Tomboy desktop sees a normal note and Dropbox/Firebase sync
-are unchanged. **Terminal output is never persisted** — it lives only in
-the open xterm scrollback. The header's "편집 모드" toggle swaps the view
-back to `TomboyEditor` for that page-load only.
+is unconstrained; the body is. A 3rd free paragraph (or any non-history
+block), any list/markup outside the history section, or a malformed scheme
+falls back to a regular note. The `.note` XML stores plain text — Tomboy
+desktop sees a normal note and Dropbox/Firebase sync are unchanged.
+**Terminal output is never persisted** — it lives only in the open xterm
+scrollback. The header's "편집 모드" toggle swaps the view back to
+`TomboyEditor` for that page-load only.
 
 The matching WebSocket bridge lives at the repo root in `bridge/` — Node +
 `ws` + `node-pty`, deployed as a rootless Podman + Quadlet container
@@ -540,6 +545,9 @@ Quick map:
 - `app/src/lib/editor/terminal/` — `parseTerminalNote.ts`, `wsClient.ts`,
   `TerminalView.svelte`, `bridgeSettings.ts`. Parser tests in
   `app/tests/unit/editor/`.
+- `app/src/lib/editor/terminal/historyStore.ts` — read-modify-write history mutation + per-guid serialization + 500ms debounce.
+- `app/src/lib/editor/terminal/oscCapture.ts` — pure OSC 133 parser / command-extraction helpers.
+- `app/src/lib/editor/terminal/HistoryPanel.svelte` — desktop side panel + mobile bottom sheet UI for the captured history.
 - `routes/note/[id]/+page.svelte` and `lib/desktop/NoteWindow.svelte` —
   branch between `TerminalView` and `TomboyEditor` based on
   `parseTerminalNote(editorContent)` at load and after every IDB reload.
@@ -550,9 +558,13 @@ Quick map:
 
 Invariants:
 
-- **Note body has at most 2 non-empty paragraphs** in terminal mode. A
-  3rd line means it's no longer a terminal note — by design, so the user
-  opts out simply by typing more.
+- **Note body = 1–2 metadata paragraphs + (optional) `history:` section.** A 3rd free paragraph (or any non-history block) means it's no longer a terminal note — by design, so the user opts out simply by typing more.
+- **`history:` header text is fixed** — exactly that string, not localized.
+- **History items are plain text only.** Marks ignored, nested lists ignored.
+- **History capacity = 50, FIFO + move-to-top dedup.** Older items are dropped when a new command pushes the list past the cap.
+- **Re-input does not auto-press Enter.** Click stages text into the prompt; Shift+click sends `\r`. The user explicitly executes.
+- **Whitespace-prefixed commands are NOT captured** (HISTCONTROL=ignorespace convention). Use a leading space to keep a one-off command out of history.
+- **OSC 133 shell integration is opt-in per remote** — without the snippet installed, capture is NO-OP and the existing terminal note behaviour is 100% unchanged.
 - **No credentials in the note.** Auth flows through the PTY directly.
   Don't add a `password:` field to the note format.
 - **Terminal output is ephemeral.** Never written back to `xmlContent`.
