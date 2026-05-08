@@ -18,7 +18,8 @@ describe('parseTerminalNote — match', () => {
 			host: 'example.com',
 			port: undefined,
 			user: undefined,
-			bridge: undefined
+			bridge: undefined,
+			history: []
 		});
 	});
 
@@ -117,5 +118,148 @@ describe('parseTerminalNote — no match', () => {
 			]
 		});
 		expect(r).toBeNull();
+	});
+});
+
+function docWithHistory(
+	title: string,
+	ssh: string,
+	bridge: string | null,
+	historyItems: string[]
+): JSONContent {
+	const content: JSONContent[] = [
+		{ type: 'paragraph', content: [{ type: 'text', text: title }] },
+		{ type: 'paragraph', content: [{ type: 'text', text: ssh }] }
+	];
+	if (bridge !== null) {
+		content.push({ type: 'paragraph', content: [{ type: 'text', text: bridge }] });
+	}
+	content.push({ type: 'paragraph' });
+	content.push({ type: 'paragraph', content: [{ type: 'text', text: 'history:' }] });
+	if (historyItems.length > 0) {
+		content.push({
+			type: 'bulletList',
+			content: historyItems.map((t) => ({
+				type: 'listItem',
+				content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }]
+			}))
+		});
+	}
+	return { type: 'doc', content };
+}
+
+describe('parseTerminalNote — history', () => {
+	it('returns empty history for a plain ssh note', () => {
+		const r = parseTerminalNote(doc('Title', 'ssh://localhost'));
+		expect(r?.history).toEqual([]);
+	});
+
+	it('parses a 3-item history', () => {
+		const r = parseTerminalNote(
+			docWithHistory('Title', 'ssh://localhost', null, ['ls -la', 'cd /etc', 'tail -f log'])
+		);
+		expect(r?.host).toBe('localhost');
+		expect(r?.history).toEqual(['ls -la', 'cd /etc', 'tail -f log']);
+	});
+
+	it('parses history with bridge line', () => {
+		const r = parseTerminalNote(
+			docWithHistory('Title', 'ssh://localhost', 'bridge: wss://x/ws', ['cmd1'])
+		);
+		expect(r?.bridge).toBe('wss://x/ws');
+		expect(r?.history).toEqual(['cmd1']);
+	});
+
+	it('header without bullet list returns empty history', () => {
+		const r = parseTerminalNote({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: 'Title' }] },
+				{ type: 'paragraph', content: [{ type: 'text', text: 'ssh://localhost' }] },
+				{ type: 'paragraph', content: [{ type: 'text', text: 'history:' }] }
+			]
+		});
+		expect(r).toMatchObject({ host: 'localhost', history: [] });
+	});
+
+	it('drops empty list items', () => {
+		const r = parseTerminalNote({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: 'Title' }] },
+				{ type: 'paragraph', content: [{ type: 'text', text: 'ssh://localhost' }] },
+				{ type: 'paragraph', content: [{ type: 'text', text: 'history:' }] },
+				{
+					type: 'bulletList',
+					content: [
+						{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'a' }] }] },
+						{ type: 'listItem', content: [{ type: 'paragraph' }] },
+						{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'b' }] }] }
+					]
+				}
+			]
+		});
+		expect(r?.history).toEqual(['a', 'b']);
+	});
+
+	it('returns null when a free paragraph is after history', () => {
+		const r = parseTerminalNote({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: 'Title' }] },
+				{ type: 'paragraph', content: [{ type: 'text', text: 'ssh://localhost' }] },
+				{ type: 'paragraph', content: [{ type: 'text', text: 'history:' }] },
+				{
+					type: 'bulletList',
+					content: [
+						{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'a' }] }] }
+					]
+				},
+				{ type: 'paragraph', content: [{ type: 'text', text: 'extra junk' }] }
+			]
+		});
+		expect(r).toBeNull();
+	});
+
+	it('returns null when bullet list appears without header', () => {
+		const r = parseTerminalNote({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: 'Title' }] },
+				{ type: 'paragraph', content: [{ type: 'text', text: 'ssh://localhost' }] },
+				{ type: 'bulletList', content: [] }
+			]
+		});
+		expect(r).toBeNull();
+	});
+
+	it('marks ignored — italic in list item still extracts plain text', () => {
+		const r = parseTerminalNote({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: 'Title' }] },
+				{ type: 'paragraph', content: [{ type: 'text', text: 'ssh://localhost' }] },
+				{ type: 'paragraph', content: [{ type: 'text', text: 'history:' }] },
+				{
+					type: 'bulletList',
+					content: [
+						{
+							type: 'listItem',
+							content: [
+								{
+									type: 'paragraph',
+									content: [
+										{ type: 'text', text: 'sudo ' },
+										{ type: 'text', marks: [{ type: 'italic' }], text: 'systemctl' },
+										{ type: 'text', text: ' restart caddy' }
+									]
+								}
+							]
+						}
+					]
+				}
+			]
+		});
+		expect(r?.history).toEqual(['sudo systemctl restart caddy']);
 	});
 });

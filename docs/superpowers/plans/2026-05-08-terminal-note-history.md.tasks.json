@@ -4,13 +4,13 @@
     {
       "id": 0,
       "subject": "Task 0: appSettings keys (4 typed accessors)",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Add typed getter/setter helpers for the 4 new settings consumed by every other task.\n\n**Files:**\n- Modify: `app/src/lib/storage/appSettings.ts`\n- Test: `app/tests/unit/appSettings-terminalHistory.test.ts`\n\n**Verify:** `cd app && npm run test -- appSettings-terminalHistory --run`\n\n```json:metadata\n{\"files\": [\"app/src/lib/storage/appSettings.ts\", \"app/tests/unit/appSettings-terminalHistory.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- appSettings-terminalHistory --run\", \"acceptanceCriteria\": [\"defaults: desktop=true, mobile=false, blocklist=10-item canonical, banner=false\", \"setters round-trip\", \"corrupted stored array falls back to defaults\"]}\n```"
     },
     {
       "id": 1,
       "subject": "Task 1: parseTerminalNote — accept optional history section",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Extend parser to recognize `history:` paragraph + bulletList. Return `history: string[]` on the spec.\n\n**Files:**\n- Modify: `app/src/lib/editor/terminal/parseTerminalNote.ts`\n- Test: `app/tests/unit/editor/parseTerminalNote.test.ts`\n\n**Verify:** `cd app && npm run test -- parseTerminalNote --run`\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/parseTerminalNote.ts\", \"app/tests/unit/editor/parseTerminalNote.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- parseTerminalNote --run\", \"acceptanceCriteria\": [\"existing tests pass with history:[] added\", \"8 new history-recognition tests pass\", \"header w/o list returns empty history\", \"free paragraph after history list returns null\"]}\n```"
     },
     {
@@ -55,5 +55,5 @@
       "description": "**Goal:** Reflect format extension + invariants in CLAUDE.md and tomboy-terminal skill file.\n\n**Files:**\n- Modify: `CLAUDE.md`\n- Modify: tomboy-terminal SKILL.md (path resolved at start)\n\n**Verify:** `grep -n 'OSC 133' CLAUDE.md && grep -n 'history:' CLAUDE.md`\n\n```json:metadata\n{\"files\": [\"CLAUDE.md\"], \"verifyCommand\": \"grep -n 'OSC 133' CLAUDE.md && grep -n 'history:' CLAUDE.md\", \"acceptanceCriteria\": [\"body invariant updated for optional history\", \"6 new invariants added from spec §7\", \"quick map lists historyStore.ts/oscCapture.ts/HistoryPanel.svelte\", \"skill file mirrors changes\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-08"
+  "lastUpdated": "2026-05-08T00:01:00Z"
 }
