@@ -519,15 +519,19 @@ A note whose body is **1–2 metadata paragraphs + an optional `history:` sectio
 ssh://[user@]host[:port]
 bridge: wss://my-pc.example.com/ws    # optional
                                        # optional blank
-history:                               # optional
+history:                               # optional, non-tmux bucket
 - ls -la
 - sudo systemctl restart caddy
+
+history:tmux:@1:                       # optional, per-tmux-window bucket
+- htop
+- tail -f /var/log/caddy.log
 ```
 
 is opened as an `xterm.js` terminal instead of the regular editor. Title
 is unconstrained; the body is. A 3rd free paragraph (or any non-history
-block), any list/markup outside the history section, or a malformed scheme
-falls back to a regular note. The `.note` XML stores plain text — Tomboy
+block), any list/markup outside the history section(s), or a malformed
+section header (or scheme) falls back to a regular note. The `.note` XML stores plain text — Tomboy
 desktop sees a normal note and Dropbox/Firebase sync are unchanged.
 **Terminal output is never persisted** — it lives only in the open xterm
 scrollback. The header's "편집 모드" toggle swaps the view back to
@@ -582,6 +586,11 @@ Invariants:
 - **Containerized rootless Podman deployment requires `Network=host`,
   `UserNS=keep-id`, and `:z` (lowercase) on the `.ssh` bind mount.** Any
   one missing breaks key auth or container-to-host loopback.
+- **`history:` (non-tmux) and `history:tmux:<window_id>:` are independent buckets.** Dedup, 50-cap, and debounce all apply per-bucket. Never introduce cross-bucket dedup.
+- **Window key uses `@<window_id>` only** — session_id is intentionally not part of the key. Keys stay stable for the lifetime of a tmux window, which matches the user's working unit.
+- **OSC 133 `;W;<id>` is an optional fast-path signal.** The store must work correctly with only `;C;<hex>;<id>` (lazy fallback) — the `after-select-window` hook is an opt-in for instant panel switching.
+- **The `after-select-window` hook is the user's responsibility.** Without it, the panel switches buckets when the next command is captured. The base shell snippet alone is sufficient for correctness.
+- **Empty sections are dropped on serialize.** Both `clearTerminalHistory(guid, key)` and item-removal-to-empty leave the section header out of the doc. Do not "preserve" an empty header.
 - **The bridge has full shell access** to whatever host runs it.
   `BRIDGE_PASSWORD` is the only line of defense — front it with TLS +
   fail2ban while it's publicly reachable.
