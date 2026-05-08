@@ -381,6 +381,24 @@ export const desktopSession = {
 		return workspaces[currentWorkspaceIndex].windows;
 	},
 
+	/**
+	 * Every (workspaceIndex, window) pair across all workspaces. The
+	 * DesktopWorkspace renders the union and hides non-active workspaces
+	 * via CSS — keeping editor instances, TipTap state, and terminal WS
+	 * connections alive across workspace switches. Per-window
+	 * Firebase attach + global editor registration are gated on
+	 * `active` so only the visible workspace is "live".
+	 */
+	get allWorkspaceWindows(): Array<{ workspaceIndex: number; window: DesktopWindowState }> {
+		const out: Array<{ workspaceIndex: number; window: DesktopWindowState }> = [];
+		for (let i = 0; i < workspaces.length; i++) {
+			for (const w of workspaces[i].windows) {
+				out.push({ workspaceIndex: i, window: w });
+			}
+		}
+		return out;
+	},
+
 	get currentWorkspace(): number {
 		return currentWorkspaceIndex;
 	},
