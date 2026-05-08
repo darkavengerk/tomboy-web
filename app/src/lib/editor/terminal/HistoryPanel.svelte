@@ -4,6 +4,7 @@
 	type Props = {
 		count: number;
 		items: string[];
+		bucketLabel: string;
 		onsend: (text: string) => void;
 		onsendNow: (text: string) => void;
 		ondelete: (index: number) => void;
@@ -11,7 +12,7 @@
 		onclose: () => void;
 		onedit: () => void;
 	};
-	let { count, items, onsend, onsendNow, ondelete, onclear, onclose, onedit }: Props = $props();
+	let { count, items, bucketLabel, onsend, onsendNow, ondelete, onclear, onclose, onedit }: Props = $props();
 
 	let menuOpenIndex: number | null = $state(null);
 	let menuX = $state(0);
@@ -88,7 +89,9 @@
 
 <div class="history-panel" role="region" aria-label="명령어 히스토리">
 	<div class="panel-header">
-		<span class="title">히스토리 <span class="count">{count}</span></span>
+		<span class="title">
+			히스토리 <span class="bucket">{bucketLabel}</span> <span class="count">{count}</span>
+		</span>
 		<div class="actions">
 			<button type="button" class="icon-btn" title="비우기" onclick={confirmClear}>⌫</button>
 			<button type="button" class="icon-btn" title="닫기" onclick={onclose}>×</button>
@@ -153,6 +156,15 @@
 		border-radius: 8px;
 		background: #444;
 		color: #ddd;
+		font-size: 0.7rem;
+		margin-left: 4px;
+	}
+	.bucket {
+		display: inline-block;
+		padding: 0 6px;
+		border-radius: 8px;
+		background: #345470;
+		color: #cfe1ff;
 		font-size: 0.7rem;
 		margin-left: 4px;
 	}

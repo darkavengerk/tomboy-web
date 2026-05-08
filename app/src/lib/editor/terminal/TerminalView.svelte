@@ -41,7 +41,8 @@
 
 	let shellIntegrationDetected = $state(false);
 
-	let history: string[] = $state([]);
+	let histories: Map<string, string[]> = $state(new Map());
+	let currentWindowKey: string | null = $state(null);
 	let panelOpen = $state(false);
 	let isMobile = $state(false);
 	let shellHintDismissed = $state(false);
@@ -59,6 +60,13 @@
 	let updateMobile: (() => void) | null = null;
 	let unmounted = false;
 
+	const currentItems = $derived(histories.get(currentWindowKey ?? '') ?? []);
+	const bucketLabel = $derived.by(() => {
+		const key = currentWindowKey;
+		if (key === null) return '기본';
+		return key.replace(/^tmux:/, 'tmux ');
+	});
+
 	async function reloadHistory(): Promise<void> {
 		if (unmounted) return;
 		const note = await getNote(guid);
@@ -66,7 +74,7 @@
 		if (!note) return;
 		const doc = deserializeContent(note.xmlContent);
 		const parsed = parseTerminalNote(doc);
-		history = parsed?.history ?? [];
+		histories = parsed?.histories ?? new Map();
 	}
 
 	async function togglePanel(): Promise<void> {
@@ -84,11 +92,11 @@
 		term?.focus();
 	}
 	async function onPanelDelete(index: number): Promise<void> {
-		await removeCommandFromTerminalHistory(guid, index);
+		await removeCommandFromTerminalHistory(guid, index, currentWindowKey ?? undefined);
 		await reloadHistory();
 	}
 	async function onPanelClear(): Promise<void> {
-		await clearTerminalHistory(guid);
+		await clearTerminalHistory(guid, currentWindowKey ?? undefined);
 		await reloadHistory();
 	}
 	function onPanelClose(): void {
@@ -160,8 +168,6 @@
 				const buf = term!.buffer.active;
 				osc.onCommandStart(buf.cursorY + buf.baseY, buf.cursorX);
 			} else if (evt.kind === 'C') {
-				// Always advance state machine for cleanup; result is only used
-				// when the shell didn't supply commandText.
 				const buf = term!.buffer.active;
 				const scraped = osc.consumeCommandOnExecute(
 					buf.cursorY + buf.baseY,
@@ -171,13 +177,15 @@
 						return line ? line.translateToString(true) : '';
 					}
 				);
-				// Prefer shell-supplied command text (works inside tmux where
-				// buffer scrape is unreliable due to redraw timing). Fall back
-				// to buffer scrape when the legacy snippet is in use.
 				const cmd = evt.commandText !== undefined ? evt.commandText : scraped;
-				if (cmd && shouldRecordCommand(cmd, blocklist)) {
-					appendCommandToTerminalHistory(guid, cmd);
+				if (evt.windowId) {
+					currentWindowKey = 'tmux:' + evt.windowId;
 				}
+				if (cmd && shouldRecordCommand(cmd, blocklist)) {
+					appendCommandToTerminalHistory(guid, cmd, currentWindowKey ?? undefined);
+				}
+			} else if (evt.kind === 'W') {
+				if (evt.windowId) currentWindowKey = 'tmux:' + evt.windowId;
 			}
 			// kind 'D' is ignored for now.
 			return true; // suppress xterm output of the OSC sequence
@@ -301,7 +309,7 @@
 		</div>
 		<div class="actions">
 			<button type="button" class="toggle" onclick={togglePanel}>
-				히스토리 ({history.length})
+				히스토리 ({currentItems.length})
 			</button>
 			<span class="status status-{status}">
 				{#if status === 'connecting'}연결 중…
@@ -330,8 +338,9 @@
 		<div class="xterm-host" bind:this={xtermContainer}></div>
 		{#if panelOpen}
 			<HistoryPanel
-				count={history.length}
-				items={history}
+				count={currentItems.length}
+				items={currentItems}
+				bucketLabel={bucketLabel}
 				onsend={onPanelSend}
 				onsendNow={onPanelSendNow}
 				ondelete={onPanelDelete}
