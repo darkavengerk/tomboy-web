@@ -19,6 +19,7 @@ describe('parseTerminalNote — match', () => {
 			port: undefined,
 			user: undefined,
 			bridge: undefined,
+			histories: new Map(),
 			history: []
 		});
 	});
@@ -261,5 +262,126 @@ describe('parseTerminalNote — history', () => {
 			]
 		});
 		expect(r?.history).toEqual(['sudo systemctl restart caddy']);
+	});
+});
+
+describe('parseTerminalNote — multi-section history', () => {
+	function listOf(items: string[]): JSONContent {
+		return {
+			type: 'bulletList',
+			content: items.map((t) => ({
+				type: 'listItem',
+				content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }]
+			}))
+		};
+	}
+	function paragraph(text: string): JSONContent {
+		return { type: 'paragraph', content: [{ type: 'text', text }] };
+	}
+
+	it('parses a single non-tmux history section into the map', () => {
+		const doc = {
+			type: 'doc',
+			content: [
+				paragraph('Title'),
+				paragraph('ssh://localhost'),
+				{ type: 'paragraph' },
+				paragraph('history:'),
+				listOf(['ls -la', 'pwd'])
+			]
+		};
+		const out = parseTerminalNote(doc);
+		expect(out?.histories.size).toBe(1);
+		expect(out?.histories.get('')).toEqual(['ls -la', 'pwd']);
+		expect(out?.history).toEqual(['ls -la', 'pwd']);
+	});
+
+	it('parses multiple history sections (non-tmux + two windows)', () => {
+		const doc = {
+			type: 'doc',
+			content: [
+				paragraph('Title'),
+				paragraph('ssh://localhost'),
+				{ type: 'paragraph' },
+				paragraph('history:'),
+				listOf(['outer-cmd']),
+				{ type: 'paragraph' },
+				paragraph('history:tmux:@1:'),
+				listOf(['htop', 'tail -f log']),
+				{ type: 'paragraph' },
+				paragraph('history:tmux:@2:'),
+				listOf(['gdb a.out'])
+			]
+		};
+		const out = parseTerminalNote(doc);
+		expect(out).not.toBeNull();
+		expect(out?.histories.get('')).toEqual(['outer-cmd']);
+		expect(out?.histories.get('tmux:@1')).toEqual(['htop', 'tail -f log']);
+		expect(out?.histories.get('tmux:@2')).toEqual(['gdb a.out']);
+	});
+
+	it('parses sections in any order', () => {
+		const doc = {
+			type: 'doc',
+			content: [
+				paragraph('Title'),
+				paragraph('ssh://localhost'),
+				{ type: 'paragraph' },
+				paragraph('history:tmux:@2:'),
+				listOf(['x']),
+				{ type: 'paragraph' },
+				paragraph('history:'),
+				listOf(['y'])
+			]
+		};
+		const out = parseTerminalNote(doc);
+		expect(out?.histories.get('')).toEqual(['y']);
+		expect(out?.histories.get('tmux:@2')).toEqual(['x']);
+	});
+
+	it('rejects an unknown header label', () => {
+		const doc = {
+			type: 'doc',
+			content: [
+				paragraph('Title'),
+				paragraph('ssh://localhost'),
+				{ type: 'paragraph' },
+				paragraph('historyX:'),
+				listOf(['x'])
+			]
+		};
+		expect(parseTerminalNote(doc)).toBeNull();
+	});
+
+	it('accepts empty section (header without list)', () => {
+		const doc = {
+			type: 'doc',
+			content: [
+				paragraph('Title'),
+				paragraph('ssh://localhost'),
+				{ type: 'paragraph' },
+				paragraph('history:tmux:@1:')
+			]
+		};
+		const out = parseTerminalNote(doc);
+		expect(out?.histories.get('tmux:@1')).toEqual([]);
+	});
+
+	it('history flat field is union, most-recent-first, dedup', () => {
+		const doc = {
+			type: 'doc',
+			content: [
+				paragraph('Title'),
+				paragraph('ssh://localhost'),
+				{ type: 'paragraph' },
+				paragraph('history:'),
+				listOf(['a', 'shared']),
+				{ type: 'paragraph' },
+				paragraph('history:tmux:@1:'),
+				listOf(['b', 'shared'])
+			]
+		};
+		const out = parseTerminalNote(doc);
+		expect(out?.history).toEqual(['a', 'shared', 'b']);
 	});
 });
