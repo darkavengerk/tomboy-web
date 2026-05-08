@@ -120,6 +120,7 @@
 	let termHistOpenMobile = $state(false);
 	let termHistBlocklistText = $state('');
 	let snippetCopied = $state(false);
+	let tmuxSnippetCopied = $state(false);
 
 	const shellSnippet = `# Append to ~/.bashrc (bash 4.4+; zsh users need a different snippet)
 __th_state_file="\${XDG_RUNTIME_DIR:-/tmp}/.th_state_$$"
@@ -138,15 +139,30 @@ __th_emit_C() {
   # internals fire DEBUG without the file present, so they're skipped.
   [ -e "$__th_state_file" ] || return
   rm -f "$__th_state_file"
-  local hex
+  local hex win payload
   hex=$(printf '%s' "$1" | od -An -tx1 | tr -d ' \\n')
-  __th_osc "C;$hex"
+  if [ -e "\${__th_state_file}.win" ]; then
+    win=$(cat "\${__th_state_file}.win" 2>/dev/null)
+    rm -f "\${__th_state_file}.win"
+  fi
+  if [ -n "$win" ]; then
+    payload="C;$hex;$win"
+  else
+    payload="C;$hex"
+  fi
+  __th_osc "$payload"
 }
 
-PS0='$(: > "$__th_state_file" 2>/dev/null)'
+PS0='$(: > "$__th_state_file" 2>/dev/null
+       [ -n "$TMUX" ] && tmux display -p "#{window_id}" \\
+         > "\${__th_state_file}.win" 2>/dev/null)'
 PS1='\\[$(__th_osc A)\\]'"$PS1"'\\[$(__th_osc B)\\]'
-PROMPT_COMMAND='rm -f "$__th_state_file" 2>/dev/null; __th_osc "D;$?"'"\${PROMPT_COMMAND:+; \$PROMPT_COMMAND}"
+PROMPT_COMMAND='rm -f "$__th_state_file" "\${__th_state_file}.win" 2>/dev/null
+                __th_osc "D;$?"'"\${PROMPT_COMMAND:+; \$PROMPT_COMMAND}"
 trap '__th_emit_C "$BASH_COMMAND"' DEBUG`;
+
+	const tmuxHookSnippet = `# Append to ~/.tmux.conf (optional — for instant panel sync on window switch)
+set-hook -g after-select-window 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{window_id}\\\\a\\\\e\\\\\\\\\\" > #{client_tty}"'`;
 
 	async function loadTerminalBridgeState(): Promise<void> {
 		const v = await getDefaultTerminalBridge();
@@ -237,6 +253,18 @@ trap '__th_emit_C "$BASH_COMMAND"' DEBUG`;
 		setTimeout(() => {
 			snippetCopied = false;
 		}, 2000);
+	}
+
+	async function copyTmuxHookSnippet(): Promise<void> {
+		try {
+			await navigator.clipboard.writeText(tmuxHookSnippet);
+			tmuxSnippetCopied = true;
+			setTimeout(() => {
+				tmuxSnippetCopied = false;
+			}, 2000);
+		} catch (err) {
+			console.warn('clipboard write failed', err);
+		}
 	}
 
 	// ── 파이어베이스 실시간 노트 동기화 ──────────────────────────────────
@@ -1022,9 +1050,13 @@ trap '__th_emit_C "$BASH_COMMAND"' DEBUG`;
 				<pre class="snippet"><code>{shellSnippet}</code></pre>
 				<button class="btn btn-secondary" onclick={copySnippet}>{snippetCopied ? '복사됨' : '복사'}</button>
 				<p class="info-text small">
-					tmux 사용 시: 스니펫이 <code>$TMUX</code> 환경변수를 자동 감지하여
-					DCS 패스스루로 래핑하므로 <code>tmux.conf</code> 수정은 필요 없습니다.
+					tmux 사용 시: 위 스니펫이 <code>$TMUX</code> 환경변수를 자동 감지해
+					DCS 패스스루로 래핑합니다. 추가로, 윈도우 전환 즉시 패널을
+					동기화하려면 다음을 <code>~/.tmux.conf</code>에 추가하세요. (선택 사항 —
+					추가하지 않아도 다음 명령을 입력하는 시점에 자동 동기화됩니다.)
 				</p>
+				<pre class="snippet"><code>{tmuxHookSnippet}</code></pre>
+				<button class="btn btn-secondary" onclick={copyTmuxHookSnippet}>{tmuxSnippetCopied ? '복사됨' : '복사'}</button>
 			</section>
 
 			<section class="section">
