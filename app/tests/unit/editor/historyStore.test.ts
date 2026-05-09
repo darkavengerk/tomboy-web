@@ -4,7 +4,9 @@ import {
 	applyCommandsToDoc,
 	removeItemFromDoc,
 	clearHistoryFromDoc,
-	splitTerminalDocByKey
+	splitTerminalDocByKey,
+	pinCommandInDoc,
+	unpinCommandInDoc
 } from '$lib/editor/terminal/historyStore.js';
 import type { JSONContent } from '@tiptap/core';
 
@@ -57,13 +59,24 @@ describe('historyStore — pure doc helpers', () => {
 		expect(readHistory(out)).toEqual(['b', 'a', 'c']);
 	});
 
-	it('caps at 50', () => {
-		const fifty = Array.from({ length: 50 }, (_, i) => `cmd${i}`);
-		const out = applyCommandsToDoc(metaWithHistory(fifty), ['NEW']);
+	it('caps at 20', () => {
+		const twenty = Array.from({ length: 20 }, (_, i) => `cmd${i}`);
+		const out = applyCommandsToDoc(metaWithHistory(twenty), ['NEW']);
 		const got = readHistory(out);
-		expect(got.length).toBe(50);
+		expect(got.length).toBe(20);
 		expect(got[0]).toBe('NEW');
-		expect(got[got.length - 1]).toBe('cmd48');
+		expect(got[got.length - 1]).toBe('cmd18');
+	});
+
+	it('cap boundary: 21 commands yields exactly 20, oldest dropped', () => {
+		let doc = metaDoc();
+		for (let i = 0; i < 21; i++) {
+			doc = applyCommandsToDoc(doc, [`cmd${i}`]);
+		}
+		const got = readHistory(doc);
+		expect(got.length).toBe(20);
+		expect(got[0]).toBe('cmd20');
+		expect(got[got.length - 1]).toBe('cmd1');
 	});
 
 	it('handles a batch of commands in order (last-most-recent)', () => {
@@ -116,6 +129,8 @@ import {
 	flushTerminalHistoryNow,
 	clearTerminalHistory,
 	removeCommandFromTerminalHistory,
+	pinCommandInTerminalHistory,
+	unpinCommandInTerminalHistory,
 	_resetForTest
 } from '$lib/editor/terminal/historyStore.js';
 
@@ -292,17 +307,258 @@ describe('historyStore — multi-section helpers', () => {
 		expect(split.histories.has('tmux:@1')).toBe(false); // emptied → header dropped
 	});
 
-	it('caps each bucket independently at 50', () => {
-		const fifty = Array.from({ length: 50 }, (_, i) => `cmd${i}`);
-		let doc = metaWithSections({ '': fifty.slice() });
+	it('caps each bucket independently at 20', () => {
+		const twenty = Array.from({ length: 20 }, (_, i) => `cmd${i}`);
+		let doc = metaWithSections({ '': twenty.slice() });
 		doc = applyCommandsToDoc(doc, ['fresh-outer']);
 		let split = splitTerminalDocByKey(doc);
-		expect(split.histories.get('')?.length).toBe(50);
+		expect(split.histories.get('')?.length).toBe(20);
 		expect(split.histories.get('')?.[0]).toBe('fresh-outer');
 
 		doc = applyCommandsToDoc(doc, ['t1'], 'tmux:@1');
 		split = splitTerminalDocByKey(doc);
-		expect(split.histories.get('')?.length).toBe(50);
+		expect(split.histories.get('')?.length).toBe(20);
 		expect(split.histories.get('tmux:@1')).toEqual(['t1']);
 	});
 });
+
+// ── connect: section preservation tests ──────────────────────────────────────
+
+import { parseTerminalNote } from '$lib/editor/terminal/parseTerminalNote.js';
+
+function metaWithConnectAndHistory(connectItems: string[], historyItems: string[]): JSONContent {
+	const blocks: JSONContent[] = [
+		{ type: 'paragraph', content: [{ type: 'text', text: 'Title' }] },
+		{ type: 'paragraph', content: [{ type: 'text', text: 'ssh://localhost' }] },
+		{ type: 'paragraph' },
+		{ type: 'paragraph', content: [{ type: 'text', text: 'connect:' }] }
+	];
+	if (connectItems.length > 0) {
+		blocks.push({
+			type: 'bulletList',
+			content: connectItems.map((t) => ({
+				type: 'listItem',
+				content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }]
+			}))
+		});
+	}
+	if (historyItems.length > 0) {
+		blocks.push({ type: 'paragraph' });
+		blocks.push({ type: 'paragraph', content: [{ type: 'text', text: 'history:' }] });
+		blocks.push({
+			type: 'bulletList',
+			content: historyItems.map((t) => ({
+				type: 'listItem',
+				content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }]
+			}))
+		});
+	}
+	return { type: 'doc', content: blocks };
+}
+
+describe('historyStore — connect section preservation', () => {
+	it('applyCommandsToDoc preserves connect section', () => {
+		const doc = metaWithConnectAndHistory(['t1', 't2'], ['a']);
+		const out = applyCommandsToDoc(doc, ['NEW']);
+		const spec = parseTerminalNote(out);
+		expect(spec?.connect).toEqual(['t1', 't2']);
+		expect(spec?.history).toEqual(['NEW', 'a']);
+	});
+
+	it('removeItemFromDoc preserves connect section', () => {
+		const doc = metaWithConnectAndHistory(['t1', 't2'], ['a', 'b', 'c']);
+		const out = removeItemFromDoc(doc, 1); // remove 'b'
+		const spec = parseTerminalNote(out);
+		expect(spec?.connect).toEqual(['t1', 't2']);
+		expect(spec?.history).toEqual(['a', 'c']);
+	});
+
+	it('clearHistoryFromDoc preserves connect section', () => {
+		const doc = metaWithConnectAndHistory(['t1', 't2'], ['a', 'b']);
+		const out = clearHistoryFromDoc(doc);
+		const spec = parseTerminalNote(out);
+		expect(spec?.connect).toEqual(['t1', 't2']);
+		expect(spec?.history).toEqual([]);
+	});
+});
+
+// ── Pinned helpers ────────────────────────────────────────────────────────────
+
+function metaWithPinnedAndHistory(
+	pinnedItems: string[],
+	historyItems: string[],
+	windowKey?: string
+): JSONContent {
+	const blocks: JSONContent[] = [
+		{ type: 'paragraph', content: [{ type: 'text', text: 'Title' }] },
+		{ type: 'paragraph', content: [{ type: 'text', text: 'ssh://localhost' }] }
+	];
+	if (pinnedItems.length > 0) {
+		const pinnedHeader = windowKey ? `pinned:${windowKey}:` : 'pinned:';
+		blocks.push({ type: 'paragraph' });
+		blocks.push({ type: 'paragraph', content: [{ type: 'text', text: pinnedHeader }] });
+		blocks.push({
+			type: 'bulletList',
+			content: pinnedItems.map((t) => ({
+				type: 'listItem',
+				content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }]
+			}))
+		});
+	}
+	if (historyItems.length > 0) {
+		const historyHeader = windowKey ? `history:${windowKey}:` : 'history:';
+		blocks.push({ type: 'paragraph' });
+		blocks.push({ type: 'paragraph', content: [{ type: 'text', text: historyHeader }] });
+		blocks.push({
+			type: 'bulletList',
+			content: historyItems.map((t) => ({
+				type: 'listItem',
+				content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }]
+			}))
+		});
+	}
+	return { type: 'doc', content: blocks };
+}
+
+describe('historyStore — pinned pure helpers', () => {
+	it('pinCommandInDoc — pins a fresh command into empty pinned section', () => {
+		const doc = metaDoc();
+		const out = pinCommandInDoc(doc, 'htop');
+		const spec = parseTerminalNote(out);
+		expect(spec?.pinneds.get('')).toEqual(['htop']);
+		expect(spec?.histories.get('')).toBeUndefined();
+	});
+
+	it('pinCommandInDoc — moves command from history to pinned', () => {
+		const doc = metaWithHistory(['htop', 'ls', 'pwd']);
+		const out = pinCommandInDoc(doc, 'ls');
+		const spec = parseTerminalNote(out);
+		expect(spec?.pinneds.get('')).toEqual(['ls']);
+		expect(spec?.histories.get('')).toEqual(['htop', 'pwd']);
+	});
+
+	it('pinCommandInDoc — re-pinning moves to top of pinned', () => {
+		const doc = metaWithPinnedAndHistory(['ls', 'htop'], []);
+		const out = pinCommandInDoc(doc, 'htop');
+		const spec = parseTerminalNote(out);
+		expect(spec?.pinneds.get('')).toEqual(['htop', 'ls']);
+	});
+
+	it('pinCommandInDoc — pinning is per-bucket (tmux:@1 vs non-tmux)', () => {
+		const doc = metaWithHistory(['shared']);
+		// pin in tmux:@1 bucket — non-tmux bucket untouched
+		const out = pinCommandInDoc(doc, 'shared', 'tmux:@1');
+		const spec = parseTerminalNote(out);
+		expect(spec?.pinneds.get('tmux:@1')).toEqual(['shared']);
+		// non-tmux history should still have 'shared' (different bucket)
+		expect(spec?.histories.get('')).toEqual(['shared']);
+	});
+
+	it('pinCommandInDoc — command not in history is still pinned (fresh)', () => {
+		const doc = metaWithHistory(['ls']);
+		const out = pinCommandInDoc(doc, 'df -h');
+		const spec = parseTerminalNote(out);
+		expect(spec?.pinneds.get('')).toEqual(['df -h']);
+		expect(spec?.histories.get('')).toEqual(['ls']);
+	});
+
+	it('unpinCommandInDoc — moves pinned back to top of history', () => {
+		const doc = metaWithPinnedAndHistory(['htop'], ['ls', 'pwd']);
+		const out = unpinCommandInDoc(doc, 'htop');
+		const spec = parseTerminalNote(out);
+		expect(spec?.pinneds.get('')).toBeUndefined();
+		expect(spec?.histories.get('')).toEqual(['htop', 'ls', 'pwd']);
+	});
+
+	it('unpinCommandInDoc — no-op if not pinned', () => {
+		const doc = metaWithPinnedAndHistory(['ls'], ['pwd']);
+		const out = unpinCommandInDoc(doc, 'notpinned');
+		const spec = parseTerminalNote(out);
+		expect(spec?.pinneds.get('')).toEqual(['ls']);
+		expect(spec?.histories.get('')).toEqual(['pwd']);
+	});
+
+	it('unpinCommandInDoc — unpin deduplicates in history (move-to-top)', () => {
+		// 'htop' is also in history — unpin should move it to top, not duplicate
+		const doc = metaWithPinnedAndHistory(['htop'], ['ls', 'htop', 'pwd']);
+		const out = unpinCommandInDoc(doc, 'htop');
+		const spec = parseTerminalNote(out);
+		expect(spec?.histories.get('')).toEqual(['htop', 'ls', 'pwd']);
+	});
+
+	it('unpinCommandInDoc — unpin caps history at HISTORY_CAP (20)', () => {
+		const twenty = Array.from({ length: 20 }, (_, i) => `cmd${i}`);
+		const doc = metaWithPinnedAndHistory(['extra'], twenty);
+		const out = unpinCommandInDoc(doc, 'extra');
+		const spec = parseTerminalNote(out);
+		// move-to-top dedup: 'extra' not in twenty, so prepend + cap
+		expect(spec?.histories.get('')?.length).toBe(20);
+		expect(spec?.histories.get('')?.[0]).toBe('extra');
+	});
+
+	it('applyCommandsToDoc preserves pinned section', () => {
+		const doc = metaWithPinnedAndHistory(['htop'], ['ls']);
+		const out = applyCommandsToDoc(doc, ['pwd']);
+		const spec = parseTerminalNote(out);
+		expect(spec?.pinneds.get('')).toEqual(['htop']);
+		expect(spec?.histories.get('')).toEqual(['pwd', 'ls']);
+	});
+
+	it('removeItemFromDoc preserves pinned section', () => {
+		const doc = metaWithPinnedAndHistory(['htop'], ['ls', 'pwd']);
+		const out = removeItemFromDoc(doc, 0); // remove 'ls'
+		const spec = parseTerminalNote(out);
+		expect(spec?.pinneds.get('')).toEqual(['htop']);
+		expect(spec?.histories.get('')).toEqual(['pwd']);
+	});
+
+	it('clearHistoryFromDoc preserves pinned section', () => {
+		const doc = metaWithPinnedAndHistory(['htop'], ['ls', 'pwd']);
+		const out = clearHistoryFromDoc(doc);
+		const spec = parseTerminalNote(out);
+		expect(spec?.pinneds.get('')).toEqual(['htop']);
+		expect(spec?.histories.get('')).toBeUndefined();
+	});
+
+	it('pinned has no cap — 30 pinned items all retained', () => {
+		let doc = metaDoc();
+		for (let i = 0; i < 30; i++) {
+			doc = pinCommandInDoc(doc, `cmd${i}`);
+		}
+		const spec = parseTerminalNote(doc);
+		expect(spec?.pinneds.get('')?.length).toBe(30);
+	});
+});
+
+describe('historyStore — pinned IDB integration', () => {
+	beforeEach(() => {
+		globalThis.indexedDB = new IDBFactory();
+		_resetDBForTest();
+		_resetForTest();
+	});
+
+	it('pinCommandInTerminalHistory pins a command and removes from history', async () => {
+		const guid = 'p1';
+		await seedTerminalNote(guid, ['htop', 'ls', 'pwd']);
+		await pinCommandInTerminalHistory(guid, 'ls');
+		const after = await getNote(guid);
+		const spec = parseTerminalNote(deserializeContent(after!.xmlContent));
+		expect(spec?.pinneds.get('')).toEqual(['ls']);
+		expect(spec?.histories.get('')).toEqual(['htop', 'pwd']);
+	});
+
+	it('unpinCommandInTerminalHistory moves pinned back to history', async () => {
+		const guid = 'p2';
+		const note = createEmptyNote(guid);
+		note.title = 'Title';
+		note.xmlContent = serializeContent(metaWithPinnedAndHistory(['htop'], ['ls']));
+		await putNote(note);
+		await unpinCommandInTerminalHistory(guid, 'htop');
+		const after = await getNote(guid);
+		const spec = parseTerminalNote(deserializeContent(after!.xmlContent));
+		expect(spec?.pinneds.get('')).toBeUndefined();
+		expect(spec?.histories.get('')).toEqual(['htop', 'ls']);
+	});
+});
+
+import { deserializeContent } from '$lib/core/noteContentArchiver.js';

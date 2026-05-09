@@ -10,7 +10,8 @@
 		getTerminalBridgeToken
 	} from './bridgeSettings.js';
 	import { Osc133State, parseOsc133Payload, shouldRecordCommand } from './oscCapture.js';
-	import { appendCommandToTerminalHistory, flushTerminalHistoryNow, removeCommandFromTerminalHistory, clearTerminalHistory } from './historyStore.js';
+	import { appendCommandToTerminalHistory, flushTerminalHistoryNow, removeCommandFromTerminalHistory, clearTerminalHistory, pinCommandInTerminalHistory, unpinCommandInTerminalHistory } from './historyStore.js';
+	import { runConnectScript } from './connectAutoRun.js';
 	import {
 		getTerminalHistoryBlocklist,
 		getTerminalHistoryPanelOpenDesktop,
@@ -42,6 +43,7 @@
 	let shellIntegrationDetected = $state(false);
 
 	let histories: Map<string, string[]> = $state(new Map());
+	let pinneds: Map<string, string[]> = $state(new Map());
 	let currentWindowKey: string | null = $state(null);
 	let panelOpen = $state(false);
 	let isMobile = $state(false);
@@ -59,6 +61,17 @@
 	let mql: MediaQueryList | null = null;
 	let updateMobile: (() => void) | null = null;
 	let unmounted = false;
+	/**
+	 * Guard: connect: commands are sent exactly once per WS-open transition
+	 * (initial mount OR intentional reconnect). Set to true after the first
+	 * 'open' status fires; reset to false at the start of reconnect() so
+	 * clicking 재연결 re-runs the script on the next 'open'.
+	 *
+	 * NOTE: There is no component-level unit test for this behavior — the
+	 * auto-execute logic is covered by connectAutoRun.test.ts, which tests
+	 * the pure helper. The guard and wiring are exercised via manual QA.
+	 */
+	let connectFired = false;
 
 	const currentItems = $derived(histories.get(currentWindowKey ?? '') ?? []);
 	const bucketLabel = $derived.by(() => {
@@ -75,6 +88,7 @@
 		const doc = deserializeContent(note.xmlContent);
 		const parsed = parseTerminalNote(doc);
 		histories = parsed?.histories ?? new Map();
+		pinneds = parsed?.pinneds ?? new Map();
 	}
 
 	async function togglePanel(): Promise<void> {
@@ -97,6 +111,14 @@
 	}
 	async function onPanelClear(): Promise<void> {
 		await clearTerminalHistory(guid, currentWindowKey ?? undefined);
+		await reloadHistory();
+	}
+	async function onPanelPin(text: string): Promise<void> {
+		await pinCommandInTerminalHistory(guid, text, currentWindowKey ?? undefined);
+		await reloadHistory();
+	}
+	async function onPanelUnpin(text: string): Promise<void> {
+		await unpinCommandInTerminalHistory(guid, text, currentWindowKey ?? undefined);
 		await reloadHistory();
 	}
 	function onPanelClose(): void {
@@ -228,6 +250,10 @@
 				else if (s === 'closed' && info?.code !== undefined) statusMessage = `종료됨 (code ${info.code})`;
 				else if (s === 'open') statusMessage = '';
 				else if (s === 'connecting') statusMessage = '';
+				if (s === 'open' && !connectFired) {
+					connectFired = true;
+					void runConnectScript(spec.connect, (line) => client?.send(line));
+				}
 			}
 		});
 		client.connect();
@@ -280,6 +306,7 @@
 
 	function reconnect() {
 		if (!resolvedBridge || !resolvedToken) return;
+		connectFired = false; // allow connect: script to re-run on next 'open'
 		client?.close();
 		term?.reset();
 		status = 'connecting';
@@ -296,6 +323,10 @@
 				if (info?.message) statusMessage = info.message;
 				else if (s === 'closed' && info?.code !== undefined) statusMessage = `종료됨 (code ${info.code})`;
 				else statusMessage = '';
+				if (s === 'open' && !connectFired) {
+					connectFired = true;
+					void runConnectScript(spec.connect, (line) => client?.send(line));
+				}
 			}
 		});
 		client.connect();
@@ -345,6 +376,7 @@
 			<HistoryPanel
 				count={currentItems.length}
 				items={currentItems}
+				pinned={pinneds.get(currentWindowKey ?? '') ?? []}
 				bucketLabel={bucketLabel}
 				onsend={onPanelSend}
 				onsendNow={onPanelSendNow}
@@ -352,6 +384,8 @@
 				onclear={onPanelClear}
 				onclose={onPanelClose}
 				{onedit}
+				onpin={onPanelPin}
+				onunpin={onPanelUnpin}
 			/>
 		{/if}
 	</div>

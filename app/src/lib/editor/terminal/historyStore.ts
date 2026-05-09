@@ -4,9 +4,9 @@ import { formatTomboyDate } from '$lib/core/note.js';
 import { deserializeContent, serializeContent } from '$lib/core/noteContentArchiver.js';
 import { emitNoteReload } from '$lib/core/noteReloadBus.js';
 import { notifyNoteSaved } from '$lib/sync/firebase/orchestrator.js';
-import { parseTerminalNote, HISTORY_HEADER_RE } from './parseTerminalNote.js';
+import { parseTerminalNote, HISTORY_HEADER_RE, CONNECT_HEADER_RE, PINNED_HEADER_RE } from './parseTerminalNote.js';
 
-const HISTORY_CAP = 50;
+const HISTORY_CAP = 20;
 const DEBOUNCE_MS = 500;
 
 interface PendingState {
@@ -175,22 +175,29 @@ export async function clearTerminalHistory(guid: string, windowKey?: string): Pr
 interface SplitDocByKey {
 	pre: JSONContent[];
 	histories: Map<string, string[]>;
+	pinneds: Map<string, string[]>;
+	/** null = no connect: section present; [] = section present but empty. */
+	connect: string[] | null;
 }
 
 export function splitTerminalDocByKey(doc: JSONContent): SplitDocByKey {
-	const out: SplitDocByKey = { pre: [], histories: new Map() };
+	const out: SplitDocByKey = { pre: [], histories: new Map(), pinneds: new Map(), connect: null };
 	if (!Array.isArray(doc.content)) return out;
 	const blocks = doc.content;
 	let i = 0;
 
-	// pre = everything before the first history header (excluding trailing empty paragraphs)
+	// pre = everything before the first history, connect, or pinned header
+	// (excluding trailing empty paragraphs)
 	while (i < blocks.length) {
 		const b = blocks[i];
-		if (b.type === 'paragraph' && HISTORY_HEADER_RE.test(paragraphTextSimple(b).trim())) break;
+		if (b.type === 'paragraph') {
+			const t = paragraphTextSimple(b).trim();
+			if (HISTORY_HEADER_RE.test(t) || CONNECT_HEADER_RE.test(t) || PINNED_HEADER_RE.test(t)) break;
+		}
 		out.pre.push(b);
 		i++;
 	}
-	// Trim trailing empty paragraphs from pre (visual separators before first history section)
+	// Trim trailing empty paragraphs from pre (visual separators before first section)
 	while (out.pre.length > 0) {
 		const last = out.pre[out.pre.length - 1];
 		if (last.type === 'paragraph' && paragraphTextSimple(last).trim() === '') {
@@ -207,6 +214,39 @@ export function splitTerminalDocByKey(doc: JSONContent): SplitDocByKey {
 			continue;
 		}
 		const t = paragraphTextSimple(b).trim();
+
+		// connect: section
+		if (CONNECT_HEADER_RE.test(t)) {
+			i++;
+			while (i < blocks.length && blocks[i].type === 'paragraph' && paragraphTextSimple(blocks[i]).trim() === '') {
+				i++;
+			}
+			let items: string[] = [];
+			if (i < blocks.length && blocks[i].type === 'bulletList') {
+				items = extractListItems(blocks[i]);
+				i++;
+			}
+			out.connect = items;
+			continue;
+		}
+
+		// pinned: section
+		const pm = PINNED_HEADER_RE.exec(t);
+		if (pm) {
+			const key = pm[1] ? `tmux:${pm[1]}` : '';
+			i++;
+			while (i < blocks.length && blocks[i].type === 'paragraph' && paragraphTextSimple(blocks[i]).trim() === '') {
+				i++;
+			}
+			let items: string[] = [];
+			if (i < blocks.length && blocks[i].type === 'bulletList') {
+				items = extractListItems(blocks[i]);
+				i++;
+			}
+			out.pinneds.set(key, items);
+			continue;
+		}
+
 		const m = HISTORY_HEADER_RE.exec(t);
 		if (!m) {
 			i++;
@@ -269,6 +309,20 @@ function extractListItems(list: JSONContent): string[] {
 	return items;
 }
 
+function buildConnectSection(items: string[]): JSONContent[] {
+	return [
+		{ type: 'paragraph' }, // visual separator before header
+		{ type: 'paragraph', content: [{ type: 'text', text: 'connect:' }] },
+		{
+			type: 'bulletList',
+			content: items.map((t) => ({
+				type: 'listItem',
+				content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }]
+			}))
+		}
+	];
+}
+
 function buildSection(key: string, items: string[]): JSONContent[] {
 	if (items.length === 0) return [];
 	const header = key === '' ? 'history:' : `history:${key}:`;
@@ -298,6 +352,51 @@ function buildAllSections(histories: Map<string, string[]>): JSONContent[] {
 	return out;
 }
 
+function buildPinnedSection(key: string, items: string[]): JSONContent[] {
+	if (items.length === 0) return [];
+	const header = key === '' ? 'pinned:' : `pinned:${key}:`;
+	return [
+		{ type: 'paragraph' }, // visual separator before header
+		{ type: 'paragraph', content: [{ type: 'text', text: header }] },
+		{
+			type: 'bulletList',
+			content: items.map((t) => ({
+				type: 'listItem',
+				content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }]
+			}))
+		}
+	];
+}
+
+function buildAllPinnedSections(pinneds: Map<string, string[]>): JSONContent[] {
+	const keys = Array.from(pinneds.keys()).sort((a, b) => {
+		if (a === '') return -1;
+		if (b === '') return 1;
+		return a.localeCompare(b);
+	});
+	const out: JSONContent[] = [];
+	for (const k of keys) {
+		out.push(...buildPinnedSection(k, pinneds.get(k) ?? []));
+	}
+	return out;
+}
+
+function buildDocContent(
+	split: SplitDocByKey,
+	histories: Map<string, string[]>,
+	pinneds?: Map<string, string[]>
+): JSONContent[] {
+	const connectBlocks =
+		split.connect !== null ? buildConnectSection(split.connect) : [];
+	const resolvedPinneds = pinneds ?? split.pinneds;
+	return [
+		...split.pre,
+		...connectBlocks,
+		...buildAllPinnedSections(resolvedPinneds),
+		...buildAllSections(histories)
+	];
+}
+
 export function applyCommandsToDoc(
 	doc: JSONContent,
 	commands: string[],
@@ -317,7 +416,7 @@ export function applyCommandsToDoc(
 	const next = new Map(split.histories);
 	if (items.length === 0) next.delete(key);
 	else next.set(key, items);
-	return { type: 'doc', content: [...split.pre, ...buildAllSections(next)] };
+	return { type: 'doc', content: buildDocContent(split, next) };
 }
 
 export function removeItemFromDoc(
@@ -333,7 +432,7 @@ export function removeItemFromDoc(
 	const next = new Map(split.histories);
 	if (items.length === 0) next.delete(key);
 	else next.set(key, items);
-	return { type: 'doc', content: [...split.pre, ...buildAllSections(next)] };
+	return { type: 'doc', content: buildDocContent(split, next) };
 }
 
 export function clearHistoryFromDoc(doc: JSONContent, windowKey?: string): JSONContent {
@@ -341,7 +440,112 @@ export function clearHistoryFromDoc(doc: JSONContent, windowKey?: string): JSONC
 	const split = splitTerminalDocByKey(doc);
 	const next = new Map(split.histories);
 	next.delete(key);
-	return { type: 'doc', content: [...split.pre, ...buildAllSections(next)] };
+	return { type: 'doc', content: buildDocContent(split, next) };
+}
+
+export function pinCommandInDoc(
+	doc: JSONContent,
+	command: string,
+	windowKey?: string
+): JSONContent {
+	const key = normalizeKey(windowKey);
+	const split = splitTerminalDocByKey(doc);
+
+	// Remove from history in this bucket (if present)
+	const histItems = (split.histories.get(key) ?? []).filter((x) => x !== command);
+	const nextHistories = new Map(split.histories);
+	if (histItems.length === 0) nextHistories.delete(key);
+	else nextHistories.set(key, histItems);
+
+	// Prepend to pinned (move-to-top dedup: remove existing, then unshift)
+	let pinnedItems = (split.pinneds.get(key) ?? []).filter((x) => x !== command);
+	pinnedItems = [command, ...pinnedItems];
+	const nextPinneds = new Map(split.pinneds);
+	nextPinneds.set(key, pinnedItems);
+
+	return { type: 'doc', content: buildDocContent(split, nextHistories, nextPinneds) };
+}
+
+export function unpinCommandInDoc(
+	doc: JSONContent,
+	command: string,
+	windowKey?: string
+): JSONContent {
+	const key = normalizeKey(windowKey);
+	const split = splitTerminalDocByKey(doc);
+
+	// Check if actually pinned; no-op if not
+	const currentPinned = split.pinneds.get(key) ?? [];
+	if (!currentPinned.includes(command)) {
+		return doc;
+	}
+
+	// Remove from pinned
+	const pinnedItems = currentPinned.filter((x) => x !== command);
+	const nextPinneds = new Map(split.pinneds);
+	if (pinnedItems.length === 0) nextPinneds.delete(key);
+	else nextPinneds.set(key, pinnedItems);
+
+	// Prepend to history (move-to-top dedup + cap)
+	let histItems = (split.histories.get(key) ?? []).filter((x) => x !== command);
+	histItems = [command, ...histItems];
+	if (histItems.length > HISTORY_CAP) histItems = histItems.slice(0, HISTORY_CAP);
+	const nextHistories = new Map(split.histories);
+	nextHistories.set(key, histItems);
+
+	return { type: 'doc', content: buildDocContent(split, nextHistories, nextPinneds) };
+}
+
+export async function pinCommandInTerminalHistory(
+	guid: string,
+	command: string,
+	windowKey?: string
+): Promise<void> {
+	const key = normalizeKey(windowKey);
+	await flushOne(guid, key);
+	const note = await getNote(guid);
+	if (!note || note.deleted) return;
+	const doc = deserializeContent(note.xmlContent);
+	const spec = parseTerminalNote(doc);
+	if (!spec) return;
+	// Check if already pinned (no-op)
+	if ((spec.pinneds.get(key) ?? []).includes(command)) return;
+	const next = pinCommandInDoc(doc, command, key || undefined);
+	const newXml = serializeContent(next);
+	if (newXml === note.xmlContent) return;
+	const now = formatTomboyDate(new Date());
+	note.xmlContent = newXml;
+	note.changeDate = now;
+	note.metadataChangeDate = now;
+	await putNote(note);
+	notifyNoteSaved(guid);
+	await emitNoteReload([guid]);
+}
+
+export async function unpinCommandInTerminalHistory(
+	guid: string,
+	command: string,
+	windowKey?: string
+): Promise<void> {
+	const key = normalizeKey(windowKey);
+	await flushOne(guid, key);
+	const note = await getNote(guid);
+	if (!note || note.deleted) return;
+	const doc = deserializeContent(note.xmlContent);
+	const spec = parseTerminalNote(doc);
+	if (!spec) return;
+	// Check if actually pinned (no-op if not)
+	if (!(spec.pinneds.get(key) ?? []).includes(command)) return;
+	const next = unpinCommandInDoc(doc, command, key || undefined);
+	const newXml = serializeContent(next);
+	if (newXml === note.xmlContent) return;
+	const now = formatTomboyDate(new Date());
+	note.xmlContent = newXml;
+	note.changeDate = now;
+	note.metadataChangeDate = now;
+	await putNote(note);
+	notifyNoteSaved(guid);
+	await emitNoteReload([guid]);
 }
 
 /** Test-only reset of pending state. */

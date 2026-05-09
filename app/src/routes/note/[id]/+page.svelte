@@ -68,12 +68,12 @@
 	let isScrollBottomState = $state(false);
 	let isScheduleNoteState = $state(false);
 	let editorAreaEl: HTMLDivElement | undefined = $state(undefined);
-	// Terminal-note state: detected at note load time. `terminalEditMode`
-	// is a per-load override that lets the user fall back to the regular
-	// editor on a recognised terminal note.
+	// Terminal-note state: detected at note load time. `terminalConnectMode`
+	// must be explicitly activated by the user (via the "접속" banner button)
+	// before TerminalView mounts and opens the WS connection.
 	let terminalSpec: TerminalNoteSpec | null = $state.raw(null);
-	let terminalEditMode = $state(false);
-	const showTerminal = $derived(!!terminalSpec && !terminalEditMode);
+	let terminalConnectMode = $state(false);
+	const showTerminal = $derived(!!terminalSpec && terminalConnectMode);
 
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	let loadedGuid: string | null = null;
@@ -175,6 +175,7 @@
 			// so the reloaded doc isn't immediately re-saved.
 			editorContent = getNoteEditorContent(fresh);
 			terminalSpec = parseTerminalNote(editorContent);
+			if (!terminalSpec) terminalConnectMode = false;
 			lastSavedDocFingerprint = null;
 		});
 		return off;
@@ -223,7 +224,7 @@
 			note = loaded;
 			editorContent = getNoteEditorContent(loaded);
 			terminalSpec = parseTerminalNote(editorContent);
-			terminalEditMode = false;
+			terminalConnectMode = false;
 			loading = false;
 
 			const homeGuid = await getHomeNoteGuid();
@@ -392,6 +393,7 @@
 		note = fresh;
 		editorContent = getNoteEditorContent(fresh);
 		terminalSpec = parseTerminalNote(editorContent);
+		if (!terminalSpec) terminalConnectMode = false;
 		lastSavedDocFingerprint = null;
 		const ed = getEditor();
 		if (ed && editorContent) {
@@ -611,41 +613,53 @@
 				<TerminalView
 					spec={terminalSpec}
 					guid={noteId ?? ''}
-					onedit={() => (terminalEditMode = true)}
+					onedit={() => (terminalConnectMode = false)}
 				/>
 			{/key}
-		{:else if editorContent}
-			<!--
-				No {#key noteId} — TomboyEditor stays mounted across note
-				navigations and reacts to `content` / `currentGuid` prop
-				changes internally via setContent(). Destroying and
-				recreating the editor on every transition rebuilt the PM
-				schema + all extensions + DOM and was the dominant cost
-				in "open a new note" lag.
-			-->
-			<TomboyEditor
-				bind:this={editorComponent}
-				content={editorContent}
-				onchange={handleEditorChange}
-				oninternallink={handleInternalLink}
-				currentGuid={noteId}
-				createDate={note?.createDate ?? null}
-				slipNoteLabel={slipNoteLabel}
-				isSlipNote={isSlipNote}
-				isScheduleNote={isScheduleNoteState}
-				onslipnavigate={handleInternalLink}
-				oninsertafter={handleSlipInsertAfter}
-				oncut={handleSlipCut}
-				onconnect={handleSlipConnect}
-				onpaste={handleSlipPaste}
-				canPasteSlip={canPasteSlip}
-				cutSlipTitle={cutSlipTitle}
-				slipClipboardMode={slipClipboardMode}
-				prevDateTitle={dateAdjacency.prev}
-				nextDateTitle={dateAdjacency.next}
-				ondatenavigate={handleInternalLink}
-				sendListItemActive={sendActive}
-			/>
+		{:else}
+			{#if terminalSpec}
+				<div class="terminal-banner">
+					<span class="terminal-banner-label">SSH 터미널 노트입니다 — <code>{terminalSpec.target}</code></span>
+					<button
+						type="button"
+						class="terminal-connect-btn"
+						onclick={() => (terminalConnectMode = true)}
+					>접속</button>
+				</div>
+			{/if}
+			{#if editorContent}
+				<!--
+					No {#key noteId} — TomboyEditor stays mounted across note
+					navigations and reacts to `content` / `currentGuid` prop
+					changes internally via setContent(). Destroying and
+					recreating the editor on every transition rebuilt the PM
+					schema + all extensions + DOM and was the dominant cost
+					in "open a new note" lag.
+				-->
+				<TomboyEditor
+					bind:this={editorComponent}
+					content={editorContent}
+					onchange={handleEditorChange}
+					oninternallink={handleInternalLink}
+					currentGuid={noteId}
+					createDate={note?.createDate ?? null}
+					slipNoteLabel={slipNoteLabel}
+					isSlipNote={isSlipNote}
+					isScheduleNote={isScheduleNoteState}
+					onslipnavigate={handleInternalLink}
+					oninsertafter={handleSlipInsertAfter}
+					oncut={handleSlipCut}
+					onconnect={handleSlipConnect}
+					onpaste={handleSlipPaste}
+					canPasteSlip={canPasteSlip}
+					cutSlipTitle={cutSlipTitle}
+					slipClipboardMode={slipClipboardMode}
+					prevDateTitle={dateAdjacency.prev}
+					nextDateTitle={dateAdjacency.next}
+					ondatenavigate={handleInternalLink}
+					sendListItemActive={sendActive}
+				/>
+			{/if}
 		{/if}
 	</div>
 
@@ -790,6 +804,44 @@
 		justify-content: center;
 		height: 100%;
 		color: var(--color-text-secondary);
+	}
+
+	.terminal-banner {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 8px 14px;
+		background: var(--color-surface-alt, #f0f0f0);
+		border-bottom: 1px solid var(--color-border, #ddd);
+		font-size: 0.85rem;
+	}
+
+	.terminal-banner-label {
+		flex: 1;
+		color: var(--color-text-secondary, #555);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.terminal-banner-label code {
+		font-family: monospace;
+		color: var(--color-text, #222);
+	}
+
+	.terminal-connect-btn {
+		flex-shrink: 0;
+		padding: 4px 14px;
+		border: 1px solid var(--color-border, #bbb);
+		border-radius: 4px;
+		background: var(--color-bg, #fff);
+		color: var(--color-text, #222);
+		font-size: 0.85rem;
+		cursor: pointer;
+	}
+
+	.terminal-connect-btn:hover {
+		background: var(--color-surface-hover, #e8e8e8);
 	}
 
 	.fab-random {

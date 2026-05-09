@@ -115,8 +115,8 @@
 	let isScheduleNote = $state(false);
 	let windowEl: HTMLDivElement | undefined = $state(undefined);
 	let terminalSpec: TerminalNoteSpec | null = $state.raw(null);
-	let terminalEditMode = $state(false);
-	const showTerminal = $derived(!!terminalSpec && !terminalEditMode);
+	let terminalConnectMode = $state(false);
+	const showTerminal = $derived(!!terminalSpec && terminalConnectMode);
 
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	let pendingDoc: JSONContent | null = $state.raw(null);
@@ -198,7 +198,7 @@
 			note = loaded;
 			editorContent = getNoteEditorContent(loaded);
 			terminalSpec = parseTerminalNote(editorContent);
-			terminalEditMode = false;
+			terminalConnectMode = false;
 			loading = false;
 
 			const homeGuid = await getHomeNoteGuid();
@@ -393,6 +393,7 @@
 		note = fresh;
 		editorContent = getNoteEditorContent(fresh);
 		terminalSpec = parseTerminalNote(editorContent);
+		if (!terminalSpec) terminalConnectMode = false;
 		lastSavedDocFingerprint = null;
 		const ed = getEditor();
 		if (ed && editorContent) {
@@ -779,37 +780,49 @@
 				<TerminalView
 					spec={terminalSpec}
 					{guid}
-					onedit={() => (terminalEditMode = true)}
+					onedit={() => (terminalConnectMode = false)}
 				/>
 			{/key}
-		{:else if editorContent}
-			<TomboyEditor
-				bind:this={editorComponent}
-				content={editorContent}
-				onchange={handleEditorChange}
-				oninternallink={handleInternalLink}
-				currentGuid={guid}
-				enableContextMenu={true}
-				createDate={note?.createDate ?? null}
-				slipNoteLabel={slipNoteLabel}
-				sendListItemActive={sendActive}
-				isScheduleNote={isScheduleNote}
-				isSlipNote={isSlipNote}
-				onslipnavigate={handleSlipNavigate}
-				oninsertafter={handleSlipInsertAfter}
-				oncut={handleSlipCut}
-				onconnect={handleSlipConnect}
-				onpaste={handleSlipPaste}
-				canPasteSlip={canPasteSlip}
-				cutSlipTitle={cutSlipTitle}
-				slipClipboardMode={slipClipboardMode}
-				prevDateTitle={dateAdjacency.prev}
-				nextDateTitle={dateAdjacency.next}
-				ondatenavigate={handleDateNavigate}
-				noteFocused={isFocused}
-			/>
 		{:else}
-			<div class="loading">노트를 불러올 수 없습니다.</div>
+			{#if terminalSpec}
+				<div class="terminal-banner">
+					<span class="terminal-banner-label">SSH 터미널 노트입니다 — <code>{terminalSpec.target}</code></span>
+					<button
+						type="button"
+						class="terminal-connect-btn"
+						onclick={() => (terminalConnectMode = true)}
+					>접속</button>
+				</div>
+			{/if}
+			{#if editorContent}
+				<TomboyEditor
+					bind:this={editorComponent}
+					content={editorContent}
+					onchange={handleEditorChange}
+					oninternallink={handleInternalLink}
+					currentGuid={guid}
+					enableContextMenu={true}
+					createDate={note?.createDate ?? null}
+					slipNoteLabel={slipNoteLabel}
+					sendListItemActive={sendActive}
+					isScheduleNote={isScheduleNote}
+					isSlipNote={isSlipNote}
+					onslipnavigate={handleSlipNavigate}
+					oninsertafter={handleSlipInsertAfter}
+					oncut={handleSlipCut}
+					onconnect={handleSlipConnect}
+					onpaste={handleSlipPaste}
+					canPasteSlip={canPasteSlip}
+					cutSlipTitle={cutSlipTitle}
+					slipClipboardMode={slipClipboardMode}
+					prevDateTitle={dateAdjacency.prev}
+					nextDateTitle={dateAdjacency.next}
+					ondatenavigate={handleDateNavigate}
+					noteFocused={isFocused}
+				/>
+			{:else}
+				<div class="loading">노트를 불러올 수 없습니다.</div>
+			{/if}
 		{/if}
 	</div>
 
@@ -1063,6 +1076,44 @@
 		padding: 24px;
 		text-align: center;
 		color: #888;
+	}
+
+	.terminal-banner {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 8px 14px;
+		background: var(--color-surface-alt, #f0f0f0);
+		border-bottom: 1px solid var(--color-border, #ddd);
+		font-size: 0.85rem;
+	}
+
+	.terminal-banner-label {
+		flex: 1;
+		color: var(--color-text-secondary, #555);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.terminal-banner-label code {
+		font-family: monospace;
+		color: var(--color-text, #222);
+	}
+
+	.terminal-connect-btn {
+		flex-shrink: 0;
+		padding: 4px 14px;
+		border: 1px solid var(--color-border, #bbb);
+		border-radius: 4px;
+		background: var(--color-bg, #fff);
+		color: var(--color-text, #222);
+		font-size: 0.85rem;
+		cursor: pointer;
+	}
+
+	.terminal-connect-btn:hover {
+		background: var(--color-surface-hover, #e8e8e8);
 	}
 
 </style>

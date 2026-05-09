@@ -4,6 +4,7 @@
 	type Props = {
 		count: number;
 		items: string[];
+		pinned: string[];
 		bucketLabel: string;
 		onsend: (text: string) => void;
 		onsendNow: (text: string) => void;
@@ -11,8 +12,10 @@
 		onclear: () => void;
 		onclose: () => void;
 		onedit: () => void;
+		onpin: (text: string) => void;
+		onunpin: (text: string) => void;
 	};
-	let { count, items, bucketLabel, onsend, onsendNow, ondelete, onclear, onclose, onedit }: Props = $props();
+	let { count, items, pinned, bucketLabel, onsend, onsendNow, ondelete, onclear, onclose, onedit, onpin, onunpin }: Props = $props();
 
 	let menuOpenIndex: number | null = $state(null);
 	let menuX = $state(0);
@@ -28,9 +31,20 @@
 
 	function handleClick(ev: MouseEvent, index: number): void {
 		if ((ev.target as HTMLElement).closest('.menu')) return;
+		if ((ev.target as HTMLElement).closest('.row-delete')) return;
+		if ((ev.target as HTMLElement).closest('.row-pin')) return;
 		const text = items[index];
 		if (!text) return;
 		pulse(index);
+		if (ev.shiftKey) onsendNow(text);
+		else onsend(text);
+	}
+
+	function handlePinnedClick(ev: MouseEvent, text: string): void {
+		if ((ev.target as HTMLElement).closest('.menu')) return;
+		if ((ev.target as HTMLElement).closest('.row-delete')) return;
+		if ((ev.target as HTMLElement).closest('.row-pin')) return;
+		if (!text) return;
 		if (ev.shiftKey) onsendNow(text);
 		else onsend(text);
 	}
@@ -45,6 +59,8 @@
 	let pressTimer: ReturnType<typeof setTimeout> | null = null;
 	function handlePointerDown(ev: PointerEvent, index: number): void {
 		if (ev.pointerType !== 'touch') return;
+		if ((ev.target as HTMLElement).closest('.row-delete')) return;
+		if ((ev.target as HTMLElement).closest('.row-pin')) return;
 		pressTimer = setTimeout(() => {
 			menuOpenIndex = index;
 			menuX = ev.clientX;
@@ -98,7 +114,33 @@
 		</div>
 	</div>
 	<ul class="items">
-		{#if items.length === 0}
+		{#each pinned as text (('pinned:' + text))}
+			<li
+				class="item item-pinned"
+				title={text}
+				onclick={(e) => handlePinnedClick(e, text)}
+				onpointerup={handlePointerUp}
+				onpointercancel={handlePointerUp}
+				role="button"
+				tabindex="0"
+				onkeydown={(e) => {
+					if (e.key === 'Enter') handlePinnedClick(e as unknown as MouseEvent, text);
+				}}
+			>
+				<button
+					type="button"
+					class="row-pin pinned"
+					aria-label="고정 해제"
+					title="고정 해제"
+					onclick={(e) => { e.stopPropagation(); onunpin(text); }}
+				>★</button>
+				<span class="text">{text}</span>
+			</li>
+		{/each}
+		{#if pinned.length > 0 && items.length > 0}
+			<li class="section-label" aria-hidden="true">히스토리</li>
+		{/if}
+		{#if items.length === 0 && pinned.length === 0}
 			<li class="empty">기록된 명령어가 없습니다</li>
 		{:else}
 			{#each items as text, index (index + ':' + text)}
@@ -117,7 +159,21 @@
 						if (e.key === 'Enter') handleClick(e as unknown as MouseEvent, index);
 					}}
 				>
-					{text}
+					<button
+						type="button"
+						class="row-pin"
+						aria-label="고정"
+						title="고정"
+						onclick={(e) => { e.stopPropagation(); onpin(text); }}
+					>☆</button>
+					<span class="text">{text}</span>
+					<button
+						type="button"
+						class="row-delete"
+						aria-label="삭제"
+						title="삭제"
+						onclick={(e) => { e.stopPropagation(); ondelete(index); }}
+					>×</button>
 				</li>
 			{/each}
 		{/if}
@@ -195,15 +251,71 @@
 		text-align: center;
 	}
 	.item {
-		padding: 4px 8px;
+		display: flex;
+		align-items: center;
+		padding: 4px 4px 4px 4px;
 		font-size: 0.78rem;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
 		cursor: pointer;
 		transition: background 0.05s;
 	}
 	.item:hover { background: #2f2f2f; }
+	.item-pinned { background: #1e2a1e; }
+	.item-pinned:hover { background: #253525; }
+	.section-label {
+		font-size: 0.68rem;
+		color: #555;
+		padding: 3px 8px 2px;
+		border-top: 1px solid #333;
+		letter-spacing: 0.04em;
+		list-style: none;
+		user-select: none;
+	}
+	.text {
+		flex: 1;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.row-pin {
+		flex-shrink: 0;
+		background: transparent;
+		border: none;
+		color: #666;
+		cursor: pointer;
+		font-size: 0.85rem;
+		padding: 2px 4px;
+		min-width: 22px;
+		min-height: 24px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 3px;
+		transition: color 0.1s;
+	}
+	.row-pin.pinned { color: #d6b34a; }
+	.row-pin:not(.pinned):hover { color: #c9a830; }
+	.row-delete {
+		flex-shrink: 0;
+		background: transparent;
+		border: none;
+		color: #666;
+		cursor: pointer;
+		font-size: 0.85rem;
+		padding: 2px 6px;
+		min-width: 24px;
+		min-height: 24px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 3px;
+		opacity: 0;
+		transition: opacity 0.1s, color 0.1s;
+	}
+	.item:hover .row-delete { opacity: 1; }
+	.row-delete:hover { color: #f88; }
+	@media (pointer: coarse) {
+		.row-delete { opacity: 1; }
+	}
 	.item.pulse { animation: pulse 0.2s ease-out; }
 	@keyframes pulse {
 		0% { background: #4a6a9c; }

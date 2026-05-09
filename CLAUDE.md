@@ -513,29 +513,31 @@ Rules:
 
 ## 터미널 노트 (SSH terminal in a note)
 
-A note whose body is **1–2 metadata paragraphs + an optional `history:` section** matching:
+A note whose body is **1–2 metadata paragraphs + optional `connect:` / `pinned:` / `history:` sections** matching:
 
 ```
 ssh://[user@]host[:port]
 bridge: wss://my-pc.example.com/ws    # optional
                                        # optional blank
-history:                               # optional, non-tmux bucket
+connect:                               # optional, single bucket — auto-runs on WS open
+- tmux a -t main
+
+pinned:                                # optional, non-tmux pinned bucket (no cap)
 - ls -la
+
+pinned:tmux:@1:                        # optional, per-tmux-window pinned bucket
+- htop
+
+history:                               # optional, non-tmux bucket
 - sudo systemctl restart caddy
 
 history:tmux:@1:                       # optional, per-tmux-window bucket
-- htop
 - tail -f /var/log/caddy.log
 ```
 
-is opened as an `xterm.js` terminal instead of the regular editor. Title
-is unconstrained; the body is. A 3rd free paragraph (or any non-history
-block), any list/markup outside the history section(s), or a malformed
-section header (or scheme) falls back to a regular note. The `.note` XML stores plain text — Tomboy
-desktop sees a normal note and Dropbox/Firebase sync are unchanged.
-**Terminal output is never persisted** — it lives only in the open xterm
-scrollback. The header's "편집 모드" toggle swaps the view back to
-`TomboyEditor` for that page-load only.
+is matched as a terminal note. By default the note opens in the regular `<TomboyEditor>` with a "SSH 터미널 노트입니다 — `<target>` [접속]" banner above. Clicking 접속 swaps to `<TerminalView>` and starts the WS session (`terminalConnectMode` flag, false by default). The TerminalView's "편집 모드" button drops back to the editor by setting `terminalConnectMode = false`.
+
+Title is unconstrained; the body is. A 3rd free paragraph (or any non-recognized block), any list/markup outside recognized sections, or a malformed section header (or scheme) falls back to a regular note. The `.note` XML stores plain text — Tomboy desktop sees a normal note and Dropbox/Firebase sync are unchanged. **Terminal output is never persisted** — it lives only in the open xterm scrollback.
 
 The matching WebSocket bridge lives at the repo root in `bridge/` — Node +
 `ws` + `node-pty`, deployed as a rootless Podman + Quadlet container
@@ -553,9 +555,10 @@ Quick map:
 - `app/src/lib/editor/terminal/` — `parseTerminalNote.ts`, `wsClient.ts`,
   `TerminalView.svelte`, `bridgeSettings.ts`. Parser tests in
   `app/tests/unit/editor/`.
-- `app/src/lib/editor/terminal/historyStore.ts` — read-modify-write history mutation + per-guid serialization + 500ms debounce.
+- `app/src/lib/editor/terminal/historyStore.ts` — read-modify-write history/pinned mutation + per-guid serialization + 500ms debounce. Exposes `pinCommandInTerminalHistory`, `unpinCommandInTerminalHistory`.
+- `app/src/lib/editor/terminal/connectAutoRun.ts` — pure `runConnectScript` helper; sends each `connect:` item as `text + '\r'` with 50 ms gap, skips empty lines, swallows per-line send errors.
 - `app/src/lib/editor/terminal/oscCapture.ts` — pure OSC 133 parser / command-extraction helpers.
-- `app/src/lib/editor/terminal/HistoryPanel.svelte` — desktop side panel + mobile bottom sheet UI for the captured history.
+- `app/src/lib/editor/terminal/HistoryPanel.svelte` — desktop side panel + mobile bottom sheet UI for captured history + pinned commands.
 - `routes/note/[id]/+page.svelte` and `lib/desktop/NoteWindow.svelte` —
   branch between `TerminalView` and `TomboyEditor` based on
   `parseTerminalNote(editorContent)` at load and after every IDB reload.
@@ -568,10 +571,16 @@ Quick map:
 
 Invariants:
 
-- **Note body = 1–2 metadata paragraphs + (optional) `history:` section.** A 3rd free paragraph (or any non-history block) means it's no longer a terminal note — by design, so the user opts out simply by typing more.
-- **`history:` header text is fixed** — exactly that string, not localized.
+- **Note body = 1–2 metadata paragraphs + optional `connect:` / `pinned:` / `history:` sections.** A 3rd free paragraph (or any non-recognized block) means it's no longer a terminal note — by design, so the user opts out simply by typing more.
+- **Default view is the editor.** Terminal notes open in `<TomboyEditor>` with a banner; clicking 접속 sets `terminalConnectMode = true` and starts the WS session. "편집 모드" sets it back to false. There is no separate "terminal edit mode" flag.
+- **`connect:` is single-bucket only** — no `connect:tmux:...` variant. On every WS `'open'` transition (initial mount or reconnect), `runConnectScript` sends each item as `text + '\r'` in order with a 50 ms gap. The `connectFired` flag in `TerminalView.svelte` ensures one run per open lifetime; reconnect resets it so the next open re-runs.
+- **`pinned:` mirrors `history:` per-bucket layout but has no capacity cap.** Pinning a history item moves it to pinned (single physical existence per bucket); unpinning prepends it back to the top of history. Each panel row shows a star toggle: ★ (pinned) / ☆ (not pinned), plus a × delete button.
+- **`history:` header text is fixed** — exactly that string, not localized. Same for `connect:` and `pinned:`.
 - **History items are plain text only.** Marks ignored, nested lists ignored.
-- **History capacity = 50, FIFO + move-to-top dedup.** Older items are dropped when a new command pushes the list past the cap.
+- **History capacity = 20, FIFO + move-to-top dedup.** Older items are dropped when a new command pushes the list past the cap. Pinned items are not counted.
+- **Per-item × delete** removes a row immediately with no confirm. The panel header's ⌫ (clear-all bucket) still goes through `confirm(...)`.
+- **Serializer emits sections in fixed order:** `connect:` → `pinned:` (sorted, non-tmux first) → `history:` (sorted, non-tmux first). Empty sections are dropped — do not preserve empty headers.
+- **`TerminalNoteSpec` has `connect: string[]` and `pinneds: Map<string, string[]>`** in addition to existing `histories` and `history`.
 - **Re-input does not auto-press Enter.** Click stages text into the prompt; Shift+click sends `\r`. The user explicitly executes.
 - **Whitespace-prefixed commands are NOT captured** (HISTCONTROL=ignorespace convention). Use a leading space to keep a one-off command out of history.
 - **OSC 133 shell integration is opt-in per remote** — without the snippet installed, capture is NO-OP and the existing terminal note behaviour is 100% unchanged.
@@ -592,11 +601,10 @@ Invariants:
 - **Containerized rootless Podman deployment requires `Network=host`,
   `UserNS=keep-id`, and `:z` (lowercase) on the `.ssh` bind mount.** Any
   one missing breaks key auth or container-to-host loopback.
-- **`history:` (non-tmux) and `history:tmux:<window_id>:` are independent buckets.** Dedup, 50-cap, and debounce all apply per-bucket. Never introduce cross-bucket dedup.
+- **`history:` (non-tmux) and `history:tmux:<window_id>:` are independent buckets.** Dedup, 20-cap, and debounce all apply per-bucket. Never introduce cross-bucket dedup.
 - **Window key uses `@<window_id>` only** — session_id is intentionally not part of the key. Keys stay stable for the lifetime of a tmux window, which matches the user's working unit.
 - **PS1 polls the shell context on every prompt.** The shell snippet emits `OSC 133 ; W ; <window_id>` (inside tmux) or `OSC 133 ; W` (outside) at every prompt. This single signal handles tmux start, last-shell exit, attach, window switch, and outside-tmux automatically — `currentWindowKey` is always in sync with what the next command will do. `;C;<hex>;<id>` payload (or its absence) is the secondary correctness baseline.
 - **`after-select-window` and `client-attached` hooks are optional micro-optimizations.** They only matter for two no-prompt-redraw transitions (window switch while idle; attach while the active shell already sat at a prompt) where they reduce panel-update latency from "next prompt" to "instant." Detach is the one transition we can't catch instantly — the panel updates on the user's next prompt in the outside shell.
-- **Empty sections are dropped on serialize.** Both `clearTerminalHistory(guid, key)` and item-removal-to-empty leave the section header out of the doc. Do not "preserve" an empty header.
 - **The bridge has full shell access** to whatever host runs it.
   `BRIDGE_PASSWORD` is the only line of defense — front it with TLS +
   fail2ban while it's publicly reachable.
@@ -608,4 +616,5 @@ Invariants:
 - **WOL has no effect when the target is already up** — the immediate
   TCP probe short-circuits before any magic packet or progress
   message.
+- **Future improvement ideas:** see `docs/tmux-note-integration.md` for the integration roadmap.
 
