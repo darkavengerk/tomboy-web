@@ -22,6 +22,12 @@ export interface TerminalNoteSpec {
 	 * when no `connect:` section is present or the section has no items.
 	 */
 	connect: string[];
+	/**
+	 * Pinned commands keyed by bucket. Key `''` is the non-tmux bucket; keys of
+	 * the form `tmux:<window_id>` (e.g. `tmux:@1`) are per-tmux-window buckets.
+	 * Pinned items always render above history in the panel.
+	 */
+	pinneds: Map<string, string[]>;
 }
 
 const SSH_RE = /^ssh:\/\/(?:([^@\s/]+)@)?([^:\s/]+)(?::(\d{1,5}))?\/?\s*$/;
@@ -29,6 +35,7 @@ const BRIDGE_RE = /^bridge:\s*(wss?:\/\/\S+)\s*$/;
 export const HISTORY_HEADER_RE = /^history:(?:tmux:([A-Za-z0-9@$:_-]+):)?$/;
 /** Matches exactly `connect:` — no tmux variants allowed. */
 export const CONNECT_HEADER_RE = /^connect:$/;
+export const PINNED_HEADER_RE = /^pinned:(?:tmux:([A-Za-z0-9@$:_-]+):)?$/;
 
 export function parseTerminalNote(doc: JSONContent | null | undefined): TerminalNoteSpec | null {
 	if (!doc || doc.type !== 'doc' || !Array.isArray(doc.content)) return null;
@@ -53,6 +60,7 @@ export function parseTerminalNote(doc: JSONContent | null | undefined): Terminal
 		const trimmed = t.trim();
 		if (HISTORY_HEADER_RE.test(trimmed)) break;
 		if (CONNECT_HEADER_RE.test(trimmed)) break;
+		if (PINNED_HEADER_RE.test(trimmed)) break;
 		if (meta.length >= 2) return null;
 		meta.push(b);
 		i++;
@@ -81,6 +89,7 @@ export function parseTerminalNote(doc: JSONContent | null | undefined): Terminal
 	if (port !== undefined && (!Number.isInteger(port) || port < 1 || port > 65535)) return null;
 
 	const histories = new Map<string, string[]>();
+	const pinneds = new Map<string, string[]>();
 	let connect: string[] | null = null;
 
 	while (i < bodyBlocks.length) {
@@ -104,6 +113,23 @@ export function parseTerminalNote(doc: JSONContent | null | undefined): Terminal
 				return null;
 			}
 			connect = items;
+			continue;
+		}
+
+		const pm = PINNED_HEADER_RE.exec(trimmedHeader);
+		if (pm) {
+			const key = pm[1] ? `tmux:${pm[1]}` : '';
+			i++;
+			while (i < bodyBlocks.length && paragraphText(bodyBlocks[i]) === '') i++;
+			let items: string[] = [];
+			if (i < bodyBlocks.length && bodyBlocks[i].type === 'bulletList') {
+				items = extractHistoryItems(bodyBlocks[i]);
+				i++;
+			} else if (i < bodyBlocks.length && paragraphText(bodyBlocks[i]) === null) {
+				return null;
+			}
+			if (pinneds.has(key)) return null;
+			pinneds.set(key, items);
 			continue;
 		}
 
@@ -135,7 +161,8 @@ export function parseTerminalNote(doc: JSONContent | null | undefined): Terminal
 		bridge,
 		histories,
 		history,
-		connect: connect ?? []
+		connect: connect ?? [],
+		pinneds
 	};
 }
 

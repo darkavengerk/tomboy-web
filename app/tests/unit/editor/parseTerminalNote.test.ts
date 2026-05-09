@@ -21,7 +21,8 @@ describe('parseTerminalNote — match', () => {
 			bridge: undefined,
 			histories: new Map(),
 			history: [],
-			connect: []
+			connect: [],
+			pinneds: new Map()
 		});
 	});
 
@@ -553,5 +554,162 @@ describe('parseTerminalNote — connect section', () => {
 		expect(out).not.toBeNull();
 		expect(out?.connect).toEqual([]);
 		expect(out?.history).toEqual(['ls', 'pwd']);
+	});
+});
+
+describe('parseTerminalNote — pinned section', () => {
+	function listOf(items: string[]): JSONContent {
+		return {
+			type: 'bulletList',
+			content: items.map((t) => ({
+				type: 'listItem',
+				content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }]
+			}))
+		};
+	}
+	function paragraph(text: string): JSONContent {
+		return { type: 'paragraph', content: [{ type: 'text', text }] };
+	}
+
+	it('parses a single non-tmux pinned section', () => {
+		const d: JSONContent = {
+			type: 'doc',
+			content: [
+				paragraph('Title'),
+				paragraph('ssh://localhost'),
+				{ type: 'paragraph' },
+				paragraph('pinned:'),
+				listOf(['ls -la', 'df -h'])
+			]
+		};
+		const out = parseTerminalNote(d);
+		expect(out).not.toBeNull();
+		expect(out?.pinneds.get('')).toEqual(['ls -la', 'df -h']);
+	});
+
+	it('parses pinned + history together', () => {
+		const d: JSONContent = {
+			type: 'doc',
+			content: [
+				paragraph('Title'),
+				paragraph('ssh://localhost'),
+				{ type: 'paragraph' },
+				paragraph('pinned:'),
+				listOf(['htop']),
+				{ type: 'paragraph' },
+				paragraph('history:'),
+				listOf(['ls', 'pwd'])
+			]
+		};
+		const out = parseTerminalNote(d);
+		expect(out).not.toBeNull();
+		expect(out?.pinneds.get('')).toEqual(['htop']);
+		expect(out?.histories.get('')).toEqual(['ls', 'pwd']);
+	});
+
+	it('parses pinned per-tmux-window section', () => {
+		const d: JSONContent = {
+			type: 'doc',
+			content: [
+				paragraph('Title'),
+				paragraph('ssh://localhost'),
+				{ type: 'paragraph' },
+				paragraph('pinned:tmux:@1:'),
+				listOf(['htop'])
+			]
+		};
+		const out = parseTerminalNote(d);
+		expect(out).not.toBeNull();
+		expect(out?.pinneds.get('tmux:@1')).toEqual(['htop']);
+		expect(out?.pinneds.get('')).toBeUndefined();
+	});
+
+	it('accepts empty pinned section', () => {
+		const d: JSONContent = {
+			type: 'doc',
+			content: [
+				paragraph('Title'),
+				paragraph('ssh://localhost'),
+				{ type: 'paragraph' },
+				paragraph('pinned:tmux:@1:')
+			]
+		};
+		const out = parseTerminalNote(d);
+		expect(out).not.toBeNull();
+		expect(out?.pinneds.get('tmux:@1')).toEqual([]);
+	});
+
+	it('rejects duplicate pinned: keys', () => {
+		const d: JSONContent = {
+			type: 'doc',
+			content: [
+				paragraph('Title'),
+				paragraph('ssh://localhost'),
+				{ type: 'paragraph' },
+				paragraph('pinned:'),
+				listOf(['a']),
+				{ type: 'paragraph' },
+				paragraph('pinned:'),
+				listOf(['b'])
+			]
+		};
+		expect(parseTerminalNote(d)).toBeNull();
+	});
+
+	it('rejects duplicate pinned:tmux:@1: keys', () => {
+		const d: JSONContent = {
+			type: 'doc',
+			content: [
+				paragraph('Title'),
+				paragraph('ssh://localhost'),
+				{ type: 'paragraph' },
+				paragraph('pinned:tmux:@1:'),
+				listOf(['a']),
+				{ type: 'paragraph' },
+				paragraph('pinned:tmux:@1:'),
+				listOf(['b'])
+			]
+		};
+		expect(parseTerminalNote(d)).toBeNull();
+	});
+
+	it('pinned section is order-agnostic relative to history/connect', () => {
+		const d: JSONContent = {
+			type: 'doc',
+			content: [
+				paragraph('Title'),
+				paragraph('ssh://localhost'),
+				{ type: 'paragraph' },
+				paragraph('history:'),
+				listOf(['ls']),
+				{ type: 'paragraph' },
+				paragraph('connect:'),
+				listOf(['tmux a']),
+				{ type: 'paragraph' },
+				paragraph('pinned:'),
+				listOf(['htop'])
+			]
+		};
+		const out = parseTerminalNote(d);
+		expect(out).not.toBeNull();
+		expect(out?.pinneds.get('')).toEqual(['htop']);
+		expect(out?.histories.get('')).toEqual(['ls']);
+		expect(out?.connect).toEqual(['tmux a']);
+	});
+
+	it('existing notes without pinned: sections get pinneds: new Map()', () => {
+		const d: JSONContent = {
+			type: 'doc',
+			content: [
+				paragraph('Title'),
+				paragraph('ssh://localhost'),
+				{ type: 'paragraph' },
+				paragraph('history:'),
+				listOf(['ls'])
+			]
+		};
+		const out = parseTerminalNote(d);
+		expect(out).not.toBeNull();
+		expect(out?.pinneds).toEqual(new Map());
 	});
 });

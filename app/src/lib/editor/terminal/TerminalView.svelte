@@ -10,7 +10,7 @@
 		getTerminalBridgeToken
 	} from './bridgeSettings.js';
 	import { Osc133State, parseOsc133Payload, shouldRecordCommand } from './oscCapture.js';
-	import { appendCommandToTerminalHistory, flushTerminalHistoryNow, removeCommandFromTerminalHistory, clearTerminalHistory } from './historyStore.js';
+	import { appendCommandToTerminalHistory, flushTerminalHistoryNow, removeCommandFromTerminalHistory, clearTerminalHistory, pinCommandInTerminalHistory, unpinCommandInTerminalHistory } from './historyStore.js';
 	import { runConnectScript } from './connectAutoRun.js';
 	import {
 		getTerminalHistoryBlocklist,
@@ -43,6 +43,7 @@
 	let shellIntegrationDetected = $state(false);
 
 	let histories: Map<string, string[]> = $state(new Map());
+	let pinneds: Map<string, string[]> = $state(new Map());
 	let currentWindowKey: string | null = $state(null);
 	let panelOpen = $state(false);
 	let isMobile = $state(false);
@@ -87,6 +88,7 @@
 		const doc = deserializeContent(note.xmlContent);
 		const parsed = parseTerminalNote(doc);
 		histories = parsed?.histories ?? new Map();
+		pinneds = parsed?.pinneds ?? new Map();
 	}
 
 	async function togglePanel(): Promise<void> {
@@ -109,6 +111,14 @@
 	}
 	async function onPanelClear(): Promise<void> {
 		await clearTerminalHistory(guid, currentWindowKey ?? undefined);
+		await reloadHistory();
+	}
+	async function onPanelPin(text: string): Promise<void> {
+		await pinCommandInTerminalHistory(guid, text, currentWindowKey ?? undefined);
+		await reloadHistory();
+	}
+	async function onPanelUnpin(text: string): Promise<void> {
+		await unpinCommandInTerminalHistory(guid, text, currentWindowKey ?? undefined);
 		await reloadHistory();
 	}
 	function onPanelClose(): void {
@@ -366,6 +376,7 @@
 			<HistoryPanel
 				count={currentItems.length}
 				items={currentItems}
+				pinned={pinneds.get(currentWindowKey ?? '') ?? []}
 				bucketLabel={bucketLabel}
 				onsend={onPanelSend}
 				onsendNow={onPanelSendNow}
@@ -373,6 +384,8 @@
 				onclear={onPanelClear}
 				onclose={onPanelClose}
 				{onedit}
+				onpin={onPanelPin}
+				onunpin={onPanelUnpin}
 			/>
 		{/if}
 	</div>
