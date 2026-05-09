@@ -6,7 +6,7 @@ import { emitNoteReload } from '$lib/core/noteReloadBus.js';
 import { notifyNoteSaved } from '$lib/sync/firebase/orchestrator.js';
 import { parseTerminalNote, HISTORY_HEADER_RE } from './parseTerminalNote.js';
 
-const HISTORY_CAP = 50;
+const HISTORY_CAP = 20;
 const DEBOUNCE_MS = 500;
 
 interface PendingState {

@@ -57,13 +57,24 @@ describe('historyStore — pure doc helpers', () => {
 		expect(readHistory(out)).toEqual(['b', 'a', 'c']);
 	});
 
-	it('caps at 50', () => {
-		const fifty = Array.from({ length: 50 }, (_, i) => `cmd${i}`);
-		const out = applyCommandsToDoc(metaWithHistory(fifty), ['NEW']);
+	it('caps at 20', () => {
+		const twenty = Array.from({ length: 20 }, (_, i) => `cmd${i}`);
+		const out = applyCommandsToDoc(metaWithHistory(twenty), ['NEW']);
 		const got = readHistory(out);
-		expect(got.length).toBe(50);
+		expect(got.length).toBe(20);
 		expect(got[0]).toBe('NEW');
-		expect(got[got.length - 1]).toBe('cmd48');
+		expect(got[got.length - 1]).toBe('cmd18');
+	});
+
+	it('cap boundary: 21 commands yields exactly 20, oldest dropped', () => {
+		let doc = metaDoc();
+		for (let i = 0; i < 21; i++) {
+			doc = applyCommandsToDoc(doc, [`cmd${i}`]);
+		}
+		const got = readHistory(doc);
+		expect(got.length).toBe(20);
+		expect(got[0]).toBe('cmd20');
+		expect(got[got.length - 1]).toBe('cmd1');
 	});
 
 	it('handles a batch of commands in order (last-most-recent)', () => {
@@ -292,17 +303,17 @@ describe('historyStore — multi-section helpers', () => {
 		expect(split.histories.has('tmux:@1')).toBe(false); // emptied → header dropped
 	});
 
-	it('caps each bucket independently at 50', () => {
-		const fifty = Array.from({ length: 50 }, (_, i) => `cmd${i}`);
-		let doc = metaWithSections({ '': fifty.slice() });
+	it('caps each bucket independently at 20', () => {
+		const twenty = Array.from({ length: 20 }, (_, i) => `cmd${i}`);
+		let doc = metaWithSections({ '': twenty.slice() });
 		doc = applyCommandsToDoc(doc, ['fresh-outer']);
 		let split = splitTerminalDocByKey(doc);
-		expect(split.histories.get('')?.length).toBe(50);
+		expect(split.histories.get('')?.length).toBe(20);
 		expect(split.histories.get('')?.[0]).toBe('fresh-outer');
 
 		doc = applyCommandsToDoc(doc, ['t1'], 'tmux:@1');
 		split = splitTerminalDocByKey(doc);
-		expect(split.histories.get('')?.length).toBe(50);
+		expect(split.histories.get('')?.length).toBe(20);
 		expect(split.histories.get('tmux:@1')).toEqual(['t1']);
 	});
 });
