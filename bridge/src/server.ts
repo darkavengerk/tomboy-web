@@ -6,12 +6,17 @@ import {
 	passwordMatches,
 	verifyToken
 } from './auth.js';
-import { parseSshTarget, spawnForTarget } from './pty.js';
+import { parseSshTarget, spawnForTarget, type SshTarget } from './pty.js';
+import { loadHostsFile, lookupWolTarget, type WolEntry } from './hosts.js';
+import { probePort, sendMagicPacket, waitForPort } from './wol.js';
 
 const PORT = Number(process.env.BRIDGE_PORT || 3000);
 const PASSWORD = requireEnv('BRIDGE_PASSWORD');
 const SECRET = requireEnv('BRIDGE_SECRET');
 const ALLOWED_ORIGIN = requireEnv('BRIDGE_ALLOWED_ORIGIN');
+const HOSTS_FILE = process.env.BRIDGE_HOSTS_FILE;
+
+loadHostsFile(HOSTS_FILE);
 
 // Auth grace window after WebSocket open. The first client message MUST be
 // a `connect` frame with a valid token; otherwise the connection is closed.
@@ -133,6 +138,7 @@ interface ClientMsg {
 function handleWs(ws: WebSocket): void {
 	let pty: ReturnType<typeof spawnForTarget> | null = null;
 	let connected = false;
+	const abortCtrl = new AbortController();
 	const authTimer = setTimeout(() => {
 		if (!connected) {
 			try { ws.close(1008, 'auth timeout'); } catch { /* ignore */ }
@@ -167,20 +173,11 @@ function handleWs(ws: WebSocket): void {
 			}
 			const cols = clampSize(msg.cols, 80);
 			const rows = clampSize(msg.rows, 24);
-			try {
-				pty = spawnForTarget(target, cols, rows);
-			} catch (err) {
-				send({ type: 'error', message: `spawn failed: ${(err as Error).message}` });
-				ws.close(1011, 'spawn failed');
-				return;
-			}
+			// Mark connected early so duplicate `connect` frames during WOL
+			// wait can't re-enter this branch.
 			connected = true;
 			clearTimeout(authTimer);
-			pty.onData((d) => send({ type: 'data', d }));
-			pty.onExit(({ exitCode }) => {
-				send({ type: 'exit', code: exitCode });
-				ws.close(1000, 'pty exit');
-			});
+			void startSession(target, cols, rows);
 			return;
 		}
 
@@ -204,11 +201,73 @@ function handleWs(ws: WebSocket): void {
 
 	ws.on('close', () => {
 		clearTimeout(authTimer);
+		abortCtrl.abort();
 		if (pty) {
 			try { pty.kill(); } catch { /* ignore */ }
 			pty = null;
 		}
 	});
+
+	async function startSession(target: SshTarget, cols: number, rows: number): Promise<void> {
+		const wol = lookupWolTarget(target.host);
+		if (wol) {
+			const ok = await wakeIfNeeded(target, wol, abortCtrl.signal, send);
+			if (!ok) {
+				if (!abortCtrl.signal.aborted) {
+					send({ type: 'error', message: 'wake_timeout' });
+					try { ws.close(1011, 'wake timeout'); } catch { /* ignore */ }
+				}
+				return;
+			}
+		}
+		if (abortCtrl.signal.aborted) return;
+		try {
+			pty = spawnForTarget(target, cols, rows);
+		} catch (err) {
+			send({ type: 'error', message: `spawn failed: ${(err as Error).message}` });
+			try { ws.close(1011, 'spawn failed'); } catch { /* ignore */ }
+			return;
+		}
+		if (abortCtrl.signal.aborted) {
+			try { pty.kill(); } catch { /* ignore */ }
+			pty = null;
+			return;
+		}
+		pty.onData((d) => send({ type: 'data', d }));
+		pty.onExit(({ exitCode }) => {
+			send({ type: 'exit', code: exitCode });
+			ws.close(1000, 'pty exit');
+		});
+	}
+}
+
+async function wakeIfNeeded(
+	target: SshTarget,
+	wol: WolEntry,
+	signal: AbortSignal,
+	send: (obj: unknown) => void
+): Promise<boolean> {
+	const port = target.port ?? 22;
+	const reachable = await probePort(target.host, port, { timeoutMs: 1000, signal });
+	if (reachable || signal.aborted) return reachable;
+	send({ type: 'data', d: '\x1b[2m깨우는 중...\x1b[0m\r\n' });
+	try {
+		await sendMagicPacket(wol.mac, wol.broadcast);
+	} catch (err) {
+		console.error('[term-bridge] WOL send failed:', err);
+		// fall through — maybe the host is on its way up despite the send error
+	}
+	const timeoutMs = (wol.wakeTimeoutSec ?? 60) * 1000;
+	const ok = await waitForPort(target.host, port, {
+		timeoutMs,
+		intervalMs: 1000,
+		probeTimeoutMs: 1500,
+		signal
+	});
+	if (ok && !signal.aborted) {
+		send({ type: 'data', d: '\x1b[2m연결 중...\x1b[0m\r\n' });
+	}
+	return ok;
 }
 
 function clampSize(v: unknown, fallback: number): number {

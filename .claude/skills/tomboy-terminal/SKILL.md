@@ -149,9 +149,65 @@ container's own `node` shell. Writing `ssh://you@localhost` instead
 forces the ssh path → `ssh you@localhost` → host's sshd → real login
 shell as `you` on the host.
 
+**Note**: "host" in this section is whatever machine the bridge runs on.
+The bridge can sit on the same machine as the ssh target (original
+deployment) or on a separate always-on host (e.g., a Raspberry Pi) that
+ssh's into the actual workstation over the LAN. The latter is what
+unlocks the WOL flow below.
+
+## WOL (Wake-on-LAN) — `bridge/src/{hosts,wol}.ts`
+
+When the bridge runs on an always-on host (Raspberry Pi) and ssh's into
+a workstation that may be asleep/off, the bridge can wake the
+workstation before the ssh spawn.
+
+Flow (in `server.ts` → `wakeIfNeeded`):
+
+1. Client sends `connect` with `target = ssh://you@desktop.lan`.
+2. Bridge looks up `target.host` (case-insensitive) in `BRIDGE_HOSTS_FILE`.
+   Hit returns `{ mac, broadcast?, wakeTimeoutSec? }`. Miss → skip the
+   whole WOL step (existing behaviour).
+3. Quick TCP probe of `target.port ?? 22` with 1 s timeout. Open →
+   skip wake. Closed → continue.
+4. Send `data` frame `깨우는 중...` to the xterm.
+5. UDP magic packet to `broadcast || 255.255.255.255:9` (16× MAC repetitions).
+6. Poll the ssh port at 1 s intervals (1.5 s probe timeout each) until
+   open or `wakeTimeoutSec` (default 60) elapses.
+7. Open → send `연결 중...` and proceed to `spawnForTarget`.
+   Timeout → send `{type:'error', message:'wake_timeout'}` and close `1011`.
+8. WS close at any time aborts the polling via an `AbortController` so
+   the bridge doesn't keep trying after the client gave up.
+
+`hosts.json` schema (path = `BRIDGE_HOSTS_FILE`, default unset = WOL
+disabled):
+
+```json
+{
+  "desktop.lan": {
+    "mac": "AA:BB:CC:DD:EE:FF",
+    "broadcast": "192.168.0.255",
+    "wakeTimeoutSec": 90
+  }
+}
+```
+
+- Keys match the host token verbatim from the note's ssh URL
+  (case-insensitive). Use the same string the user types — no DNS
+  resolution is performed for matching.
+- `broadcast` is optional; default `255.255.255.255` works on most home
+  LANs but the per-subnet broadcast (`192.168.x.255`) is more reliable.
+- `wakeTimeoutSec` clamps to `[1, 600]`.
+- Missing/malformed entries are logged and skipped — the rest of the
+  file still loads.
+- Failed/missing/non-JSON file is logged and treated as "no WOL
+  targets"; the bridge still serves non-WOL hosts.
+
+The host map is loaded **once at startup**. To pick up edits, restart
+the unit (`systemctl --user restart term-bridge`).
+
 ## Bridge server — environment
 
-Required env vars (`bridge/src/server.ts:11-14`):
+Required env vars:
 
 | Var | Purpose |
 |-----|---------|
@@ -159,6 +215,7 @@ Required env vars (`bridge/src/server.ts:11-14`):
 | `BRIDGE_PASSWORD` | Login password. |
 | `BRIDGE_SECRET` | HMAC key for Bearer token signatures. **Must be stable across restarts** — rotating it invalidates every previously issued token (clients see `unauthorized` on the WS `connect` frame). Generate once with `openssl rand -hex 32` and keep it in `~/.config/term-bridge.env`. |
 | `BRIDGE_ALLOWED_ORIGIN` | Comma-separated allowed `Origin` headers for CORS + WS upgrade. Add the Vercel / production app origin alongside any dev origins. |
+| `BRIDGE_HOSTS_FILE` | Optional. Path to `hosts.json` for WOL host map. Unset/missing/invalid → WOL skipped, ssh attempted directly. |
 
 ## Container image — `bridge/Containerfile`
 
@@ -183,13 +240,15 @@ systemctl --user daemon-reload
 systemctl --user start term-bridge    # NOT enable — Quadlet auto-generates [Install]
 ```
 
-The five lines that have to be exactly right:
+The lines that have to be exactly right:
 
 ```ini
 [Container]
 Network=host
 EnvironmentFile=%h/.config/term-bridge.env
 Volume=%h/.ssh:/home/node/.ssh:ro,z
+Volume=%h/.config/term-bridge/hosts.json:/etc/term-bridge/hosts.json:ro,z
+Environment=BRIDGE_HOSTS_FILE=/etc/term-bridge/hosts.json
 UserNS=keep-id
 ReadOnly=true
 ```
@@ -199,6 +258,8 @@ Why each one:
 - **`Network=host`** — without it the container's `localhost` is the
   container itself, so `ssh user@localhost` gets `Connection refused`.
   Using `Network=host` also obsoletes any `PublishPort=` line; remove it.
+  Also required for UDP broadcast (WOL magic packet) to actually leave
+  the host network namespace.
 - **`Volume=%h/.ssh:/home/node/.ssh:ro,z`** — mounts the host user's
   SSH config + keys read-only into the container's `node` home so ssh
   can reuse them. **`:z` (lowercase, shared SELinux label)** is correct
@@ -206,6 +267,11 @@ Why each one:
   to its `~/.ssh`, and no label option at all leaves the host's
   `user_home_t` label which `container_t` cannot read (manifests as
   `ls: cannot open directory '/home/node/.ssh': Permission denied`).
+- **`Volume=%h/.config/term-bridge/hosts.json:...`** + **`Environment=BRIDGE_HOSTS_FILE=...`** —
+  WOL host map. **The host file must exist before the unit starts**; if
+  it doesn't, podman creates a directory at the source path, which
+  silently breaks the bind mount and produces a confusing failure mode.
+  For "no WOL" deployments write `{}` and leave it.
 - **`UserNS=keep-id`** — maps host uid 1000 ↔ container `node` (uid 1000)
   so the mounted `.ssh` files are readable inside the container. Without
   this, rootless podman maps `node` to a subuid that doesn't own the
@@ -303,6 +369,21 @@ the home host. Two things to update:
 - **The bridge has full shell access** to whatever host runs it.
   `BRIDGE_PASSWORD` is the only line of defense — front it with TLS +
   fail2ban while it's publicly reachable.
+- **WOL config lives only in `hosts.json`, never in the note.** The note
+  format stays unchanged (`ssh://[user@]host[:port]` + optional
+  `bridge:`). Don't add a `wol:` field — that would couple a per-device
+  secret-ish (MAC) to the synced note text and wouldn't survive bridge
+  swaps.
+- **WOL is purely opt-in by config.** Hosts not in `hosts.json` skip the
+  wake step entirely and behave exactly as before. There is no
+  auto-discovery of MACs.
+- **WOL is gated by an immediate TCP probe.** If the ssh port is
+  already open, the bridge skips the magic packet and any "깨우는 중..."
+  message. So enabling WOL for an always-on host is a no-op, not a
+  cost.
+- **Polling is bounded by `wakeTimeoutSec` (default 60).** Tune per
+  host: cold-boot Windows machines can need 60–90 s, suspended Linux
+  laptops < 10 s. The polling aborts immediately on WS close.
 
 ## Tests
 

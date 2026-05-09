@@ -8,9 +8,23 @@
 #        BRIDGE_PASSWORD=...
 #        BRIDGE_SECRET=...        (32+ random bytes, e.g. `openssl rand -hex 32`)
 #        BRIDGE_ALLOWED_ORIGIN=https://your-app-domain
-#   4. systemctl --user daemon-reload
+#   4. Create ~/.config/term-bridge/hosts.json BEFORE starting the unit
+#      (podman creates a directory at the source path if the file is
+#      missing, which silently breaks the bind mount). For the no-WOL
+#      case write `{}`; for WOL hosts:
+#        {
+#          "desktop.lan": {
+#            "mac": "AA:BB:CC:DD:EE:FF",
+#            "broadcast": "192.168.0.255",
+#            "wakeTimeoutSec": 90
+#          }
+#        }
+#      Keys are matched against the host token in the note's ssh:// URL
+#      (case-insensitive). Hosts not in the file = WOL skipped, ssh
+#      attempted directly (existing behaviour).
+#   5. systemctl --user daemon-reload
 #      systemctl --user enable --now term-bridge.service
-#   5. Make sure linger is enabled so the container survives logout:
+#   6. Make sure linger is enabled so the container survives logout:
 #        loginctl enable-linger $USER
 
 [Unit]
@@ -27,6 +41,10 @@ EnvironmentFile=%h/.config/term-bridge.env
 # Mount the user's SSH config + keys read-only so `ssh other-host` from
 # inside the container uses the same agent/known_hosts the shell would.
 Volume=%h/.ssh:/home/node/.ssh:ro,z
+# WOL host map — read-only. File can be absent; bridge then logs "WOL
+# disabled" and skips wake for every target.
+Volume=%h/.config/term-bridge/hosts.json:/etc/term-bridge/hosts.json:ro,z
+Environment=BRIDGE_HOSTS_FILE=/etc/term-bridge/hosts.json
 ReadOnly=true
 NoNewPrivileges=true
 DropCapability=ALL

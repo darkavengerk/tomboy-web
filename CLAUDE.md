@@ -539,10 +539,14 @@ scrollback. The header's "편집 모드" toggle swaps the view back to
 
 The matching WebSocket bridge lives at the repo root in `bridge/` — Node +
 `ws` + `node-pty`, deployed as a rootless Podman + Quadlet container
-fronted by Caddy. See the **`tomboy-terminal`** skill for the WS protocol,
-the Bearer-token auth flow, the SSH spawn modes (`!t.user` vs ssh path),
-the deployment recipe, the SELinux + user-namespace constraints, host-side
-sshd requirements, and Vercel cross-origin notes.
+fronted by Caddy. The bridge can run **either on the ssh target machine
+itself, or on a separate always-on host (e.g., a Raspberry Pi)** that
+ssh's into the workstation over the LAN; the latter unlocks an optional
+**Wake-on-LAN** step before the ssh spawn (`bridge/src/{hosts,wol}.ts`).
+See the **`tomboy-terminal`** skill for the WS protocol, the Bearer-token
+auth flow, the SSH spawn modes (`!t.user` vs ssh path), the WOL host
+map, the deployment recipe, the SELinux + user-namespace constraints,
+host-side sshd requirements, and Vercel cross-origin notes.
 
 Quick map:
 
@@ -557,8 +561,10 @@ Quick map:
   `parseTerminalNote(editorContent)` at load and after every IDB reload.
 - `routes/settings/+page.svelte` (config tab → "터미널 브릿지") — default
   bridge URL + login form.
-- `bridge/` — `src/server.ts`, `src/auth.ts`, `src/pty.ts`, `Containerfile`,
-  `deploy/term-bridge.container` (Quadlet), `deploy/Caddyfile`.
+- `bridge/` — `src/server.ts`, `src/auth.ts`, `src/pty.ts`,
+  `src/hosts.ts` (WOL host map loader), `src/wol.ts` (magic packet +
+  TCP polling), `Containerfile`, `deploy/term-bridge.container`
+  (Quadlet), `deploy/Caddyfile`.
 
 Invariants:
 
@@ -594,4 +600,12 @@ Invariants:
 - **The bridge has full shell access** to whatever host runs it.
   `BRIDGE_PASSWORD` is the only line of defense — front it with TLS +
   fail2ban while it's publicly reachable.
+- **WOL config lives in `BRIDGE_HOSTS_FILE` (`hosts.json`), never in the
+  note.** Note format stays `ssh://[user@]host[:port]` + optional
+  `bridge:`. The bridge looks up the host token (case-insensitive); a
+  hit triggers a TCP probe → magic packet → port polling, a miss skips
+  the wake step entirely (no behaviour change).
+- **WOL has no effect when the target is already up** — the immediate
+  TCP probe short-circuits before any magic packet or progress
+  message.
 
