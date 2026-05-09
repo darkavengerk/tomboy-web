@@ -11,11 +11,18 @@ interface ClientOptions {
 }
 
 interface ServerMsg {
-	type: 'data' | 'exit' | 'error';
+	type: 'data' | 'exit' | 'error' | 'ready';
 	d?: string;
 	code?: number;
 	message?: string;
 }
+
+/**
+ * Fallback delay for marking the session 'open' if the bridge never emits
+ * `{type:'ready'}`. Older bridges (pre-PTY-ready signal) keep working — the
+ * timer fires after the bridge has had ample time to spawn ssh.
+ */
+const READY_FALLBACK_MS = 3000;
 
 /**
  * Thin WebSocket wrapper for the term-bridge protocol.
@@ -36,9 +43,21 @@ export class TerminalWsClient {
 	private ws: WebSocket | null = null;
 	private opts: ClientOptions;
 	private closed = false;
+	private readyFired = false;
+	private readyFallbackTimer: ReturnType<typeof setTimeout> | null = null;
 
 	constructor(opts: ClientOptions) {
 		this.opts = opts;
+	}
+
+	private markOpen(): void {
+		if (this.readyFired || this.closed) return;
+		this.readyFired = true;
+		if (this.readyFallbackTimer) {
+			clearTimeout(this.readyFallbackTimer);
+			this.readyFallbackTimer = null;
+		}
+		this.opts.onStatus('open');
 	}
 
 	connect(): void {
@@ -63,7 +82,12 @@ export class TerminalWsClient {
 					rows: this.opts.rows
 				})
 			);
-			this.opts.onStatus('open');
+			// Defer 'open' until the bridge confirms PTY ready (see READY_FALLBACK_MS
+			// for older-bridge fallback).
+			this.readyFallbackTimer = setTimeout(() => {
+				this.readyFallbackTimer = null;
+				this.markOpen();
+			}, READY_FALLBACK_MS);
 		};
 
 		ws.onmessage = (ev) => {
@@ -73,7 +97,9 @@ export class TerminalWsClient {
 			} catch {
 				return;
 			}
-			if (msg.type === 'data' && typeof msg.d === 'string') {
+			if (msg.type === 'ready') {
+				this.markOpen();
+			} else if (msg.type === 'data' && typeof msg.d === 'string') {
 				this.opts.onData(msg.d);
 			} else if (msg.type === 'exit') {
 				this.opts.onStatus('closed', { code: msg.code });
@@ -116,6 +142,10 @@ export class TerminalWsClient {
 
 	close(): void {
 		this.closed = true;
+		if (this.readyFallbackTimer) {
+			clearTimeout(this.readyFallbackTimer);
+			this.readyFallbackTimer = null;
+		}
 		if (this.ws) {
 			try { this.ws.close(); } catch { /* ignore */ }
 			this.ws = null;

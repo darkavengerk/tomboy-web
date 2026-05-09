@@ -110,7 +110,8 @@ client → server : { type:'connect', target, token, cols, rows }
                   { type:'data',    d }
                   { type:'resize',  cols, rows }
 
-server → client : { type:'data',  d }
+server → client : { type:'ready' }
+                  { type:'data',  d }
                   { type:'exit',  code }
                   { type:'error', message }
 ```
@@ -119,6 +120,15 @@ The browser's `WebSocket` API can't add custom headers on the upgrade
 request, so the bridge defers auth to the first frame. After upgrade the
 server holds the connection open for **`AUTH_TIMEOUT_MS = 5000`** waiting
 for `connect`; missing or invalid token → close `1008`.
+
+The bridge emits exactly one `{type:'ready'}` after `spawnForTarget`
+returns and `pty.onData/onExit` are wired — i.e. the earliest moment a
+`{type:'data'}` from the client will actually reach a live PTY. The
+client uses this to gate `status='open'` (and therefore `connect:`
+auto-run); without it the WS-handshake-only signal raced the async
+spawn and frames were silently dropped by `if (!pty) return`. A 3 s
+`READY_FALLBACK_MS` timer in `wsClient.ts` keeps older bridges (without
+the `ready` frame) working.
 
 Origin enforcement happens at the upgrade itself (`bridge/src/server.ts`):
 mismatched `Origin` returns `403 Forbidden` and never reaches the auth
@@ -338,6 +348,7 @@ the home host. Two things to update:
 - **Note body = 1–2 metadata paragraphs + optional `connect:` / `pinned:` / `history:` sections.** A 3rd free paragraph (or any non-recognized block) means it's no longer a terminal note — by design, so users opt out simply by typing more.
 - **Default view is the editor.** Terminal notes open in `<TomboyEditor>` with a banner; clicking 접속 sets `terminalConnectMode = true` and starts the WS session. "편집 모드" sets it back to false. There is no separate "terminal edit mode" flag.
 - **`connect:` is single-bucket only** — no `connect:tmux:...` variant. On every WS `'open'` transition, `runConnectScript` sends each item as `text + '\r'` in order with a 50 ms gap. The `connectFired` flag in `TerminalView.svelte` ensures one run per open lifetime; reconnect resets it so the next open re-runs.
+- **Client `status='open'` is gated on the bridge's `{type:'ready'}` frame, not on the WebSocket handshake.** The bridge emits `ready` after `spawnForTarget` returns + `pty.onData/onExit` are wired. Without this gate, `data` frames sent during the async spawn are dropped by `if (!pty) return` in the bridge. The 3 s `READY_FALLBACK_MS` timer in `wsClient.ts` keeps older bridges working.
 - **`pinned:` mirrors `history:` per-bucket layout but has no capacity cap.** Pinning a history item moves it to pinned (single physical existence per bucket); unpinning prepends it back to the top of history. Each panel row shows a star toggle: ★ (pinned) / ☆ (not pinned), plus a × delete button.
 - **`history:` header text is fixed** — exactly that string, not localized. Same for `connect:` and `pinned:`.
 - **History items are plain text only.** Marks ignored, nested lists ignored.
