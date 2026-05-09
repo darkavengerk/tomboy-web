@@ -239,6 +239,10 @@ function handleWs(ws: WebSocket): void {
 			send({ type: 'exit', code: exitCode });
 			ws.close(1000, 'pty exit');
 		});
+		// Signal PTY readiness — clients gate connect-script auto-run on this.
+		// WS open alone is not enough: the data-message branch silently drops
+		// frames that arrive before `pty` is non-null.
+		send({ type: 'ready' });
 	}
 }
 
