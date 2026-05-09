@@ -210,6 +210,7 @@ function handleWs(ws: WebSocket): void {
 
 	async function startSession(target: SshTarget, cols: number, rows: number): Promise<void> {
 		const wol = lookupWolTarget(target.host);
+		console.log(`[term-bridge] connect target=${target.user ?? ''}@${target.host}:${target.port ?? 22} wol=${wol ? wol.mac : 'none'}`);
 		if (wol) {
 			const ok = await wakeIfNeeded(target, wol, abortCtrl.signal, send);
 			if (!ok) {
@@ -249,10 +250,12 @@ async function wakeIfNeeded(
 ): Promise<boolean> {
 	const port = target.port ?? 22;
 	const reachable = await probePort(target.host, port, { timeoutMs: 1000, signal });
+	console.log(`[term-bridge] WOL probe ${target.host}:${port} reachable=${reachable}`);
 	if (reachable || signal.aborted) return reachable;
 	send({ type: 'data', d: '\x1b[2m깨우는 중...\x1b[0m\r\n' });
 	try {
 		await sendMagicPacket(wol.mac, wol.broadcast);
+		console.log(`[term-bridge] WOL magic packet sent mac=${wol.mac} broadcast=${wol.broadcast ?? '255.255.255.255'}`);
 	} catch (err) {
 		console.error('[term-bridge] WOL send failed:', err);
 		// fall through — maybe the host is on its way up despite the send error
@@ -264,6 +267,7 @@ async function wakeIfNeeded(
 		probeTimeoutMs: 1500,
 		signal
 	});
+	console.log(`[term-bridge] WOL waitForPort result=${ok} (timeout was ${timeoutMs}ms)`);
 	if (ok && !signal.aborted) {
 		send({ type: 'data', d: '\x1b[2m연결 중...\x1b[0m\r\n' });
 	}
