@@ -16,11 +16,19 @@ export interface TerminalNoteSpec {
 	 * Provided for callers that don't care about per-window separation.
 	 */
 	history: string[];
+	/**
+	 * Commands to send to the PTY (as `text + '\r'`) immediately after the WS
+	 * reaches `'open'` status for the first time per view lifetime. Empty array
+	 * when no `connect:` section is present or the section has no items.
+	 */
+	connect: string[];
 }
 
 const SSH_RE = /^ssh:\/\/(?:([^@\s/]+)@)?([^:\s/]+)(?::(\d{1,5}))?\/?\s*$/;
 const BRIDGE_RE = /^bridge:\s*(wss?:\/\/\S+)\s*$/;
 export const HISTORY_HEADER_RE = /^history:(?:tmux:([A-Za-z0-9@$:_-]+):)?$/;
+/** Matches exactly `connect:` — no tmux variants allowed. */
+export const CONNECT_HEADER_RE = /^connect:$/;
 
 export function parseTerminalNote(doc: JSONContent | null | undefined): TerminalNoteSpec | null {
 	if (!doc || doc.type !== 'doc' || !Array.isArray(doc.content)) return null;
@@ -42,7 +50,9 @@ export function parseTerminalNote(doc: JSONContent | null | undefined): Terminal
 			i++;
 			continue;
 		}
-		if (HISTORY_HEADER_RE.test(t.trim())) break;
+		const trimmed = t.trim();
+		if (HISTORY_HEADER_RE.test(trimmed)) break;
+		if (CONNECT_HEADER_RE.test(trimmed)) break;
 		if (meta.length >= 2) return null;
 		meta.push(b);
 		i++;
@@ -71,6 +81,7 @@ export function parseTerminalNote(doc: JSONContent | null | undefined): Terminal
 	if (port !== undefined && (!Number.isInteger(port) || port < 1 || port > 65535)) return null;
 
 	const histories = new Map<string, string[]>();
+	let connect: string[] | null = null;
 
 	while (i < bodyBlocks.length) {
 		while (i < bodyBlocks.length && paragraphText(bodyBlocks[i]) === '') i++;
@@ -79,6 +90,23 @@ export function parseTerminalNote(doc: JSONContent | null | undefined): Terminal
 		const headerText = paragraphText(bodyBlocks[i]);
 		if (headerText === null) return null;
 		const trimmedHeader = headerText.trim();
+
+		if (CONNECT_HEADER_RE.test(trimmedHeader)) {
+			// connect: section — exactly one allowed
+			if (connect !== null) return null;
+			i++;
+			while (i < bodyBlocks.length && paragraphText(bodyBlocks[i]) === '') i++;
+			let items: string[] = [];
+			if (i < bodyBlocks.length && bodyBlocks[i].type === 'bulletList') {
+				items = extractHistoryItems(bodyBlocks[i]);
+				i++;
+			} else if (i < bodyBlocks.length && paragraphText(bodyBlocks[i]) === null) {
+				return null;
+			}
+			connect = items;
+			continue;
+		}
+
 		const m = HISTORY_HEADER_RE.exec(trimmedHeader);
 		if (!m) return null;
 		const key = m[1] ? `tmux:${m[1]}` : '';
@@ -106,7 +134,8 @@ export function parseTerminalNote(doc: JSONContent | null | undefined): Terminal
 		user,
 		bridge,
 		histories,
-		history
+		history,
+		connect: connect ?? []
 	};
 }
 

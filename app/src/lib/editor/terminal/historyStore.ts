@@ -4,7 +4,7 @@ import { formatTomboyDate } from '$lib/core/note.js';
 import { deserializeContent, serializeContent } from '$lib/core/noteContentArchiver.js';
 import { emitNoteReload } from '$lib/core/noteReloadBus.js';
 import { notifyNoteSaved } from '$lib/sync/firebase/orchestrator.js';
-import { parseTerminalNote, HISTORY_HEADER_RE } from './parseTerminalNote.js';
+import { parseTerminalNote, HISTORY_HEADER_RE, CONNECT_HEADER_RE } from './parseTerminalNote.js';
 
 const HISTORY_CAP = 20;
 const DEBOUNCE_MS = 500;
@@ -175,22 +175,28 @@ export async function clearTerminalHistory(guid: string, windowKey?: string): Pr
 interface SplitDocByKey {
 	pre: JSONContent[];
 	histories: Map<string, string[]>;
+	/** null = no connect: section present; [] = section present but empty. */
+	connect: string[] | null;
 }
 
 export function splitTerminalDocByKey(doc: JSONContent): SplitDocByKey {
-	const out: SplitDocByKey = { pre: [], histories: new Map() };
+	const out: SplitDocByKey = { pre: [], histories: new Map(), connect: null };
 	if (!Array.isArray(doc.content)) return out;
 	const blocks = doc.content;
 	let i = 0;
 
-	// pre = everything before the first history header (excluding trailing empty paragraphs)
+	// pre = everything before the first history or connect header
+	// (excluding trailing empty paragraphs)
 	while (i < blocks.length) {
 		const b = blocks[i];
-		if (b.type === 'paragraph' && HISTORY_HEADER_RE.test(paragraphTextSimple(b).trim())) break;
+		if (b.type === 'paragraph') {
+			const t = paragraphTextSimple(b).trim();
+			if (HISTORY_HEADER_RE.test(t) || CONNECT_HEADER_RE.test(t)) break;
+		}
 		out.pre.push(b);
 		i++;
 	}
-	// Trim trailing empty paragraphs from pre (visual separators before first history section)
+	// Trim trailing empty paragraphs from pre (visual separators before first section)
 	while (out.pre.length > 0) {
 		const last = out.pre[out.pre.length - 1];
 		if (last.type === 'paragraph' && paragraphTextSimple(last).trim() === '') {
@@ -207,6 +213,22 @@ export function splitTerminalDocByKey(doc: JSONContent): SplitDocByKey {
 			continue;
 		}
 		const t = paragraphTextSimple(b).trim();
+
+		// connect: section
+		if (CONNECT_HEADER_RE.test(t)) {
+			i++;
+			while (i < blocks.length && blocks[i].type === 'paragraph' && paragraphTextSimple(blocks[i]).trim() === '') {
+				i++;
+			}
+			let items: string[] = [];
+			if (i < blocks.length && blocks[i].type === 'bulletList') {
+				items = extractListItems(blocks[i]);
+				i++;
+			}
+			out.connect = items;
+			continue;
+		}
+
 		const m = HISTORY_HEADER_RE.exec(t);
 		if (!m) {
 			i++;
@@ -269,6 +291,20 @@ function extractListItems(list: JSONContent): string[] {
 	return items;
 }
 
+function buildConnectSection(items: string[]): JSONContent[] {
+	return [
+		{ type: 'paragraph' }, // visual separator before header
+		{ type: 'paragraph', content: [{ type: 'text', text: 'connect:' }] },
+		{
+			type: 'bulletList',
+			content: items.map((t) => ({
+				type: 'listItem',
+				content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }]
+			}))
+		}
+	];
+}
+
 function buildSection(key: string, items: string[]): JSONContent[] {
 	if (items.length === 0) return [];
 	const header = key === '' ? 'history:' : `history:${key}:`;
@@ -298,6 +334,12 @@ function buildAllSections(histories: Map<string, string[]>): JSONContent[] {
 	return out;
 }
 
+function buildDocContent(split: SplitDocByKey, histories: Map<string, string[]>): JSONContent[] {
+	const connectBlocks =
+		split.connect !== null ? buildConnectSection(split.connect) : [];
+	return [...split.pre, ...connectBlocks, ...buildAllSections(histories)];
+}
+
 export function applyCommandsToDoc(
 	doc: JSONContent,
 	commands: string[],
@@ -317,7 +359,7 @@ export function applyCommandsToDoc(
 	const next = new Map(split.histories);
 	if (items.length === 0) next.delete(key);
 	else next.set(key, items);
-	return { type: 'doc', content: [...split.pre, ...buildAllSections(next)] };
+	return { type: 'doc', content: buildDocContent(split, next) };
 }
 
 export function removeItemFromDoc(
@@ -333,7 +375,7 @@ export function removeItemFromDoc(
 	const next = new Map(split.histories);
 	if (items.length === 0) next.delete(key);
 	else next.set(key, items);
-	return { type: 'doc', content: [...split.pre, ...buildAllSections(next)] };
+	return { type: 'doc', content: buildDocContent(split, next) };
 }
 
 export function clearHistoryFromDoc(doc: JSONContent, windowKey?: string): JSONContent {
@@ -341,7 +383,7 @@ export function clearHistoryFromDoc(doc: JSONContent, windowKey?: string): JSONC
 	const split = splitTerminalDocByKey(doc);
 	const next = new Map(split.histories);
 	next.delete(key);
-	return { type: 'doc', content: [...split.pre, ...buildAllSections(next)] };
+	return { type: 'doc', content: buildDocContent(split, next) };
 }
 
 /** Test-only reset of pending state. */

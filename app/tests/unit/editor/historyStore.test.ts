@@ -317,3 +317,63 @@ describe('historyStore — multi-section helpers', () => {
 		expect(split.histories.get('tmux:@1')).toEqual(['t1']);
 	});
 });
+
+// ── connect: section preservation tests ──────────────────────────────────────
+
+import { parseTerminalNote } from '$lib/editor/terminal/parseTerminalNote.js';
+
+function metaWithConnectAndHistory(connectItems: string[], historyItems: string[]): JSONContent {
+	const blocks: JSONContent[] = [
+		{ type: 'paragraph', content: [{ type: 'text', text: 'Title' }] },
+		{ type: 'paragraph', content: [{ type: 'text', text: 'ssh://localhost' }] },
+		{ type: 'paragraph' },
+		{ type: 'paragraph', content: [{ type: 'text', text: 'connect:' }] }
+	];
+	if (connectItems.length > 0) {
+		blocks.push({
+			type: 'bulletList',
+			content: connectItems.map((t) => ({
+				type: 'listItem',
+				content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }]
+			}))
+		});
+	}
+	if (historyItems.length > 0) {
+		blocks.push({ type: 'paragraph' });
+		blocks.push({ type: 'paragraph', content: [{ type: 'text', text: 'history:' }] });
+		blocks.push({
+			type: 'bulletList',
+			content: historyItems.map((t) => ({
+				type: 'listItem',
+				content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }]
+			}))
+		});
+	}
+	return { type: 'doc', content: blocks };
+}
+
+describe('historyStore — connect section preservation', () => {
+	it('applyCommandsToDoc preserves connect section', () => {
+		const doc = metaWithConnectAndHistory(['t1', 't2'], ['a']);
+		const out = applyCommandsToDoc(doc, ['NEW']);
+		const spec = parseTerminalNote(out);
+		expect(spec?.connect).toEqual(['t1', 't2']);
+		expect(spec?.history).toEqual(['NEW', 'a']);
+	});
+
+	it('removeItemFromDoc preserves connect section', () => {
+		const doc = metaWithConnectAndHistory(['t1', 't2'], ['a', 'b', 'c']);
+		const out = removeItemFromDoc(doc, 1); // remove 'b'
+		const spec = parseTerminalNote(out);
+		expect(spec?.connect).toEqual(['t1', 't2']);
+		expect(spec?.history).toEqual(['a', 'c']);
+	});
+
+	it('clearHistoryFromDoc preserves connect section', () => {
+		const doc = metaWithConnectAndHistory(['t1', 't2'], ['a', 'b']);
+		const out = clearHistoryFromDoc(doc);
+		const spec = parseTerminalNote(out);
+		expect(spec?.connect).toEqual(['t1', 't2']);
+		expect(spec?.history).toEqual([]);
+	});
+});

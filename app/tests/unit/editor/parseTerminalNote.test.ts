@@ -20,7 +20,8 @@ describe('parseTerminalNote — match', () => {
 			user: undefined,
 			bridge: undefined,
 			histories: new Map(),
-			history: []
+			history: [],
+			connect: []
 		});
 	});
 
@@ -400,5 +401,157 @@ describe('parseTerminalNote — multi-section history', () => {
 			]
 		};
 		expect(parseTerminalNote(doc)).toBeNull();
+	});
+});
+
+describe('parseTerminalNote — connect section', () => {
+	function listOf(items: string[]): JSONContent {
+		return {
+			type: 'bulletList',
+			content: items.map((t) => ({
+				type: 'listItem',
+				content: [{ type: 'paragraph', content: [{ type: 'text', text: t }] }]
+			}))
+		};
+	}
+	function paragraph(text: string): JSONContent {
+		return { type: 'paragraph', content: [{ type: 'text', text }] };
+	}
+
+	it('parses a connect: section', () => {
+		const d: JSONContent = {
+			type: 'doc',
+			content: [
+				paragraph('Title'),
+				paragraph('ssh://localhost'),
+				{ type: 'paragraph' },
+				paragraph('connect:'),
+				listOf(['tmux a -t main', 'cd ~/projects', 'vim .'])
+			]
+		};
+		const out = parseTerminalNote(d);
+		expect(out).not.toBeNull();
+		expect(out?.connect).toEqual(['tmux a -t main', 'cd ~/projects', 'vim .']);
+	});
+
+	it('connect items round-trip with history', () => {
+		const d: JSONContent = {
+			type: 'doc',
+			content: [
+				paragraph('Title'),
+				paragraph('ssh://localhost'),
+				{ type: 'paragraph' },
+				paragraph('connect:'),
+				listOf(['tmux a', 'cd /tmp']),
+				{ type: 'paragraph' },
+				paragraph('history:'),
+				listOf(['ls', 'pwd', 'echo hi'])
+			]
+		};
+		const out = parseTerminalNote(d);
+		expect(out).not.toBeNull();
+		expect(out?.connect).toEqual(['tmux a', 'cd /tmp']);
+		expect(out?.history).toEqual(['ls', 'pwd', 'echo hi']);
+	});
+
+	it('accepts empty connect section — header without bullet list', () => {
+		const d: JSONContent = {
+			type: 'doc',
+			content: [
+				paragraph('Title'),
+				paragraph('ssh://localhost'),
+				{ type: 'paragraph' },
+				paragraph('connect:')
+			]
+		};
+		const out = parseTerminalNote(d);
+		expect(out).not.toBeNull();
+		expect(out?.connect).toEqual([]);
+	});
+
+	it('rejects duplicate connect: section', () => {
+		const d: JSONContent = {
+			type: 'doc',
+			content: [
+				paragraph('Title'),
+				paragraph('ssh://localhost'),
+				{ type: 'paragraph' },
+				paragraph('connect:'),
+				listOf(['a']),
+				{ type: 'paragraph' },
+				paragraph('connect:'),
+				listOf(['b'])
+			]
+		};
+		expect(parseTerminalNote(d)).toBeNull();
+	});
+
+	it('rejects connect:tmux:@1: form', () => {
+		const d: JSONContent = {
+			type: 'doc',
+			content: [
+				paragraph('Title'),
+				paragraph('ssh://localhost'),
+				{ type: 'paragraph' },
+				paragraph('connect:tmux:@1:'),
+				listOf(['tmux a'])
+			]
+		};
+		expect(parseTerminalNote(d)).toBeNull();
+	});
+
+	it('connect: section position is order-agnostic — connect before history', () => {
+		const d: JSONContent = {
+			type: 'doc',
+			content: [
+				paragraph('Title'),
+				paragraph('ssh://localhost'),
+				{ type: 'paragraph' },
+				paragraph('connect:'),
+				listOf(['tmux a']),
+				{ type: 'paragraph' },
+				paragraph('history:'),
+				listOf(['ls'])
+			]
+		};
+		const out = parseTerminalNote(d);
+		expect(out?.connect).toEqual(['tmux a']);
+		expect(out?.history).toEqual(['ls']);
+	});
+
+	it('connect: section position is order-agnostic — connect after history', () => {
+		const d: JSONContent = {
+			type: 'doc',
+			content: [
+				paragraph('Title'),
+				paragraph('ssh://localhost'),
+				{ type: 'paragraph' },
+				paragraph('history:'),
+				listOf(['ls']),
+				{ type: 'paragraph' },
+				paragraph('connect:'),
+				listOf(['tmux a'])
+			]
+		};
+		const out = parseTerminalNote(d);
+		expect(out?.connect).toEqual(['tmux a']);
+		expect(out?.history).toEqual(['ls']);
+	});
+
+	it('existing notes without connect: get connect: []', () => {
+		const d: JSONContent = {
+			type: 'doc',
+			content: [
+				paragraph('Title'),
+				paragraph('ssh://localhost'),
+				{ type: 'paragraph' },
+				paragraph('history:'),
+				listOf(['ls', 'pwd'])
+			]
+		};
+		const out = parseTerminalNote(d);
+		expect(out).not.toBeNull();
+		expect(out?.connect).toEqual([]);
+		expect(out?.history).toEqual(['ls', 'pwd']);
 	});
 });

@@ -28,6 +28,7 @@
 
 	function handleClick(ev: MouseEvent, index: number): void {
 		if ((ev.target as HTMLElement).closest('.menu')) return;
+		if ((ev.target as HTMLElement).closest('.row-delete')) return;
 		const text = items[index];
 		if (!text) return;
 		pulse(index);
@@ -45,6 +46,7 @@
 	let pressTimer: ReturnType<typeof setTimeout> | null = null;
 	function handlePointerDown(ev: PointerEvent, index: number): void {
 		if (ev.pointerType !== 'touch') return;
+		if ((ev.target as HTMLElement).closest('.row-delete')) return;
 		pressTimer = setTimeout(() => {
 			menuOpenIndex = index;
 			menuX = ev.clientX;
@@ -117,7 +119,14 @@
 						if (e.key === 'Enter') handleClick(e as unknown as MouseEvent, index);
 					}}
 				>
-					{text}
+					<span class="text">{text}</span>
+					<button
+						type="button"
+						class="row-delete"
+						aria-label="삭제"
+						title="삭제"
+						onclick={(e) => { e.stopPropagation(); ondelete(index); }}
+					>×</button>
 				</li>
 			{/each}
 		{/if}
@@ -195,15 +204,42 @@
 		text-align: center;
 	}
 	.item {
-		padding: 4px 8px;
+		display: flex;
+		align-items: center;
+		padding: 4px 4px 4px 8px;
 		font-size: 0.78rem;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
 		cursor: pointer;
 		transition: background 0.05s;
 	}
 	.item:hover { background: #2f2f2f; }
+	.text {
+		flex: 1;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.row-delete {
+		flex-shrink: 0;
+		background: transparent;
+		border: none;
+		color: #666;
+		cursor: pointer;
+		font-size: 0.85rem;
+		padding: 2px 6px;
+		min-width: 24px;
+		min-height: 24px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 3px;
+		opacity: 0;
+		transition: opacity 0.1s, color 0.1s;
+	}
+	.item:hover .row-delete { opacity: 1; }
+	.row-delete:hover { color: #f88; }
+	@media (pointer: coarse) {
+		.row-delete { opacity: 1; }
+	}
 	.item.pulse { animation: pulse 0.2s ease-out; }
 	@keyframes pulse {
 		0% { background: #4a6a9c; }
