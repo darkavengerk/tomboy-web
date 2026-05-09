@@ -2,6 +2,12 @@
 	import type { Editor } from '@tiptap/core';
 	import type { SizeLevel } from './extensions/TomboySize.js';
 	import { modKeys } from '$lib/desktop/modKeys.svelte.js';
+	import { insertTodayDate } from './insertDate.js';
+	import { deleteCurrentLine } from './deleteLine.js';
+	import { ctrlEnterSplit } from './ctrlEnterSplit.js';
+	import { insertTodoBlock } from './todoRegion/index.js';
+	import { sinkListItemOnly, liftListItemOnly, isInList } from './listItemDepth.js';
+	import { moveListItemUp, moveListItemDown } from './listItemReorder.js';
 
 	interface Props {
 		editor: Editor | null;
@@ -16,6 +22,7 @@
 	let showSizeMenu = $state(false);
 
 	const ctrlLocked = $derived(modKeys.ctrlLocked);
+	const altLocked = $derived(modKeys.altLocked);
 
 	function handleImageClick() {
 		fileInput?.click();
@@ -50,6 +57,66 @@
 	function toggleDrawer() {
 		drawerOpen = !drawerOpen;
 		if (!drawerOpen) showSizeMenu = false;
+	}
+
+	// --- Mobile shortcut palette helpers ---
+	// When the mobile Ctrl-lock or Alt-lock is on, the dock surfaces the
+	// available shortcut keys as tappable buttons. Each button calls the
+	// same underlying function as the corresponding physical-keyboard
+	// shortcut handled in TomboyEditor.svelte's handleKeyDown.
+	function runCtrl(key: string) {
+		const ed = editor;
+		if (!ed) return;
+		switch (key) {
+			case 'Enter':
+				ctrlEnterSplit(ed);
+				return;
+			case 'd':
+				insertTodayDate(ed);
+				return;
+			case 's':
+				ed.chain().focus().toggleStrike().run();
+				return;
+			case 'h':
+				ed.chain().focus().toggleHighlight().run();
+				return;
+			case 'm':
+				ed.chain().focus().toggleTomboyMonospace().run();
+				return;
+			case 'o':
+				insertTodoBlock(ed);
+				return;
+			case 'k':
+				deleteCurrentLine(ed);
+				return;
+		}
+	}
+
+	function runAlt(arrow: 'left' | 'right' | 'up' | 'down') {
+		const ed = editor;
+		if (!ed) return;
+		try {
+			if (arrow === 'right') {
+				const sunk = sinkListItemOnly(ed);
+				if (!sunk && !isInList(ed)) ed.chain().focus().toggleBulletList().run();
+				return;
+			}
+			if (arrow === 'left') {
+				const lifted = liftListItemOnly(ed);
+				if (!lifted && isInList(ed)) ed.commands.liftListItem('listItem');
+				return;
+			}
+			if (arrow === 'up') {
+				moveListItemUp(ed);
+				return;
+			}
+			if (arrow === 'down') {
+				moveListItemDown(ed);
+				return;
+			}
+		} catch (err) {
+			console.error('[toolbar] alt shortcut failed:', err);
+		}
 	}
 </script>
 
@@ -127,16 +194,54 @@
 	</div>
 
 	<div class="dock">
-		<button
-			class="ctrl-toggle"
-			class:active={ctrlLocked}
-			onclick={() => modKeys.toggleCtrlLock()}
-			title="Ctrl 고정 — 데스크탑의 Ctrl-hold 동작을 모바일에서도 사용"
-			aria-pressed={ctrlLocked}
-		>
-			<span class="ctrl-label">Ctrl</span>
-			<span class="ctrl-dot" aria-hidden="true"></span>
-		</button>
+		<div class="key-tray" role="group" aria-label="단축키 모드">
+			{#if !altLocked}
+				<button
+					class="mod-toggle"
+					class:active={ctrlLocked}
+					onclick={() => modKeys.toggleCtrlLock()}
+					title="Ctrl 고정 — 단축키 표시"
+					aria-pressed={ctrlLocked}
+				>
+					<span class="mod-label">Ctrl</span>
+					<span class="mod-dot" aria-hidden="true"></span>
+				</button>
+			{/if}
+
+			{#if ctrlLocked}
+				<div class="key-row" aria-label="Ctrl 단축키">
+					<button class="key-btn" onclick={() => runCtrl('Enter')} title="줄 분할 (Ctrl+Enter)">↵</button>
+					<button class="key-btn" onclick={() => runCtrl('d')} title="오늘 날짜 (Ctrl+D)">D</button>
+					<button class="key-btn" onclick={() => runCtrl('s')} title="취소선 (Ctrl+S)"><s>S</s></button>
+					<button class="key-btn" onclick={() => runCtrl('h')} title="하이라이트 (Ctrl+H)"><span class="key-hl">H</span></button>
+					<button class="key-btn" onclick={() => runCtrl('m')} title="모노스페이스 (Ctrl+M)"><code>M</code></button>
+					<button class="key-btn" onclick={() => runCtrl('o')} title="할 일 블록 (Ctrl+O)">O</button>
+					<button class="key-btn" onclick={() => runCtrl('k')} title="줄 삭제 (Ctrl+K)">K</button>
+				</div>
+			{/if}
+
+			{#if altLocked}
+				<div class="key-row" aria-label="Alt 단축키">
+					<button class="key-btn" onclick={() => runAlt('left')} title="내어쓰기 (Alt+←)">←</button>
+					<button class="key-btn" onclick={() => runAlt('up')} title="위로 이동 (Alt+↑)">↑</button>
+					<button class="key-btn" onclick={() => runAlt('down')} title="아래로 이동 (Alt+↓)">↓</button>
+					<button class="key-btn" onclick={() => runAlt('right')} title="들여쓰기 (Alt+→)">→</button>
+				</div>
+			{/if}
+
+			{#if !ctrlLocked}
+				<button
+					class="mod-toggle"
+					class:active={altLocked}
+					onclick={() => modKeys.toggleAltLock()}
+					title="Alt 고정 — 리스트 들여쓰기/순서 변경 단축키 표시"
+					aria-pressed={altLocked}
+				>
+					<span class="mod-label">Alt</span>
+					<span class="mod-dot" aria-hidden="true"></span>
+				</button>
+			{/if}
+		</div>
 
 		<button
 			class="drawer-toggle"
@@ -249,7 +354,17 @@
 		min-height: 40px;
 	}
 
-	.ctrl-toggle {
+	.key-tray {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		flex: 1 1 auto;
+		min-width: 0;
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
+	}
+
+	.mod-toggle {
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
@@ -261,14 +376,15 @@
 		font-size: 0.8rem;
 		font-weight: 600;
 		cursor: pointer;
+		flex-shrink: 0;
 		-webkit-tap-highlight-color: transparent;
 	}
 
-	.ctrl-label {
+	.mod-label {
 		letter-spacing: 0.02em;
 	}
 
-	.ctrl-dot {
+	.mod-dot {
 		width: 8px;
 		height: 8px;
 		border-radius: 50%;
@@ -276,15 +392,57 @@
 		transition: background-color 0.15s ease;
 	}
 
-	.ctrl-toggle.active {
+	.mod-toggle.active {
 		background: #1971c2;
 		border-color: #1971c2;
 		color: #fff;
 		box-shadow: 0 0 0 2px rgba(25, 113, 194, 0.25);
 	}
 
-	.ctrl-toggle.active .ctrl-dot {
+	.mod-toggle.active .mod-dot {
 		background: #ffec99;
+	}
+
+	.key-row {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		flex: 1 1 auto;
+		min-width: 0;
+	}
+
+	.key-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 32px;
+		height: 32px;
+		padding: 0 6px;
+		border: 1px solid #dee2e6;
+		background: #fff;
+		color: #495057;
+		border-radius: 6px;
+		font-size: 0.9rem;
+		font-weight: 600;
+		line-height: 1;
+		cursor: pointer;
+		flex-shrink: 0;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	.key-btn:active {
+		background: #e9ecef;
+	}
+
+	.key-btn .key-hl {
+		background: #fff176;
+		padding: 0 3px;
+		border-radius: 2px;
+	}
+
+	.key-btn code {
+		font-family: monospace;
+		font-size: 0.85rem;
 	}
 
 	.drawer-toggle {
