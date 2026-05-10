@@ -32,12 +32,25 @@ source .venv/bin/activate
 pip install -e .[dev,firebase,dropbox,prepare,vlm]
 ```
 
-This installs the pipeline package plus all optional dependencies:
-- `dev` — pytest, black, mypy
+This installs the pipeline package plus optional dependencies:
+- `dev` — pytest, pytest-mock, ruff
 - `firebase` — firebase-admin SDK
 - `dropbox` — Dropbox SDK
-- `prepare` — rmrl (rM page rasterizer) + Pillow
-- `vlm` — transformers, bitsandbytes, accelerate (Qwen2.5-VL-7B)
+- `prepare` — Pillow + pdf2image (page-image utilities used by tests + segment_lines)
+- `vlm` — torch, transformers, bitsandbytes, accelerate (Qwen2.5-VL-7B)
+
+`rmrl` (the production rM-to-PDF rasterizer) is in its own extra because its `reportlab` dep needs system freetype headers, which aren't always preinstalled. Install it separately once the system deps are in place:
+
+```bash
+# Bazzite / Fedora atomic — layer the headers, then reboot:
+sudo rpm-ostree install freetype-devel libart_lgpl-devel poppler-utils
+# (alternative: do this inside `toolbox enter` instead of layering)
+
+# Then in the venv:
+pip install -e .[rmrl]
+```
+
+Until `[rmrl]` is installed, `s2_prepare` will fail at runtime against real `.rm` files. The unit tests use `FakeRenderer` and pass without it.
 
 > **GPU node only**: if bitsandbytes fails to find CUDA, ensure the NVIDIA driver and `cuda-toolkit` are installed and `nvcc --version` returns successfully before running pip install.
 

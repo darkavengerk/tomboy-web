@@ -10,7 +10,14 @@ dependencies = [
 [project.optional-dependencies]
 firebase = ["firebase-admin>=6.4"]
 dropbox = ["dropbox>=12.0"]
-prepare = ["Pillow>=10.0", "rmrl>=0.2.0"]
+# Pillow alone is enough for tests + tools/segment_lines.py.
+prepare = ["Pillow>=10.0", "pdf2image>=1.17"]
+# rmrl pulls reportlab which needs system freetype headers (libfreetype-dev /
+# freetype-devel). Install separately when wiring the production renderer:
+#   rpm-ostree install freetype-devel libart_lgpl-devel  (or use a toolbox)
+#   pip install -e .[rmrl]
+# pdf2image additionally needs poppler-utils on the host.
+rmrl = ["rmrl>=0.2.0"]
 vlm = [
     "torch>=2.1",
     "transformers>=4.45",
