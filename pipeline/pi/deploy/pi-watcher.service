@@ -1,0 +1,11 @@
+[Unit]
+Description=Tomboy diary pipeline inbox watcher
+After=network.target
+
+[Service]
+Type=oneshot
+User=diary-sync
+WorkingDirectory=/home/diary-sync/tomboy-pipeline
+ExecStart=/home/diary-sync/tomboy-pipeline/.venv/bin/python -m pi.inbox_watcher --inbox /home/diary-sync/diary/inbox --index /home/diary-sync/diary/state/index.json
+StandardOutput=journal
+StandardError=journal
