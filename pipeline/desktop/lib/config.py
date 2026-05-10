@@ -72,9 +72,20 @@ class TomboyConfig:
 @dataclass(frozen=True)
 class LocalVlmConfig:
     model_id: str
-    quantization: str
-    max_new_tokens: int
-    system_prompt_path: str
+    quantization: str = "4bit"
+    max_new_tokens: int = 2048
+    system_prompt_path: str = "config/prompts/diary-ko.txt"
+
+    @classmethod
+    def from_dict(cls, d: dict) -> LocalVlmConfig:
+        return cls(
+            model_id=_require(d, "model_id", "ocr.local_vlm.model_id"),
+            quantization=d.get("quantization", "4bit"),
+            max_new_tokens=int(d.get("max_new_tokens", 2048)),
+            system_prompt_path=d.get(
+                "system_prompt_path", "config/prompts/diary-ko.txt"
+            ),
+        )
 
 
 @dataclass(frozen=True)
@@ -85,25 +96,17 @@ class OcrConfig:
     @classmethod
     def from_dict(cls, d: dict) -> OcrConfig:
         backend = _require(d, "backend", "ocr.backend")
-        local_vlm = None
-        if "local_vlm" in d:
-            v = d["local_vlm"]
-            local_vlm = LocalVlmConfig(
-                model_id=_require(v, "model_id", "ocr.local_vlm.model_id"),
-                quantization=v.get("quantization", "4bit"),
-                max_new_tokens=int(v.get("max_new_tokens", 2048)),
-                system_prompt_path=v.get("system_prompt_path", "config/prompts/diary-ko.txt"),
-            )
+        local_vlm = LocalVlmConfig.from_dict(d["local_vlm"]) if "local_vlm" in d else None
         return cls(backend=backend, local_vlm=local_vlm)
 
 
 @dataclass(frozen=True)
 class DesktopConfig:
-    data_dir_raw: str = "~/.local/share/tomboy-pipeline"
+    data_dir: str = "~/.local/share/tomboy-pipeline"
 
     @classmethod
     def from_dict(cls, d: dict) -> DesktopConfig:
-        return cls(data_dir_raw=d.get("data_dir", "~/.local/share/tomboy-pipeline"))
+        return cls(data_dir=d.get("data_dir", "~/.local/share/tomboy-pipeline"))
 
 
 @dataclass(frozen=True)
@@ -120,7 +123,7 @@ class Config:
 
     @property
     def data_dir(self) -> Path:
-        return Path(self.desktop.data_dir_raw).expanduser().resolve()
+        return Path(self.desktop.data_dir).expanduser().resolve()
 
     @classmethod
     def from_dict(cls, d: dict) -> Config:
