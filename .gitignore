@@ -14,3 +14,11 @@ node_modules/
 app/static/codegraph.json
 app/static/codegraph-meta.json
 app/static/codegraph-communities.json
+
+# Pipeline (rM → Pi → desktop OCR → Tomboy) — see pipeline/README.md
+pipeline/config/pipeline.yaml
+pipeline/data/
+pipeline/logs/
+pipeline/state/
+pipeline/.venv/
+pipeline/__pycache__/

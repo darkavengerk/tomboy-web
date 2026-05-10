@@ -1,0 +1,45 @@
+[project]
+name = "tomboy-pipeline"
+version = "0.1.0"
+description = "reMarkable diary OCR pipeline for the Tomboy web app"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+firebase = ["firebase-admin>=6.4"]
+dropbox = ["dropbox>=12.0"]
+prepare = ["Pillow>=10.0", "rmrl>=0.2.0"]
+vlm = [
+    "torch>=2.1",
+    "transformers>=4.45",
+    "bitsandbytes>=0.43",
+    "accelerate>=0.30",
+]
+dev = [
+    "pytest>=7.4",
+    "pytest-mock>=3.12",
+    "ruff>=0.4",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+pythonpath = ["."]
+addopts = []
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["desktop*", "pi*"]
