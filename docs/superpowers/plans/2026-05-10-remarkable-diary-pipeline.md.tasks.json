@@ -1,144 +1,202 @@
 {
   "planPath": "docs/superpowers/plans/2026-05-10-remarkable-diary-pipeline.md",
-  "lastUpdated": "2026-05-10T00:00:00Z",
+  "lastUpdated": "2026-05-10T05:57:35Z",
   "tasks": [
     {
       "id": 0,
       "subject": "T0: Project scaffolding",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Create pipeline/ directory tree with pyproject.toml, .gitignore, conftest.py, package init files; pytest runnable.\n\n**Files:** pipeline/pyproject.toml, pipeline/.gitignore, pipeline/conftest.py, pipeline/README.md, all `__init__.py` files, root .gitignore\n\n**Verify:** `cd pipeline && python -m pytest -v` → 0 passed, 0 errors\n\n```json:metadata\n{\"files\": [\"pipeline/pyproject.toml\", \"pipeline/.gitignore\", \"pipeline/conftest.py\", \"pipeline/README.md\", \".gitignore\"], \"verifyCommand\": \"cd pipeline && python -m pytest -v\", \"acceptanceCriteria\": [\"pytest exits 0 with no tests collected\", \"pipeline/config/pipeline.yaml is gitignored\", \"package paths resolve\"]}\n```"
     },
     {
       "id": 1,
       "subject": "T1: lib/config.py YAML loader",
-      "status": "pending",
-      "blockedBy": [0],
+      "status": "completed",
+      "blockedBy": [
+        0
+      ],
       "description": "**Goal:** Typed dataclass config loader with validation. [parallel-eligible after T0]\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/lib/config.py\", \"pipeline/tests/lib/test_config.py\", \"pipeline/config/pipeline.example.yaml\"], \"verifyCommand\": \"cd pipeline && python -m pytest tests/lib/test_config.py -v\", \"acceptanceCriteria\": [\"load_config returns Config dataclass on valid YAML\", \"missing required key raises ConfigError naming the path\", \"defaults applied for tomboy.diary_notebook_name and title_format\", \"example_yaml round-trips\"]}\n```"
     },
     {
       "id": 2,
       "subject": "T2: lib/state.py atomic JSON state",
-      "status": "pending",
-      "blockedBy": [0],
+      "status": "completed",
+      "blockedBy": [
+        0
+      ],
       "description": "**Goal:** Atomic load/update/save of per-stage JSON state files. [parallel-eligible after T0]\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/lib/state.py\", \"pipeline/tests/lib/test_state.py\"], \"verifyCommand\": \"cd pipeline && python -m pytest tests/lib/test_state.py -v\", \"acceptanceCriteria\": [\"read returns {} when file missing\", \"write is atomic (temp file + os.replace)\", \"update merges keys\", \"remove deletes entry, missing-key remove is noop\"]}\n```"
     },
     {
       "id": 3,
       "subject": "T3: lib/log.py JSONL + human logger",
-      "status": "pending",
-      "blockedBy": [0],
+      "status": "completed",
+      "blockedBy": [
+        0
+      ],
       "description": "**Goal:** Stage-scoped logger writing both JSONL and human-readable lines. [parallel-eligible after T0]\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/lib/log.py\", \"pipeline/tests/lib/test_log.py\"], \"verifyCommand\": \"cd pipeline && python -m pytest tests/lib/test_log.py -v\", \"acceptanceCriteria\": [\"info/warning/error each emit JSONL + human lines\", \"JSONL parseable with ts/stage/level/event/kwargs\", \"multiple calls append (no overwrite)\", \"creates parent dir\"]}\n```"
     },
     {
       "id": 4,
       "subject": "T4: ocr_backends/base.py ABC + registry",
-      "status": "pending",
-      "blockedBy": [0],
+      "status": "completed",
+      "blockedBy": [
+        0
+      ],
       "description": "**Goal:** OCRBackend ABC, OCRResult dataclass, register_backend decorator + get_backend factory. [parallel-eligible after T0]\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/ocr_backends/base.py\", \"pipeline/tests/ocr_backends/test_base.py\"], \"verifyCommand\": \"cd pipeline && python -m pytest tests/ocr_backends/test_base.py -v\", \"acceptanceCriteria\": [\"OCRResult is frozen dataclass\", \"register_backend decorator works\", \"get_backend('missing') raises KeyError\", \"abstract OCRBackend cannot be instantiated\"]}\n```"
     },
     {
       "id": 5,
       "subject": "T5: lib/tomboy_payload.py Firestore document builder",
-      "status": "pending",
-      "blockedBy": [1],
+      "status": "completed",
+      "blockedBy": [
+        1
+      ],
       "description": "**Goal:** Build the FirestoreNotePayload shape with date formatting + 900KB guard.\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/lib/tomboy_payload.py\", \"pipeline/tests/lib/test_tomboy_payload.py\"], \"verifyCommand\": \"cd pipeline && python -m pytest tests/lib/test_tomboy_payload.py -v\", \"acceptanceCriteria\": [\"format_tomboy_date emits yyyy-MM-ddTHH:mm:ss.fffffffzzz with 7 fractional digits\", \"build_note_content_xml escapes XML special chars\", \"tags includes system:notebook:<name>\", \"uri is note://tomboy/<guid>\", \"oversized payload raises NotePayloadTooLargeError\", \"first line of xmlContent matches title\"]}\n```"
     },
     {
       "id": 6,
       "subject": "T6: lib/firestore_client.py Admin SDK wrapper",
-      "status": "pending",
-      "blockedBy": [1, 5],
+      "status": "completed",
+      "blockedBy": [
+        1,
+        5
+      ],
       "description": "**Goal:** Firebase Admin SDK wrapper exposing get_note/set_note/delete_note against users/{uid}/notes/{guid}.\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/lib/firestore_client.py\", \"pipeline/tests/lib/test_firestore_client.py\"], \"verifyCommand\": \"cd pipeline && python -m pytest tests/lib/test_firestore_client.py -v\", \"acceptanceCriteria\": [\"init is idempotent across instances\", \"get_note returns None for missing\", \"set_note adds serverUpdatedAt SERVER_TIMESTAMP\", \"delete_note writes deleted=True (soft delete)\"]}\n```"
     },
     {
       "id": 7,
       "subject": "T7: lib/dropbox_uploader.py upload + share-link",
-      "status": "pending",
-      "blockedBy": [1],
+      "status": "completed",
+      "blockedBy": [
+        1
+      ],
       "description": "**Goal:** Dropbox SDK wrapper for image upload + share-link creation (with already-shared fallback).\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/lib/dropbox_uploader.py\", \"pipeline/tests/lib/test_dropbox_uploader.py\"], \"verifyCommand\": \"cd pipeline && python -m pytest tests/lib/test_dropbox_uploader.py -v\", \"acceptanceCriteria\": [\"construct uses oauth2_refresh_token + app_key\", \"upload writes bytes with WriteMode.overwrite\", \"share_link returns URL on new link\", \"share_link falls back to sharing_list_shared_links on already-shared\"]}\n```"
     },
     {
       "id": 8,
       "subject": "T8: desktop/bootstrap.py interactive setup",
-      "status": "pending",
-      "blockedBy": [1, 6, 7],
+      "status": "completed",
+      "blockedBy": [
+        1,
+        6,
+        7
+      ],
       "description": "**Goal:** Interactive Dropbox PKCE OAuth → account_id → uid; prompts for Firebase service account; writes pipeline.yaml.\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/bootstrap.py\", \"pipeline/tests/test_bootstrap.py\"], \"verifyCommand\": \"cd pipeline && python -m pytest tests/test_bootstrap.py -v\", \"acceptanceCriteria\": [\"sanitize_account_id strips dbid: prefix and replaces disallowed chars with -\", \"compute_uid returns dbx-<sanitized>\", \"write_config produces YAML round-trippable through load_config\", \"--dry-run does not write files\"]}\n```"
     },
     {
       "id": 9,
       "subject": "T9: pi/inbox_watcher.py",
-      "status": "pending",
-      "blockedBy": [0],
+      "status": "completed",
+      "blockedBy": [
+        0
+      ],
       "description": "**Goal:** Pi-side script maintaining ~/diary/state/index.json based on inbox contents.\n\n```json:metadata\n{\"files\": [\"pipeline/pi/inbox_watcher.py\", \"pipeline/tests/pi/test_inbox_watcher.py\"], \"verifyCommand\": \"cd pipeline && python -m pytest tests/pi/test_inbox_watcher.py -v\", \"acceptanceCriteria\": [\"scan_inbox finds .metadata files (page UUID = filename stem)\", \"ignores non-metadata files\", \"update_index preserves received_at on existing entries\", \"marks vanished uuids as present:false\", \"atomic write\"]}\n```"
     },
     {
       "id": 10,
       "subject": "T10: Pi systemd units + rM push docs",
-      "status": "pending",
-      "blockedBy": [9],
+      "status": "completed",
+      "blockedBy": [
+        9
+      ],
       "description": "**Goal:** Deploy artifacts and operator documentation. [docs only — no TDD]\n\n```json:metadata\n{\"files\": [\"pipeline/pi/deploy/pi-watcher.service\", \"pipeline/pi/deploy/pi-watcher.timer\", \"pipeline/pi/README.md\"], \"verifyCommand\": \"manual review\", \"acceptanceCriteria\": [\"timer triggers service every 5min\", \"service runs python -m pi.inbox_watcher as diary-sync user\", \"README documents SSH hardening + rM push hook + survival after rM updates\"]}\n```"
     },
     {
       "id": 11,
       "subject": "T11: stages/s1_fetch.py Pi rsync pull",
-      "status": "pending",
-      "blockedBy": [1, 2, 3],
+      "status": "completed",
+      "blockedBy": [
+        1,
+        2,
+        3
+      ],
       "description": "**Goal:** Pull every present-in-Pi page into raw/<uuid>/, skipping already-fetched. Transport interface for testability.\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/stages/s1_fetch.py\", \"pipeline/tests/stages/test_s1_fetch.py\"], \"verifyCommand\": \"cd pipeline && python -m pytest tests/stages/test_s1_fetch.py -v\", \"acceptanceCriteria\": [\"fetches only uuids with present:true\", \"skips already-fetched uuids\", \"per-uuid try/except continues on failure\", \"--force re-fetches\"]}\n```"
     },
     {
       "id": 12,
       "subject": "T12: stages/s2_prepare.py rM → PNG",
-      "status": "pending",
-      "blockedBy": [1, 2, 3],
+      "status": "completed",
+      "blockedBy": [
+        1,
+        2,
+        3
+      ],
       "description": "**Goal:** Rasterize each rM page to png/<uuid>/page.png via Renderer interface. Stash metadata for downstream.\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/stages/s2_prepare.py\", \"pipeline/tests/stages/test_s2_prepare.py\", \"pipeline/tests/fixtures/sample-metadata.json\"], \"verifyCommand\": \"cd pipeline && python -m pytest tests/stages/test_s2_prepare.py -v\", \"acceptanceCriteria\": [\"renders new uuids only\", \"stores metadata in state for downstream stages\", \"missing .metadata logs error and skips\", \"renderer exception continues batch\"]}\n```"
     },
     {
       "id": 13,
       "subject": "T13: ocr_backends/local_vlm.py Qwen2.5-VL backend",
-      "status": "pending",
-      "blockedBy": [4],
+      "status": "completed",
+      "blockedBy": [
+        4
+      ],
       "description": "**Goal:** Concrete OCRBackend loading Qwen2.5-VL-7B with 4-bit quantization; lazy model load; tests inject _run_inference seam.\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/ocr_backends/local_vlm.py\", \"pipeline/tests/ocr_backends/test_local_vlm.py\", \"pipeline/config/prompts/diary-ko.txt\"], \"verifyCommand\": \"cd pipeline && python -m pytest tests/ocr_backends/test_local_vlm.py -v\", \"acceptanceCriteria\": [\"construction does not load model\", \"missing prompt file raises FileNotFoundError\", \"ocr() strips whitespace from result\", \"prompt_hash is sha256 of system prompt\", \"self-registers as 'local_vlm'\"]}\n```"
     },
     {
       "id": 14,
       "subject": "T14: stages/s3_ocr.py OCR driver",
-      "status": "pending",
-      "blockedBy": [2, 3, 4, 13],
+      "status": "completed",
+      "blockedBy": [
+        2,
+        3,
+        4,
+        13
+      ],
       "description": "**Goal:** Drive the OCR backend on every prepared uuid; emit ocr/<uuid>.json; per-uuid try/except.\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/stages/s3_ocr.py\", \"pipeline/tests/stages/test_s3_ocr.py\"], \"verifyCommand\": \"cd pipeline && python -m pytest tests/stages/test_s3_ocr.py -v\", \"acceptanceCriteria\": [\"processes pending uuids only\", \"writes ocr/<uuid>.json with text/model/prompt_hash/ts\", \"skips already-done\", \"backend exception continues batch\"]}\n```"
     },
     {
       "id": 15,
       "subject": "T15: stages/s4_write.py Firestore writer + I1 mapping",
-      "status": "pending",
-      "blockedBy": [2, 3, 5, 6, 7],
+      "status": "completed",
+      "blockedBy": [
+        2,
+        3,
+        5,
+        6,
+        7
+      ],
       "description": "**Goal:** Critical milestone task. Implements I1 mapping: 4 cases (new uuid / still-marked overwrite / marker-removed new note / doc-deleted new note). Image upload precedes Firestore write (fail-closed).\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/stages/s4_write.py\", \"pipeline/tests/stages/test_s4_write.py\"], \"verifyCommand\": \"cd pipeline && python -m pytest tests/stages/test_s4_write.py -v\", \"acceptanceCriteria\": [\"new uuid mints fresh guid\", \"still-marked overwrites same guid\", \"marker-removed mints new guid (user-protected)\", \"doc missing or deleted=true mints new guid\", \"image upload failure blocks Firestore write\", \"image path is /Apps/Tomboy/diary-images/yyyy/mm/dd/<uuid>/page.png\", \"skips already-written\"]}\n```"
     },
     {
       "id": 16,
       "subject": "T16: desktop/run_pipeline.py orchestrator",
-      "status": "pending",
-      "blockedBy": [11, 12, 14, 15],
+      "status": "completed",
+      "blockedBy": [
+        11,
+        12,
+        14,
+        15
+      ],
       "description": "**Goal:** Thin wrapper running s1 → s2 → s3 → s4 in order; stops on first failure.\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/run_pipeline.py\", \"pipeline/tests/test_run_pipeline.py\"], \"verifyCommand\": \"cd pipeline && python -m pytest tests/test_run_pipeline.py -v\", \"acceptanceCriteria\": [\"runs stages in order\", \"stops on first failure and returns failed stage name\", \"CLI: python -m desktop.run_pipeline\"]}\n```"
     },
     {
       "id": 17,
       "subject": "T17: tools/extract_corrections.py training triples",
-      "status": "pending",
-      "blockedBy": [6],
+      "status": "completed",
+      "blockedBy": [
+        6
+      ],
       "description": "**Goal:** For each uuid where the Tomboy note has had its [<uuid>] marker removed, emit (page.png, ocr.txt, corrected.txt) triple.\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/tools/extract_corrections.py\", \"pipeline/tests/test_extract_corrections.py\"], \"verifyCommand\": \"cd pipeline && python -m pytest tests/test_extract_corrections.py -v\", \"acceptanceCriteria\": [\"parse_corrected_text extracts body between title and ---\", \"skips when marker still present\", \"emits triple when marker removed\", \"idempotent via corrections state file\"]}\n```"
     },
     {
       "id": 18,
       "subject": "T18: tools/segment_lines.py line clustering",
-      "status": "pending",
-      "blockedBy": [2],
+      "status": "completed",
+      "blockedBy": [
+        2
+      ],
       "description": "**Goal:** Cluster .rm strokes into Y-bands and crop page.png into per-line PNGs. Core (cluster_strokes_by_y, crop_lines) is unit-tested; CLI is a stub.\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/tools/segment_lines.py\", \"pipeline/tests/test_segment_lines.py\"], \"verifyCommand\": \"cd pipeline && python -m pytest tests/test_segment_lines.py -v\", \"acceptanceCriteria\": [\"cluster_strokes_by_y groups close strokes (within threshold)\", \"handles overlapping strokes by merging\", \"crop_lines writes line-XX.png files cropped from page\"]}\n```"
     },
     {
       "id": 19,
       "subject": "T19: README + CLAUDE.md + deferred systemd units",
-      "status": "pending",
-      "blockedBy": [10, 16, 17, 18],
+      "status": "completed",
+      "blockedBy": [
+        10,
+        16,
+        17,
+        18
+      ],
       "description": "**Goal:** Final docs. Replace pipeline/README.md skeleton with real workflow; append section to root CLAUDE.md; create deferred desktop systemd units. [docs only — no TDD]\n\n```json:metadata\n{\"files\": [\"pipeline/README.md\", \"CLAUDE.md\", \"pipeline/desktop/deploy/desktop-pipeline.service\", \"pipeline/desktop/deploy/desktop-pipeline.timer\"], \"verifyCommand\": \"manual review\", \"acceptanceCriteria\": [\"README covers bootstrap → run → correction workflow with concrete commands\", \"CLAUDE.md gains pipeline section linking spec + plan\", \"systemd units installable via systemctl --user (not enabled by default)\"]}\n```"
     }
   ]
