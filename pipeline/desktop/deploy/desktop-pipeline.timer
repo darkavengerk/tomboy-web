@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the Tomboy diary OCR pipeline every 30 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=30min
+Unit=desktop-pipeline.service
+
+[Install]
+WantedBy=timers.target

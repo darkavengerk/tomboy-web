@@ -1,0 +1,9 @@
+[Unit]
+Description=Tomboy diary OCR pipeline run
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/workspace/tomboy-web/pipeline
+ExecStart=%h/workspace/tomboy-web/pipeline/.venv/bin/python -m desktop.run_pipeline
+StandardOutput=journal
+StandardError=journal

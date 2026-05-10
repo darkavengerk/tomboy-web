@@ -619,3 +619,31 @@ Invariants:
   message.
 - **Future improvement ideas:** see `docs/tmux-note-integration.md` for the integration roadmap.
 
+## 리마커블 일기 OCR 파이프라인 (pipeline/)
+
+`pipeline/`은 reMarkable에서 손글씨로 쓴 일기 페이지를 OCR해서 Tomboy 노트로
+넣는 별도 파이프라인. 3개 머신을 거침: rM 태블릿 → 라즈베리파이(24/7 인박스) →
+데스크탑(Bazzite + RTX 3080) → Firestore.
+
+설계 문서:
+`docs/superpowers/specs/2026-05-10-remarkable-diary-pipeline-design.md`.
+구현 계획: `docs/superpowers/plans/2026-05-10-remarkable-diary-pipeline.md`.
+
+핵심 invariant — **노트 제목 안의 `[<rm-page-uuid>]` 마커가 매핑 키 + 보호 신호**.
+사용자가 교정 후 제목에서 uuid를 제거하면 같은 페이지를 다시 OCR해도 그 노트는
+덮어쓰이지 않고 새 노트가 생김. 다른 보호 메커니즘 없음 (단순함이 핵심).
+
+빠른 지도:
+
+- `pipeline/desktop/stages/{s1_fetch, s2_prepare, s3_ocr, s4_write}.py` — 4단계.
+- `pipeline/desktop/lib/{config, state, log, tomboy_payload, firestore_client, dropbox_uploader}.py` — 공유 모듈.
+- `pipeline/desktop/ocr_backends/{base, local_vlm}.py` — Plugin 인터페이스 + Qwen2.5-VL-7B 구현.
+- `pipeline/desktop/tools/{extract_corrections, segment_lines}.py` — fine-tuning 데이터 준비.
+- `pipeline/pi/inbox_watcher.py` + `pipeline/pi/deploy/` — Pi 측 인박스.
+- `pipeline/config/pipeline.yaml` (gitignore) — `bootstrap.py`로 1회 생성.
+
+Firestore 쓰기는 `users/{uid}/notes/{guid}` 네임스페이스를 앱과 공유 (uid는
+`dbx-{sanitized account_id}` 형식). 노트북 멤버십은 `system:notebook:일기` 태그로
+표현 — 앱의 `FirestoreNotePayload` 형식과 동일. Dropbox는 이미지 호스팅
+전용 (`/Apps/Tomboy/diary-images/...`); 노트 본문엔 공유 링크 URL만.
+
