@@ -187,13 +187,16 @@ class OCRBackend(ABC):
 
 ### 4.5 Tomboy payload (Firestore writer)
 
-`lib/tomboy_payload.py` constructs the Firestore document with the exact shape the existing app expects:
+`lib/tomboy_payload.py` constructs the Firestore document with the exact shape the existing app expects (see `app/src/lib/sync/firebase/notePayload.ts` and `app/src/lib/core/note.ts` for the canonical types):
 
 - `guid`: new UUID (or reused existing one per I1)
-- `title`: per I1 / I7
-- `xmlContent`: a valid Tomboy `.note` XML string. The pipeline only **produces** XML; it never parses it back, so a minimal write-only port of the relevant `noteArchiver` / `noteContentArchiver` logic is sufficient — but the produced XML must be parseable by the existing app's `parseNoteXml` (used on Firestore pull). Cross-check fixtures during M3.
-- `notebook`: read from `pipeline.yaml`'s `tomboy.diary_notebook_name` (default: `일기`)
-- `changeDate` / `metadataChangeDate`: from the rM `.metadata` JSON `lastModified` field (the rM-side authoritative timestamp), converted to the ISO format Tomboy uses. File mtime is a fallback if the metadata file is missing.
+- `uri`: `note://tomboy/<guid>`
+- `title`: per I1 / I7 (the title-only string, e.g. `2026-05-10 리마커블([abc-123])`)
+- `xmlContent`: **only the `<note-content version="0.1">...</note-content>` block**, not the full `.note` XML. The body text inside follows I7's structure (title line, blank, OCR text, blank, `---`, blank, image URL). The pipeline only **produces** this string; it never parses it back, so a minimal write-only port is sufficient — but it must be parseable by the existing app's `parseNote` / `parseNoteContent` (used on Firestore pull). Cross-check with golden fixtures during M3.
+- `tags`: includes `system:notebook:<name>` where `<name>` comes from `pipeline.yaml`'s `tomboy.diary_notebook_name` (default: `일기`). Tomboy's notebook membership is encoded as a tag.
+- `createDate` / `changeDate` / `metadataChangeDate`: from the rM `.metadata` JSON `lastModified` field (the rM-side authoritative timestamp), converted to Tomboy's ISO format `yyyy-MM-ddTHH:mm:ss.fffffffzzz`. File mtime is a fallback if the metadata file is missing. `createDate` is the rM page's first-seen timestamp (recorded in `state/mappings.json` on first OCR); `changeDate` and `metadataChangeDate` track the latest rM `lastModified`.
+- `deleted`: `false`
+- `serverUpdatedAt`: set out-of-band via `firestore.SERVER_TIMESTAMP` at write time (not part of the payload struct itself).
 - `serverUpdatedAt`: `firestore.SERVER_TIMESTAMP`
 - `deleted`: `false`
 
