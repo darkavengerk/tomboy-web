@@ -605,7 +605,12 @@
 
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="editor-area" bind:this={editorAreaEl} onclick={handleEditorAreaClick}>
+	<div
+		class="editor-area"
+		class:terminal-edit={!!terminalSpec && !showTerminal}
+		bind:this={editorAreaEl}
+		onclick={handleEditorAreaClick}
+	>
 		{#if loading}
 			<div class="loading">로딩 중...</div>
 		{:else if showTerminal && terminalSpec}
@@ -617,16 +622,6 @@
 				/>
 			{/key}
 		{:else}
-			{#if terminalSpec}
-				<div class="terminal-banner">
-					<span class="terminal-banner-label">SSH 터미널 노트입니다 — <code>{terminalSpec.target}</code></span>
-					<button
-						type="button"
-						class="terminal-connect-btn"
-						onclick={() => (terminalConnectMode = true)}
-					>접속</button>
-				</div>
-			{/if}
 			{#if editorContent}
 				<!--
 					No {#key noteId} — TomboyEditor stays mounted across note
@@ -676,6 +671,15 @@
 	{#if isFromHome}
 		<button class="fab-today" onclick={gotoToday} aria-label="오늘 날짜 노트">📅</button>
 		<button class="fab-random" onclick={gotoRandom} aria-label="랜덤 노트">🎲</button>
+	{/if}
+
+	{#if terminalSpec && !showTerminal}
+		<button
+			class="fab-terminal-connect"
+			onclick={() => (terminalConnectMode = true)}
+			aria-label="SSH 접속"
+			title="SSH 접속 — {terminalSpec.target}"
+		>접속</button>
 	{/if}
 </div>
 
@@ -793,6 +797,13 @@
 		container-type: size;
 	}
 
+	/* Visual cue that this note is a terminal note in edit mode — the
+	   floating 접속 FAB is the primary action; the gray surface signals
+	   "this note has a special function" without taking vertical space. */
+	.editor-area.terminal-edit {
+		background: #e8e8e8;
+	}
+
 	.toolbar-area {
 		flex-shrink: 0;
 		background: #f8f9fa;
@@ -804,44 +815,6 @@
 		justify-content: center;
 		height: 100%;
 		color: var(--color-text-secondary);
-	}
-
-	.terminal-banner {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding: 8px 14px;
-		background: var(--color-surface-alt, #f0f0f0);
-		border-bottom: 1px solid var(--color-border, #ddd);
-		font-size: 0.85rem;
-	}
-
-	.terminal-banner-label {
-		flex: 1;
-		color: var(--color-text-secondary, #555);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.terminal-banner-label code {
-		font-family: monospace;
-		color: var(--color-text, #222);
-	}
-
-	.terminal-connect-btn {
-		flex-shrink: 0;
-		padding: 4px 14px;
-		border: 1px solid var(--color-border, #bbb);
-		border-radius: 4px;
-		background: var(--color-bg, #fff);
-		color: var(--color-text, #222);
-		font-size: 0.85rem;
-		cursor: pointer;
-	}
-
-	.terminal-connect-btn:hover {
-		background: var(--color-surface-hover, #e8e8e8);
 	}
 
 	.fab-random {
@@ -870,7 +843,8 @@
 	/* 에디터에 포커스가 있을 때(모바일에서 키보드가 올라와 있는 상태)에는
 	   하단 FAB이 입력을 가려 방해만 되므로 숨긴다. */
 	.editor-area:focus-within ~ .fab-today,
-	.editor-area:focus-within ~ .fab-random {
+	.editor-area:focus-within ~ .fab-random,
+	.editor-area:focus-within ~ .fab-terminal-connect {
 		opacity: 0;
 		pointer-events: none;
 	}
@@ -896,5 +870,31 @@
 
 	.fab-today:active {
 		transform: scale(0.93);
+	}
+
+	.fab-terminal-connect {
+		position: absolute;
+		bottom: 88px;
+		right: 20px;
+		min-width: 56px;
+		height: 48px;
+		padding: 0 14px;
+		border-radius: 24px;
+		border: none;
+		background: var(--color-bg);
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+		font-size: 0.95rem;
+		font-weight: 600;
+		color: var(--color-text, #222);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		z-index: 10;
+		transition: opacity 0.15s;
+	}
+
+	.fab-terminal-connect:active {
+		transform: scale(0.95);
 	}
 </style>
