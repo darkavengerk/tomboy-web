@@ -660,6 +660,7 @@
 					nextDateTitle={dateAdjacency.next}
 					ondatenavigate={handleInternalLink}
 					sendListItemActive={sendActive}
+					hrSplitEnabled={false}
 				/>
 			{/if}
 		{/if}

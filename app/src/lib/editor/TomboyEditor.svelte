@@ -136,6 +136,16 @@
 			direction: "prev" | "next",
 			replace: boolean,
 		) => void;
+		/** Enables the Ctrl+click `---` → multi-column split feature.
+		 *  Defaults to true (desktop). The mobile route should set false
+		 *  — small screens can't usefully show side-by-side columns and
+		 *  the hover cue would just confuse touch users. */
+		hrSplitEnabled?: boolean;
+		/** Fired when the user toggles a `---` divider on/off. Carries the
+		 *  new and previous active counts so the host (desktop NoteWindow)
+		 *  can resize the window so each column keeps roughly the original
+		 *  note width. Not fired on note load or pruning. */
+		onhrsplitchange?: (newCount: number, prevCount: number) => void;
 		/** Whether THIS note is the currently focused window (desktop) /
 		 *  the visible note (mobile). Defaults to true so single-note
 		 *  routes don't need to thread it. Gates table-block ctrl-mode
@@ -166,6 +176,8 @@
 		prevDateTitle = null,
 		nextDateTitle = null,
 		ondatenavigate = () => {},
+		hrSplitEnabled = true,
+		onhrsplitchange,
 		noteFocused = true,
 	}: Props = $props();
 
@@ -181,6 +193,13 @@
 	// to false here; the $effect below keeps it in sync with the prop so the
 	// plugin always reflects the current isScheduleNote value at call-time.
 	let autoWeekdayEnabled = false;
+	// Same trick for the hrSplit plugin's enabled gate and change emitter.
+	// The plugin reads `hrSplitEnabledFlag` and calls `hrSplitChangeFn` via
+	// closures so prop changes take effect without re-creating extensions.
+	// Seeded to safe defaults; the $effect below syncs from the props.
+	let hrSplitEnabledFlag = true;
+	let hrSplitChangeFn: ((newCount: number, prevCount: number) => void) | undefined =
+		undefined;
 
 	let editorElement: HTMLDivElement;
 	let editor: Editor | null = $state(null);
@@ -310,6 +329,14 @@
 					// We substitute extended versions that carry Tomboy round-trip attrs.
 					paragraph: false,
 					listItem: false,
+					// Disable the `---` → <hr> input rule. Tomboy's .note XML
+					// has no HR element, so an HR PM node would silently
+					// vanish on save. We instead treat top-level paragraphs
+					// whose trimmed text is `---` (3+ dashes) as virtual HRs
+					// — they round-trip through the XML serializer as plain
+					// paragraphs and our hrSplit plugin renders them as
+					// horizontal lines via decoration.
+					horizontalRule: false,
 				}),
 				TomboyParagraph,
 				TomboyListItem,
@@ -381,7 +408,8 @@
 					addProseMirrorPlugins() {
 						return [
 							createHrSplitPlugin({
-								onChange: (active) => {
+								enabled: () => hrSplitEnabledFlag,
+								onChange: (active, prev) => {
 									// Persist whichever guid is currently bound
 									// to the editor. Closure-read via the
 									// `lastAppliedGuid` tracker so re-keying on
@@ -390,6 +418,9 @@
 										lastAppliedGuid,
 										active,
 									);
+									if (active.size !== prev.size) {
+										hrSplitChangeFn?.(active.size, prev.size);
+									}
 								},
 							}),
 						];
@@ -828,6 +859,24 @@
 		ed.view.dispatch(ed.state.tr);
 	});
 
+	// Keep the closure-bound hrSplit flags in sync with the props. When the
+	// enabled flag flips, force a no-op transaction so the plugin's
+	// decorations / attributes props re-run with the new value (otherwise
+	// a mobile-route switch wouldn't immediately drop the split layout).
+	$effect(() => {
+		const enabled = hrSplitEnabled;
+		const cb = onhrsplitchange;
+		const enabledChanged = enabled !== hrSplitEnabledFlag;
+		hrSplitEnabledFlag = enabled;
+		hrSplitChangeFn = cb;
+		if (enabledChanged) {
+			const ed = editor;
+			if (ed && !ed.isDestroyed) {
+				ed.view.dispatch(ed.state.tr);
+			}
+		}
+	});
+
 	// Keep the closure-bound autoWeekday flag in sync with the prop. When the
 	// flag flips from false→true (async resolution of getScheduleNoteGuid after
 	// setContent has already fired), dispatch a rescan so pre-existing malformed
@@ -1050,47 +1099,109 @@
 		background-color: #fff176;
 	}
 
-	/* HR split layout — Ctrl+click an `<hr>` to flip the content immediately
-	   above and below it from stacked to side-by-side. Decoration-driven:
-	   each top-level block carries at most one of split-left / split-right /
-	   split-divider, and the editor root only switches to grid layout when
-	   at least one split is active (via .tomboy-hr-split-active). With
-	   grid-auto-flow: dense, items with explicit grid-column: 1 / 2 placements
-	   interleave into the same rows, so a 3-block left segment + 5-block
-	   right segment renders 5 rows tall (3 filled on the left, 2 empty). */
+	/* HR split layout.
+	   Tomboy convention: a top-level paragraph whose entire text is `---`
+	   (3+ dashes) acts as a horizontal divider. The hrSplit plugin tags
+	   every such paragraph with `.tomboy-hr-marker` so CSS can render it
+	   as a horizontal line (the literal text is hidden). Ctrl/Cmd+click
+	   toggles a marker into "vertical" mode: N active markers split the
+	   doc into N+1 columns, the markers themselves become thin vertical
+	   bars between columns, and any STILL-inactive markers render as
+	   horizontal lines within their own column.
+
+	   When at least one marker is active, the plugin emits explicit
+	   `grid-row`/`grid-column` inline styles on every top-level child
+	   plus an inline `grid-template-columns` on the editor root so the
+	   number of columns adapts to the number of active dividers. */
+
+	.tomboy-editor :global(.tomboy-hr-marker) {
+		position: relative;
+		/* Hide the literal `---` text but keep the paragraph clickable
+		   and editable (caret still visible if the user steps inside it). */
+		color: transparent;
+		caret-color: #333;
+		min-height: 1.2em;
+		margin: 0.6em 0;
+		padding: 0;
+		/* Default cursor: not clickable. Only Ctrl/Cmd held makes the
+		   marker actionable; the hover effect below is similarly gated. */
+		cursor: default;
+	}
+	/* Pointer cursor + hover affordance only when Ctrl is held (mirrors
+	   the click handler's own gate, so the visual matches the interaction). */
+	.tomboy-editor.tomboy-todo-ctrl-hold :global(.tomboy-hr-marker) {
+		cursor: pointer;
+	}
+	.tomboy-editor :global(.tomboy-hr-marker::before) {
+		/* Default state: thin grey horizontal line centered in the row. */
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(
+			to bottom,
+			transparent calc(50% - 0.5px),
+			#b0b0b0 calc(50% - 0.5px),
+			#b0b0b0 calc(50% + 0.5px),
+			transparent calc(50% + 0.5px)
+		);
+		pointer-events: none;
+	}
+	.tomboy-editor.tomboy-todo-ctrl-hold
+		:global(.tomboy-hr-marker:hover::before) {
+		background: linear-gradient(
+			to bottom,
+			transparent calc(50% - 1px),
+			#888 calc(50% - 1px),
+			#888 calc(50% + 1px),
+			transparent calc(50% + 1px)
+		);
+	}
+
 	.tomboy-editor :global(.tiptap.tomboy-hr-split-active) {
 		display: grid;
-		grid-template-columns: 1fr 1fr;
-		grid-auto-flow: row dense;
-		column-gap: 16px;
+		/* grid-template-columns is set via inline `style` attribute emitted
+		   by the plugin — it alternates `1fr` and `auto` based on how many
+		   markers are active. */
+		column-gap: 12px;
 		row-gap: 0;
 		align-items: start;
 	}
 	.tomboy-editor :global(.tiptap.tomboy-hr-split-active > *) {
-		/* Default: span both columns. */
-		grid-column: 1 / -1;
 		min-width: 0;
 	}
-	.tomboy-editor :global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-left) {
-		grid-column: 1;
+	/* Active divider: vertical line in its assigned divider track. Same
+	   colour as the inactive horizontal line so the two states look like
+	   the same primitive rotated 90°. */
+	.tomboy-editor
+		:global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider) {
+		margin: 0;
+		min-height: 0;
+		width: 12px;
+		caret-color: transparent;
+		/* The grid container sets `align-items: start` so ordinary blocks
+		   sit at the top of their cell — but the divider spans multiple
+		   rows and must fill the full split-area height. Override per-item. */
+		align-self: stretch;
 	}
-	.tomboy-editor :global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-right) {
-		grid-column: 2;
+	.tomboy-editor
+		:global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider::before) {
+		background: linear-gradient(
+			to right,
+			transparent calc(50% - 0.5px),
+			#b0b0b0 calc(50% - 0.5px),
+			#b0b0b0 calc(50% + 0.5px),
+			transparent calc(50% + 0.5px)
+		);
 	}
-	.tomboy-editor :global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider) {
-		grid-column: 1 / -1;
-		border: none;
-		border-top: 2px solid #3465a4;
-		margin: 0.4em 0;
-	}
-	/* Every HR gets a subtle "split me" affordance on hover when Ctrl/Cmd
-	   is held — handled at the DOM level so we don't need to track key
-	   state in the plugin just for the cursor. */
-	.tomboy-editor :global(hr) {
-		cursor: pointer;
-	}
-	.tomboy-editor :global(.tomboy-hr-split-divider) {
-		cursor: pointer;
+	.tomboy-editor.tomboy-todo-ctrl-hold
+		:global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider:hover::before) {
+		background: linear-gradient(
+			to right,
+			transparent calc(50% - 1px),
+			#888 calc(50% - 1px),
+			#888 calc(50% + 1px),
+			transparent calc(50% + 1px)
+		);
 	}
 
 	/* List items */
