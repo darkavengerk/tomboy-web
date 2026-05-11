@@ -1129,6 +1129,10 @@
 		min-height: 0;
 		width: 12px;
 		caret-color: transparent;
+		/* The grid container sets `align-items: start` so ordinary blocks
+		   sit at the top of their cell — but the divider spans multiple
+		   rows and must fill the full split-area height. Override per-item. */
+		align-self: stretch;
 	}
 	.tomboy-editor
 		:global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider::before) {

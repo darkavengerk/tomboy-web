@@ -346,6 +346,90 @@ describe('computeGridStyles — grid template and explicit row/column tracks', (
 	});
 });
 
+describe('headerCount — first N children excluded from split layout', () => {
+	it('headerCount=2 marks first two children as header regardless of content', () => {
+		const { placements, totalColumns } = assignColumns({
+			kinds: k('bbbhb'),
+			activeOrdinals: active(0),
+			headerCount: 2
+		});
+		expect(totalColumns).toBe(2);
+		expect(placements).toEqual([
+			{ role: 'header' },
+			{ role: 'header' },
+			{ role: 'block', col: 1 },
+			{ role: 'v-divider', dividerIdx: 0 },
+			{ role: 'block', col: 2 }
+		]);
+	});
+
+	it('header count caps at kinds.length (short notes do not crash)', () => {
+		const { placements, totalColumns, headerCount } = assignColumns({
+			kinds: k('b'),
+			activeOrdinals: active(),
+			headerCount: 2
+		});
+		expect(totalColumns).toBe(1);
+		expect(headerCount).toBe(1);
+		expect(placements).toEqual([{ role: 'header' }]);
+	});
+
+	it('HR ordinal numbering skips header indices', () => {
+		// First two are header. The first real HR is at index 2 with ordinal 0.
+		const { placements, totalColumns } = assignColumns({
+			kinds: k('bbhbhb'),
+			activeOrdinals: active(1), // activate the SECOND real HR
+			headerCount: 2
+		});
+		expect(totalColumns).toBe(2);
+		expect(placements[2]).toEqual({ role: 'h-line', col: 1 }); // ordinal 0 stays inactive
+		expect(placements[4]).toEqual({ role: 'v-divider', dividerIdx: 0 }); // ordinal 1 activates
+	});
+
+	it('computeGridStyles places headers at full-width rows, content below', () => {
+		const { placements, totalColumns } = assignColumns({
+			kinds: k('bbbhb'),
+			activeOrdinals: active(0),
+			headerCount: 2
+		});
+		const out = computeGridStyles(placements, totalColumns);
+		// Headers: rows 1, 2; full width.
+		expect(out.styleFor[0]).toBe('grid-column:1 / -1;grid-row:1;');
+		expect(out.styleFor[1]).toBe('grid-column:1 / -1;grid-row:2;');
+		// Content block in col 1 starts at row 3.
+		expect(out.styleFor[2]).toBe('grid-column:1;grid-row:3;');
+		// Divider spans rows 3..3 (each column has 1 content row).
+		expect(out.styleFor[3]).toBe('grid-column:2;grid-row:3 / span 1;');
+		// Right column block at row 3.
+		expect(out.styleFor[4]).toBe('grid-column:3;grid-row:3;');
+	});
+
+	it('divider span ignores header rows (= max content rows only)', () => {
+		// Headers (2) + col 1: 3 blocks + divider + col 2: 5 blocks.
+		// Divider should span 5 rows starting at row 3, NOT 7 (which would
+		// include headers).
+		const { placements, totalColumns } = assignColumns({
+			kinds: k('bbbbbhbbbbb'),
+			activeOrdinals: active(0),
+			headerCount: 2
+		});
+		const out = computeGridStyles(placements, totalColumns);
+		const dividerIdx = placements.findIndex(p => p.role === 'v-divider');
+		expect(out.styleFor[dividerIdx]).toBe('grid-column:2;grid-row:3 / span 5;');
+	});
+
+	it('no split + headers → no grid layout (headers flow normally)', () => {
+		const { placements, totalColumns } = assignColumns({
+			kinds: k('bbbb'),
+			activeOrdinals: active(),
+			headerCount: 2
+		});
+		const out = computeGridStyles(placements, totalColumns);
+		expect(out.template).toBeNull();
+		expect(out.styleFor).toEqual([null, null, null, null]);
+	});
+});
+
 describe('integration: kinds → placements → grid styles', () => {
 	it('three active HRs, mixed column heights', () => {
 		// b b h0 b h1 b b b h2 b

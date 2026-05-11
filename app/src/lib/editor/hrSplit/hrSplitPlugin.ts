@@ -46,6 +46,11 @@ export function isDashParagraph(node: PMNode): boolean {
 	return /^-{3,}$/.test(text);
 }
 
+/** Number of leading top-level children excluded from the split layout.
+ *  These are the title (index 0) and the subtitle/date line (index 1),
+ *  which always render full-width above the split area. */
+const HEADER_COUNT = 2;
+
 function describeTopLevel(doc: PMNode): {
 	kinds: BlockKind[];
 	topLevelPositions: number[];
@@ -54,9 +59,7 @@ function describeTopLevel(doc: PMNode): {
 	const topLevelPositions: number[] = [];
 	doc.forEach((node, offset, idx) => {
 		topLevelPositions.push(offset);
-		// Skip index 0 (title) so a `---` title can't disappear under the
-		// HR-marker styling.
-		const isHrCandidate = idx > 0 && isDashParagraph(node);
+		const isHrCandidate = idx >= HEADER_COUNT && isDashParagraph(node);
 		kinds.push(isHrCandidate ? 'hr' : 'block');
 	});
 	return { kinds, topLevelPositions };
@@ -102,7 +105,8 @@ function buildLayout(doc: PMNode, active: ReadonlySet<number>): Layout {
 	const { kinds, topLevelPositions } = describeTopLevel(doc);
 	const { placements, totalColumns } = assignColumns({
 		kinds,
-		activeOrdinals: active
+		activeOrdinals: active,
+		headerCount: HEADER_COUNT
 	});
 	const { styleFor, template } = computeGridStyles(placements, totalColumns);
 
