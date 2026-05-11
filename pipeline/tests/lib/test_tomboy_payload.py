@@ -39,7 +39,23 @@ def test_build_note_content_xml_basic():
     assert "첫째줄" in xml
     assert "둘째줄" in xml
     assert "---" in xml
-    assert "https://example.com/page.png" in xml
+    # The image URL must be wrapped in a <link:url> mark, not plain text —
+    # the editor's TomboyUrlLink extension has no input/paste rule, so a
+    # plain URL would render as unclickable text. See the docstring of
+    # `build_note_content_xml` and spec §9.
+    assert "<link:url>https://example.com/page.png</link:url>" in xml
+
+
+def test_build_note_content_xml_escapes_query_string_ampersand_inside_link_url():
+    # Real Dropbox share URLs contain `&` between query params; that has to
+    # become `&amp;` INSIDE the <link:url> element so the XML parses.
+    xml = build_note_content_xml(
+        title="t",
+        ocr_text="x",
+        image_url="https://www.dropbox.com/scl/fi/x/p.png?rlkey=abc&dl=0",
+    )
+    assert "<link:url>https://www.dropbox.com/scl/fi/x/p.png?rlkey=abc&amp;dl=0</link:url>" in xml
+    assert "&dl=0" not in xml  # raw & must have been escaped
 
 
 def test_build_note_content_xml_escapes_special_chars():

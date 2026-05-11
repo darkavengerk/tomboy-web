@@ -621,29 +621,65 @@ Invariants:
 
 ## 리마커블 일기 OCR 파이프라인 (pipeline/)
 
+See the **`tomboy-diary`** skill for the end-to-end workflow, the
+operational invariants surfaced during M1–M3 bring-up (uid sanitize
+parity with the Cloud Function, busybox+dropbear rM quirks, rmrl vs
+rmscene, scp `-P` vs ssh `-p`, the `<link:url>` mark wrapping, the
+4-bit Qwen2.5-VL VRAM tuning), the known pitfalls with concrete
+symptom→fix mappings, and the recovery playbook.
+
 `pipeline/`은 reMarkable에서 손글씨로 쓴 일기 페이지를 OCR해서 Tomboy 노트로
 넣는 별도 파이프라인. 3개 머신을 거침: rM 태블릿 → 라즈베리파이(24/7 인박스) →
 데스크탑(Bazzite + RTX 3080) → Firestore.
 
-설계 문서:
+설계 문서 (M1–M3 bring-up 이전 시점의 의도):
 `docs/superpowers/specs/2026-05-10-remarkable-diary-pipeline-design.md`.
 구현 계획: `docs/superpowers/plans/2026-05-10-remarkable-diary-pipeline.md`.
+rM-side / Pi-side 셋업 레시피 (드라이런 가능한 한 줄짜리 명령들):
+`pipeline/pi/README.md`.
 
 핵심 invariant — **노트 제목 안의 `[<rm-page-uuid>]` 마커가 매핑 키 + 보호 신호**.
 사용자가 교정 후 제목에서 uuid를 제거하면 같은 페이지를 다시 OCR해도 그 노트는
 덮어쓰이지 않고 새 노트가 생김. 다른 보호 메커니즘 없음 (단순함이 핵심).
 
+Pi inbox 는 **페이지 단위 평탄** — `<page-uuid>.{rm,metadata}` 쌍이
+`~/diary/inbox/` 에 직접. rM 의 native `.metadata` 는 노트북 단위만 있어서
+push 스크립트가 페이지 단위 `.metadata` 스텁을 합성 (`lastModified` 만 의미
+있음). `inbox_watcher` 는 `*.metadata` 글로빙으로 페이지를 인식.
+
+s2_prepare 의 렌더러는 **rmscene + Pillow** (rmrl 아님 — rmrl 은 `.content`
+sibling 필요, 우리 페이지 평탄 레이아웃이랑 호환 안 됨). rM2 좌표계는 **x 만
+centered (~±702), y 는 top-anchored (0~1872)** — translate 는 x 만.
+
+s3_ocr 의 LocalVlmBackend 는 Qwen2.5-VL-7B 를 **nf4 + double-quant + fp16
+compute** 로 RTX 3080 10GB 에 맞춤. `AutoModelForImageTextToText` 로
+로드 (Qwen2.5 와 v2.0 의 클래스가 다르므로 Auto 가 안전). 모듈 top 에서
+`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` 세팅.
+
+s4_write 의 페이로드는 본문에 **`<link:url>` 마크로 이미지 URL 을 감쌈** —
+`TomboyUrlLink` 가 input/paste rule 이 없어서 plain URL 은 클릭 안 됨.
+
 빠른 지도:
 
 - `pipeline/desktop/stages/{s1_fetch, s2_prepare, s3_ocr, s4_write}.py` — 4단계.
 - `pipeline/desktop/lib/{config, state, log, tomboy_payload, firestore_client, dropbox_uploader}.py` — 공유 모듈.
-- `pipeline/desktop/ocr_backends/{base, local_vlm}.py` — Plugin 인터페이스 + Qwen2.5-VL-7B 구현.
+- `pipeline/desktop/ocr_backends/{base, local_vlm}.py` — Plugin 인터페이스 + Qwen2.5-VL-7B 구현. `__init__.py` 가 `local_vlm` 을 side-effect import 해서 backend 레지스트리 채움.
 - `pipeline/desktop/tools/{extract_corrections, segment_lines}.py` — fine-tuning 데이터 준비.
+- `pipeline/desktop/bootstrap.py` — `sanitize_account_id` 가 `functions/src/index.ts:280-281` 와 byte-identical 해야 함 (uid 미스매치 = 앱이 노트 못 봄).
 - `pipeline/pi/inbox_watcher.py` + `pipeline/pi/deploy/` — Pi 측 인박스.
+- `pipeline/pi/README.md` — rM-side (SSH 키 흐름, systemd timer), Pi-side (sshd hardening, fail2ban, NAT) 전체 셋업.
 - `pipeline/config/pipeline.yaml` (gitignore) — `bootstrap.py`로 1회 생성.
+- `app/src/lib/editor/NoteXmlViewer.svelte` — 노트의 raw xmlContent 를 보는 디버그 모달 (메뉴 → "원본 XML 보기"). bring-up 중 추가.
 
-Firestore 쓰기는 `users/{uid}/notes/{guid}` 네임스페이스를 앱과 공유 (uid는
-`dbx-{sanitized account_id}` 형식). 노트북 멤버십은 `system:notebook:일기` 태그로
-표현 — 앱의 `FirestoreNotePayload` 형식과 동일. Dropbox는 이미지 호스팅
-전용 (`/Apps/Tomboy/diary-images/...`); 노트 본문엔 공유 링크 URL만.
+Firestore 쓰기는 `users/{uid}/notes/{guid}` 네임스페이스를 앱과 공유. uid는
+`dbx-{sanitized account_id}` 형식인데 **sanitize 규칙이 Cloud Function
+(`functions/src/index.ts:280-281`) 과 정확히 일치해야 함** — `dbid:` prefix
+유지, `[^A-Za-z0-9_-]` → `_`, 128자 truncate. 노트북 멤버십은
+`system:notebook:일기` 태그로 표현 — 앱의 `FirestoreNotePayload` 형식과
+동일. Dropbox는 이미지 호스팅 전용
+(`/Apps/Tomboy/diary-images/{YYYY}/{MM}/{DD}/{rm-page-uuid}/page.png`);
+노트 본문엔 `<link:url>` 마크로 감싼 공유 링크 URL만.
+
+⚠️ 노트가 앱에 안 보이면 **설정 → 동기화 설정 → "파이어베이스 실시간 노트 동기화"**
+가 켜져 있는지 먼저 확인. **default OFF**.
 

@@ -19,6 +19,7 @@
 		type TerminalNoteSpec
 	} from '$lib/editor/terminal/parseTerminalNote.js';
 	import NoteContextMenu, { type ActionKind } from '$lib/editor/NoteContextMenu.svelte';
+	import NoteXmlViewer from '$lib/editor/NoteXmlViewer.svelte';
 	import {
 		assignNotebook,
 		createNotebook,
@@ -109,6 +110,7 @@
 	let editorContent: JSONContent | undefined = $state.raw(undefined);
 	let editorComponent: TomboyEditor | undefined = $state(undefined);
 	let menuAnchor = $state<{ right: number; bottom: number } | null>(null);
+	let xmlViewerOpen = $state(false);
 	let notebookNames = $state<string[]>([]);
 	let isHomeState = $state(false);
 	let isScrollBottomState = $state(false);
@@ -685,6 +687,11 @@
 			window.open(`/note/${note.guid}/compare`, '_blank');
 			return;
 		}
+
+		if (kind === 'viewXml') {
+			xmlViewerOpen = true;
+			return;
+		}
 	}
 
 	async function handleNotebookChange(e: Event) {
@@ -879,6 +886,14 @@
 		onaction={handleAction}
 		onclose={() => (menuAnchor = null)}
 		ongoto={handleActionGoto}
+	/>
+{/if}
+
+{#if xmlViewerOpen && note}
+	<NoteXmlViewer
+		title={note.title}
+		xml={note.xmlContent}
+		onclose={() => (xmlViewerOpen = false)}
 	/>
 {/if}
 

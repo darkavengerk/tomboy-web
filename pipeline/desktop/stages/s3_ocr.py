@@ -22,8 +22,10 @@ def run_ocr(
     log: StageLogger,
     backend: OCRBackend,
     force: Iterable[str] | None = None,
+    only_uuids: Iterable[str] | None = None,
 ) -> list[str]:
     force = set(force or [])
+    only = set(only_uuids) if only_uuids else None
     for u in force:
         ocr_state.remove(u)
 
@@ -31,6 +33,8 @@ def run_ocr(
     processed: list[str] = []
 
     for uuid, prep_info in prepared_state.read().items():
+        if only is not None and uuid not in only:
+            continue
         if ocr_state.contains(uuid):
             continue
         png_path = Path(prep_info["png_path"])
@@ -72,6 +76,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=Path, default=Path("config/pipeline.yaml"))
     parser.add_argument("--force", action="append", default=[])
+    parser.add_argument(
+        "--uuid",
+        action="append",
+        default=[],
+        help="Process only these page UUIDs (repeatable). Per spec I2.",
+    )
     args = parser.parse_args(argv)
 
     cfg = load_config(args.config)
@@ -99,6 +109,7 @@ def main(argv: list[str] | None = None) -> int:
         log=log,
         backend=backend,
         force=args.force,
+        only_uuids=args.uuid or None,
     )
     print(f"s3_ocr: {len(processed)} pages OCR'd")
     return 0

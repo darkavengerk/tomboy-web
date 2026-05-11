@@ -16,16 +16,27 @@ import yaml
 
 
 def sanitize_account_id(account_id: str) -> str:
-    """Strip a leading ``dbid:`` prefix and replace anything that isn't
-    ``[A-Za-z0-9_-]`` with ``-``. Mirrors the app's sanitization (see
-    ``app/src/lib/firebase/app.ts``)."""
-    if account_id.startswith("dbid:"):
-        account_id = account_id[len("dbid:"):]
-    return re.sub(r"[^A-Za-z0-9_-]", "-", account_id)
+    """Replace anything that isn't ``[A-Za-z0-9_-]`` with ``_``.
+
+    MUST mirror the Cloud Function exactly — `functions/src/index.ts:280`
+    is the authoritative implementation, since it's what mints the
+    Firebase custom token the web app signs in with. Any divergence
+    splits the user's data across two ``users/{uid}/`` namespaces (the
+    one the pipeline writes to and the one the app reads from), which
+    is exactly the bug this comment exists to prevent recurring.
+
+    NOTE: do NOT strip the ``dbid:`` prefix. The Cloud Function keeps
+    it (the ``:`` becomes ``_``), so we must too.
+    """
+    return re.sub(r"[^A-Za-z0-9_-]", "_", account_id)
 
 
 def compute_uid(account_id: str) -> str:
-    return f"dbx-{sanitize_account_id(account_id)}"
+    """``dbx-{sanitized}``, truncated to Firebase's 128-char uid limit.
+
+    Mirrors `functions/src/index.ts:281`.
+    """
+    return f"dbx-{sanitize_account_id(account_id)}"[:128]
 
 
 def write_config(path: Path | str, data: dict[str, Any]) -> None:

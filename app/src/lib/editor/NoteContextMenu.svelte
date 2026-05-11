@@ -11,7 +11,8 @@
 		| 'setHome'
 		| 'unsetHome'
 		| 'toggleScrollBottom'
-		| 'compareWithServer';
+		| 'compareWithServer'
+		| 'viewXml';
 
 	interface Props {
 		note: NoteData;
@@ -127,6 +128,9 @@
 			</button>
 			<button class="item" onclick={() => onaction('compareWithServer')}>
 				<span class="icon">🔍</span>원본과 비교하기
+			</button>
+			<button class="item" onclick={() => onaction('viewXml')}>
+				<span class="icon">📄</span>원본 XML 보기
 			</button>
 			<div class="sep"></div>
 			<button class="item danger" onclick={handleDelete}>

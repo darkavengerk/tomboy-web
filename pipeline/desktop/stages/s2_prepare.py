@@ -27,41 +27,87 @@ class FakeRenderer:
         output_path.write_bytes(self.png_bytes)
 
 
-class RmrlRenderer:
-    """Production renderer using rmrl. Falls back to ``lines-are-rusty`` if needed."""
+class RmsceneRenderer:
+    """Render a single .rm v6 page to PNG via rmscene + Pillow.
+
+    rmrl can't be used here: it's a notebook-level renderer that requires a
+    `<doc-uuid>.content` sibling (see `rmrl/sources.py:get_source`). Our
+    pipeline keeps each rM page as a flat `<page-uuid>.rm` file in the Pi
+    inbox per spec §4.3, so we use rmscene (the v6 reference Python parser)
+    and rasterize strokes ourselves.
+
+    The output is intentionally minimal: black/colored polylines on white,
+    fixed stroke width. Pressure modulation, pen-specific brushes, and
+    template backgrounds are out of scope for v1 — OCR only needs legible
+    strokes, and the rendered PNG also functions as the human-visible
+    image link in the Tomboy note.
+    """
+
+    # rM2 stroke coordinate space: ~1404×1872 centered at origin. The exact
+    # bounds vary slightly between firmware versions and pen types, so we
+    # render at a fixed target canvas and translate from centered coords.
+    PAGE_WIDTH = 1404
+    PAGE_HEIGHT = 1872
+    STROKE_WIDTH = 2
+
+    _COLOR_MAP: dict[int, tuple[int, int, int]] = {
+        # PenColor enum values, by .value (avoid import-time enum dependency).
+        0: (0, 0, 0),          # BLACK
+        1: (128, 128, 128),    # GRAY
+        2: (255, 255, 255),    # WHITE — rare; mostly used by eraser modes
+        3: (255, 220, 0),      # YELLOW
+        4: (0, 150, 0),        # GREEN
+        5: (255, 105, 180),    # PINK
+        6: (0, 90, 200),       # BLUE
+        7: (220, 0, 0),        # RED
+        8: (170, 170, 170),    # GRAY_OVERLAP
+        9: (255, 250, 100),    # HIGHLIGHT
+        10: (0, 200, 100),     # GREEN_2
+        11: (0, 200, 220),     # CYAN
+        12: (200, 0, 200),     # MAGENTA
+        13: (255, 235, 80),    # YELLOW_2
+    }
 
     def render(self, raw_dir: Path, output_path: Path) -> None:
-        # Find the .rm file in raw_dir
         rms = list(raw_dir.glob("*.rm"))
         if not rms:
             raise FileNotFoundError(f"No .rm file under {raw_dir}")
-        try:
-            from rmrl import render  # type: ignore[import-not-found]
-        except ImportError as e:
-            raise RuntimeError(
-                "rmrl is not installed; install with `pip install -e .[prepare]` "
-                "or substitute another renderer that implements Renderer"
-            ) from e
 
-        # rmrl renders the entire notebook to PDF/SVG; for a single page we
-        # render PDF and rasterize the first page to PNG via Pillow + a PDF lib.
-        # Implementation detail: choose whatever rmrl/Pillow combination works
-        # on the target Python version; the Renderer interface only requires
-        # the side effect of writing a PNG to output_path.
-        from io import BytesIO
+        # Imported lazily so tests / users without rmscene installed can still
+        # import this module and use a different renderer.
+        import rmscene
+        from rmscene.scene_items import Line
+        from PIL import Image, ImageDraw
 
-        pdf_stream = render(str(rms[0]))
-        # Convert first PDF page to PNG via pdf2image or Pillow with PyMuPDF;
-        # the simplest dep-free path is pdf2image:
-        try:
-            from pdf2image import convert_from_bytes  # type: ignore[import-not-found]
-        except ImportError as e:
-            raise RuntimeError("pdf2image not installed (poppler-utils required on host)") from e
-        images = convert_from_bytes(pdf_stream.read(), dpi=150)
-        if not images:
-            raise RuntimeError("rmrl produced 0 pages")
+        with open(rms[0], "rb") as f:
+            tree = rmscene.read_tree(f)
+
+        img = Image.new("RGB", (self.PAGE_WIDTH, self.PAGE_HEIGHT), color="white")
+        draw = ImageDraw.Draw(img)
+        # rmscene's coordinate system on rM2: x is centered at 0 (range ~ -702..+702),
+        # y is top-anchored at 0 (range ~ 0..1872). Only x needs translation.
+        cx = self.PAGE_WIDTH / 2
+
+        for item in tree.walk():
+            if not isinstance(item, Line):
+                continue
+            # Eraser strokes don't draw ink — skip. (Rendering them as white
+            # over a white background would be a no-op anyway.)
+            if item.tool.name.startswith("ERASER"):
+                continue
+            if len(item.points) < 2:
+                continue
+            # Prefer the explicit RGBA from newer firmware; fall back to the
+            # PenColor enum lookup.
+            if item.color_rgba is not None:
+                color = item.color_rgba[:3]
+            else:
+                color = self._COLOR_MAP.get(int(item.color), (0, 0, 0))
+            pts = [(p.x + cx, p.y) for p in item.points]
+            draw.line(pts, fill=color, width=self.STROKE_WIDTH)
+
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        images[0].save(output_path, "PNG")
+        img.save(output_path, "PNG")
 
 
 def prepare(
@@ -119,7 +165,7 @@ def main(argv: list[str] | None = None) -> int:
     png_root.mkdir(parents=True, exist_ok=True)
     state = StateFile(cfg.data_dir / "state" / "prepared.json")
     log = StageLogger("s2_prepare", cfg.data_dir)
-    renderer = RmrlRenderer()
+    renderer = RmsceneRenderer()
 
     if args.uuid:
         # Drop everything except the requested uuid by faking a single-uuid raw_root view.

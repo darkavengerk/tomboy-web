@@ -26,6 +26,7 @@
 		type TerminalNoteSpec
 	} from '$lib/editor/terminal/parseTerminalNote.js';
 	import NoteActionSheet, { type ActionKind } from '$lib/editor/NoteActionSheet.svelte';
+	import NoteXmlViewer from '$lib/editor/NoteXmlViewer.svelte';
 	import NotebookPicker from '$lib/components/NotebookPicker.svelte';
 	import { SLIPBOX_NOTEBOOK } from '$lib/sleepnote/validator.js';
 	import { getSlipNoteLabel } from '$lib/sleepnote/indexLabel.js';
@@ -64,6 +65,7 @@
 	let editorContent: JSONContent | undefined = $state.raw(undefined);
 	let actionSheetOpen = $state(false);
 	let pickerOpen = $state(false);
+	let xmlViewerOpen = $state(false);
 	let isHomeNoteState = $state(false);
 	let isScrollBottomState = $state(false);
 	let isScheduleNoteState = $state(false);
@@ -526,6 +528,11 @@
 			return;
 		}
 
+		if (kind === 'viewXml') {
+			xmlViewerOpen = true;
+			return;
+		}
+
 		if (kind === 'toggleScrollBottom') {
 			const next = !isScrollBottomState;
 			await setScrollBottomNote(note!.guid, next);
@@ -693,6 +700,14 @@
 		onaction={handleAction}
 		onclose={() => (actionSheetOpen = false)}
 		ongoto={(guid) => { actionSheetOpen = false; goto(`/note/${guid}`); }}
+	/>
+{/if}
+
+{#if xmlViewerOpen && note}
+	<NoteXmlViewer
+		title={note.title}
+		xml={note.xmlContent}
+		onclose={() => (xmlViewerOpen = false)}
 	/>
 {/if}
 

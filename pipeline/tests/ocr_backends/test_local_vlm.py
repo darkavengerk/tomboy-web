@@ -1,11 +1,31 @@
 from __future__ import annotations
 
+import importlib
+import sys
 from pathlib import Path
 
 import pytest
 
 from desktop.ocr_backends.base import OCRBackend, get_backend
 from desktop.ocr_backends.local_vlm import LocalVlmBackend
+
+
+def test_package_import_registers_local_vlm_backend():
+    """Regression: with an empty `desktop/ocr_backends/__init__.py`, the
+    @register_backend decorator on LocalVlmBackend never fires unless
+    someone imports the local_vlm submodule directly — so `s3_ocr.py`
+    (which only imports from `desktop.ocr_backends.base`) crashed at
+    runtime with `KeyError: 'local_vlm' not registered`.
+
+    Importing the package alone must be enough.
+    """
+    # Drop cached modules to simulate a cold start.
+    for mod in list(sys.modules):
+        if mod.startswith("desktop.ocr_backends"):
+            del sys.modules[mod]
+
+    pkg = importlib.import_module("desktop.ocr_backends")
+    assert "local_vlm" in pkg.list_backends()
 
 
 @pytest.fixture

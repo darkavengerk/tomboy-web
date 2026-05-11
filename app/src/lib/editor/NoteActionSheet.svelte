@@ -11,7 +11,8 @@
 		| 'unsetHome'
 		| 'pickNotebook'
 		| 'toggleScrollBottom'
-		| 'compareWithServer';
+		| 'compareWithServer'
+		| 'viewXml';
 
 	interface Props {
 		note: NoteData;
@@ -144,6 +145,10 @@
 				<button class="action-btn" onclick={() => onaction('compareWithServer')}>
 					<span class="action-icon">🔍</span>
 					원본과 비교하기
+				</button>
+				<button class="action-btn" onclick={() => onaction('viewXml')}>
+					<span class="action-icon">📄</span>
+					원본 XML 보기
 				</button>
 				<button class="action-btn danger" onclick={handleDelete}>
 					<span class="action-icon">🗑</span>

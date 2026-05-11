@@ -94,3 +94,31 @@ def test_continues_after_backend_error(tmp_path: Path, stub_log):
     )
     assert processed == []
     assert not ocr_state.contains("good-1")
+
+
+def test_only_uuids_filters_to_requested_pages(tmp_path: Path, stub_log):
+    # Spec invariant I2: stages must be operable on a specific page uuid.
+    # `only_uuids` lets the user pre-flight the 14GB model + a single page
+    # before committing to the full pending set.
+    prepared = StateFile(tmp_path / "state" / "prepared.json")
+    ocr_state = StateFile(tmp_path / "state" / "ocr-done.json")
+    ocr_root = tmp_path / "ocr"
+    ocr_root.mkdir()
+    _seed_prepared(prepared, tmp_path / "png", "abc-1")
+    _seed_prepared(prepared, tmp_path / "png", "abc-2")
+    _seed_prepared(prepared, tmp_path / "png", "abc-3")
+
+    backend = StubBackend()
+    processed = run_ocr(
+        prepared_state=prepared,
+        ocr_state=ocr_state,
+        ocr_root=ocr_root,
+        log=stub_log,
+        backend=backend,
+        only_uuids={"abc-2"},
+    )
+    assert processed == ["abc-2"]
+    assert [p.parent.name for p in backend.calls] == ["abc-2"]
+    assert ocr_state.contains("abc-2")
+    assert not ocr_state.contains("abc-1")
+    assert not ocr_state.contains("abc-3")

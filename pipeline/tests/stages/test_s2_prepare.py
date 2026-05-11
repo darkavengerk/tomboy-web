@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 from desktop.lib.log import StageLogger
 from desktop.lib.state import StateFile
-from desktop.stages.s2_prepare import FakeRenderer, prepare
+from desktop.stages.s2_prepare import FakeRenderer, RmsceneRenderer, prepare
 
 
 _MIN_PNG = bytes.fromhex(
@@ -100,3 +101,64 @@ def test_prepare_continues_after_renderer_error(tmp_path: Path, stub_log):
     prepared = prepare(raw_root=raw_root, png_root=png_root, state=state, log=stub_log, renderer=renderer)
     assert "ok" in prepared
     assert "bad" not in prepared
+
+
+# --- RmsceneRenderer ---------------------------------------------------------
+
+
+def test_rmscene_renderer_raises_when_no_rm_file(tmp_path: Path):
+    raw_dir = tmp_path / "empty-page"
+    raw_dir.mkdir()
+    with pytest.raises(FileNotFoundError):
+        RmsceneRenderer().render(raw_dir, tmp_path / "out.png")
+
+
+def test_rmscene_renderer_draws_lines_to_png(tmp_path: Path):
+    # rmscene is lazy-imported inside render(); patch on the module level
+    # so the lookup `rmscene.read_tree` returns our fake tree.
+    rmscene = pytest.importorskip("rmscene")
+    PIL = pytest.importorskip("PIL")
+    from rmscene.scene_items import Line, Pen, PenColor, Point
+
+    # rmscene coords on rM2: x centered ~[-702, +702], y top-anchored ~[0, 1872].
+    line = Line(
+        color=PenColor.BLACK,
+        tool=Pen.FINELINER_1,
+        points=[
+            Point(x=-200, y=400, speed=0, direction=0, width=0, pressure=0),
+            Point(x=200, y=600, speed=0, direction=0, width=0, pressure=0),
+        ],
+        thickness_scale=1.0,
+        starting_length=0.0,
+    )
+    eraser = Line(
+        color=PenColor.BLACK,
+        tool=Pen.ERASER,
+        points=[
+            Point(x=0, y=500, speed=0, direction=0, width=0, pressure=0),
+            Point(x=10, y=510, speed=0, direction=0, width=0, pressure=0),
+        ],
+        thickness_scale=1.0,
+        starting_length=0.0,
+    )
+
+    class FakeTree:
+        def walk(self):
+            return [line, eraser]
+
+    raw_dir = tmp_path / "page-uuid"
+    raw_dir.mkdir()
+    (raw_dir / "page-uuid.rm").write_bytes(b"\x00")  # rmscene won't see this — patched out
+    out = tmp_path / "page.png"
+
+    with patch("rmscene.read_tree", return_value=FakeTree()):
+        RmsceneRenderer().render(raw_dir, out)
+
+    from PIL import Image
+
+    img = Image.open(out)
+    assert img.size == (RmsceneRenderer.PAGE_WIDTH, RmsceneRenderer.PAGE_HEIGHT)
+    # The single drawn line should leave some non-white pixels; eraser must
+    # not draw anything (so a white canvas with eraser-only would still pass
+    # by accident — the diagonal line is what guarantees ink).
+    assert img.convert("L").getextrema()[0] < 250, "expected drawn strokes, image is blank"

@@ -7,9 +7,16 @@ Loads the model lazily on first call. Real inference requires
 from __future__ import annotations
 
 import hashlib
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+# Reduce CUDA allocator fragmentation. Must be set BEFORE torch is first
+# imported anywhere in the process. Module load happens at package import
+# time (`desktop.ocr_backends.__init__`), well before `_load_model` pulls
+# in torch lazily.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 from .base import OCRBackend, OCRResult, register_backend
 
@@ -38,17 +45,36 @@ class LocalVlmBackend(OCRBackend):
     def _load_model(self) -> None:
         if self._model is not None:
             return
-        from transformers import AutoProcessor, BitsAndBytesConfig
-        from transformers import Qwen2VLForConditionalGeneration  # type: ignore[attr-defined]
+        # `AutoModelForImageTextToText` is the transformers 4.45+ entrypoint
+        # for vision-language models — it inspects the model's config.json
+        # and picks the right class (Qwen2VL, Qwen2_5_VL, LLaVA, …). Pinning
+        # the concrete class here (e.g. Qwen2VLForConditionalGeneration)
+        # would break the moment model_id points at a different architecture
+        # — including the v2.5 we actually use.
+        import torch
+        from transformers import AutoModelForImageTextToText, AutoProcessor, BitsAndBytesConfig
 
         bnb_kwargs: dict[str, Any] = {}
         if self.quantization == "4bit":
-            bnb_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_4bit=True)
-        self._model = Qwen2VLForConditionalGeneration.from_pretrained(
+            # nf4 + double-quant + fp16 compute fits Qwen2.5-VL-7B inside a
+            # 10 GB RTX 3080 (~4.5 GiB weights vs ~5.8 GiB on the default
+            # load_in_4bit=True alone). Without double-quant we OOM during
+            # inference KV-cache allocation.
+            bnb_kwargs["quantization_config"] = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.float16,
+                bnb_4bit_use_double_quant=True,
+            )
+        self._model = AutoModelForImageTextToText.from_pretrained(
             self.model_id,
             device_map="auto",
             **bnb_kwargs,
         )
+        # Qwen2.5-VL's default max_pixels is 1280·28² ≈ 1.0 M, so a 1404×1872
+        # rM page (~2.6 M) is already downscaled by the processor — no need
+        # to override here. If a future firmware bump pushes page resolution
+        # past the default, set max_pixels= explicitly to keep VRAM bounded.
         self._processor = AutoProcessor.from_pretrained(self.model_id)
 
     def _run_inference(self, image_path: Path, prompt: str) -> str:

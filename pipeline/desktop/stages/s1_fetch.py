@@ -62,12 +62,17 @@ class SshRsyncTransport:
         ]
 
     def fetch_index(self) -> dict[str, dict[str, Any]]:
-        remote = (
-            f"{self.cfg.pi.ssh_user}@{self.cfg.pi.ssh_host}:"
+        state_path = (
             f"{self.cfg.pi.inbox_path.rstrip('/')}/../state/index.json"
         )
+        remote = f"{self.cfg.pi.ssh_user}@{self.cfg.pi.ssh_host}"
+        # `ssh ... cat <path>` instead of `scp ... /dev/stdout`: OpenSSH 9+
+        # scp defaults to SFTP mode, which refuses /dev/stdout as a
+        # destination (ftruncate / lseek on a non-regular file fail). ssh's
+        # stdout is plumbed straight through and the remote shell expands
+        # `~` / `..` naturally.
         proc = subprocess.run(
-            ["scp", "-q"] + self._ssh_args() + [remote, "/dev/stdout"],
+            ["ssh"] + self._ssh_args() + [remote, f"cat {state_path}"],
             check=True,
             capture_output=True,
         )

@@ -51,12 +51,22 @@ def _xml_escape(s: str) -> str:
 
 
 def build_note_content_xml(title: str, ocr_text: str, image_url: str) -> str:
-    """Produce the ``<note-content>`` block per spec I7."""
+    """Produce the ``<note-content>`` block per spec I7.
+
+    The image URL is wrapped in a ``<link:url>`` mark (Tomboy's clickable
+    URL element — see ``app/src/lib/core/noteContentArchiver.ts:14,
+    457-461, 779-780``). Spec §9 left this as a deferred decision:
+    "Initial: plain text; revisit if the auto-link extension doesn't
+    pick it up reliably." It doesn't — ``TomboyUrlLink`` has no input
+    or paste rule, so a plain URL loaded from xmlContent renders as
+    unclickable text. Emitting the mark at write time is what makes
+    the link actually live in the rendered note.
+    """
     body = (
         f"{_xml_escape(title)}\n\n"
         f"{_xml_escape(ocr_text)}\n\n"
         f"---\n\n"
-        f"{_xml_escape(image_url)}"
+        f"<link:url>{_xml_escape(image_url)}</link:url>"
     )
     return f'<note-content version="{NOTE_CONTENT_VERSION}">{body}</note-content>'
 
