@@ -47,6 +47,14 @@
 		createTableBlockPlugin,
 		setCtrlHeld as setTableBlockCtrlHeld,
 	} from "./tableBlock/tableBlockPlugin.js";
+	import {
+		createHrSplitPlugin,
+		hrSplitPluginKey,
+	} from "./hrSplit/hrSplitPlugin.js";
+	import {
+		loadActiveOrdinals,
+		saveActiveOrdinals,
+	} from "./hrSplit/hrSplitStore.js";
 	import { extractImageFile } from "./imagePreview/extractImageFile.js";
 	import { uploadImageToDropbox } from "$lib/sync/imageUpload.js";
 	import { pushToast, dismissToast } from "$lib/stores/toast.js";
@@ -368,6 +376,25 @@
 						return [createTableBlockPlugin()];
 					},
 				}),
+				Extension.create({
+					name: "tomboyHrSplit",
+					addProseMirrorPlugins() {
+						return [
+							createHrSplitPlugin({
+								onChange: (active) => {
+									// Persist whichever guid is currently bound
+									// to the editor. Closure-read via the
+									// `lastAppliedGuid` tracker so re-keying on
+									// note swap is automatic.
+									saveActiveOrdinals(
+										lastAppliedGuid,
+										active,
+									);
+								},
+							}),
+						];
+					},
+				}),
 				SlipNoteArrows,
 				DateArrows,
 				TomboyTodoRegion.configure({
@@ -671,6 +698,12 @@
 			contentSyncSeeded = true;
 			lastAppliedContent = c;
 			lastAppliedGuid = g;
+			// Seed HR split state from localStorage for the initial note.
+			ed.view.dispatch(
+				ed.state.tr.setMeta(hrSplitPluginKey, {
+					replace: Array.from(loadActiveOrdinals(g)),
+				}),
+			);
 			return;
 		}
 
@@ -682,6 +715,15 @@
 			type: "doc",
 			content: [{ type: "paragraph" }],
 		};
+		// Reseed HR split state for the freshly loaded note BEFORE swapping
+		// the doc. If we did it after, setContent's docChanged reconciliation
+		// would prune the OLD note's active ordinals against the NEW doc and
+		// then persist that mangled set under the new guid's storage key.
+		ed.view.dispatch(
+			ed.state.tr.setMeta(hrSplitPluginKey, {
+				replace: Array.from(loadActiveOrdinals(g)),
+			}),
+		);
 		// emitUpdate:false so the parent's onchange doesn't interpret this
 		// as a user edit (no spurious save triggered for just loading a
 		// note). The plugin still sees the underlying PM transaction and
@@ -1006,6 +1048,49 @@
 	/* Highlight */
 	.tomboy-editor :global(mark) {
 		background-color: #fff176;
+	}
+
+	/* HR split layout — Ctrl+click an `<hr>` to flip the content immediately
+	   above and below it from stacked to side-by-side. Decoration-driven:
+	   each top-level block carries at most one of split-left / split-right /
+	   split-divider, and the editor root only switches to grid layout when
+	   at least one split is active (via .tomboy-hr-split-active). With
+	   grid-auto-flow: dense, items with explicit grid-column: 1 / 2 placements
+	   interleave into the same rows, so a 3-block left segment + 5-block
+	   right segment renders 5 rows tall (3 filled on the left, 2 empty). */
+	.tomboy-editor :global(.tiptap.tomboy-hr-split-active) {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		grid-auto-flow: row dense;
+		column-gap: 16px;
+		row-gap: 0;
+		align-items: start;
+	}
+	.tomboy-editor :global(.tiptap.tomboy-hr-split-active > *) {
+		/* Default: span both columns. */
+		grid-column: 1 / -1;
+		min-width: 0;
+	}
+	.tomboy-editor :global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-left) {
+		grid-column: 1;
+	}
+	.tomboy-editor :global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-right) {
+		grid-column: 2;
+	}
+	.tomboy-editor :global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider) {
+		grid-column: 1 / -1;
+		border: none;
+		border-top: 2px solid #3465a4;
+		margin: 0.4em 0;
+	}
+	/* Every HR gets a subtle "split me" affordance on hover when Ctrl/Cmd
+	   is held — handled at the DOM level so we don't need to track key
+	   state in the plugin just for the cursor. */
+	.tomboy-editor :global(hr) {
+		cursor: pointer;
+	}
+	.tomboy-editor :global(.tomboy-hr-split-divider) {
+		cursor: pointer;
 	}
 
 	/* List items */
