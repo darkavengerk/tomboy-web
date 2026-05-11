@@ -32,7 +32,16 @@ function isReplace(m: Meta): m is ReplaceMeta {
 export const hrSplitPluginKey = new PluginKey<PluginState>('tomboyHrSplit');
 
 export interface HrSplitOptions {
-	onChange?: (active: ReadonlySet<number>) => void;
+	/** Fired after every state-changing transition with the new and previous
+	 *  active sets. NOT called for `replace` meta (note-load) since the host
+	 *  is already in sync with the persisted state. */
+	onChange?: (active: ReadonlySet<number>, prev: ReadonlySet<number>) => void;
+	/** Optional gate. When this returns `false`, the click handler ignores
+	 *  Ctrl+click and the decoration pass treats activeOrdinals as empty
+	 *  (so persisted column splits don't bleed into a disabled context).
+	 *  The `tomboy-hr-marker` class still applies to `---` paragraphs so
+	 *  they render as horizontal lines. */
+	enabled?: () => boolean;
 }
 
 /**
@@ -101,11 +110,19 @@ interface Layout {
 	template: string | null;
 }
 
-function buildLayout(doc: PMNode, active: ReadonlySet<number>): Layout {
+function buildLayout(
+	doc: PMNode,
+	active: ReadonlySet<number>,
+	enabled: boolean
+): Layout {
 	const { kinds, topLevelPositions } = describeTopLevel(doc);
+	// When the feature is disabled (e.g., mobile), force activeOrdinals to
+	// empty so all HR markers stay h-lines and no grid layout kicks in,
+	// even if localStorage holds non-empty state from another context.
+	const effectiveActive: ReadonlySet<number> = enabled ? active : new Set();
 	const { placements, totalColumns } = assignColumns({
 		kinds,
-		activeOrdinals: active,
+		activeOrdinals: effectiveActive,
 		headerCount: HEADER_COUNT
 	});
 	const { styleFor, template } = computeGridStyles(placements, totalColumns);
@@ -184,7 +201,8 @@ export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
 
 				if (next === prev.activeOrdinals) return prev;
 				if (!cameFromReplace || prunedByDoc) {
-					queueMicrotask(() => options.onChange?.(next));
+					const prevSnapshot = prev.activeOrdinals;
+					queueMicrotask(() => options.onChange?.(next, prevSnapshot));
 				}
 				return { activeOrdinals: next };
 			}
@@ -193,17 +211,20 @@ export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
 			decorations(state: EditorState) {
 				const s = hrSplitPluginKey.getState(state);
 				if (!s) return null;
-				return buildLayout(state.doc, s.activeOrdinals).decorations;
+				const enabled = options.enabled?.() ?? true;
+				return buildLayout(state.doc, s.activeOrdinals, enabled).decorations;
 			},
 			attributes(state: EditorState): Record<string, string> {
 				const s = hrSplitPluginKey.getState(state);
-				if (!s || s.activeOrdinals.size === 0) return {};
-				const { template } = buildLayout(state.doc, s.activeOrdinals);
+				const enabled = options.enabled?.() ?? true;
+				if (!s || !enabled || s.activeOrdinals.size === 0) return {};
+				const { template } = buildLayout(state.doc, s.activeOrdinals, enabled);
 				const attrs: Record<string, string> = { class: 'tomboy-hr-split-active' };
 				if (template) attrs.style = `grid-template-columns:${template};`;
 				return attrs;
 			},
 			handleClick(view, pos, event) {
+				if (options.enabled && !options.enabled()) return false;
 				if (!(event.ctrlKey || event.metaKey)) return false;
 				const doc = view.state.doc;
 				const topIdx = topLevelIndexAtPos(doc, pos);

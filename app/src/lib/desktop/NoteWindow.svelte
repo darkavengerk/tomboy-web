@@ -305,6 +305,30 @@
 		}, 1500);
 	}
 
+	/**
+	 * Resize the window so each split column keeps roughly the original
+	 * note width. Active divider count goes prev → next; the window's
+	 * width scales by (next + 1) / (prev + 1):
+	 *
+	 *   0 → 1 divider (1 col → 2 cols): ratio 2/1 = 2x       ("2배")
+	 *   1 → 2 dividers (2 cols → 3 cols): ratio 3/2 = +50%   ("50%가 늘어나고")
+	 *   2 → 3 dividers (3 cols → 4 cols): ratio 4/3
+	 *   ...and symmetric for toggle-off.
+	 *
+	 * The transition delta — not an absolute "base width" — drives the
+	 * resize, so manual user resizes between toggles are preserved
+	 * proportionally.
+	 */
+	function handleHrSplitChange(newCount: number, prevCount: number) {
+		const ratio = (newCount + 1) / (prevCount + 1);
+		if (!Number.isFinite(ratio) || ratio === 1) return;
+		const newWidth = Math.max(
+			DESKTOP_WINDOW_MIN_WIDTH,
+			Math.round(width * ratio)
+		);
+		desktopSession.updateGeometry(guid, { x, y, width: newWidth, height });
+	}
+
 	async function flushSave(): Promise<void> {
 		if (!pendingDoc || !note) return;
 		const fingerprint = JSON.stringify(pendingDoc);
@@ -809,6 +833,7 @@
 					nextDateTitle={dateAdjacency.next}
 					ondatenavigate={handleDateNavigate}
 					noteFocused={isFocused}
+					onhrsplitchange={handleHrSplitChange}
 				/>
 			{:else}
 				<div class="loading">노트를 불러올 수 없습니다.</div>

@@ -136,6 +136,16 @@
 			direction: "prev" | "next",
 			replace: boolean,
 		) => void;
+		/** Enables the Ctrl+click `---` → multi-column split feature.
+		 *  Defaults to true (desktop). The mobile route should set false
+		 *  — small screens can't usefully show side-by-side columns and
+		 *  the hover cue would just confuse touch users. */
+		hrSplitEnabled?: boolean;
+		/** Fired when the user toggles a `---` divider on/off. Carries the
+		 *  new and previous active counts so the host (desktop NoteWindow)
+		 *  can resize the window so each column keeps roughly the original
+		 *  note width. Not fired on note load or pruning. */
+		onhrsplitchange?: (newCount: number, prevCount: number) => void;
 		/** Whether THIS note is the currently focused window (desktop) /
 		 *  the visible note (mobile). Defaults to true so single-note
 		 *  routes don't need to thread it. Gates table-block ctrl-mode
@@ -166,6 +176,8 @@
 		prevDateTitle = null,
 		nextDateTitle = null,
 		ondatenavigate = () => {},
+		hrSplitEnabled = true,
+		onhrsplitchange,
 		noteFocused = true,
 	}: Props = $props();
 
@@ -181,6 +193,13 @@
 	// to false here; the $effect below keeps it in sync with the prop so the
 	// plugin always reflects the current isScheduleNote value at call-time.
 	let autoWeekdayEnabled = false;
+	// Same trick for the hrSplit plugin's enabled gate and change emitter.
+	// The plugin reads `hrSplitEnabledFlag` and calls `hrSplitChangeFn` via
+	// closures so prop changes take effect without re-creating extensions.
+	// Seeded to safe defaults; the $effect below syncs from the props.
+	let hrSplitEnabledFlag = true;
+	let hrSplitChangeFn: ((newCount: number, prevCount: number) => void) | undefined =
+		undefined;
 
 	let editorElement: HTMLDivElement;
 	let editor: Editor | null = $state(null);
@@ -389,7 +408,8 @@
 					addProseMirrorPlugins() {
 						return [
 							createHrSplitPlugin({
-								onChange: (active) => {
+								enabled: () => hrSplitEnabledFlag,
+								onChange: (active, prev) => {
 									// Persist whichever guid is currently bound
 									// to the editor. Closure-read via the
 									// `lastAppliedGuid` tracker so re-keying on
@@ -398,6 +418,9 @@
 										lastAppliedGuid,
 										active,
 									);
+									if (active.size !== prev.size) {
+										hrSplitChangeFn?.(active.size, prev.size);
+									}
 								},
 							}),
 						];
@@ -836,6 +859,24 @@
 		ed.view.dispatch(ed.state.tr);
 	});
 
+	// Keep the closure-bound hrSplit flags in sync with the props. When the
+	// enabled flag flips, force a no-op transaction so the plugin's
+	// decorations / attributes props re-run with the new value (otherwise
+	// a mobile-route switch wouldn't immediately drop the split layout).
+	$effect(() => {
+		const enabled = hrSplitEnabled;
+		const cb = onhrsplitchange;
+		const enabledChanged = enabled !== hrSplitEnabledFlag;
+		hrSplitEnabledFlag = enabled;
+		hrSplitChangeFn = cb;
+		if (enabledChanged) {
+			const ed = editor;
+			if (ed && !ed.isDestroyed) {
+				ed.view.dispatch(ed.state.tr);
+			}
+		}
+	});
+
 	// Keep the closure-bound autoWeekday flag in sync with the prop. When the
 	// flag flips from false→true (async resolution of getScheduleNoteGuid after
 	// setContent has already fired), dispatch a rescan so pre-existing malformed
@@ -1082,6 +1123,13 @@
 		min-height: 1.2em;
 		margin: 0.6em 0;
 		padding: 0;
+		/* Default cursor: not clickable. Only Ctrl/Cmd held makes the
+		   marker actionable; the hover effect below is similarly gated. */
+		cursor: default;
+	}
+	/* Pointer cursor + hover affordance only when Ctrl is held (mirrors
+	   the click handler's own gate, so the visual matches the interaction). */
+	.tomboy-editor.tomboy-todo-ctrl-hold :global(.tomboy-hr-marker) {
 		cursor: pointer;
 	}
 	.tomboy-editor :global(.tomboy-hr-marker::before) {
@@ -1098,7 +1146,8 @@
 		);
 		pointer-events: none;
 	}
-	.tomboy-editor :global(.tomboy-hr-marker:hover::before) {
+	.tomboy-editor.tomboy-todo-ctrl-hold
+		:global(.tomboy-hr-marker:hover::before) {
 		background: linear-gradient(
 			to bottom,
 			transparent calc(50% - 1px),
@@ -1144,7 +1193,7 @@
 			transparent calc(50% + 0.5px)
 		);
 	}
-	.tomboy-editor
+	.tomboy-editor.tomboy-todo-ctrl-hold
 		:global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider:hover::before) {
 		background: linear-gradient(
 			to right,
