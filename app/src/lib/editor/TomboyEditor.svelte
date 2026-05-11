@@ -1063,14 +1063,15 @@
 	   (3+ dashes) acts as a horizontal divider. The hrSplit plugin tags
 	   every such paragraph with `.tomboy-hr-marker` so CSS can render it
 	   as a horizontal line (the literal text is hidden). Ctrl/Cmd+click
-	   toggles it into "split-active" mode: content immediately above and
-	   below moves into a 2-column layout and the marker becomes a thin
-	   vertical bar between the columns.
+	   toggles a marker into "vertical" mode: N active markers split the
+	   doc into N+1 columns, the markers themselves become thin vertical
+	   bars between columns, and any STILL-inactive markers render as
+	   horizontal lines within their own column.
 
 	   When at least one marker is active, the plugin emits explicit
-	   `grid-row`/`grid-column` inline styles on every top-level child so
-	   the divider can `span` the rows of its split region. The 3-column
-	   template is `1fr auto 1fr` — column 2 is the divider track. */
+	   `grid-row`/`grid-column` inline styles on every top-level child
+	   plus an inline `grid-template-columns` on the editor root so the
+	   number of columns adapts to the number of active dividers. */
 
 	.tomboy-editor :global(.tomboy-hr-marker) {
 		position: relative;
@@ -1109,18 +1110,19 @@
 
 	.tomboy-editor :global(.tiptap.tomboy-hr-split-active) {
 		display: grid;
-		grid-template-columns: 1fr auto 1fr;
+		/* grid-template-columns is set via inline `style` attribute emitted
+		   by the plugin — it alternates `1fr` and `auto` based on how many
+		   markers are active. */
 		column-gap: 12px;
 		row-gap: 0;
-		align-items: stretch;
+		align-items: start;
 	}
 	.tomboy-editor :global(.tiptap.tomboy-hr-split-active > *) {
 		min-width: 0;
 	}
-	/* Per-block placement comes from the inline `style` attribute emitted
-	   by the plugin (grid-row + grid-column). The active divider sits in
-	   column 2 with grid-row "start / span N" and its ::before is rotated
-	   into a vertical bar. */
+	/* Active divider: vertical line in its assigned divider track. Same
+	   colour as the inactive horizontal line so the two states look like
+	   the same primitive rotated 90°. */
 	.tomboy-editor
 		:global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider) {
 		margin: 0;
@@ -1132,20 +1134,20 @@
 		:global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider::before) {
 		background: linear-gradient(
 			to right,
-			transparent calc(50% - 1px),
-			#3465a4 calc(50% - 1px),
-			#3465a4 calc(50% + 1px),
-			transparent calc(50% + 1px)
+			transparent calc(50% - 0.5px),
+			#b0b0b0 calc(50% - 0.5px),
+			#b0b0b0 calc(50% + 0.5px),
+			transparent calc(50% + 0.5px)
 		);
 	}
 	.tomboy-editor
 		:global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider:hover::before) {
 		background: linear-gradient(
 			to right,
-			transparent calc(50% - 1.5px),
-			#1f3d6b calc(50% - 1.5px),
-			#1f3d6b calc(50% + 1.5px),
-			transparent calc(50% + 1.5px)
+			transparent calc(50% - 1px),
+			#888 calc(50% - 1px),
+			#888 calc(50% + 1px),
+			transparent calc(50% + 1px)
 		);
 	}
 
