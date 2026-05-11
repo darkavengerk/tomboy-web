@@ -772,7 +772,7 @@
 		>✕</button>
 	</div>
 
-	<div class="body">
+	<div class="body" class:terminal-edit={!!terminalSpec && !showTerminal}>
 		{#if loading}
 			<div class="loading">로딩 중...</div>
 		{:else if showTerminal && terminalSpec}
@@ -784,16 +784,6 @@
 				/>
 			{/key}
 		{:else}
-			{#if terminalSpec}
-				<div class="terminal-banner">
-					<span class="terminal-banner-label">SSH 터미널 노트입니다 — <code>{terminalSpec.target}</code></span>
-					<button
-						type="button"
-						class="terminal-connect-btn"
-						onclick={() => (terminalConnectMode = true)}
-					>접속</button>
-				</div>
-			{/if}
 			{#if editorContent}
 				<TomboyEditor
 					bind:this={editorComponent}
@@ -825,6 +815,18 @@
 			{/if}
 		{/if}
 	</div>
+
+	{#if terminalSpec && !showTerminal}
+		<button
+			type="button"
+			class="fab-terminal-connect"
+			class:above-toolbar={isFocused}
+			onclick={() => (terminalConnectMode = true)}
+			aria-label="SSH 접속"
+			title="SSH 접속 — {terminalSpec.target}"
+			data-no-drag
+		>접속</button>
+	{/if}
 
 	{#if !loading && editorContent && isFocused && !showTerminal}
 		<div class="toolbar-slot">
@@ -1078,42 +1080,42 @@
 		color: #888;
 	}
 
-	.terminal-banner {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding: 8px 14px;
-		background: var(--color-surface-alt, #f0f0f0);
-		border-bottom: 1px solid var(--color-border, #ddd);
-		font-size: 0.85rem;
+	/* Gray surface signals "this is a terminal note" while the user is in
+	   edit mode. The floating 접속 button is the primary action. */
+	.body.terminal-edit {
+		background: #e8e8e8;
 	}
 
-	.terminal-banner-label {
-		flex: 1;
-		color: var(--color-text-secondary, #555);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.terminal-banner-label code {
-		font-family: monospace;
-		color: var(--color-text, #222);
-	}
-
-	.terminal-connect-btn {
-		flex-shrink: 0;
-		padding: 4px 14px;
-		border: 1px solid var(--color-border, #bbb);
-		border-radius: 4px;
-		background: var(--color-bg, #fff);
-		color: var(--color-text, #222);
-		font-size: 0.85rem;
+	.fab-terminal-connect {
+		position: absolute;
+		right: 16px;
+		bottom: 16px;
+		min-width: 56px;
+		height: 40px;
+		padding: 0 14px;
+		border-radius: 20px;
+		border: none;
+		background: #fff;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+		font-size: 0.9rem;
+		font-weight: 600;
+		color: #222;
 		cursor: pointer;
+		z-index: 5;
 	}
 
-	.terminal-connect-btn:hover {
-		background: var(--color-surface-hover, #e8e8e8);
+	/* When the focused-window toolbar is visible at the bottom, lift the
+	   FAB above it so it doesn't overlap. --toolbar-h is 30px. */
+	.fab-terminal-connect.above-toolbar {
+		bottom: calc(var(--toolbar-h) + 12px);
+	}
+
+	.fab-terminal-connect:hover {
+		background: #f5f5f5;
+	}
+
+	.fab-terminal-connect:active {
+		transform: scale(0.96);
 	}
 
 </style>
