@@ -310,6 +310,14 @@
 					// We substitute extended versions that carry Tomboy round-trip attrs.
 					paragraph: false,
 					listItem: false,
+					// Disable the `---` → <hr> input rule. Tomboy's .note XML
+					// has no HR element, so an HR PM node would silently
+					// vanish on save. We instead treat top-level paragraphs
+					// whose trimmed text is `---` (3+ dashes) as virtual HRs
+					// — they round-trip through the XML serializer as plain
+					// paragraphs and our hrSplit plugin renders them as
+					// horizontal lines via decoration.
+					horizontalRule: false,
 				}),
 				TomboyParagraph,
 				TomboyListItem,
@@ -1050,47 +1058,95 @@
 		background-color: #fff176;
 	}
 
-	/* HR split layout — Ctrl+click an `<hr>` to flip the content immediately
-	   above and below it from stacked to side-by-side. Decoration-driven:
-	   each top-level block carries at most one of split-left / split-right /
-	   split-divider, and the editor root only switches to grid layout when
-	   at least one split is active (via .tomboy-hr-split-active). With
-	   grid-auto-flow: dense, items with explicit grid-column: 1 / 2 placements
-	   interleave into the same rows, so a 3-block left segment + 5-block
-	   right segment renders 5 rows tall (3 filled on the left, 2 empty). */
+	/* HR split layout.
+	   Tomboy convention: a top-level paragraph whose entire text is `---`
+	   (3+ dashes) acts as a horizontal divider. The hrSplit plugin tags
+	   every such paragraph with `.tomboy-hr-marker` so CSS can render it
+	   as a horizontal line (the literal text is hidden). Ctrl/Cmd+click
+	   toggles it into "split-active" mode: content immediately above and
+	   below moves into a 2-column layout and the marker becomes a thin
+	   vertical bar between the columns.
+
+	   When at least one marker is active, the plugin emits explicit
+	   `grid-row`/`grid-column` inline styles on every top-level child so
+	   the divider can `span` the rows of its split region. The 3-column
+	   template is `1fr auto 1fr` — column 2 is the divider track. */
+
+	.tomboy-editor :global(.tomboy-hr-marker) {
+		position: relative;
+		/* Hide the literal `---` text but keep the paragraph clickable
+		   and editable (caret still visible if the user steps inside it). */
+		color: transparent;
+		caret-color: #333;
+		min-height: 1.2em;
+		margin: 0.6em 0;
+		padding: 0;
+		cursor: pointer;
+	}
+	.tomboy-editor :global(.tomboy-hr-marker::before) {
+		/* Default state: thin grey horizontal line centered in the row. */
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(
+			to bottom,
+			transparent calc(50% - 0.5px),
+			#b0b0b0 calc(50% - 0.5px),
+			#b0b0b0 calc(50% + 0.5px),
+			transparent calc(50% + 0.5px)
+		);
+		pointer-events: none;
+	}
+	.tomboy-editor :global(.tomboy-hr-marker:hover::before) {
+		background: linear-gradient(
+			to bottom,
+			transparent calc(50% - 1px),
+			#888 calc(50% - 1px),
+			#888 calc(50% + 1px),
+			transparent calc(50% + 1px)
+		);
+	}
+
 	.tomboy-editor :global(.tiptap.tomboy-hr-split-active) {
 		display: grid;
-		grid-template-columns: 1fr 1fr;
-		grid-auto-flow: row dense;
-		column-gap: 16px;
+		grid-template-columns: 1fr auto 1fr;
+		column-gap: 12px;
 		row-gap: 0;
-		align-items: start;
+		align-items: stretch;
 	}
 	.tomboy-editor :global(.tiptap.tomboy-hr-split-active > *) {
-		/* Default: span both columns. */
-		grid-column: 1 / -1;
 		min-width: 0;
 	}
-	.tomboy-editor :global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-left) {
-		grid-column: 1;
+	/* Per-block placement comes from the inline `style` attribute emitted
+	   by the plugin (grid-row + grid-column). The active divider sits in
+	   column 2 with grid-row "start / span N" and its ::before is rotated
+	   into a vertical bar. */
+	.tomboy-editor
+		:global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider) {
+		margin: 0;
+		min-height: 0;
+		width: 12px;
+		caret-color: transparent;
 	}
-	.tomboy-editor :global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-right) {
-		grid-column: 2;
+	.tomboy-editor
+		:global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider::before) {
+		background: linear-gradient(
+			to right,
+			transparent calc(50% - 1px),
+			#3465a4 calc(50% - 1px),
+			#3465a4 calc(50% + 1px),
+			transparent calc(50% + 1px)
+		);
 	}
-	.tomboy-editor :global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider) {
-		grid-column: 1 / -1;
-		border: none;
-		border-top: 2px solid #3465a4;
-		margin: 0.4em 0;
-	}
-	/* Every HR gets a subtle "split me" affordance on hover when Ctrl/Cmd
-	   is held — handled at the DOM level so we don't need to track key
-	   state in the plugin just for the cursor. */
-	.tomboy-editor :global(hr) {
-		cursor: pointer;
-	}
-	.tomboy-editor :global(.tomboy-hr-split-divider) {
-		cursor: pointer;
+	.tomboy-editor
+		:global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider:hover::before) {
+		background: linear-gradient(
+			to right,
+			transparent calc(50% - 1.5px),
+			#1f3d6b calc(50% - 1.5px),
+			#1f3d6b calc(50% + 1.5px),
+			transparent calc(50% + 1.5px)
+		);
 	}
 
 	/* List items */

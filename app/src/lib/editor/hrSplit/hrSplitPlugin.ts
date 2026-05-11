@@ -5,7 +5,6 @@ import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { assignColumns, type BlockKind, type ColumnRole } from './assignColumns.js';
 
 interface PluginState {
-	/** 0-based ordinals (among top-level HR children) that are split-active. */
 	activeOrdinals: Set<number>;
 }
 
@@ -14,8 +13,6 @@ interface ToggleMeta {
 }
 
 interface ReplaceMeta {
-	/** Wholesale replacement; used when the doc is swapped to a different
-	 *  note and the host loads persisted state from storage. */
 	replace: ReadonlyArray<number>;
 }
 
@@ -31,10 +28,19 @@ function isReplace(m: Meta): m is ReplaceMeta {
 export const hrSplitPluginKey = new PluginKey<PluginState>('tomboyHrSplit');
 
 export interface HrSplitOptions {
-	/** Called after every state change that mutates activeOrdinals so the
-	 *  host can persist the new set (typically to localStorage keyed by
-	 *  the current note's guid). */
 	onChange?: (active: ReadonlySet<number>) => void;
+}
+
+/**
+ * A top-level child is a virtual HR if it's a paragraph whose entire text
+ * content is 3+ dashes (trimmed). This is the Tomboy convention for a
+ * horizontal divider — it round-trips through the .note XML as ordinary
+ * paragraph text and is rendered as a line via decoration.
+ */
+export function isDashParagraph(node: PMNode): boolean {
+	if (node.type.name !== 'paragraph') return false;
+	const text = node.textContent.trim();
+	return /^-{3,}$/.test(text);
 }
 
 function describeTopLevel(doc: PMNode): {
@@ -45,39 +51,131 @@ function describeTopLevel(doc: PMNode): {
 	const topLevelPositions: number[] = [];
 	doc.forEach((node, offset) => {
 		topLevelPositions.push(offset);
-		kinds.push(node.type.name === 'horizontalRule' ? 'hr' : 'block');
+		kinds.push(isDashParagraph(node) ? 'hr' : 'block');
 	});
 	return { kinds, topLevelPositions };
 }
 
-function roleClass(role: ColumnRole): string | null {
+/**
+ * Find the top-level child index whose range contains `pos`. Returns -1
+ * if `pos` is outside the doc.
+ */
+export function topLevelIndexAtPos(doc: PMNode, pos: number): number {
+	let result = -1;
+	let cursor = 0;
+	doc.forEach((node, offset, idx) => {
+		const end = offset + node.nodeSize;
+		if (result < 0 && pos >= offset && pos < end) {
+			result = idx;
+		}
+		cursor = end;
+	});
+	void cursor;
+	return result;
+}
+
+function countHrMarkers(doc: PMNode): number {
+	let n = 0;
+	doc.forEach(node => {
+		if (isDashParagraph(node)) n++;
+	});
+	return n;
+}
+
+/**
+ * Compute per-block grid placement. Returns inline-style strings keyed by
+ * top-level index. Layout uses a 3-column grid: column 1 = left, column 2
+ * = divider track, column 3 = right. Full-width blocks span 1 / -1.
+ *
+ * Rows are assigned sequentially. A split (left segment + divider + right
+ * segment) occupies max(leftCount, rightCount, 1) rows; the divider is
+ * placed at grid-column 2 with `grid-row: start / span span`.
+ */
+export function computeGridStyles(
+	roles: ColumnRole[]
+): { styleFor: (string | null)[]; hasSplit: boolean } {
+	const styleFor: (string | null)[] = new Array(roles.length).fill(null);
+	let row = 1;
+	let hasSplit = false;
+	let i = 0;
+	while (i < roles.length) {
+		const r = roles[i];
+		if (r === 'left' || r === 'divider' || r === 'right') {
+			hasSplit = true;
+			// Identify the contiguous left run.
+			const leftStart = i;
+			let leftEnd = i;
+			while (leftEnd < roles.length && roles[leftEnd] === 'left') leftEnd++;
+			// Divider sits at leftEnd (assignColumns guarantees this when there's a left segment).
+			const dividerIdx = leftEnd;
+			const hasDivider = dividerIdx < roles.length && roles[dividerIdx] === 'divider';
+			const rightStart = hasDivider ? dividerIdx + 1 : leftEnd;
+			let rightEnd = rightStart;
+			while (rightEnd < roles.length && roles[rightEnd] === 'right') rightEnd++;
+
+			const leftCount = leftEnd - leftStart;
+			const rightCount = rightEnd - rightStart;
+			const span = Math.max(leftCount, rightCount, 1);
+
+			for (let k = 0; k < leftCount; k++) {
+				styleFor[leftStart + k] = `grid-column:1;grid-row:${row + k};`;
+			}
+			for (let k = 0; k < rightCount; k++) {
+				styleFor[rightStart + k] = `grid-column:3;grid-row:${row + k};`;
+			}
+			if (hasDivider) {
+				styleFor[dividerIdx] = `grid-column:2;grid-row:${row} / span ${span};`;
+			}
+			row += span;
+			i = rightEnd;
+		} else {
+			// full, plain-hr → full width row.
+			styleFor[i] = `grid-column:1 / -1;grid-row:${row};`;
+			row++;
+			i++;
+		}
+	}
+	return { styleFor, hasSplit };
+}
+
+function roleClasses(role: ColumnRole, isHr: boolean): string {
+	const classes: string[] = [];
+	if (isHr) classes.push('tomboy-hr-marker');
 	switch (role) {
 		case 'left':
-			return 'tomboy-hr-split-left';
+			classes.push('tomboy-hr-split-left');
+			break;
 		case 'right':
-			return 'tomboy-hr-split-right';
+			classes.push('tomboy-hr-split-right');
+			break;
 		case 'divider':
-			return 'tomboy-hr-split-divider';
+			classes.push('tomboy-hr-split-divider', 'tomboy-hr-marker-active');
+			break;
 		case 'plain-hr':
 		case 'full':
 		default:
-			return null;
+			break;
 	}
+	return classes.join(' ');
 }
 
 function buildDecorations(doc: PMNode, active: ReadonlySet<number>): DecorationSet {
 	const { kinds, topLevelPositions } = describeTopLevel(doc);
-	// Segment index that activates a split equals the HR ordinal, since
-	// segment i ends at HR i in assignColumns' addressing.
 	const roles = assignColumns({ kinds, activeOrdinals: active });
+	const { styleFor, hasSplit } = computeGridStyles(roles);
 
 	const decos: Decoration[] = [];
 	for (let i = 0; i < kinds.length; i++) {
-		const cls = roleClass(roles[i]);
-		if (!cls) continue;
+		const isHr = kinds[i] === 'hr';
+		const cls = roleClasses(roles[i], isHr);
+		const style = hasSplit ? styleFor[i] : null;
+		if (!cls && !style) continue;
 		const from = topLevelPositions[i];
 		const node = doc.child(i);
-		decos.push(Decoration.node(from, from + node.nodeSize, { class: cls }));
+		const attrs: Record<string, string> = {};
+		if (cls) attrs.class = cls;
+		if (style) attrs.style = style;
+		decos.push(Decoration.node(from, from + node.nodeSize, attrs));
 	}
 	return DecorationSet.create(doc, decos);
 }
@@ -86,13 +184,7 @@ function reconcileActiveAgainstDoc(
 	doc: PMNode,
 	active: ReadonlySet<number>
 ): { changed: boolean; next: Set<number> } {
-	// Drop any active ordinal that no longer corresponds to an HR (e.g.
-	// the user deleted the HR). Keeps localStorage from accumulating
-	// stale entries forever.
-	let hrCount = 0;
-	doc.forEach(node => {
-		if (node.type.name === 'horizontalRule') hrCount++;
-	});
+	const hrCount = countHrMarkers(doc);
 	const next = new Set<number>();
 	let changed = false;
 	for (const ord of active) {
@@ -100,6 +192,20 @@ function reconcileActiveAgainstDoc(
 		else changed = true;
 	}
 	return { changed, next };
+}
+
+/** Find the HR-marker ordinal whose top-level index is `topIdx`, or -1. */
+function ordinalOfTopIndex(doc: PMNode, topIdx: number): number {
+	let ord = 0;
+	let found = -1;
+	doc.forEach((node, _offset, idx) => {
+		if (found >= 0) return;
+		if (isDashParagraph(node)) {
+			if (idx === topIdx) found = ord;
+			ord++;
+		}
+	});
+	return found;
 }
 
 export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
@@ -116,7 +222,9 @@ export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
 
 				if (meta) {
 					if (isReplace(meta)) {
-						next = new Set(meta.replace.filter(n => Number.isInteger(n) && n >= 0));
+						next = new Set(
+							meta.replace.filter(n => Number.isInteger(n) && n >= 0)
+						);
 						cameFromReplace = true;
 					} else if (isToggle(meta)) {
 						next = new Set(prev.activeOrdinals);
@@ -125,7 +233,6 @@ export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
 					}
 				}
 
-				// On doc changes, prune ordinals that no longer point at an HR.
 				let prunedByDoc = false;
 				if (tr.docChanged) {
 					const { changed, next: reconciled } = reconcileActiveAgainstDoc(
@@ -139,10 +246,6 @@ export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
 				}
 
 				if (next === prev.activeOrdinals) return prev;
-				// Don't echo a replace (loaded from storage) back to the host —
-				// it would just rewrite the same value under the same key.
-				// Do fire when the doc-change reconciliation actually pruned
-				// something so the stale entry is cleaned out of storage.
 				if (!cameFromReplace || prunedByDoc) {
 					queueMicrotask(() => options.onChange?.(next));
 				}
@@ -160,35 +263,25 @@ export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
 				if (!s || s.activeOrdinals.size === 0) return {};
 				return { class: 'tomboy-hr-split-active' };
 			},
-			handleClickOn(view, _pos, node, nodePos, event, direct) {
-				if (!direct) return false;
-				if (node.type.name !== 'horizontalRule') return false;
+			handleClick(view, pos, event) {
 				if (!(event.ctrlKey || event.metaKey)) return false;
-				// Figure out which top-level HR this is by ordinal in the doc.
 				const doc = view.state.doc;
-				let ordinal = -1;
-				let counter = 0;
-				let found = false;
-				doc.forEach((child, offset) => {
-					if (found) return;
-					if (child.type.name === 'horizontalRule') {
-						if (offset === nodePos) {
-							ordinal = counter;
-							found = true;
-						}
-						counter++;
-					}
-				});
+				const topIdx = topLevelIndexAtPos(doc, pos);
+				if (topIdx < 0) return false;
+				const child = doc.child(topIdx);
+				if (!isDashParagraph(child)) return false;
+				const ordinal = ordinalOfTopIndex(doc, topIdx);
 				if (ordinal < 0) return false;
 				event.preventDefault();
-				view.dispatch(view.state.tr.setMeta(hrSplitPluginKey, { toggle: ordinal }));
+				view.dispatch(
+					view.state.tr.setMeta(hrSplitPluginKey, { toggle: ordinal })
+				);
 				return true;
 			}
 		}
 	});
 }
 
-/** Convenience for tests / host integration. */
 export function getActiveOrdinals(state: EditorState): ReadonlySet<number> {
 	const s = hrSplitPluginKey.getState(state);
 	return s?.activeOrdinals ?? new Set();
