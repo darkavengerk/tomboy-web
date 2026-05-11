@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from desktop.lib.dropbox_uploader import DropboxUploader
+from desktop.lib.dropbox_uploader import DropboxUploader, _to_inline_url
 
 
 @pytest.fixture
@@ -39,11 +39,15 @@ def test_upload_writes_bytes(mock_dbx, tmp_path: Path):
 def test_share_link_returns_url_for_new_link(mock_dbx):
     _, client = mock_dbx
     client.sharing_create_shared_link_with_settings.return_value = MagicMock(
-        url="https://www.dropbox.com/scl/fi/abc/page.png?dl=0"
+        url="https://www.dropbox.com/scl/fi/abc/page.png?rlkey=xyz&dl=0"
     )
     u = DropboxUploader("t", "k")
     url = u.share_link("/Apps/Tomboy/diary-images/2024/05/10/abc/page.png")
-    assert "dropbox.com" in url
+    # `?dl=0` returns Dropbox's HTML preview page — useless as an inline
+    # image source. We rewrite to `?raw=1` so the URL serves raw bytes.
+    assert "raw=1" in url
+    assert "dl=0" not in url
+    assert "rlkey=xyz" in url  # other params preserved
 
 
 def test_share_link_falls_back_to_existing_when_already_shared(mock_dbx, mocker):
@@ -67,3 +71,30 @@ def test_share_link_falls_back_to_existing_when_already_shared(mock_dbx, mocker)
     u = DropboxUploader("t", "k")
     url = u.share_link("/path.png")
     assert "existing" in url
+    # The fallback (existing-link) path must also normalize to raw=1.
+    assert "raw=1" in url
+    assert "dl=0" not in url
+
+
+def test_to_inline_url_strips_dl_and_appends_raw():
+    assert (
+        _to_inline_url("https://www.dropbox.com/scl/fi/abc/page.png?rlkey=k&dl=0")
+        == "https://www.dropbox.com/scl/fi/abc/page.png?rlkey=k&raw=1"
+    )
+
+
+def test_to_inline_url_collapses_existing_raw_and_dl_params():
+    # Defensive: if a URL already has raw=N or both raw and dl, output is
+    # exactly one raw=1 with no dl.
+    out = _to_inline_url("https://www.dropbox.com/x.png?rlkey=k&raw=0&dl=1")
+    parsed = dict(part.split("=", 1) for part in out.split("?", 1)[1].split("&"))
+    assert parsed == {"rlkey": "k", "raw": "1"}
+
+
+def test_to_inline_url_preserves_other_query_params():
+    out = _to_inline_url(
+        "https://www.dropbox.com/scl/fi/abc/page.png?rlkey=ogy7gao0&token=xyz&dl=0"
+    )
+    assert "rlkey=ogy7gao0" in out
+    assert "token=xyz" in out
+    assert "raw=1" in out

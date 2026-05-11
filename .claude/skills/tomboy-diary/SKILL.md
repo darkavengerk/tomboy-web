@@ -198,6 +198,7 @@ mapping below is faster than re-deriving.
 | Notes appear but the image URL is plain unclickable text | `TomboyUrlLink` extension has no input/paste rule, so plain URLs loaded from xmlContent never get the url-link mark. | Pipeline now emits `<link:url>{url}</link:url>` in the body. |
 | The `---` separator does not render as a horizontal rule | The app's `noteContentArchiver.ts` has no `horizontalRule` case (neither parse nor serialize). The HR support was attempted in this session and reverted at user's request; user said "나중에 따로 고칠게". | Currently `---` is plain text. To add HR support cleanly: parser branch on `tagName === 'hr'` → `{type:'horizontalRule'}`; serializer branch on `node.type === 'horizontalRule'` → `<hr/>`; pipeline emits `<hr/>` instead of `---`. Tomboy desktop compatibility on round-trip is the open question. |
 | s4 writes succeed but image URLs return 404 / no preview | Dropbox upload failed silently. | Check `~/.local/share/tomboy-pipeline/logs/s4_write.log` for `dropbox_upload_failed`. |
+| Image URL is clickable but doesn't render inline / loads Dropbox HTML page | Dropbox SDK returns share links with `?dl=0` by default — that's the HTML preview, not raw bytes. | `dropbox_uploader._to_inline_url` rewrites `dl=0` → `raw=1`, preserving every other query param. `share_link` applies it to both the create-new and fall-back-to-existing paths. |
 
 ## 5. State files (desktop)
 
@@ -242,7 +243,7 @@ To force a re-run of a stage: delete the relevant file or pass `--force <uuid>`.
 - `pipeline/desktop/lib/`
   - `tomboy_payload.py` — builds the Firestore document (per app's `FirestoreNotePayload` shape). Wraps image URL in `<link:url>` mark.
   - `firestore_client.py` — Firebase Admin SDK wrapper.
-  - `dropbox_uploader.py` — PNG upload + share-link with `dl=0` query.
+  - `dropbox_uploader.py` — PNG upload + share-link. `share_link()` rewrites Dropbox's default `?dl=0` (HTML preview page) to `?raw=1` (raw bytes) via `_to_inline_url`, so the URL works as an inline image source — without it, the URL only opens a Dropbox preview when clicked and is useless inside an `<img src>`.
   - `state.py`, `log.py`, `config.py` — shared infrastructure.
 - `pipeline/desktop/bootstrap.py` — `sanitize_account_id` MUST mirror `functions/src/index.ts:280-281` byte-for-byte. Tests in `tests/test_bootstrap.py` lock the contract.
 - `pipeline/config/pipeline.yaml` — gitignored. Holds `firebase_uid`, service-account path, Dropbox refresh token, host details. `bootstrap.py` emits it.
