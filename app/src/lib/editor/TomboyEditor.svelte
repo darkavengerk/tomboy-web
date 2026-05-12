@@ -43,6 +43,7 @@
 		createAutoWeekdayPlugin,
 		autoWeekdayPluginKey,
 	} from "./autoWeekday/autoWeekdayPlugin.js";
+	import { createLlmNotePlugin } from "./llmNote/llmNotePlugin.js";
 	import {
 		createTableBlockPlugin,
 		setCtrlHeld as setTableBlockCtrlHeld,
@@ -395,6 +396,12 @@
 								enabled: () => autoWeekdayEnabled,
 							}),
 						];
+					},
+				}),
+				Extension.create({
+					name: "tomboyLlmNote",
+					addProseMirrorPlugins() {
+						return [createLlmNotePlugin()];
 					},
 				}),
 				Extension.create({
