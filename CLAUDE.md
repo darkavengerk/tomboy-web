@@ -313,6 +313,24 @@ See the **`tomboy-autolink`** skill. Lives in `app/src/lib/editor/autoLink/`;
 tests in `app/tests/unit/editor/`. Self-link suppression via `currentGuid`
 prop on `TomboyEditor.svelte`.
 
+## Column split (`---` → vertical divider)
+
+See the **`tomboy-hrsplit`** skill. A top-level `---` paragraph is a
+horizontal-rule marker; Ctrl/Cmd+click toggles it into a vertical column
+divider, splitting the note into N+1 independent columns via CSS Grid +
+`grid-template-rows: masonry`. Files in `app/src/lib/editor/hrSplit/`,
+CSS + plugin wiring in `TomboyEditor.svelte`.
+
+**Browser support is Firefox-only**, and Firefox release still hides
+masonry behind `about:config → layout.css.grid-template-masonry-value.enabled`.
+On non-masonry engines the column split visually degrades to a short
+stub divider (no runaway, just looks wrong); the plugin detects the
+unsupported case via `CSS.supports('grid-template-rows', 'masonry')`
+and skips the runtime divider-height sync entirely. **Do not reintroduce
+per-column DOM wrappers** — they're incompatible with PM's mutation
+observer and produced the editor-corruption bugs in commit `20d6d88`
+(reverted).
+
 ## Slip-notes (슬립노트)
 
 See the **`tomboy-sleepnote`** skill. Notes in the `[0] Slip-Box` notebook form

@@ -75,9 +75,11 @@ export function assignColumns({
 }
 
 export interface GridStyleOutput {
-	/** Inline-style per top-level child. Each style sets explicit grid-row
-	 *  + grid-column. Null when no grid layout is needed (totalColumns === 1
-	 *  AND headerCount === 0). */
+	/** Inline-style per top-level child. Sets `grid-column` only — there
+	 *  is intentionally no `grid-row`, because `grid-template-rows: masonry`
+	 *  on the editor root packs each column independently along the
+	 *  masonry axis (which the spec disallows spanning). Null when no grid
+	 *  layout is needed (totalColumns === 1 AND headerCount === 0). */
 	styleFor: (string | null)[];
 	/** Value for `grid-template-columns` on the editor root. Alternates
 	 *  `1fr` content tracks with `auto` divider tracks. Null when no grid
@@ -87,29 +89,24 @@ export interface GridStyleOutput {
 }
 
 /**
- * Translate `Placement[]` into CSS Grid coordinates for a **masonry**
+ * Translate `Placement[]` into CSS Grid coordinates for the masonry
  * layout (`grid-template-rows: masonry` on the editor root).
- *
- * Masonry packs each grid column independently along the masonry axis,
- * so items in different columns do NOT share a row height — a tall image
- * in column 1 no longer forces column 2's adjacent block to grow. The
- * spec disallows spanning the masonry axis, so we emit `grid-column`
- * only (no `grid-row`).
  *
  * Track layout for N content columns: N content tracks (`1fr`) interleaved
  * with N-1 divider tracks (`auto`). Content column `c` lands at grid
  * track `2c - 1`; divider `k` at grid track `2k + 2`. Headers span all
  * tracks via `grid-column: 1 / -1`; per the masonry spec, full-axis
- * spanners act as breakpoints — content above them packs per-column up
- * to that point, then the spanner sits across, then content below
- * starts fresh per-column.
+ * spanners break the masonry stream — content above them packs per
+ * column up to that point, then the spanner sits across, then content
+ * below resumes per column.
  *
- * Divider elements end up small at the top of their column track
- * (intrinsic size only — `align-self: stretch` is undefined along the
- * masonry axis). The hrSplit plugin's `view()` hook is responsible for
- * sizing the divider visual to match the tallest content column at
- * runtime (Firefox-only — masonry isn't shipped in Chromium/WebKit as
- * of 2026-Q1).
+ * Browser support: `grid-template-rows: masonry` ships in Firefox only
+ * (and behind the `layout.css.grid-template-masonry-value.enabled`
+ * pref until release default flips). On engines without it the rule is
+ * ignored, items fall back to standard auto-placement, columns share
+ * rows again, and the divider's runtime-measured height (see plugin
+ * view() hook) is intentionally disabled to avoid a stretch-feedback
+ * loop.
  */
 export function computeGridStyles(
 	placements: ReadonlyArray<Placement>,
@@ -126,7 +123,7 @@ export function computeGridStyles(
 	const styleFor: (string | null)[] = placements.map(p => {
 		if (p.role === 'header') return 'grid-column:1 / -1;';
 		if (p.role === 'v-divider') return `grid-column:${2 * p.dividerIdx + 2};`;
-		if (p.role === 'h-line') return `grid-column:${2 * p.col - 1};`;
+		// h-line and block ride the same content track.
 		return `grid-column:${2 * p.col - 1};`;
 	});
 

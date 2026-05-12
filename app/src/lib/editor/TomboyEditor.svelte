@@ -1100,26 +1100,26 @@
 	}
 
 	/* HR split layout.
-	   Tomboy convention: a top-level paragraph whose entire text is `---`
-	   (3+ dashes) acts as a horizontal divider. The hrSplit plugin tags
-	   every such paragraph with `.tomboy-hr-marker` so CSS can render it
-	   as a horizontal line (the literal text is hidden). Ctrl/Cmd+click
-	   toggles a marker into "vertical" mode: N active markers split the
-	   doc into N+1 columns, the markers themselves become thin vertical
-	   bars between columns, and any STILL-inactive markers render as
-	   horizontal lines within their own column.
+	   A top-level paragraph whose entire text is `---` (3+ dashes) is a
+	   virtual horizontal-rule marker. `.tomboy-hr-marker` paints it as a
+	   thin grey line (text hidden). Ctrl/Cmd+click toggles a marker
+	   "active": N active markers split the doc into N+1 columns, active
+	   markers render as the vertical dividers between columns, and any
+	   still-inactive markers continue rendering as horizontal lines
+	   inside their own column.
 
-	   When at least one marker is active, the editor root becomes a CSS
-	   Grid with `grid-template-columns` alternating `1fr` (content) and
-	   `auto` (divider), AND `grid-template-rows: masonry`. Masonry packs
-	   each grid column independently along the masonry axis, so items in
-	   different columns do not share row heights — a tall image in one
-	   column no longer forces the other column's adjacent block to grow.
+	   When at least one marker is active the editor root becomes a CSS
+	   Grid: `grid-template-columns` alternates `1fr` (content) and
+	   `auto` (divider) tracks, and `grid-template-rows: masonry` packs
+	   each column independently so items in different columns no longer
+	   share row heights — a tall image on one side no longer forces a
+	   matching gap on the other.
 
-	   Browser support note (2026-Q1): `grid-template-rows: masonry` is
-	   shipped in Firefox; Chromium and WebKit have not enabled it yet.
-	   On non-Firefox engines the rule is ignored and the layout falls
-	   back to the previous shared-row behaviour. */
+	   Masonry currently ships in Firefox only and as of 2026-Q1 still
+	   needs `layout.css.grid-template-masonry-value.enabled` flipped on.
+	   See the tomboy-hrsplit skill for the gory details, including why
+	   wrapping children doesn't work and why the divider height is
+	   measured at runtime via a CSS variable on view.dom. */
 
 	.tomboy-editor :global(.tomboy-hr-marker) {
 		position: relative;
@@ -1166,21 +1166,17 @@
 
 	.tomboy-editor :global(.tiptap.tomboy-hr-split-active) {
 		display: grid;
-		/* grid-template-columns is set via inline `style` attribute emitted
-		   by the plugin — it alternates `1fr` and `auto` based on how many
-		   markers are active. */
+		/* grid-template-columns is set via inline `style` emitted by the
+		   plugin — alternates `1fr` and `auto` based on the active count. */
 		grid-template-rows: masonry;
 		column-gap: 12px;
 		row-gap: 0;
-		/* Critical for the non-masonry fallback path: without `start`,
-		   the default `stretch` lets every item grow to the tallest cell
-		   in its row. Reading offsetHeight on a stretched item returns
-		   the row height, not the item's intrinsic height — feeding that
-		   back into the divider-height computation produces a runaway
-		   growth loop (divider keeps inflating, container grows,
-		   ResizeObserver re-fires, ad infinitum). With masonry enabled
-		   `align-items` is a no-op along the masonry axis, so this rule
-		   is harmless there. */
+		/* Defense in depth for the non-masonry fallback path. The plugin's
+		   view() hook already bails on !CSS.supports masonry, but keeping
+		   `start` here means even if a future change tries to size the
+		   divider in fallback mode, items in the shared row won't stretch
+		   to the divider's height and feed a measurement loop. With
+		   masonry active this rule is a no-op on the masonry axis. */
 		align-items: start;
 	}
 	.tomboy-editor :global(.tiptap.tomboy-hr-split-active > *) {
@@ -1188,14 +1184,12 @@
 	}
 	/* Active divider: vertical line in its assigned divider track. Same
 	   colour as the inactive horizontal line so the two states look like
-	   the same primitive rotated 90°. Height comes from the
+	   the same primitive rotated 90°. `height` is driven by the
 	   `--hr-split-divider-height` custom property set on view.dom by the
-	   plugin's view() hook to match the tallest content column — masonry
-	   has no defined track height along the masonry axis, so
-	   `align-self: stretch` is undefined and we measure at runtime.
-	   Setting the variable on view.dom (rather than on the divider
-	   element directly) keeps PM's DOMObserver from observing the
-	   mutation — see the plugin source. */
+	   plugin's view() hook (masonry has no defined track height along the
+	   masonry axis, so we measure the tallest content column at runtime).
+	   The variable lives on view.dom rather than the divider element so
+	   PM's DOMObserver ignores the mutation — see hrSplitPlugin.ts. */
 	.tomboy-editor
 		:global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider) {
 		margin: 0;

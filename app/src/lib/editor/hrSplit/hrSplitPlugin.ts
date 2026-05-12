@@ -247,71 +247,57 @@ export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
 			}
 		},
 		view(view: EditorView) {
-			// Masonry layout has no defined track height along the masonry
-			// axis, so the v-divider element only gets its intrinsic
-			// height — visually a short stub instead of a column-spanning
-			// line. We size it at runtime to match the tallest content
-			// column, then re-measure on every PM update and on container
-			// resize.
+			// Masonry has no defined track height along the masonry axis,
+			// so the divider element (a thin paragraph in its own grid
+			// column) only renders at intrinsic height — a short stub.
+			// We measure the tallest content column at runtime and expose
+			// it as `--hr-split-divider-height` on view.dom; CSS binds
+			// the divider's `height` to that variable.
 			//
-			// The measured height is exposed as a custom property
-			// `--hr-split-divider-height` on view.dom and bound to the
-			// divider via CSS. Writing the variable on view.dom is
-			// critical: PM's DOMObserver short-circuits attribute
-			// mutations whose nearest desc IS the docView (view.dom).
-			// Writing inline style on the divider paragraph instead would
-			// route through PM's readDOMChange path and — combined with
-			// ResizeObserver — produced a runaway feedback loop.
+			// Writing the variable on view.dom (not on the divider element
+			// itself) is critical. PM's DOMObserver ignores attribute
+			// mutations whose nearest desc is the docView, so view.dom
+			// mutations stay out of `readDOMChange`. Writing inline style
+			// on the divider paragraph instead routes through PM's
+			// mutation path and — combined with the ResizeObserver below —
+			// produces a runaway feedback loop on toggle.
 			//
-			// **Bail out entirely if the browser doesn't ship masonry**:
-			// `grid-template-rows: masonry` is ignored, the editor falls
-			// back to standard CSS Grid auto-placement (shared rows), and
-			// the divider lands in a single row alongside whatever
-			// content shares that row. Setting the divider's CSS height
-			// in that mode would inflate that row to the column-total
-			// height — and in standard grid the row's other cells stretch
-			// to match, so reading offsetHeight on a stretched item
-			// returns the row height itself, feeding a runaway loop.
-			// Leaving the divider at its intrinsic height keeps the
-			// layout stable; the column split visually degrades to a
-			// stub divider but doesn't grow without bound.
+			// Bail entirely when `grid-template-rows: masonry` is not
+			// supported. Without masonry, `align-items: start` on the
+			// container keeps stretching disabled (no feedback loop), but
+			// the divider would still sit in a single shared row and our
+			// computed height would inflate that row past anything sane.
+			// Leaving the divider at intrinsic height keeps layout
+			// stable; visually the split degrades to a stub.
 			const masonrySupported =
 				typeof CSS !== 'undefined' &&
-				typeof CSS.supports === 'function' &&
-				CSS.supports('grid-template-rows', 'masonry');
+				CSS.supports?.('grid-template-rows', 'masonry') === true;
 
 			let ro: ResizeObserver | null = null;
 
 			function syncDividerHeights(): void {
-				const enabled = options.enabled?.() ?? true;
-				if (!enabled) return;
+				if (!(options.enabled?.() ?? true)) return;
 				const root = view.dom;
-				if (!masonrySupported) {
-					if (root.style.getPropertyValue('--hr-split-divider-height')) {
-						root.style.removeProperty('--hr-split-divider-height');
-					}
-					return;
-				}
 				const dividers = root.querySelectorAll<HTMLElement>(
 					':scope > .tomboy-hr-split-divider'
 				);
-				if (dividers.length === 0) {
+				if (!masonrySupported || dividers.length === 0) {
 					if (root.style.getPropertyValue('--hr-split-divider-height')) {
 						root.style.removeProperty('--hr-split-divider-height');
 					}
 					return;
 				}
 
-				// Sum offsetHeight per content track. Skip dividers
-				// (their height IS what we're computing) and headers
-				// (identified by the class we attach in buildLayout —
-				// robust against inline-style reserialization).
+				// Sum offsetHeight per content track. Skip dividers (whose
+				// height we're computing) and headers (identified by the
+				// class attached in buildLayout — string-matching the inline
+				// `grid-column:1 / -1` style is unreliable because the
+				// browser reserializes inline styles).
 				const heightByTrack = new Map<number, number>();
 				for (const child of Array.from(root.children) as HTMLElement[]) {
 					if (child.classList.contains('tomboy-hr-split-divider')) continue;
 					if (child.classList.contains('tomboy-hr-split-header')) continue;
-					const cs = getComputedStyle(child);
-					const track = parseInt(cs.gridColumnStart, 10);
+					const track = parseInt(getComputedStyle(child).gridColumnStart, 10);
 					if (!Number.isFinite(track) || track < 1) continue;
 					heightByTrack.set(
 						track,
@@ -326,8 +312,9 @@ export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
 				if (maxHeight <= 0) return;
 
 				const targetStr = `${maxHeight}px`;
-				const current = root.style.getPropertyValue('--hr-split-divider-height');
-				if (current !== targetStr) {
+				// Guard: re-writing the same value still mutates the
+				// style attribute and re-fires the ResizeObserver path.
+				if (root.style.getPropertyValue('--hr-split-divider-height') !== targetStr) {
 					root.style.setProperty('--hr-split-divider-height', targetStr);
 				}
 			}
