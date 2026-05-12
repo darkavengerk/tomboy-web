@@ -2,10 +2,13 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
+import type { EditorView } from '@tiptap/pm/view';
 import {
 	assignColumns,
-	computeGridStyles,
-	type BlockKind
+	computeLayoutHints,
+	computeColumnGroups,
+	type BlockKind,
+	type ColumnGroup
 } from './assignColumns.js';
 
 interface PluginState {
@@ -43,6 +46,12 @@ export interface HrSplitOptions {
 	 *  they render as horizontal lines. */
 	enabled?: () => boolean;
 }
+
+/** Class name on the per-column wrapper elements injected by the view()
+ *  hook. These wrappers are NOT part of the ProseMirror document — they
+ *  are presentation-only and must be torn down before PM mutates view.dom
+ *  (otherwise PM's insertBefore/removeChild on a wrapped child throws). */
+const COL_WRAPPER_CLASS = 'tomboy-hr-split-col';
 
 /**
  * A top-level child is a virtual HR marker if it's a paragraph whose
@@ -108,6 +117,7 @@ function ordinalOfTopIndex(doc: PMNode, topIdx: number): number {
 interface Layout {
 	decorations: DecorationSet;
 	template: string | null;
+	groups: ColumnGroup[];
 }
 
 function buildLayout(
@@ -125,7 +135,8 @@ function buildLayout(
 		activeOrdinals: effectiveActive,
 		headerCount: HEADER_COUNT
 	});
-	const { styleFor, template } = computeGridStyles(placements, totalColumns);
+	const { styleFor, template } = computeLayoutHints(placements, totalColumns);
+	const groups = totalColumns > 1 ? computeColumnGroups(placements) : [];
 
 	const decos: Decoration[] = [];
 	for (let i = 0; i < kinds.length; i++) {
@@ -145,7 +156,7 @@ function buildLayout(
 		if (style) attrs.style = style;
 		decos.push(Decoration.node(from, from + node.nodeSize, attrs));
 	}
-	return { decorations: DecorationSet.create(doc, decos), template };
+	return { decorations: DecorationSet.create(doc, decos), template, groups };
 }
 
 function reconcileActiveAgainstDoc(
@@ -160,6 +171,56 @@ function reconcileActiveAgainstDoc(
 		else changed = true;
 	}
 	return { changed, next };
+}
+
+/** Remove every previously injected column wrapper, moving its children
+ *  back to be direct children of view.dom in their original positions.
+ *  Must run BEFORE ProseMirror mutates view.dom — PM's structural ops
+ *  (insertBefore / removeChild on a node desc's dom) assume the desc's
+ *  dom is a direct child of view.dom. */
+function unwrapColumns(viewDom: HTMLElement): void {
+	const wrappers = viewDom.querySelectorAll<HTMLElement>(
+		`:scope > .${COL_WRAPPER_CLASS}`
+	);
+	wrappers.forEach(wrapper => {
+		const parent = wrapper.parentNode;
+		if (!parent) return;
+		while (wrapper.firstChild) {
+			parent.insertBefore(wrapper.firstChild, wrapper);
+		}
+		parent.removeChild(wrapper);
+	});
+}
+
+/** Group consecutive top-level children that belong to the same content
+ *  column into wrapper divs. Wrappers are flex columns (per CSS) so each
+ *  column flows its content top-down independently — items in different
+ *  columns no longer share a grid row, which is what the user perceives
+ *  as "lines getting linked together" in the previous shared-row design. */
+function wrapColumns(viewDom: HTMLElement, groups: ReadonlyArray<ColumnGroup>): void {
+	if (groups.length === 0) return;
+	// Snapshot direct children once — splice indices computed from this list
+	// stay valid because we only re-parent these specific nodes, in order.
+	const children = Array.from(viewDom.children) as HTMLElement[];
+	for (const group of groups) {
+		if (group.startIdx >= children.length || group.endIdx > children.length) {
+			// Defensive: doc/DOM out of sync (e.g., between transactions). Skip.
+			continue;
+		}
+		const first = children[group.startIdx];
+		if (!first || first.parentNode !== viewDom) continue;
+		const wrapper = document.createElement('div');
+		wrapper.className = COL_WRAPPER_CLASS;
+		wrapper.setAttribute('data-hr-col', String(group.col));
+		// Grid track for column `c` is `2c - 1` (content tracks at odd
+		// indices, divider tracks at even).
+		wrapper.style.gridColumn = String(2 * group.col - 1);
+		viewDom.insertBefore(wrapper, first);
+		for (let i = group.startIdx; i < group.endIdx; i++) {
+			const node = children[i];
+			if (node) wrapper.appendChild(node);
+		}
+	}
 }
 
 export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
@@ -237,6 +298,77 @@ export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
 				);
 				return true;
 			}
+		},
+		view(view: EditorView) {
+			// Re-parent top-level content blocks into per-column flex
+			// wrappers AFTER each PM render, and tear them down BEFORE the
+			// next PM render. PM's DocViewDesc assumes node-desc DOMs are
+			// direct children of view.dom — if it ever calls insertBefore /
+			// removeChild on a node that's currently inside our wrapper,
+			// it throws DOMException. Monkey-patching `updateStateInner` is
+			// the only hook that runs synchronously BEFORE PM's DOM diff
+			// phase; both `view.update(props)` (TipTap reconfigure) and
+			// `view.updateState(state)` (transactions) flow through it.
+			// The plugin's update() callback below runs AFTER.
+			type PrivateView = {
+				updateStateInner: (state: EditorState, prevProps: unknown) => void;
+				domObserver?: { stop: () => void; start: () => void };
+			};
+			const privateView = view as unknown as PrivateView;
+			const origUpdateStateInner = privateView.updateStateInner.bind(view);
+			const patched = (state: EditorState, prevProps: unknown) => {
+				// Pause the DOM mutation observer while we tear our
+				// wrappers down — otherwise PM's DOMObserver may try to
+				// re-parse the resulting `childList` mutations as user
+				// input. PM versions without `domObserver` simply skip
+				// the pause (graceful fallback).
+				const obs = privateView.domObserver;
+				obs?.stop();
+				try {
+					unwrapColumns(view.dom);
+				} finally {
+					obs?.start();
+				}
+				origUpdateStateInner(state, prevProps);
+			};
+			privateView.updateStateInner = patched;
+
+			const applyWrap = () => {
+				const enabled = options.enabled?.() ?? true;
+				const s = hrSplitPluginKey.getState(view.state);
+				if (!s || !enabled || s.activeOrdinals.size === 0) return;
+				const { groups } = buildLayout(view.state.doc, s.activeOrdinals, enabled);
+				const obs = privateView.domObserver;
+				obs?.stop();
+				try {
+					wrapColumns(view.dom, groups);
+				} finally {
+					obs?.start();
+				}
+			};
+
+			// Initial render — PM has already rendered the DOM by the time
+			// view() is invoked, but no plugin update() has fired yet.
+			applyWrap();
+
+			return {
+				update(_view: EditorView, _prevState: EditorState) {
+					// PM has just re-rendered view.dom (the patched
+					// updateStateInner above unwrapped before the diff).
+					// Re-wrap to match the new doc + active set.
+					applyWrap();
+				},
+				destroy() {
+					const obs = privateView.domObserver;
+					obs?.stop();
+					try {
+						unwrapColumns(view.dom);
+					} finally {
+						obs?.start();
+					}
+					privateView.updateStateInner = origUpdateStateInner;
+				}
+			};
 		}
 	});
 }
