@@ -713,3 +713,64 @@ describe('parseTerminalNote — pinned section', () => {
 		expect(out?.pinneds).toEqual(new Map());
 	});
 });
+
+describe('parseTerminalNote — spectate', () => {
+	it('parses spectate: <session> alone', () => {
+		const r = parseTerminalNote(doc('Title', 'ssh://you@desktop', 'spectate: main'));
+		expect(r).toMatchObject({
+			host: 'desktop',
+			user: 'you',
+			spectate: 'main',
+			bridge: undefined
+		});
+	});
+
+	it('parses bridge: + spectate: together (bridge then spectate)', () => {
+		const r = parseTerminalNote(
+			doc('Title', 'ssh://you@desktop', 'bridge: wss://b/ws', 'spectate: main')
+		);
+		expect(r).toMatchObject({
+			host: 'desktop',
+			bridge: 'wss://b/ws',
+			spectate: 'main'
+		});
+	});
+
+	it('parses spectate: before bridge: (order-agnostic)', () => {
+		const r = parseTerminalNote(
+			doc('Title', 'ssh://you@desktop', 'spectate: main', 'bridge: wss://b/ws')
+		);
+		expect(r).toMatchObject({
+			host: 'desktop',
+			bridge: 'wss://b/ws',
+			spectate: 'main'
+		});
+	});
+
+	it('allows session names with dots and hyphens', () => {
+		const r = parseTerminalNote(doc('Title', 'ssh://localhost', 'spectate: dev-1.workspace'));
+		expect(r?.spectate).toBe('dev-1.workspace');
+	});
+
+	it('rejects unsafe session names (whitespace)', () => {
+		const r = parseTerminalNote(doc('Title', 'ssh://localhost', 'spectate: bad name'));
+		expect(r).toBeNull();
+	});
+
+	it('rejects unsafe session names (shell metachar)', () => {
+		const r = parseTerminalNote(doc('Title', 'ssh://localhost', 'spectate: a;b'));
+		expect(r).toBeNull();
+	});
+
+	it('rejects duplicate spectate: lines', () => {
+		const r = parseTerminalNote(
+			doc('Title', 'ssh://localhost', 'spectate: a', 'spectate: b')
+		);
+		expect(r).toBeNull();
+	});
+
+	it('regular ssh-only note has spectate: undefined', () => {
+		const r = parseTerminalNote(doc('Title', 'ssh://localhost'));
+		expect(r?.spectate).toBeUndefined();
+	});
+});

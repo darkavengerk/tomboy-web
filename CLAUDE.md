@@ -435,13 +435,23 @@ Rules:
 See the **`tomboy-terminal`** skill for the WS protocol, Bearer-token auth,
 SSH spawn modes, WOL host map, the rootless Podman + Quadlet deployment,
 SELinux + user-namespace constraints, OSC 133 capture, tmux-window-scoped
-history buckets, and `connect:` auto-run gating.
+history buckets, `connect:` auto-run gating, and the **`tmux -CC` spectator
+mode** (read-only active-pane follow for mobile).
 
-A note matched as terminal-note when body = **1–2 metadata paragraphs (ssh
-URL + optional `bridge:`) + optional `connect:` / `pinned:` / `history:`
-sections** (with optional `pinned:tmux:@<id>:` / `history:tmux:@<id>:`
-per-window variants). Any 3rd free paragraph or unrecognized block falls
-back to a regular note — that's how the user opts out.
+A note matched as terminal-note when body = **1–3 metadata paragraphs (ssh
+URL + optional `bridge:` + optional `spectate:`, any order) + optional
+`connect:` / `pinned:` / `history:` sections** (with optional
+`pinned:tmux:@<id>:` / `history:tmux:@<id>:` per-window variants). Any 4th
+free paragraph or unrecognized block falls back to a regular note — that's
+how the user opts out.
+
+Spectator (mobile-side observer of the desktop's currently-focused tmux
+pane): add `spectate: <session>` next to `ssh://`. Bridge attaches
+`tmux -CC` and forwards only the active pane; switching panes on the
+desktop re-seeds via `capture-pane -epJ`. Read-only — input is suppressed
+end-to-end (client doesn't wire `term.onData`; bridge ignores `data`/`resize`
+frames). Recommend the target install `bridge/deploy/tomboy-spectator.tmux`
+(sets `window-size latest`) so the desktop's interactive size always wins.
 
 Quick map:
 
@@ -453,8 +463,9 @@ Quick map:
   `parseTerminalNote(editorContent)` at load and after every IDB reload.
 - `routes/settings/+page.svelte` (config tab → "터미널 브릿지") — default
   bridge URL + login form.
-- `bridge/` — `src/{server,auth,pty,hosts,wol}.ts`, `Containerfile`,
-  `deploy/term-bridge.container` (Quadlet), `deploy/Caddyfile`.
+- `bridge/` — `src/{server,auth,pty,hosts,wol,tmuxControlClient,spectatorSession}.ts`,
+  `Containerfile`, `deploy/term-bridge.container` (Quadlet),
+  `deploy/Caddyfile`, `deploy/tomboy-spectator.tmux`.
 
 Cross-cutting invariants worth caching (full set lives in the skill):
 
@@ -466,10 +477,14 @@ Cross-cutting invariants worth caching (full set lives in the skill):
   `password:` field to the note format.
 - **Terminal output is ephemeral** — never written back to `xmlContent`.
 - **WOL config lives in `BRIDGE_HOSTS_FILE` (`hosts.json`), never in the
-  note.** Note format stays `ssh://[user@]host[:port]` + optional `bridge:`.
+  note.** Note format stays `ssh://[user@]host[:port]` + optional `bridge:`
+  + optional `spectate:`.
 - **`ssh://localhost` ≠ `ssh://user@localhost`** — the former is the
   in-container login-shell path, the latter forces ssh through host sshd.
   The containerized deployment relies on the latter.
+- **Spectator mode is auth-equivalent to shell mode** — same Bearer + same
+  ssh credentials. No share-token / discovery channel was added. A
+  spectator note is just a regular note synced via Dropbox/Firebase.
 
 ## 리마커블 일기 OCR 파이프라인 (pipeline/)
 

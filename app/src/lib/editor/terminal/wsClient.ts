@@ -1,20 +1,41 @@
 export type WsClientStatus = 'connecting' | 'open' | 'closed' | 'error';
 
+export interface PaneSwitchInfo {
+	paneId: string;
+	cols: number;
+	rows: number;
+	altScreen: boolean;
+}
+
 interface ClientOptions {
 	bridge: string;
 	target: string;
 	token: string;
 	cols: number;
 	rows: number;
+	/**
+	 * Spectator-mode connect: when set, the bridge will attach `tmux -CC` to
+	 * this session on the target and stream only the active pane's bytes.
+	 * The client must NOT call `send()` / `resize()` in this mode.
+	 */
+	spectate?: string;
 	onData: (chunk: string) => void;
 	onStatus: (status: WsClientStatus, info?: { code?: number; message?: string }) => void;
+	/** Called when the bridge switches the spectated pane (focus follow). */
+	onPaneSwitch?: (info: PaneSwitchInfo) => void;
+	/** Called when the spectated pane's size changes in place. */
+	onPaneResize?: (info: { cols: number; rows: number }) => void;
 }
 
 interface ServerMsg {
-	type: 'data' | 'exit' | 'error' | 'ready';
+	type: 'data' | 'exit' | 'error' | 'ready' | 'pane-switch' | 'pane-resize';
 	d?: string;
 	code?: number;
 	message?: string;
+	paneId?: string;
+	cols?: number;
+	rows?: number;
+	altScreen?: boolean;
 }
 
 /**
@@ -73,15 +94,18 @@ export class TerminalWsClient {
 		this.ws = ws;
 
 		ws.onopen = () => {
-			ws.send(
-				JSON.stringify({
-					type: 'connect',
-					target: this.opts.target,
-					token: this.opts.token,
-					cols: this.opts.cols,
-					rows: this.opts.rows
-				})
-			);
+			const connectMsg: Record<string, unknown> = {
+				type: 'connect',
+				target: this.opts.target,
+				token: this.opts.token,
+				cols: this.opts.cols,
+				rows: this.opts.rows
+			};
+			if (this.opts.spectate) {
+				connectMsg.mode = 'spectate';
+				connectMsg.session = this.opts.spectate;
+			}
+			ws.send(JSON.stringify(connectMsg));
 			// Defer 'open' until the bridge confirms PTY ready (see READY_FALLBACK_MS
 			// for older-bridge fallback).
 			this.readyFallbackTimer = setTimeout(() => {
@@ -101,6 +125,28 @@ export class TerminalWsClient {
 				this.markOpen();
 			} else if (msg.type === 'data' && typeof msg.d === 'string') {
 				this.opts.onData(msg.d);
+			} else if (msg.type === 'pane-switch') {
+				if (
+					this.opts.onPaneSwitch &&
+					typeof msg.paneId === 'string' &&
+					typeof msg.cols === 'number' &&
+					typeof msg.rows === 'number'
+				) {
+					this.opts.onPaneSwitch({
+						paneId: msg.paneId,
+						cols: msg.cols,
+						rows: msg.rows,
+						altScreen: !!msg.altScreen
+					});
+				}
+			} else if (msg.type === 'pane-resize') {
+				if (
+					this.opts.onPaneResize &&
+					typeof msg.cols === 'number' &&
+					typeof msg.rows === 'number'
+				) {
+					this.opts.onPaneResize({ cols: msg.cols, rows: msg.rows });
+				}
 			} else if (msg.type === 'exit') {
 				this.opts.onStatus('closed', { code: msg.code });
 			} else if (msg.type === 'error') {

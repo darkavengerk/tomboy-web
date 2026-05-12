@@ -50,6 +50,15 @@
 	let shellHintDismissed = $state(false);
 	let shellHintVisible = $state(false);
 
+	// Spectator mode: read-only view of the active tmux pane on the target.
+	// Pane id and size are reported by the bridge on first attach + every
+	// focus change; rendered in the header so the user knows what they're
+	// watching.
+	const isSpectator = $derived(!!spec.spectate);
+	let spectatorPaneId: string | null = $state(null);
+	let spectatorCols = $state(0);
+	let spectatorRows = $state(0);
+
 	let term: Terminal | null = null;
 	let fit: FitAddon | null = null;
 	let client: TerminalWsClient | null = null;
@@ -177,6 +186,11 @@
 			convertEol: false
 		});
 
+		// Spectator mode skips OSC 133 capture, history wiring, the
+		// shell-integration banner, and FitAddon — bridge dictates pane size
+		// via pane-switch frames, and no input is sent.
+		if (!isSpectator) {
+
 		const osc = new Osc133State();
 		const blocklist: string[] = await getTerminalHistoryBlocklist();
 
@@ -221,20 +235,26 @@
 		onPageHide = () => { void flushTerminalHistoryNow(guid); };
 		window.addEventListener('pagehide', onPageHide);
 
-		fit = new FitAddon();
-		term.loadAddon(fit);
+		} // end !isSpectator gate for OSC + history + shell-banner setup
+
+		if (!isSpectator) {
+			fit = new FitAddon();
+			term.loadAddon(fit);
+		}
 		if (xtermContainer) {
 			term.open(xtermContainer);
-			// Wait for the real font to load before measuring — otherwise
-			// cell width is computed against the fallback (often a
-			// proportional font) and every glyph gets ~one extra cell of
-			// trailing space.
-			const refit = () => { try { fit?.fit(); } catch { /* ignore */ } };
-			refit();
-			void document.fonts.ready.then(() => {
+			if (!isSpectator) {
+				// Wait for the real font to load before measuring — otherwise
+				// cell width is computed against the fallback (often a
+				// proportional font) and every glyph gets ~one extra cell of
+				// trailing space.
+				const refit = () => { try { fit?.fit(); } catch { /* ignore */ } };
 				refit();
-				if (term && client) client.resize(term.cols, term.rows);
-			});
+				void document.fonts.ready.then(() => {
+					refit();
+					if (term && client) client.resize(term.cols, term.rows);
+				});
+			}
 		}
 
 		client = new TerminalWsClient({
@@ -243,6 +263,7 @@
 			token,
 			cols: term.cols,
 			rows: term.rows,
+			spectate: spec.spectate,
 			onData: (chunk) => term?.write(chunk),
 			onStatus: (s, info) => {
 				status = s;
@@ -250,29 +271,43 @@
 				else if (s === 'closed' && info?.code !== undefined) statusMessage = `종료됨 (code ${info.code})`;
 				else if (s === 'open') statusMessage = '';
 				else if (s === 'connecting') statusMessage = '';
-				if (s === 'open' && !connectFired) {
+				// Auto-run connect: script only in shell mode.
+				if (!isSpectator && s === 'open' && !connectFired) {
 					connectFired = true;
 					void runConnectScript(spec.connect, (line) => client?.send(line));
 				}
+			},
+			onPaneSwitch: ({ paneId, cols, rows }) => {
+				spectatorPaneId = paneId;
+				spectatorCols = cols;
+				spectatorRows = rows;
+				try { term?.resize(cols, rows); } catch { /* ignore */ }
+			},
+			onPaneResize: ({ cols, rows }) => {
+				spectatorCols = cols;
+				spectatorRows = rows;
+				try { term?.resize(cols, rows); } catch { /* ignore */ }
 			}
 		});
 		client.connect();
 
-		bannerTimer = setTimeout(() => {
-			if (!shellIntegrationDetected && !shellHintDismissed) {
-				shellHintVisible = true;
+		if (!isSpectator) {
+			bannerTimer = setTimeout(() => {
+				if (!shellIntegrationDetected && !shellHintDismissed) {
+					shellHintVisible = true;
+				}
+			}, 30_000);
+
+			term.onData((data) => client?.send(data));
+			term.onResize(({ cols, rows }) => client?.resize(cols, rows));
+
+			// Refit on container size changes (window resize, panel toggles).
+			if (xtermContainer) {
+				resizeObserver = new ResizeObserver(() => {
+					try { fit?.fit(); } catch { /* ignore */ }
+				});
+				resizeObserver.observe(xtermContainer);
 			}
-		}, 30_000);
-
-		term.onData((data) => client?.send(data));
-		term.onResize(({ cols, rows }) => client?.resize(cols, rows));
-
-		// Refit on container size changes (window resize, panel toggles).
-		if (xtermContainer) {
-			resizeObserver = new ResizeObserver(() => {
-				try { fit?.fit(); } catch { /* ignore */ }
-			});
-			resizeObserver.observe(xtermContainer);
 		}
 	});
 
@@ -317,39 +352,58 @@
 			token: resolvedToken,
 			cols: term?.cols ?? 80,
 			rows: term?.rows ?? 24,
+			spectate: spec.spectate,
 			onData: (chunk) => term?.write(chunk),
 			onStatus: (s, info) => {
 				status = s;
 				if (info?.message) statusMessage = info.message;
 				else if (s === 'closed' && info?.code !== undefined) statusMessage = `종료됨 (code ${info.code})`;
 				else statusMessage = '';
-				if (s === 'open' && !connectFired) {
+				if (!isSpectator && s === 'open' && !connectFired) {
 					connectFired = true;
 					void runConnectScript(spec.connect, (line) => client?.send(line));
 				}
+			},
+			onPaneSwitch: ({ paneId, cols, rows }) => {
+				spectatorPaneId = paneId;
+				spectatorCols = cols;
+				spectatorRows = rows;
+				try { term?.resize(cols, rows); } catch { /* ignore */ }
+			},
+			onPaneResize: ({ cols, rows }) => {
+				spectatorCols = cols;
+				spectatorRows = rows;
+				try { term?.resize(cols, rows); } catch { /* ignore */ }
 			}
 		});
 		client.connect();
 	}
 </script>
 
-<div class="terminal-page" class:panel-open={panelOpen} class:mobile={isMobile}>
+<div class="terminal-page" class:panel-open={panelOpen} class:mobile={isMobile} class:spectator={isSpectator}>
 	<div class="terminal-header">
 		<div class="meta">
 			<div class="line"><span class="label">target</span><code>{spec.target}</code></div>
-			{#if spec.bridge}
+			{#if isSpectator}
+				<div class="line">
+					<span class="label">관전</span>
+					<code>tmux {spec.spectate}{spectatorPaneId ? ` · ${spectatorPaneId}` : ''}{spectatorCols ? ` · ${spectatorCols}×${spectatorRows}` : ''}</code>
+				</div>
+			{:else if spec.bridge}
 				<div class="line"><span class="label">bridge</span><code>{spec.bridge}</code></div>
 			{:else if resolvedBridge}
 				<div class="line"><span class="label">bridge</span><code class="muted">{resolvedBridge} (기본값)</code></div>
 			{/if}
 		</div>
 		<div class="actions">
-			<button type="button" class="toggle" onclick={togglePanel}>
-				히스토리 ({currentItems.length})
-			</button>
+			{#if !isSpectator}
+				<button type="button" class="toggle" onclick={togglePanel}>
+					히스토리 ({currentItems.length})
+				</button>
+			{/if}
 			<span class="status status-{status}">
 				{#if status === 'connecting'}연결 중…
-				{:else if status === 'open'}연결됨
+				{:else if status === 'open'}{isSpectator ? '관전 중' : '연결됨'}
 				{:else if status === 'closed'}끊김
 				{:else}오류{/if}
 			</span>
@@ -372,7 +426,7 @@
 
 	<div class="body">
 		<div class="xterm-host" bind:this={xtermContainer}></div>
-		{#if panelOpen}
+		{#if panelOpen && !isSpectator}
 			<HistoryPanel
 				count={currentItems.length}
 				items={currentItems}

@@ -7,6 +7,17 @@ export interface TerminalNoteSpec {
 	user?: string;
 	bridge?: string;
 	/**
+	 * Spectator mode: when set, this note is a read-only view of the active
+	 * pane of the named tmux session on the target. The bridge attaches via
+	 * `tmux -CC` and forwards only the currently-focused pane's bytes,
+	 * re-seeding on pane/window switches. No `connect:` / `pinned:` /
+	 * `history:` interaction applies — all input is suppressed.
+	 *
+	 * Format in the note: a paragraph `spectate: <session-name>` placed
+	 * alongside the `ssh://` / `bridge:` metadata.
+	 */
+	spectate?: string;
+	/**
 	 * Histories keyed by bucket. Key `''` is the non-tmux bucket; keys of the
 	 * form `tmux:<window_id>` (e.g. `tmux:@1`) are per-tmux-window buckets.
 	 */
@@ -32,6 +43,7 @@ export interface TerminalNoteSpec {
 
 const SSH_RE = /^ssh:\/\/(?:([^@\s/]+)@)?([^:\s/]+)(?::(\d{1,5}))?\/?\s*$/;
 const BRIDGE_RE = /^bridge:\s*(wss?:\/\/\S+)\s*$/;
+const SPECTATE_RE = /^spectate:\s*([A-Za-z0-9_\-./@:]+)\s*$/;
 export const HISTORY_HEADER_RE = /^history:(?:tmux:([A-Za-z0-9@$:_-]+):)?$/;
 /** Matches exactly `connect:` — no tmux variants allowed. */
 export const CONNECT_HEADER_RE = /^connect:$/;
@@ -61,7 +73,7 @@ export function parseTerminalNote(doc: JSONContent | null | undefined): Terminal
 		if (HISTORY_HEADER_RE.test(trimmed)) break;
 		if (CONNECT_HEADER_RE.test(trimmed)) break;
 		if (PINNED_HEADER_RE.test(trimmed)) break;
-		if (meta.length >= 2) return null;
+		if (meta.length >= 3) return null;
 		meta.push(b);
 		i++;
 	}
@@ -73,13 +85,26 @@ export function parseTerminalNote(doc: JSONContent | null | undefined): Terminal
 	const sshMatch = SSH_RE.exec(line1);
 	if (!sshMatch) return null;
 
+	// Lines 2..3 (if present) are bridge: or spectate:, in any order, each at
+	// most once. Any other content makes the note fall back to a regular note.
 	let bridge: string | undefined;
-	if (meta.length === 2) {
-		const line2 = paragraphText(meta[1]);
-		if (line2 === null) return null;
-		const bridgeMatch = BRIDGE_RE.exec(line2);
-		if (!bridgeMatch) return null;
-		bridge = bridgeMatch[1];
+	let spectate: string | undefined;
+	for (let k = 1; k < meta.length; k++) {
+		const text = paragraphText(meta[k]);
+		if (text === null) return null;
+		const bridgeMatch = BRIDGE_RE.exec(text);
+		if (bridgeMatch) {
+			if (bridge !== undefined) return null;
+			bridge = bridgeMatch[1];
+			continue;
+		}
+		const spectateMatch = SPECTATE_RE.exec(text);
+		if (spectateMatch) {
+			if (spectate !== undefined) return null;
+			spectate = spectateMatch[1];
+			continue;
+		}
+		return null;
 	}
 
 	const user = sshMatch[1] || undefined;
@@ -159,6 +184,7 @@ export function parseTerminalNote(doc: JSONContent | null | undefined): Terminal
 		port,
 		user,
 		bridge,
+		spectate,
 		histories,
 		history,
 		connect: connect ?? [],

@@ -46,12 +46,23 @@ up to 5 seconds for a valid `connect` frame; otherwise it closes.
 {"type": "resize",  "cols": 100, "rows": 30}
 ```
 
+Spectator-mode connect frame (read-only view of an active tmux pane):
+
+```jsonc
+{"type": "connect", "target": "ssh://user@host:22", "token": "<...>",
+ "mode": "spectate", "session": "main"}
+```
+
 Server messages:
 
 ```jsonc
 {"type": "data",  "d": "...stdout/stderr..."}
 {"type": "exit",  "code": 0}
 {"type": "error", "message": "..."}
+
+// spectator mode only:
+{"type": "pane-switch", "paneId": "%12", "cols": 200, "rows": 50, "altScreen": true}
+{"type": "pane-resize", "cols": 220, "rows": 50}
 ```
 
 ---
@@ -192,6 +203,50 @@ chmod 600 ~/.ssh/authorized_keys
 (`ssh://localhost` without a user is still useful when running the bridge
 **natively** under your own account — without a container — where the
 bridge process already IS your user.)
+
+---
+
+## Spectator mode (mobile观전)
+
+A "spectator" note watches the **currently-focused pane** of a tmux session
+on the target, with no input — useful for kicking off a long task on the
+desktop (e.g. claude code) and watching it from a phone.
+
+Note format:
+
+```
+ssh://you@desktop
+spectate: main
+```
+
+Bridge: same auth, same ssh credentials. The bridge ssh's into the target
+and runs `tmux -CC attach -t <session>` (control mode). When you switch
+panes / windows on the desktop, the bridge re-seeds the spectator's screen
+via `capture-pane -epJ` for the new pane and resumes streaming its output.
+
+### Target-side tmux configuration
+
+To keep the desktop's working size from being shrunk by a small spectator
+client, set on the target:
+
+```tmux
+set -g window-size latest
+set -g focus-events on
+set -g aggressive-resize on
+```
+
+A drop-in plugin lives in [`deploy/tomboy-spectator.tmux`](deploy/tomboy-spectator.tmux)
+that sets all three. Install via tpm or `run-shell /path/to/tomboy-spectator.tmux`
+in your `.tmux.conf`.
+
+### Requirements
+
+- tmux 2.1+ on the target (control mode).
+- The note's `ssh://user@host` must reach a real shell account that
+  attaches to a running tmux server (same OS user that owns the session
+  socket).
+- The named session must already exist on attach — the bridge does NOT
+  `new-session` to spectate.
 
 ---
 

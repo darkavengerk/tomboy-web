@@ -10,6 +10,7 @@ import { parseSshTarget, spawnForTarget, type SshTarget } from './pty.js';
 import { loadHostsFile, lookupWolTarget, type WolEntry } from './hosts.js';
 import { probePort, sendMagicPacket, waitForPort } from './wol.js';
 import { handleLlmChat } from './llm.js';
+import { SpectatorSession } from './spectatorSession.js';
 
 const PORT = Number(process.env.BRIDGE_PORT || 3000);
 const PASSWORD = requireEnv('BRIDGE_PASSWORD');
@@ -139,10 +140,13 @@ interface ClientMsg {
 	cols?: number;
 	rows?: number;
 	d?: string;
+	mode?: 'shell' | 'spectate';
+	session?: string;
 }
 
 function handleWs(ws: WebSocket): void {
 	let pty: ReturnType<typeof spawnForTarget> | null = null;
+	let spectator: SpectatorSession | null = null;
 	let connected = false;
 	const abortCtrl = new AbortController();
 	const authTimer = setTimeout(() => {
@@ -177,16 +181,30 @@ function handleWs(ws: WebSocket): void {
 				ws.close(1008, 'invalid target');
 				return;
 			}
-			const cols = clampSize(msg.cols, 80);
-			const rows = clampSize(msg.rows, 24);
 			// Mark connected early so duplicate `connect` frames during WOL
 			// wait can't re-enter this branch.
 			connected = true;
 			clearTimeout(authTimer);
+
+			if (msg.mode === 'spectate') {
+				const session = typeof msg.session === 'string' ? msg.session : '';
+				if (!session) {
+					send({ type: 'error', message: 'missing session' });
+					ws.close(1008, 'missing session');
+					return;
+				}
+				void startSpectator(target, session);
+				return;
+			}
+
+			const cols = clampSize(msg.cols, 80);
+			const rows = clampSize(msg.rows, 24);
 			void startSession(target, cols, rows);
 			return;
 		}
 
+		// Spectator mode is strictly read-only: drop any subsequent data/resize.
+		if (spectator) return;
 		if (!pty) return;
 
 		if (msg.type === 'data') {
@@ -212,7 +230,58 @@ function handleWs(ws: WebSocket): void {
 			try { pty.kill(); } catch { /* ignore */ }
 			pty = null;
 		}
+		if (spectator) {
+			try { spectator.close(); } catch { /* ignore */ }
+			spectator = null;
+		}
 	});
+
+	async function startSpectator(target: SshTarget, session: string): Promise<void> {
+		const wol = lookupWolTarget(target.host);
+		console.log(
+			`[term-bridge] spectate target=${target.user ?? ''}@${target.host}:${target.port ?? 22} session=${session}`
+		);
+		if (wol) {
+			const ok = await wakeIfNeeded(target, wol, abortCtrl.signal, send);
+			if (!ok) {
+				if (!abortCtrl.signal.aborted) {
+					send({ type: 'error', message: 'wake_timeout' });
+					try { ws.close(1011, 'wake timeout'); } catch { /* ignore */ }
+				}
+				return;
+			}
+		}
+		if (abortCtrl.signal.aborted) return;
+		try {
+			spectator = new SpectatorSession({
+				target,
+				session,
+				callbacks: {
+					paneSwitch: (info) => send({ type: 'pane-switch', ...info }),
+					data: (d) => send({ type: 'data', d }),
+					paneResize: (info) => send({ type: 'pane-resize', ...info }),
+					error: (message) => send({ type: 'error', message }),
+					exit: (reason) => {
+						send({ type: 'exit', code: 0, reason });
+						try { ws.close(1000, reason ?? 'spectator exit'); } catch { /* ignore */ }
+					}
+				}
+			});
+		} catch (err) {
+			send({ type: 'error', message: `spectator spawn failed: ${(err as Error).message}` });
+			try { ws.close(1011, 'spectator spawn failed'); } catch { /* ignore */ }
+			return;
+		}
+		if (abortCtrl.signal.aborted) {
+			spectator.close();
+			spectator = null;
+			return;
+		}
+		// PTY-ready signal — clients gate their UI on this. For spectator mode
+		// we still send `ready` so the wsClient marks the session 'open'; the
+		// first pane-switch + data frames arrive immediately after.
+		send({ type: 'ready' });
+	}
 
 	async function startSession(target: SshTarget, cols: number, rows: number): Promise<void> {
 		const wol = lookupWolTarget(target.host);
