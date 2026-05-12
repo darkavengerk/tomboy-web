@@ -4,48 +4,61 @@
     {
       "id": 10,
       "subject": "Task 1: 노트 grammar 파서 + 자동 보완 기본값",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** ProseMirror editor JSON 을 받아 LlmNoteSpec | null 을 리턴하는 pure 파서 + 기본값 상수.\n\n**Files:**\n- Create: app/src/lib/llmNote/defaults.ts\n- Create: app/src/lib/llmNote/parseLlmNote.ts\n- Test: app/tests/unit/llmNote/parseLlmNote.test.ts\n\n**Verify:** cd app && npm test -- llmNote/parseLlmNote\n\n```json:metadata\n{\"files\":[\"app/src/lib/llmNote/defaults.ts\",\"app/src/lib/llmNote/parseLlmNote.ts\",\"app/tests/unit/llmNote/parseLlmNote.test.ts\"],\"verifyCommand\":\"cd app && npm test -- llmNote/parseLlmNote\",\"acceptanceCriteria\":[\"defaults.ts 상수 export\",\"파서가 시그니처 두 위치 인식\",\"헤더 멀티라인/silent drop\",\"turn Q/A 추출\",\"trailingEmptyUserTurn 플래그\"]}\n```"
     },
     {
       "id": 11,
       "subject": "Task 2: chat request 빌더",
-      "status": "pending",
-      "blockedBy": [10],
+      "status": "completed",
+      "blockedBy": [
+        10
+      ],
       "description": "**Goal:** LlmNoteSpec → /llm/chat body 변환.\n\n**Files:**\n- Create: app/src/lib/llmNote/buildChatRequest.ts\n- Test: app/tests/unit/llmNote/buildChatRequest.test.ts\n\n**Verify:** cd app && npm test -- llmNote/buildChatRequest\n\n```json:metadata\n{\"files\":[\"app/src/lib/llmNote/buildChatRequest.ts\",\"app/tests/unit/llmNote/buildChatRequest.test.ts\"],\"verifyCommand\":\"cd app && npm test -- llmNote/buildChatRequest\",\"acceptanceCriteria\":[\"system prepend\",\"빈 system omit\",\"undefined options omit\",\"model pass-through\"]}\n```"
     },
     {
       "id": 12,
       "subject": "Task 3: ProseMirror 자동 헤더 보완 plugin",
-      "status": "pending",
-      "blockedBy": [10],
+      "status": "completed",
+      "blockedBy": [
+        10
+      ],
       "description": "**Goal:** llmNotePlugin — 시그니처 막 완성 + mount 시 헤더 0개 → 자동 보완. autoWeekday 패턴.\n\n**Files:**\n- Create: app/src/lib/editor/llmNote/llmNotePlugin.ts\n- Modify: app/src/lib/editor/TomboyEditor.svelte\n- Test: app/tests/unit/editor/llmNotePlugin.test.ts\n\n**Verify:** cd app && npm test -- editor/llmNotePlugin\n\n```json:metadata\n{\"files\":[\"app/src/lib/editor/llmNote/llmNotePlugin.ts\",\"app/src/lib/editor/TomboyEditor.svelte\",\"app/tests/unit/editor/llmNotePlugin.test.ts\"],\"verifyCommand\":\"cd app && npm test -- editor/llmNotePlugin\",\"acceptanceCriteria\":[\"시그니처 타이핑 후 자동 보완\",\"mount rescan headers=0 시 보완\",\"headers>0 이면 보완 안 함\",\"시그니처 없으면 NO-OP\",\"TomboyEditor 등록\"]}\n```"
     },
     {
       "id": 13,
       "subject": "Task 4: bridge /llm/chat endpoint",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** bridge/ 에 /llm/chat HTTP endpoint 추가 — Bearer auth → Ollama /api/chat NDJSON 패스스루.\n\n**Files:**\n- Create: bridge/src/llm.ts\n- Modify: bridge/src/server.ts\n- Modify: bridge/deploy/term-bridge.container\n\n**Verify:** cd bridge && npm run build\n\n```json:metadata\n{\"files\":[\"bridge/src/llm.ts\",\"bridge/src/server.ts\",\"bridge/deploy/term-bridge.container\"],\"verifyCommand\":\"cd bridge && npm run build\",\"acceptanceCriteria\":[\"Bearer auth\",\"에러 매핑 (401/400/404/503/502)\",\"NDJSON 패스스루\",\"abort 전파\",\"로그 형식\",\"admin endpoint 차단\"]}\n```"
     },
     {
       "id": 14,
       "subject": "Task 5: sendChat 스트리밍 클라이언트",
-      "status": "pending",
-      "blockedBy": [11],
+      "status": "completed",
+      "blockedBy": [
+        11
+      ],
       "description": "**Goal:** fetch + ReadableStream + AbortController. NDJSON 한 줄씩 파싱.\n\n**Files:**\n- Create: app/src/lib/llmNote/sendChat.ts\n- Test: app/tests/unit/llmNote/sendChat.test.ts\n\n**Verify:** cd app && npm test -- llmNote/sendChat\n\n```json:metadata\n{\"files\":[\"app/src/lib/llmNote/sendChat.ts\",\"app/tests/unit/llmNote/sendChat.test.ts\"],\"verifyCommand\":\"cd app && npm test -- llmNote/sendChat\",\"acceptanceCriteria\":[\"NDJSON onToken\",\"LlmChatError 분류\",\"abort 처리\",\"done resolve\"]}\n```"
     },
     {
       "id": 15,
       "subject": "Task 6: LlmSendBar Svelte 컴포넌트",
-      "status": "pending",
-      "blockedBy": [10, 11, 12, 14],
+      "status": "completed",
+      "blockedBy": [
+        10,
+        11,
+        12,
+        14
+      ],
       "description": "**Goal:** 우하단 floating bar — [보내기]/[중지], 토큰 카운터, editor lock, 에러 처리.\n\n**Files:**\n- Create: app/src/lib/editor/llmNote/LlmSendBar.svelte\n\n**Verify:** cd app && npm run check\n\n```json:metadata\n{\"files\":[\"app/src/lib/editor/llmNote/LlmSendBar.svelte\"],\"verifyCommand\":\"cd app && npm run check\",\"acceptanceCriteria\":[\"parseLlmNote 결과 watch\",\"Ctrl+Enter + 버튼\",\"disable 조건\",\"editor lock\",\"토큰 append\",\"abort 처리\",\"에러별 line + toast\",\"unmount cleanup\"]}\n```"
     },
     {
       "id": 16,
       "subject": "Task 7: 노트 view 통합 + 설정 라벨",
-      "status": "pending",
-      "blockedBy": [15],
+      "status": "completed",
+      "blockedBy": [
+        15
+      ],
       "description": "**Goal:** 모바일/데스크탑 노트 view 가 LlmSendBar 마운트. 설정 라벨 1줄.\n\n**Files:**\n- Modify: app/src/routes/note/[id]/+page.svelte\n- Modify: app/src/lib/desktop/NoteWindow.svelte\n- Modify: app/src/routes/settings/+page.svelte\n\n**Verify:** cd app && npm run check\n\n```json:metadata\n{\"files\":[\"app/src/routes/note/[id]/+page.svelte\",\"app/src/lib/desktop/NoteWindow.svelte\",\"app/src/routes/settings/+page.svelte\"],\"verifyCommand\":\"cd app && npm run check\",\"acceptanceCriteria\":[\"mobile [보내기] 마운트\",\"desktop [보내기] 마운트\",\"설정 라벨 변경\",\"editor 인스턴스 노출\"]}\n```"
     },
     {
@@ -58,9 +71,13 @@
       "id": 18,
       "subject": "Task 9: 운영 배포 + 수동 smoke 검증",
       "status": "pending",
-      "blockedBy": [13, 16, 17],
+      "blockedBy": [
+        13,
+        16,
+        17
+      ],
       "description": "**Goal:** Ollama 설치 + 모델 pull + 운영 systemd → bridge 재배포 → diary unit 재로드 → spec §8 13-step PWA smoke.\n\n**Files:** (코드 변경 없음 — 운영 단계)\n\n**Verify:** Manual checklist per plan Task 9.\n\n```json:metadata\n{\"files\":[],\"verifyCommand\":\"# Manual: see plan Task 9 steps 1-6\",\"acceptanceCriteria\":[\"Ollama 설치 + 모델 pull\",\"bridge 재배포\",\"curl smoke (NDJSON/401/404/admin차단)\",\"diary unit 재로드\",\"PWA 13-step smoke 통과\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-12"
+  "lastUpdated": "2026-05-12T06:27:09Z"
 }
