@@ -1109,10 +1109,17 @@
 	   bars between columns, and any STILL-inactive markers render as
 	   horizontal lines within their own column.
 
-	   When at least one marker is active, the plugin emits explicit
-	   `grid-row`/`grid-column` inline styles on every top-level child
-	   plus an inline `grid-template-columns` on the editor root so the
-	   number of columns adapts to the number of active dividers. */
+	   When at least one marker is active, the editor root becomes a CSS
+	   Grid with `grid-template-columns` alternating `1fr` (content) and
+	   `auto` (divider), AND `grid-template-rows: masonry`. Masonry packs
+	   each grid column independently along the masonry axis, so items in
+	   different columns do not share row heights — a tall image in one
+	   column no longer forces the other column's adjacent block to grow.
+
+	   Browser support note (2026-Q1): `grid-template-rows: masonry` is
+	   shipped in Firefox; Chromium and WebKit have not enabled it yet.
+	   On non-Firefox engines the rule is ignored and the layout falls
+	   back to the previous shared-row behaviour. */
 
 	.tomboy-editor :global(.tomboy-hr-marker) {
 		position: relative;
@@ -1162,26 +1169,25 @@
 		/* grid-template-columns is set via inline `style` attribute emitted
 		   by the plugin — it alternates `1fr` and `auto` based on how many
 		   markers are active. */
+		grid-template-rows: masonry;
 		column-gap: 12px;
 		row-gap: 0;
-		align-items: start;
 	}
 	.tomboy-editor :global(.tiptap.tomboy-hr-split-active > *) {
 		min-width: 0;
 	}
 	/* Active divider: vertical line in its assigned divider track. Same
 	   colour as the inactive horizontal line so the two states look like
-	   the same primitive rotated 90°. */
+	   the same primitive rotated 90°. Height is set inline by the plugin's
+	   view() hook to match the tallest content column — masonry has no
+	   defined track height along the masonry axis, so `align-self: stretch`
+	   is undefined and we measure at runtime. */
 	.tomboy-editor
 		:global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider) {
 		margin: 0;
 		min-height: 0;
 		width: 12px;
 		caret-color: transparent;
-		/* The grid container sets `align-items: start` so ordinary blocks
-		   sit at the top of their cell — but the divider spans multiple
-		   rows and must fill the full split-area height. Override per-item. */
-		align-self: stretch;
 	}
 	.tomboy-editor
 		:global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider::before) {

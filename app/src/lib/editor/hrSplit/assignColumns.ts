@@ -87,17 +87,29 @@ export interface GridStyleOutput {
 }
 
 /**
- * Translate `Placement[]` into CSS Grid coordinates.
+ * Translate `Placement[]` into CSS Grid coordinates for a **masonry**
+ * layout (`grid-template-rows: masonry` on the editor root).
+ *
+ * Masonry packs each grid column independently along the masonry axis,
+ * so items in different columns do NOT share a row height — a tall image
+ * in column 1 no longer forces column 2's adjacent block to grow. The
+ * spec disallows spanning the masonry axis, so we emit `grid-column`
+ * only (no `grid-row`).
  *
  * Track layout for N content columns: N content tracks (`1fr`) interleaved
  * with N-1 divider tracks (`auto`). Content column `c` lands at grid
- * track `2c - 1`; divider `k` at grid track `2k + 2`.
+ * track `2c - 1`; divider `k` at grid track `2k + 2`. Headers span all
+ * tracks via `grid-column: 1 / -1`; per the masonry spec, full-axis
+ * spanners act as breakpoints — content above them packs per-column up
+ * to that point, then the spanner sits across, then content below
+ * starts fresh per-column.
  *
- * Row layout:
- *   - Headers occupy rows 1..headerCount, spanning all columns.
- *   - Content blocks occupy rows starting at headerCount + 1, counting
- *     up independently within each column.
- *   - Dividers span the full content area: rows headerCount+1 .. headerCount+maxContentRows.
+ * Divider elements end up small at the top of their column track
+ * (intrinsic size only — `align-self: stretch` is undefined along the
+ * masonry axis). The hrSplit plugin's `view()` hook is responsible for
+ * sizing the divider visual to match the tallest content column at
+ * runtime (Firefox-only — masonry isn't shipped in Chromium/WebKit as
+ * of 2026-Q1).
  */
 export function computeGridStyles(
 	placements: ReadonlyArray<Placement>,
@@ -111,42 +123,12 @@ export function computeGridStyles(
 		};
 	}
 
-	const headerCount = placements.findIndex(p => p.role !== 'header');
-	const effHeader = headerCount < 0 ? placements.length : headerCount;
-
-	const rowCounts: number[] = new Array(totalColumns + 1).fill(0);
-	const rowOf: number[] = new Array(placements.length).fill(0);
-	const contentStartRow = effHeader + 1;
-
-	for (let i = 0; i < placements.length; i++) {
-		const p = placements[i];
-		if (p.role === 'header') {
-			rowOf[i] = i + 1;
-		} else if (p.role !== 'v-divider') {
-			rowCounts[p.col] += 1;
-			rowOf[i] = contentStartRow + rowCounts[p.col] - 1;
-		}
-	}
-
-	let maxContentRows = 0;
-	for (let c = 1; c <= totalColumns; c++) {
-		if (rowCounts[c] > maxContentRows) maxContentRows = rowCounts[c];
-	}
-	if (maxContentRows < 1) maxContentRows = 1;
-
-	const styleFor: (string | null)[] = new Array(placements.length).fill(null);
-	for (let i = 0; i < placements.length; i++) {
-		const p = placements[i];
-		if (p.role === 'header') {
-			styleFor[i] = `grid-column:1 / -1;grid-row:${rowOf[i]};`;
-		} else if (p.role === 'v-divider') {
-			const track = 2 * p.dividerIdx + 2;
-			styleFor[i] = `grid-column:${track};grid-row:${contentStartRow} / span ${maxContentRows};`;
-		} else {
-			const track = 2 * p.col - 1;
-			styleFor[i] = `grid-column:${track};grid-row:${rowOf[i]};`;
-		}
-	}
+	const styleFor: (string | null)[] = placements.map(p => {
+		if (p.role === 'header') return 'grid-column:1 / -1;';
+		if (p.role === 'v-divider') return `grid-column:${2 * p.dividerIdx + 2};`;
+		if (p.role === 'h-line') return `grid-column:${2 * p.col - 1};`;
+		return `grid-column:${2 * p.col - 1};`;
+	});
 
 	const parts: string[] = [];
 	for (let c = 1; c <= totalColumns; c++) {

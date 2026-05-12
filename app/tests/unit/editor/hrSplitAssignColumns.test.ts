@@ -215,7 +215,7 @@ describe('assignColumns — column count = activeCount + 1', () => {
 	});
 });
 
-describe('computeGridStyles — grid template and explicit row/column tracks', () => {
+describe('computeGridStyles — masonry grid template, grid-column only', () => {
 	it('no splits → no template, no styles', () => {
 		const placements: Placement[] = [
 			{ role: 'block', col: 1 },
@@ -227,7 +227,7 @@ describe('computeGridStyles — grid template and explicit row/column tracks', (
 		expect(out.styleFor).toEqual([null, null, null]);
 	});
 
-	it('2 columns → template "1fr auto 1fr"', () => {
+	it('2 columns → template "1fr auto 1fr", grid-column per block', () => {
 		const placements: Placement[] = [
 			{ role: 'block', col: 1 },
 			{ role: 'v-divider', dividerIdx: 0 },
@@ -235,9 +235,9 @@ describe('computeGridStyles — grid template and explicit row/column tracks', (
 		];
 		const out = computeGridStyles(placements, 2);
 		expect(out.template).toBe('1fr auto 1fr');
-		expect(out.styleFor[0]).toBe('grid-column:1;grid-row:1;');
-		expect(out.styleFor[1]).toBe('grid-column:2;grid-row:1 / span 1;');
-		expect(out.styleFor[2]).toBe('grid-column:3;grid-row:1;');
+		expect(out.styleFor[0]).toBe('grid-column:1;');
+		expect(out.styleFor[1]).toBe('grid-column:2;');
+		expect(out.styleFor[2]).toBe('grid-column:3;');
 	});
 
 	it('3 columns → template "1fr auto 1fr auto 1fr"', () => {
@@ -251,9 +251,9 @@ describe('computeGridStyles — grid template and explicit row/column tracks', (
 		const out = computeGridStyles(placements, 3);
 		expect(out.template).toBe('1fr auto 1fr auto 1fr');
 		// Divider 0 → track 2; divider 1 → track 4; column 3 → track 5.
-		expect(out.styleFor[1]).toBe('grid-column:2;grid-row:1 / span 1;');
-		expect(out.styleFor[3]).toBe('grid-column:4;grid-row:1 / span 1;');
-		expect(out.styleFor[4]).toBe('grid-column:5;grid-row:1;');
+		expect(out.styleFor[1]).toBe('grid-column:2;');
+		expect(out.styleFor[3]).toBe('grid-column:4;');
+		expect(out.styleFor[4]).toBe('grid-column:5;');
 	});
 
 	it('4 columns → template "1fr auto 1fr auto 1fr auto 1fr"', () => {
@@ -264,7 +264,7 @@ describe('computeGridStyles — grid template and explicit row/column tracks', (
 		expect(out.template).toBe('1fr auto 1fr auto 1fr auto 1fr');
 	});
 
-	it('row numbers count up independently per column', () => {
+	it('multiple blocks in a column → same grid-column track (masonry stacks them)', () => {
 		const placements: Placement[] = [
 			{ role: 'block', col: 1 },
 			{ role: 'block', col: 1 },
@@ -274,14 +274,14 @@ describe('computeGridStyles — grid template and explicit row/column tracks', (
 			{ role: 'block', col: 2 }
 		];
 		const out = computeGridStyles(placements, 2);
-		expect(out.styleFor[0]).toBe('grid-column:1;grid-row:1;');
-		expect(out.styleFor[1]).toBe('grid-column:1;grid-row:2;');
-		expect(out.styleFor[3]).toBe('grid-column:3;grid-row:1;');
-		expect(out.styleFor[4]).toBe('grid-column:3;grid-row:2;');
-		expect(out.styleFor[5]).toBe('grid-column:3;grid-row:3;');
+		expect(out.styleFor[0]).toBe('grid-column:1;');
+		expect(out.styleFor[1]).toBe('grid-column:1;');
+		expect(out.styleFor[3]).toBe('grid-column:3;');
+		expect(out.styleFor[4]).toBe('grid-column:3;');
+		expect(out.styleFor[5]).toBe('grid-column:3;');
 	});
 
-	it('h-lines occupy rows in their column just like blocks', () => {
+	it('h-lines get the same grid-column as blocks in their column', () => {
 		const placements: Placement[] = [
 			{ role: 'block', col: 1 },
 			{ role: 'h-line', col: 1 },
@@ -290,35 +290,14 @@ describe('computeGridStyles — grid template and explicit row/column tracks', (
 			{ role: 'block', col: 2 }
 		];
 		const out = computeGridStyles(placements, 2);
-		expect(out.styleFor[0]).toBe('grid-column:1;grid-row:1;');
-		expect(out.styleFor[1]).toBe('grid-column:1;grid-row:2;');
-		expect(out.styleFor[2]).toBe('grid-column:1;grid-row:3;');
-		// Divider spans the tallest column (col 1 has 3 rows, col 2 has 1).
-		expect(out.styleFor[3]).toBe('grid-column:2;grid-row:1 / span 3;');
-		expect(out.styleFor[4]).toBe('grid-column:3;grid-row:1;');
+		expect(out.styleFor[0]).toBe('grid-column:1;');
+		expect(out.styleFor[1]).toBe('grid-column:1;');
+		expect(out.styleFor[2]).toBe('grid-column:1;');
+		expect(out.styleFor[3]).toBe('grid-column:2;');
+		expect(out.styleFor[4]).toBe('grid-column:3;');
 	});
 
-	it('divider span equals max(rowCount) across all columns', () => {
-		// Column 1: 2 blocks. Column 2: 5 blocks. Column 3: 1 block.
-		// Dividers should each span 5 rows.
-		const placements: Placement[] = [
-			{ role: 'block', col: 1 },
-			{ role: 'block', col: 1 },
-			{ role: 'v-divider', dividerIdx: 0 },
-			{ role: 'block', col: 2 },
-			{ role: 'block', col: 2 },
-			{ role: 'block', col: 2 },
-			{ role: 'block', col: 2 },
-			{ role: 'block', col: 2 },
-			{ role: 'v-divider', dividerIdx: 1 },
-			{ role: 'block', col: 3 }
-		];
-		const out = computeGridStyles(placements, 3);
-		expect(out.styleFor[2]).toBe('grid-column:2;grid-row:1 / span 5;');
-		expect(out.styleFor[8]).toBe('grid-column:4;grid-row:1 / span 5;');
-	});
-
-	it('adjacent dividers with empty middle column still produce a valid layout', () => {
+	it('adjacent dividers with empty middle column still emit valid grid-column tracks', () => {
 		const placements: Placement[] = [
 			{ role: 'block', col: 1 },
 			{ role: 'v-divider', dividerIdx: 0 },
@@ -327,10 +306,10 @@ describe('computeGridStyles — grid template and explicit row/column tracks', (
 		];
 		const out = computeGridStyles(placements, 3);
 		expect(out.template).toBe('1fr auto 1fr auto 1fr');
-		expect(out.styleFor[0]).toBe('grid-column:1;grid-row:1;');
-		expect(out.styleFor[1]).toBe('grid-column:2;grid-row:1 / span 1;');
-		expect(out.styleFor[2]).toBe('grid-column:4;grid-row:1 / span 1;');
-		expect(out.styleFor[3]).toBe('grid-column:5;grid-row:1;');
+		expect(out.styleFor[0]).toBe('grid-column:1;');
+		expect(out.styleFor[1]).toBe('grid-column:2;');
+		expect(out.styleFor[2]).toBe('grid-column:4;');
+		expect(out.styleFor[3]).toBe('grid-column:5;');
 	});
 
 	it('empty first column with content in column 2', () => {
@@ -340,9 +319,26 @@ describe('computeGridStyles — grid template and explicit row/column tracks', (
 			{ role: 'block', col: 2 }
 		];
 		const out = computeGridStyles(placements, 2);
-		expect(out.styleFor[0]).toBe('grid-column:2;grid-row:1 / span 2;');
-		expect(out.styleFor[1]).toBe('grid-column:3;grid-row:1;');
-		expect(out.styleFor[2]).toBe('grid-column:3;grid-row:2;');
+		expect(out.styleFor[0]).toBe('grid-column:2;');
+		expect(out.styleFor[1]).toBe('grid-column:3;');
+		expect(out.styleFor[2]).toBe('grid-column:3;');
+	});
+
+	it('no inline styles carry grid-row (masonry axis cannot be spanned)', () => {
+		const placements: Placement[] = [
+			{ role: 'header' },
+			{ role: 'header' },
+			{ role: 'block', col: 1 },
+			{ role: 'v-divider', dividerIdx: 0 },
+			{ role: 'block', col: 2 },
+			{ role: 'h-line', col: 2 }
+		];
+		const out = computeGridStyles(placements, 2);
+		for (const style of out.styleFor) {
+			if (style !== null) {
+				expect(style).not.toMatch(/grid-row/);
+			}
+		}
 	});
 });
 
@@ -386,36 +382,18 @@ describe('headerCount — first N children excluded from split layout', () => {
 		expect(placements[4]).toEqual({ role: 'v-divider', dividerIdx: 0 }); // ordinal 1 activates
 	});
 
-	it('computeGridStyles places headers at full-width rows, content below', () => {
+	it('headers span all tracks via grid-column 1 / -1 (acts as masonry breakpoint)', () => {
 		const { placements, totalColumns } = assignColumns({
 			kinds: k('bbbhb'),
 			activeOrdinals: active(0),
 			headerCount: 2
 		});
 		const out = computeGridStyles(placements, totalColumns);
-		// Headers: rows 1, 2; full width.
-		expect(out.styleFor[0]).toBe('grid-column:1 / -1;grid-row:1;');
-		expect(out.styleFor[1]).toBe('grid-column:1 / -1;grid-row:2;');
-		// Content block in col 1 starts at row 3.
-		expect(out.styleFor[2]).toBe('grid-column:1;grid-row:3;');
-		// Divider spans rows 3..3 (each column has 1 content row).
-		expect(out.styleFor[3]).toBe('grid-column:2;grid-row:3 / span 1;');
-		// Right column block at row 3.
-		expect(out.styleFor[4]).toBe('grid-column:3;grid-row:3;');
-	});
-
-	it('divider span ignores header rows (= max content rows only)', () => {
-		// Headers (2) + col 1: 3 blocks + divider + col 2: 5 blocks.
-		// Divider should span 5 rows starting at row 3, NOT 7 (which would
-		// include headers).
-		const { placements, totalColumns } = assignColumns({
-			kinds: k('bbbbbhbbbbb'),
-			activeOrdinals: active(0),
-			headerCount: 2
-		});
-		const out = computeGridStyles(placements, totalColumns);
-		const dividerIdx = placements.findIndex(p => p.role === 'v-divider');
-		expect(out.styleFor[dividerIdx]).toBe('grid-column:2;grid-row:3 / span 5;');
+		expect(out.styleFor[0]).toBe('grid-column:1 / -1;');
+		expect(out.styleFor[1]).toBe('grid-column:1 / -1;');
+		expect(out.styleFor[2]).toBe('grid-column:1;');
+		expect(out.styleFor[3]).toBe('grid-column:2;');
+		expect(out.styleFor[4]).toBe('grid-column:3;');
 	});
 
 	it('no split + headers → no grid layout (headers flow normally)', () => {
@@ -431,14 +409,10 @@ describe('headerCount — first N children excluded from split layout', () => {
 });
 
 describe('integration: kinds → placements → grid styles', () => {
-	it('three active HRs, mixed column heights', () => {
+	it('three active HRs, mixed column heights — each divider on its own track', () => {
 		// b b h0 b h1 b b b h2 b
-		// active: all three → 4 columns
-		// col 1: b, b (2 rows)
-		// col 2: b (1 row)
-		// col 3: b, b, b (3 rows)
-		// col 4: b (1 row)
-		// max rows = 3 → dividers span 3 rows
+		// active: all three → 4 columns. Masonry packs each column
+		// independently — no row span is computed.
 		const kinds = k('bbhbhbbbhb');
 		const { placements, totalColumns } = assignColumns({
 			kinds,
@@ -447,14 +421,13 @@ describe('integration: kinds → placements → grid styles', () => {
 		expect(totalColumns).toBe(4);
 		const out = computeGridStyles(placements, totalColumns);
 		expect(out.template).toBe('1fr auto 1fr auto 1fr auto 1fr');
-		// Find divider indices in the array.
 		const dividerIndices = placements
 			.map((p, i) => (p.role === 'v-divider' ? i : -1))
 			.filter(i => i >= 0);
 		expect(dividerIndices).toHaveLength(3);
-		for (const i of dividerIndices) {
-			expect(out.styleFor[i]).toMatch(/span 3;$/);
-		}
+		expect(out.styleFor[dividerIndices[0]]).toBe('grid-column:2;');
+		expect(out.styleFor[dividerIndices[1]]).toBe('grid-column:4;');
+		expect(out.styleFor[dividerIndices[2]]).toBe('grid-column:6;');
 	});
 
 	it('one active among many: only one divider; other HRs are h-lines in their respective columns', () => {

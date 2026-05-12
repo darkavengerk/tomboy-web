@@ -2,6 +2,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
+import type { EditorView } from '@tiptap/pm/view';
 import {
 	assignColumns,
 	computeGridStyles,
@@ -237,6 +238,71 @@ export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
 				);
 				return true;
 			}
+		},
+		view(view: EditorView) {
+			// Masonry layout has no defined track height along the masonry
+			// axis, so the v-divider element (a thin column in the divider
+			// track) only gets its intrinsic height — visually a short stub
+			// instead of a column-spanning line. We size it at runtime to
+			// match the tallest content column, then re-measure on every
+			// PM update and on container resize.
+			//
+			// Style mutations on individual node DOMs ride PM's existing
+			// attribute-mutation path (which re-parses the node's content
+			// range — a no-op since we don't change content) and crucially
+			// do NOT restructure view.dom's child list, so the DOMObserver
+			// disaster mode of the per-column-wrapper approach does not
+			// apply here.
+			let ro: ResizeObserver | null = null;
+
+			function syncDividerHeights(): void {
+				const enabled = options.enabled?.() ?? true;
+				if (!enabled) return;
+				const dividers = view.dom.querySelectorAll<HTMLElement>(
+					':scope > .tomboy-hr-split-divider'
+				);
+				if (dividers.length === 0) return;
+				// Reset so the previous (possibly oversized) divider height
+				// does not pin the container's measured total height.
+				dividers.forEach(d => {
+					d.style.height = '';
+				});
+				// Sum of header heights — the headers span all grid columns
+				// (`grid-column: 1 / -1`) and sit above the split area.
+				const headers = view.dom.querySelectorAll<HTMLElement>(
+					':scope > p[style*="grid-column:1 / -1"]'
+				);
+				let headerHeight = 0;
+				headers.forEach(h => {
+					headerHeight += h.offsetHeight;
+				});
+				const splitHeight = view.dom.scrollHeight - headerHeight;
+				if (splitHeight <= 0) return;
+				dividers.forEach(d => {
+					d.style.height = `${splitHeight}px`;
+				});
+			}
+
+			if (typeof ResizeObserver !== 'undefined') {
+				ro = new ResizeObserver(() => syncDividerHeights());
+				ro.observe(view.dom);
+			}
+
+			// Initial render — PM has already rendered the DOM by the time
+			// view() is invoked. Defer one frame so the browser has applied
+			// the inline grid styles and laid the document out before we
+			// read offsetHeight / scrollHeight.
+			queueMicrotask(syncDividerHeights);
+
+			return {
+				update(_view: EditorView, _prevState: EditorState) {
+					queueMicrotask(syncDividerHeights);
+				},
+				destroy() {
+					ro?.disconnect();
+					ro = null;
+				}
+			};
 		}
 	});
 }
