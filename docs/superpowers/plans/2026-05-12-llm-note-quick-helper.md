@@ -2137,8 +2137,20 @@ WantedBy=default.target
 EOF
 
 systemctl --user daemon-reload
-systemctl --user enable --now ollama.service
+# Quadlet 가 자동으로 .container → .service 생성. 생성된 unit 은
+# transient 라 `enable` 불가 — start 만. 부팅 자동 시작은 .container
+# 의 [Install] WantedBy=default.target 가 generator 를 통해 처리.
+
+# 이미지 미리 pull (systemd 기본 start timeout 90s 안에 ollama:latest ~2GB
+# pull 못 끝나서 restart 루프에 빠지는 것 방지).
+podman pull docker.io/ollama/ollama:latest
+
+systemctl --user start ollama.service
 loginctl enable-linger $USER
+
+# GPU passthrough 확인. CDI spec 이 없으면 컨테이너 시작 실패.
+# ls /etc/cdi/  →  nvidia.yaml 보여야 함. 없으면:
+#   sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
 ```
 
 확인:
