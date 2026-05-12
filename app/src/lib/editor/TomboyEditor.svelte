@@ -1178,16 +1178,21 @@
 	}
 	/* Active divider: vertical line in its assigned divider track. Same
 	   colour as the inactive horizontal line so the two states look like
-	   the same primitive rotated 90°. Height is set inline by the plugin's
-	   view() hook to match the tallest content column — masonry has no
-	   defined track height along the masonry axis, so `align-self: stretch`
-	   is undefined and we measure at runtime. */
+	   the same primitive rotated 90°. Height comes from the
+	   `--hr-split-divider-height` custom property set on view.dom by the
+	   plugin's view() hook to match the tallest content column — masonry
+	   has no defined track height along the masonry axis, so
+	   `align-self: stretch` is undefined and we measure at runtime.
+	   Setting the variable on view.dom (rather than on the divider
+	   element directly) keeps PM's DOMObserver from observing the
+	   mutation — see the plugin source. */
 	.tomboy-editor
 		:global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider) {
 		margin: 0;
 		min-height: 0;
 		width: 12px;
 		caret-color: transparent;
+		height: var(--hr-split-divider-height, auto);
 	}
 	.tomboy-editor
 		:global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider::before) {

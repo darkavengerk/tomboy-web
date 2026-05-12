@@ -247,54 +247,40 @@ export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
 			// match the tallest content column, then re-measure on every
 			// PM update and on container resize.
 			//
-			// Style mutations on individual node DOMs ride PM's existing
-			// attribute-mutation path (which re-parses the node's content
-			// range — a no-op since we don't change content) and crucially
-			// do NOT restructure view.dom's child list, so the DOMObserver
-			// disaster mode of the per-column-wrapper approach does not
-			// apply here.
+			// We expose the measured height as a custom property
+			// `--hr-split-divider-height` on view.dom and let CSS bind it
+			// to `.tomboy-hr-split-divider { height: var(...); }`. Writing
+			// the variable on view.dom is critical: PM's DOMObserver
+			// short-circuits attribute mutations whose target's nearest
+			// desc IS the docView (view.dom). Writing inline style on the
+			// divider paragraph instead would route through PM's
+			// readDOMChange path and — combined with the ResizeObserver
+			// path below — produced a runaway feedback loop on toggle.
 			//
-			// Two anti-loop invariants:
-			//   (1) measure content-column heights directly from each
-			//       child's computed `grid-column-start`, NEVER by
-			//       subtracting "header height" from scrollHeight — the
-			//       browser reserializes inline styles, so any selector
-			//       that string-matches the original `grid-column:1 / -1`
-			//       can miss headers entirely. A miss inflates the divider
-			//       on every tick, growing the container, firing
-			//       ResizeObserver, looping forever.
-			//   (2) only write `style.height` when the value actually
-			//       changes — silent no-ops short-circuit any feedback
-			//       loop from the ResizeObserver path.
+			// View.dom child-list is left untouched, so the DOMObserver
+			// disaster mode of the per-column-wrapper approach also does
+			// not apply.
 			let ro: ResizeObserver | null = null;
 
 			function syncDividerHeights(): void {
 				const enabled = options.enabled?.() ?? true;
 				if (!enabled) return;
 				const root = view.dom;
-				const dividers = Array.from(
-					root.querySelectorAll<HTMLElement>(
-						':scope > .tomboy-hr-split-divider'
-					)
+				const dividers = root.querySelectorAll<HTMLElement>(
+					':scope > .tomboy-hr-split-divider'
 				);
-				if (dividers.length === 0) return;
-
-				// Reset only the dividers that currently carry an explicit
-				// height — and force a reflow so the next measurement is
-				// taken against the dividers' intrinsic heights rather than
-				// last cycle's inflated value.
-				let didReset = false;
-				dividers.forEach(d => {
-					if (d.style.height) {
-						d.style.height = '';
-						didReset = true;
+				if (dividers.length === 0) {
+					// No active dividers — clear the variable so a future
+					// activation starts from a clean baseline.
+					if (root.style.getPropertyValue('--hr-split-divider-height')) {
+						root.style.removeProperty('--hr-split-divider-height');
 					}
-				});
-				if (didReset) void root.offsetHeight;
+					return;
+				}
 
-				// Walk top-level children and sum offsetHeight per grid
-				// content track. Skip dividers (we just reset them) and
-				// any full-row spanner (header: `grid-column-end: -1`).
+				// Sum offsetHeight per content track. Skip dividers
+				// (their height IS what we're computing) and full-row
+				// spanners (`grid-column-end: -1` = header).
 				const heightByTrack = new Map<number, number>();
 				for (const child of Array.from(root.children) as HTMLElement[]) {
 					if (child.classList.contains('tomboy-hr-split-divider')) continue;
@@ -315,11 +301,15 @@ export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
 				if (maxHeight <= 0) return;
 
 				const targetStr = `${maxHeight}px`;
-				dividers.forEach(d => {
-					if (d.style.height !== targetStr) {
-						d.style.height = targetStr;
-					}
-				});
+				const current = root.style.getPropertyValue('--hr-split-divider-height');
+				// Guard: writing the same value would still mutate
+				// view.dom's style attribute. PM ignores those mutations
+				// but the browser would still re-evaluate the variable
+				// for every descendant and trigger another ResizeObserver
+				// notification — short-circuit instead.
+				if (current !== targetStr) {
+					root.style.setProperty('--hr-split-divider-height', targetStr);
+				}
 			}
 
 			if (typeof ResizeObserver !== 'undefined') {
@@ -330,7 +320,7 @@ export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
 			// Initial render — PM has already rendered the DOM by the time
 			// view() is invoked. Defer one frame so the browser has applied
 			// the inline grid styles and laid the document out before we
-			// read offsetHeight / scrollHeight.
+			// read offsetHeight.
 			queueMicrotask(syncDividerHeights);
 
 			return {
