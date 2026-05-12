@@ -253,33 +253,72 @@ export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
 			// do NOT restructure view.dom's child list, so the DOMObserver
 			// disaster mode of the per-column-wrapper approach does not
 			// apply here.
+			//
+			// Two anti-loop invariants:
+			//   (1) measure content-column heights directly from each
+			//       child's computed `grid-column-start`, NEVER by
+			//       subtracting "header height" from scrollHeight — the
+			//       browser reserializes inline styles, so any selector
+			//       that string-matches the original `grid-column:1 / -1`
+			//       can miss headers entirely. A miss inflates the divider
+			//       on every tick, growing the container, firing
+			//       ResizeObserver, looping forever.
+			//   (2) only write `style.height` when the value actually
+			//       changes — silent no-ops short-circuit any feedback
+			//       loop from the ResizeObserver path.
 			let ro: ResizeObserver | null = null;
 
 			function syncDividerHeights(): void {
 				const enabled = options.enabled?.() ?? true;
 				if (!enabled) return;
-				const dividers = view.dom.querySelectorAll<HTMLElement>(
-					':scope > .tomboy-hr-split-divider'
+				const root = view.dom;
+				const dividers = Array.from(
+					root.querySelectorAll<HTMLElement>(
+						':scope > .tomboy-hr-split-divider'
+					)
 				);
 				if (dividers.length === 0) return;
-				// Reset so the previous (possibly oversized) divider height
-				// does not pin the container's measured total height.
+
+				// Reset only the dividers that currently carry an explicit
+				// height — and force a reflow so the next measurement is
+				// taken against the dividers' intrinsic heights rather than
+				// last cycle's inflated value.
+				let didReset = false;
 				dividers.forEach(d => {
-					d.style.height = '';
+					if (d.style.height) {
+						d.style.height = '';
+						didReset = true;
+					}
 				});
-				// Sum of header heights — the headers span all grid columns
-				// (`grid-column: 1 / -1`) and sit above the split area.
-				const headers = view.dom.querySelectorAll<HTMLElement>(
-					':scope > p[style*="grid-column:1 / -1"]'
-				);
-				let headerHeight = 0;
-				headers.forEach(h => {
-					headerHeight += h.offsetHeight;
-				});
-				const splitHeight = view.dom.scrollHeight - headerHeight;
-				if (splitHeight <= 0) return;
+				if (didReset) void root.offsetHeight;
+
+				// Walk top-level children and sum offsetHeight per grid
+				// content track. Skip dividers (we just reset them) and
+				// any full-row spanner (header: `grid-column-end: -1`).
+				const heightByTrack = new Map<number, number>();
+				for (const child of Array.from(root.children) as HTMLElement[]) {
+					if (child.classList.contains('tomboy-hr-split-divider')) continue;
+					const cs = getComputedStyle(child);
+					if (cs.gridColumnEnd === '-1') continue;
+					const track = parseInt(cs.gridColumnStart, 10);
+					if (!Number.isFinite(track) || track < 1) continue;
+					heightByTrack.set(
+						track,
+						(heightByTrack.get(track) || 0) + child.offsetHeight
+					);
+				}
+
+				let maxHeight = 0;
+				for (const h of heightByTrack.values()) {
+					if (h > maxHeight) maxHeight = h;
+				}
+				if (maxHeight <= 0) return;
+
+				const targetStr = `${maxHeight}px`;
 				dividers.forEach(d => {
-					d.style.height = `${splitHeight}px`;
+					if (d.style.height !== targetStr) {
+						d.style.height = targetStr;
+					}
 				});
 			}
 
