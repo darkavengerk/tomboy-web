@@ -9,6 +9,7 @@ import {
 import { parseSshTarget, spawnForTarget, type SshTarget } from './pty.js';
 import { loadHostsFile, lookupWolTarget, type WolEntry } from './hosts.js';
 import { probePort, sendMagicPacket, waitForPort } from './wol.js';
+import { handleLlmChat } from './llm.js';
 
 const PORT = Number(process.env.BRIDGE_PORT || 3000);
 const PASSWORD = requireEnv('BRIDGE_PASSWORD');
@@ -82,6 +83,11 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 		const token = mintToken(SECRET);
 		res.writeHead(200, { 'Content-Type': 'application/json' });
 		res.end(JSON.stringify({ token }));
+		return;
+	}
+
+	if (url === '/llm/chat' && req.method === 'POST') {
+		await handleLlmChat(req, res, SECRET);
 		return;
 	}
 

@@ -8,6 +8,7 @@
 #        BRIDGE_PASSWORD=...
 #        BRIDGE_SECRET=...        (32+ random bytes, e.g. `openssl rand -hex 32`)
 #        BRIDGE_ALLOWED_ORIGIN=https://your-app-domain
+#        # OLLAMA_BASE_URL=http://localhost:11434  (optional — default shown)
 #   4. Create ~/.config/term-bridge/hosts.json BEFORE starting the unit
 #      (podman creates a directory at the source path if the file is
 #      missing, which silently breaks the bind mount). For the no-WOL
@@ -45,6 +46,7 @@ Volume=%h/.ssh:/home/node/.ssh:ro,z
 # disabled" and skips wake for every target.
 Volume=%h/.config/term-bridge/hosts.json:/etc/term-bridge/hosts.json:ro,z
 Environment=BRIDGE_HOSTS_FILE=/etc/term-bridge/hosts.json
+Environment=OLLAMA_BASE_URL=http://localhost:11434
 ReadOnly=true
 NoNewPrivileges=true
 DropCapability=ALL
