@@ -159,4 +159,59 @@ describe('parseLlmNote', () => {
 		expect(result!.options.num_ctx).toBe(4096);
 		expect((result!.options as Record<string, unknown>).unknown_key).toBeUndefined();
 	});
+
+	it('assembles a multi-line system value from indented continuation lines', () => {
+		const result = parseLlmNote(
+			doc(
+				'title',
+				'llm://qwen2.5-coder:3b',
+				'system: 너는 Linux 셸 전문가다.',
+				'        한국어로 짧게.',
+				'temperature: 0.3'
+			)
+		);
+		expect(result!.system).toBe('너는 Linux 셸 전문가다.\n한국어로 짧게.');
+		expect(result!.options.temperature).toBe(0.3);
+	});
+
+	it('returns empty messages when there is no blank separator paragraph', () => {
+		const result = parseLlmNote(
+			doc('title', 'llm://qwen2.5-coder:3b', 'Q: hello', 'A: world')
+		);
+		expect(result).not.toBeNull();
+		expect(result!.messages).toHaveLength(0);
+	});
+
+	it('handles arbitrary whitespace after the colon (system: value vs system:  value)', () => {
+		const r1 = parseLlmNote(
+			doc('title', 'llm://m', 'system: one space')
+		);
+		const r2 = parseLlmNote(
+			doc('title', 'llm://m', 'system:  two spaces')
+		);
+		const r3 = parseLlmNote(
+			doc('title', 'llm://m', 'system:no space')
+		);
+		expect(r1!.system).toBe('one space');
+		expect(r2!.system).toBe('two spaces');
+		expect(r3!.system).toBe('no space');
+	});
+
+	it('parses headers and turns when signature is at doc.content[0] (transient state)', () => {
+		const result = parseLlmNote(
+			doc(
+				'llm://qwen2.5-coder:3b',
+				'system: helper',
+				'',
+				'Q: ping',
+				'A: pong'
+			)
+		);
+		expect(result!.model).toBe('qwen2.5-coder:3b');
+		expect(result!.system).toBe('helper');
+		expect(result!.messages).toEqual([
+			{ role: 'user', content: 'ping' },
+			{ role: 'assistant', content: 'pong' }
+		]);
+	});
 });

@@ -13,7 +13,7 @@ export const LLM_SIGNATURE_RE = /^llm:\/\/([A-Za-z0-9._:/-]+)\s*$/;
  * Capture 1 = key name, capture 2 = value (may be empty).
  */
 export const LLM_HEADER_KEY_RE =
-	/^(system|temperature|num_ctx|top_p|seed|num_predict):\s?(.*)$/;
+	/^(system|temperature|num_ctx|top_p|seed|num_predict):\s*(.*)$/;
 
 export const LLM_RECOGNIZED_HEADER_KEYS = [
 	'system',
