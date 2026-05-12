@@ -1,5 +1,5 @@
 import type { Editor, JSONContent } from '@tiptap/core';
-import type { Node as PMNode } from '@tiptap/pm/model';
+import type { Node as PMNode, Schema } from '@tiptap/pm/model';
 import { desktopSession } from '$lib/desktop/session.svelte.js';
 import {
 	getNote,
@@ -7,6 +7,14 @@ import {
 	updateNoteFromEditor
 } from '$lib/core/noteManager.js';
 import { pushToast } from '$lib/stores/toast.js';
+import {
+	buildNextMonthLiJson,
+	containsRecurringMarker,
+	findContainingMonth,
+	nextMonthOf,
+	planNextMonthInsert,
+	type NextMonthInsertPlan
+} from './recurringCopy.js';
 
 /** GUID of the note whose list items get "보내기" buttons. */
 export const SEND_SOURCE_GUID = 'd5ef5481-b301-44fa-bd50-aa5ce7b32cf2';
@@ -98,12 +106,100 @@ async function writeToDestination(liJson: JSONContent): Promise<void> {
 	if (!updated) throw new Error('대상 노트 저장에 실패했습니다.');
 }
 
+function buildSchemaNode(schema: Schema, json: JSONContent): PMNode | null {
+	try {
+		return schema.nodeFromJSON(json);
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Build the ProseMirror nodes that realise `plan` for `nextMonth`. Returns
+ * `null` if the schema cannot represent them (which would be a programmer
+ * error — the schedule note ships with bulletList + paragraph as standard).
+ */
+function buildInsertionNodes(
+	schema: Schema,
+	plan: NextMonthInsertPlan,
+	liJson: JSONContent,
+	nextMonth: number
+): PMNode[] | null {
+	const liNode = buildSchemaNode(schema, liJson);
+	if (!liNode) return null;
+	if (plan.kind === 'append-to-list') {
+		return [liNode];
+	}
+	const bulletList = schema.nodes.bulletList;
+	if (!bulletList) return null;
+	const list = bulletList.create(null, [liNode]);
+	if (plan.kind === 'new-list-after-header') {
+		return [list];
+	}
+	const paragraph = schema.nodes.paragraph;
+	if (!paragraph) return null;
+	const headerText = schema.text(`${nextMonth}월`);
+	const header = paragraph.create(null, [headerText]);
+	return [header, list];
+}
+
+/**
+ * Apply the source-side edits (next-month recurring copy + original delete) in
+ * a single transaction so the user can undo with one Ctrl+Z. Returns the
+ * action that the toast should announce.
+ */
+function applySourceSideEdits(
+	sourceEditor: Editor,
+	liPos: number,
+	originalFingerprint: string,
+	expectedSize: number,
+	recurring: boolean
+): 'sent' | 'sent-and-recurred' | 'displaced' {
+	const { state } = sourceEditor;
+	const current = state.doc.nodeAt(liPos);
+	const stillMatches =
+		current &&
+		current.type.name === 'listItem' &&
+		JSON.stringify(current.toJSON()) === originalFingerprint;
+	if (!stillMatches) return 'displaced';
+
+	const tr = state.tr;
+	let didRecur = false;
+
+	if (recurring) {
+		const currentMonth = findContainingMonth(state.doc, liPos);
+		if (currentMonth !== null) {
+			const { month: nextMonth, yearOffset } = nextMonthOf(currentMonth);
+			const year = new Date().getFullYear() + yearOffset;
+			const liJson = buildNextMonthLiJson(current.toJSON(), year, nextMonth);
+			const plan = planNextMonthInsert(state.doc, nextMonth);
+			const nodes = buildInsertionNodes(state.schema, plan, liJson, nextMonth);
+			if (nodes) {
+				const insertPos =
+					plan.kind === 'new-section-at-end' ? state.doc.content.size : plan.insertPos;
+				tr.insert(insertPos, nodes);
+				didRecur = true;
+			}
+		}
+	}
+
+	const mappedLiPos = tr.mapping.map(liPos);
+	tr.delete(mappedLiPos, mappedLiPos + expectedSize);
+	sourceEditor.view.dispatch(tr);
+	return didRecur ? 'sent-and-recurred' : 'sent';
+}
+
 /**
  * Transfer a list item from the source editor to the destination note.
  *
  * Ordering: destination is written first; only on success is the source li
  * removed. If the source doc has changed in the narrow async window such that
  * the node at `liPos` is no longer the expected li, the source is left alone.
+ *
+ * Recurring extension: when the source li's text contains `*`, it is treated
+ * as a monthly routine — a copy (with the same `*`) is also inserted into the
+ * next month's section of the source note in the same transaction as the
+ * original delete, so the routine reappears next month.
  */
 export async function transferListItem(
 	sourceEditor: Editor,
@@ -113,6 +209,7 @@ export async function transferListItem(
 	const liJson = liNode.toJSON();
 	const originalFingerprint = JSON.stringify(liJson);
 	const expectedSize = liNode.nodeSize;
+	const recurring = containsRecurringMarker(liNode.textContent);
 
 	try {
 		await writeToDestination(liJson);
@@ -127,14 +224,16 @@ export async function transferListItem(
 		return;
 	}
 
-	const current = sourceEditor.state.doc.nodeAt(liPos);
-	const stillMatches =
-		current &&
-		current.type.name === 'listItem' &&
-		JSON.stringify(current.toJSON()) === originalFingerprint;
-	if (stillMatches) {
-		const tr = sourceEditor.state.tr.delete(liPos, liPos + expectedSize);
-		sourceEditor.view.dispatch(tr);
+	const outcome = applySourceSideEdits(
+		sourceEditor,
+		liPos,
+		originalFingerprint,
+		expectedSize,
+		recurring
+	);
+	if (outcome === 'sent-and-recurred') {
+		pushToast('보냈습니다. 다음 달에도 추가했어요.');
+	} else if (outcome === 'sent') {
 		pushToast('보냈습니다.');
 	} else {
 		pushToast('보냈습니다. 원본 위치가 바뀌어 수동으로 정리하세요.', {
