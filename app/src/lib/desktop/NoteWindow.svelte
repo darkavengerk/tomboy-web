@@ -18,6 +18,11 @@
 		parseTerminalNote,
 		type TerminalNoteSpec
 	} from '$lib/editor/terminal/parseTerminalNote.js';
+	import LlmSendBar from '$lib/editor/llmNote/LlmSendBar.svelte';
+	import {
+		getDefaultTerminalBridge,
+		getTerminalBridgeToken
+	} from '$lib/editor/terminal/bridgeSettings.js';
 	import NoteContextMenu, { type ActionKind } from '$lib/editor/NoteContextMenu.svelte';
 	import NoteXmlViewer from '$lib/editor/NoteXmlViewer.svelte';
 	import {
@@ -120,6 +125,10 @@
 	let terminalConnectMode = $state(false);
 	const showTerminal = $derived(!!terminalSpec && terminalConnectMode);
 
+	// Bridge settings for LlmSendBar — loaded once on mount from appSettings.
+	let llmBridgeUrl = $state('');
+	let llmBridgeToken = $state('');
+
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	let pendingDoc: JSONContent | null = $state.raw(null);
 	// Fingerprint of the last successfully-flushed doc. flushSave() skips
@@ -191,6 +200,15 @@
 	}
 
 	onMount(() => {
+		// Load bridge URL and token for LlmSendBar.
+		void Promise.all([
+			getDefaultTerminalBridge(),
+			getTerminalBridgeToken()
+		]).then(([url, token]) => {
+			llmBridgeUrl = url ?? '';
+			llmBridgeToken = token ?? '';
+		});
+
 		(async () => {
 			const loaded = await getNote(guid);
 			if (!loaded) {
@@ -842,6 +860,13 @@
 					noteFocused={isFocused}
 					onhrsplitchange={handleHrSplitChange}
 				/>
+				{#if editorComponent?.getEditor() && llmBridgeUrl && llmBridgeToken}
+					<LlmSendBar
+						editor={editorComponent.getEditor()!}
+						bridgeUrl={llmBridgeUrl}
+						bridgeToken={llmBridgeToken}
+					/>
+				{/if}
 			{:else}
 				<div class="loading">노트를 불러올 수 없습니다.</div>
 			{/if}

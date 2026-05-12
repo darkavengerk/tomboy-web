@@ -25,6 +25,11 @@
 		parseTerminalNote,
 		type TerminalNoteSpec
 	} from '$lib/editor/terminal/parseTerminalNote.js';
+	import LlmSendBar from '$lib/editor/llmNote/LlmSendBar.svelte';
+	import {
+		getDefaultTerminalBridge,
+		getTerminalBridgeToken
+	} from '$lib/editor/terminal/bridgeSettings.js';
 	import NoteActionSheet, { type ActionKind } from '$lib/editor/NoteActionSheet.svelte';
 	import NoteXmlViewer from '$lib/editor/NoteXmlViewer.svelte';
 	import NotebookPicker from '$lib/components/NotebookPicker.svelte';
@@ -76,6 +81,10 @@
 	let terminalSpec: TerminalNoteSpec | null = $state.raw(null);
 	let terminalConnectMode = $state(false);
 	const showTerminal = $derived(!!terminalSpec && terminalConnectMode);
+
+	// Bridge settings for LlmSendBar — loaded once on mount from appSettings.
+	let llmBridgeUrl = $state('');
+	let llmBridgeToken = $state('');
 
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	let loadedGuid: string | null = null;
@@ -272,6 +281,15 @@
 	}
 
 	onMount(() => {
+		// Load bridge URL and token for LlmSendBar.
+		void Promise.all([
+			getDefaultTerminalBridge(),
+			getTerminalBridgeToken()
+		]).then(([url, token]) => {
+			llmBridgeUrl = url ?? '';
+			llmBridgeToken = token ?? '';
+		});
+
 		const uninstallModKeys = installModKeyListeners();
 		dateTitleProvider = createTitleProvider();
 		void Promise.all([
@@ -662,6 +680,13 @@
 					sendListItemActive={sendActive}
 					hrSplitEnabled={false}
 				/>
+				{#if editorComponent?.getEditor() && llmBridgeUrl && llmBridgeToken}
+					<LlmSendBar
+						editor={editorComponent.getEditor()!}
+						bridgeUrl={llmBridgeUrl}
+						bridgeToken={llmBridgeToken}
+					/>
+				{/if}
 			{/if}
 		{/if}
 	</div>

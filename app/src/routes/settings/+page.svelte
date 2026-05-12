@@ -107,7 +107,7 @@
 	let loadingProfiles = $state(false);
 	let restoreConfirm = $state(false);
 
-	// ── 터미널 브릿지 ─────────────────────────────────────────────────
+	// ── 원격 브릿지 ───────────────────────────────────────────────────
 	let terminalBridgeUrl = $state('');
 	let terminalBridgeSaved = $state(false);
 	let terminalBridgePassword = $state('');
