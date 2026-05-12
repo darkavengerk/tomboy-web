@@ -1109,13 +1109,10 @@
 	   bars between columns, and any STILL-inactive markers render as
 	   horizontal lines within their own column.
 
-	   When at least one marker is active, the editor root becomes a CSS
-	   Grid with `grid-template-columns` alternating `1fr` (content) and
-	   `auto` (divider). The plugin's view() hook re-parents each content
-	   column's blocks into a `.tomboy-hr-split-col` wrapper that is a
-	   flex column — so each column flows its content top-down
-	   independently. Headers (`grid-column: 1 / -1`) and v-dividers
-	   stay as direct grid items, side by side with the wrappers. */
+	   When at least one marker is active, the plugin emits explicit
+	   `grid-row`/`grid-column` inline styles on every top-level child
+	   plus an inline `grid-template-columns` on the editor root so the
+	   number of columns adapts to the number of active dividers. */
 
 	.tomboy-editor :global(.tomboy-hr-marker) {
 		position: relative;
@@ -1172,17 +1169,6 @@
 	.tomboy-editor :global(.tiptap.tomboy-hr-split-active > *) {
 		min-width: 0;
 	}
-	/* Per-column wrapper injected by the hrSplit plugin's view() hook.
-	   Each wrapper hosts the blocks (and inactive h-line markers) of one
-	   content column. flex-column lets each column's content stack from
-	   the top independently — a tall block on one side no longer forces
-	   the other side's adjacent block to grow to match. */
-	.tomboy-editor :global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-col) {
-		display: flex;
-		flex-direction: column;
-		min-width: 0;
-		align-self: start;
-	}
 	/* Active divider: vertical line in its assigned divider track. Same
 	   colour as the inactive horizontal line so the two states look like
 	   the same primitive rotated 90°. */
@@ -1192,11 +1178,9 @@
 		min-height: 0;
 		width: 12px;
 		caret-color: transparent;
-		/* `align-items: start` on the root keeps column wrappers at their
-		   natural content height. The divider sits in the same grid row
-		   as those wrappers and must visually span the entire split
-		   area (= the row's effective height = the tallest column), so
-		   override with `stretch`. */
+		/* The grid container sets `align-items: start` so ordinary blocks
+		   sit at the top of their cell — but the divider spans multiple
+		   rows and must fill the full split-area height. Override per-item. */
 		align-self: stretch;
 	}
 	.tomboy-editor
