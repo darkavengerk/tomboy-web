@@ -1172,6 +1172,16 @@
 		grid-template-rows: masonry;
 		column-gap: 12px;
 		row-gap: 0;
+		/* Critical for the non-masonry fallback path: without `start`,
+		   the default `stretch` lets every item grow to the tallest cell
+		   in its row. Reading offsetHeight on a stretched item returns
+		   the row height, not the item's intrinsic height — feeding that
+		   back into the divider-height computation produces a runaway
+		   growth loop (divider keeps inflating, container grows,
+		   ResizeObserver re-fires, ad infinitum). With masonry enabled
+		   `align-items` is a no-op along the masonry axis, so this rule
+		   is harmless there. */
+		align-items: start;
 	}
 	.tomboy-editor :global(.tiptap.tomboy-hr-split-active > *) {
 		min-width: 0;
