@@ -75,7 +75,7 @@
     {
       "id": 30,
       "subject": "Task 12: Python search_server — FastAPI",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [25, 26],
       "description": "**Goal:** 0.0.0.0:8743/search 단발 POST. JSON body {query, k} → embed → top-K → JSON.\n\n**Files:**\n- Create: pipeline/desktop/rag/search_server.py\n- Create: pipeline/tests/rag/test_search_server.py\n\n**Verify:** cd pipeline && python -m pytest tests/rag/test_search_server.py -v\n\n```json:metadata\n{\"files\":[\"pipeline/desktop/rag/search_server.py\",\"pipeline/tests/rag/test_search_server.py\"],\"verifyCommand\":\"cd pipeline && python -m pytest tests/rag/test_search_server.py -v\",\"acceptanceCriteria\":[\"POST /search → [{guid,title,body,score}]\",\"empty query → 400\",\"k clamp 1-20\",\"EmbedError → 503\",\"build_app(store, embedder) factory for tests\",\"module app for uvicorn\"]}\n```"
     },
