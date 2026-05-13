@@ -35,6 +35,8 @@
 	let { spec, guid, onedit }: Props = $props();
 
 	let xtermContainer: HTMLDivElement | undefined = $state();
+	let xtermHostEl: HTMLDivElement | undefined = $state();
+	let xtermStageEl: HTMLDivElement | undefined = $state();
 	let status: WsClientStatus = $state('connecting');
 	let statusMessage: string = $state('');
 	let resolvedBridge: string | null = $state(null);
@@ -170,27 +172,46 @@
 	}
 
 	/**
-	 * Fit the spectator's xterm to the viewport WIDTH (only). Height is
-	 * allowed to overflow — `.xterm-host` has `overflow-y: auto` so the
-	 * user can scroll vertically with one-finger touch / scroll buttons
-	 * to see rows that don't fit.
+	 * Width-fit the spectator's xterm using `transform: scale` plus an
+	 * explicitly-sized stage wrapper.
 	 *
-	 * Uses CSS `zoom` (not `transform: scale`) so the layout box grows
-	 * with the visual — otherwise the host wouldn't see scaled-up height
-	 * and overflow scrolling wouldn't work. CSS `zoom` is supported on
-	 * Chrome/Safari/Edge and Firefox 126+.
+	 * Why not CSS `zoom`: on mobile Safari/Chrome, `zoom` interacts badly
+	 * with xterm.js's absolutely-positioned cell spans — glyphs collapse
+	 * to the left and rendering breaks at fractional zoom values. It works
+	 * on desktop but is unreliable on phones. `transform: scale` is
+	 * universally well-behaved.
+	 *
+	 * Layout strategy:
+	 *   - `.xterm-screen` reports the pane's natural pixel dimensions
+	 *     (cols × cellW, rows × cellH) — the source of truth for size.
+	 *   - `.xterm-mount` gets explicit width/height = natural dimensions
+	 *     and `transform: scale(s)` with `top left` origin. It renders
+	 *     visually at `naturalW * s × naturalH * s`.
+	 *   - `.xterm-stage` is sized at `naturalW * s × naturalH * s` —
+	 *     reserves the layout box for `.xterm-host`'s overflow:auto to
+	 *     compute scroll bounds. Without this, transform-scaled content
+	 *     wouldn't make the host scrollable.
+	 *
+	 * `min(host_w / naturalW, 1)` — width-fit, never scale up.
 	 */
 	function applySpectatorFit(): void {
-		if (!isSpectator || !xtermContainer) return;
-		const xtermEl = xtermContainer.querySelector('.xterm') as HTMLElement | null;
-		if (!xtermEl) return;
-		xtermEl.style.zoom = '';
-		const renderedW = xtermEl.scrollWidth;
-		const hostRect = xtermContainer.getBoundingClientRect();
-		if (renderedW === 0 || hostRect.width === 0) return;
-		// Width-only fit. Never scale up (1:1 cap for narrow panes).
-		const scale = Math.min(hostRect.width / renderedW, 1);
-		xtermEl.style.zoom = String(scale);
+		if (!isSpectator || !xtermContainer || !xtermStageEl || !xtermHostEl) return;
+		const screenEl = xtermContainer.querySelector('.xterm-screen') as HTMLElement | null;
+		if (!screenEl) return;
+		const naturalW = screenEl.offsetWidth;
+		const naturalH = screenEl.offsetHeight;
+		const hostW = xtermHostEl.clientWidth;
+		if (naturalW === 0 || naturalH === 0 || hostW === 0) return;
+		const scale = Math.min(hostW / naturalW, 1);
+		// Mount: natural size, scaled visually.
+		xtermContainer.style.width = `${naturalW}px`;
+		xtermContainer.style.height = `${naturalH}px`;
+		xtermContainer.style.transformOrigin = 'top left';
+		xtermContainer.style.transform = `scale(${scale})`;
+		// Stage: layout box at the scaled size so the host's scroll
+		// bounds reflect what the user actually sees.
+		xtermStageEl.style.width = `${naturalW * scale}px`;
+		xtermStageEl.style.height = `${naturalH * scale}px`;
 	}
 
 	/**
@@ -199,17 +220,17 @@
 	 * is continuous (smoother for fine-tuning).
 	 */
 	function scrollByViewport(direction: -1 | 1): void {
-		if (!xtermContainer) return;
-		const h = xtermContainer.clientHeight;
+		if (!xtermHostEl) return;
+		const h = xtermHostEl.clientHeight;
 		if (h <= 0) return;
-		xtermContainer.scrollBy({ top: direction * h, behavior: 'smooth' });
+		xtermHostEl.scrollBy({ top: direction * h, behavior: 'smooth' });
 	}
 	function scrollUp(): void { scrollByViewport(-1); }
 	function scrollDown(): void { scrollByViewport(1); }
 	function scrollToBottom(): void {
-		if (!xtermContainer) return;
-		xtermContainer.scrollTo({
-			top: xtermContainer.scrollHeight,
+		if (!xtermHostEl) return;
+		xtermHostEl.scrollTo({
+			top: xtermHostEl.scrollHeight,
 			behavior: 'smooth'
 		});
 	}
@@ -392,11 +413,11 @@
 				});
 				resizeObserver.observe(xtermContainer);
 			}
-		} else if (xtermContainer) {
-			// Spectator: re-fit on container changes (rotation, viewport
+		} else if (xtermHostEl) {
+			// Spectator: re-fit on host size changes (rotation, viewport
 			// resize, address-bar collapse on mobile).
 			resizeObserver = new ResizeObserver(() => applySpectatorFit());
-			resizeObserver.observe(xtermContainer);
+			resizeObserver.observe(xtermHostEl);
 		}
 	});
 
@@ -514,7 +535,21 @@
 	{/if}
 
 	<div class="body">
-		<div class="xterm-host" bind:this={xtermContainer}></div>
+		<!--
+			Three-layer DOM for the spectator's width-fit + scroll:
+			  .xterm-host  — flex, overflow-y:auto in spectator.
+			  .xterm-stage — explicit scaled-pixel dimensions in spectator
+			                 so .xterm-host's scrollbar reflects the visual
+			                 size of the transformed mount.
+			  .xterm-mount — natural cell-based dimensions; xterm.js mounts
+			                 here. In spectator, gets transform:scale(s).
+			Non-spectator: stage + mount stay 100%×100% (transparent).
+		-->
+		<div class="xterm-host" bind:this={xtermHostEl}>
+			<div class="xterm-stage" bind:this={xtermStageEl}>
+				<div class="xterm-mount" bind:this={xtermContainer}></div>
+			</div>
+		</div>
 		{#if panelOpen && !isSpectator}
 			<HistoryPanel
 				count={currentItems.length}
@@ -799,15 +834,32 @@
 		overflow: hidden;
 	}
 
-	/* Spectator: width-fit, vertical overflow scrolls natively. CSS `zoom`
-	   on .xterm grows its layout box, so overflow-y:auto produces a real
-	   scrollbar + touch-pan when content extends below the viewport.
-	   Horizontal is always hidden — width fit guarantees no horizontal
-	   overflow. */
+	/* Non-spectator: stage and mount stay transparent (full-size),
+	   FitAddon sees normal layout. */
+	.terminal-page:not(.spectator) .xterm-stage,
+	.terminal-page:not(.spectator) .xterm-mount {
+		width: 100%;
+		height: 100%;
+	}
+
+	/* Spectator: width-fit + vertical overflow. transform:scale on the
+	   mount is paired with an explicit-pixel stage so the host's
+	   overflow-y can compute scroll bounds correctly. Horizontal is
+	   always hidden — width fit guarantees no horizontal overflow. */
 	.terminal-page.spectator .xterm-host {
 		overflow-x: hidden;
 		overflow-y: auto;
 		-webkit-overflow-scrolling: touch;
+	}
+	.terminal-page.spectator .xterm-stage {
+		/* width / height set inline by applySpectatorFit. */
+		position: relative;
+	}
+	.terminal-page.spectator .xterm-mount {
+		/* width / height / transform set inline by applySpectatorFit. */
+		position: absolute;
+		top: 0;
+		left: 0;
 	}
 
 	/* Mobile: panel becomes a bottom sheet ~50% height */
@@ -910,12 +962,11 @@
 	}
 
 	/* xterm sets width:100% on its inner viewport but needs a definite
-	   block-size container — flex:1 above gives that.
-
-	   In spectator the `.xterm` should be at its NATURAL cell-based
-	   height (cols × rows × cell_size), not 100% of host, so CSS `zoom`
-	   on it can grow the layout box and the host's `overflow-y: auto`
-	   can scroll to reveal rows that don't fit. */
+	   block-size container. In non-spectator FitAddon makes the mount
+	   match host dimensions, so .xterm fills it; height:100% just makes
+	   the contenteditable area extend to the bottom of the viewport.
+	   In spectator the mount is sized at natural pixels (set inline),
+	   so .xterm fills the mount naturally — no override needed. */
 	.terminal-page:not(.spectator) .xterm-host :global(.xterm) {
 		height: 100%;
 	}
