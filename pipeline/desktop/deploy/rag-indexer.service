@@ -1,0 +1,16 @@
+[Unit]
+Description=Tomboy RAG indexer (zip bootstrap + Firestore poller)
+After=ollama.service
+Wants=ollama.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/workspace/tomboy-web/pipeline
+ExecStart=%h/workspace/tomboy-web/pipeline/.venv/bin/python -m desktop.rag.indexer
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
