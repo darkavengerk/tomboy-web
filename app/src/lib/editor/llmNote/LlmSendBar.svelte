@@ -89,9 +89,20 @@
 		// Add empty A: paragraph as placeholder
 		appendParagraph('A: ');
 
+		// bridgeUrl 은 terminal note 용 WebSocket URL (wss://host/ws) 또는
+		// 일반 base URL 일 수 있음. HTTP base 로 정규화:
+		//   wss://host/ws → https://host
+		//   ws://host/ws  → http://host
+		//   https://host/anything → https://host (trailing path/slash 제거)
+		const httpBase = bridgeUrl
+			.replace(/^wss:\/\//, 'https://')
+			.replace(/^ws:\/\//, 'http://')
+			.replace(/\/(ws|llm\/chat)\/?$/, '')
+			.replace(/\/$/, '');
+
 		try {
 			const result = await sendChat({
-				url: `${bridgeUrl.replace(/\/$/, '')}/llm/chat`,
+				url: `${httpBase}/llm/chat`,
 				token: bridgeToken,
 				body,
 				onToken: (delta) => {
