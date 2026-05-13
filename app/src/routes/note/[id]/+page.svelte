@@ -600,8 +600,10 @@
 	}
 </script>
 
-<div class="editor-page">
-	<!-- 저장 상태 + 노트북/액션 버튼을 에디터 위 간결한 바로 -->
+<div class="editor-page" class:terminal-connected={showTerminal}>
+	<!-- 저장 상태 + 노트북/액션 버튼을 에디터 위 간결한 바로.
+	     터미널 접속 모드에서는 숨김 — 헤더가 좁아져서 겹치고, 어차피
+	     '편집 모드' 버튼으로 빠져나오면 다시 노출되니까 안전. -->
 	<div class="editor-meta-bar">
 		<span class="save-indicator" class:visible={saving}>저장 중...</span>
 		{#if note}
@@ -766,6 +768,12 @@
 		pointer-events: none;
 		opacity: 0.35;
 		transition: opacity 0.2s;
+	}
+
+	/* Terminal-connected view owns its own toolbar; the floating
+	   notebook/menu chips overlap with it on mobile. */
+	.editor-page.terminal-connected .editor-meta-bar {
+		display: none;
 	}
 
 	.editor-meta-bar:has(:hover),

@@ -64,9 +64,6 @@
 	let sendPopupOpen = $state(false);
 	let sendPopupText = $state('');
 	let sendPopupInput: HTMLInputElement | undefined = $state();
-	// Manual zoom override (multiplier). null = auto-fit to viewport.
-	// Reset to null on every pane-switch so a new pane starts fully visible.
-	let spectatorZoomOverride: number | null = $state(null);
 
 	let term: Terminal | null = null;
 	let fit: FitAddon | null = null;
@@ -173,106 +170,39 @@
 	}
 
 	/**
-	 * Apply zoom to the xterm renderer in spectator mode.
-	 *
-	 * Defaults to "fit to viewport" (`min(viewport/rendered, 1)`). User can
-	 * override via the +/− buttons, in which case `spectatorZoomOverride`
-	 * is honored directly (clamped to [0.1, 4]).
-	 *
-	 * Uses CSS `zoom` instead of `transform: scale` so the layout box
-	 * changes with scale — that means a zoomed-in view can be panned with
-	 * the container's `overflow: auto` scrollbars / touch drag, instead of
-	 * being clipped to the parent's bounds.
+	 * Visually fit the xterm renderer to the spectator viewport via
+	 * CSS `transform: scale`. Layout box is unchanged (transform doesn't
+	 * affect layout) — combined with `min(sx, sy, 1)` the content never
+	 * exceeds the container, so we don't need overflow scrolling here.
+	 * Recomputes on every pane-switch / pane-resize / container resize so
+	 * the scale tracks the actual pane size.
 	 */
 	function applySpectatorFit(): void {
 		if (!isSpectator || !xtermContainer) return;
 		const xtermEl = xtermContainer.querySelector('.xterm') as HTMLElement | null;
 		if (!xtermEl) return;
-		// Reset before measuring so we read natural dimensions, not the
-		// last frame's zoomed size.
-		xtermEl.style.zoom = '';
+		// Reset to measure natural dimensions.
+		xtermEl.style.transform = 'none';
 		const renderedW = xtermEl.scrollWidth;
 		const renderedH = xtermEl.scrollHeight;
 		const hostRect = xtermContainer.getBoundingClientRect();
 		if (renderedW === 0 || renderedH === 0 || hostRect.width === 0) return;
-		let scale: number;
-		if (spectatorZoomOverride !== null) {
-			scale = Math.max(0.1, Math.min(4, spectatorZoomOverride));
-		} else {
-			// Fit-to-width with a readability floor — text below ~0.5
-			// scale is unreadable on a phone, so we accept horizontal
-			// overflow (the user can pan with one finger). Vertical fit
-			// isn't enforced; rows beyond viewport scroll naturally.
-			const sx = hostRect.width / renderedW;
-			scale = Math.min(Math.max(sx, 0.6), 1);
-		}
-		xtermEl.style.zoom = String(scale);
+		const sx = hostRect.width / renderedW;
+		const sy = hostRect.height / renderedH;
+		// Never scale up — small panes stay 1:1.
+		const scale = Math.min(sx, sy, 1);
+		xtermEl.style.transformOrigin = 'top left';
+		xtermEl.style.transform = `scale(${scale})`;
 	}
 
-	/**
-	 * The scale we're currently displaying at — fit if no override, else
-	 * the clamped override. Used as the starting point for +/− adjustments.
-	 */
-	function currentSpectatorScale(): number {
-		if (!xtermContainer) return 1;
-		const xtermEl = xtermContainer.querySelector('.xterm') as HTMLElement | null;
-		if (!xtermEl) return 1;
-		const z = parseFloat(xtermEl.style.zoom);
-		return Number.isFinite(z) && z > 0 ? z : 1;
+	function scrollUp(): void {
+		client?.spectatorAction('scroll-up');
 	}
-
-	function zoomIn(): void {
-		spectatorZoomOverride = Math.min(4, currentSpectatorScale() * 1.25);
-		applySpectatorFit();
-	}
-	function zoomOut(): void {
-		spectatorZoomOverride = Math.max(0.1, currentSpectatorScale() / 1.25);
-		applySpectatorFit();
-	}
-	function zoomReset(): void {
-		spectatorZoomOverride = null;
-		applySpectatorFit();
-	}
-
-	function scrollHalfPage(direction: -1 | 1): void {
-		const rows = spectatorRows || term?.rows || 24;
-		term?.scrollLines(direction * Math.max(1, Math.floor(rows / 2)));
+	function scrollDown(): void {
+		client?.spectatorAction('scroll-down');
 	}
 	function scrollToBottom(): void {
-		term?.scrollToBottom();
-	}
-
-	// Two-finger pinch zoom on the xterm host. One-finger drag goes to the
-	// browser's native overflow scroll (via touch-action: pan-x pan-y), so
-	// we only stop propagation / preventDefault when we see exactly 2
-	// touches — otherwise the page can't be panned.
-	let pinchStart: { dist: number; scale: number } | null = null;
-
-	function pinchDistance(t1: Touch, t2: Touch): number {
-		const dx = t1.clientX - t2.clientX;
-		const dy = t1.clientY - t2.clientY;
-		return Math.hypot(dx, dy);
-	}
-
-	function onSpecTouchStart(e: TouchEvent): void {
-		if (e.touches.length === 2) {
-			pinchStart = {
-				dist: pinchDistance(e.touches[0], e.touches[1]),
-				scale: currentSpectatorScale()
-			};
-		}
-	}
-	function onSpecTouchMove(e: TouchEvent): void {
-		if (e.touches.length === 2 && pinchStart) {
-			e.preventDefault();
-			const newDist = pinchDistance(e.touches[0], e.touches[1]);
-			const ratio = newDist / pinchStart.dist;
-			spectatorZoomOverride = Math.max(0.1, Math.min(4, pinchStart.scale * ratio));
-			applySpectatorFit();
-		}
-	}
-	function onSpecTouchEnd(_e: TouchEvent): void {
-		pinchStart = null;
+		client?.spectatorAction('scroll-to-bottom');
 	}
 
 	onMount(async () => {
@@ -422,9 +352,6 @@
 				spectatorPaneId = paneId;
 				spectatorCols = cols;
 				spectatorRows = rows;
-				// New pane = fresh start: clear any user zoom so the new
-				// content lands fully visible at fit scale.
-				spectatorZoomOverride = null;
 				try { term?.resize(cols, rows); } catch { /* ignore */ }
 				// term.resize triggers an async re-render; defer the fit one
 				// frame so .xterm's new natural dimensions have settled.
@@ -578,16 +505,7 @@
 	{/if}
 
 	<div class="body">
-		<div
-			class="xterm-host"
-			role={isSpectator ? 'application' : undefined}
-			aria-label={isSpectator ? '관전 화면 (두 손가락 핀치로 확대, 한 손가락으로 이동)' : undefined}
-			bind:this={xtermContainer}
-			ontouchstart={isSpectator ? onSpecTouchStart : undefined}
-			ontouchmove={isSpectator ? onSpecTouchMove : undefined}
-			ontouchend={isSpectator ? onSpecTouchEnd : undefined}
-			ontouchcancel={isSpectator ? onSpecTouchEnd : undefined}
-		></div>
+		<div class="xterm-host" bind:this={xtermContainer}></div>
 		{#if panelOpen && !isSpectator}
 			<HistoryPanel
 				count={currentItems.length}
@@ -609,14 +527,9 @@
 	{#if isSpectator}
 		<div class="spec-footer" role="toolbar" aria-label="관전 도구">
 			<div class="spec-group">
-				<button type="button" class="icon" title="페이지 위로" onclick={() => scrollHalfPage(-1)}>↑</button>
-				<button type="button" class="icon" title="페이지 아래로" onclick={() => scrollHalfPage(1)}>↓</button>
-				<button type="button" class="icon" title="맨 아래로" onclick={scrollToBottom}>⤓</button>
-			</div>
-			<div class="spec-group">
-				<button type="button" class="icon" title="축소" onclick={zoomOut}>−</button>
-				<button type="button" class="icon" title="맞춤" onclick={zoomReset}>⊡</button>
-				<button type="button" class="icon" title="확대" onclick={zoomIn}>+</button>
+				<button type="button" class="icon" title="페이지 위로 (tmux 스크롤백)" onclick={scrollUp}>↑</button>
+				<button type="button" class="icon" title="페이지 아래로" onclick={scrollDown}>↓</button>
+				<button type="button" class="icon" title="실시간 위치로" onclick={scrollToBottom}>⤓</button>
 			</div>
 			<button
 				type="button"
@@ -650,15 +563,20 @@
 				class="send-input"
 				bind:this={sendPopupInput}
 				bind:value={sendPopupText}
-				placeholder="텍스트 입력 (예: continue, y)"
+				placeholder="텍스트 입력 (예: continue, y, 한글도 OK)"
 				autocomplete="off"
 				autocapitalize="off"
 				spellcheck="false"
 				onkeydown={(e) => {
-					if (e.key === 'Enter') {
+					// `isComposing` is true mid-IME (Korean/Japanese/Chinese
+					// composition). The first Enter during composition just
+					// commits the candidate — the user then presses Enter
+					// again to actually submit. Without this guard, Enter
+					// would fire submit on the half-composed text.
+					if (e.key === 'Enter' && !e.isComposing) {
 						e.preventDefault();
 						sendPopupSubmit(true);
-					} else if (e.key === 'Escape') {
+					} else if (e.key === 'Escape' && !e.isComposing) {
 						e.preventDefault();
 						closeSendPopup();
 					}
@@ -872,15 +790,12 @@
 		overflow: hidden;
 	}
 
-	/* Spectator: allow panning when content exceeds viewport. CSS `zoom`
-	   on .xterm grows its layout box, so overflow:auto here produces
-	   native scrollbars + one-finger touch pan. `touch-action: pan-x
-	   pan-y` lets the browser handle pan natively while still leaving
-	   2-finger gestures to our custom pinch-zoom JS. */
+	/* Spectator: hide overflow — `transform: scale(min(sx, sy, 1))` keeps
+	   visual content within the host, and we never scale up so there's
+	   nothing to pan. Actual scrollback is reached via the bottom
+	   toolbar's ↑/↓ which drive tmux copy-mode on the target. */
 	.terminal-page.spectator .xterm-host {
-		overflow: auto;
-		-webkit-overflow-scrolling: touch;
-		touch-action: pan-x pan-y;
+		overflow: hidden;
 	}
 
 	/* Mobile: panel becomes a bottom sheet ~50% height */
@@ -983,17 +898,8 @@
 	}
 
 	/* xterm sets width:100% on its inner viewport but needs a definite
-	   block-size container — flex:1 above gives that.
-
-	   IMPORTANT: this `height: 100%` MUST NOT apply in spectator mode.
-	   Spectator panes have a fixed pixel size (cols×rows × cell size),
-	   and forcing height:100% glues the .xterm box to the container
-	   regardless of CSS `zoom`, defeating both fit-down (content gets
-	   visually crammed) and zoom-in (layout box doesn't grow → no
-	   scrollbars → no pan). Let .xterm be its natural size in spectator
-	   so zoom propagates to the layout box and overflow:auto on the
-	   parent does its job. */
-	.terminal-page:not(.spectator) .xterm-host :global(.xterm) {
+	   block-size container — flex:1 above gives that. */
+	.xterm-host :global(.xterm) {
 		height: 100%;
 	}
 </style>

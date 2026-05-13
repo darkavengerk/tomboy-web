@@ -134,7 +134,7 @@ function sleep(ms: number): Promise<void> {
 // --- WebSocket session ---
 
 interface ClientMsg {
-	type: 'connect' | 'data' | 'resize';
+	type: 'connect' | 'data' | 'resize' | 'spectator-action';
 	target?: string;
 	token?: string;
 	cols?: number;
@@ -142,6 +142,7 @@ interface ClientMsg {
 	d?: string;
 	mode?: 'shell' | 'spectate';
 	session?: string;
+	action?: string;
 }
 
 function handleWs(ws: WebSocket): void {
@@ -205,10 +206,14 @@ function handleWs(ws: WebSocket): void {
 
 		// Spectator mode: drop resize (bridge dictates size from tmux), but
 		// allow `data` frames so the mobile "보내기" popup can inject
-		// explicit keystrokes into the active pane via `send-keys -H`.
+		// explicit keystrokes into the active pane via `send-keys -H`. The
+		// `spectator-action` channel handles non-keystroke ops like scroll
+		// (tmux copy-mode) which can't be expressed as raw bytes.
 		if (spectator) {
 			if (msg.type === 'data' && typeof msg.d === 'string') {
 				spectator.sendInput(msg.d);
+			} else if (msg.type === 'spectator-action' && typeof msg.action === 'string') {
+				spectator.action(msg.action);
 			}
 			return;
 		}

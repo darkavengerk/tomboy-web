@@ -186,6 +186,21 @@ export class TerminalWsClient {
 		}
 	}
 
+	/**
+	 * Spectator-only side-channel for non-keystroke actions like scroll.
+	 * The bridge translates these into tmux copy-mode commands against the
+	 * currently-active pane (e.g., `copy-mode -t %X; send-keys -X page-up`).
+	 *
+	 * Distinct from `send()` so we don't have to invent fake key sequences
+	 * client-side; the bridge has the full context (active pane id, tmux
+	 * version, etc).
+	 */
+	spectatorAction(action: 'scroll-up' | 'scroll-down' | 'scroll-to-bottom'): void {
+		if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+			this.ws.send(JSON.stringify({ type: 'spectator-action', action }));
+		}
+	}
+
 	close(): void {
 		this.closed = true;
 		if (this.readyFallbackTimer) {

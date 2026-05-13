@@ -353,4 +353,46 @@ export class SpectatorSession {
 			console.error('[spectator] send-keys failed:', (err as Error).message);
 		});
 	}
+
+	/**
+	 * Non-keystroke actions on the active pane.
+	 *
+	 *   scroll-up        → enter copy-mode + page-up
+	 *   scroll-down      → enter copy-mode + page-down
+	 *   scroll-to-bottom → cancel copy-mode (back to live)
+	 *
+	 * `copy-mode -t <pane>` is idempotent: entering twice is a no-op, and
+	 * entering at the bottom of scrollback leaves the cursor at "live"
+	 * position so page-down has no effect there. `cancel` exits if in
+	 * copy-mode, no-op otherwise.
+	 *
+	 * Note: this DOES affect the desktop's view of the pane — entering
+	 * copy-mode pauses live updates on the desktop too, until cancelled.
+	 * Spectator workflow assumes the desktop is unattended; on return
+	 * `prefix + q` (or pressing q in copy-mode) exits.
+	 */
+	action(name: string): void {
+		if (!this.activePaneId || this.closed) return;
+		const pane = this.activePaneId;
+		const run = (cmd: string): void => {
+			this.tmux.command(cmd).catch((err) => {
+				console.error(`[spectator] ${cmd} failed:`, (err as Error).message);
+			});
+		};
+		switch (name) {
+			case 'scroll-up':
+				run(`copy-mode -t ${pane}`);
+				run(`send-keys -t ${pane} -X page-up`);
+				return;
+			case 'scroll-down':
+				run(`copy-mode -t ${pane}`);
+				run(`send-keys -t ${pane} -X page-down`);
+				return;
+			case 'scroll-to-bottom':
+				run(`send-keys -t ${pane} -X cancel`);
+				return;
+			default:
+				console.warn('[spectator] unknown action:', name);
+		}
+	}
 }
