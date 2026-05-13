@@ -139,6 +139,31 @@
 		await setTerminalShellIntegrationBannerDismissed(true);
 	}
 
+	/**
+	 * Scale the xterm renderer down so the desktop pane's full width fits in
+	 * the mobile viewport. Used only in spectator mode — we can't reflow the
+	 * pane content (it would break TUI cursor positioning), so we visually
+	 * shrink instead. iTerm2 does the same.
+	 */
+	function applySpectatorFit(): void {
+		if (!isSpectator || !xtermContainer) return;
+		const xtermEl = xtermContainer.querySelector('.xterm') as HTMLElement | null;
+		if (!xtermEl) return;
+		// Reset before measuring so we read natural dimensions, not last
+		// frame's scaled-down size.
+		xtermEl.style.transform = 'none';
+		const renderedW = xtermEl.scrollWidth;
+		const renderedH = xtermEl.scrollHeight;
+		const hostRect = xtermContainer.getBoundingClientRect();
+		if (renderedW === 0 || renderedH === 0 || hostRect.width === 0) return;
+		const sx = hostRect.width / renderedW;
+		const sy = hostRect.height / renderedH;
+		// Never scale up — small panes stay at 1:1 and align to top-left.
+		const scale = Math.min(sx, sy, 1);
+		xtermEl.style.transformOrigin = 'top left';
+		xtermEl.style.transform = `scale(${scale})`;
+	}
+
 	onMount(async () => {
 		mql = window.matchMedia ? window.matchMedia('(min-width: 768px)') : null;
 		updateMobile = () => { isMobile = !(mql?.matches ?? true); };
@@ -254,6 +279,11 @@
 					refit();
 					if (term && client) client.resize(term.cols, term.rows);
 				});
+			} else {
+				// Same font-ready gotcha applies in spectator mode — natural
+				// .xterm dimensions are wrong until the real font measures.
+				applySpectatorFit();
+				void document.fonts.ready.then(() => applySpectatorFit());
 			}
 		}
 
@@ -282,11 +312,15 @@
 				spectatorCols = cols;
 				spectatorRows = rows;
 				try { term?.resize(cols, rows); } catch { /* ignore */ }
+				// term.resize triggers an async re-render; defer the fit one
+				// frame so .xterm's new natural dimensions have settled.
+				requestAnimationFrame(() => applySpectatorFit());
 			},
 			onPaneResize: ({ cols, rows }) => {
 				spectatorCols = cols;
 				spectatorRows = rows;
 				try { term?.resize(cols, rows); } catch { /* ignore */ }
+				requestAnimationFrame(() => applySpectatorFit());
 			}
 		});
 		client.connect();
@@ -308,6 +342,11 @@
 				});
 				resizeObserver.observe(xtermContainer);
 			}
+		} else if (xtermContainer) {
+			// Spectator: re-fit on container changes (rotation, viewport
+			// resize, address-bar collapse on mobile).
+			resizeObserver = new ResizeObserver(() => applySpectatorFit());
+			resizeObserver.observe(xtermContainer);
 		}
 	});
 
