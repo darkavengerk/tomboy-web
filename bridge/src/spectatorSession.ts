@@ -64,6 +64,12 @@ export class SpectatorSession {
 	/** Bytes for the active pane that arrived while a seed was in flight. */
 	private pendingOutput: Buffer[] = [];
 	private closed = false;
+	/**
+	 * Rolling buffer of ssh stderr — surfaced in the exit reason so the user
+	 * can see *why* the connection died (auth failure, missing tmux session,
+	 * tmux not on PATH, etc).
+	 */
+	private stderrTail: string = '';
 
 	constructor(opts: SpectatorOptions) {
 		this.cb = opts.callbacks;
@@ -72,14 +78,25 @@ export class SpectatorSession {
 			throw new Error(`unsafe session name: ${opts.session}`);
 		}
 
-		const args: string[] = ['-T']; // disable PTY allocation — control mode is binary stdio
+		// `-tt` forces remote PTY allocation even though our stdin is a pipe.
+		// tmux -CC calls tcgetattr() on its stdin at startup and exits with
+		// "tcgetattr failed: Inappropriate ioctl for device" if there's no
+		// tty — iTerm2 hits the same issue and uses the same workaround.
+		//
+		// `stty raw -echo` on the remote disables line-discipline munging
+		// (ECHO, ICANON, ONLCR) so our binary control protocol passes
+		// through unmodified. `exec` replaces the shell so signals + exit
+		// codes propagate cleanly from tmux to ssh.
+		//
+		// Session name is gated by SAFE_SESSION_RE so it's safe to embed
+		// unquoted in the shell command line.
+		const args: string[] = ['-tt'];
 		if (opts.target.port) args.push('-p', String(opts.target.port));
 		args.push('-o', 'StrictHostKeyChecking=accept-new');
 		args.push(
 			opts.target.user ? `${opts.target.user}@${opts.target.host}` : opts.target.host
 		);
-		// session name is gated by SAFE_SESSION_RE so it's safe to embed unquoted.
-		args.push('tmux', '-CC', 'attach', '-t', opts.session);
+		args.push(`stty raw -echo; exec tmux -CC attach -t ${opts.session}`);
 
 		this.ssh = spawn('ssh', args, { stdio: ['pipe', 'pipe', 'pipe'] });
 		if (!this.ssh.stdin || !this.ssh.stdout || !this.ssh.stderr) {
@@ -89,11 +106,31 @@ export class SpectatorSession {
 		this.tmux = new TmuxControlClient(this.ssh.stdin);
 		this.ssh.stdout.on('data', (chunk: Buffer) => this.tmux.feed(chunk));
 		this.ssh.stderr.on('data', (chunk: Buffer) => {
-			// Surface tmux/ssh diagnostics but don't dim the channel.
-			const msg = chunk.toString('utf8').trimEnd();
-			if (msg) console.error('[spectator] ssh stderr:', msg);
+			const msg = chunk.toString('utf8');
+			if (msg) console.error('[spectator] ssh stderr:', msg.trimEnd());
+			// Keep the last ~1 KB so we can include it in the exit reason.
+			this.stderrTail = (this.stderrTail + msg).slice(-1024);
 		});
-		this.ssh.on('exit', () => this.finalize('ssh exit'));
+		this.ssh.on('exit', (code, signal) => {
+			const tail = this.stderrTail.trim();
+			let reason: string;
+			if (signal) reason = `ssh signal=${signal}`;
+			else if (code !== 0 && code !== null) reason = `ssh exit code=${code}`;
+			else reason = 'ssh exit';
+			if (tail) {
+				// Take just the last non-empty stderr line — usually the
+				// actual error (e.g. "can't find session: main").
+				const lastLine = tail.split(/\r?\n/).filter(Boolean).pop();
+				if (lastLine) reason += `: ${lastLine.slice(0, 240)}`;
+			}
+			// Only escalate to `error` for genuinely abnormal exits — stderr
+			// alone may just be benign .bashrc/.zshrc warnings (e.g. tools
+			// that aren't on the non-interactive PATH).
+			if ((code !== 0 && code !== null) || signal) {
+				this.cb.error(reason);
+			}
+			this.finalize(reason);
+		});
 		this.ssh.on('error', (err) => this.cb.error(err.message));
 
 		this.tmux.on('output', (paneId, bytes) => this.onPaneOutput(paneId, bytes));
