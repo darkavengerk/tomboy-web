@@ -14,6 +14,7 @@ export interface LlmNoteSpec {
 		top_p?: number;
 		seed?: number;
 		num_predict?: number;
+		rag?: number;
 	};
 	messages: Array<{ role: 'user' | 'assistant'; content: string }>;
 	/**
@@ -103,6 +104,18 @@ export function parseLlmNote(doc: JSONContent | null | undefined): LlmNoteSpec |
 		const value = currentValueLines.join('\n');
 		if (currentKey === 'system') {
 			result.system = value;
+		} else if (currentKey === 'rag') {
+			const trimmed = value.trim().toLowerCase();
+			if (trimmed === 'on') {
+				result.options.rag = 5;
+			} else if (trimmed === 'off' || trimmed === '') {
+				// undefined — leave unset
+			} else {
+				const n = parseInt(trimmed, 10);
+				if (Number.isFinite(n)) {
+					result.options.rag = Math.min(Math.max(n, 1), 20);
+				}
+			}
 		} else {
 			const trimmed = value.trim();
 			const n = INT_KEYS.has(currentKey) ? parseInt(trimmed, 10) : parseFloat(trimmed);

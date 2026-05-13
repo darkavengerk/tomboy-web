@@ -4,33 +4,33 @@
     {
       "id": 19,
       "subject": "Task 1: rag 헤더 키 — defaults + parser",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** defaults.ts 가 rag 키를 인식하고 parseLlmNote 가 options.rag: number | undefined 를 채운다.\n\n**Files:**\n- Modify: app/src/lib/llmNote/defaults.ts\n- Modify: app/src/lib/llmNote/parseLlmNote.ts\n- Modify: app/tests/unit/llmNote/parseLlmNote.test.ts\n\n**Verify:** cd app && npm test -- llmNote/parseLlmNote\n\n```json:metadata\n{\"files\":[\"app/src/lib/llmNote/defaults.ts\",\"app/src/lib/llmNote/parseLlmNote.ts\",\"app/tests/unit/llmNote/parseLlmNote.test.ts\"],\"verifyCommand\":\"cd app && npm test -- llmNote/parseLlmNote\",\"acceptanceCriteria\":[\"rag in LLM_RECOGNIZED_HEADER_KEYS\",\"LLM_HEADER_KEY_RE matches rag\",\"options.rag?: number field\",\"rag values parsed correctly (on/off/int/clamp)\",\"existing 17 tests pass\"]}\n```"
     },
     {
       "id": 20,
       "subject": "Task 2: llmNotePlugin 헤더 정규식 검증",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [19],
       "description": "**Goal:** 자동 보완 플러그인이 rag 도 헤더로 인식 (Task 1 의 정규식 변경 자동 적용).\n\n**Files:**\n- Modify: app/src/lib/editor/llmNote/llmNotePlugin.ts (변경 거의 없음)\n- Modify: app/tests/unit/editor/llmNotePlugin.test.ts (rag 테스트 1개)\n\n**Verify:** cd app && npm test -- editor/llmNotePlugin\n\n```json:metadata\n{\"files\":[\"app/src/lib/editor/llmNote/llmNotePlugin.ts\",\"app/tests/unit/editor/llmNotePlugin.test.ts\"],\"verifyCommand\":\"cd app && npm test -- editor/llmNotePlugin\",\"acceptanceCriteria\":[\"rag 가 헤더 키로 인식\",\"rag-only 헤더가 보완을 막음\",\"기존 테스트 모두 통과\"]}\n```"
     },
     {
       "id": 21,
       "subject": "Task 3: searchRag.ts — bridge 클라이언트",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** RAG 검색 클라이언트. 단발 JSON fetch + RagSearchError 분류.\n\n**Files:**\n- Create: app/src/lib/llmNote/searchRag.ts\n- Create: app/tests/unit/llmNote/searchRag.test.ts\n\n**Verify:** cd app && npm test -- llmNote/searchRag\n\n```json:metadata\n{\"files\":[\"app/src/lib/llmNote/searchRag.ts\",\"app/tests/unit/llmNote/searchRag.test.ts\"],\"verifyCommand\":\"cd app && npm test -- llmNote/searchRag\",\"acceptanceCriteria\":[\"RagHit/RagSearchError export\",\"에러 분류 (unauthorized/rag_unavailable/bad_request/upstream_error/network)\",\"Bearer auth + JSON body\",\"200 → hits\"]}\n```"
     },
     {
       "id": 22,
       "subject": "Task 4: LlmSendBar rag 분기",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [19, 21],
       "description": "**Goal:** spec.options.rag > 0 시 검색 → system prepend → /llm/chat → 응답 뒤 참고: [[제목]] 부착.\n\n**Files:**\n- Modify: app/src/lib/editor/llmNote/LlmSendBar.svelte\n\n**Verify:** cd app && npm run check && npm test\n\n```json:metadata\n{\"files\":[\"app/src/lib/editor/llmNote/LlmSendBar.svelte\"],\"verifyCommand\":\"cd app && npm run check && npm test\",\"acceptanceCriteria\":[\"rag undefined → 기존 흐름\",\"rag > 0 → searchRag 호출 + system prepend\",\"검색 실패 → toast + RAG 없이 진행\",\"done 시 참고: [[title]] 부착\",\"AbortSignal 전달\"]}\n```"
     },
     {
       "id": 23,
       "subject": "Task 5: bridge /rag/search proxy",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** bridge 가 /rag/search POST 를 받아 Bearer 검증 후 desktop FastAPI 로 proxy.\n\n**Files:**\n- Create: bridge/src/rag.ts\n- Modify: bridge/src/server.ts\n- Modify: bridge/deploy/term-bridge.container\n\n**Verify:** cd bridge && npm run build\n\n```json:metadata\n{\"files\":[\"bridge/src/rag.ts\",\"bridge/src/server.ts\",\"bridge/deploy/term-bridge.container\"],\"verifyCommand\":\"cd bridge && npm run build\",\"acceptanceCriteria\":[\"Bearer auth\",\"bad query → 400\",\"ECONNREFUSED → 503 rag_unavailable\",\"upstream 5xx → 502\",\"정상 → 200 패스스루\",\"abort 전파\",\"RAG_SEARCH_URL env doc\"]}\n```"
     },
     {
@@ -75,7 +75,7 @@
     {
       "id": 30,
       "subject": "Task 12: Python search_server — FastAPI",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [25, 26],
       "description": "**Goal:** 0.0.0.0:8743/search 단발 POST. JSON body {query, k} → embed → top-K → JSON.\n\n**Files:**\n- Create: pipeline/desktop/rag/search_server.py\n- Create: pipeline/tests/rag/test_search_server.py\n\n**Verify:** cd pipeline && python -m pytest tests/rag/test_search_server.py -v\n\n```json:metadata\n{\"files\":[\"pipeline/desktop/rag/search_server.py\",\"pipeline/tests/rag/test_search_server.py\"],\"verifyCommand\":\"cd pipeline && python -m pytest tests/rag/test_search_server.py -v\",\"acceptanceCriteria\":[\"POST /search → [{guid,title,body,score}]\",\"empty query → 400\",\"k clamp 1-20\",\"EmbedError → 503\",\"build_app(store, embedder) factory for tests\",\"module app for uvicorn\"]}\n```"
     },

@@ -134,4 +134,24 @@ describe('llmNotePlugin', () => {
 		expect(allTexts).not.toContain('Q: ');
 		editor.destroy();
 	});
+
+	it('rag-only header counts: rescan does not insert more headers', () => {
+		const editor = createTestEditor();
+		editor.commands.setContent({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: 'title' }] },
+				{ type: 'paragraph', content: [{ type: 'text', text: 'llm://m' }] },
+				{ type: 'paragraph', content: [{ type: 'text', text: 'rag: 5' }] },
+				{ type: 'paragraph' },
+				{ type: 'paragraph', content: [{ type: 'text', text: 'Q: hi' }] }
+			]
+		});
+		const before = editor.getJSON();
+		editor.view.dispatch(
+			editor.state.tr.setMeta(llmNotePluginKey, { rescan: true })
+		);
+		expect(editor.getJSON()).toEqual(before);
+		editor.destroy();
+	});
 });

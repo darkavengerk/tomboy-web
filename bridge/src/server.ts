@@ -10,6 +10,7 @@ import { parseSshTarget, spawnForTarget, type SshTarget } from './pty.js';
 import { loadHostsFile, lookupWolTarget, type WolEntry } from './hosts.js';
 import { probePort, sendMagicPacket, waitForPort } from './wol.js';
 import { handleLlmChat } from './llm.js';
+import { handleRagSearch } from './rag.js';
 import { SpectatorSession } from './spectatorSession.js';
 
 const PORT = Number(process.env.BRIDGE_PORT || 3000);
@@ -89,6 +90,11 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 
 	if (url === '/llm/chat' && req.method === 'POST') {
 		await handleLlmChat(req, res, SECRET);
+		return;
+	}
+
+	if (url === '/rag/search' && req.method === 'POST') {
+		await handleRagSearch(req, res, SECRET);
 		return;
 	}
 
