@@ -215,24 +215,13 @@
 	}
 
 	/**
-	 * Scroll the spectator host by one viewport height ("page-unit").
-	 * Used by ↑/↓ buttons. Touch drag uses native overflow scroll which
-	 * is continuous (smoother for fine-tuning).
+	 * Pane / window navigation in the spectated tmux session. The bridge
+	 * issues `select-pane` / `select-window` on the control channel; the
+	 * resulting focus change flows back through the existing
+	 * `pane-switch` path so we don't need to handle the response here.
 	 */
-	function scrollByViewport(direction: -1 | 1): void {
-		if (!xtermHostEl) return;
-		const h = xtermHostEl.clientHeight;
-		if (h <= 0) return;
-		xtermHostEl.scrollBy({ top: direction * h, behavior: 'smooth' });
-	}
-	function scrollUp(): void { scrollByViewport(-1); }
-	function scrollDown(): void { scrollByViewport(1); }
-	function scrollToBottom(): void {
-		if (!xtermHostEl) return;
-		xtermHostEl.scrollTo({
-			top: xtermHostEl.scrollHeight,
-			behavior: 'smooth'
-		});
+	function tmuxNav(action: 'next-pane' | 'prev-pane' | 'next-window' | 'prev-window'): void {
+		client?.tmuxNav(action);
 	}
 
 	onMount(async () => {
@@ -571,9 +560,34 @@
 	{#if isSpectator}
 		<div class="spec-footer" role="toolbar" aria-label="관전 도구">
 			<div class="spec-group">
-				<button type="button" class="icon" title="한 화면 위로" onclick={scrollUp}>↑</button>
-				<button type="button" class="icon" title="한 화면 아래로" onclick={scrollDown}>↓</button>
-				<button type="button" class="icon" title="맨 아래로" onclick={scrollToBottom}>⤓</button>
+				<button
+					type="button"
+					class="icon"
+					title="이전 윈도우"
+					onclick={() => tmuxNav('prev-window')}
+					disabled={status !== 'open'}
+				>&laquo;</button>
+				<button
+					type="button"
+					class="icon"
+					title="이전 패널"
+					onclick={() => tmuxNav('prev-pane')}
+					disabled={status !== 'open'}
+				>&lsaquo;</button>
+				<button
+					type="button"
+					class="icon"
+					title="다음 패널"
+					onclick={() => tmuxNav('next-pane')}
+					disabled={status !== 'open'}
+				>&rsaquo;</button>
+				<button
+					type="button"
+					class="icon"
+					title="다음 윈도우"
+					onclick={() => tmuxNav('next-window')}
+					disabled={status !== 'open'}
+				>&raquo;</button>
 			</div>
 			<button
 				type="button"

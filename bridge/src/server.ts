@@ -134,7 +134,7 @@ function sleep(ms: number): Promise<void> {
 // --- WebSocket session ---
 
 interface ClientMsg {
-	type: 'connect' | 'data' | 'resize';
+	type: 'connect' | 'data' | 'resize' | 'tmux-nav';
 	target?: string;
 	token?: string;
 	cols?: number;
@@ -142,7 +142,15 @@ interface ClientMsg {
 	d?: string;
 	mode?: 'shell' | 'spectate';
 	session?: string;
+	action?: 'next-pane' | 'prev-pane' | 'next-window' | 'prev-window';
 }
+
+const TMUX_NAV_ACTIONS = new Set([
+	'next-pane',
+	'prev-pane',
+	'next-window',
+	'prev-window'
+]);
 
 function handleWs(ws: WebSocket): void {
 	let pty: ReturnType<typeof spawnForTarget> | null = null;
@@ -215,6 +223,12 @@ function handleWs(ws: WebSocket): void {
 		if (spectator) {
 			if (msg.type === 'data' && typeof msg.d === 'string') {
 				spectator.sendInput(msg.d);
+			} else if (
+				msg.type === 'tmux-nav' &&
+				typeof msg.action === 'string' &&
+				TMUX_NAV_ACTIONS.has(msg.action)
+			) {
+				spectator.tmuxNav(msg.action as Parameters<SpectatorSession['tmuxNav']>[0]);
 			}
 			return;
 		}

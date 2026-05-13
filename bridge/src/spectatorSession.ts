@@ -47,12 +47,15 @@ const SWITCH_DEBOUNCE_MS = 100;
 
 const SAFE_SESSION_RE = /^[A-Za-z0-9_\-./@:]+$/;
 
+export type SpectatorNavAction = 'next-pane' | 'prev-pane' | 'next-window' | 'prev-window';
+
 export class SpectatorSession {
 	private ssh: ChildProcess;
 	private tmux: TmuxControlClient;
 	private cb: SpectatorCallbacks;
 	private decoder = new TextDecoder('utf-8', { fatal: false });
 
+	private sessionName: string;
 	private sessionId: string | null = null;
 	private windowId: string | null = null;
 	private activePaneId: string | null = null;
@@ -73,6 +76,7 @@ export class SpectatorSession {
 
 	constructor(opts: SpectatorOptions) {
 		this.cb = opts.callbacks;
+		this.sessionName = opts.session;
 
 		if (!SAFE_SESSION_RE.test(opts.session)) {
 			throw new Error(`unsafe session name: ${opts.session}`);
@@ -351,6 +355,45 @@ export class SpectatorSession {
 		const cmd = `send-keys -t ${this.activePaneId} -H ${hex.join(' ')}`;
 		this.tmux.command(cmd).catch((err) => {
 			console.error('[spectator] send-keys failed:', (err as Error).message);
+		});
+	}
+
+	/**
+	 * Pane / window navigation in the spectated session. Issues a tmux
+	 * command on the control channel; the resulting `%window-pane-changed`
+	 * or `%session-window-changed` notification flows through the existing
+	 * focus-follow path, so the spectator's view + size update naturally.
+	 *
+	 * Target syntax:
+	 *   `<session>:.+` / `<session>:.-`  → next / previous pane in the
+	 *                                     session's current window
+	 *   `<session>:+`  / `<session>:-`   → next / previous window
+	 *
+	 * The session name is gated by SAFE_SESSION_RE in the constructor, so
+	 * embedding it unquoted in the command line is safe.
+	 */
+	tmuxNav(action: SpectatorNavAction): void {
+		if (this.closed) return;
+		const s = this.sessionName;
+		let cmd: string;
+		switch (action) {
+			case 'next-pane':
+				cmd = `select-pane -t ${s}:.+`;
+				break;
+			case 'prev-pane':
+				cmd = `select-pane -t ${s}:.-`;
+				break;
+			case 'next-window':
+				cmd = `select-window -t ${s}:+`;
+				break;
+			case 'prev-window':
+				cmd = `select-window -t ${s}:-`;
+				break;
+			default:
+				return;
+		}
+		this.tmux.command(cmd).catch((err) => {
+			console.error('[spectator] tmuxNav failed:', (err as Error).message);
 		});
 	}
 

@@ -186,6 +186,17 @@ export class TerminalWsClient {
 		}
 	}
 
+	/**
+	 * Spectator-only: tell the bridge to navigate the spectated tmux
+	 * session. The pane/window switch is observed via the existing
+	 * `pane-switch` frame, so no extra ack is needed.
+	 */
+	tmuxNav(action: 'next-pane' | 'prev-pane' | 'next-window' | 'prev-window'): void {
+		if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+			this.ws.send(JSON.stringify({ type: 'tmux-nav', action }));
+		}
+	}
+
 
 	close(): void {
 		this.closed = true;
