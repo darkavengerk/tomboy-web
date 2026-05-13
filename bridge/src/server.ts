@@ -143,6 +143,7 @@ interface ClientMsg {
 	mode?: 'shell' | 'spectate';
 	session?: string;
 	action?: string;
+	count?: number;
 }
 
 function handleWs(ws: WebSocket): void {
@@ -213,7 +214,8 @@ function handleWs(ws: WebSocket): void {
 			if (msg.type === 'data' && typeof msg.d === 'string') {
 				spectator.sendInput(msg.d);
 			} else if (msg.type === 'spectator-action' && typeof msg.action === 'string') {
-				spectator.action(msg.action);
+				const count = typeof msg.count === 'number' ? msg.count : undefined;
+				void spectator.action(msg.action, count);
 			}
 			return;
 		}

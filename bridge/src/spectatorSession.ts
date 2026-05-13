@@ -65,6 +65,19 @@ export class SpectatorSession {
 	private pendingOutput: Buffer[] = [];
 	private closed = false;
 	/**
+	 * True while the active pane is in tmux copy-mode (i.e., the user
+	 * triggered a scroll-up/scroll-down on mobile and we haven't exited
+	 * yet). While in copy-mode we suppress `%output` forwarding because
+	 * the user is looking at a scrolled-back capture — live bytes would
+	 * jump them back to the bottom and overwrite the captured view.
+	 *
+	 * tmux's control protocol does NOT push copy-mode redraws as
+	 * `%output` (copy-mode is a tmux-client overlay, not pane output),
+	 * so the user only sees the scrolled view when we explicitly
+	 * `capture-pane` + reseed after each scroll action.
+	 */
+	private inCopyMode = false;
+	/**
 	 * Rolling buffer of ssh stderr — surfaced in the exit reason so the user
 	 * can see *why* the connection died (auth failure, missing tmux session,
 	 * tmux not on PATH, etc).
@@ -183,6 +196,12 @@ export class SpectatorSession {
 			this.pendingOutput.push(bytes);
 			return;
 		}
+		// While the user is browsing scrollback (copy-mode), drop live
+		// output instead of letting it overwrite their captured view.
+		// Bytes are discarded; the next reseed-from-capture (on further
+		// scroll, or on scroll-to-bottom to exit copy-mode) re-syncs the
+		// view to whatever tmux currently shows.
+		if (this.inCopyMode) return;
 		this.emitBytes(bytes);
 	}
 
@@ -357,42 +376,113 @@ export class SpectatorSession {
 	/**
 	 * Non-keystroke actions on the active pane.
 	 *
-	 *   scroll-up        → enter copy-mode + page-up
-	 *   scroll-down      → enter copy-mode + page-down
-	 *   scroll-to-bottom → cancel copy-mode (back to live)
+	 *   scroll-up        → enter copy-mode + page-up    + reseed
+	 *   scroll-down      → enter copy-mode + page-down  + reseed
+	 *   scroll-lines     → enter copy-mode + cursor up/down × |count| + reseed
+	 *                      (count < 0 = older content / cursor-up)
+	 *   scroll-to-bottom → cancel copy-mode (back to live) + reseed
 	 *
-	 * `copy-mode -t <pane>` is idempotent: entering twice is a no-op, and
-	 * entering at the bottom of scrollback leaves the cursor at "live"
-	 * position so page-down has no effect there. `cancel` exits if in
-	 * copy-mode, no-op otherwise.
+	 * `copy-mode -t <pane>` is idempotent. The reseed is REQUIRED — tmux's
+	 * control protocol does NOT push copy-mode redraws as `%output` (it's
+	 * a tmux-client overlay, not pane output), so without an explicit
+	 * `capture-pane` + emit, the spectator's mobile screen stays frozen
+	 * at the pre-scroll state even though the desktop sees the scroll.
 	 *
-	 * Note: this DOES affect the desktop's view of the pane — entering
-	 * copy-mode pauses live updates on the desktop too, until cancelled.
-	 * Spectator workflow assumes the desktop is unattended; on return
+	 * This DOES affect the desktop's view of the pane — entering copy-mode
+	 * pauses live updates on the desktop too, until cancelled. The
+	 * spectator workflow assumes the desktop is unattended; on return
 	 * `prefix + q` (or pressing q in copy-mode) exits.
 	 */
-	action(name: string): void {
+	async action(name: string, count?: number): Promise<void> {
 		if (!this.activePaneId || this.closed) return;
 		const pane = this.activePaneId;
-		const run = (cmd: string): void => {
-			this.tmux.command(cmd).catch((err) => {
-				console.error(`[spectator] ${cmd} failed:`, (err as Error).message);
-			});
-		};
-		switch (name) {
-			case 'scroll-up':
-				run(`copy-mode -t ${pane}`);
-				run(`send-keys -t ${pane} -X page-up`);
-				return;
-			case 'scroll-down':
-				run(`copy-mode -t ${pane}`);
-				run(`send-keys -t ${pane} -X page-down`);
-				return;
-			case 'scroll-to-bottom':
-				run(`send-keys -t ${pane} -X cancel`);
-				return;
-			default:
-				console.warn('[spectator] unknown action:', name);
+		try {
+			switch (name) {
+				case 'scroll-up':
+					await this.tmux.command(`copy-mode -t ${pane}`);
+					this.inCopyMode = true;
+					await this.tmux.command(`send-keys -t ${pane} -X page-up`);
+					await this.reseedFromCapture();
+					return;
+				case 'scroll-down':
+					await this.tmux.command(`copy-mode -t ${pane}`);
+					this.inCopyMode = true;
+					await this.tmux.command(`send-keys -t ${pane} -X page-down`);
+					await this.reseedFromCapture();
+					return;
+				case 'scroll-lines': {
+					const n =
+						typeof count === 'number' && Number.isFinite(count)
+							? Math.min(Math.abs(Math.trunc(count)), 500)
+							: 0;
+					if (n === 0) return;
+					const dir = (count ?? 0) < 0 ? 'cursor-up' : 'cursor-down';
+					await this.tmux.command(`copy-mode -t ${pane}`);
+					this.inCopyMode = true;
+					await this.tmux.command(`send-keys -t ${pane} -N ${n} -X ${dir}`);
+					await this.reseedFromCapture();
+					return;
+				}
+				case 'scroll-to-bottom':
+					await this.tmux.command(`send-keys -t ${pane} -X cancel`);
+					this.inCopyMode = false;
+					// After cancel, live %output resumes naturally. Issue
+					// one capture-pane redraw so the mobile transitions to
+					// the live view cleanly without waiting for the next
+					// app-driven output.
+					await this.reseedFromCapture();
+					return;
+				default:
+					console.warn('[spectator] unknown action:', name);
+			}
+		} catch (err) {
+			this.cb.error(`action ${name}: ${(err as Error).message}`);
+		}
+	}
+
+	/**
+	 * Capture the current visible state of the active pane and emit it as
+	 * a fresh screen seed. Used after scroll actions because copy-mode
+	 * redraws don't go through `%output`. Uses a light reset (`CSI 2J +
+	 * CSI H`) rather than full RIS so xterm's scrollback isn't wiped on
+	 * every scroll tick.
+	 */
+	private async reseedFromCapture(): Promise<void> {
+		if (!this.activePaneId || this.closed) return;
+		const pane = this.activePaneId;
+		// Suspend live forwarding while we assemble the seed — any %output
+		// arriving between capture and emit would be applied on top of the
+		// captured cursor position, garbling the view.
+		this.seeding = true;
+		this.pendingOutput = [];
+		this.decoder = new TextDecoder('utf-8', { fatal: false });
+		try {
+			const meta = await this.tmux.command(
+				`display-message -p -t ${pane} -F '#{alternate_on}|#{cursor_x}|#{cursor_y}'`
+			);
+			const parts = (meta[0] ?? '').split('|');
+			const alt = parts[0] === '1';
+			const cx = parseInt(parts[1], 10);
+			const cy = parseInt(parts[2], 10);
+			const captured = await this.tmux.command(`capture-pane -epJ -t ${pane}`);
+			// Light reset: clear screen + home cursor. Avoids full RIS
+			// (which would wipe xterm's scrollback on every reseed).
+			let seed = '\x1b[H\x1b[2J';
+			if (alt) seed += '\x1b[?1049h';
+			else seed += '\x1b[?1049l';
+			seed += captured.join('\r\n');
+			if (Number.isFinite(cx) && Number.isFinite(cy)) {
+				seed += `\x1b[${cy + 1};${cx + 1}H`;
+			}
+			this.cb.data(seed);
+		} catch (err) {
+			this.cb.error(`reseed: ${(err as Error).message}`);
+		} finally {
+			// Discard any %output that arrived while seeding — they're for
+			// the live view, not the (possibly scrolled-back) captured view.
+			// When we exit copy-mode, the next reseed-from-cancel re-syncs.
+			this.pendingOutput = [];
+			this.seeding = false;
 		}
 	}
 }

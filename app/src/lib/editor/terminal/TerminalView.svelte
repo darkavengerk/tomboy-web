@@ -205,6 +205,62 @@
 		client?.spectatorAction('scroll-to-bottom');
 	}
 
+	// Touch-drag scrolling. Swipe finger DOWN to see OLDER content (pull
+	// the view downwards, like a paper scroll) → tmux cursor-up via
+	// scroll-lines with a negative count. Swipe finger UP for newer.
+	//
+	// Throttled at THROTTLE_MS — each fire is a round-trip
+	// (copy-mode + send-keys + capture-pane + emit), so firing every
+	// pointermove would overwhelm the bridge. The throttle accumulates
+	// the delta and dispatches once per window; touch-end flushes any
+	// remainder.
+	const SPEC_PIXELS_PER_LINE = 22;
+	const SPEC_TOUCH_THROTTLE_MS = 120;
+	let specTouchActive = false;
+	let specTouchOriginY = 0;
+	let specAccumulatedPx = 0;
+	let specLastFireMs = 0;
+
+	function flushSpecScroll(): void {
+		const lines = Math.trunc(specAccumulatedPx / SPEC_PIXELS_PER_LINE);
+		if (lines === 0) return;
+		specAccumulatedPx -= lines * SPEC_PIXELS_PER_LINE;
+		// Finger moves down (positive dy) → see older content → negative count.
+		client?.spectatorAction('scroll-lines', -lines);
+	}
+
+	function onSpecPointerDown(e: PointerEvent): void {
+		if (e.pointerType !== 'touch') return;
+		specTouchActive = true;
+		specTouchOriginY = e.clientY;
+		specAccumulatedPx = 0;
+		specLastFireMs = 0;
+		try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* ignore */ }
+	}
+	function onSpecPointerMove(e: PointerEvent): void {
+		if (!specTouchActive || e.pointerType !== 'touch') return;
+		e.preventDefault();
+		const dy = e.clientY - specTouchOriginY;
+		specAccumulatedPx = dy;
+		const now = performance.now();
+		if (now - specLastFireMs >= SPEC_TOUCH_THROTTLE_MS) {
+			const lines = Math.trunc(specAccumulatedPx / SPEC_PIXELS_PER_LINE);
+			if (lines !== 0) {
+				specLastFireMs = now;
+				client?.spectatorAction('scroll-lines', -lines);
+				// Reset origin so subsequent moves are relative to where
+				// we just fired from — avoids drifting accumulation.
+				specTouchOriginY += lines * SPEC_PIXELS_PER_LINE;
+				specAccumulatedPx -= lines * SPEC_PIXELS_PER_LINE;
+			}
+		}
+	}
+	function onSpecPointerUp(_e: PointerEvent): void {
+		if (!specTouchActive) return;
+		flushSpecScroll();
+		specTouchActive = false;
+	}
+
 	onMount(async () => {
 		mql = window.matchMedia ? window.matchMedia('(min-width: 768px)') : null;
 		updateMobile = () => { isMobile = !(mql?.matches ?? true); };
@@ -505,7 +561,16 @@
 	{/if}
 
 	<div class="body">
-		<div class="xterm-host" bind:this={xtermContainer}></div>
+		<div
+			class="xterm-host"
+			role={isSpectator ? 'application' : undefined}
+			aria-label={isSpectator ? '관전 화면 (위/아래로 스와이프하여 스크롤)' : undefined}
+			bind:this={xtermContainer}
+			onpointerdown={isSpectator ? onSpecPointerDown : undefined}
+			onpointermove={isSpectator ? onSpecPointerMove : undefined}
+			onpointerup={isSpectator ? onSpecPointerUp : undefined}
+			onpointercancel={isSpectator ? onSpecPointerUp : undefined}
+		></div>
 		{#if panelOpen && !isSpectator}
 			<HistoryPanel
 				count={currentItems.length}
@@ -791,11 +856,12 @@
 	}
 
 	/* Spectator: hide overflow — `transform: scale(min(sx, sy, 1))` keeps
-	   visual content within the host, and we never scale up so there's
-	   nothing to pan. Actual scrollback is reached via the bottom
-	   toolbar's ↑/↓ which drive tmux copy-mode on the target. */
+	   visual content within the host. `touch-action: none` lets us
+	   intercept one-finger drag as a tmux scrollback gesture without
+	   the browser stealing it for page scroll / pinch zoom. */
 	.terminal-page.spectator .xterm-host {
 		overflow: hidden;
+		touch-action: none;
 	}
 
 	/* Mobile: panel becomes a bottom sheet ~50% height */
