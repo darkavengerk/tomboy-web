@@ -186,28 +186,6 @@ export class TerminalWsClient {
 		}
 	}
 
-	/**
-	 * Spectator-only side-channel for non-keystroke actions like scroll.
-	 * The bridge translates these into tmux copy-mode commands against the
-	 * currently-active pane, then forces a `capture-pane` reseed so the
-	 * mobile actually sees the scrolled view (tmux's control protocol
-	 * doesn't push copy-mode redraws as `%output`).
-	 *
-	 *   scroll-up/down/to-bottom : page-step / cancel
-	 *   scroll-lines             : N-line step; `count` is signed —
-	 *                              negative = older content (cursor-up),
-	 *                              positive = newer (cursor-down).
-	 */
-	spectatorAction(
-		action: 'scroll-up' | 'scroll-down' | 'scroll-to-bottom' | 'scroll-lines',
-		count?: number
-	): void {
-		if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-			const msg: Record<string, unknown> = { type: 'spectator-action', action };
-			if (typeof count === 'number') msg.count = count;
-			this.ws.send(JSON.stringify(msg));
-		}
-	}
 
 	close(): void {
 		this.closed = true;

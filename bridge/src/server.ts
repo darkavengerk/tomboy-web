@@ -134,7 +134,7 @@ function sleep(ms: number): Promise<void> {
 // --- WebSocket session ---
 
 interface ClientMsg {
-	type: 'connect' | 'data' | 'resize' | 'spectator-action';
+	type: 'connect' | 'data' | 'resize';
 	target?: string;
 	token?: string;
 	cols?: number;
@@ -142,8 +142,6 @@ interface ClientMsg {
 	d?: string;
 	mode?: 'shell' | 'spectate';
 	session?: string;
-	action?: string;
-	count?: number;
 }
 
 function handleWs(ws: WebSocket): void {
@@ -207,15 +205,16 @@ function handleWs(ws: WebSocket): void {
 
 		// Spectator mode: drop resize (bridge dictates size from tmux), but
 		// allow `data` frames so the mobile "보내기" popup can inject
-		// explicit keystrokes into the active pane via `send-keys -H`. The
-		// `spectator-action` channel handles non-keystroke ops like scroll
-		// (tmux copy-mode) which can't be expressed as raw bytes.
+		// explicit keystrokes into the active pane via `send-keys -H`.
+		// Scrolling is purely client-side over xterm.js's local scrollback
+		// (mobile sees whatever it has received since attach) — the bridge
+		// doesn't try to drive tmux copy-mode anymore: copy-mode operates
+		// on the desktop's pane grid which the mobile has no access to,
+		// and disturbing the desktop view for our scroll is worse than not
+		// scrolling at all.
 		if (spectator) {
 			if (msg.type === 'data' && typeof msg.d === 'string') {
 				spectator.sendInput(msg.d);
-			} else if (msg.type === 'spectator-action' && typeof msg.action === 'string') {
-				const count = typeof msg.count === 'number' ? msg.count : undefined;
-				void spectator.action(msg.action, count);
 			}
 			return;
 		}

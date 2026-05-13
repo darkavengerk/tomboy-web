@@ -170,95 +170,48 @@
 	}
 
 	/**
-	 * Visually fit the xterm renderer to the spectator viewport via
-	 * CSS `transform: scale`. Layout box is unchanged (transform doesn't
-	 * affect layout) — combined with `min(sx, sy, 1)` the content never
-	 * exceeds the container, so we don't need overflow scrolling here.
-	 * Recomputes on every pane-switch / pane-resize / container resize so
-	 * the scale tracks the actual pane size.
+	 * Fit the spectator's xterm to the viewport WIDTH (only). Height is
+	 * allowed to overflow — `.xterm-host` has `overflow-y: auto` so the
+	 * user can scroll vertically with one-finger touch / scroll buttons
+	 * to see rows that don't fit.
+	 *
+	 * Uses CSS `zoom` (not `transform: scale`) so the layout box grows
+	 * with the visual — otherwise the host wouldn't see scaled-up height
+	 * and overflow scrolling wouldn't work. CSS `zoom` is supported on
+	 * Chrome/Safari/Edge and Firefox 126+.
 	 */
 	function applySpectatorFit(): void {
 		if (!isSpectator || !xtermContainer) return;
 		const xtermEl = xtermContainer.querySelector('.xterm') as HTMLElement | null;
 		if (!xtermEl) return;
-		// Reset to measure natural dimensions.
-		xtermEl.style.transform = 'none';
+		xtermEl.style.zoom = '';
 		const renderedW = xtermEl.scrollWidth;
-		const renderedH = xtermEl.scrollHeight;
 		const hostRect = xtermContainer.getBoundingClientRect();
-		if (renderedW === 0 || renderedH === 0 || hostRect.width === 0) return;
-		const sx = hostRect.width / renderedW;
-		const sy = hostRect.height / renderedH;
-		// Never scale up — small panes stay 1:1.
-		const scale = Math.min(sx, sy, 1);
-		xtermEl.style.transformOrigin = 'top left';
-		xtermEl.style.transform = `scale(${scale})`;
+		if (renderedW === 0 || hostRect.width === 0) return;
+		// Width-only fit. Never scale up (1:1 cap for narrow panes).
+		const scale = Math.min(hostRect.width / renderedW, 1);
+		xtermEl.style.zoom = String(scale);
 	}
 
-	function scrollUp(): void {
-		client?.spectatorAction('scroll-up');
+	/**
+	 * Scroll the spectator host by one viewport height ("page-unit").
+	 * Used by ↑/↓ buttons. Touch drag uses native overflow scroll which
+	 * is continuous (smoother for fine-tuning).
+	 */
+	function scrollByViewport(direction: -1 | 1): void {
+		if (!xtermContainer) return;
+		const h = xtermContainer.clientHeight;
+		if (h <= 0) return;
+		xtermContainer.scrollBy({ top: direction * h, behavior: 'smooth' });
 	}
-	function scrollDown(): void {
-		client?.spectatorAction('scroll-down');
-	}
+	function scrollUp(): void { scrollByViewport(-1); }
+	function scrollDown(): void { scrollByViewport(1); }
 	function scrollToBottom(): void {
-		client?.spectatorAction('scroll-to-bottom');
-	}
-
-	// Touch-drag scrolling. Swipe finger DOWN to see OLDER content (pull
-	// the view downwards, like a paper scroll) → tmux cursor-up via
-	// scroll-lines with a negative count. Swipe finger UP for newer.
-	//
-	// Throttled at THROTTLE_MS — each fire is a round-trip
-	// (copy-mode + send-keys + capture-pane + emit), so firing every
-	// pointermove would overwhelm the bridge. The throttle accumulates
-	// the delta and dispatches once per window; touch-end flushes any
-	// remainder.
-	const SPEC_PIXELS_PER_LINE = 22;
-	const SPEC_TOUCH_THROTTLE_MS = 120;
-	let specTouchActive = false;
-	let specTouchOriginY = 0;
-	let specAccumulatedPx = 0;
-	let specLastFireMs = 0;
-
-	function flushSpecScroll(): void {
-		const lines = Math.trunc(specAccumulatedPx / SPEC_PIXELS_PER_LINE);
-		if (lines === 0) return;
-		specAccumulatedPx -= lines * SPEC_PIXELS_PER_LINE;
-		// Finger moves down (positive dy) → see older content → negative count.
-		client?.spectatorAction('scroll-lines', -lines);
-	}
-
-	function onSpecPointerDown(e: PointerEvent): void {
-		if (e.pointerType !== 'touch') return;
-		specTouchActive = true;
-		specTouchOriginY = e.clientY;
-		specAccumulatedPx = 0;
-		specLastFireMs = 0;
-		try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* ignore */ }
-	}
-	function onSpecPointerMove(e: PointerEvent): void {
-		if (!specTouchActive || e.pointerType !== 'touch') return;
-		e.preventDefault();
-		const dy = e.clientY - specTouchOriginY;
-		specAccumulatedPx = dy;
-		const now = performance.now();
-		if (now - specLastFireMs >= SPEC_TOUCH_THROTTLE_MS) {
-			const lines = Math.trunc(specAccumulatedPx / SPEC_PIXELS_PER_LINE);
-			if (lines !== 0) {
-				specLastFireMs = now;
-				client?.spectatorAction('scroll-lines', -lines);
-				// Reset origin so subsequent moves are relative to where
-				// we just fired from — avoids drifting accumulation.
-				specTouchOriginY += lines * SPEC_PIXELS_PER_LINE;
-				specAccumulatedPx -= lines * SPEC_PIXELS_PER_LINE;
-			}
-		}
-	}
-	function onSpecPointerUp(_e: PointerEvent): void {
-		if (!specTouchActive) return;
-		flushSpecScroll();
-		specTouchActive = false;
+		if (!xtermContainer) return;
+		xtermContainer.scrollTo({
+			top: xtermContainer.scrollHeight,
+			behavior: 'smooth'
+		});
 	}
 
 	onMount(async () => {
@@ -561,16 +514,7 @@
 	{/if}
 
 	<div class="body">
-		<div
-			class="xterm-host"
-			role={isSpectator ? 'application' : undefined}
-			aria-label={isSpectator ? '관전 화면 (위/아래로 스와이프하여 스크롤)' : undefined}
-			bind:this={xtermContainer}
-			onpointerdown={isSpectator ? onSpecPointerDown : undefined}
-			onpointermove={isSpectator ? onSpecPointerMove : undefined}
-			onpointerup={isSpectator ? onSpecPointerUp : undefined}
-			onpointercancel={isSpectator ? onSpecPointerUp : undefined}
-		></div>
+		<div class="xterm-host" bind:this={xtermContainer}></div>
 		{#if panelOpen && !isSpectator}
 			<HistoryPanel
 				count={currentItems.length}
@@ -592,9 +536,9 @@
 	{#if isSpectator}
 		<div class="spec-footer" role="toolbar" aria-label="관전 도구">
 			<div class="spec-group">
-				<button type="button" class="icon" title="페이지 위로 (tmux 스크롤백)" onclick={scrollUp}>↑</button>
-				<button type="button" class="icon" title="페이지 아래로" onclick={scrollDown}>↓</button>
-				<button type="button" class="icon" title="실시간 위치로" onclick={scrollToBottom}>⤓</button>
+				<button type="button" class="icon" title="한 화면 위로" onclick={scrollUp}>↑</button>
+				<button type="button" class="icon" title="한 화면 아래로" onclick={scrollDown}>↓</button>
+				<button type="button" class="icon" title="맨 아래로" onclick={scrollToBottom}>⤓</button>
 			</div>
 			<button
 				type="button"
@@ -855,13 +799,15 @@
 		overflow: hidden;
 	}
 
-	/* Spectator: hide overflow — `transform: scale(min(sx, sy, 1))` keeps
-	   visual content within the host. `touch-action: none` lets us
-	   intercept one-finger drag as a tmux scrollback gesture without
-	   the browser stealing it for page scroll / pinch zoom. */
+	/* Spectator: width-fit, vertical overflow scrolls natively. CSS `zoom`
+	   on .xterm grows its layout box, so overflow-y:auto produces a real
+	   scrollbar + touch-pan when content extends below the viewport.
+	   Horizontal is always hidden — width fit guarantees no horizontal
+	   overflow. */
 	.terminal-page.spectator .xterm-host {
-		overflow: hidden;
-		touch-action: none;
+		overflow-x: hidden;
+		overflow-y: auto;
+		-webkit-overflow-scrolling: touch;
 	}
 
 	/* Mobile: panel becomes a bottom sheet ~50% height */
@@ -964,8 +910,13 @@
 	}
 
 	/* xterm sets width:100% on its inner viewport but needs a definite
-	   block-size container — flex:1 above gives that. */
-	.xterm-host :global(.xterm) {
+	   block-size container — flex:1 above gives that.
+
+	   In spectator the `.xterm` should be at its NATURAL cell-based
+	   height (cols × rows × cell_size), not 100% of host, so CSS `zoom`
+	   on it can grow the layout box and the host's `overflow-y: auto`
+	   can scroll to reveal rows that don't fit. */
+	.terminal-page:not(.spectator) .xterm-host :global(.xterm) {
 		height: 100%;
 	}
 </style>
