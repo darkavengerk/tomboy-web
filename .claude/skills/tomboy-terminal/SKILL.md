@@ -1,6 +1,6 @@
 ---
 name: tomboy-terminal
-description: Use when working on the terminal-note feature — a note whose body is `ssh://[user@]host[:port]` (optionally followed by `bridge: wss://...` and/or `spectate: <session>`) opens an xterm.js session through a separate WebSocket bridge service. Covers the parser, the WS protocol and Bearer-token auth, the bridge HTTP/WS server (`bridge/`), the rootless Podman + Quadlet deployment with SELinux + user-namespace constraints, the host-sshd requirement, the Caddy reverse proxy in front, and the tmux -CC spectator mode (active-pane follow with `send-keys -H` opt-in input via the mobile 보내기 popup, CSS-zoom-based fit/pan, and scroll toolbar).
+description: Use when working on the terminal-note feature — a note whose body is `ssh://[user@]host[:port]` (optionally followed by `bridge: wss://...` and/or `spectate: <session>`) opens an xterm.js session through a separate WebSocket bridge service. Covers the parser, the WS protocol and Bearer-token auth, the bridge HTTP/WS server (`bridge/`), the rootless Podman + Quadlet deployment with SELinux + user-namespace constraints, the host-sshd requirement, the Caddy reverse proxy in front, and the tmux -CC spectator mode (active-pane follow with `send-keys -H` opt-in input via the mobile 보내기 popup, transform:scale width-fit rendering, native touch scroll, pane/window navigation buttons, and current-window label strip).
 ---
 
 # 터미널 노트 (SSH terminal in a note)
@@ -368,12 +368,19 @@ in either order. Duplicates of either reject the note.
 
 1. WS `connect` frame carries `mode: 'spectate'` and `session: '<name>'`.
 2. Bridge `startSpectator` ssh's into the target with `-tt` and runs
-   `stty raw -echo; exec tmux -CC attach -t <session>` via
+   `stty cols 500 rows 200 2>/dev/null; stty raw -echo; exec tmux -CC attach -t <session>` via
    `bridge/src/spectatorSession.ts`. `-tt` forces remote PTY allocation
    (tmux -CC calls `tcgetattr` at startup and exits with "Inappropriate
    ioctl for device" otherwise); `stty raw -echo` disables ECHO/ICANON/ONLCR
    so the binary control protocol passes through unmunged; `exec` replaces
-   the shell so signals + exit codes propagate cleanly. **This is the
+   the shell so signals + exit codes propagate cleanly. **The `stty cols
+   500 rows 200` step declares a large fake PTY size BEFORE tmux attaches**
+   so the spectator client never constrains the session's window size —
+   without it ssh -tt sends the default 80x24 and the desktop user's
+   window shrinks as soon as we attach (especially under `window-size
+   smallest` on the target). `bootstrap()` follows up with
+   `refresh-client -C 500x200` as a belt-and-suspenders for environments
+   where stty cols/rows is unsupported (e.g. busybox). **This is the
    iTerm2-compatible invocation, not a workaround we can simplify.**
 3. `bridge/src/tmuxControlClient.ts` parses the control protocol:
    `%output %<pane> <escaped-bytes>`, `%window-pane-changed @<win> %<pane>`,
@@ -381,10 +388,12 @@ in either order. Duplicates of either reject the note.
    `%begin..%end` blocks for `display-message` / `capture-pane` /
    `send-keys` responses.
 4. On bootstrap and on every focus change, bridge queries
-   `#{session_id}|#{window_id}|#{pane_id}|#{pane_width}|#{pane_height}|#{alternate_on}|#{cursor_x}|#{cursor_y}`
+   `#{session_id}|#{window_id}|#{pane_id}|#{pane_width}|#{pane_height}|#{alternate_on}|#{cursor_x}|#{cursor_y}|#{window_index}|#{window_name}`
    then issues `capture-pane -epJ -t %<pane>` and emits a `pane-switch`
    WS frame followed by seed bytes: `\e[?1049l\ec` reset → optional
    `\e[?1049h` alt-screen toggle → captured content → cursor positioning.
+   `#{window_name}` is placed last and rejoined with `parts.slice(N).join('|')`
+   so a literal `|` in the name doesn't desync the split.
 5. Subsequent `%output` for the active pane is forwarded as `data`
    frames; output from non-active panes is dropped.
 6. `%window-pane-changed` triggers a 100 ms debounced re-seed (avoids
@@ -400,25 +409,47 @@ in either order. Duplicates of either reject the note.
    the command line is shell/tmux-quoting-safe regardless of payload
    (control chars, multibyte UTF-8, etc). `resize` frames are still
    dropped (bridge dictates size from tmux). Requires tmux 3.0+ for `-H`.
-10. **Error surfacing**: ssh stderr is rolling-buffered (last 1 KB) and
+10. **Pane/window nav**: WS `tmux-nav` frames (`action: 'next-pane' |
+    'prev-pane' | 'next-window' | 'prev-window'`) are routed to
+    `spectator.tmuxNav(action)` which issues `select-pane -t <s>:.+/-`
+    or `select-window -t <s>:+/-`. The resulting `%window-pane-changed`
+    / `%session-window-changed` notification flows through the existing
+    focus-follow path, so the spectator's view + size + window label
+    update naturally — no separate ack frame.
+11. **Error surfacing**: ssh stderr is rolling-buffered (last 1 KB) and
     appended to the exit reason as the last non-empty line — so when the
     session dies with e.g. `can't find session: main` or
     `Permission denied`, the user sees it in the mobile status line.
     Stderr alone with exit code 0 (e.g. benign `.bashrc`-sourced
     `command not found` warnings) does NOT escalate to an `error` frame.
 
-### Server → client WS frames added for spectator
+### WS frames added for spectator
+
+Server → client:
 
 ```jsonc
-{"type": "pane-switch", "paneId": "%12", "cols": 200, "rows": 50, "altScreen": true}
+{"type": "pane-switch", "paneId": "%12", "cols": 200, "rows": 50,
+ "altScreen": true, "windowIndex": "3", "windowName": "dev"}
 {"type": "pane-resize", "cols": 220, "rows": 50}
 ```
 
-`data` frames are unchanged. Client-emitted `data` frames are now ACCEPTED
-in spectator mode (routed to `send-keys -H`); `resize` frames are still
-dropped. The client does NOT wire `term.onData` → `client.send` in
-spectator mode (so on-screen keyboards / accidental touches stay inert);
-input only flows via the explicit "보내기" popup.
+Client → server (spectator mode only):
+
+```jsonc
+{"type": "data", "d": "y\r"}                           // 보내기 popup
+{"type": "tmux-nav", "action": "next-pane"}            // « ‹ › » buttons
+{"type": "tmux-nav", "action": "prev-pane"}
+{"type": "tmux-nav", "action": "next-window"}
+{"type": "tmux-nav", "action": "prev-window"}
+```
+
+`data` frames are unchanged from shell mode. `resize` frames are still
+dropped in spectator mode (bridge dictates size from tmux). The client
+does NOT wire `term.onData` → `client.send` in spectator mode (so
+on-screen keyboards / accidental touches stay inert); input only flows
+via the explicit "보내기" popup. `tmux-nav` actions are whitelisted on
+the server (`TMUX_NAV_ACTIONS` set in `server.ts`) — unknown actions
+are dropped silently.
 
 ### Client-side behavior in spectator mode
 
@@ -434,24 +465,45 @@ input only flows via the explicit "보내기" popup.
   hidden in the UI.
 - Header shows `관전: tmux <session> · <pane_id> · <cols>×<rows>` instead
   of the bridge URL line.
-- **Scroll toolbar** `[↑] [↓] [⤓]` in header — `↑/↓` call
-  `term.scrollLines(±rows/2)` (half-page), `⤓` calls `term.scrollToBottom()`.
-  Useful in normal-screen mode; alt-screen TUIs (claude code, vim) have
-  no xterm scrollback — use the 보내기 popup's `PgUp`/`PgDn` for in-app
-  scroll instead.
-- **Zoom toolbar** `[−] [⊡] [+]` in header — modifies
-  `spectatorZoomOverride`; `applySpectatorFit()` uses it directly when
-  non-null, otherwise computes `min(viewport/rendered, 1)`. Scale is
-  applied via CSS `zoom` (not `transform: scale`) so the layout box grows
-  with the visual — combined with `.terminal-page.spectator .xterm-host
-  { overflow: auto }` this gives native one-finger pan when zoomed in.
-  Override is reset to null on every pane-switch (new pane = fresh fit).
+- **Width-fit via `transform: scale`** — three-layer DOM
+  `.xterm-host > .xterm-stage > .xterm-mount` where the mount holds the
+  xterm at its natural cell dimensions and `transform: scale(s)` shrinks
+  it, while the stage carries an explicit scaled-pixel layout box so
+  `.xterm-host { overflow-y: auto }` can compute scroll bounds.
+  `applySpectatorFit()` reads `.xterm-screen.offsetWidth/Height` (the
+  source of truth for natural size), divides by `host.clientWidth`, and
+  clamps the scale at 1 so we never enlarge. **`transform: scale` not
+  CSS `zoom`** — the latter interacts badly with xterm's
+  absolutely-positioned cell spans on mobile Safari/Chrome (glyphs
+  collapse to the left at fractional values).
+- **Native touch scroll** — `.xterm-host` has `overflow-y: auto;
+  -webkit-overflow-scrolling: touch`. Vertical drag works out of the
+  box; no explicit scroll buttons. Alt-screen TUIs (claude code, vim)
+  have no xterm scrollback at all — use the 보내기 popup's `PgUp`/`PgDn`
+  for in-app scroll.
+- **Bottom spectator footer (`.spec-footer`)** — two rows:
+  - Top row (`.spec-windowbar`): current window label
+    `[<window_index>] <window_name>` (or "윈도우 정보 대기 중…"
+    until the first `pane-switch` lands). Updated on every pane-switch.
+  - Bottom row (`.spec-controls`): pane/window nav button group
+    `« ‹ › »` + 보내기 button.
+    - `«` `‹` `›` `»` map to `tmuxNav('prev-window' | 'prev-pane' |
+      'next-pane' | 'next-window')` respectively. All disabled while
+      `status !== 'open'`. Bridge issues `select-pane -t <s>:.+/-` or
+      `select-window -t <s>:+/-`; we don't local-track state — the
+      resulting `%window-pane-changed` flows back through the normal
+      seed path. Because nav happens on the bridge's control client,
+      it also changes the desktop client's view (same tmux session
+      = same active window/pane per the `:.+/-` and `:+/-` targets).
 - **보내기 popup** — modal with text input + quick-key row
   (`y ↵ n ↵ 1 ↵ ↵ Esc ^C PgUp PgDn`) + actions
   (`취소 / 타이핑만 / 엔터로 실행`). Enter in the field = "엔터로 실행"
-  (text + `\r`); Esc = cancel. Quick-key buttons send literal sequences
-  immediately, e.g. `\x03` for ^C, `\x1b[5~` for PgUp. All input flows
-  through `client.send(text)` → bridge `sendInput` → tmux `send-keys -H`.
+  (text + `\r`); Esc = cancel. **IME composition guard** — `!e.isComposing`
+  on the Enter/Escape handler so mid-composition Hangul/Japanese/Chinese
+  candidates don't submit prematurely. Quick-key buttons send literal
+  sequences immediately, e.g. `\x03` for ^C, `\x1b[5~` for PgUp. All
+  input flows through `client.send(text)` → bridge `sendInput` → tmux
+  `send-keys -H`.
 
 ### Target-side tmux configuration
 
@@ -459,18 +511,39 @@ To prevent the desktop's working window from shrinking when a small
 mobile spectator client attaches:
 
 ```tmux
-set -g window-size latest
+set -g window-size smallest
 set -g focus-events on
 set -g aggressive-resize on   # tmux-sensible already does this on Linux
 ```
 
 Drop-in plugin: `bridge/deploy/tomboy-spectator.tmux` — tpm-compatible,
 also runnable via `run-shell /path/to/tomboy-spectator.tmux` from
-`.tmux.conf`. **The crucial one is `window-size latest`**: since the
-spectator client never sends `refresh-client -C` or interacts, the
-desktop's interactions always set the session size. For users who already
-have a heavy `.tmux.conf` it's usually cleaner to add the two missing
-lines inline than to source the plugin file.
+`.tmux.conf`.
+
+**The crucial pair is `window-size smallest` + bridge claims 500x200.**
+The bridge's ssh -tt + tmux -CC attach happens with no local TTY, so
+ssh's default PTY is 80x24. Without intervention, tmux's `window-size`
+policy would either:
+- `latest` (tmux 3.x default): spectator's initial attach counts as
+  "most recent activity" and shrinks the window to 80x24 — the exact
+  symptom seen when the desktop monitor is off and the desktop client
+  is idle.
+- `smallest`: the bridge's 80x24 would still be smallest and shrink
+  the window.
+
+The fix is two-sided: the bridge claims a virtual 500x200 size (via
+`stty cols 500 rows 200` before tmux attaches + `refresh-client -C
+500x200` immediately after — see `spectatorSession.ts`), and the
+target uses `window-size smallest` so the real desktop client (usually
+~200x60) wins. iTerm2's tmux integration uses the same trick.
+
+`aggressive-resize on` further scopes any resize impact to the
+currently-viewed window per client, so even if a fallback path
+fires, only the spectated window is affected — not the rest of the
+session.
+
+For users who already have a heavy `.tmux.conf` it's usually cleaner
+to add the three lines inline than to source the plugin file.
 
 ### Spectator-mode constraints worth caching
 
@@ -504,6 +577,20 @@ lines inline than to source the plugin file.
 - **Nested tmux** — the outer tmux's `%window-pane-changed` is what we
   track. Inner-tmux pane switches happen entirely within the outer pane's
   byte stream and are invisible to the spectator as discrete events.
+- **Spectator MUST NOT constrain window size.** The bridge claims a
+  virtual 500x200 PTY (stty + refresh-client) and the target must run
+  `window-size smallest` — if either half is missing, attaching the
+  spectator shrinks the desktop user's window. `window-size latest`
+  (the previous setting) breaks specifically when the desktop client
+  has been idle, because the spectator's attach counts as the most
+  recent activity. Don't "simplify" by dropping the stty line or
+  switching back to `latest`.
+- **Nav buttons drive both views.** `«` `‹` `›` `»` issue tmux
+  commands with `:.+/-` and `:+/-` targets, which change the SESSION's
+  active pane/window — affecting the desktop user's view too. This is
+  intentional (mobile is acting AS the user). If you ever want
+  spectator-private navigation, you'd need per-client `switch-client`
+  semantics, which tmux's control mode doesn't cleanly support.
 
 ## Invariants
 

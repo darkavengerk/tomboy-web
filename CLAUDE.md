@@ -465,16 +465,34 @@ how the user opts out.
 
 Spectator (mobile-side observer of the desktop's currently-focused tmux
 pane): add `spectate: <session>` next to `ssh://`. Bridge attaches via
-`ssh -tt ... 'stty raw -echo; exec tmux -CC attach -t <s>'` and forwards
-only the active pane; switching panes on the desktop re-seeds via
-`capture-pane -epJ`. On-screen-keyboard input is inert (no `term.onData`
-wiring); explicit input flows only through the **보내기 popup** →
-`send-keys -t <activePane> -H <hex>` for binary-safe injection (tmux 3.0+).
-Mobile UI: CSS-`zoom`-based fit/zoom (`[−][⊡][+]`) with `overflow:auto` for
-pan when zoomed in; scroll toolbar `[↑][↓][⤓]` for xterm scrollback;
-popup quick-keys for `y/n/1/Enter/Esc/^C/PgUp/PgDn`. Recommend the target
-set `set -g window-size latest` + `focus-events on` (plugin lives at
-`bridge/deploy/tomboy-spectator.tmux` or just add inline).
+`ssh -tt ... 'stty cols 500 rows 200 2>/dev/null; stty raw -echo; exec tmux -CC attach -t <s>'`
+and forwards only the active pane; switching panes on the desktop
+re-seeds via `capture-pane -epJ`. The `stty cols/rows` + a follow-up
+`refresh-client -C 500x200` together claim a virtual 500x200 client
+size — combined with target-side `window-size smallest`, this prevents
+the spectator from shrinking the desktop user's window. On-screen-keyboard
+input is inert (no `term.onData` wiring); explicit input flows only
+through the **보내기 popup** → `send-keys -t <activePane> -H <hex>` for
+binary-safe injection (tmux 3.0+).
+
+Mobile UI: width-fit via `transform: scale` on a three-layer
+`.xterm-host > .xterm-stage > .xterm-mount` DOM (NOT CSS `zoom` — breaks
+xterm cell positioning on mobile); native `overflow-y: auto` +
+`-webkit-overflow-scrolling: touch` for vertical drag (no scroll
+buttons); bottom footer with two rows — top is current window label
+`[<idx>] <name>`, bottom is pane/window nav buttons `« ‹ › »` (issue
+`select-pane -t <s>:.+/-` / `select-window -t <s>:+/-` via WS
+`tmux-nav` frame; affects desktop view too since they're SESSION-level
+targets) + 보내기 button. Popup quick-keys for
+`y/n/1/Enter/Esc/^C/PgUp/PgDn`. IME composition guarded with
+`!e.isComposing` on Enter/Escape.
+
+Target tmux config: `window-size smallest` + `focus-events on` +
+`aggressive-resize on` (plugin at `bridge/deploy/tomboy-spectator.tmux`
+or add inline). **`window-size latest` is wrong** — the spectator's
+initial attach counts as "most recent activity" when the desktop client
+is idle (monitor off), shrinking the window. `smallest` + our 500x200
+claim is the iTerm2 trick that's actually correct.
 
 Quick map:
 
@@ -508,6 +526,14 @@ Cross-cutting invariants worth caching (full set lives in the skill):
 - **Spectator mode is auth-equivalent to shell mode** — same Bearer + same
   ssh credentials. No share-token / discovery channel was added. A
   spectator note is just a regular note synced via Dropbox/Firebase.
+- **Spectator MUST NOT constrain tmux window size.** Bridge must claim
+  500x200 via stty + refresh-client; target must set `window-size
+  smallest`. Both halves required — neither alone fixes the
+  desktop-window-shrinks-on-attach symptom.
+- **Nav buttons (`« ‹ › »`) act on the SESSION, not just our client.**
+  `:.+/-` / `:+/-` targets change the session's active pane/window, so
+  the desktop user's view also moves. Intentional — mobile is acting
+  as the user, not running a private viewport.
 
 ## 리마커블 일기 OCR 파이프라인 (pipeline/)
 
