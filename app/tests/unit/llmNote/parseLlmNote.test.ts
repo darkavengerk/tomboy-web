@@ -214,4 +214,35 @@ describe('parseLlmNote', () => {
 			{ role: 'assistant', content: 'pong' }
 		]);
 	});
+
+	describe('rag header key', () => {
+		it('rag: on → 5', () => {
+			const result = parseLlmNote(doc('t', 'llm://m', 'rag: on', '', 'Q: hi'));
+			expect(result?.options.rag).toBe(5);
+		});
+		it('rag: 7 → 7', () => {
+			const result = parseLlmNote(doc('t', 'llm://m', 'rag: 7', '', 'Q: hi'));
+			expect(result?.options.rag).toBe(7);
+		});
+		it('rag: 30 → clamps to 20', () => {
+			const result = parseLlmNote(doc('t', 'llm://m', 'rag: 30', '', 'Q: hi'));
+			expect(result?.options.rag).toBe(20);
+		});
+		it('rag: 0 → clamps to 1', () => {
+			const result = parseLlmNote(doc('t', 'llm://m', 'rag: 0', '', 'Q: hi'));
+			expect(result?.options.rag).toBe(1);
+		});
+		it('rag: off → undefined', () => {
+			const result = parseLlmNote(doc('t', 'llm://m', 'rag: off', '', 'Q: hi'));
+			expect(result?.options.rag).toBeUndefined();
+		});
+		it('rag: foo → undefined', () => {
+			const result = parseLlmNote(doc('t', 'llm://m', 'rag: foo', '', 'Q: hi'));
+			expect(result?.options.rag).toBeUndefined();
+		});
+		it('rag absent → undefined', () => {
+			const result = parseLlmNote(doc('t', 'llm://m', 'system: x', '', 'Q: hi'));
+			expect(result?.options.rag).toBeUndefined();
+		});
+	});
 });
