@@ -4,6 +4,7 @@
 	import { parseLlmNote } from '$lib/llmNote/parseLlmNote.js';
 	import { buildChatRequest } from '$lib/llmNote/buildChatRequest.js';
 	import { sendChat, LlmChatError } from '$lib/llmNote/sendChat.js';
+	import { searchRag, RagSearchError, type RagHit } from '$lib/llmNote/searchRag.js';
 	import { pushToast } from '$lib/stores/toast.js';
 
 	type Props = {
@@ -91,14 +92,42 @@
 
 		// bridgeUrl 은 terminal note 용 WebSocket URL (wss://host/ws) 또는
 		// 일반 base URL 일 수 있음. HTTP base 로 정규화:
-		//   wss://host/ws → https://host
-		//   ws://host/ws  → http://host
-		//   https://host/anything → https://host (trailing path/slash 제거)
 		const httpBase = bridgeUrl
 			.replace(/^wss:\/\//, 'https://')
 			.replace(/^ws:\/\//, 'http://')
 			.replace(/\/(ws|llm\/chat)\/?$/, '')
 			.replace(/\/$/, '');
+
+		// RAG retrieval (opt-in via rag header). On failure, fall through to
+		// chat without context — RAG must never block a response.
+		let retrievedNotes: RagHit[] = [];
+		if (spec.options.rag && spec.options.rag > 0) {
+			try {
+				retrievedNotes = await searchRag({
+					url: `${httpBase}/rag/search`,
+					token: bridgeToken,
+					query: lastUserContent,
+					k: spec.options.rag,
+					signal: ctrl.signal
+				});
+			} catch (err) {
+				const e = err as RagSearchError;
+				pushToast(`RAG 검색 실패 — 참고 노트 없이 응답 (${e.kind ?? 'unknown'})`);
+			}
+		}
+
+		// Prepend retrieved bodies to system message (invisible to user)
+		if (retrievedNotes.length > 0) {
+			const ragPrefix =
+				'참고 노트:\n' +
+				retrievedNotes.map((n) => `## ${n.title}\n${n.body}`).join('\n\n---\n\n') +
+				'\n\n---\n\n';
+			if (body.messages.length > 0 && body.messages[0].role === 'system') {
+				body.messages[0].content = ragPrefix + body.messages[0].content;
+			} else {
+				body.messages.unshift({ role: 'system', content: ragPrefix });
+			}
+		}
 
 		try {
 			const result = await sendChat({
@@ -111,13 +140,15 @@
 				},
 				signal: ctrl.signal
 			});
-			// On success/abort: add blank + new Q:
+			// Append 참고: [[title]] line on successful completion only (not abort)
+			if (retrievedNotes.length > 0 && result.reason === 'done') {
+				const titles = retrievedNotes.map((n) => `[[${n.title}]]`).join(' ');
+				appendParagraph(`참고: ${titles}`);
+			}
 			appendParagraph('');
 			appendParagraph('Q: ');
-			// Move cursor to end of Q: line
 			const endPos = editor.state.doc.content.size;
 			editor.commands.setTextSelection(endPos - 1);
-			// reason 'abort' or 'done' both end here
 			void result;
 		} catch (err) {
 			if (err instanceof LlmChatError) {
