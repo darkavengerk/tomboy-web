@@ -159,6 +159,15 @@ export class SpectatorSession {
 		this.tmux.on('layoutChange', (winId) => {
 			if (winId === this.windowId) void this.checkSizeChange();
 		});
+		// `%pane-mode-changed %<pane>` fires when the pane enters/exits a
+		// mode (copy-mode, view-mode, etc). Used to detect when the
+		// desktop user exits copy-mode externally (e.g., pressing `q`) —
+		// we need to clear our inCopyMode flag and reseed to live.
+		this.tmux.on('notification', (tag, rest) => {
+			if (tag !== '%pane-mode-changed') return;
+			const paneId = rest.toString('ascii').trim();
+			if (paneId === this.activePaneId) void this.handlePaneModeChange();
+		});
 		this.tmux.on('exit', () => this.finalize('tmux exit'));
 
 		void this.bootstrap(opts.session);
@@ -442,10 +451,24 @@ export class SpectatorSession {
 
 	/**
 	 * Capture the current visible state of the active pane and emit it as
-	 * a fresh screen seed. Used after scroll actions because copy-mode
-	 * redraws don't go through `%output`. Uses a light reset (`CSI 2J +
-	 * CSI H`) rather than full RIS so xterm's scrollback isn't wiped on
-	 * every scroll tick.
+	 * a fresh screen seed.
+	 *
+	 * Critical detail: tmux's `capture-pane` defaults to the LIVE visible
+	 * region (grid lines [hsize, hsize+sy)), regardless of whether the
+	 * pane is in copy-mode or where the user has scrolled. To capture
+	 * what the user is actually seeing in copy-mode, we have to query
+	 * `#{scroll_position}` (= `hsize - oy` where `oy` is the user's
+	 * scroll offset back into history) and use `-S/-E` to shift the
+	 * capture window by `oy` lines into scrollback.
+	 *
+	 *   - Live (no mode, or in mode at bottom): default visible.
+	 *   - Scrolled up by N lines: `-S -N -E (-N + paneH - 1)`.
+	 *
+	 * Without this shift, the mobile would just keep showing the live
+	 * view no matter how far the user scrolls back in copy-mode.
+	 *
+	 * Uses a light reset (CSI 2J + CSI H) rather than full RIS so xterm's
+	 * own scrollback isn't wiped on every scroll tick.
 	 */
 	private async reseedFromCapture(): Promise<void> {
 		if (!this.activePaneId || this.closed) return;
@@ -458,31 +481,72 @@ export class SpectatorSession {
 		this.decoder = new TextDecoder('utf-8', { fatal: false });
 		try {
 			const meta = await this.tmux.command(
-				`display-message -p -t ${pane} -F '#{alternate_on}|#{cursor_x}|#{cursor_y}'`
+				`display-message -p -t ${pane} -F ` +
+					"'#{pane_in_mode}|#{scroll_position}|#{history_size}|#{pane_height}|#{alternate_on}|#{cursor_x}|#{cursor_y}'"
 			);
 			const parts = (meta[0] ?? '').split('|');
-			const alt = parts[0] === '1';
-			const cx = parseInt(parts[1], 10);
-			const cy = parseInt(parts[2], 10);
-			const captured = await this.tmux.command(`capture-pane -epJ -t ${pane}`);
-			// Light reset: clear screen + home cursor. Avoids full RIS
-			// (which would wipe xterm's scrollback on every reseed).
+			const inMode = parts[0] === '1';
+			const scrollPosStr = parts[1] ?? '';
+			const historySize = parseInt(parts[2], 10) || 0;
+			const paneH = parseInt(parts[3], 10) || 24;
+			const alt = parts[4] === '1';
+			const cx = parseInt(parts[5], 10);
+			const cy = parseInt(parts[6], 10);
+
+			let captureCmd: string;
+			let scrolledOy = 0;
+			if (inMode && scrollPosStr !== '') {
+				const scrollPos = parseInt(scrollPosStr, 10) || 0;
+				// oy = how many lines the user has scrolled up from the
+				// live bottom. scroll_position = hsize - oy (per tmux
+				// source window_copy_get_scroll_position).
+				scrolledOy = Math.max(0, historySize - scrollPos);
+			}
+			if (scrolledOy > 0) {
+				const top = -scrolledOy;
+				const bot = -scrolledOy + paneH - 1;
+				captureCmd = `capture-pane -ep -t ${pane} -S ${top} -E ${bot}`;
+			} else {
+				captureCmd = `capture-pane -ep -t ${pane}`;
+			}
+			const captured = await this.tmux.command(captureCmd);
+
+			// Light reset: clear screen + home cursor.
 			let seed = '\x1b[H\x1b[2J';
-			if (alt) seed += '\x1b[?1049h';
+			// Alt-screen + copy-mode doesn't compose cleanly; while
+			// scrolled back, force normal screen so escape codes from
+			// captured content render predictably.
+			if (inMode) seed += '\x1b[?1049l';
+			else if (alt) seed += '\x1b[?1049h';
 			else seed += '\x1b[?1049l';
 			seed += captured.join('\r\n');
-			if (Number.isFinite(cx) && Number.isFinite(cy)) {
+			// Cursor positioning only matters for live view — in copy-mode
+			// the cursor is the copy cursor, not relevant for spectator.
+			if (Number.isFinite(cx) && Number.isFinite(cy) && !inMode) {
 				seed += `\x1b[${cy + 1};${cx + 1}H`;
 			}
 			this.cb.data(seed);
+			// Reflect the queried mode state — `%pane-mode-changed` is the
+			// authoritative trigger, but reseeds always check too so we
+			// can't get out of sync.
+			this.inCopyMode = inMode;
 		} catch (err) {
 			this.cb.error(`reseed: ${(err as Error).message}`);
 		} finally {
 			// Discard any %output that arrived while seeding — they're for
 			// the live view, not the (possibly scrolled-back) captured view.
-			// When we exit copy-mode, the next reseed-from-cancel re-syncs.
 			this.pendingOutput = [];
 			this.seeding = false;
 		}
+	}
+
+	/**
+	 * Fired by `%pane-mode-changed` on our active pane. Reseeds so the
+	 * mobile view tracks what the desktop now shows — e.g., when the
+	 * desktop user presses `q` to exit copy-mode, we sync back to live.
+	 */
+	private async handlePaneModeChange(): Promise<void> {
+		if (!this.activePaneId || this.closed) return;
+		await this.reseedFromCapture();
 	}
 }
