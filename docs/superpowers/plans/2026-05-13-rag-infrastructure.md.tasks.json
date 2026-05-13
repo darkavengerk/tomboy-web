@@ -1,0 +1,104 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-13-rag-infrastructure.md",
+  "tasks": [
+    {
+      "id": 19,
+      "subject": "Task 1: rag 헤더 키 — defaults + parser",
+      "status": "pending",
+      "description": "**Goal:** defaults.ts 가 rag 키를 인식하고 parseLlmNote 가 options.rag: number | undefined 를 채운다.\n\n**Files:**\n- Modify: app/src/lib/llmNote/defaults.ts\n- Modify: app/src/lib/llmNote/parseLlmNote.ts\n- Modify: app/tests/unit/llmNote/parseLlmNote.test.ts\n\n**Verify:** cd app && npm test -- llmNote/parseLlmNote\n\n```json:metadata\n{\"files\":[\"app/src/lib/llmNote/defaults.ts\",\"app/src/lib/llmNote/parseLlmNote.ts\",\"app/tests/unit/llmNote/parseLlmNote.test.ts\"],\"verifyCommand\":\"cd app && npm test -- llmNote/parseLlmNote\",\"acceptanceCriteria\":[\"rag in LLM_RECOGNIZED_HEADER_KEYS\",\"LLM_HEADER_KEY_RE matches rag\",\"options.rag?: number field\",\"rag values parsed correctly (on/off/int/clamp)\",\"existing 17 tests pass\"]}\n```"
+    },
+    {
+      "id": 20,
+      "subject": "Task 2: llmNotePlugin 헤더 정규식 검증",
+      "status": "pending",
+      "blockedBy": [19],
+      "description": "**Goal:** 자동 보완 플러그인이 rag 도 헤더로 인식 (Task 1 의 정규식 변경 자동 적용).\n\n**Files:**\n- Modify: app/src/lib/editor/llmNote/llmNotePlugin.ts (변경 거의 없음)\n- Modify: app/tests/unit/editor/llmNotePlugin.test.ts (rag 테스트 1개)\n\n**Verify:** cd app && npm test -- editor/llmNotePlugin\n\n```json:metadata\n{\"files\":[\"app/src/lib/editor/llmNote/llmNotePlugin.ts\",\"app/tests/unit/editor/llmNotePlugin.test.ts\"],\"verifyCommand\":\"cd app && npm test -- editor/llmNotePlugin\",\"acceptanceCriteria\":[\"rag 가 헤더 키로 인식\",\"rag-only 헤더가 보완을 막음\",\"기존 테스트 모두 통과\"]}\n```"
+    },
+    {
+      "id": 21,
+      "subject": "Task 3: searchRag.ts — bridge 클라이언트",
+      "status": "pending",
+      "description": "**Goal:** RAG 검색 클라이언트. 단발 JSON fetch + RagSearchError 분류.\n\n**Files:**\n- Create: app/src/lib/llmNote/searchRag.ts\n- Create: app/tests/unit/llmNote/searchRag.test.ts\n\n**Verify:** cd app && npm test -- llmNote/searchRag\n\n```json:metadata\n{\"files\":[\"app/src/lib/llmNote/searchRag.ts\",\"app/tests/unit/llmNote/searchRag.test.ts\"],\"verifyCommand\":\"cd app && npm test -- llmNote/searchRag\",\"acceptanceCriteria\":[\"RagHit/RagSearchError export\",\"에러 분류 (unauthorized/rag_unavailable/bad_request/upstream_error/network)\",\"Bearer auth + JSON body\",\"200 → hits\"]}\n```"
+    },
+    {
+      "id": 22,
+      "subject": "Task 4: LlmSendBar rag 분기",
+      "status": "pending",
+      "blockedBy": [19, 21],
+      "description": "**Goal:** spec.options.rag > 0 시 검색 → system prepend → /llm/chat → 응답 뒤 참고: [[제목]] 부착.\n\n**Files:**\n- Modify: app/src/lib/editor/llmNote/LlmSendBar.svelte\n\n**Verify:** cd app && npm run check && npm test\n\n```json:metadata\n{\"files\":[\"app/src/lib/editor/llmNote/LlmSendBar.svelte\"],\"verifyCommand\":\"cd app && npm run check && npm test\",\"acceptanceCriteria\":[\"rag undefined → 기존 흐름\",\"rag > 0 → searchRag 호출 + system prepend\",\"검색 실패 → toast + RAG 없이 진행\",\"done 시 참고: [[title]] 부착\",\"AbortSignal 전달\"]}\n```"
+    },
+    {
+      "id": 23,
+      "subject": "Task 5: bridge /rag/search proxy",
+      "status": "pending",
+      "description": "**Goal:** bridge 가 /rag/search POST 를 받아 Bearer 검증 후 desktop FastAPI 로 proxy.\n\n**Files:**\n- Create: bridge/src/rag.ts\n- Modify: bridge/src/server.ts\n- Modify: bridge/deploy/term-bridge.container\n\n**Verify:** cd bridge && npm run build\n\n```json:metadata\n{\"files\":[\"bridge/src/rag.ts\",\"bridge/src/server.ts\",\"bridge/deploy/term-bridge.container\"],\"verifyCommand\":\"cd bridge && npm run build\",\"acceptanceCriteria\":[\"Bearer auth\",\"bad query → 400\",\"ECONNREFUSED → 503 rag_unavailable\",\"upstream 5xx → 502\",\"정상 → 200 패스스루\",\"abort 전파\",\"RAG_SEARCH_URL env doc\"]}\n```"
+    },
+    {
+      "id": 24,
+      "subject": "Task 6: Python note_parser — .note XML 파싱",
+      "status": "pending",
+      "description": "**Goal:** .note XML → ParsedNote(title, body_text, content_hash, is_special).\n\n**Files:**\n- Create: pipeline/desktop/rag/__init__.py\n- Create: pipeline/desktop/rag/note_parser.py\n- Create: pipeline/tests/rag/__init__.py\n- Create: pipeline/tests/rag/test_note_parser.py\n\n**Verify:** cd pipeline && python -m pytest tests/rag/test_note_parser.py -v\n\n```json:metadata\n{\"files\":[\"pipeline/desktop/rag/__init__.py\",\"pipeline/desktop/rag/note_parser.py\",\"pipeline/tests/rag/__init__.py\",\"pipeline/tests/rag/test_note_parser.py\"],\"verifyCommand\":\"cd pipeline && python -m pytest tests/rag/test_note_parser.py -v\",\"acceptanceCriteria\":[\"parse_note_xml returns ParsedNote\",\"title + body_text 추출\",\"마크/태그 stripped\",\"llm:// ssh:// 검출 → is_special=True\",\"content_hash sha256\",\"손상 XML → None\"]}\n```"
+    },
+    {
+      "id": 25,
+      "subject": "Task 7: Python vector_store — sqlite-vec 래퍼",
+      "status": "pending",
+      "description": "**Goal:** sqlite-vec 기반 인덱스 파일 래퍼.\n\n**Files:**\n- Create: pipeline/desktop/rag/vector_store.py\n- Create: pipeline/tests/rag/test_vector_store.py\n- Modify: pipeline/pyproject.toml\n\n**Verify:** cd pipeline && python -m pytest tests/rag/test_vector_store.py -v\n\n```json:metadata\n{\"files\":[\"pipeline/desktop/rag/vector_store.py\",\"pipeline/tests/rag/test_vector_store.py\",\"pipeline/pyproject.toml\"],\"verifyCommand\":\"cd pipeline && python -m pytest tests/rag/test_vector_store.py -v\",\"acceptanceCriteria\":[\"VectorStore open/count/upsert/delete/get_content_hash/search/close\",\"WAL 모드\",\"sqlite-vec extension 로드\",\"upsert 가 같은 guid 덮어씀\",\"search top-K distance 오름차순\"]}\n```"
+    },
+    {
+      "id": 26,
+      "subject": "Task 8: Python embeddings — Ollama bge-m3",
+      "status": "pending",
+      "description": "**Goal:** Ollama /api/embed 호출 → 1024-dim list[float].\n\n**Files:**\n- Create: pipeline/desktop/rag/embeddings.py\n- Create: pipeline/tests/rag/test_embeddings.py\n- Modify: pipeline/pyproject.toml\n\n**Verify:** cd pipeline && python -m pytest tests/rag/test_embeddings.py -v\n\n```json:metadata\n{\"files\":[\"pipeline/desktop/rag/embeddings.py\",\"pipeline/tests/rag/test_embeddings.py\",\"pipeline/pyproject.toml\"],\"verifyCommand\":\"cd pipeline && python -m pytest tests/rag/test_embeddings.py -v\",\"acceptanceCriteria\":[\"OllamaEmbedder.embed → list[float]\",\"EmbedError 분류 (model_not_found/upstream_error/network/unavailable)\",\"httpx 비동기 + respx mock\"]}\n```"
+    },
+    {
+      "id": 27,
+      "subject": "Task 9: Python zip_bootstrap — startup 1회 bulk",
+      "status": "pending",
+      "blockedBy": [24, 25, 26],
+      "description": "**Goal:** inbox 의 가장 최근 zip 1개 → notes/{guid}.note → 일괄 임베딩 + upsert.\n\n**Files:**\n- Create: pipeline/desktop/rag/zip_bootstrap.py\n- Create: pipeline/tests/rag/test_zip_bootstrap.py\n\n**Verify:** cd pipeline && python -m pytest tests/rag/test_zip_bootstrap.py -v\n\n```json:metadata\n{\"files\":[\"pipeline/desktop/rag/zip_bootstrap.py\",\"pipeline/tests/rag/test_zip_bootstrap.py\"],\"verifyCommand\":\"cd pipeline && python -m pytest tests/rag/test_zip_bootstrap.py -v\",\"acceptanceCriteria\":[\"bootstrap_from_zip returns indexed count\",\"no zip → 0\",\"latest mtime zip 선택\",\"is_special skipped\",\"corrupt note skipped\",\"aux files (meta.txt 등) 무시\"]}\n```"
+    },
+    {
+      "id": 28,
+      "subject": "Task 10: Python firestore_source — polling + watermark",
+      "status": "pending",
+      "blockedBy": [24, 25, 26],
+      "description": "**Goal:** Firestore users/{uid}/notes 컬렉션 polling. serverUpdatedAt > watermark.\n\n**Files:**\n- Create: pipeline/desktop/rag/firestore_source.py\n- Create: pipeline/tests/rag/test_firestore_source.py\n\n**Verify:** cd pipeline && python -m pytest tests/rag/test_firestore_source.py -v\n\n```json:metadata\n{\"files\":[\"pipeline/desktop/rag/firestore_source.py\",\"pipeline/tests/rag/test_firestore_source.py\"],\"verifyCommand\":\"cd pipeline && python -m pytest tests/rag/test_firestore_source.py -v\",\"acceptanceCriteria\":[\"WatermarkStore JSON persist\",\"FirestoreSource.poll_once\",\"serverUpdatedAt > watermark filter\",\"datetime/str normalization\",\"watermark advance even when filtered\"]}\n```"
+    },
+    {
+      "id": 29,
+      "subject": "Task 11: Python indexer — main loop",
+      "status": "pending",
+      "blockedBy": [27, 28],
+      "description": "**Goal:** Top-level entry. Config 로드 → 컴포넌트 결선 → count==0 시 bootstrap → 무한 polling loop.\n\n**Files:**\n- Create: pipeline/desktop/rag/indexer.py\n- Create: pipeline/tests/rag/test_indexer.py\n\n**Verify:** cd pipeline && python -m pytest tests/rag/test_indexer.py -v\n\n```json:metadata\n{\"files\":[\"pipeline/desktop/rag/indexer.py\",\"pipeline/tests/rag/test_indexer.py\"],\"verifyCommand\":\"cd pipeline && python -m pytest tests/rag/test_indexer.py -v\",\"acceptanceCriteria\":[\"process_event 단위 테스트\",\"bootstrap entry condition count==0\",\"deleted → store.delete\",\"hash 변경 없으면 embed skip\",\"is_special → delete + skip\",\"SIGTERM 처리\"]}\n```"
+    },
+    {
+      "id": 30,
+      "subject": "Task 12: Python search_server — FastAPI",
+      "status": "pending",
+      "blockedBy": [25, 26],
+      "description": "**Goal:** 0.0.0.0:8743/search 단발 POST. JSON body {query, k} → embed → top-K → JSON.\n\n**Files:**\n- Create: pipeline/desktop/rag/search_server.py\n- Create: pipeline/tests/rag/test_search_server.py\n\n**Verify:** cd pipeline && python -m pytest tests/rag/test_search_server.py -v\n\n```json:metadata\n{\"files\":[\"pipeline/desktop/rag/search_server.py\",\"pipeline/tests/rag/test_search_server.py\"],\"verifyCommand\":\"cd pipeline && python -m pytest tests/rag/test_search_server.py -v\",\"acceptanceCriteria\":[\"POST /search → [{guid,title,body,score}]\",\"empty query → 400\",\"k clamp 1-20\",\"EmbedError → 503\",\"build_app(store, embedder) factory for tests\",\"module app for uvicorn\"]}\n```"
+    },
+    {
+      "id": 31,
+      "subject": "Task 13: Systemd unit files",
+      "status": "pending",
+      "blockedBy": [29, 30],
+      "description": "**Goal:** rag-indexer.service + rag-search.service user-level unit 파일.\n\n**Files:**\n- Create: pipeline/desktop/deploy/rag-indexer.service\n- Create: pipeline/desktop/deploy/rag-search.service\n\n**Verify:** grep -c ExecStart pipeline/desktop/deploy/rag-indexer.service pipeline/desktop/deploy/rag-search.service\n\n```json:metadata\n{\"files\":[\"pipeline/desktop/deploy/rag-indexer.service\",\"pipeline/desktop/deploy/rag-search.service\"],\"verifyCommand\":\"grep -c ExecStart pipeline/desktop/deploy/rag-indexer.service pipeline/desktop/deploy/rag-search.service\",\"acceptanceCriteria\":[\"두 unit 파일 모두 Type=simple\",\"After=ollama.service\",\"ExecStart 경로 표준 .venv\",\"Restart=on-failure\",\"WantedBy=default.target\"]}\n```"
+    },
+    {
+      "id": 32,
+      "subject": "Task 14: Diary ExecStartPre 에 bge-m3 evict",
+      "status": "pending",
+      "description": "**Goal:** ExecStartPre 모델 evict 루프에 bge-m3 추가.\n\n**Files:**\n- Modify: pipeline/desktop/deploy/desktop-pipeline.service\n\n**Verify:** grep bge-m3 pipeline/desktop/deploy/desktop-pipeline.service\n\n```json:metadata\n{\"files\":[\"pipeline/desktop/deploy/desktop-pipeline.service\"],\"verifyCommand\":\"grep bge-m3 pipeline/desktop/deploy/desktop-pipeline.service\",\"acceptanceCriteria\":[\"bge-m3 added to evict list\",\"나머지 줄 변경 없음\"]}\n```"
+    },
+    {
+      "id": 33,
+      "subject": "Task 15: 운영 배포 + 13-step PWA smoke",
+      "status": "pending",
+      "blockedBy": [22, 23, 31, 32],
+      "description": "**Goal:** Spec §5 의 운영 단계 + 13-step smoke 수동 검증.\n\n**Files:** (코드 변경 없음)\n\n**Verify:** Manual checklist per spec §5\n\n```json:metadata\n{\"files\":[],\"verifyCommand\":\"# Manual: 13-step PWA smoke per spec §5\",\"acceptanceCriteria\":[\"ollama pull bge-m3\",\"firewall 8743/tcp Pi IP allowlist\",\"systemd units active\",\"bootstrap logs visible\",\"desktop /search curl OK\",\"bridge /rag/search Bearer OK\",\"PWA rag:on 노트 동작 + [[title]] 부착\",\"rag:off 노트 /rag/search 호출 안 함\",\"rag-search down 시 toast + 정상 응답\",\"Firestore steady-state 반영\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-13T00:00:00Z"
+}
