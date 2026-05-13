@@ -1238,6 +1238,8 @@
 		position: relative;
 		padding-right: 4.2em;
 		list-style: none;
+		border-radius: 3px;
+		transition: background-color 0.1s;
 	}
 	.tomboy-editor :global(.tomboy-send-active li::before) {
 		content: "•";
@@ -1247,6 +1249,15 @@
 		color: #3465a4;
 		font-size: 1.4em;
 		line-height: 1;
+	}
+	/* Hover highlight so the user can see which row the 보내기 button targets,
+	   mirroring the TODO ctrl-hold tint. When a nested li is hovered, suppress
+	   the parent's tint so only the deepest hovered row is highlighted. */
+	.tomboy-editor :global(.tomboy-send-active li:hover) {
+		background-color: rgba(52, 101, 164, 0.1);
+	}
+	.tomboy-editor :global(.tomboy-send-active li:has(li:hover)) {
+		background-color: transparent;
 	}
 	.tomboy-editor :global(.tomboy-send-li-btn) {
 		position: absolute;
