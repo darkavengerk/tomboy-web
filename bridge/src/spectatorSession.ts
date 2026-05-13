@@ -25,7 +25,14 @@ import { TmuxControlClient } from './tmuxControlClient.js';
 import type { SshTarget } from './pty.js';
 
 export interface SpectatorCallbacks {
-	paneSwitch(info: { paneId: string; cols: number; rows: number; altScreen: boolean }): void;
+	paneSwitch(info: {
+		paneId: string;
+		cols: number;
+		rows: number;
+		altScreen: boolean;
+		windowIndex: string;
+		windowName: string;
+	}): void;
 	/** UTF-8 text to write into the client's xterm. */
 	data(text: string): void;
 	paneResize(info: { cols: number; rows: number }): void;
@@ -157,12 +164,15 @@ export class SpectatorSession {
 
 	private async bootstrap(sessionName: string): Promise<void> {
 		try {
+			// `#{window_name}` is placed last so any literal `|` in the
+			// name (rare but legal) doesn't desync the split — we join
+			// the trailing parts back together.
 			const lines = await this.tmux.command(
 				`display-message -p -t ${sessionName} -F ` +
-					"'#{session_id}|#{window_id}|#{pane_id}|#{pane_width}|#{pane_height}|#{alternate_on}|#{cursor_x}|#{cursor_y}'"
+					"'#{session_id}|#{window_id}|#{pane_id}|#{pane_width}|#{pane_height}|#{alternate_on}|#{cursor_x}|#{cursor_y}|#{window_index}|#{window_name}'"
 			);
 			const parts = (lines[0] ?? '').split('|');
-			if (parts.length < 8) {
+			if (parts.length < 10) {
 				this.cb.error('bootstrap: unexpected display-message format');
 				return;
 			}
@@ -174,7 +184,9 @@ export class SpectatorSession {
 				rows: parseInt(parts[4], 10),
 				altScreen: parts[5] === '1',
 				cursorX: parseInt(parts[6], 10),
-				cursorY: parseInt(parts[7], 10)
+				cursorY: parseInt(parts[7], 10),
+				windowIndex: parts[8],
+				windowName: parts.slice(9).join('|')
 			});
 		} catch (err) {
 			this.cb.error(`bootstrap: ${(err as Error).message}`);
@@ -226,17 +238,19 @@ export class SpectatorSession {
 		try {
 			const lines = await this.tmux.command(
 				`display-message -p -t ${paneId} -F ` +
-					"'#{pane_width}|#{pane_height}|#{alternate_on}|#{cursor_x}|#{cursor_y}'"
+					"'#{pane_width}|#{pane_height}|#{alternate_on}|#{cursor_x}|#{cursor_y}|#{window_index}|#{window_name}'"
 			);
 			const parts = (lines[0] ?? '').split('|');
-			if (parts.length < 5) return;
+			if (parts.length < 7) return;
 			await this.activateAndSeed({
 				paneId,
 				cols: parseInt(parts[0], 10),
 				rows: parseInt(parts[1], 10),
 				altScreen: parts[2] === '1',
 				cursorX: parseInt(parts[3], 10),
-				cursorY: parseInt(parts[4], 10)
+				cursorY: parseInt(parts[4], 10),
+				windowIndex: parts[5],
+				windowName: parts.slice(6).join('|')
 			});
 		} catch (err) {
 			this.cb.error(`switchTo: ${(err as Error).message}`);
@@ -250,8 +264,10 @@ export class SpectatorSession {
 		altScreen: boolean;
 		cursorX: number;
 		cursorY: number;
+		windowIndex: string;
+		windowName: string;
 	}): Promise<void> {
-		const { paneId, cols, rows, altScreen, cursorX, cursorY } = args;
+		const { paneId, cols, rows, altScreen, cursorX, cursorY, windowIndex, windowName } = args;
 
 		this.seeding = true;
 		this.pendingOutput = [];
@@ -262,7 +278,7 @@ export class SpectatorSession {
 		// bytes from the old pane can't corrupt the new pane's first chunk.
 		this.decoder = new TextDecoder('utf-8', { fatal: false });
 
-		this.cb.paneSwitch({ paneId, cols, rows, altScreen });
+		this.cb.paneSwitch({ paneId, cols, rows, altScreen, windowIndex, windowName });
 
 		// Build seed: reset → optional alt-screen → captured content → cursor.
 		// '\x1bc' (RIS) clears scrollback + resets all attributes/modes.

@@ -5,6 +5,8 @@ export interface PaneSwitchInfo {
 	cols: number;
 	rows: number;
 	altScreen: boolean;
+	windowIndex: string;
+	windowName: string;
 }
 
 interface ClientOptions {
@@ -36,6 +38,8 @@ interface ServerMsg {
 	cols?: number;
 	rows?: number;
 	altScreen?: boolean;
+	windowIndex?: string;
+	windowName?: string;
 }
 
 /**
@@ -136,7 +140,9 @@ export class TerminalWsClient {
 						paneId: msg.paneId,
 						cols: msg.cols,
 						rows: msg.rows,
-						altScreen: !!msg.altScreen
+						altScreen: !!msg.altScreen,
+						windowIndex: typeof msg.windowIndex === 'string' ? msg.windowIndex : '',
+						windowName: typeof msg.windowName === 'string' ? msg.windowName : ''
 					});
 				}
 			} else if (msg.type === 'pane-resize') {

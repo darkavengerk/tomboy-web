@@ -60,6 +60,8 @@
 	let spectatorPaneId: string | null = $state(null);
 	let spectatorCols = $state(0);
 	let spectatorRows = $state(0);
+	let spectatorWindowIndex = $state('');
+	let spectatorWindowName = $state('');
 	// Spectator "보내기" popup — explicit keystroke injection into the
 	// active pane. Useful for quick claude-code confirmations (y/n/Enter)
 	// from mobile without breaking the read-only-by-default invariant.
@@ -367,10 +369,12 @@
 					void runConnectScript(spec.connect, (line) => client?.send(line));
 				}
 			},
-			onPaneSwitch: ({ paneId, cols, rows }) => {
+			onPaneSwitch: ({ paneId, cols, rows, windowIndex, windowName }) => {
 				spectatorPaneId = paneId;
 				spectatorCols = cols;
 				spectatorRows = rows;
+				spectatorWindowIndex = windowIndex;
+				spectatorWindowName = windowName;
 				try { term?.resize(cols, rows); } catch { /* ignore */ }
 				// term.resize triggers an async re-render; defer the fit one
 				// frame so .xterm's new natural dimensions have settled.
@@ -463,10 +467,12 @@
 					void runConnectScript(spec.connect, (line) => client?.send(line));
 				}
 			},
-			onPaneSwitch: ({ paneId, cols, rows }) => {
+			onPaneSwitch: ({ paneId, cols, rows, windowIndex, windowName }) => {
 				spectatorPaneId = paneId;
 				spectatorCols = cols;
 				spectatorRows = rows;
+				spectatorWindowIndex = windowIndex;
+				spectatorWindowName = windowName;
 				try { term?.resize(cols, rows); } catch { /* ignore */ }
 			},
 			onPaneResize: ({ cols, rows }) => {
@@ -559,43 +565,53 @@
 
 	{#if isSpectator}
 		<div class="spec-footer" role="toolbar" aria-label="관전 도구">
-			<div class="spec-group">
-				<button
-					type="button"
-					class="icon"
-					title="이전 윈도우"
-					onclick={() => tmuxNav('prev-window')}
-					disabled={status !== 'open'}
-				>&laquo;</button>
-				<button
-					type="button"
-					class="icon"
-					title="이전 패널"
-					onclick={() => tmuxNav('prev-pane')}
-					disabled={status !== 'open'}
-				>&lsaquo;</button>
-				<button
-					type="button"
-					class="icon"
-					title="다음 패널"
-					onclick={() => tmuxNav('next-pane')}
-					disabled={status !== 'open'}
-				>&rsaquo;</button>
-				<button
-					type="button"
-					class="icon"
-					title="다음 윈도우"
-					onclick={() => tmuxNav('next-window')}
-					disabled={status !== 'open'}
-				>&raquo;</button>
+			<div class="spec-windowbar" aria-live="polite">
+				{#if spectatorWindowIndex || spectatorWindowName}
+					<span class="win-idx">{spectatorWindowIndex}</span>
+					<span class="win-name">{spectatorWindowName || '(이름 없음)'}</span>
+				{:else}
+					<span class="win-placeholder">윈도우 정보 대기 중…</span>
+				{/if}
 			</div>
-			<button
-				type="button"
-				class="send-btn"
-				onclick={openSendPopup}
-				disabled={status !== 'open'}
-				title="활성 패널에 키 입력 전송"
-			>보내기</button>
+			<div class="spec-controls">
+				<div class="spec-group">
+					<button
+						type="button"
+						class="icon"
+						title="이전 윈도우"
+						onclick={() => tmuxNav('prev-window')}
+						disabled={status !== 'open'}
+					>&laquo;</button>
+					<button
+						type="button"
+						class="icon"
+						title="이전 패널"
+						onclick={() => tmuxNav('prev-pane')}
+						disabled={status !== 'open'}
+					>&lsaquo;</button>
+					<button
+						type="button"
+						class="icon"
+						title="다음 패널"
+						onclick={() => tmuxNav('next-pane')}
+						disabled={status !== 'open'}
+					>&rsaquo;</button>
+					<button
+						type="button"
+						class="icon"
+						title="다음 윈도우"
+						onclick={() => tmuxNav('next-window')}
+						disabled={status !== 'open'}
+					>&raquo;</button>
+				</div>
+				<button
+					type="button"
+					class="send-btn"
+					onclick={openSendPopup}
+					disabled={status !== 'open'}
+					title="활성 패널에 키 입력 전송"
+				>보내기</button>
+			</div>
 		</div>
 	{/if}
 </div>
@@ -730,15 +746,48 @@
 	}
 
 	/* Spectator bottom toolbar — terminal-specific controls live here so
-	   they don't crowd / overlap the top header on a phone. */
+	   they don't crowd / overlap the top header on a phone. Two-row
+	   layout: top strip = current tmux window label, bottom row =
+	   nav buttons + 보내기. */
 	.spec-footer {
 		display: flex;
-		align-items: center;
-		gap: 8px;
+		flex-direction: column;
+		gap: 4px;
 		padding: 6px 8px;
 		background: #2a2a2a;
 		border-top: 1px solid #111;
 		flex-shrink: 0;
+	}
+	.spec-windowbar {
+		display: flex;
+		align-items: baseline;
+		gap: 6px;
+		font-size: 0.75rem;
+		line-height: 1.2;
+		color: #aac;
+		min-height: 1em;
+		min-width: 0;
+	}
+	.spec-windowbar .win-idx {
+		color: #6cf;
+		font-weight: 600;
+		font-family: ui-monospace, Menlo, Consolas, monospace;
+		flex-shrink: 0;
+	}
+	.spec-windowbar .win-idx::before { content: '['; color: #557; }
+	.spec-windowbar .win-idx::after { content: ']'; color: #557; }
+	.spec-windowbar .win-name {
+		color: #cfe;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		min-width: 0;
+	}
+	.spec-windowbar .win-placeholder { color: #667; font-style: italic; }
+	.spec-controls {
+		display: flex;
+		align-items: center;
+		gap: 8px;
 	}
 	.spec-group {
 		display: inline-flex;
