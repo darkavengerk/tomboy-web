@@ -6,13 +6,24 @@
 # What it does
 # ────────────
 #
-#   set -g  window-size latest        Sizing follows the most-recently
-#                                     active client. The mobile spectator
-#                                     never interacts, so the desktop
-#                                     client's size always wins — your
-#                                     working pane never shrinks just
-#                                     because a phone with a 40-column
-#                                     viewport attached.
+#   set -g  window-size smallest      tmux sets the window size to the
+#                                     smallest attached client. The bridge
+#                                     pretends its control client is
+#                                     500x200 (via `stty cols 500 rows
+#                                     200` and `refresh-client -C
+#                                     500x200`), so the mobile spectator
+#                                     is never the smallest — your
+#                                     desktop client's real size wins.
+#                                     This is the iTerm2 trick for not
+#                                     interfering with the visible window.
+#
+#                                     `window-size latest` (the previous
+#                                     setting and tmux's default) breaks
+#                                     when the desktop client has been
+#                                     idle: the spectator's initial
+#                                     attach counts as "most recent
+#                                     activity" and shrinks the window
+#                                     to ssh's default 80x24 PTY.
 #
 #   set -g  focus-events on           Forwards focus events from the
 #                                     terminal to tmux. Not strictly
@@ -21,10 +32,13 @@
 #                                     reliably when your terminal emulator
 #                                     supports it.
 #
-#   set -g  aggressive-resize on      When a smaller client attaches to
-#                                     a different window, only THAT window
-#                                     gets resized down, not the whole
-#                                     session.
+#   set -g  aggressive-resize on      When clients view different windows,
+#                                     only the currently-viewed window of
+#                                     each client influences sizing.
+#                                     Combined with `smallest`, this means
+#                                     the spectator only ever affects the
+#                                     pane it's actually watching — never
+#                                     resizes windows the desktop is on.
 #
 # Install via tpm
 # ───────────────
@@ -44,6 +58,6 @@
 
 set -eu
 
-tmux set-option -g window-size latest
+tmux set-option -g window-size smallest
 tmux set-option -g focus-events on
 tmux set-option -g aggressive-resize on

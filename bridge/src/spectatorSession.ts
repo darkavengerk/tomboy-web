@@ -94,6 +94,17 @@ export class SpectatorSession {
 		// "tcgetattr failed: Inappropriate ioctl for device" if there's no
 		// tty — iTerm2 hits the same issue and uses the same workaround.
 		//
+		// `stty cols 500 rows 200` declares a large fake PTY size BEFORE
+		// tmux attaches. Without this, ssh -tt without a local tty sends
+		// a default 80x24 to the remote, and tmux's window-size policy
+		// then thinks our control client is the smallest/latest attached
+		// client and shrinks the spectated window — which the desktop
+		// user sees as their pane suddenly going small (esp. when their
+		// monitor is off and their client is idle). The matching tmux
+		// setting is `window-size smallest` (see
+		// deploy/tomboy-spectator.tmux) — together this means: spectator
+		// never constrains, desktop client's real size wins.
+		//
 		// `stty raw -echo` on the remote disables line-discipline munging
 		// (ECHO, ICANON, ONLCR) so our binary control protocol passes
 		// through unmodified. `exec` replaces the shell so signals + exit
@@ -107,7 +118,9 @@ export class SpectatorSession {
 		args.push(
 			opts.target.user ? `${opts.target.user}@${opts.target.host}` : opts.target.host
 		);
-		args.push(`stty raw -echo; exec tmux -CC attach -t ${opts.session}`);
+		args.push(
+			`stty cols 500 rows 200 2>/dev/null; stty raw -echo; exec tmux -CC attach -t ${opts.session}`
+		);
 
 		this.ssh = spawn('ssh', args, { stdio: ['pipe', 'pipe', 'pipe'] });
 		if (!this.ssh.stdin || !this.ssh.stdout || !this.ssh.stderr) {
@@ -164,6 +177,22 @@ export class SpectatorSession {
 
 	private async bootstrap(sessionName: string): Promise<void> {
 		try {
+			// Belt-and-suspenders with the `stty cols 500 rows 200` we
+			// run before exec'ing tmux: tell tmux directly that our
+			// control client is 500x200. The stty path is what tmux
+			// initially picks up at attach, but if stty doesn't accept
+			// `cols`/`rows` (e.g. busybox) the PTY stays at the ssh
+			// default 80x24 — `refresh-client -C` corrects it explicitly.
+			// Together with `window-size smallest` (see plugin), this
+			// guarantees we never constrain the spectated window.
+			try {
+				await this.tmux.command('refresh-client -C 500x200');
+			} catch {
+				// tmux < 2.4 lacks `-C`; the user will see desktop
+				// shrinkage if stty also fell back. Both are bugs that
+				// require user action (tmux upgrade or coreutils stty).
+			}
+
 			// `#{window_name}` is placed last so any literal `|` in the
 			// name (rare but legal) doesn't desync the split — we join
 			// the trailing parts back together.
