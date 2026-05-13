@@ -330,4 +330,27 @@ export class SpectatorSession {
 			/* ignore */
 		}
 	}
+
+	/**
+	 * Send keystrokes to whichever pane is currently active. Used by the
+	 * mobile spectator's "보내기" popup — the spectator is normally
+	 * read-only, but explicit user-triggered input (e.g., "y" to confirm a
+	 * claude code prompt) is allowed through this method.
+	 *
+	 * Uses `send-keys -H <hex>` for binary-safe transport — every byte of
+	 * the input becomes a two-char hex token, so no shell/tmux quoting
+	 * issues regardless of the text (control chars, multibyte UTF-8, etc).
+	 * Requires tmux 3.0+.
+	 */
+	sendInput(text: string): void {
+		if (!this.activePaneId || this.closed || !text) return;
+		const bytes = Buffer.from(text, 'utf8');
+		if (bytes.length === 0) return;
+		const hex: string[] = [];
+		for (const b of bytes) hex.push(b.toString(16).padStart(2, '0'));
+		const cmd = `send-keys -t ${this.activePaneId} -H ${hex.join(' ')}`;
+		this.tmux.command(cmd).catch((err) => {
+			console.error('[spectator] send-keys failed:', (err as Error).message);
+		});
+	}
 }

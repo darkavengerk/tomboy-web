@@ -203,8 +203,15 @@ function handleWs(ws: WebSocket): void {
 			return;
 		}
 
-		// Spectator mode is strictly read-only: drop any subsequent data/resize.
-		if (spectator) return;
+		// Spectator mode: drop resize (bridge dictates size from tmux), but
+		// allow `data` frames so the mobile "보내기" popup can inject
+		// explicit keystrokes into the active pane via `send-keys -H`.
+		if (spectator) {
+			if (msg.type === 'data' && typeof msg.d === 'string') {
+				spectator.sendInput(msg.d);
+			}
+			return;
+		}
 		if (!pty) return;
 
 		if (msg.type === 'data') {

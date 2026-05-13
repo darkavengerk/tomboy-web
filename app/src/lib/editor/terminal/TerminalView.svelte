@@ -58,6 +58,15 @@
 	let spectatorPaneId: string | null = $state(null);
 	let spectatorCols = $state(0);
 	let spectatorRows = $state(0);
+	// Spectator "보내기" popup — explicit keystroke injection into the
+	// active pane. Useful for quick claude-code confirmations (y/n/Enter)
+	// from mobile without breaking the read-only-by-default invariant.
+	let sendPopupOpen = $state(false);
+	let sendPopupText = $state('');
+	let sendPopupInput: HTMLInputElement | undefined = $state();
+	// Manual zoom override (multiplier). null = auto-fit to viewport.
+	// Reset to null on every pane-switch so a new pane starts fully visible.
+	let spectatorZoomOverride: number | null = $state(null);
 
 	let term: Terminal | null = null;
 	let fit: FitAddon | null = null;
@@ -139,29 +148,96 @@
 		await setTerminalShellIntegrationBannerDismissed(true);
 	}
 
+	function openSendPopup(): void {
+		sendPopupText = '';
+		sendPopupOpen = true;
+		// Autofocus after the modal renders.
+		queueMicrotask(() => sendPopupInput?.focus());
+	}
+	function closeSendPopup(): void {
+		sendPopupOpen = false;
+		sendPopupText = '';
+	}
+	function sendPopupSubmit(autoExecute: boolean): void {
+		const text = sendPopupText;
+		if (!text && !autoExecute) {
+			closeSendPopup();
+			return;
+		}
+		client?.sendCommand(text, autoExecute);
+		closeSendPopup();
+	}
+	/** One-tap injection of a literal key/sequence, bypassing the text field. */
+	function sendQuickKey(bytes: string): void {
+		client?.send(bytes);
+	}
+
 	/**
-	 * Scale the xterm renderer down so the desktop pane's full width fits in
-	 * the mobile viewport. Used only in spectator mode — we can't reflow the
-	 * pane content (it would break TUI cursor positioning), so we visually
-	 * shrink instead. iTerm2 does the same.
+	 * Apply zoom to the xterm renderer in spectator mode.
+	 *
+	 * Defaults to "fit to viewport" (`min(viewport/rendered, 1)`). User can
+	 * override via the +/− buttons, in which case `spectatorZoomOverride`
+	 * is honored directly (clamped to [0.1, 4]).
+	 *
+	 * Uses CSS `zoom` instead of `transform: scale` so the layout box
+	 * changes with scale — that means a zoomed-in view can be panned with
+	 * the container's `overflow: auto` scrollbars / touch drag, instead of
+	 * being clipped to the parent's bounds.
 	 */
 	function applySpectatorFit(): void {
 		if (!isSpectator || !xtermContainer) return;
 		const xtermEl = xtermContainer.querySelector('.xterm') as HTMLElement | null;
 		if (!xtermEl) return;
-		// Reset before measuring so we read natural dimensions, not last
-		// frame's scaled-down size.
-		xtermEl.style.transform = 'none';
+		// Reset before measuring so we read natural dimensions, not the
+		// last frame's zoomed size.
+		xtermEl.style.zoom = '';
 		const renderedW = xtermEl.scrollWidth;
 		const renderedH = xtermEl.scrollHeight;
 		const hostRect = xtermContainer.getBoundingClientRect();
 		if (renderedW === 0 || renderedH === 0 || hostRect.width === 0) return;
-		const sx = hostRect.width / renderedW;
-		const sy = hostRect.height / renderedH;
-		// Never scale up — small panes stay at 1:1 and align to top-left.
-		const scale = Math.min(sx, sy, 1);
-		xtermEl.style.transformOrigin = 'top left';
-		xtermEl.style.transform = `scale(${scale})`;
+		let scale: number;
+		if (spectatorZoomOverride !== null) {
+			scale = Math.max(0.1, Math.min(4, spectatorZoomOverride));
+		} else {
+			const sx = hostRect.width / renderedW;
+			const sy = hostRect.height / renderedH;
+			// Never scale up at fit — small panes stay at 1:1.
+			scale = Math.min(sx, sy, 1);
+		}
+		xtermEl.style.zoom = String(scale);
+	}
+
+	/**
+	 * The scale we're currently displaying at — fit if no override, else
+	 * the clamped override. Used as the starting point for +/− adjustments.
+	 */
+	function currentSpectatorScale(): number {
+		if (!xtermContainer) return 1;
+		const xtermEl = xtermContainer.querySelector('.xterm') as HTMLElement | null;
+		if (!xtermEl) return 1;
+		const z = parseFloat(xtermEl.style.zoom);
+		return Number.isFinite(z) && z > 0 ? z : 1;
+	}
+
+	function zoomIn(): void {
+		spectatorZoomOverride = Math.min(4, currentSpectatorScale() * 1.25);
+		applySpectatorFit();
+	}
+	function zoomOut(): void {
+		spectatorZoomOverride = Math.max(0.1, currentSpectatorScale() / 1.25);
+		applySpectatorFit();
+	}
+	function zoomReset(): void {
+		spectatorZoomOverride = null;
+		applySpectatorFit();
+	}
+
+	function scrollHalfPage(direction: -1 | 1): void {
+		const rows = spectatorRows || term?.rows || 24;
+		term?.scrollLines(direction * Math.max(1, Math.floor(rows / 2)));
+	}
+	function scrollToBottom(): void {
+		term?.scrollToBottom();
 	}
 
 	onMount(async () => {
@@ -311,6 +387,9 @@
 				spectatorPaneId = paneId;
 				spectatorCols = cols;
 				spectatorRows = rows;
+				// New pane = fresh start: clear any user zoom so the new
+				// content lands fully visible at fit scale.
+				spectatorZoomOverride = null;
 				try { term?.resize(cols, rows); } catch { /* ignore */ }
 				// term.resize triggers an async re-render; defer the fit one
 				// frame so .xterm's new natural dimensions have settled.
@@ -435,7 +514,24 @@
 			{/if}
 		</div>
 		<div class="actions">
-			{#if !isSpectator}
+			{#if isSpectator}
+				<div class="spec-tools" role="toolbar" aria-label="관전 도구">
+					<button type="button" class="icon" title="페이지 위로" onclick={() => scrollHalfPage(-1)}>↑</button>
+					<button type="button" class="icon" title="페이지 아래로" onclick={() => scrollHalfPage(1)}>↓</button>
+					<button type="button" class="icon" title="맨 아래로" onclick={scrollToBottom}>⤓</button>
+					<span class="spec-sep"></span>
+					<button type="button" class="icon" title="축소" onclick={zoomOut}>−</button>
+					<button type="button" class="icon" title="맞춤" onclick={zoomReset}>⊡</button>
+					<button type="button" class="icon" title="확대" onclick={zoomIn}>+</button>
+				</div>
+				<button
+					type="button"
+					class="toggle"
+					onclick={openSendPopup}
+					disabled={status !== 'open'}
+					title="활성 패널에 키 입력 전송"
+				>보내기</button>
+			{:else}
 				<button type="button" class="toggle" onclick={togglePanel}>
 					히스토리 ({currentItems.length})
 				</button>
@@ -483,6 +579,63 @@
 		{/if}
 	</div>
 </div>
+
+{#if sendPopupOpen}
+	<div
+		class="send-overlay"
+		role="presentation"
+		onclick={closeSendPopup}
+		onkeydown={(e) => { if (e.key === 'Escape') closeSendPopup(); }}
+	>
+		<div
+			class="send-modal"
+			role="dialog"
+			aria-label="명령 전송"
+			tabindex="-1"
+			onclick={(e) => e.stopPropagation()}
+			onkeydown={(e) => e.stopPropagation()}
+		>
+			<div class="send-title">활성 패널로 전송</div>
+			<input
+				type="text"
+				class="send-input"
+				bind:this={sendPopupInput}
+				bind:value={sendPopupText}
+				placeholder="텍스트 입력 (예: continue, y)"
+				autocomplete="off"
+				autocapitalize="off"
+				spellcheck="false"
+				onkeydown={(e) => {
+					if (e.key === 'Enter') {
+						e.preventDefault();
+						sendPopupSubmit(true);
+					} else if (e.key === 'Escape') {
+						e.preventDefault();
+						closeSendPopup();
+					}
+				}}
+			/>
+			<div class="send-quick">
+				<span class="send-quick-label">빠른 키</span>
+				<button type="button" onclick={() => sendQuickKey('y\r')}>y ↵</button>
+				<button type="button" onclick={() => sendQuickKey('n\r')}>n ↵</button>
+				<button type="button" onclick={() => sendQuickKey('1\r')}>1 ↵</button>
+				<button type="button" onclick={() => sendQuickKey('\r')}>↵</button>
+				<button type="button" onclick={() => sendQuickKey('\x1b')}>Esc</button>
+				<button type="button" onclick={() => sendQuickKey('\x03')}>^C</button>
+				<button type="button" title="Page Up (TUI 내부 스크롤)" onclick={() => sendQuickKey('\x1b[5~')}>PgUp</button>
+				<button type="button" title="Page Down (TUI 내부 스크롤)" onclick={() => sendQuickKey('\x1b[6~')}>PgDn</button>
+			</div>
+			<div class="send-actions">
+				<button type="button" onclick={closeSendPopup}>취소</button>
+				<button type="button" onclick={() => sendPopupSubmit(false)}>타이핑만</button>
+				<button type="button" class="primary" onclick={() => sendPopupSubmit(true)}>
+					엔터로 실행
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <style>
 	.terminal-page {
@@ -549,6 +702,28 @@
 		padding: 3px 8px;
 		font-size: 0.78rem;
 		cursor: pointer;
+	}
+
+	.spec-tools {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		background: #2a2a2a;
+		border: 1px solid #444;
+		border-radius: 4px;
+		padding: 2px;
+	}
+	.spec-tools .spec-sep {
+		width: 1px;
+		height: 14px;
+		background: #444;
+		margin: 0 2px;
+	}
+	.actions button.icon {
+		padding: 2px 6px;
+		min-width: 22px;
+		line-height: 1;
+		font-size: 0.85rem;
 	}
 
 	.actions button:disabled {
@@ -621,6 +796,15 @@
 		overflow: hidden;
 	}
 
+	/* Spectator: allow panning when the user zooms in beyond fit. CSS
+	   `zoom` changes the layout box, so overflow:auto produces native
+	   scroll on both axes once content exceeds the container. */
+	.terminal-page.spectator .xterm-host {
+		overflow: auto;
+		/* Smooth one-finger pan on iOS. */
+		-webkit-overflow-scrolling: touch;
+	}
+
 	/* Mobile: panel becomes a bottom sheet ~50% height */
 	.terminal-page.mobile.panel-open .body {
 		flex-direction: column;
@@ -634,6 +818,90 @@
 		flex: 1 1 50%;
 		border-left: none;
 		border-top: 1px solid #111;
+	}
+
+	/* Spectator 보내기 modal */
+	.send-overlay {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.55);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 1000;
+		padding: 16px;
+	}
+	.send-modal {
+		background: #2a2a2a;
+		color: #ddd;
+		border: 1px solid #444;
+		border-radius: 8px;
+		padding: 14px 14px 12px;
+		width: min(420px, 100%);
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+	}
+	.send-title {
+		font-size: 0.85rem;
+		color: #cfe;
+	}
+	.send-input {
+		background: #1e1e1e;
+		color: #fff;
+		border: 1px solid #555;
+		border-radius: 4px;
+		padding: 8px 10px;
+		font-family: ui-monospace, Menlo, Consolas, monospace;
+		font-size: 0.95rem;
+		outline: none;
+	}
+	.send-input:focus {
+		border-color: #8af;
+	}
+	.send-quick {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		align-items: center;
+	}
+	.send-quick-label {
+		font-size: 0.72rem;
+		color: #888;
+		margin-right: 2px;
+	}
+	.send-quick button {
+		background: #3a3a3a;
+		color: #ddd;
+		border: 1px solid #555;
+		border-radius: 4px;
+		padding: 4px 9px;
+		font-size: 0.78rem;
+		font-family: ui-monospace, Menlo, Consolas, monospace;
+		cursor: pointer;
+	}
+	.send-quick button:active {
+		background: #4a4a4a;
+	}
+	.send-actions {
+		display: flex;
+		gap: 6px;
+		justify-content: flex-end;
+	}
+	.send-actions button {
+		background: #3a3a3a;
+		color: #ddd;
+		border: 1px solid #555;
+		border-radius: 4px;
+		padding: 6px 12px;
+		font-size: 0.82rem;
+		cursor: pointer;
+	}
+	.send-actions button.primary {
+		background: #1e6f3f;
+		border-color: #2b8;
+		color: #fff;
 	}
 
 	/* xterm sets width:100% on its inner viewport but needs a definite
