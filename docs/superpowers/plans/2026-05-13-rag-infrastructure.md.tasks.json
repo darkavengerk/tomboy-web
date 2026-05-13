@@ -4,13 +4,13 @@
     {
       "id": 19,
       "subject": "Task 1: rag 헤더 키 — defaults + parser",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** defaults.ts 가 rag 키를 인식하고 parseLlmNote 가 options.rag: number | undefined 를 채운다.\n\n**Files:**\n- Modify: app/src/lib/llmNote/defaults.ts\n- Modify: app/src/lib/llmNote/parseLlmNote.ts\n- Modify: app/tests/unit/llmNote/parseLlmNote.test.ts\n\n**Verify:** cd app && npm test -- llmNote/parseLlmNote\n\n```json:metadata\n{\"files\":[\"app/src/lib/llmNote/defaults.ts\",\"app/src/lib/llmNote/parseLlmNote.ts\",\"app/tests/unit/llmNote/parseLlmNote.test.ts\"],\"verifyCommand\":\"cd app && npm test -- llmNote/parseLlmNote\",\"acceptanceCriteria\":[\"rag in LLM_RECOGNIZED_HEADER_KEYS\",\"LLM_HEADER_KEY_RE matches rag\",\"options.rag?: number field\",\"rag values parsed correctly (on/off/int/clamp)\",\"existing 17 tests pass\"]}\n```"
     },
     {
       "id": 20,
       "subject": "Task 2: llmNotePlugin 헤더 정규식 검증",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [19],
       "description": "**Goal:** 자동 보완 플러그인이 rag 도 헤더로 인식 (Task 1 의 정규식 변경 자동 적용).\n\n**Files:**\n- Modify: app/src/lib/editor/llmNote/llmNotePlugin.ts (변경 거의 없음)\n- Modify: app/tests/unit/editor/llmNotePlugin.test.ts (rag 테스트 1개)\n\n**Verify:** cd app && npm test -- editor/llmNotePlugin\n\n```json:metadata\n{\"files\":[\"app/src/lib/editor/llmNote/llmNotePlugin.ts\",\"app/tests/unit/editor/llmNotePlugin.test.ts\"],\"verifyCommand\":\"cd app && npm test -- editor/llmNotePlugin\",\"acceptanceCriteria\":[\"rag 가 헤더 키로 인식\",\"rag-only 헤더가 보완을 막음\",\"기존 테스트 모두 통과\"]}\n```"
     },
