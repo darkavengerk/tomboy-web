@@ -11,6 +11,9 @@
 #        # Ollama 가 같은 호스트면 생략 가능 (코드 default 가 localhost:11434).
 #        # 분리된 머신이면 (예: bridge=Pi, Ollama=Desktop) 명시 필요:
 #        #   OLLAMA_BASE_URL=http://<ollama-host-ip>:11434
+#        # RAG 검색 서버 (desktop FastAPI). 같은 호스트면 생략 가능.
+#        # 분리된 머신이면 (예: bridge=Pi, indexer=Desktop) 명시:
+#        #   RAG_SEARCH_URL=http://<desktop-host-ip>:8743/search
 #   4. Create ~/.config/term-bridge/hosts.json BEFORE starting the unit
 #      (podman creates a directory at the source path if the file is
 #      missing, which silently breaks the bind mount). For the no-WOL
