@@ -81,6 +81,11 @@
 	async function send(): Promise<void> {
 		if (sendDisabled || !spec) return;
 
+		// Capture before any editor mutation — appendParagraph below changes
+		// the doc, which re-derives spec/lastUserContent and clears it.
+		const ragQuery = lastUserContent;
+		const ragK = spec.options.rag;
+
 		const body = buildChatRequest(spec);
 		const ctrl = new AbortController();
 		abortController = ctrl;
@@ -101,13 +106,13 @@
 		// RAG retrieval (opt-in via rag header). On failure, fall through to
 		// chat without context — RAG must never block a response.
 		let retrievedNotes: RagHit[] = [];
-		if (spec.options.rag && spec.options.rag > 0) {
+		if (ragK && ragK > 0) {
 			try {
 				retrievedNotes = await searchRag({
 					url: `${httpBase}/rag/search`,
 					token: bridgeToken,
-					query: lastUserContent,
-					k: spec.options.rag,
+					query: ragQuery,
+					k: ragK,
 					signal: ctrl.signal
 				});
 			} catch (err) {
