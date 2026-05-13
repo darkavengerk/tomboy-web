@@ -1,6 +1,6 @@
 ---
 name: tomboy-terminal
-description: Use when working on the terminal-note feature — a note whose body is `ssh://[user@]host[:port]` (optionally followed by `bridge: wss://...` and/or `spectate: <session>`) opens an xterm.js session through a separate WebSocket bridge service. Covers the parser, the WS protocol and Bearer-token auth, the bridge HTTP/WS server (`bridge/`), the rootless Podman + Quadlet deployment with SELinux + user-namespace constraints, the host-sshd requirement, the Caddy reverse proxy in front, and the tmux -CC spectator (active-pane-follow read-only) mode. Files in `app/src/lib/editor/terminal/` and `bridge/`.
+description: Use when working on the terminal-note feature — a note whose body is `ssh://[user@]host[:port]` (optionally followed by `bridge: wss://...` and/or `spectate: <session>`) opens an xterm.js session through a separate WebSocket bridge service. Covers the parser, the WS protocol and Bearer-token auth, the bridge HTTP/WS server (`bridge/`), the rootless Podman + Quadlet deployment with SELinux + user-namespace constraints, the host-sshd requirement, the Caddy reverse proxy in front, and the tmux -CC spectator mode (active-pane follow with `send-keys -H` opt-in input via the mobile 보내기 popup, CSS-zoom-based fit/pan, and scroll toolbar).
 ---
 
 # 터미널 노트 (SSH terminal in a note)
@@ -343,12 +343,13 @@ the home host. Two things to update:
    notes) must be `wss://` — `ws://` would be blocked as mixed content.
    The Caddy front already provides this.
 
-## Spectator mode (read-only active-pane follow)
+## Spectator mode (active-pane follow with opt-in input)
 
-A note with a `spectate:` metadata line is a **read-only mirror** of the
-currently-focused pane of a tmux session on the target. Useful for kicking
-off a long task on the desktop (e.g. claude code) and watching from a
-phone while you walk away.
+A note with a `spectate:` metadata line is a **read-by-default mirror** of
+the currently-focused pane of a tmux session on the target. Useful for
+kicking off a long task on the desktop (e.g. claude code) and watching
+from a phone while you walk away — with optional explicit-input via the
+mobile "보내기" popup for quick confirmations (y/n/Enter).
 
 Note format:
 
@@ -366,12 +367,19 @@ in either order. Duplicates of either reject the note.
 ### How it works
 
 1. WS `connect` frame carries `mode: 'spectate'` and `session: '<name>'`.
-2. Bridge `startSpectator` ssh's into the target with `-T` (no PTY) and
-   runs `tmux -CC attach -t <session>` via `bridge/src/spectatorSession.ts`.
+2. Bridge `startSpectator` ssh's into the target with `-tt` and runs
+   `stty raw -echo; exec tmux -CC attach -t <session>` via
+   `bridge/src/spectatorSession.ts`. `-tt` forces remote PTY allocation
+   (tmux -CC calls `tcgetattr` at startup and exits with "Inappropriate
+   ioctl for device" otherwise); `stty raw -echo` disables ECHO/ICANON/ONLCR
+   so the binary control protocol passes through unmunged; `exec` replaces
+   the shell so signals + exit codes propagate cleanly. **This is the
+   iTerm2-compatible invocation, not a workaround we can simplify.**
 3. `bridge/src/tmuxControlClient.ts` parses the control protocol:
    `%output %<pane> <escaped-bytes>`, `%window-pane-changed @<win> %<pane>`,
    `%session-window-changed $<sess> @<win>`, `%layout-change`, plus
-   `%begin..%end` blocks for `display-message` / `capture-pane` responses.
+   `%begin..%end` blocks for `display-message` / `capture-pane` /
+   `send-keys` responses.
 4. On bootstrap and on every focus change, bridge queries
    `#{session_id}|#{window_id}|#{pane_id}|#{pane_width}|#{pane_height}|#{alternate_on}|#{cursor_x}|#{cursor_y}`
    then issues `capture-pane -epJ -t %<pane>` and emits a `pane-switch`
@@ -386,6 +394,18 @@ in either order. Duplicates of either reject the note.
 8. Bytes-to-text uses a streaming `TextDecoder` keyed per pane (reset on
    switch) so partial UTF-8 sequences across `%output` chunks don't
    surface as replacement chars.
+9. **Input**: WS `data` frames from the client are routed to
+   `spectator.sendInput(text)` which issues
+   `send-keys -t <activePaneId> -H <hex>` — every byte hex-encoded so
+   the command line is shell/tmux-quoting-safe regardless of payload
+   (control chars, multibyte UTF-8, etc). `resize` frames are still
+   dropped (bridge dictates size from tmux). Requires tmux 3.0+ for `-H`.
+10. **Error surfacing**: ssh stderr is rolling-buffered (last 1 KB) and
+    appended to the exit reason as the last non-empty line — so when the
+    session dies with e.g. `can't find session: main` or
+    `Permission denied`, the user sees it in the mobile status line.
+    Stderr alone with exit code 0 (e.g. benign `.bashrc`-sourced
+    `command not found` warnings) does NOT escalate to an `error` frame.
 
 ### Server → client WS frames added for spectator
 
@@ -394,10 +414,11 @@ in either order. Duplicates of either reject the note.
 {"type": "pane-resize", "cols": 220, "rows": 50}
 ```
 
-`data` frames are unchanged. Input frames (`data`, `resize`) from the
-client are dropped server-side in spectator mode — and the client never
-sends them: `TerminalView` skips `term.onData` / `term.onResize` wiring
-when `spec.spectate` is set.
+`data` frames are unchanged. Client-emitted `data` frames are now ACCEPTED
+in spectator mode (routed to `send-keys -H`); `resize` frames are still
+dropped. The client does NOT wire `term.onData` → `client.send` in
+spectator mode (so on-screen keyboards / accidental touches stay inert);
+input only flows via the explicit "보내기" popup.
 
 ### Client-side behavior in spectator mode
 
@@ -406,13 +427,31 @@ when `spec.spectate` is set.
 - No `FitAddon` — bridge dictates pane dimensions; `term.resize(cols, rows)`
   is driven by `pane-switch` / `pane-resize` callbacks.
 - No OSC 133 handler registered → no command history capture.
-- No `term.onData` → `client.send` wiring → keyboard input is inert.
+- No `term.onData` → `client.send` wiring → on-screen keyboard inert.
 - No `runConnectScript` on `'open'`.
 - No history panel toggle in the header; `connect:` / `pinned:` /
   `history:` sections (if accidentally present) are still parsed but
   hidden in the UI.
 - Header shows `관전: tmux <session> · <pane_id> · <cols>×<rows>` instead
   of the bridge URL line.
+- **Scroll toolbar** `[↑] [↓] [⤓]` in header — `↑/↓` call
+  `term.scrollLines(±rows/2)` (half-page), `⤓` calls `term.scrollToBottom()`.
+  Useful in normal-screen mode; alt-screen TUIs (claude code, vim) have
+  no xterm scrollback — use the 보내기 popup's `PgUp`/`PgDn` for in-app
+  scroll instead.
+- **Zoom toolbar** `[−] [⊡] [+]` in header — modifies
+  `spectatorZoomOverride`; `applySpectatorFit()` uses it directly when
+  non-null, otherwise computes `min(viewport/rendered, 1)`. Scale is
+  applied via CSS `zoom` (not `transform: scale`) so the layout box grows
+  with the visual — combined with `.terminal-page.spectator .xterm-host
+  { overflow: auto }` this gives native one-finger pan when zoomed in.
+  Override is reset to null on every pane-switch (new pane = fresh fit).
+- **보내기 popup** — modal with text input + quick-key row
+  (`y ↵ n ↵ 1 ↵ ↵ Esc ^C PgUp PgDn`) + actions
+  (`취소 / 타이핑만 / 엔터로 실행`). Enter in the field = "엔터로 실행"
+  (text + `\r`); Esc = cancel. Quick-key buttons send literal sequences
+  immediately, e.g. `\x03` for ^C, `\x1b[5~` for PgUp. All input flows
+  through `client.send(text)` → bridge `sendInput` → tmux `send-keys -H`.
 
 ### Target-side tmux configuration
 
@@ -422,25 +461,34 @@ mobile spectator client attaches:
 ```tmux
 set -g window-size latest
 set -g focus-events on
-set -g aggressive-resize on
+set -g aggressive-resize on   # tmux-sensible already does this on Linux
 ```
 
 Drop-in plugin: `bridge/deploy/tomboy-spectator.tmux` — tpm-compatible,
 also runnable via `run-shell /path/to/tomboy-spectator.tmux` from
-`.tmux.conf`. The crucial one is `window-size latest`: since the spectator
-client never interacts, the desktop's interactions always set the size.
+`.tmux.conf`. **The crucial one is `window-size latest`**: since the
+spectator client never sends `refresh-client -C` or interacts, the
+desktop's interactions always set the session size. For users who already
+have a heavy `.tmux.conf` it's usually cleaner to add the two missing
+lines inline than to source the plugin file.
 
 ### Spectator-mode constraints worth caching
 
+- **tmux 3.0+** required for `send-keys -H` (hex input). tmux 2.x targets
+  the spectator can still attach + view, but the 보내기 popup will fail
+  silently (error logged to bridge stderr).
 - **Same ssh user as the desktop tmux session owner** — tmux server
   sockets are per-user. The note's `ssh://user@host` must reach the same
   user that owns the session socket on the target.
 - **Session must exist on attach** — bridge does NOT `new-session`. tmux
-  exits with an error and the spectator session terminates.
+  exits with an error and the spectator session terminates; the error
+  surfaces as the ssh stderr tail in the exit reason.
 - **No share token / discovery channel** — the spectator note is just a
   regular Tomboy note that the user creates and (optionally) syncs via
   Dropbox/Firebase. Bearer + ssh credentials are the entire auth surface,
-  exactly the same as a regular terminal note.
+  exactly the same as a regular terminal note. **The mobile popup CAN
+  inject input** into the active pane — same trust boundary as opening
+  the regular terminal note on mobile and typing.
 - **`pane-switch` re-seeds via `capture-pane`** — visible region only by
   default. Pass `-S -<n>` to grab scrollback if needed (currently not
   exposed; the v1 seed is just the visible screen). Cursor position is

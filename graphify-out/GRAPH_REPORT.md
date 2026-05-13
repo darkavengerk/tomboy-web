@@ -1,197 +1,245 @@
-# Graph Report - app/src  (2026-05-02)
+# Graph Report - tomboy-web  (2026-05-13)
 
 ## Corpus Check
-- 172 files · ~121,837 words
+- 620 files · ~576,495 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1327 nodes · 1835 edges · 158 communities detected
-- Extraction: 79% EXTRACTED · 21% INFERRED · 0% AMBIGUOUS · INFERRED: 381 edges (avg confidence: 0.8)
+- 4661 nodes · 6609 edges · 206 communities detected
+- Extraction: 90% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · INFERRED: 670 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Community Hubs (Navigation)
-- [[_COMMUNITY_Home Note & Misc Utils|Home Note & Misc Utils]]
-- [[_COMMUNITY_Dropbox Sync & Image Upload|Dropbox Sync & Image Upload]]
-- [[_COMMUNITY_Schedule Note & Wallpaper|Schedule Note & Wallpaper]]
-- [[_COMMUNITY_Codegraph Colors & Force Tuning|Codegraph Colors & Force Tuning]]
-- [[_COMMUNITY_Note XML  Title Helpers|Note XML / Title Helpers]]
-- [[_COMMUNITY_Firebase Realtime Note Sync|Firebase Realtime Note Sync]]
-- [[_COMMUNITY_Table Editing (block + cell)|Table Editing (block + cell)]]
-- [[_COMMUNITY_Admin Revision Pagination|Admin Revision Pagination]]
-- [[_COMMUNITY_Note Content (De)serialization|Note Content (De)serialization]]
-- [[_COMMUNITY_Tomboy Date  NoteData Format|Tomboy Date / NoteData Format]]
-- [[_COMMUNITY_Editor Plugin Group (autolinkweekdayclipboard)|Editor Plugin Group (autolink/weekday/clipboard)]]
-- [[_COMMUNITY_AutoLink Plugin Internals|AutoLink Plugin Internals]]
-- [[_COMMUNITY_Scroll-Bottom Note & Persistence|Scroll-Bottom Note & Persistence]]
-- [[_COMMUNITY_App Settings Store|App Settings Store]]
-- [[_COMMUNITY_AutoWeekday Plugin|AutoWeekday Plugin]]
-- [[_COMMUNITY_Codegraph Data Types|Codegraph Data Types]]
-- [[_COMMUNITY_Table Decorations + Cell State|Table Decorations + Cell State]]
-- [[_COMMUNITY_Copy with Format  Clipboard|Copy with Format / Clipboard]]
-- [[_COMMUNITY_Service Worker & PWA|Service Worker & PWA]]
-- [[_COMMUNITY_Todo Region Commands|Todo Region Commands]]
-- [[_COMMUNITY_IDB Storage  Settings  FCM|IDB Storage / Settings / FCM]]
-- [[_COMMUNITY_List-Item Editor Commands|List-Item Editor Commands]]
-- [[_COMMUNITY_Plain-Text Walking & Date Seed|Plain-Text Walking & Date Seed]]
-- [[_COMMUNITY_Slip-Note Clipboard & Index|Slip-Note Clipboard & Index]]
-- [[_COMMUNITY_admin Routes|/admin Routes]]
-- [[_COMMUNITY_AutoLink + Date Notes|AutoLink + Date Notes]]
-- [[_COMMUNITY_FpsControls (graph)|FpsControls (graph)]]
-- [[_COMMUNITY_List Depth Editor|List Depth Editor]]
-- [[_COMMUNITY_Desktop Workspace + Note Navigation|Desktop Workspace + Note Navigation]]
-- [[_COMMUNITY_Todo Region Plugin|Todo Region Plugin]]
-- [[_COMMUNITY_cmpKey()|cmpKey()]]
-- [[_COMMUNITY_coerceConfidence()|coerceConfidence()]]
-- [[_COMMUNITY_buildDecorations()|buildDecorations()]]
-- [[_COMMUNITY_clearHomeNote|clearHomeNote]]
-- [[_COMMUNITY_sendListItemPlugin|sendListItemPlugin]]
-- [[_COMMUNITY_appSettings (idb kv)|appSettings (idb kv)]]
-- [[_COMMUNITY_Notes Filter Bar (notebook + sort + s...|Notes Filter Bar (notebook + sort + s...]]
-- [[_COMMUNITY_clampedFrame|clampedFrame]]
-- [[_COMMUNITY_getNotebook|getNotebook]]
-- [[_COMMUNITY_NoteWindow.handleSlipCut|NoteWindow.handleSlipCut]]
-- [[_COMMUNITY_decodeRow|decodeRow]]
-- [[_COMMUNITY_formatLineHash()|formatLineHash()]]
-- [[_COMMUNITY_parseTomboyDate|parseTomboyDate]]
-- [[_COMMUNITY_checkTitleConflict|checkTitleConflict]]
-- [[_COMMUNITY_createImagePreviewPlugin()|createImagePreviewPlugin()]]
-- [[_COMMUNITY_graphbuildGraph module|graph/buildGraph module]]
-- [[_COMMUNITY_Root +layout.svelte|Root +layout.svelte]]
-- [[_COMMUNITY_formatDayWithWeekday|formatDayWithWeekday]]
-- [[_COMMUNITY_formatDate()|formatDate()]]
-- [[_COMMUNITY_noteSearch.ts|noteSearch.ts]]
-- [[_COMMUNITY_todoRegion commands|todoRegion commands]]
-- [[_COMMUNITY_findTableRegions module|findTableRegions module]]
-- [[_COMMUNITY_indexLabel|indexLabel]]
-- [[_COMMUNITY_active|active]]
-- [[_COMMUNITY_active|active]]
-- [[_COMMUNITY_active|active]]
-- [[_COMMUNITY_revertAllUploads (bulk revert)|revertAllUploads (bulk revert)]]
-- [[_COMMUNITY_ImageViewerModal Svelte component|ImageViewerModal Svelte component]]
-- [[_COMMUNITY_TomboyListItem node|TomboyListItem node]]
-- [[_COMMUNITY_buildDecorations (sendList)|buildDecorations (sendList)]]
-- [[_COMMUNITY_modeFromUrl (URL → mode mapping)|modeFromUrl (URL → mode mapping)]]
-- [[_COMMUNITY_DesktopWorkspace.handleCtrlL|DesktopWorkspace.handleCtrlL]]
-- [[_COMMUNITY_DesktopWorkspace.onCanvasDrop|DesktopWorkspace.onCanvasDrop]]
-- [[_COMMUNITY_NoteWindow.flushSave|NoteWindow.flushSave]]
-- [[_COMMUNITY_NoteWindow.externalReload|NoteWindow.externalReload]]
-- [[_COMMUNITY_buildGraph|buildGraph]]
-- [[_COMMUNITY_runAllSettledWithConcurrency|runAllSettledWithConcurrency]]
-- [[_COMMUNITY_Apple Touch Icon (PNG required for iO...|Apple Touch Icon (PNG required for iO...]]
-- [[_COMMUNITY_App Namespace (SvelteKit)|App Namespace (SvelteKit)]]
-- [[_COMMUNITY_libindex alias placeholder|lib/index alias placeholder]]
-- [[_COMMUNITY_NotebookChips Svelte component|NotebookChips Svelte component]]
-- [[_COMMUNITY_Toast Svelte component|Toast Svelte component]]
-- [[_COMMUNITY_openNote (NoteList)|openNote (NoteList)]]
-- [[_COMMUNITY_getPreview (extract note preview text)|getPreview (extract note preview text)]]
-- [[_COMMUNITY_SyncProgressView Svelte component|SyncProgressView Svelte component]]
-- [[_COMMUNITY_handleNavClick (TopNav)|handleNavClick (TopNav)]]
-- [[_COMMUNITY_handleSettings (TopNav)|handleSettings (TopNav)]]
-- [[_COMMUNITY_SyncPlanView Svelte component|SyncPlanView Svelte component]]
-- [[_COMMUNITY_onTouchStart (pinch start)|onTouchStart (pinch start)]]
-- [[_COMMUNITY_isScrollBottomNote|isScrollBottomNote]]
-- [[_COMMUNITY_setScrollBottomNote|setScrollBottomNote]]
-- [[_COMMUNITY_extractTitleFromContent|extractTitleFromContent]]
-- [[_COMMUNITY_filenameFromGuid|filenameFromGuid]]
-- [[_COMMUNITY_subscribeNoteReload|subscribeNoteReload]]
-- [[_COMMUNITY_clearScheduleNote|clearScheduleNote]]
-- [[_COMMUNITY_deleteNoteById|deleteNoteById]]
-- [[_COMMUNITY_findNoteByTitle (wrapper)|findNoteByTitle (wrapper)]]
-- [[_COMMUNITY_filterByNotebook|filterByNotebook]]
-- [[_COMMUNITY_insertDate module|insertDate module]]
-- [[_COMMUNITY_NoteActionSheet.openBacklinks|NoteActionSheet.openBacklinks]]
-- [[_COMMUNITY_ctrlEnterSplit module|ctrlEnterSplit module]]
-- [[_COMMUNITY_isCursorInTitleBlock|isCursorInTitleBlock]]
-- [[_COMMUNITY_NoteContextMenu.openBacklinks|NoteContextMenu.openBacklinks]]
-- [[_COMMUNITY_listItemReorder module|listItemReorder module]]
-- [[_COMMUNITY_listItemDepth module|listItemDepth module]]
-- [[_COMMUNITY_deleteLine module|deleteLine module]]
-- [[_COMMUNITY_insertTab module|insertTab module]]
-- [[_COMMUNITY_TomboyEditor editorProps.handleKeyDown|TomboyEditor editorProps.handleKeyDown]]
-- [[_COMMUNITY_TomboySize mark|TomboySize mark]]
-- [[_COMMUNITY_TomboyMonospace mark|TomboyMonospace mark]]
-- [[_COMMUNITY_TomboySubtitlePlaceholder extension|TomboySubtitlePlaceholder extension]]
-- [[_COMMUNITY_TomboyPunctuationReplace extension|TomboyPunctuationReplace extension]]
-- [[_COMMUNITY_lookupGuidByTitle|lookupGuidByTitle]]
-- [[_COMMUNITY_autoLinkPlugin.expandToBlock|autoLinkPlugin.expandToBlock]]
-- [[_COMMUNITY_SEND_SOURCE_GUID|SEND_SOURCE_GUID]]
-- [[_COMMUNITY_SEND_TARGET_GUID|SEND_TARGET_GUID]]
-- [[_COMMUNITY_sendListItemPluginKey|sendListItemPluginKey]]
-- [[_COMMUNITY_sendActiveGate module|sendActiveGate module]]
-- [[_COMMUNITY_findAdjacentDateNotes module|findAdjacentDateNotes module]]
-- [[_COMMUNITY_todoRegion index|todoRegion index]]
-- [[_COMMUNITY_insertTodoBlock|insertTodoBlock]]
-- [[_COMMUNITY_regionContainingPos|regionContainingPos]]
-- [[_COMMUNITY_autoWeekdayPluginKey|autoWeekdayPluginKey]]
-- [[_COMMUNITY_table cellEdit module|table cellEdit module]]
-- [[_COMMUNITY_parseTable module|parseTable module]]
-- [[_COMMUNITY_toggleTableBlock|toggleTableBlock]]
-- [[_COMMUNITY_setCtrlHeld|setCtrlHeld]]
-- [[_COMMUNITY_tableBlockPluginKey|tableBlockPluginKey]]
-- [[_COMMUNITY_tableOps module|tableOps module]]
-- [[_COMMUNITY_navhistory module|nav/history module]]
-- [[_COMMUNITY_createHistoryTracker|createHistoryTracker]]
-- [[_COMMUNITY_noteSearch|noteSearch]]
-- [[_COMMUNITY_tomboy IDB schema (v3)|tomboy IDB schema (v3)]]
-- [[_COMMUNITY_notes object store|notes object store]]
-- [[_COMMUNITY_syncManifest object store|syncManifest object store]]
-- [[_COMMUNITY_noteListCache (cached notes + scroll)|noteListCache (cached notes + scroll)]]
-- [[_COMMUNITY_toast store + pushToastdismissToast|toast store + pushToast/dismissToast]]
-- [[_COMMUNITY_generateGuid (uuid v4)|generateGuid (uuid v4)]]
-- [[_COMMUNITY_noteUri|noteUri]]
-- [[_COMMUNITY_portal Svelte action|portal Svelte action]]
-- [[_COMMUNITY_ResizeHandles.startResize|ResizeHandles.startResize]]
-- [[_COMMUNITY_NoteWindow.handleAction|NoteWindow.handleAction]]
-- [[_COMMUNITY_session.persistNow|session.persistNow]]
-- [[_COMMUNITY_SLEEP_NOTE_GUID|SLEEP_NOTE_GUID]]
-- [[_COMMUNITY_graphplainText|graph/plainText]]
-- [[_COMMUNITY_toPlainText (graph preview)|toPlainText (graph preview)]]
-- [[_COMMUNITY_viewportHeight.ts (module)|viewportHeight.ts (module)]]
-- [[_COMMUNITY_adminClient (admin sync ops)|adminClient (admin sync ops)]]
-- [[_COMMUNITY_diffManifests|diffManifests]]
-- [[_COMMUNITY_revertNoteToServer|revertNoteToServer]]
-- [[_COMMUNITY_onSyncStatus listener|onSyncStatus listener]]
-- [[_COMMUNITY_startAuth (OAuth PKCE start)|startAuth (OAuth PKCE start)]]
-- [[_COMMUNITY_completeAuth (PKCE callback)|completeAuth (PKCE callback)]]
-- [[_COMMUNITY_getFreshAccessToken (refresh-aware)|getFreshAccessToken (refresh-aware)]]
-- [[_COMMUNITY_listRevisions|listRevisions]]
-- [[_COMMUNITY_schedule diff|schedule diff]]
-- [[_COMMUNITY_flushPendingSchedule|flushPendingSchedule]]
-- [[_COMMUNITY_flushScheduler|flushScheduler]]
-- [[_COMMUNITY_sendTestPush() (Cloud Function callable)|sendTestPush() (Cloud Function callable)]]
-- [[_COMMUNITY_dateNoteSeed|dateNoteSeed]]
-- [[_COMMUNITY_buildScheduleItem|buildScheduleItem]]
-- [[_COMMUNITY_syncSchedule orchestrator|syncSchedule orchestrator]]
-- [[_COMMUNITY_firebaseapp module|firebase/app module]]
-- [[_COMMUNITY_Root +layout.ts (ssr=false)|Root +layout.ts (ssr=false)]]
-- [[_COMMUNITY_Home +page.ts (prerender=true)|Home +page.ts (prerender=true)]]
-- [[_COMMUNITY_noteid +page.ts (prerender=false)|/note/[id] +page.ts (prerender=false)]]
-- [[_COMMUNITY_desktop +page.svelte|/desktop +page.svelte]]
-- [[_COMMUNITY_Favicon (SVG)|Favicon (SVG)]]
+- [[_COMMUNITY_Community 0|Community 0]]
+- [[_COMMUNITY_Community 1|Community 1]]
+- [[_COMMUNITY_Community 2|Community 2]]
+- [[_COMMUNITY_Community 3|Community 3]]
+- [[_COMMUNITY_Community 4|Community 4]]
+- [[_COMMUNITY_Community 5|Community 5]]
+- [[_COMMUNITY_Community 6|Community 6]]
+- [[_COMMUNITY_Community 7|Community 7]]
+- [[_COMMUNITY_Community 8|Community 8]]
+- [[_COMMUNITY_Community 9|Community 9]]
+- [[_COMMUNITY_Community 10|Community 10]]
+- [[_COMMUNITY_Community 11|Community 11]]
+- [[_COMMUNITY_Community 12|Community 12]]
+- [[_COMMUNITY_Community 13|Community 13]]
+- [[_COMMUNITY_Community 14|Community 14]]
+- [[_COMMUNITY_Community 15|Community 15]]
+- [[_COMMUNITY_Community 16|Community 16]]
+- [[_COMMUNITY_Community 17|Community 17]]
+- [[_COMMUNITY_Community 18|Community 18]]
+- [[_COMMUNITY_Community 19|Community 19]]
+- [[_COMMUNITY_Community 20|Community 20]]
+- [[_COMMUNITY_Community 21|Community 21]]
+- [[_COMMUNITY_Community 22|Community 22]]
+- [[_COMMUNITY_Community 23|Community 23]]
+- [[_COMMUNITY_Community 24|Community 24]]
+- [[_COMMUNITY_Community 25|Community 25]]
+- [[_COMMUNITY_Community 26|Community 26]]
+- [[_COMMUNITY_Community 27|Community 27]]
+- [[_COMMUNITY_Community 28|Community 28]]
+- [[_COMMUNITY_Community 29|Community 29]]
+- [[_COMMUNITY_Community 30|Community 30]]
+- [[_COMMUNITY_Community 31|Community 31]]
+- [[_COMMUNITY_Community 32|Community 32]]
+- [[_COMMUNITY_Community 33|Community 33]]
+- [[_COMMUNITY_Community 34|Community 34]]
+- [[_COMMUNITY_Community 35|Community 35]]
+- [[_COMMUNITY_Community 36|Community 36]]
+- [[_COMMUNITY_Community 37|Community 37]]
+- [[_COMMUNITY_Community 38|Community 38]]
+- [[_COMMUNITY_Community 39|Community 39]]
+- [[_COMMUNITY_Community 40|Community 40]]
+- [[_COMMUNITY_Community 41|Community 41]]
+- [[_COMMUNITY_Community 42|Community 42]]
+- [[_COMMUNITY_Community 43|Community 43]]
+- [[_COMMUNITY_Community 44|Community 44]]
+- [[_COMMUNITY_Community 45|Community 45]]
+- [[_COMMUNITY_Community 46|Community 46]]
+- [[_COMMUNITY_Community 47|Community 47]]
+- [[_COMMUNITY_Community 48|Community 48]]
+- [[_COMMUNITY_Community 49|Community 49]]
+- [[_COMMUNITY_Community 50|Community 50]]
+- [[_COMMUNITY_Community 51|Community 51]]
+- [[_COMMUNITY_Community 52|Community 52]]
+- [[_COMMUNITY_Community 53|Community 53]]
+- [[_COMMUNITY_Community 54|Community 54]]
+- [[_COMMUNITY_Community 55|Community 55]]
+- [[_COMMUNITY_Community 56|Community 56]]
+- [[_COMMUNITY_Community 57|Community 57]]
+- [[_COMMUNITY_Community 58|Community 58]]
+- [[_COMMUNITY_Community 59|Community 59]]
+- [[_COMMUNITY_Community 60|Community 60]]
+- [[_COMMUNITY_Community 61|Community 61]]
+- [[_COMMUNITY_Community 62|Community 62]]
+- [[_COMMUNITY_Community 63|Community 63]]
+- [[_COMMUNITY_Community 64|Community 64]]
+- [[_COMMUNITY_Community 65|Community 65]]
+- [[_COMMUNITY_Community 66|Community 66]]
+- [[_COMMUNITY_Community 67|Community 67]]
+- [[_COMMUNITY_Community 68|Community 68]]
+- [[_COMMUNITY_Community 69|Community 69]]
+- [[_COMMUNITY_Community 70|Community 70]]
+- [[_COMMUNITY_Community 71|Community 71]]
+- [[_COMMUNITY_Community 72|Community 72]]
+- [[_COMMUNITY_Community 73|Community 73]]
+- [[_COMMUNITY_Community 74|Community 74]]
+- [[_COMMUNITY_Community 75|Community 75]]
+- [[_COMMUNITY_Community 76|Community 76]]
+- [[_COMMUNITY_Community 77|Community 77]]
+- [[_COMMUNITY_Community 78|Community 78]]
+- [[_COMMUNITY_Community 79|Community 79]]
+- [[_COMMUNITY_Community 80|Community 80]]
+- [[_COMMUNITY_Community 81|Community 81]]
+- [[_COMMUNITY_Community 82|Community 82]]
+- [[_COMMUNITY_Community 83|Community 83]]
+- [[_COMMUNITY_Community 84|Community 84]]
+- [[_COMMUNITY_Community 85|Community 85]]
+- [[_COMMUNITY_Community 86|Community 86]]
+- [[_COMMUNITY_Community 87|Community 87]]
+- [[_COMMUNITY_Community 88|Community 88]]
+- [[_COMMUNITY_Community 89|Community 89]]
+- [[_COMMUNITY_Community 90|Community 90]]
+- [[_COMMUNITY_Community 91|Community 91]]
+- [[_COMMUNITY_Community 92|Community 92]]
+- [[_COMMUNITY_Community 93|Community 93]]
+- [[_COMMUNITY_Community 94|Community 94]]
+- [[_COMMUNITY_Community 95|Community 95]]
+- [[_COMMUNITY_Community 96|Community 96]]
+- [[_COMMUNITY_Community 97|Community 97]]
+- [[_COMMUNITY_Community 98|Community 98]]
+- [[_COMMUNITY_Community 99|Community 99]]
+- [[_COMMUNITY_Community 100|Community 100]]
+- [[_COMMUNITY_Community 101|Community 101]]
+- [[_COMMUNITY_Community 102|Community 102]]
+- [[_COMMUNITY_Community 103|Community 103]]
+- [[_COMMUNITY_Community 104|Community 104]]
+- [[_COMMUNITY_Community 105|Community 105]]
+- [[_COMMUNITY_Community 106|Community 106]]
+- [[_COMMUNITY_Community 107|Community 107]]
+- [[_COMMUNITY_Community 109|Community 109]]
+- [[_COMMUNITY_Community 110|Community 110]]
+- [[_COMMUNITY_Community 111|Community 111]]
+- [[_COMMUNITY_Community 112|Community 112]]
+- [[_COMMUNITY_Community 113|Community 113]]
+- [[_COMMUNITY_Community 114|Community 114]]
+- [[_COMMUNITY_Community 115|Community 115]]
+- [[_COMMUNITY_Community 116|Community 116]]
+- [[_COMMUNITY_Community 117|Community 117]]
+- [[_COMMUNITY_Community 118|Community 118]]
+- [[_COMMUNITY_Community 119|Community 119]]
+- [[_COMMUNITY_Community 120|Community 120]]
+- [[_COMMUNITY_Community 121|Community 121]]
+- [[_COMMUNITY_Community 122|Community 122]]
+- [[_COMMUNITY_Community 123|Community 123]]
+- [[_COMMUNITY_Community 124|Community 124]]
+- [[_COMMUNITY_Community 125|Community 125]]
+- [[_COMMUNITY_Community 126|Community 126]]
+- [[_COMMUNITY_Community 127|Community 127]]
+- [[_COMMUNITY_Community 128|Community 128]]
+- [[_COMMUNITY_Community 129|Community 129]]
+- [[_COMMUNITY_Community 130|Community 130]]
+- [[_COMMUNITY_Community 131|Community 131]]
+- [[_COMMUNITY_Community 132|Community 132]]
+- [[_COMMUNITY_Community 133|Community 133]]
+- [[_COMMUNITY_Community 134|Community 134]]
+- [[_COMMUNITY_Community 135|Community 135]]
+- [[_COMMUNITY_Community 136|Community 136]]
+- [[_COMMUNITY_Community 137|Community 137]]
+- [[_COMMUNITY_Community 138|Community 138]]
+- [[_COMMUNITY_Community 142|Community 142]]
+- [[_COMMUNITY_Community 143|Community 143]]
+- [[_COMMUNITY_Community 144|Community 144]]
+- [[_COMMUNITY_Community 145|Community 145]]
+- [[_COMMUNITY_Community 146|Community 146]]
+- [[_COMMUNITY_Community 147|Community 147]]
+- [[_COMMUNITY_Community 148|Community 148]]
+- [[_COMMUNITY_Community 149|Community 149]]
+- [[_COMMUNITY_Community 150|Community 150]]
+- [[_COMMUNITY_Community 151|Community 151]]
+- [[_COMMUNITY_Community 152|Community 152]]
+- [[_COMMUNITY_Community 153|Community 153]]
+- [[_COMMUNITY_Community 154|Community 154]]
+- [[_COMMUNITY_Community 155|Community 155]]
+- [[_COMMUNITY_Community 156|Community 156]]
+- [[_COMMUNITY_Community 157|Community 157]]
+- [[_COMMUNITY_Community 158|Community 158]]
+- [[_COMMUNITY_Community 159|Community 159]]
+- [[_COMMUNITY_Community 160|Community 160]]
+- [[_COMMUNITY_Community 161|Community 161]]
+- [[_COMMUNITY_Community 162|Community 162]]
+- [[_COMMUNITY_Community 163|Community 163]]
+- [[_COMMUNITY_Community 164|Community 164]]
+- [[_COMMUNITY_Community 167|Community 167]]
+- [[_COMMUNITY_Community 170|Community 170]]
+- [[_COMMUNITY_Community 172|Community 172]]
+- [[_COMMUNITY_Community 173|Community 173]]
+- [[_COMMUNITY_Community 174|Community 174]]
+- [[_COMMUNITY_Community 175|Community 175]]
+- [[_COMMUNITY_Community 176|Community 176]]
+- [[_COMMUNITY_Community 177|Community 177]]
+- [[_COMMUNITY_Community 178|Community 178]]
+- [[_COMMUNITY_Community 179|Community 179]]
+- [[_COMMUNITY_Community 180|Community 180]]
+- [[_COMMUNITY_Community 181|Community 181]]
+- [[_COMMUNITY_Community 182|Community 182]]
+- [[_COMMUNITY_Community 183|Community 183]]
+- [[_COMMUNITY_Community 184|Community 184]]
+- [[_COMMUNITY_Community 185|Community 185]]
+- [[_COMMUNITY_Community 186|Community 186]]
+- [[_COMMUNITY_Community 187|Community 187]]
+- [[_COMMUNITY_Community 190|Community 190]]
+- [[_COMMUNITY_Community 198|Community 198]]
+- [[_COMMUNITY_Community 199|Community 199]]
+- [[_COMMUNITY_Community 200|Community 200]]
+- [[_COMMUNITY_Community 201|Community 201]]
+- [[_COMMUNITY_Community 202|Community 202]]
+- [[_COMMUNITY_Community 203|Community 203]]
+- [[_COMMUNITY_Community 204|Community 204]]
+- [[_COMMUNITY_Community 205|Community 205]]
+- [[_COMMUNITY_Community 209|Community 209]]
+- [[_COMMUNITY_Community 210|Community 210]]
+- [[_COMMUNITY_Community 226|Community 226]]
+- [[_COMMUNITY_Community 227|Community 227]]
+- [[_COMMUNITY_Community 228|Community 228]]
+- [[_COMMUNITY_Community 229|Community 229]]
+- [[_COMMUNITY_Community 230|Community 230]]
+- [[_COMMUNITY_Community 231|Community 231]]
+- [[_COMMUNITY_Community 232|Community 232]]
+- [[_COMMUNITY_Community 233|Community 233]]
+- [[_COMMUNITY_Community 234|Community 234]]
+- [[_COMMUNITY_Community 235|Community 235]]
+- [[_COMMUNITY_Community 238|Community 238]]
+- [[_COMMUNITY_Community 240|Community 240]]
+- [[_COMMUNITY_Community 248|Community 248]]
+- [[_COMMUNITY_Community 252|Community 252]]
+- [[_COMMUNITY_Community 381|Community 381]]
+- [[_COMMUNITY_Community 388|Community 388]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `getDB()` - 21 edges
-2. `applyPlan()` - 20 edges
-3. `invalidateCache()` - 18 edges
-4. `getClient()` - 16 edges
-5. `/desktop/codegraph route (code graph 3D viewer)` - 16 edges
-6. `pushToast()` - 15 edges
-7. `updateNoteFromEditor()` - 14 edges
-8. `setSetting()` - 13 edges
-9. `formatTomboyDate()` - 12 edges
-10. `getNotesPath()` - 12 edges
+1. `NoteRecentChanges` - 75 edges
+2. `TaskListWindow` - 50 edges
+3. `StateFile` - 48 edges
+4. `RemoteControl` - 39 edges
+5. `PreferencesDialog` - 38 edges
+6. `NoteBuffer` - 37 edges
+7. `RemoteControlWrapper` - 36 edges
+8. `IRemoteControl` - 33 edges
+9. `Note` - 32 edges
+10. `NoteWindow` - 32 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `handleAction()` --calls--> `setScrollBottomNote()`  [INFERRED]
-  routes/note/[id]/+page.svelte → lib/core/scrollBottom.ts
-- `handleAction()` --calls--> `isFavorite()`  [INFERRED]
-  routes/note/[id]/+page.svelte → lib/core/noteManager.ts
-- `handleAction()` --calls--> `purgeLocalOnly()`  [INFERRED]
-  routes/note/[id]/+page.svelte → lib/storage/noteStore.ts
-- `gotoToday()` --calls--> `findNoteByTitle()`  [INFERRED]
-  routes/note/[id]/+page.svelte → lib/storage/noteStore.ts
-- `restoreLocal()` --calls--> `invalidateCache()`  [INFERRED]
-  routes/admin/notes/[guid]/+page.svelte → lib/stores/noteListCache.ts
+- `getCurrentNoteSyncUid()` --calls--> `ensureSignedIn()`  [INFERRED]
+  app/src/lib/sync/firebase/noteSyncClient.firestore.ts → app/src/lib/firebase/app.ts
+- `sendChat()` --calls--> `fetch()`  [INFERRED]
+  app/src/lib/llmNote/sendChat.ts → pipeline/desktop/stages/s1_fetch.py
+- `wakeIfNeeded()` --calls--> `send()`  [INFERRED]
+  bridge/src/server.ts → app/tests/unit/editor/wsClientSendCommand.test.ts
+- `main()` --calls--> `load_config()`  [INFERRED]
+  pipeline/desktop/tools/segment_lines.py → pipeline/desktop/lib/config.py
+- `test_load_config_from_path()` --calls--> `load_config()`  [INFERRED]
+  pipeline/tests/lib/test_config.py → pipeline/desktop/lib/config.py
 
 ## Hyperedges (group relationships)
 - **Service Worker Lifecycle Handlers** — service_worker_install_skipwait, service_worker_activate_clients_claim, service_worker_fetch_handler [EXTRACTED 1.00]
@@ -224,872 +272,1054 @@
 
 ## Communities
 
-### Community 0 - "Home Note & Misc Utils"
-Cohesion: 0.05
-Nodes (66): clearHomeNote(), getHomeNote(), getHomeNoteGuid(), setHomeNote(), createEmptyNote(), escapeXml(), formatTomboyDate(), assignNotebook() (+58 more)
+### Community 0 - "Community 0"
+Cohesion: 0.02
+Nodes (171): li(), makeNote(), noteDoc(), p(), ul(), createEmptyNote(), formatTomboyDate(), assignNotebook() (+163 more)
 
-### Community 1 - "Dropbox Sync & Image Upload"
-Cohesion: 0.08
-Nodes (55): replaceAllSettings(), ensureRevLoaded(), buildTomboyManifest(), commitRevision(), completeAuth(), createAuth(), downloadFileText(), downloadNoteAtRevision() (+47 more)
+### Community 1 - "Community 1"
+Cohesion: 0.02
+Nodes (31): BacklinksNoteAddin, Tomboy.Backlinks, BugzillaNoteAddin, Tomboy.Bugzilla, ExportToHtmlNoteAddin, Tomboy.ExportToHtml, TransformExtension, FixedWidthNoteAddin (+23 more)
 
-### Community 2 - "Schedule Note & Wallpaper"
-Cohesion: 0.06
-Nodes (41): clearScheduleNote(), getScheduleNoteGuid(), setScheduleNote(), clearWallpaper(), configFromEnv(), DropboxNotConnectedError, ensureSignedIn(), getFirebaseApp() (+33 more)
+### Community 2 - "Community 2"
+Cohesion: 0.02
+Nodes (120): coerceConfidence(), errorMessage(), isNonEmptyString(), isObject(), loadCodegraphData(), validateCommunityLabels(), validateMeta(), GConf.PropertyEditors (+112 more)
 
-### Community 3 - "Codegraph Colors & Force Tuning"
+### Community 3 - "Community 3"
+Cohesion: 0.03
+Nodes (116): for(), escapeXml(), parseTomboyDate(), extractGuidFromUri(), extractTitleFromContent(), extractXmlContent(), guidFromFilename(), parseNote() (+108 more)
+
+### Community 4 - "Community 4"
+Cohesion: 0.02
+Nodes (88): clearHomeNote(), getHomeNote(), getHomeNoteGuid(), setHomeNote(), clearScheduleNote(), getScheduleNoteGuid(), setScheduleNote(), isScrollBottomNote() (+80 more)
+
+### Community 5 - "Community 5"
+Cohesion: 0.04
+Nodes (18): AnonymousConnection, Tomboy.WebSync.Api, OAuth, Tomboy.WebSync.Api, Base, findPosAfter(), selectRange(), EventArgs (+10 more)
+
+### Community 6 - "Community 6"
+Cohesion: 0.04
+Nodes (4): CellRendererDate, Gtk.Extras, NoteRecentChanges, Tomboy
+
+### Community 7 - "Community 7"
+Cohesion: 0.03
+Nodes (16): Application, INativeApplication, MenuItem, ComplexMenuItem, Gtk.Extras, GnomeApplication, Tomboy, MacApplication (+8 more)
+
+### Community 8 - "Community 8"
+Cohesion: 0.03
+Nodes (22): Hyena.Json, IJsonCollection, ICollection, IEnumerable, IEnumerator, GetEnumerator(), HttpListenerPrefixCollection, ActionManager (+14 more)
+
+### Community 9 - "Community 9"
+Cohesion: 0.02
+Nodes (8): IRemoteControl, MarshalByRefObject, RemoteControl, Tasque, RemoteControl, Tomboy, RemoteControlWrapper, Tomboy
+
+### Community 10 - "Community 10"
+Cohesion: 0.04
+Nodes (14): InsertBugAction, Tomboy.Bugzilla, SplitterAction, ChangeDepthAction, ChopBuffer, EditAction, EraseAction, InsertAction (+6 more)
+
+### Community 11 - "Community 11"
+Cohesion: 0.04
+Nodes (22): Component, Exception, Gnome.Keyring, KeyringException, ISerializable, Add(), GetObjectData(), IsRestricted() (+14 more)
+
+### Community 12 - "Community 12"
+Cohesion: 0.03
+Nodes (16): ApplicationAddin, NotebookApplicationAddin, Tomboy.Notebooks, NoteDirectoryWatcherApplicationAddin, NoteFileChangeRecord, Tomboy.NoteDirectoryWatcher, NoteOfTheDayApplicationAddin, Tomboy.NoteOfTheDay (+8 more)
+
+### Community 13 - "Community 13"
+Cohesion: 0.04
+Nodes (8): ISyncUI, SilentUI, Tomboy.Sync, SyncDialog, SyncTitleConflictDialog, Tomboy.Sync, TaskListWindow, Tomboy.Tasks
+
+### Community 14 - "Community 14"
+Cohesion: 0.04
+Nodes (32): send(), if(), constantTimeEqualHex(), extractBearer(), mintToken(), passwordMatches(), sign(), verifyToken() (+24 more)
+
+### Community 15 - "Community 15"
+Cohesion: 0.04
+Nodes (6): ForcedPresentWindow, Match, NoteFindBar, NoteTextMenu, NoteWindow, Tomboy
+
+### Community 16 - "Community 16"
+Cohesion: 0.04
+Nodes (14): AbstractAddin, NotebookNoteAddin, Tomboy.Notebooks, CategoryMenuItem, TasqueNoteAddin, Tomboy.TasqueAddin, ApplicationAddin, Tomboy (+6 more)
+
+### Community 17 - "Community 17"
+Cohesion: 0.04
+Nodes (12): ITomboyTray, PanelApplet, Tomboy, TomboyApplet, TomboyPanelAppletEventBox, GConfKeybindingToAccel, ITomboyTray, NoteMenuItem (+4 more)
+
+### Community 18 - "Community 18"
+Cohesion: 0.07
+Nodes (6): Note, NoteArchiver, NoteData, NoteDataBufferSynchronizer, NoteUtils, Tomboy
+
+### Community 19 - "Community 19"
 Cohesion: 0.06
 Nodes (34): clampAlpha(), clampChannel(), edgeStyle(), colorForLink(), haloRadiusFor(), handleCanvasClick(), linkEndpointId(), loop() (+26 more)
 
-### Community 4 - "Note XML / Title Helpers"
-Cohesion: 0.06
-Nodes (41): for(), parseTomboyDate(), extractGuidFromUri(), extractTitleFromContent(), extractXmlContent(), guidFromFilename(), parseNote(), parseNoteFromFile() (+33 more)
+### Community 20 - "Community 20"
+Cohesion: 0.04
+Nodes (9): Clear(), ICustomDestinationList, IObjectArray, IObjectCollection, IPropertyStore, IShellItem, IShellLinkW, PropVariantClear() (+1 more)
 
-### Community 5 - "Firebase Realtime Note Sync"
+### Community 21 - "Community 21"
+Cohesion: 0.05
+Nodes (25): collectListItemRewrites(), createAutoWeekdayPlugin(), findMonthForListItem(), findPrecedingMonth(), nodeFirstParagraphText(), addProseMirrorPlugins(), assignColumns(), computeColumnGroups() (+17 more)
+
+### Community 22 - "Community 22"
+Cohesion: 0.06
+Nodes (30): applyEdit(), render(), commitCellEdit(), findCellEditRange(), collectTopLevelParagraphs(), findTableRegions(), detectFenceFormat(), isBlankRow() (+22 more)
+
+### Community 23 - "Community 23"
+Cohesion: 0.05
+Nodes (17): IPreferencesClient, IPropertyEditor, IPropertyEditorBool, InMemoryPreferencesClient, NoteConvertTests, Tomboy.WebSync.Tests, GConfPreferencesClient, GConfPropertyEditorEntry (+9 more)
+
+### Community 24 - "Community 24"
+Cohesion: 0.07
+Nodes (27): findPosAfter(), handleAltLeft(), handleAltRight(), selectRange(), insertTabAtCursor(), childAbsStart(), findOperationRange(), isInList() (+19 more)
+
+### Community 25 - "Community 25"
 Cohesion: 0.06
 Nodes (26): resolveNoteConflict(), sidesEquivalent(), stringArraysEqual(), createIncrementalSync(), installRealNoteSync(), isFirebaseNotesEnabledSetting(), byteLengthUtf8(), InvalidNotePayloadError (+18 more)
 
-### Community 6 - "Table Editing (block + cell)"
+### Community 26 - "Community 26"
+Cohesion: 0.06
+Nodes (39): Config, ConfigError, DesktopConfig, from_dict(), load_config_from_string(), LocalVlmConfig, OcrConfig, PiConfig (+31 more)
+
+### Community 27 - "Community 27"
 Cohesion: 0.07
-Nodes (28): commitCellEdit(), findCellEditRange(), collectTopLevelParagraphs(), findTableRegions(), detectFenceFormat(), isBlankRow(), isFenceClose(), parseInlineCells() (+20 more)
+Nodes (7): FileSystemSyncServiceAddin, Tomboy.Sync, FuseSyncServiceAddin, Tomboy.Sync, SyncServiceAddin, Tomboy.WebSync, WebSyncServiceAddin
 
-### Community 7 - "Admin Revision Pagination"
-Cohesion: 0.05
-Nodes (46): ensureRevLoaded, initAdminCache, loadMoreRevs (paginated rev fetch), adminCache state ($state), fetchNoteAtRevision, rollbackAndResync, resolveNoteConflict (LWW), buildHunks (diff hunk builder) (+38 more)
+### Community 28 - "Community 28"
+Cohesion: 0.09
+Nodes (8): ApplicationException, NoteUpdate, SyncClient, SyncLockInfo, SyncManager, SyncServer, Tomboy.Sync, TomboySyncException
 
-### Community 8 - "Note Content (De)serialization"
+### Community 29 - "Community 29"
 Cohesion: 0.08
-Nodes (40): getNotebook(), deserializeContent(), elementToMark(), escapeXmlContent(), extractInnerContent(), extractTitleFromDoc(), getPlainText(), marksEqual() (+32 more)
+Nodes (3): AddinInfoDialog, PreferencesDialog, Tomboy
 
-### Community 9 - "Tomboy Date / NoteData Format"
-Cohesion: 0.05
-Nodes (42): createEmptyNote, escapeXml, formatTomboyDate, NoteData interface, guidFromFilename, parseNote (.note XML parser), parseNoteFromFile, serializeNote (.note XML serializer) (+34 more)
+### Community 30 - "Community 30"
+Cohesion: 0.09
+Nodes (5): IComparer, CompareDates, NoteManager, Tomboy, TrieController
 
-### Community 10 - "Editor Plugin Group (autolink/weekday/clipboard)"
-Cohesion: 0.07
-Nodes (29): autoLinkPluginKey, autoWeekday.collectDocRewrites, autoWeekday.collectListItemRewrites, createAutoWeekdayPlugin, handleClipboardCopy, handleClipboardCut, clipboardPlainText.writeClipboard, copySelectionAsJson (+21 more)
-
-### Community 11 - "AutoLink Plugin Internals"
+### Community 31 - "Community 31"
 Cohesion: 0.07
 Nodes (15): applyInRange(), expandToWordBoundary(), findTitleMatches(), isWordChar(), createTitleProvider(), doSharedRefresh(), ensureSubscribed(), ensureTitleIndexReady() (+7 more)
 
-### Community 12 - "Scroll-Bottom Note & Persistence"
+### Community 32 - "Community 32"
 Cohesion: 0.07
-Nodes (15): isScrollBottomNote(), loadSet(), setScrollBottomNote(), centeredFor(), collectExistingGuids(), defaultGeometry(), emptyWorkspace(), ensurePersistFlushOnHide() (+7 more)
+Nodes (11): BugzillaLink, Tomboy.Bugzilla, DynamicNoteTag, EmailLink, EvolutionNoteAddin, EvoUtils, Tomboy.Evolution, SketchingTextTag (+3 more)
 
-### Community 13 - "App Settings Store"
+### Community 33 - "Community 33"
 Cohesion: 0.08
-Nodes (29): deleteSetting(), getSetting(), setSetting(), buildScheduleItems(), hashId() FNV-1a 64-bit, makeItem(), ScheduleItem (3 kinds: morning/pre1h/at), buildDateNoteScheduleSeed() (+21 more)
+Nodes (7): IDisposable, HttpListener, MonoHttp, HttpListenerResponse, MonoHttp, AbstractAddin, Tomboy
 
-### Community 14 - "AutoWeekday Plugin"
+### Community 34 - "Community 34"
+Cohesion: 0.06
+Nodes (2): IRemoteControl, Tomboy
+
+### Community 35 - "Community 35"
 Cohesion: 0.09
-Nodes (15): collectListItemRewrites(), createAutoWeekdayPlugin(), findMonthForListItem(), findPrecedingMonth(), nodeFirstParagraphText(), addProseMirrorPlugins(), buildState(), createImagePreviewPlugin() (+7 more)
+Nodes (10): FixedWidthTag, Tomboy.FixedWidth, GalagoManager, GalagoPresenceNoteAddin, PersonLink, PersonTag, Tomboy.GalagoPresence, NoteTag (+2 more)
 
-### Community 15 - "Codegraph Data Types"
+### Community 36 - "Community 36"
+Cohesion: 0.09
+Nodes (20): ABC, get_backend(), OCRBackend, OCRResult, Pluggable OCR backend interface.  Concrete backends (``local_vlm``, future Clova, register_backend(), OCR backends. Importing this package side-effect-registers every built-in backen, LocalVlmBackend (+12 more)
+
+### Community 37 - "Community 37"
+Cohesion: 0.11
+Nodes (7): ExportAllApplicationAddin, ExportAllTransformExtension, ExportToHtmlApplicationAddin, Tomboy.ExportToHtml, ExportAllApplicationAddin, ExportMultipleDialog, Tomboy
+
+### Community 38 - "Community 38"
+Cohesion: 0.1
+Nodes (5): MonoHttp, RequestStream, MonoHttp, ResponseStream, Stream
+
+### Community 39 - "Community 39"
+Cohesion: 0.11
+Nodes (3): TaskMenuItem, TasksNoteAddin, Tomboy.Tasks
+
+### Community 40 - "Community 40"
+Cohesion: 0.1
+Nodes (5): FileSystemSyncServer, Tomboy.Sync, SyncServer, Tomboy.WebSync, WebSyncServer
+
+### Community 41 - "Community 41"
+Cohesion: 0.14
+Nodes (3): Gnome.Keyring, IDaemon, Ring
+
+### Community 42 - "Community 42"
 Cohesion: 0.12
-Nodes (27): CodegraphData interface, CodegraphLink interface, CodegraphMeta interface, CodegraphNode interface, LoadResult tagged union, CodeNodePanel.svelte (codegraph detail panel), /desktop/codegraph route (code graph 3D viewer), /desktop/graph route (note graph 3D viewer) (+19 more)
+Nodes (24): egg_accelerator_parse_virtual(), egg_keymap_get_modmap(), egg_keymap_resolve_virtual_modifiers(), egg_keymap_virtualize_modifiers(), is_alt(), is_control(), is_ctl(), is_ctrl() (+16 more)
 
-### Community 16 - "Table Decorations + Cell State"
-Cohesion: 0.09
-Nodes (24): appendColOp, appendRowOp, buildDecorations (table), buildEditingCell, collectTopLevelParagraphs, commitCellEdit, commitCellEditCommand, createMarkElement (+16 more)
+### Community 43 - "Community 43"
+Cohesion: 0.1
+Nodes (5): AddinManager, AddinReference, NoteAddinInfo, Tomboy, WeakReference
 
-### Community 17 - "Copy with Format / Clipboard"
+### Community 44 - "Community 44"
+Cohesion: 0.13
+Nodes (5): FuseSyncServiceAddin, SshSyncServiceAddin, Tomboy.Sync, Tomboy.Sync, WebDavSyncServiceAddin
+
+### Community 45 - "Community 45"
+Cohesion: 0.08
+Nodes (7): IPlatformFactory, GnomeFactory, Tomboy, MacFactory, Tomboy, Tomboy, WindowsFactory
+
+### Community 46 - "Community 46"
+Cohesion: 0.08
+Nodes (5): NoteDataBufferSynchronizerTest, NoteDataBufferSynchronizerTestWithBuffer, NoteDataTest, NoteTest, TomboyTest
+
+### Community 47 - "Community 47"
 Cohesion: 0.16
 Nodes (19): handleClipboardCopy(), handleClipboardCut(), sliceToDoc(), writeClipboard(), escapeHtml(), escapeMd(), getTextNodes(), htmlMark() (+11 more)
 
-### Community 18 - "Service Worker & PWA"
-Cohesion: 0.1
-Nodes (23): SW activate — purge old caches + clients.claim, SW fetch — network-first + offline SPA fallback, SW Firebase initializeApp + Messaging, SW install → skipWaiting (no eager cache), PWA Service Worker (Tomboy), notificationclick handler — focus/navigate, onBackgroundMessage (iOS-branched), pushsubscriptionchange listener (warn-only) (+15 more)
+### Community 48 - "Community 48"
+Cohesion: 0.13
+Nodes (5): IKeybinder, Tomboy, WindowsKeybinder, Tomboy, XKeybinder
 
-### Community 19 - "Todo Region Commands"
-Cohesion: 0.16
-Nodes (11): buildDepth1Move(), buildDepth2Move(), findCategoryInRegion(), lastNestedListIn(), moveTodoItem(), buildDecorations(), findTodoItemAt(), findTodoItems() (+3 more)
-
-### Community 20 - "IDB Storage / Settings / FCM"
-Cohesion: 0.18
-Nodes (15): getStoredFcmToken(), getAllSettings(), getSetting(), getDB(), deleteNote(), findNoteByTitle(), getAllNotes(), getAllNotesIncludingDeleted() (+7 more)
-
-### Community 21 - "List-Item Editor Commands"
-Cohesion: 0.27
-Nodes (12): insertTabAtCursor(), childAbsStart(), findOperationRange(), isInList(), isList(), liftListItemOnly(), normalizeAdjacentSameTypeLists(), removeTrailingParagraphIfPresent() (+4 more)
-
-### Community 22 - "Plain-Text Walking & Date Seed"
-Cohesion: 0.19
-Nodes (15): isBlock(), toPlainText(), walk(), buildDateNoteScheduleSeed(), buildTodoBlocks(), extractScheduleLabelsForDate(), extractCurrentMonthListItems(), extractMonthListItems() (+7 more)
-
-### Community 23 - "Slip-Note Clipboard & Index"
-Cohesion: 0.12
-Nodes (13): findChainHeadTitle(), getSlipNoteLabel(), slipClipboard ($state), slipNoteGuids snapshot, collectDownstreamTitles() (loop guard), connectAfter(), cutFromChain(), sleepnote ops (+5 more)
-
-### Community 24 - "/admin Routes"
+### Community 49 - "Community 49"
 Cohesion: 0.14
-Nodes (18): /admin/browse +page.svelte, /admin dashboard +page.svelte, /admin +layout.svelte, /admin/notes/[guid] +page.svelte, /admin/revisions/[rev] +page.svelte, /admin/revisions +page.svelte, /admin/sleepnote +page.svelte, /admin/tools +page.svelte (+10 more)
+Nodes (6): ConsoleLogger, FileLogger, ILogger, Logger, NullLogger, Tomboy
 
-### Community 25 - "AutoLink + Date Notes"
+### Community 50 - "Community 50"
+Cohesion: 0.14
+Nodes (2): TaskManager, Tomboy.Tasks
+
+### Community 51 - "Community 51"
+Cohesion: 0.11
+Nodes (7): IPreferencesClient, IPropertyEditor, IPropertyEditorBool, NoSuchKeyException, NotifyEventArgs, NullPreferencesClient, Tomboy
+
+### Community 52 - "Community 52"
 Cohesion: 0.12
-Nodes (15): autoLinkPlugin.applyInRange, createAutoLinkPlugin (referenced), autoLinkPlugin.expandToWordBoundary, DateArrows extension, extractImageFile module, findAdjacentDateNotes(), parseDateTitle(), findTitleMatches (+7 more)
+Nodes (9): IComparable, IEquatable, NotebookMenuItem, Tomboy.Notebooks, NotebookNewNoteMenuItem, Tomboy.Notebooks, IQueryParameter, OAuth (+1 more)
 
-### Community 26 - "FpsControls (graph)"
+### Community 53 - "Community 53"
+Cohesion: 0.15
+Nodes (2): NotebookManager, Tomboy.Notebooks
+
+### Community 54 - "Community 54"
+Cohesion: 0.16
+Nodes (4): Binding, PrefsKeybinder, Tomboy, TomboyPrefsKeybinder
+
+### Community 55 - "Community 55"
+Cohesion: 0.2
+Nodes (15): NameValueCollection, GetChar(), GetChars(), GetInt(), HtmlAttributeEncode(), HtmlDecode(), HttpQSCollection, NotEncoded() (+7 more)
+
+### Community 56 - "Community 56"
+Cohesion: 0.16
+Nodes (11): FirestoreClient, Firebase Admin SDK wrapper. One instance per process; idempotent init., Soft-delete: keep the doc, flip ``deleted=True``., mock_firebase(), Mock firebase_admin + firestore modules., test_delete_note_writes_soft_delete(), test_get_note_returns_dict_when_present(), test_get_note_returns_none_when_missing() (+3 more)
+
+### Community 57 - "Community 57"
+Cohesion: 0.18
+Nodes (15): compute_uid(), _interactive_main(), main(), Interactive credential setup. Run once: ``python -m desktop.bootstrap``.  Walks, Replace anything that isn't ``[A-Za-z0-9_-]`` with ``_``.      MUST mirror the C, ``dbx-{sanitized}``, truncated to Firebase's 128-char uid limit.      Mirrors `f, Prompt the user step-by-step. Out of scope for unit tests — covered by manual ve, sanitize_account_id() (+7 more)
+
+### Community 58 - "Community 58"
+Cohesion: 0.17
+Nodes (11): DropboxUploader, Dropbox file upload + share-link wrapper using a refresh token., Rewrite a Dropbox share URL to return raw bytes instead of the preview page., _to_inline_url(), test_construct_passes_refresh_token(), test_share_link_falls_back_to_existing_when_already_shared(), test_share_link_returns_url_for_new_link(), test_to_inline_url_collapses_existing_raw_and_dl_params() (+3 more)
+
+### Community 59 - "Community 59"
+Cohesion: 0.16
+Nodes (3): DrawingArea, Handwriting, VirtualPaper
+
+### Community 60 - "Community 60"
+Cohesion: 0.22
+Nodes (3): Chunk, ChunkStream, MonoHttp
+
+### Community 61 - "Community 61"
+Cohesion: 0.18
+Nodes (3): IHttpListenerContextBinder, EndPointListener, MonoHttp
+
+### Community 62 - "Community 62"
+Cohesion: 0.23
+Nodes (3): HttpConnection, IHttpListenerContextBinder, MonoHttp
+
+### Community 63 - "Community 63"
+Cohesion: 0.14
+Nodes (2): findPosAfter(), selectRange()
+
+### Community 64 - "Community 64"
+Cohesion: 0.22
+Nodes (2): Task, Tomboy.Tasks
+
+### Community 65 - "Community 65"
+Cohesion: 0.15
+Nodes (5): NoteManager, MyNoteManager, MyNoteManagerFirstRun, NoteManagerTest, TomboyTest
+
+### Community 66 - "Community 66"
+Cohesion: 0.21
+Nodes (9): NoteArchiver, main(), normalizeRepoUrl(), parseCommunityLabels(), pathExists(), resolveBranch(), resolveRepoUrl(), DummyNoteArchiver (+1 more)
+
+### Community 67 - "Community 67"
+Cohesion: 0.15
+Nodes (7): AddinPreferenceFactory, BugzillaPreferenceFactory, Tomboy.Bugzilla, InsertTimestampPreferencesFactory, Tomboy.InsertTimestamp, NoteOfTheDayPreferencesFactory, Tomboy.NoteOfTheDay
+
+### Community 68 - "Community 68"
+Cohesion: 0.17
+Nodes (2): Paper, VirtualPaper
+
+### Community 69 - "Community 69"
+Cohesion: 0.19
+Nodes (2): Hyena.Json.Tests, SerializerTests
+
+### Community 70 - "Community 70"
 Cohesion: 0.21
 Nodes (2): FpsControls, bindViewportHeight()
 
-### Community 27 - "List Depth Editor"
-Cohesion: 0.23
-Nodes (11): deleteCurrentLine(), findOperationRange(), isInList(), isList(), liftListItemOnly(), normalizeAdjacentSameTypeLists(), removeTrailingParagraphIfPresent(), sinkListItemOnly() (+3 more)
+### Community 71 - "Community 71"
+Cohesion: 0.26
+Nodes (11): _atomic_write_json(), main(), Track which rM pages have landed in the Pi inbox.  Runs on a 5-minute systemd ti, scan_inbox(), update_index(), _make_pair(), test_scan_finds_metadata_files(), test_scan_ignores_non_metadata_files() (+3 more)
 
-### Community 28 - "Desktop Workspace + Note Navigation"
+### Community 72 - "Community 72"
+Cohesion: 0.17
+Nodes (6): Introspectable, Properties, ClientPrivate, Constants, org.gnome.SessionManager, SessionManager
+
+### Community 73 - "Community 73"
+Cohesion: 0.18
+Nodes (3): IKeybinder, NullKeybinder, Tomboy
+
+### Community 74 - "Community 74"
+Cohesion: 0.24
+Nodes (2): NoteEditor, Tomboy
+
+### Community 75 - "Community 75"
+Cohesion: 0.26
+Nodes (2): BugzillaPreferences, Tomboy.Bugzilla
+
+### Community 76 - "Community 76"
+Cohesion: 0.17
+Nodes (7): GenericItemData, Gnome.Keyring, Gnome.Keyring, NetItemData, Gnome.Keyring, NoteItemData, ItemData
+
+### Community 77 - "Community 77"
 Cohesion: 0.21
-Nodes (13): DesktopWorkspace.onKey, DesktopWorkspace.onPaste, NoteWindow.handleDateNavigate, NoteWindow.handleSlipNavigate, extractNoteGuidFromText, openNoteByGuid, recentOpens (rune state), desktopSession.closeWindow (+5 more)
+Nodes (5): getLine(), decodeHex(), extractCommand(), Osc133State, parseOsc133Payload()
 
-### Community 29 - "Todo Region Plugin"
-Cohesion: 0.22
-Nodes (11): buildButton (todo), buildDecorations (todo), buildDepth1Move, buildDepth2Move, createTodoRegionPlugin, findTodoItemAt, findTodoItems, findTodoRegions (+3 more)
+### Community 78 - "Community 78"
+Cohesion: 0.17
+Nodes (2): Dropbox, DropboxAuth
 
-### Community 30 - "cmpKey()"
+### Community 79 - "Community 79"
+Cohesion: 0.24
+Nodes (5): LI(), LI_NESTED(), NESTED_UL(), P(), richDoc()
+
+### Community 80 - "Community 80"
+Cohesion: 0.31
+Nodes (2): NoteOfTheDay, Tomboy.NoteOfTheDay
+
+### Community 81 - "Community 81"
+Cohesion: 0.27
+Nodes (3): DateButton, Gtk.Extras, ToggleButton
+
+### Community 82 - "Community 82"
+Cohesion: 0.35
+Nodes (2): Deserializer, Hyena.Json
+
+### Community 83 - "Community 83"
+Cohesion: 0.31
+Nodes (2): Hyena.Json, Serializer
+
+### Community 84 - "Community 84"
+Cohesion: 0.31
+Nodes (2): EndPointManager, MonoHttp
+
+### Community 85 - "Community 85"
+Cohesion: 0.18
+Nodes (5): IAsyncResult, HttpStreamAsyncResult, MonoHttp, ListenerAsyncResult, MonoHttp
+
+### Community 86 - "Community 86"
+Cohesion: 0.47
+Nodes (2): Gnome.Keyring, RequestMessage
+
+### Community 87 - "Community 87"
+Cohesion: 0.25
+Nodes (5): AllNotesNotebook, Notebook, SpecialNotebook, Tomboy.Notebooks, UnfiledNotesNotebook
+
+### Community 88 - "Community 88"
+Cohesion: 0.27
+Nodes (3): SyncClient, Tomboy.Sync, TomboySyncClient
+
+### Community 89 - "Community 89"
+Cohesion: 0.25
+Nodes (3): appendWsPath(), bridgeToWsUrl(), TerminalWsClient
+
+### Community 90 - "Community 90"
+Cohesion: 0.24
+Nodes (5): paragraphLines(), paragraphText(), parseLlmNote(), LlmChatError, sendChat()
+
+### Community 91 - "Community 91"
+Cohesion: 0.25
+Nodes (9): test_cluster_groups_close_strokes(), test_cluster_handles_overlap(), test_crop_lines_writes_per_line_pngs(), cluster_strokes_by_y(), crop_lines(), main(), Per-line crop tool for fine-tuning data prep. Run on demand, not in pipeline.  T, Sort strokes by y_min, then greedily merge into bands when the next     stroke's (+1 more)
+
+### Community 92 - "Community 92"
+Cohesion: 0.33
+Nodes (2): Contrast, Tomboy
+
+### Community 93 - "Community 93"
+Cohesion: 0.2
+Nodes (2): INativeApplication, Tomboy
+
+### Community 94 - "Community 94"
+Cohesion: 0.2
+Nodes (2): TaskOptionsDialog, Tomboy.Tasks
+
+### Community 95 - "Community 95"
+Cohesion: 0.33
+Nodes (2): Tomboy.WebSync.Api, UserInfo
+
+### Community 96 - "Community 96"
+Cohesion: 0.2
+Nodes (6): Dictionary, Hyena.Json, JsonArray, Hyena.Json, JsonObject, IJsonCollection
+
+### Community 97 - "Community 97"
+Cohesion: 0.31
+Nodes (4): ChunkedInputStream, MonoHttp, ReadBufferState, RequestStream
+
+### Community 98 - "Community 98"
+Cohesion: 0.27
+Nodes (2): object, TestApp
+
+### Community 99 - "Community 99"
+Cohesion: 0.27
+Nodes (4): ILogger, DebugLogger, LoggerTest, TomboyTest
+
+### Community 100 - "Community 100"
 Cohesion: 0.33
 Nodes (7): cmpKey(), findAdjacentDateNotes(), fmtDate(), isDateTitle(), parseDateTitle(), buildDecorations(), makeArrowRowFactory()
 
-### Community 31 - "coerceConfidence()"
-Cohesion: 0.38
-Nodes (7): coerceConfidence(), errorMessage(), isNonEmptyString(), isObject(), loadCodegraphData(), validateCommunityLabels(), validateMeta()
+### Community 101 - "Community 101"
+Cohesion: 0.31
+Nodes (7): listAllUsersWithDevices(), sendSummary(), formatSummaryBody(), kstDayOfWeek(), kstMidnightOf(), monthRangeKst(), weekRangeKst()
 
-### Community 32 - "buildDecorations()"
+### Community 102 - "Community 102"
+Cohesion: 0.31
+Nodes (2): TagManager, Tomboy
+
+### Community 103 - "Community 103"
+Cohesion: 0.31
+Nodes (4): Tomboy, TrieHit, TrieState, TrieTree
+
+### Community 104 - "Community 104"
+Cohesion: 0.22
+Nodes (4): Check, Mono.Rocks, IEnumerableRocks, Mono.Rocks
+
+### Community 105 - "Community 105"
+Cohesion: 0.42
+Nodes (8): createnote(), CurrentURL(), EscapeText(), fromUnicode(), PageTitle(), ReplaceXMLchars(), SelectedText(), trim()
+
+### Community 106 - "Community 106"
+Cohesion: 0.22
+Nodes (2): Dropbox, DropboxAuth
+
+### Community 107 - "Community 107"
+Cohesion: 0.28
+Nodes (4): li(), makeEditor(), makeEditorDisabled(), p()
+
+### Community 109 - "Community 109"
+Cohesion: 0.39
+Nodes (2): JumpListManager, Tomboy
+
+### Community 110 - "Community 110"
+Cohesion: 0.25
+Nodes (2): IPlatformFactory, Tomboy
+
+### Community 111 - "Community 111"
+Cohesion: 0.32
+Nodes (3): set_bus(), start_play(), start_record()
+
+### Community 112 - "Community 112"
+Cohesion: 0.39
+Nodes (2): ProxiedWebRequest, Tomboy.WebSync
+
+### Community 113 - "Community 113"
+Cohesion: 0.29
+Nodes (2): ListenerPrefix, MonoHttp
+
+### Community 114 - "Community 114"
+Cohesion: 0.36
+Nodes (2): MonoHttp, Utility
+
+### Community 115 - "Community 115"
+Cohesion: 0.36
+Nodes (2): GConf.PropertyEditors, PropertyEditor
+
+### Community 116 - "Community 116"
+Cohesion: 0.46
+Nodes (2): Gnome.Keyring, ResponseMessage
+
+### Community 117 - "Community 117"
+Cohesion: 0.29
+Nodes (5): attach_window(), init_icons(), # TODO: There is basically no error checking here, # NOTE: This automatically starts Tomboy, but it makes Epiphany hang while Tombo, # NOTE: Tomboy bug makes it so you can't set links properly,
+
+### Community 118 - "Community 118"
+Cohesion: 0.29
+Nodes (2): ExportToHTMLPluginTest, TomboyTest
+
+### Community 119 - "Community 119"
+Cohesion: 0.32
+Nodes (6): main(), Orchestrator: run s1 → s2 → s3 → s4 in order., Returns the name of the first failing stage, or None on full success., run_all(), test_runs_stages_in_order(), test_stops_on_first_failure()
+
+### Community 120 - "Community 120"
+Cohesion: 0.38
+Nodes (2): Preferences, Tomboy
+
+### Community 121 - "Community 121"
+Cohesion: 0.43
+Nodes (2): Search, Tomboy
+
+### Community 122 - "Community 122"
+Cohesion: 0.33
+Nodes (2): ExportToHtmlDialog, Tomboy.ExportToHtml
+
+### Community 123 - "Community 123"
+Cohesion: 0.33
+Nodes (2): Stroke, VirtualPaper
+
+### Community 124 - "Community 124"
+Cohesion: 0.43
+Nodes (2): TaskArchiver, Tomboy.Tasks
+
+### Community 125 - "Community 125"
+Cohesion: 0.29
+Nodes (3): CheckMenuItem, Tomboy.Underline, UnderlineMenuItem
+
+### Community 126 - "Community 126"
+Cohesion: 0.38
+Nodes (2): NoteConvert, Tomboy.WebSync
+
+### Community 127 - "Community 127"
+Cohesion: 0.29
+Nodes (2): IWebConnection, Tomboy.WebSync.Api
+
+### Community 128 - "Community 128"
+Cohesion: 0.29
+Nodes (2): DeserializerTests, Hyena.Json.Tests
+
+### Community 129 - "Community 129"
+Cohesion: 0.33
+Nodes (2): LibProxy, ProxyFactory
+
+### Community 130 - "Community 130"
+Cohesion: 0.38
+Nodes (2): SyncUtils, Tomboy.Sync
+
+### Community 131 - "Community 131"
+Cohesion: 0.29
+Nodes (2): Dropbox, DropboxAuth
+
+### Community 132 - "Community 132"
+Cohesion: 0.29
+Nodes (5): Shared pytest fixtures for the pipeline test suite., A temporary data root mimicking the runtime layout., A minimal rM .metadata JSON shape used across tests., sample_metadata(), tmp_data_dir()
+
+### Community 133 - "Community 133"
+Cohesion: 0.33
+Nodes (2): FixedWidthMenuItem, Tomboy.FixedWidth
+
+### Community 134 - "Community 134"
+Cohesion: 0.33
+Nodes (2): Gnome.Keyring, ItemData
+
+### Community 135 - "Community 135"
+Cohesion: 0.33
+Nodes (2): NotebooksTreeView, Tomboy.Notebooks
+
+### Community 136 - "Community 136"
+Cohesion: 0.33
+Nodes (2): ISyncUI, Tomboy.Sync
+
+### Community 137 - "Community 137"
 Cohesion: 0.6
 Nodes (5): buildDecorations(), makeActionsFactory(), makeArrowFactory(), parseLabeledLine(), parseSlipNeighbors()
 
-### Community 33 - "clearHomeNote"
-Cohesion: 0.33
-Nodes (6): clearHomeNote, getHomeNote, getHomeNoteGuid, setHomeNote, getScheduleNoteGuid, setScheduleNote
-
-### Community 34 - "sendListItemPlugin"
-Cohesion: 0.33
-Nodes (6): sendListItemPlugin, appendListItemToDocJson, appendLiToLiveEditor, transferListItem module, transferListItem, writeToDestination
-
-### Community 35 - "appSettings (idb kv)"
-Cohesion: 0.33
-Nodes (6): appSettings (idb kv), appSettings object store, schedule installId, schedule notification, schedulePending, scheduleSnapshot
-
-### Community 36 - "Notes Filter Bar (notebook + sort + s..."
+### Community 138 - "Community 138"
 Cohesion: 0.4
-Nodes (6): Notes Filter Bar (notebook + sort + search), Notebook Picker Bottom Sheet, refresh() — reload allNotes, Notes List Page (전체), Sleepnote Redirect Page, stores/notes — notes + activeNoteGuid (legacy writables)
+Nodes (2): collectLinkedTexts(), markedText()
 
-### Community 38 - "clampedFrame"
+### Community 142 - "Community 142"
+Cohesion: 0.47
+Nodes (3): kstDayOfWeek(), kstMidnightOf(), weekRangeKst()
+
+### Community 143 - "Community 143"
 Cohesion: 0.4
-Nodes (5): clampedFrame, onTouchMove (pinch zoom), onWheel, scaleAround, startPan
+Nodes (3): NativeWindow, EventDispatchingNativeWindow, ManagedWinapi.Windows
 
-### Community 39 - "getNotebook"
+### Community 144 - "Community 144"
+Cohesion: 0.4
+Nodes (2): RemoteControlProxy, Tomboy
+
+### Community 145 - "Community 145"
+Cohesion: 0.4
+Nodes (2): Tag, Tomboy
+
+### Community 146 - "Community 146"
+Cohesion: 0.4
+Nodes (2): TagButton, Tomboy
+
+### Community 147 - "Community 147"
+Cohesion: 0.4
+Nodes (3): AdvancedPreferencesAddin, Tomboy.AdvancedPreferences, PreferenceTabAddin
+
+### Community 148 - "Community 148"
+Cohesion: 0.4
+Nodes (2): MenuMinMaxNoteCountPreference, Tomboy.AdvancedPreferences
+
+### Community 149 - "Community 149"
+Cohesion: 0.4
+Nodes (2): BacklinkMenuItem, Tomboy.Backlinks
+
+### Community 150 - "Community 150"
+Cohesion: 0.4
+Nodes (2): InsertTimestampPreferences, Tomboy.InsertTimestamp
+
+### Community 151 - "Community 151"
+Cohesion: 0.4
+Nodes (2): RemoveBrokenLinksUtils, Tomboy.RemoveBrokenLinks
+
+### Community 152 - "Community 152"
+Cohesion: 0.4
+Nodes (2): Tomboy.WebSync, WebSyncPreferencesWidget
+
+### Community 153 - "Community 153"
+Cohesion: 0.4
+Nodes (3): CertificateManager, Tomboy.WebSync.Api, ICertificatePolicy
+
+### Community 154 - "Community 154"
+Cohesion: 0.4
+Nodes (2): NoteInfo, Tomboy.WebSync.Api
+
+### Community 155 - "Community 155"
 Cohesion: 0.5
-Nodes (5): getNotebook, NoteList Svelte component, isFavorite, sortForList, openFavorites (TopNav)
+Nodes (2): RootInfo, Tomboy.WebSync.Api
 
-### Community 40 - "NoteWindow.handleSlipCut"
-Cohesion: 0.6
-Nodes (5): NoteWindow.handleSlipCut, NoteWindow.handleSlipInsertAfter, NoteWindow.handleSlipPaste, desktopSession.flushAll, desktopSession.reloadWindows
-
-### Community 41 - "decodeRow"
+### Community 156 - "Community 156"
 Cohesion: 0.4
-Nodes (5): decodeRow, encodeRow, tomboy-settings-v1 profile format, restoreSettingsProfile, saveSettingsProfile
+Nodes (2): ResourceReferenceTests, Tomboy.WebSync.Api.Tests
 
-### Community 42 - "formatLineHash()"
+### Community 157 - "Community 157"
+Cohesion: 0.5
+Nodes (2): HttpListenerContext, MonoHttp
+
+### Community 158 - "Community 158"
+Cohesion: 0.5
+Nodes (2): HttpUtility, MonoHttp
+
+### Community 159 - "Community 159"
+Cohesion: 0.4
+Nodes (2): Extensions, OAuth
+
+### Community 160 - "Community 160"
+Cohesion: 0.4
+Nodes (3): HIGMessageDialog, CreateNotebookDialog, Tomboy.Notebooks
+
+### Community 161 - "Community 161"
+Cohesion: 0.5
+Nodes (2): Global, GtkBeans
+
+### Community 162 - "Community 162"
+Cohesion: 0.5
+Nodes (2): GtkBeans, ImageMenuItemExtensions
+
+### Community 163 - "Community 163"
+Cohesion: 0.8
+Nodes (4): loadActiveOrdinals(), safeStorage(), saveActiveOrdinals(), storageKey()
+
+### Community 164 - "Community 164"
+Cohesion: 0.4
+Nodes (2): applyResize(), run()
+
+### Community 167 - "Community 167"
+Cohesion: 0.6
+Nodes (3): findInlineHidden(), findWidgets(), getDecorations()
+
+### Community 170 - "Community 170"
+Cohesion: 0.6
+Nodes (3): findWidget(), getState(), widgetDom()
+
+### Community 172 - "Community 172"
+Cohesion: 0.5
+Nodes (2): li(), p()
+
+### Community 173 - "Community 173"
+Cohesion: 0.5
+Nodes (2): li(), p()
+
+### Community 174 - "Community 174"
+Cohesion: 0.5
+Nodes (2): li(), p()
+
+### Community 175 - "Community 175"
+Cohesion: 0.5
+Nodes (2): listAllUsersWithDevices(), sendSummary()
+
+### Community 176 - "Community 176"
+Cohesion: 0.5
+Nodes (2): AddinPreferenceFactory, Tomboy
+
+### Community 177 - "Community 177"
+Cohesion: 0.5
+Nodes (2): RecentTreeView, Tomboy
+
+### Community 178 - "Community 178"
+Cohesion: 0.5
+Nodes (2): NoteOfTheDayPreferences, Tomboy.NoteOfTheDay
+
+### Community 179 - "Community 179"
+Cohesion: 0.5
+Nodes (2): Pen, VirtualPaper
+
+### Community 180 - "Community 180"
+Cohesion: 0.5
+Nodes (2): ResourceReference, Tomboy.WebSync.Api
+
+### Community 181 - "Community 181"
+Cohesion: 0.5
+Nodes (2): NoteInfoTests, Tomboy.WebSync.Api.Tests
+
+### Community 182 - "Community 182"
+Cohesion: 0.5
+Nodes (3): GenericIdentity, HttpListenerBasicIdentity, MonoHttp
+
+### Community 183 - "Community 183"
+Cohesion: 0.5
+Nodes (3): HttpListenerException, MonoHttp, Win32Exception
+
+### Community 184 - "Community 184"
+Cohesion: 0.5
+Nodes (2): Gnome.Keyring, ItemACL
+
+### Community 185 - "Community 185"
+Cohesion: 0.5
+Nodes (2): Gnome.Keyring, KeyringInfo
+
+### Community 186 - "Community 186"
+Cohesion: 0.5
+Nodes (2): Hyena, XdgBaseDirectorySpec
+
+### Community 187 - "Community 187"
 Cohesion: 0.83
 Nodes (3): formatLineHash(), githubLink(), normalizeRepoUrl()
 
-### Community 43 - "parseTomboyDate"
-Cohesion: 0.5
-Nodes (4): parseTomboyDate, formatDate (NoteList), TabBar Svelte component, TopNav Svelte component
-
-### Community 44 - "checkTitleConflict"
-Cohesion: 0.5
-Nodes (4): checkTitleConflict, extractTitleText, handleTitleBlur, titleEndPos
-
-### Community 45 - "createImagePreviewPlugin()"
-Cohesion: 0.5
-Nodes (3): createImagePreviewPlugin(), findImageUrlRanges(), isImageUrl module
-
-### Community 46 - "graph/buildGraph module"
-Cohesion: 0.5
-Nodes (4): graph/buildGraph module, graph/constants, graph/extractInternalLinks, titleUniqueGuard module
-
-### Community 47 - "Root +layout.svelte"
+### Community 190 - "Community 190"
 Cohesion: 0.67
-Nodes (4): Root +layout.svelte, Home / +page.svelte, bindViewportHeight, --keyboard-inset CSS variable
+Nodes (2): decoCount(), getDecorations()
 
-### Community 48 - "formatDayWithWeekday"
+### Community 198 - "Community 198"
+Cohesion: 0.67
+Nodes (2): li(), p()
+
+### Community 199 - "Community 199"
 Cohesion: 0.5
-Nodes (4): formatDayWithWeekday, getWeekdayChar, transformDayPrefixLine, transformMultilineDayPrefix
+Nodes (3): Smoke test: verifies the package tree is importable. Deleted once real tests lan, Ensure the package skeleton is importable (no syntax errors, no missing deps)., test_packages_importable()
 
-### Community 49 - "formatDate()"
+### Community 200 - "Community 200"
+Cohesion: 0.67
+Nodes (2): Defines, Tomboy
+
+### Community 201 - "Community 201"
+Cohesion: 0.67
+Nodes (2): NoteRenameDialog, Tomboy
+
+### Community 202 - "Community 202"
+Cohesion: 0.67
+Nodes (2): Services, Tomboy
+
+### Community 203 - "Community 203"
+Cohesion: 0.67
+Nodes (2): EnableStartupNotesPreference, Tomboy.AdvancedPreferences
+
+### Community 204 - "Community 204"
+Cohesion: 0.67
+Nodes (2): TaskData, Tomboy.Tasks
+
+### Community 205 - "Community 205"
+Cohesion: 0.67
+Nodes (2): Tomboy.WebSync.Api.Tests, UserInfoTests
+
+### Community 209 - "Community 209"
 Cohesion: 1.0
 Nodes (2): formatDate(), insertTodayDate()
 
-### Community 50 - "noteSearch.ts"
+### Community 210 - "Community 210"
 Cohesion: 1.0
 Nodes (2): searchNotes(), stripXmlTags()
 
-### Community 54 - "todoRegion commands"
-Cohesion: 0.67
-Nodes (3): todoRegion commands, todoRegion plugin, todoRegion regions
+### Community 226 - "Community 226"
+Cohesion: 1.0
+Nodes (1): MonoHttp
 
-### Community 55 - "findTableRegions module"
-Cohesion: 0.67
-Nodes (3): findTableRegions module, tableBlockPlugin module, renderInlines module
+### Community 227 - "Community 227"
+Cohesion: 1.0
+Nodes (1): MonoHttp
 
-### Community 56 - "indexLabel"
-Cohesion: 0.67
-Nodes (3): indexLabel, sleepnote create, slipnote validator
+### Community 228 - "Community 228"
+Cohesion: 1.0
+Nodes (1): MonoHttp
 
-### Community 57 - "active"
+### Community 229 - "Community 229"
+Cohesion: 1.0
+Nodes (1): MonoHttp
+
+### Community 230 - "Community 230"
+Cohesion: 1.0
+Nodes (1): OAuth
+
+### Community 231 - "Community 231"
+Cohesion: 1.0
+Nodes (1): Gnome.Keyring
+
+### Community 232 - "Community 232"
+Cohesion: 1.0
+Nodes (1): Gnome.Keyring
+
+### Community 233 - "Community 233"
+Cohesion: 1.0
+Nodes (1): Gnome.Keyring
+
+### Community 234 - "Community 234"
+Cohesion: 1.0
+Nodes (1): Gnome.Keyring
+
+### Community 235 - "Community 235"
+Cohesion: 1.0
+Nodes (1): Gnome.Keyring
+
+### Community 238 - "Community 238"
 Cohesion: 1.0
 Nodes (1): active
 
-### Community 59 - "active"
+### Community 240 - "Community 240"
 Cohesion: 1.0
 Nodes (1): active
 
-### Community 70 - "active"
+### Community 248 - "Community 248"
+Cohesion: 1.0
+Nodes (1): hidden
+
+### Community 252 - "Community 252"
 Cohesion: 1.0
 Nodes (1): active
 
-### Community 72 - "revertAllUploads (bulk revert)"
+### Community 381 - "Community 381"
 Cohesion: 1.0
-Nodes (2): revertAllUploads (bulk revert), revertOne (single-note revert)
+Nodes (1): Run OCR on a single image. Implementations may be slow (loads ML         models
 
-### Community 73 - "ImageViewerModal Svelte component"
-Cohesion: 1.0
-Nodes (2): ImageViewerModal Svelte component, fitInitial
-
-### Community 74 - "TomboyListItem node"
-Cohesion: 1.0
-Nodes (2): TomboyListItem node, TomboyParagraph node
-
-### Community 75 - "buildDecorations (sendList)"
-Cohesion: 1.0
-Nodes (2): buildDecorations (sendList), createSendListItemPlugin
-
-### Community 77 - "modeFromUrl (URL → mode mapping)"
-Cohesion: 1.0
-Nodes (2): modeFromUrl (URL → mode mapping), appMode rune store
-
-### Community 78 - "DesktopWorkspace.handleCtrlL"
-Cohesion: 1.0
-Nodes (2): DesktopWorkspace.handleCtrlL, desktopSession.openWindowAt
-
-### Community 79 - "DesktopWorkspace.onCanvasDrop"
-Cohesion: 1.0
-Nodes (2): DesktopWorkspace.onCanvasDrop, setWallpaper
-
-### Community 80 - "NoteWindow.flushSave"
-Cohesion: 1.0
-Nodes (2): NoteWindow.flushSave, NoteWindow.handleEditorChange
-
-### Community 81 - "NoteWindow.externalReload"
-Cohesion: 1.0
-Nodes (2): NoteWindow.externalReload, NoteWindow.recomputeDateAdjacency
-
-### Community 82 - "buildGraph"
-Cohesion: 1.0
-Nodes (2): buildGraph, extractInternalLinkTargets
-
-### Community 83 - "runAllSettledWithConcurrency"
-Cohesion: 1.0
-Nodes (2): runAllSettledWithConcurrency, runWithConcurrency (fail-fast pool)
-
-### Community 85 - "Apple Touch Icon (PNG required for iO..."
-Cohesion: 1.0
-Nodes (2): Apple Touch Icon (PNG required for iOS PWA), PWA HTML Shell
-
-### Community 128 - "App Namespace (SvelteKit)"
-Cohesion: 1.0
-Nodes (1): App Namespace (SvelteKit)
-
-### Community 129 - "lib/index alias placeholder"
-Cohesion: 1.0
-Nodes (1): lib/index alias placeholder
-
-### Community 130 - "NotebookChips Svelte component"
-Cohesion: 1.0
-Nodes (1): NotebookChips Svelte component
-
-### Community 131 - "Toast Svelte component"
-Cohesion: 1.0
-Nodes (1): Toast Svelte component
-
-### Community 132 - "openNote (NoteList)"
-Cohesion: 1.0
-Nodes (1): openNote (NoteList)
-
-### Community 133 - "getPreview (extract note preview text)"
-Cohesion: 1.0
-Nodes (1): getPreview (extract note preview text)
-
-### Community 134 - "SyncProgressView Svelte component"
-Cohesion: 1.0
-Nodes (1): SyncProgressView Svelte component
-
-### Community 135 - "handleNavClick (TopNav)"
-Cohesion: 1.0
-Nodes (1): handleNavClick (TopNav)
-
-### Community 136 - "handleSettings (TopNav)"
-Cohesion: 1.0
-Nodes (1): handleSettings (TopNav)
-
-### Community 137 - "SyncPlanView Svelte component"
-Cohesion: 1.0
-Nodes (1): SyncPlanView Svelte component
-
-### Community 138 - "onTouchStart (pinch start)"
-Cohesion: 1.0
-Nodes (1): onTouchStart (pinch start)
-
-### Community 139 - "isScrollBottomNote"
-Cohesion: 1.0
-Nodes (1): isScrollBottomNote
-
-### Community 140 - "setScrollBottomNote"
-Cohesion: 1.0
-Nodes (1): setScrollBottomNote
-
-### Community 141 - "extractTitleFromContent"
-Cohesion: 1.0
-Nodes (1): extractTitleFromContent
-
-### Community 142 - "filenameFromGuid"
-Cohesion: 1.0
-Nodes (1): filenameFromGuid
-
-### Community 143 - "subscribeNoteReload"
-Cohesion: 1.0
-Nodes (1): subscribeNoteReload
-
-### Community 144 - "clearScheduleNote"
-Cohesion: 1.0
-Nodes (1): clearScheduleNote
-
-### Community 145 - "deleteNoteById"
-Cohesion: 1.0
-Nodes (1): deleteNoteById
-
-### Community 146 - "findNoteByTitle (wrapper)"
-Cohesion: 1.0
-Nodes (1): findNoteByTitle (wrapper)
-
-### Community 147 - "filterByNotebook"
-Cohesion: 1.0
-Nodes (1): filterByNotebook
-
-### Community 148 - "insertDate module"
-Cohesion: 1.0
-Nodes (1): insertDate module
-
-### Community 149 - "NoteActionSheet.openBacklinks"
-Cohesion: 1.0
-Nodes (1): NoteActionSheet.openBacklinks
-
-### Community 150 - "ctrlEnterSplit module"
-Cohesion: 1.0
-Nodes (1): ctrlEnterSplit module
-
-### Community 151 - "isCursorInTitleBlock"
-Cohesion: 1.0
-Nodes (1): isCursorInTitleBlock
-
-### Community 152 - "NoteContextMenu.openBacklinks"
-Cohesion: 1.0
-Nodes (1): NoteContextMenu.openBacklinks
-
-### Community 153 - "listItemReorder module"
-Cohesion: 1.0
-Nodes (1): listItemReorder module
-
-### Community 154 - "listItemDepth module"
-Cohesion: 1.0
-Nodes (1): listItemDepth module
-
-### Community 155 - "deleteLine module"
-Cohesion: 1.0
-Nodes (1): deleteLine module
-
-### Community 156 - "insertTab module"
-Cohesion: 1.0
-Nodes (1): insertTab module
-
-### Community 157 - "TomboyEditor editorProps.handleKeyDown"
-Cohesion: 1.0
-Nodes (1): TomboyEditor editorProps.handleKeyDown
-
-### Community 158 - "TomboySize mark"
-Cohesion: 1.0
-Nodes (1): TomboySize mark
-
-### Community 159 - "TomboyMonospace mark"
-Cohesion: 1.0
-Nodes (1): TomboyMonospace mark
-
-### Community 160 - "TomboySubtitlePlaceholder extension"
-Cohesion: 1.0
-Nodes (1): TomboySubtitlePlaceholder extension
-
-### Community 161 - "TomboyPunctuationReplace extension"
-Cohesion: 1.0
-Nodes (1): TomboyPunctuationReplace extension
-
-### Community 163 - "lookupGuidByTitle"
-Cohesion: 1.0
-Nodes (1): lookupGuidByTitle
-
-### Community 164 - "autoLinkPlugin.expandToBlock"
-Cohesion: 1.0
-Nodes (1): autoLinkPlugin.expandToBlock
-
-### Community 165 - "SEND_SOURCE_GUID"
-Cohesion: 1.0
-Nodes (1): SEND_SOURCE_GUID
-
-### Community 166 - "SEND_TARGET_GUID"
-Cohesion: 1.0
-Nodes (1): SEND_TARGET_GUID
-
-### Community 167 - "sendListItemPluginKey"
-Cohesion: 1.0
-Nodes (1): sendListItemPluginKey
-
-### Community 168 - "sendActiveGate module"
-Cohesion: 1.0
-Nodes (1): sendActiveGate module
-
-### Community 170 - "findAdjacentDateNotes module"
-Cohesion: 1.0
-Nodes (1): findAdjacentDateNotes module
-
-### Community 171 - "todoRegion index"
-Cohesion: 1.0
-Nodes (1): todoRegion index
-
-### Community 172 - "insertTodoBlock"
-Cohesion: 1.0
-Nodes (1): insertTodoBlock
-
-### Community 173 - "regionContainingPos"
-Cohesion: 1.0
-Nodes (1): regionContainingPos
-
-### Community 174 - "autoWeekdayPluginKey"
-Cohesion: 1.0
-Nodes (1): autoWeekdayPluginKey
-
-### Community 175 - "table cellEdit module"
-Cohesion: 1.0
-Nodes (1): table cellEdit module
-
-### Community 176 - "parseTable module"
-Cohesion: 1.0
-Nodes (1): parseTable module
-
-### Community 177 - "toggleTableBlock"
-Cohesion: 1.0
-Nodes (1): toggleTableBlock
-
-### Community 178 - "setCtrlHeld"
-Cohesion: 1.0
-Nodes (1): setCtrlHeld
-
-### Community 179 - "tableBlockPluginKey"
-Cohesion: 1.0
-Nodes (1): tableBlockPluginKey
-
-### Community 180 - "tableOps module"
-Cohesion: 1.0
-Nodes (1): tableOps module
-
-### Community 181 - "nav/history module"
-Cohesion: 1.0
-Nodes (1): nav/history module
-
-### Community 182 - "createHistoryTracker"
-Cohesion: 1.0
-Nodes (1): createHistoryTracker
-
-### Community 183 - "noteSearch"
-Cohesion: 1.0
-Nodes (1): noteSearch
-
-### Community 184 - "tomboy IDB schema (v3)"
-Cohesion: 1.0
-Nodes (1): tomboy IDB schema (v3)
-
-### Community 185 - "notes object store"
-Cohesion: 1.0
-Nodes (1): notes object store
-
-### Community 186 - "syncManifest object store"
-Cohesion: 1.0
-Nodes (1): syncManifest object store
-
-### Community 187 - "noteListCache (cached notes + scroll)"
-Cohesion: 1.0
-Nodes (1): noteListCache (cached notes + scroll)
-
-### Community 188 - "toast store + pushToast/dismissToast"
-Cohesion: 1.0
-Nodes (1): toast store + pushToast/dismissToast
-
-### Community 189 - "generateGuid (uuid v4)"
-Cohesion: 1.0
-Nodes (1): generateGuid (uuid v4)
-
-### Community 190 - "noteUri"
-Cohesion: 1.0
-Nodes (1): noteUri
-
-### Community 191 - "portal Svelte action"
-Cohesion: 1.0
-Nodes (1): portal Svelte action
-
-### Community 192 - "ResizeHandles.startResize"
-Cohesion: 1.0
-Nodes (1): ResizeHandles.startResize
-
-### Community 193 - "NoteWindow.handleAction"
-Cohesion: 1.0
-Nodes (1): NoteWindow.handleAction
-
-### Community 194 - "session.persistNow"
-Cohesion: 1.0
-Nodes (1): session.persistNow
-
-### Community 195 - "SLEEP_NOTE_GUID"
-Cohesion: 1.0
-Nodes (1): SLEEP_NOTE_GUID
-
-### Community 196 - "graph/plainText"
-Cohesion: 1.0
-Nodes (1): graph/plainText
-
-### Community 197 - "toPlainText (graph preview)"
-Cohesion: 1.0
-Nodes (1): toPlainText (graph preview)
-
-### Community 198 - "viewportHeight.ts (module)"
-Cohesion: 1.0
-Nodes (1): viewportHeight.ts (module)
-
-### Community 199 - "adminClient (admin sync ops)"
-Cohesion: 1.0
-Nodes (1): adminClient (admin sync ops)
-
-### Community 200 - "diffManifests"
-Cohesion: 1.0
-Nodes (1): diffManifests
-
-### Community 201 - "revertNoteToServer"
-Cohesion: 1.0
-Nodes (1): revertNoteToServer
-
-### Community 202 - "onSyncStatus listener"
-Cohesion: 1.0
-Nodes (1): onSyncStatus listener
-
-### Community 203 - "startAuth (OAuth PKCE start)"
-Cohesion: 1.0
-Nodes (1): startAuth (OAuth PKCE start)
-
-### Community 204 - "completeAuth (PKCE callback)"
-Cohesion: 1.0
-Nodes (1): completeAuth (PKCE callback)
-
-### Community 205 - "getFreshAccessToken (refresh-aware)"
-Cohesion: 1.0
-Nodes (1): getFreshAccessToken (refresh-aware)
-
-### Community 206 - "listRevisions"
-Cohesion: 1.0
-Nodes (1): listRevisions
-
-### Community 207 - "schedule diff"
-Cohesion: 1.0
-Nodes (1): schedule diff
-
-### Community 208 - "flushPendingSchedule"
-Cohesion: 1.0
-Nodes (1): flushPendingSchedule
-
-### Community 209 - "flushScheduler"
-Cohesion: 1.0
-Nodes (1): flushScheduler
-
-### Community 210 - "sendTestPush() (Cloud Function callable)"
-Cohesion: 1.0
-Nodes (1): sendTestPush() (Cloud Function callable)
-
-### Community 214 - "dateNoteSeed"
-Cohesion: 1.0
-Nodes (1): dateNoteSeed
-
-### Community 215 - "buildScheduleItem"
-Cohesion: 1.0
-Nodes (1): buildScheduleItem
-
-### Community 218 - "syncSchedule orchestrator"
-Cohesion: 1.0
-Nodes (1): syncSchedule orchestrator
-
-### Community 224 - "firebase/app module"
-Cohesion: 1.0
-Nodes (1): firebase/app module
-
-### Community 225 - "Root +layout.ts (ssr=false)"
-Cohesion: 1.0
-Nodes (1): Root +layout.ts (ssr=false)
-
-### Community 226 - "Home +page.ts (prerender=true)"
-Cohesion: 1.0
-Nodes (1): Home +page.ts (prerender=true)
-
-### Community 227 - "/note/[id] +page.ts (prerender=false)"
-Cohesion: 1.0
-Nodes (1): /note/[id] +page.ts (prerender=false)
-
-### Community 228 - "/desktop +page.svelte"
-Cohesion: 1.0
-Nodes (1): /desktop +page.svelte
-
-### Community 229 - "Favicon (SVG)"
+### Community 388 - "Community 388"
 Cohesion: 1.0
 Nodes (1): Favicon (SVG)
 
 ## Knowledge Gaps
-- **255 isolated node(s):** `active`, `active`, `active`, `App Namespace (SvelteKit)`, `notificationclick handler — focus/navigate` (+250 more)
+- **300 isolated node(s):** `Tomboy`, `Tomboy`, `Tomboy`, `NoteAddinInfo`, `Tomboy` (+295 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **Thin community `FpsControls (graph)`** (13 nodes): `FpsControls`, `.attach()`, `.constructor()`, `.detach()`, `.dispose()`, `.enabled()`, `.lock()`, `.locked()`, `.unlock()`, `.update()`, `FpsControls.ts`, `viewportHeight.ts`, `bindViewportHeight()`
+- **Thin community `Community 34`** (35 nodes): `IRemoteControl.cs`, `IRemoteControl`, `.AddNotebook()`, `.AddNoteToNotebook()`, `.AddTagToNote()`, `.CreateNamedNote()`, `.CreateNamedNoteWithUri()`, `.CreateNote()`, `.DeleteNote()`, `.DisplayNote()`, `.DisplayNoteWithSearch()`, `.DisplaySearch()`, `.DisplaySearchWithText()`, `.FindNote()`, `.FindStartHereNote()`, `.GetAllNotesInNotebook()`, `.GetAllNotesWithTag()`, `.GetNotebookForNote()`, `.GetNoteChangeDate()`, `.GetNoteCompleteXml()`, `.GetNoteContents()`, `.GetNoteContentsXml()`, `.GetNoteCreateDate()`, `.GetNoteTitle()`, `.GetTagsForNote()`, `.HideNote()`, `.ListAllNotes()`, `.NoteExists()`, `.RemoveTagFromNote()`, `.SearchNotes()`, `.SetNoteCompleteXml()`, `.SetNoteContents()`, `.SetNoteContentsXml()`, `.Version()`, `Tomboy`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `formatDate()`** (3 nodes): `formatDate()`, `insertTodayDate()`, `insertDate.ts`
+- **Thin community `Community 50`** (21 nodes): `TaskManager.cs`, `TaskManager`, `.Create()`, `.CreateDirectory()`, `.CreateStartTasks()`, `.CreateTasksDir()`, `.Delete()`, `.DirectoryExists()`, `.EmitRowChangedForTask()`, `.Find()`, `.FindByUri()`, `.FirstRun()`, `.GetTasksForNote()`, `.GetTreePathFromTask()`, `.LoadTasks()`, `.MakeNewFileName()`, `.OnTaskRenamed()`, `.OnTaskSaved()`, `.OnTaskStatusChanged()`, `.Shutdown()`, `Tomboy.Tasks`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `noteSearch.ts`** (3 nodes): `noteSearch.ts`, `searchNotes()`, `stripXmlTags()`
+- **Thin community `Community 53`** (20 nodes): `NotebookManager`, `.CompareNotebooksSortFunc()`, `.DeleteNotebook()`, `.FilterNotebooks()`, `.FireNoteAddedToNoteBook()`, `.FireNoteRemovedFromNoteBook()`, `.GetNotebook()`, `.GetNotebookFromNote()`, `.GetNotebookFromTag()`, `.GetNotebookIter()`, `.GetOrCreateNotebook()`, `.IsNotebookTag()`, `.LoadNotebooks()`, `.MoveNoteToNotebook()`, `.NotebookExists()`, `.OnNotesLoaded()`, `.PromptCreateNewNotebook()`, `.PromptDeleteNotebook()`, `Tomboy.Notebooks`, `NotebookManager.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `active`** (2 nodes): `active`, `TabBar.svelte`
+- **Thin community `Community 63`** (15 nodes): `listItemDepthOnly.test.ts`, `doc()`, `findPosAfter()`, `li()`, `makeEditor()`, `makeFullEditor()`, `ol()`, `outline()`, `p()`, `placeCursorAt()`, `placeCursorAtMiddle()`, `placeCursorAtOffset0()`, `placeCursorAtStartOf()`, `selectRange()`, `ul()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `active`** (2 nodes): `active`, `TopNav.svelte`
+- **Thin community `Community 64`** (14 nodes): `Task.cs`, `Task`, `.Complete()`, `.CreateExistingTask()`, `.CreateNewTask()`, `.DebugSave()`, `.Delete()`, `.Load()`, `.QueueSave()`, `.ReOpen()`, `.Save()`, `.SaveTimeout()`, `.UrlFromPath()`, `Tomboy.Tasks`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `active`** (2 nodes): `active`, `+page.svelte`
+- **Thin community `Community 68`** (13 nodes): `Paper.cs`, `Paper`, `.BeginStroke()`, `.Clear()`, `.ContinueStroke()`, `.Deserialize()`, `.Draw()`, `.DrawStrokes()`, `.EndStroke()`, `.Redo()`, `.Serialize()`, `.Undo()`, `VirtualPaper`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `revertAllUploads (bulk revert)`** (2 nodes): `revertAllUploads (bulk revert)`, `revertOne (single-note revert)`
+- **Thin community `Community 69`** (13 nodes): `SerializerTests.cs`, `Hyena.Json.Tests`, `SerializerTests`, `.AssertJsonObjectsEqual()`, `.EscapedCharactersTest()`, `.SerializeArrayTest()`, `.SerializeBoolTest()`, `.SerializeDoubleTest()`, `.SerializeIntTest()`, `.SerializeNullTest()`, `.SerializeObjectTest()`, `.SerializeStringTest()`, `.VerifyString()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `ImageViewerModal Svelte component`** (2 nodes): `ImageViewerModal Svelte component`, `fitInitial`
+- **Thin community `Community 70`** (13 nodes): `FpsControls.ts`, `viewportHeight.ts`, `FpsControls`, `.attach()`, `.constructor()`, `.detach()`, `.dispose()`, `.enabled()`, `.lock()`, `.locked()`, `.unlock()`, `.update()`, `bindViewportHeight()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `TomboyListItem node`** (2 nodes): `TomboyListItem node`, `TomboyParagraph node`
+- **Thin community `Community 74`** (12 nodes): `NoteEditor.cs`, `NoteEditor`, `.ButtonPressed()`, `.GetGnomeDocumentFontDescription()`, `.KeyPressed()`, `.ModifyFontFromString()`, `.OnDragDataReceived()`, `.OnFontSettingChanged()`, `.OnSearchMatchColorSettingChanged()`, `.UpdateCustomFontSetting()`, `.UpdateSearchMatchColor()`, `Tomboy`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `buildDecorations (sendList)`** (2 nodes): `buildDecorations (sendList)`, `createSendListItemPlugin`
+- **Thin community `Community 75`** (12 nodes): `BugzillaPreferences`, `.AddClicked()`, `.CopyToBugizllaIconsDir()`, `.CreateIconStore()`, `.OnRealized()`, `.ParseHost()`, `.RemoveClicked()`, `.ResizeIfNeeded()`, `.SelectionChanged()`, `.UpdateIconStore()`, `Tomboy.Bugzilla`, `BugzillaPreferences.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `modeFromUrl (URL → mode mapping)`** (2 nodes): `modeFromUrl (URL → mode mapping)`, `appMode rune store`
+- **Thin community `Community 78`** (12 nodes): `dropboxClient.commit.test.ts`, `authenticate()`, `Dropbox`, `DropboxAuth`, `.setAccessToken()`, `.setRefreshToken()`, `findUpload()`, `findUploadIndex()`, `makeUploads()`, `parseManifest()`, `uploadDelayMs()`, `uploadRejector()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `DesktopWorkspace.handleCtrlL`** (2 nodes): `DesktopWorkspace.handleCtrlL`, `desktopSession.openWindowAt`
+- **Thin community `Community 80`** (11 nodes): `NoteOfTheDay`, `.CleanupOld()`, `.Create()`, `.GetContent()`, `.GetContentWithoutTitle()`, `.GetNoteByDate()`, `.GetTemplateContent()`, `.GetTitle()`, `.HasChanged()`, `Tomboy.NoteOfTheDay`, `NoteOfTheDay.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `DesktopWorkspace.onCanvasDrop`** (2 nodes): `DesktopWorkspace.onCanvasDrop`, `setWallpaper`
+- **Thin community `Community 82`** (11 nodes): `Deserializer`, `.CheckScan()`, `.Deserialize()`, `.Parse()`, `.ParseArray()`, `.ParseObject()`, `.SetInput()`, `.UnexpectedEof()`, `.UnexpectedToken()`, `Hyena.Json`, `Deserializer.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `NoteWindow.flushSave`** (2 nodes): `NoteWindow.flushSave`, `NoteWindow.handleEditorChange`
+- **Thin community `Community 83`** (11 nodes): `Hyena.Json`, `Serializer`, `.Serialize()`, `.SerializeArray()`, `.SerializeBool()`, `.SerializeDouble()`, `.SerializeInt()`, `.SerializeObject()`, `.SerializeString()`, `.SetInput()`, `Serializer.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `NoteWindow.externalReload`** (2 nodes): `NoteWindow.externalReload`, `NoteWindow.recomputeDateAdjacency`
+- **Thin community `Community 84`** (11 nodes): `EndPointManager`, `.AddListener()`, `.AddPrefix()`, `.AddPrefixInternal()`, `.GetEPListener()`, `.RemoveEndPoint()`, `.RemoveListener()`, `.RemovePrefix()`, `.RemovePrefixInternal()`, `MonoHttp`, `EndPointManager.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `buildGraph`** (2 nodes): `buildGraph`, `extractInternalLinkTargets`
+- **Thin community `Community 86`** (11 nodes): `Gnome.Keyring`, `RequestMessage`, `.CreateSimpleOperation()`, `.EncodeAttribute()`, `.EndOperation()`, `.StartOperation()`, `.SwapBytes()`, `.Write()`, `.WriteAttributes()`, `.WriteString()`, `RequestMessage.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `runAllSettledWithConcurrency`** (2 nodes): `runAllSettledWithConcurrency`, `runWithConcurrency (fail-fast pool)`
+- **Thin community `Community 92`** (10 nodes): `Contrast.cs`, `Contrast`, `.lab_distance()`, `.lab_to_rgb()`, `.RenderForegroundColor()`, `.rgb_to_lab()`, `.srgb_to_xyz_g()`, `.xyz_to_lab_f()`, `.xyz_to_srgb_C()`, `Tomboy`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Apple Touch Icon (PNG required for iO...`** (2 nodes): `Apple Touch Icon (PNG required for iOS PWA)`, `PWA HTML Shell`
+- **Thin community `Community 93`** (10 nodes): `NativeApplication.cs`, `INativeApplication`, `.DisplayHelp()`, `.Exit()`, `.Initialize()`, `.OpenUrl()`, `.RegisterSessionManagerRestart()`, `.RegisterSignalHandlers()`, `.StartMainLoop()`, `Tomboy`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `App Namespace (SvelteKit)`** (1 nodes): `App Namespace (SvelteKit)`
+- **Thin community `Community 94`** (10 nodes): `TaskOptionsDialog.cs`, `TaskOptionsDialog`, `.AddButton()`, `.OnCompletedCheckButtonToggled()`, `.OnDueDateCheckButtonToggled()`, `.OnPriorityCheckButtonToggled()`, `.OnPriorityComboBoxChanged()`, `.OnRealized()`, `.OnResponse()`, `Tomboy.Tasks`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `lib/index alias placeholder`** (1 nodes): `lib/index alias placeholder`
+- **Thin community `Community 95`** (10 nodes): `Tomboy.WebSync.Api`, `UserInfo`, `.CreateNoteChangesJsonString()`, `.GetNotes()`, `.GetUser()`, `.ParseJson()`, `.ParseJsonNoteArray()`, `.ParseJsonNotes()`, `.UpdateNotes()`, `UserInfo.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `NotebookChips Svelte component`** (1 nodes): `NotebookChips Svelte component`
+- **Thin community `Community 98`** (10 nodes): `object`, `DBusClientTest.py`, `crash()`, `freeze()`, `TestApp`, `.doMessage()`, `.__init__()`, `.note_added_cb()`, `.note_deleted_cb()`, `.note_saved_cb()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Toast Svelte component`** (1 nodes): `Toast Svelte component`
+- **Thin community `Community 102`** (9 nodes): `TagManager.cs`, `TagManager`, `.CompareTagsSortFunc()`, `.GetOrCreateSystemTag()`, `.GetOrCreateTag()`, `.GetSystemTag()`, `.GetTag()`, `.RemoveTag()`, `Tomboy`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `openNote (NoteList)`** (1 nodes): `openNote (NoteList)`
+- **Thin community `Community 106`** (9 nodes): `dropboxClient.commit.property.test.ts`, `Dropbox`, `DropboxAuth`, `.setAccessToken()`, `.setRefreshToken()`, `parseManifest()`, `resetState()`, `uploadDelayMs()`, `uploadRejector()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `getPreview (extract note preview text)`** (1 nodes): `getPreview (extract note preview text)`
+- **Thin community `Community 109`** (8 nodes): `JumpListManager.cs`, `JumpListManager`, `.AddRecentNotes()`, `.AddUserTasks()`, `.CreateJumpList()`, `.CreateShellLink()`, `.DeleteJumpList()`, `Tomboy`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `SyncProgressView Svelte component`** (1 nodes): `SyncProgressView Svelte component`
+- **Thin community `Community 110`** (8 nodes): `PlatformFactory.cs`, `IPlatformFactory`, `.CreateKeybinder()`, `.CreateNativeApplication()`, `.CreatePreferencesClient()`, `.CreatePropertyEditorEntry()`, `.CreatePropertyEditorToggleButton()`, `Tomboy`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `handleNavClick (TopNav)`** (1 nodes): `handleNavClick (TopNav)`
+- **Thin community `Community 112`** (8 nodes): `ProxiedWebRequest`, `.ApplyProxy()`, `.Create()`, `.GetAuthPass()`, `.GetAuthUser()`, `.UseAuthentication()`, `Tomboy.WebSync`, `ProxiedWebRequest.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `handleSettings (TopNav)`** (1 nodes): `handleSettings (TopNav)`
+- **Thin community `Community 113`** (8 nodes): `ListenerPrefix`, `.CheckUri()`, `.Equals()`, `.GetHashCode()`, `.Parse()`, `.ToString()`, `MonoHttp`, `ListenerPrefix.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `SyncPlanView Svelte component`** (1 nodes): `SyncPlanView Svelte component`
+- **Thin community `Community 114`** (8 nodes): `MonoHttp`, `Utility`, `.IsPredefinedScheme()`, `.IsToken()`, `.MaybeUri()`, `.QuotedString()`, `.ToClientString()`, `Utility.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `onTouchStart (pinch start)`** (1 nodes): `onTouchStart (pinch start)`
+- **Thin community `Community 115`** (8 nodes): `GConf.PropertyEditors`, `PropertyEditor`, `.ConnectHandlers()`, `.Get()`, `.Set()`, `.Setup()`, `.ValueChanged()`, `PropertyEditor.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `isScrollBottomNote`** (1 nodes): `isScrollBottomNote`
+- **Thin community `Community 116`** (8 nodes): `Gnome.Keyring`, `ResponseMessage`, `.GetDateTime()`, `.GetInt32()`, `.GetString()`, `.GetStringList()`, `.ReadAttributes()`, `ResponseMessage.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `setScrollBottomNote`** (1 nodes): `setScrollBottomNote`
+- **Thin community `Community 118`** (8 nodes): `ExportToHTMLPluginTest`, `.Construct()`, `.SetupNoteArchiver()`, `.TearDownNoteArchiver()`, `.WriteHTMLForNote()`, `.WriteHTMLForNoteWithNonAsciiCharacters()`, `TomboyTest`, `ExportToHTMLTest.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `extractTitleFromContent`** (1 nodes): `extractTitleFromContent`
+- **Thin community `Community 120`** (7 nodes): `Preferences.cs`, `Preferences`, `.Get()`, `.GetDefault()`, `.OnSettingChanged()`, `.Set()`, `Tomboy`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `filenameFromGuid`** (1 nodes): `filenameFromGuid`
+- **Thin community `Community 121`** (7 nodes): `Search.cs`, `Search`, `.CheckNoteHasMatch()`, `.FindMatchCountInNote()`, `.SearchNotes()`, `.SplitWatchingQuotes()`, `Tomboy`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `subscribeNoteReload`** (1 nodes): `subscribeNoteReload`
+- **Thin community `Community 122`** (7 nodes): `ExportToHtmlDialog`, `.LoadPreferences()`, `.OnExportLinkedToggled()`, `.SavePreferences()`, `.SetExportLinkedAllSensitivity()`, `Tomboy.ExportToHtml`, `ExportToHtmlDialog.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `clearScheduleNote`** (1 nodes): `clearScheduleNote`
+- **Thin community `Community 123`** (7 nodes): `Stroke.cs`, `Stroke`, `.AddPoint()`, `.Draw()`, `.WriteXml()`, `.WriteXmlPoints()`, `VirtualPaper`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `deleteNoteById`** (1 nodes): `deleteNoteById`
+- **Thin community `Community 124`** (7 nodes): `TaskArchiver.cs`, `TaskArchiver`, `.Read()`, `.ReadFile()`, `.Write()`, `.WriteFile()`, `Tomboy.Tasks`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `findNoteByTitle (wrapper)`** (1 nodes): `findNoteByTitle (wrapper)`
+- **Thin community `Community 126`** (7 nodes): `NoteConvert.cs`, `NoteConvert`, `.NoteUriFromGuid()`, `.ToNoteData()`, `.ToNoteInfo()`, `.ToNoteXml()`, `Tomboy.WebSync`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `filterByNotebook`** (1 nodes): `filterByNotebook`
+- **Thin community `Community 127`** (7 nodes): `IWebConnection`, `.Delete()`, `.Get()`, `.Post()`, `.Put()`, `Tomboy.WebSync.Api`, `IWebConnection.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `insertDate module`** (1 nodes): `insertDate module`
+- **Thin community `Community 128`** (7 nodes): `DeserializerTests.cs`, `DeserializerTests`, `.Array()`, `.Literal()`, `.Object()`, `.Setup()`, `Hyena.Json.Tests`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `NoteActionSheet.openBacklinks`** (1 nodes): `NoteActionSheet.openBacklinks`
+- **Thin community `Community 129`** (7 nodes): `LibProxy`, `ProxyFactory`, `.GetProxies()`, `.px_proxy_factory_free()`, `.px_proxy_factory_get_proxies()`, `.px_proxy_factory_new()`, `LibProxy.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `ctrlEnterSplit module`** (1 nodes): `ctrlEnterSplit module`
+- **Thin community `Community 130`** (7 nodes): `SyncUtils.cs`, `SyncUtils`, `.EnableFuse()`, `.FindFirstExecutableInPath()`, `.IsFuseEnabled()`, `.SetUpTools()`, `Tomboy.Sync`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `isCursorInTitleBlock`** (1 nodes): `isCursorInTitleBlock`
+- **Thin community `Community 131`** (7 nodes): `imageUpload.test.ts`, `authenticate()`, `Dropbox`, `DropboxAuth`, `.setAccessToken()`, `.setRefreshToken()`, `fakeFile()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `NoteContextMenu.openBacklinks`** (1 nodes): `NoteContextMenu.openBacklinks`
+- **Thin community `Community 133`** (6 nodes): `FixedWidthMenuItem`, `.MenuShown()`, `.OnActivated()`, `.OnDestroyed()`, `Tomboy.FixedWidth`, `FixedWidthMenuItem.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `listItemReorder module`** (1 nodes): `listItemReorder module`
+- **Thin community `Community 134`** (6 nodes): `Gnome.Keyring`, `ItemData`, `.GetInstanceFromItemType()`, `.SetValuesFromAttributes()`, `.ToString()`, `ItemData.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `listItemDepth module`** (1 nodes): `listItemDepth module`
+- **Thin community `Community 135`** (6 nodes): `NotebooksTreeView`, `.OnDragDataReceived()`, `.OnDragLeave()`, `.OnDragMotion()`, `Tomboy.Notebooks`, `NotebooksTreeView.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `deleteLine module`** (1 nodes): `deleteLine module`
+- **Thin community `Community 136`** (6 nodes): `ISyncUI.cs`, `ISyncUI`, `.NoteConflictDetected()`, `.NoteSynchronized()`, `.SyncStateChanged()`, `Tomboy.Sync`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `insertTab module`** (1 nodes): `insertTab module`
+- **Thin community `Community 138`** (6 nodes): `autoLinkPasteEdit.test.ts`, `collectLinkedTexts()`, `entry()`, `findTextEnd()`, `makeEditor()`, `markedText()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `TomboyEditor editorProps.handleKeyDown`** (1 nodes): `TomboyEditor editorProps.handleKeyDown`
+- **Thin community `Community 144`** (5 nodes): `RemoteControlProxy.cs`, `RemoteControlProxy`, `.GetInstance()`, `.Register()`, `Tomboy`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `TomboySize mark`** (1 nodes): `TomboySize mark`
+- **Thin community `Community 145`** (5 nodes): `Tag.cs`, `Tag`, `.AddNote()`, `.RemoveNote()`, `Tomboy`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `TomboyMonospace mark`** (1 nodes): `TomboyMonospace mark`
+- **Thin community `Community 146`** (5 nodes): `TagButton.cs`, `TagButton`, `.EnterNotifyEventHandler()`, `.LeaveNotifyEventHandler()`, `Tomboy`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `TomboySubtitlePlaceholder extension`** (1 nodes): `TomboySubtitlePlaceholder extension`
+- **Thin community `Community 148`** (5 nodes): `MenuMinMaxNoteCountPreference`, `.UpdateMenuMaxNoteCountPreference()`, `.UpdateMenuMinNoteCountPreference()`, `Tomboy.AdvancedPreferences`, `MenuMinMaxNoteCountPreference.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `TomboyPunctuationReplace extension`** (1 nodes): `TomboyPunctuationReplace extension`
+- **Thin community `Community 149`** (5 nodes): `BacklinkMenuItem`, `.CompareTo()`, `.OnActivated()`, `Tomboy.Backlinks`, `BacklinkMenuItem.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `lookupGuidByTitle`** (1 nodes): `lookupGuidByTitle`
+- **Thin community `Community 150`** (5 nodes): `InsertTimestampPreferences`, `.OnSelectedRadioToggled()`, `.OnSelectionChanged()`, `Tomboy.InsertTimestamp`, `InsertTimestampPreferences.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `autoLinkPlugin.expandToBlock`** (1 nodes): `autoLinkPlugin.expandToBlock`
+- **Thin community `Community 151`** (5 nodes): `RemoveBrokenLinksUtils.cs`, `RemoveBrokenLinksUtils`, `.HighlightWikiWords()`, `.RemoveBrokenLinkTag()`, `Tomboy.RemoveBrokenLinks`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `SEND_SOURCE_GUID`** (1 nodes): `SEND_SOURCE_GUID`
+- **Thin community `Community 152`** (5 nodes): `WebSyncPreferencesWidget.cs`, `Tomboy.WebSync`, `WebSyncPreferencesWidget`, `.AddRow()`, `.OnAuthButtonClicked()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `SEND_TARGET_GUID`** (1 nodes): `SEND_TARGET_GUID`
+- **Thin community `Community 154`** (5 nodes): `NoteInfo`, `.ParseJson()`, `.ToUpdateObject()`, `Tomboy.WebSync.Api`, `NoteInfo.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `sendListItemPluginKey`** (1 nodes): `sendListItemPluginKey`
+- **Thin community `Community 155`** (5 nodes): `RootInfo`, `.GetRoot()`, `.ParseJson()`, `Tomboy.WebSync.Api`, `RootInfo.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `sendActiveGate module`** (1 nodes): `sendActiveGate module`
+- **Thin community `Community 156`** (5 nodes): `ResourceReferenceTests.cs`, `ResourceReferenceTests`, `.ExceptionTest()`, `.ParseTest()`, `Tomboy.WebSync.Api.Tests`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `findAdjacentDateNotes module`** (1 nodes): `findAdjacentDateNotes module`
+- **Thin community `Community 157`** (5 nodes): `HttpListenerContext`, `.ParseAuthentication()`, `.ParseBasicAuthentication()`, `MonoHttp`, `HttpListenerContext.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `todoRegion index`** (1 nodes): `todoRegion index`
+- **Thin community `Community 158`** (5 nodes): `HttpUtility`, `.GetChars()`, `.UrlDecode()`, `MonoHttp`, `HttpUtility.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `insertTodoBlock`** (1 nodes): `insertTodoBlock`
+- **Thin community `Community 159`** (5 nodes): `Extensions`, `.NormalizeRequestParameters()`, `.ToDictionary()`, `OAuth`, `Extensions.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `regionContainingPos`** (1 nodes): `regionContainingPos`
+- **Thin community `Community 161`** (5 nodes): `Global`, `.gtk_show_uri()`, `.ShowUri()`, `GtkBeans`, `Global.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `autoWeekdayPluginKey`** (1 nodes): `autoWeekdayPluginKey`
+- **Thin community `Community 162`** (5 nodes): `GtkBeans`, `ImageMenuItemExtensions`, `.gtk_image_menu_item_set_always_show_image()`, `.SetAlwaysShowImage()`, `ImageMenuItem.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `table cellEdit module`** (1 nodes): `table cellEdit module`
+- **Thin community `Community 164`** (5 nodes): `dragResize.ts`, `resizeGeometry.test.ts`, `applyResize()`, `startPointerDrag()`, `run()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `parseTable module`** (1 nodes): `parseTable module`
+- **Thin community `Community 172`** (5 nodes): `extractCurrentMonth.test.ts`, `bulletList()`, `doc()`, `li()`, `p()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `toggleTableBlock`** (1 nodes): `toggleTableBlock`
+- **Thin community `Community 173`** (5 nodes): `dateNoteSeed.test.ts`, `entry()`, `li()`, `p()`, `ul()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `setCtrlHeld`** (1 nodes): `setCtrlHeld`
+- **Thin community `Community 174`** (5 nodes): `parseScheduleNote.test.ts`, `doc()`, `li()`, `p()`, `ul()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `tableBlockPluginKey`** (1 nodes): `tableBlockPluginKey`
+- **Thin community `Community 175`** (5 nodes): `index.js`, `formatBody()`, `getUserContext()`, `listAllUsersWithDevices()`, `sendSummary()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `tableOps module`** (1 nodes): `tableOps module`
+- **Thin community `Community 176`** (4 nodes): `AddinPreferenceFactory.cs`, `AddinPreferenceFactory`, `.CreatePreferenceWidget()`, `Tomboy`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `nav/history module`** (1 nodes): `nav/history module`
+- **Thin community `Community 177`** (4 nodes): `RecentTreeView.cs`, `RecentTreeView`, `.OnDragBegin()`, `Tomboy`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `createHistoryTracker`** (1 nodes): `createHistoryTracker`
+- **Thin community `Community 178`** (4 nodes): `NoteOfTheDayPreferences`, `.OpenTemplateButtonClicked()`, `Tomboy.NoteOfTheDay`, `NoteOfTheDayPreferences.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `noteSearch`** (1 nodes): `noteSearch`
+- **Thin community `Community 179`** (4 nodes): `Pen.cs`, `Pen`, `.Clone()`, `VirtualPaper`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `tomboy IDB schema (v3)`** (1 nodes): `tomboy IDB schema (v3)`
+- **Thin community `Community 180`** (4 nodes): `ResourceReference`, `.ParseJson()`, `Tomboy.WebSync.Api`, `ResourceReference.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `notes object store`** (1 nodes): `notes object store`
+- **Thin community `Community 181`** (4 nodes): `NoteInfoTests.cs`, `NoteInfoTests`, `.ParseTest()`, `Tomboy.WebSync.Api.Tests`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `syncManifest object store`** (1 nodes): `syncManifest object store`
+- **Thin community `Community 184`** (4 nodes): `Gnome.Keyring`, `ItemACL`, `.ToString()`, `ItemACL.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `noteListCache (cached notes + scroll)`** (1 nodes): `noteListCache (cached notes + scroll)`
+- **Thin community `Community 185`** (4 nodes): `Gnome.Keyring`, `KeyringInfo`, `.ToString()`, `KeyringInfo.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `toast store + pushToast/dismissToast`** (1 nodes): `toast store + pushToast/dismissToast`
+- **Thin community `Community 186`** (4 nodes): `Hyena`, `XdgBaseDirectorySpec`, `.GetUserDirectory()`, `XdgBaseDirectorySpec.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `generateGuid (uuid v4)`** (1 nodes): `generateGuid (uuid v4)`
+- **Thin community `Community 190`** (4 nodes): `imagePreviewPlugin.test.ts`, `decoCount()`, `getDecorations()`, `makeEditor()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `noteUri`** (1 nodes): `noteUri`
+- **Thin community `Community 198`** (4 nodes): `noteManagerHook.test.ts`, `li()`, `p()`, `ul()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `portal Svelte action`** (1 nodes): `portal Svelte action`
+- **Thin community `Community 200`** (3 nodes): `Defines.WIN32.cs`, `Defines`, `Tomboy`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `ResizeHandles.startResize`** (1 nodes): `ResizeHandles.startResize`
+- **Thin community `Community 201`** (3 nodes): `NoteRenameDialog.cs`, `NoteRenameDialog`, `Tomboy`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `NoteWindow.handleAction`** (1 nodes): `NoteWindow.handleAction`
+- **Thin community `Community 202`** (3 nodes): `Services.cs`, `Services`, `Tomboy`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `session.persistNow`** (1 nodes): `session.persistNow`
+- **Thin community `Community 203`** (3 nodes): `EnableStartupNotesPreference`, `Tomboy.AdvancedPreferences`, `EnableStartupNotesPreference.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `SLEEP_NOTE_GUID`** (1 nodes): `SLEEP_NOTE_GUID`
+- **Thin community `Community 204`** (3 nodes): `TaskData.cs`, `TaskData`, `Tomboy.Tasks`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `graph/plainText`** (1 nodes): `graph/plainText`
+- **Thin community `Community 205`** (3 nodes): `UserInfoTests.cs`, `Tomboy.WebSync.Api.Tests`, `UserInfoTests`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `toPlainText (graph preview)`** (1 nodes): `toPlainText (graph preview)`
+- **Thin community `Community 209`** (3 nodes): `insertDate.ts`, `formatDate()`, `insertTodayDate()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `viewportHeight.ts (module)`** (1 nodes): `viewportHeight.ts (module)`
+- **Thin community `Community 210`** (3 nodes): `noteSearch.ts`, `searchNotes()`, `stripXmlTags()`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `adminClient (admin sync ops)`** (1 nodes): `adminClient (admin sync ops)`
+- **Thin community `Community 226`** (2 nodes): `MonoHttp`, `AuthenticationSchemeSelector.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `diffManifests`** (1 nodes): `diffManifests`
+- **Thin community `Community 227`** (2 nodes): `MonoHttp`, `AuthenticationSchemes.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `revertNoteToServer`** (1 nodes): `revertNoteToServer`
+- **Thin community `Community 228`** (2 nodes): `MonoHttp`, `HttpRequestHeader.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `onSyncStatus listener`** (1 nodes): `onSyncStatus listener`
+- **Thin community `Community 229`** (2 nodes): `MonoHttp`, `HttpResponseHeader.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `startAuth (OAuth PKCE start)`** (1 nodes): `startAuth (OAuth PKCE start)`
+- **Thin community `Community 230`** (2 nodes): `OAuth`, `Enums.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `completeAuth (PKCE callback)`** (1 nodes): `completeAuth (PKCE callback)`
+- **Thin community `Community 231`** (2 nodes): `Gnome.Keyring`, `AccessRights.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `getFreshAccessToken (refresh-aware)`** (1 nodes): `getFreshAccessToken (refresh-aware)`
+- **Thin community `Community 232`** (2 nodes): `Gnome.Keyring`, `AttributeType.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `listRevisions`** (1 nodes): `listRevisions`
+- **Thin community `Community 233`** (2 nodes): `Gnome.Keyring`, `ItemType.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `schedule diff`** (1 nodes): `schedule diff`
+- **Thin community `Community 234`** (2 nodes): `Gnome.Keyring`, `Operation.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `flushPendingSchedule`** (1 nodes): `flushPendingSchedule`
+- **Thin community `Community 235`** (2 nodes): `Gnome.Keyring`, `ResultCode.cs`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `flushScheduler`** (1 nodes): `flushScheduler`
+- **Thin community `Community 238`** (2 nodes): `TabBar.svelte`, `active`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `sendTestPush() (Cloud Function callable)`** (1 nodes): `sendTestPush() (Cloud Function callable)`
+- **Thin community `Community 240`** (2 nodes): `TopNav.svelte`, `active`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `dateNoteSeed`** (1 nodes): `dateNoteSeed`
+- **Thin community `Community 248`** (2 nodes): `SettingsWindow.svelte`, `hidden`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `buildScheduleItem`** (1 nodes): `buildScheduleItem`
+- **Thin community `Community 252`** (2 nodes): `+page.svelte`, `active`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `syncSchedule orchestrator`** (1 nodes): `syncSchedule orchestrator`
+- **Thin community `Community 381`** (1 nodes): `Run OCR on a single image. Implementations may be slow (loads ML         models`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `firebase/app module`** (1 nodes): `firebase/app module`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Root +layout.ts (ssr=false)`** (1 nodes): `Root +layout.ts (ssr=false)`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Home +page.ts (prerender=true)`** (1 nodes): `Home +page.ts (prerender=true)`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `/note/[id] +page.ts (prerender=false)`** (1 nodes): `/note/[id] +page.ts (prerender=false)`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `/desktop +page.svelte`** (1 nodes): `/desktop +page.svelte`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Favicon (SVG)`** (1 nodes): `Favicon (SVG)`
+- **Thin community `Community 388`** (1 nodes): `Favicon (SVG)`
   Too small to be a meaningful cluster - may be noise or needs more connections extracted.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `invalidateCache()` connect `Home Note & Misc Utils` to `AutoLink Plugin Internals`, `Note XML / Title Helpers`, `Firebase Realtime Note Sync`?**
-  _High betweenness centrality (0.034) - this node is a cross-community bridge._
-- **Why does `applyPlan()` connect `Note XML / Title Helpers` to `Home Note & Misc Utils`, `Dropbox Sync & Image Upload`?**
-  _High betweenness centrality (0.028) - this node is a cross-community bridge._
-- **Why does `updateNoteFromEditor()` connect `Home Note & Misc Utils` to `Note Content (De)serialization`, `Schedule Note & Wallpaper`, `AutoLink Plugin Internals`?**
-  _High betweenness centrality (0.025) - this node is a cross-community bridge._
-- **Are the 20 inferred relationships involving `getDB()` (e.g. with `getSetting()` and `setSetting()`) actually correct?**
-  _`getDB()` has 20 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 15 inferred relationships involving `applyPlan()` (e.g. with `getManifest()` and `clearManifest()`) actually correct?**
-  _`applyPlan()` has 15 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 17 inferred relationships involving `invalidateCache()` (e.g. with `createNote()` and `updateNoteFromEditor()`) actually correct?**
-  _`invalidateCache()` has 17 INFERRED edges - model-reasoned connections that need verification._
-- **What connects `active`, `active`, `active` to the rest of the system?**
-  _255 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Why does `fetch()` connect `Community 2` to `Community 90`, `Community 4`, `Community 14`?**
+  _High betweenness centrality (0.036) - this node is a cross-community bridge._
+- **Why does `setSetting()` connect `Community 4` to `Community 0`?**
+  _High betweenness centrality (0.032) - this node is a cross-community bridge._
+- **Are the 39 inferred relationships involving `StateFile` (e.g. with `main()` and `main()`) actually correct?**
+  _`StateFile` has 39 INFERRED edges - model-reasoned connections that need verification._
+- **What connects `Tomboy`, `Tomboy`, `Tomboy` to the rest of the system?**
+  _300 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Should `Community 0` be split into smaller, more focused modules?**
+  _Cohesion score 0.02 - nodes in this community are weakly interconnected._
+- **Should `Community 1` be split into smaller, more focused modules?**
+  _Cohesion score 0.02 - nodes in this community are weakly interconnected._
+- **Should `Community 2` be split into smaller, more focused modules?**
+  _Cohesion score 0.02 - nodes in this community are weakly interconnected._

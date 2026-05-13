@@ -436,7 +436,7 @@ See the **`tomboy-terminal`** skill for the WS protocol, Bearer-token auth,
 SSH spawn modes, WOL host map, the rootless Podman + Quadlet deployment,
 SELinux + user-namespace constraints, OSC 133 capture, tmux-window-scoped
 history buckets, `connect:` auto-run gating, and the **`tmux -CC` spectator
-mode** (read-only active-pane follow for mobile).
+mode** (active-pane follow + opt-in mobile input via 보내기 popup).
 
 A note matched as terminal-note when body = **1–3 metadata paragraphs (ssh
 URL + optional `bridge:` + optional `spectate:`, any order) + optional
@@ -446,12 +446,17 @@ free paragraph or unrecognized block falls back to a regular note — that's
 how the user opts out.
 
 Spectator (mobile-side observer of the desktop's currently-focused tmux
-pane): add `spectate: <session>` next to `ssh://`. Bridge attaches
-`tmux -CC` and forwards only the active pane; switching panes on the
-desktop re-seeds via `capture-pane -epJ`. Read-only — input is suppressed
-end-to-end (client doesn't wire `term.onData`; bridge ignores `data`/`resize`
-frames). Recommend the target install `bridge/deploy/tomboy-spectator.tmux`
-(sets `window-size latest`) so the desktop's interactive size always wins.
+pane): add `spectate: <session>` next to `ssh://`. Bridge attaches via
+`ssh -tt ... 'stty raw -echo; exec tmux -CC attach -t <s>'` and forwards
+only the active pane; switching panes on the desktop re-seeds via
+`capture-pane -epJ`. On-screen-keyboard input is inert (no `term.onData`
+wiring); explicit input flows only through the **보내기 popup** →
+`send-keys -t <activePane> -H <hex>` for binary-safe injection (tmux 3.0+).
+Mobile UI: CSS-`zoom`-based fit/zoom (`[−][⊡][+]`) with `overflow:auto` for
+pan when zoomed in; scroll toolbar `[↑][↓][⤓]` for xterm scrollback;
+popup quick-keys for `y/n/1/Enter/Esc/^C/PgUp/PgDn`. Recommend the target
+set `set -g window-size latest` + `focus-events on` (plugin lives at
+`bridge/deploy/tomboy-spectator.tmux` or just add inline).
 
 Quick map:
 

@@ -199,10 +199,12 @@
 		if (spectatorZoomOverride !== null) {
 			scale = Math.max(0.1, Math.min(4, spectatorZoomOverride));
 		} else {
+			// Fit-to-width with a readability floor — text below ~0.5
+			// scale is unreadable on a phone, so we accept horizontal
+			// overflow (the user can pan with one finger). Vertical fit
+			// isn't enforced; rows beyond viewport scroll naturally.
 			const sx = hostRect.width / renderedW;
-			const sy = hostRect.height / renderedH;
-			// Never scale up at fit — small panes stay at 1:1.
-			scale = Math.min(sx, sy, 1);
+			scale = Math.min(Math.max(sx, 0.6), 1);
 		}
 		xtermEl.style.zoom = String(scale);
 	}
@@ -238,6 +240,39 @@
 	}
 	function scrollToBottom(): void {
 		term?.scrollToBottom();
+	}
+
+	// Two-finger pinch zoom on the xterm host. One-finger drag goes to the
+	// browser's native overflow scroll (via touch-action: pan-x pan-y), so
+	// we only stop propagation / preventDefault when we see exactly 2
+	// touches — otherwise the page can't be panned.
+	let pinchStart: { dist: number; scale: number } | null = null;
+
+	function pinchDistance(t1: Touch, t2: Touch): number {
+		const dx = t1.clientX - t2.clientX;
+		const dy = t1.clientY - t2.clientY;
+		return Math.hypot(dx, dy);
+	}
+
+	function onSpecTouchStart(e: TouchEvent): void {
+		if (e.touches.length === 2) {
+			pinchStart = {
+				dist: pinchDistance(e.touches[0], e.touches[1]),
+				scale: currentSpectatorScale()
+			};
+		}
+	}
+	function onSpecTouchMove(e: TouchEvent): void {
+		if (e.touches.length === 2 && pinchStart) {
+			e.preventDefault();
+			const newDist = pinchDistance(e.touches[0], e.touches[1]);
+			const ratio = newDist / pinchStart.dist;
+			spectatorZoomOverride = Math.max(0.1, Math.min(4, pinchStart.scale * ratio));
+			applySpectatorFit();
+		}
+	}
+	function onSpecTouchEnd(_e: TouchEvent): void {
+		pinchStart = null;
 	}
 
 	onMount(async () => {
@@ -514,24 +549,7 @@
 			{/if}
 		</div>
 		<div class="actions">
-			{#if isSpectator}
-				<div class="spec-tools" role="toolbar" aria-label="관전 도구">
-					<button type="button" class="icon" title="페이지 위로" onclick={() => scrollHalfPage(-1)}>↑</button>
-					<button type="button" class="icon" title="페이지 아래로" onclick={() => scrollHalfPage(1)}>↓</button>
-					<button type="button" class="icon" title="맨 아래로" onclick={scrollToBottom}>⤓</button>
-					<span class="spec-sep"></span>
-					<button type="button" class="icon" title="축소" onclick={zoomOut}>−</button>
-					<button type="button" class="icon" title="맞춤" onclick={zoomReset}>⊡</button>
-					<button type="button" class="icon" title="확대" onclick={zoomIn}>+</button>
-				</div>
-				<button
-					type="button"
-					class="toggle"
-					onclick={openSendPopup}
-					disabled={status !== 'open'}
-					title="활성 패널에 키 입력 전송"
-				>보내기</button>
-			{:else}
+			{#if !isSpectator}
 				<button type="button" class="toggle" onclick={togglePanel}>
 					히스토리 ({currentItems.length})
 				</button>
@@ -560,7 +578,16 @@
 	{/if}
 
 	<div class="body">
-		<div class="xterm-host" bind:this={xtermContainer}></div>
+		<div
+			class="xterm-host"
+			role={isSpectator ? 'application' : undefined}
+			aria-label={isSpectator ? '관전 화면 (두 손가락 핀치로 확대, 한 손가락으로 이동)' : undefined}
+			bind:this={xtermContainer}
+			ontouchstart={isSpectator ? onSpecTouchStart : undefined}
+			ontouchmove={isSpectator ? onSpecTouchMove : undefined}
+			ontouchend={isSpectator ? onSpecTouchEnd : undefined}
+			ontouchcancel={isSpectator ? onSpecTouchEnd : undefined}
+		></div>
 		{#if panelOpen && !isSpectator}
 			<HistoryPanel
 				count={currentItems.length}
@@ -578,6 +605,28 @@
 			/>
 		{/if}
 	</div>
+
+	{#if isSpectator}
+		<div class="spec-footer" role="toolbar" aria-label="관전 도구">
+			<div class="spec-group">
+				<button type="button" class="icon" title="페이지 위로" onclick={() => scrollHalfPage(-1)}>↑</button>
+				<button type="button" class="icon" title="페이지 아래로" onclick={() => scrollHalfPage(1)}>↓</button>
+				<button type="button" class="icon" title="맨 아래로" onclick={scrollToBottom}>⤓</button>
+			</div>
+			<div class="spec-group">
+				<button type="button" class="icon" title="축소" onclick={zoomOut}>−</button>
+				<button type="button" class="icon" title="맞춤" onclick={zoomReset}>⊡</button>
+				<button type="button" class="icon" title="확대" onclick={zoomIn}>+</button>
+			</div>
+			<button
+				type="button"
+				class="send-btn"
+				onclick={openSendPopup}
+				disabled={status !== 'open'}
+				title="활성 패널에 키 입력 전송"
+			>보내기</button>
+		</div>
+	{/if}
 </div>
 
 {#if sendPopupOpen}
@@ -704,26 +753,53 @@
 		cursor: pointer;
 	}
 
-	.spec-tools {
+	/* Spectator bottom toolbar — terminal-specific controls live here so
+	   they don't crowd / overlap the top header on a phone. */
+	.spec-footer {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 6px 8px;
+		background: #2a2a2a;
+		border-top: 1px solid #111;
+		flex-shrink: 0;
+	}
+	.spec-group {
 		display: inline-flex;
 		align-items: center;
 		gap: 3px;
-		background: #2a2a2a;
+		background: #1f1f1f;
 		border: 1px solid #444;
-		border-radius: 4px;
+		border-radius: 5px;
 		padding: 2px;
 	}
-	.spec-tools .spec-sep {
-		width: 1px;
-		height: 14px;
-		background: #444;
-		margin: 0 2px;
-	}
-	.actions button.icon {
-		padding: 2px 6px;
-		min-width: 22px;
-		line-height: 1;
+	.spec-footer button {
+		background: #3a3a3a;
+		color: #ddd;
+		border: 1px solid #555;
+		border-radius: 4px;
+		padding: 4px 8px;
 		font-size: 0.85rem;
+		cursor: pointer;
+	}
+	.spec-footer button.icon {
+		padding: 4px 9px;
+		min-width: 30px;
+		line-height: 1;
+	}
+	.spec-footer button:active {
+		background: #4a4a4a;
+	}
+	.spec-footer button:disabled {
+		opacity: 0.5;
+	}
+	.spec-footer .send-btn {
+		margin-left: auto;
+		background: #1e6f3f;
+		border-color: #2b8;
+		color: #fff;
+		padding: 5px 14px;
+		font-weight: 600;
 	}
 
 	.actions button:disabled {
@@ -796,13 +872,15 @@
 		overflow: hidden;
 	}
 
-	/* Spectator: allow panning when the user zooms in beyond fit. CSS
-	   `zoom` changes the layout box, so overflow:auto produces native
-	   scroll on both axes once content exceeds the container. */
+	/* Spectator: allow panning when content exceeds viewport. CSS `zoom`
+	   on .xterm grows its layout box, so overflow:auto here produces
+	   native scrollbars + one-finger touch pan. `touch-action: pan-x
+	   pan-y` lets the browser handle pan natively while still leaving
+	   2-finger gestures to our custom pinch-zoom JS. */
 	.terminal-page.spectator .xterm-host {
 		overflow: auto;
-		/* Smooth one-finger pan on iOS. */
 		-webkit-overflow-scrolling: touch;
+		touch-action: pan-x pan-y;
 	}
 
 	/* Mobile: panel becomes a bottom sheet ~50% height */
@@ -905,8 +983,17 @@
 	}
 
 	/* xterm sets width:100% on its inner viewport but needs a definite
-	   block-size container — flex:1 above gives that. */
-	.xterm-host :global(.xterm) {
+	   block-size container — flex:1 above gives that.
+
+	   IMPORTANT: this `height: 100%` MUST NOT apply in spectator mode.
+	   Spectator panes have a fixed pixel size (cols×rows × cell size),
+	   and forcing height:100% glues the .xterm box to the container
+	   regardless of CSS `zoom`, defeating both fit-down (content gets
+	   visually crammed) and zoom-in (layout box doesn't grow → no
+	   scrollbars → no pan). Let .xterm be its natural size in spectator
+	   so zoom propagates to the layout box and overflow:auto on the
+	   parent does its job. */
+	.terminal-page:not(.spectator) .xterm-host :global(.xterm) {
 		height: 100%;
 	}
 </style>
