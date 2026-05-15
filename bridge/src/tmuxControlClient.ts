@@ -290,11 +290,21 @@ export class TmuxControlParser extends EventEmitter {
 
 	private finishBlock(ok: boolean): void {
 		const lines = this.block?.lines ?? [];
+		const flags = this.block?.flags ?? '';
 		this.block = null;
-		// Distinction between "response to a command we sent" vs. "spontaneous"
-		// belongs in the client layer (which tracks pending commands); the
-		// parser just announces every terminated block.
-		this.emit('commandResponse', ok, lines);
+		// tmux marks blocks emitted in response to a client (-CC) command
+		// with `flags=1`; internal/spontaneous blocks (notably the initial
+		// state dump emitted right after attach) have `flags=0`. Routing by
+		// flags is load-bearing: if we treat the initial dump as a command
+		// response, it consumes the head of our pending-command FIFO and
+		// every subsequent command's response gets delivered to the wrong
+		// promise — bootstrap's `display-message` then awaits a response
+		// that has already been claimed by `refresh-client`, hanging forever.
+		if (flags === '1') {
+			this.emit('commandResponse', ok, lines);
+		} else {
+			this.emit('spontaneousBlock', lines);
+		}
 	}
 
 	/** Test helper — true if we're mid-block (i.e. waiting for %end/%error). */

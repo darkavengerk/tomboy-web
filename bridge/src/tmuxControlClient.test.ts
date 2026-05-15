@@ -122,10 +122,10 @@ test('parser: %begin..%end yields commandResponse(ok=true)', () => {
 	p.feed(
 		Buffer.from(
 			[
-				'%begin 1700000000 1 0',
+				'%begin 1700000000 1 1',
 				'line one',
 				'line two',
-				'%end 1700000000 1 0',
+				'%end 1700000000 1 1',
 				''
 			].join('\r\n')
 		)
@@ -139,9 +139,9 @@ test('parser: %begin..%error yields commandResponse(ok=false)', () => {
 	p.feed(
 		Buffer.from(
 			[
-				'%begin 1 2 0',
+				'%begin 1 2 1',
 				'bad target',
-				'%error 1 2 0',
+				'%error 1 2 1',
 				''
 			].join('\r\n')
 		)
@@ -154,10 +154,10 @@ test('parser: lines starting with `%` inside a block are body, not new notificat
 	p.feed(
 		Buffer.from(
 			[
-				'%begin 1 1 0',
+				'%begin 1 1 1',
 				'%output (this is body, not a notification)',
 				'normal line',
-				'%end 1 1 0',
+				'%end 1 1 1',
 				''
 			].join('\r\n')
 		)
@@ -177,9 +177,9 @@ test('parser: events interleave correctly around blocks', () => {
 		Buffer.from(
 			[
 				'%output %1 before\\012',
-				'%begin 1 1 0',
+				'%begin 1 1 1',
 				'response',
-				'%end 1 1 0',
+				'%end 1 1 1',
 				'%output %1 after\\012',
 				''
 			].join('\r\n')
@@ -191,6 +191,21 @@ test('parser: events interleave correctly around blocks', () => {
 	assert.equal(events[1][0], 'commandResponse');
 	assert.equal(events[2][0], 'output');
 	assert.equal((events[2][2] as Buffer).toString('utf8'), 'after\n');
+});
+
+test('parser: %begin..%end with flags=0 is spontaneous (initial-state dump)', () => {
+	// tmux emits the initial-state dump right after `tmux -CC attach` as an
+	// empty `%begin .. %end` block with flags=0. This must NOT be routed as
+	// a command response — otherwise the first `client.command(...)` we send
+	// races to be claimed by the dump and the actual response is delivered
+	// to the wrong slot. Real-tmux capture shows flags=0 for the initial
+	// dump and flags=1 for every response to a -CC client command.
+	const { p, events } = makeParser();
+	p.feed(
+		Buffer.from(['%begin 1700000000 99 0', '%end 1700000000 99 0', ''].join('\r\n'))
+	);
+	assert.equal(events.length, 1);
+	assert.deepEqual(events[0], ['spontaneousBlock', []]);
 });
 
 // ─── Parser: chunked input handling ────────────────────────────────────────
@@ -230,7 +245,7 @@ test('parser: strips the leading \\eP1000p protocol introducer', () => {
 	const { p, events } = makeParser();
 	p.feed(
 		Buffer.from(
-			'\x1bP1000p%begin 1 1 0\r\nfoo\r\n%end 1 1 0\r\n',
+			'\x1bP1000p%begin 1 1 1\r\nfoo\r\n%end 1 1 1\r\n',
 			'binary'
 		)
 	);
@@ -245,7 +260,7 @@ test('parser: strips inline \\ePtmux;...\\e\\ passthrough that prefixes a %begin
 	const stream =
 		'%session-changed $1 desktop\r\n' +
 		'\x1bPtmux;\x1b\x1b]133;W;@2\x07\x1b\\' +
-		'%begin 1 1 0\r\nlineA\r\n%end 1 1 0\r\n';
+		'%begin 1 1 1\r\nlineA\r\n%end 1 1 1\r\n';
 	p.feed(Buffer.from(stream, 'binary'));
 	// Expect: notification for session-changed + commandResponse for the block.
 	const kinds = events.map((e) => e[0]);
@@ -259,7 +274,7 @@ test('parser: handles chunked DCS spanning two feed() calls', () => {
 	// Split the passthrough mid-sequence.
 	p.feed(Buffer.from('\x1bPtmux;\x1b\x1b]133;', 'binary'));
 	p.feed(
-		Buffer.from('W;@2\x07\x1b\\%begin 1 1 0\r\nx\r\n%end 1 1 0\r\n', 'binary')
+		Buffer.from('W;@2\x07\x1b\\%begin 1 1 1\r\nx\r\n%end 1 1 1\r\n', 'binary')
 	);
 	const resp = events.find((e) => e[0] === 'commandResponse');
 	assert.deepEqual(resp, ['commandResponse', true, ['x']]);
@@ -280,12 +295,12 @@ test('client: command() resolves with response lines (FIFO)', async () => {
 	client.feed(
 		Buffer.from(
 			[
-				'%begin 1 1 0',
+				'%begin 1 1 1',
 				'foo-result',
-				'%end 1 1 0',
-				'%begin 2 2 0',
+				'%end 1 1 1',
+				'%begin 2 2 1',
 				'bar-result',
-				'%end 2 2 0',
+				'%end 2 2 1',
 				''
 			].join('\r\n')
 		)
@@ -302,7 +317,7 @@ test('client: %error rejects pending command', async () => {
 	const client = new TmuxControlClient(upstream);
 	const p = client.command('bogus');
 	client.feed(
-		Buffer.from(['%begin 1 1 0', 'unknown command', '%error 1 1 0', ''].join('\r\n'))
+		Buffer.from(['%begin 1 1 1', 'unknown command', '%error 1 1 1', ''].join('\r\n'))
 	);
 	await assert.rejects(p, /unknown command/);
 });
@@ -318,6 +333,44 @@ test('client: unmatched block surfaces as spontaneousBlock', () => {
 		Buffer.from(['%begin 1 0 0', 'initial', 'state', '%end 1 0 0', ''].join('\r\n'))
 	);
 	assert.deepEqual(spontaneous, [['initial', 'state']]);
+});
+
+test('client: initial-state dump does NOT steal a pending command response', async () => {
+	// Regression for the bootstrap-hang bug. The bridge writes `refresh-client
+	// -C 500x200` to ssh stdin immediately after spawning ssh, BEFORE tmux
+	// has emitted its initial-state dump. The pending queue has 1 entry. If
+	// the empty initial dump (flags=0) gets routed as a commandResponse it
+	// resolves refresh-client; the actual refresh-client response (flags=1)
+	// then has no pending and goes spontaneous; display-message's response
+	// resolves refresh-client's slot which is empty. With correct flags
+	// routing, the dump is spontaneous and refresh-client + display-message
+	// both resolve with their own responses.
+	const upstream = new PassThrough();
+	const client = new TmuxControlClient(upstream);
+	const refresh = client.command('refresh-client -C 500x200');
+	const disp = client.command(
+		`display-message -p -t s -F '#{session_id}|#{window_id}'`
+	);
+	client.feed(
+		Buffer.from(
+			[
+				// Initial-state dump (empty, flags=0) — must be spontaneous.
+				'%begin 1 100 0',
+				'%end 1 100 0',
+				// refresh-client response (flags=1, no body).
+				'%begin 1 101 1',
+				'%end 1 101 1',
+				// display-message response (flags=1, formatted line).
+				'%begin 1 102 1',
+				'$1|@2',
+				'%end 1 102 1',
+				''
+			].join('\r\n')
+		)
+	);
+	const [r1, r2] = await Promise.all([refresh, disp]);
+	assert.deepEqual(r1, []);
+	assert.deepEqual(r2, ['$1|@2']);
 });
 
 test('client: close() rejects all pending commands', async () => {
