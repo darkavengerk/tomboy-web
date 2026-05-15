@@ -4,13 +4,13 @@
     {
       "id": 1,
       "subject": "Task 1: Update spec — IDB approach + write-uid bootstrap",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Replace spec's \"memory-only\" IDB section with \"separate IDB database\" + record host-uid bootstrap via collectionGroup.\n\n**Files:** Modify docs/superpowers/specs/2026-05-15-public-notebook-share-design.md\n\n**Verify:** `git log --oneline -1 docs/superpowers/specs/2026-05-15-public-notebook-share-design.md`\n\n```json:metadata\n{\"files\":[\"docs/superpowers/specs/2026-05-15-public-notebook-share-design.md\"],\"verifyCommand\":\"git log --oneline -1 docs/superpowers/specs/2026-05-15-public-notebook-share-design.md\",\"acceptanceCriteria\":[\"IDB section says separate tomboy-web-guest\",\"Bootstrap explains collectionGroup('publicConfig')\",\"Rules section confirms collectionGroup compat\"]}\n```"
     },
     {
       "id": 2,
       "subject": "Task 2: Firestore rules + composite index",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "**Goal:** Land public-notes rules + (public, serverUpdatedAt) collectionGroup index.\n\n**Files:** firestore.rules, firestore.indexes.json\n\n**Verify:** `node -e \"JSON.parse(require('fs').readFileSync('firestore.indexes.json'))\" && echo OK`\n\n```json:metadata\n{\"files\":[\"firestore.rules\",\"firestore.indexes.json\"],\"verifyCommand\":\"node -e \\\"JSON.parse(require('fs').readFileSync('firestore.indexes.json'))\\\" && echo OK\",\"acceptanceCriteria\":[\"4 allow blocks per spec\",\"publicConfig rule\",\"collectionGroup notes (public,serverUpdatedAt) index\"]}\n```"
     },
@@ -85,5 +85,5 @@
       "description": "**Goal:** Deploy rules + indexes, then run host and guest smoke flows.\n\n**Files:** None (operational).\n\n**Verify:** Manual smoke list passes.\n\n```json:metadata\n{\"files\":[],\"verifyCommand\":\"firebase deploy --only firestore:rules,firestore:indexes\",\"acceptanceCriteria\":[\"Rules + indexes deployed\",\"Host toggle smoke passes\",\"Guest welcome→edit→refresh smoke passes\",\"Internal-link guard smoke passes\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-15T00:00:00Z"
+  "lastUpdated": "2026-05-15T01:00:00Z"
 }
