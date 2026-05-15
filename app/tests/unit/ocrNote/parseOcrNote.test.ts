@@ -1,109 +1,92 @@
 import { describe, it, expect } from 'vitest';
 import { parseOcrNote } from '$lib/ocrNote/parseOcrNote.js';
-import { OCR_DEFAULT_TARGET_LANG } from '$lib/ocrNote/defaults.js';
-import type { JSONContent } from '@tiptap/core';
 
-function doc(...paras: string[]): JSONContent {
+function para(text: string) {
 	return {
-		type: 'doc',
-		content: paras.map((text) => ({
-			type: 'paragraph',
-			content: text === '' ? undefined : [{ type: 'text', text }]
-		}))
+		type: 'paragraph',
+		content: text.length === 0 ? [] : [{ type: 'text', text }]
 	};
 }
 
 describe('parseOcrNote', () => {
-	it('returns null for empty/null/undefined doc', () => {
-		expect(parseOcrNote(undefined)).toBeNull();
+	it('returns null for empty doc', () => {
 		expect(parseOcrNote(null)).toBeNull();
 		expect(parseOcrNote({ type: 'doc', content: [] })).toBeNull();
 	});
 
-	it('returns null when no signature is present', () => {
-		expect(parseOcrNote(doc('hello', 'world'))).toBeNull();
+	it('parses bare signature as legacy', () => {
+		const doc = {
+			type: 'doc',
+			content: [para('ocr://qwen2.5vl:7b')]
+		};
+		const spec = parseOcrNote(doc);
+		expect(spec).not.toBeNull();
+		expect(spec!.model).toBe('qwen2.5vl:7b');
+		expect(spec!.legacy).toBe(true);
+		expect(spec!.translateModel).toBeUndefined();
 	});
 
-	it('returns null when signature is malformed', () => {
-		expect(parseOcrNote(doc('title', 'ocr://invalid format!'))).toBeNull();
+	it('parses translate header as non-legacy', () => {
+		const doc = {
+			type: 'doc',
+			content: [para('ocr://got-ocr2\ntranslate: exaone3.5:2.4b')]
+		};
+		const spec = parseOcrNote(doc);
+		expect(spec).not.toBeNull();
+		expect(spec!.model).toBe('got-ocr2');
+		expect(spec!.translateModel).toBe('exaone3.5:2.4b');
+		expect(spec!.legacy).toBe(false);
 	});
 
-	it('recognizes signature at content[1] (canonical title-then-sig)', () => {
-		const result = parseOcrNote(doc('OCR 노트', 'ocr://qwen2.5vl:7b'));
-		expect(result).not.toBeNull();
-		expect(result!.model).toBe('qwen2.5vl:7b');
-		// Default target lang when not specified
-		expect(result!.targetLang).toBe(OCR_DEFAULT_TARGET_LANG);
-		expect(result!.system).toBeUndefined();
+	it('allows title line above signature', () => {
+		const doc = {
+			type: 'doc',
+			content: [
+				para('My OCR note'),
+				para('ocr://got-ocr2\ntranslate: exaone3.5:2.4b')
+			]
+		};
+		const spec = parseOcrNote(doc);
+		expect(spec!.model).toBe('got-ocr2');
+		expect(spec!.translateModel).toBe('exaone3.5:2.4b');
 	});
 
-	it('recognizes signature at content[0] (no title yet)', () => {
-		const result = parseOcrNote(doc('ocr://llava:7b'));
-		expect(result).not.toBeNull();
-		expect(result!.model).toBe('llava:7b');
+	it('reads system, temperature, num_ctx', () => {
+		const doc = {
+			type: 'doc',
+			content: [
+				para(
+					'ocr://got-ocr2\ntranslate: exaone3.5:2.4b\nsystem: custom prompt\ntemperature: 0.5\nnum_ctx: 8192'
+				)
+			]
+		};
+		const spec = parseOcrNote(doc);
+		expect(spec!.system).toBe('custom prompt');
+		expect(spec!.options.temperature).toBe(0.5);
+		expect(spec!.options.num_ctx).toBe(8192);
 	});
 
-	it('parses target_lang header', () => {
-		const result = parseOcrNote(
-			doc('OCR 노트', 'ocr://qwen2.5vl:7b', 'target_lang: English')
-		);
-		expect(result!.targetLang).toBe('English');
+	it('ignores legacy target_lang header (graceful)', () => {
+		const doc = {
+			type: 'doc',
+			content: [para('ocr://qwen2.5vl:7b\ntarget_lang: 한국어')]
+		};
+		const spec = parseOcrNote(doc);
+		expect(spec).not.toBeNull();
+		expect(spec!.legacy).toBe(true);
 	});
 
-	it('parses temperature and num_ctx', () => {
-		const result = parseOcrNote(
-			doc('OCR 노트', 'ocr://qwen2.5vl:7b', 'temperature: 0.4', 'num_ctx: 8192')
-		);
-		expect(result!.options.temperature).toBe(0.4);
-		expect(result!.options.num_ctx).toBe(8192);
-	});
-
-	it('silently drops headers whose values fail to parse as numbers', () => {
-		const result = parseOcrNote(
-			doc('title', 'ocr://qwen2.5vl:7b', 'temperature: not-a-number')
-		);
-		expect(result!.options.temperature).toBeUndefined();
-	});
-
-	it('parses multi-line system override (continuation indented or unindented)', () => {
-		const result = parseOcrNote(
-			doc(
-				'title',
-				'ocr://qwen2.5vl:7b',
-				'system: 추출만 하고',
-				'  번역은 절대 하지 마.'
-			)
-		);
-		expect(result!.system).toBe('추출만 하고\n번역은 절대 하지 마.');
-	});
-
-	it('stops header parsing at the first blank paragraph', () => {
-		const result = parseOcrNote(
-			doc(
-				'title',
-				'ocr://qwen2.5vl:7b',
-				'target_lang: English',
-				'',
-				// These lines are past the header boundary — they're either old OCR
-				// results or pasted images. They MUST NOT be parsed as headers.
-				'temperature: 0.99',
-				'num_ctx: 1'
-			)
-		);
-		expect(result!.targetLang).toBe('English');
-		expect(result!.options.temperature).toBeUndefined();
-		expect(result!.options.num_ctx).toBeUndefined();
-	});
-
-	it('keeps target_lang default when value is empty', () => {
-		const result = parseOcrNote(
-			doc('title', 'ocr://qwen2.5vl:7b', 'target_lang: ')
-		);
-		expect(result!.targetLang).toBe(OCR_DEFAULT_TARGET_LANG);
-	});
-
-	it('accepts namespaced model refs', () => {
-		const result = parseOcrNote(doc('library/llava:13b-v1.6', 'ocr://library/llava:13b-v1.6'));
-		expect(result!.model).toBe('library/llava:13b-v1.6');
+	it('stops header parse at blank paragraph (so OCR results below are ignored)', () => {
+		const doc = {
+			type: 'doc',
+			content: [
+				para('ocr://got-ocr2\ntranslate: exaone3.5:2.4b'),
+				para(''),
+				para('[원문] previous run text...'),
+				para('translate: should-not-be-read')
+			]
+		};
+		const spec = parseOcrNote(doc);
+		expect(spec!.translateModel).toBe('exaone3.5:2.4b');
 	});
 });

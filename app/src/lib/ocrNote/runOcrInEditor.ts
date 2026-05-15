@@ -5,11 +5,33 @@ import { imageBlobToBase64 } from './imageToBase64.js';
 import { downloadImageFromDropboxUrl } from '../sync/imageUpload.js';
 import {
 	OCR_DEFAULT_NUM_CTX,
-	OCR_DEFAULT_TEMPERATURE,
-	OCR_USER_PROMPT,
-	buildOcrSystemPrompt
+	OCR_DEFAULT_TEMPERATURE
 } from './defaults.js';
 import type { OcrNoteSpec } from './parseOcrNote.js';
+
+// Module-local legacy fallbacks (Task 8 refactor will move these into the
+// legacy branch of the runner — until then this preserves the old single-call
+// flow while defaults.ts drops the unused exports).
+const LEGACY_OCR_USER_PROMPT = '이 이미지의 텍스트를 추출해줘.';
+
+function buildLegacyOcrSystemPrompt(targetLang: string): string {
+	return [
+		'당신은 이미지에서 텍스트를 정확히 추출하는 OCR 어시스턴트입니다.',
+		'',
+		'규칙:',
+		`1. 이미지의 모든 텍스트를 원본 그대로 추출합니다. 줄바꿈, 들여쓰기, 기호를 최대한 보존합니다.`,
+		`2. 추출한 텍스트가 ${targetLang}가 아니면, ${targetLang} 번역도 함께 제공합니다.`,
+		`3. 추출한 텍스트가 이미 ${targetLang}이면 [번역] 섹션은 생략합니다.`,
+		'4. 출력 외의 설명/주석을 덧붙이지 않습니다.',
+		'',
+		'출력 형식:',
+		'[원문]',
+		'<추출한 텍스트 그대로>',
+		'',
+		`[번역] (${targetLang}가 아닐 때만)`,
+		`<${targetLang} 번역>`
+	].join('\n');
+}
 
 export interface RunOcrOptions {
 	editor: Editor;
@@ -98,11 +120,11 @@ export async function runOcrInEditor(opts: RunOcrOptions): Promise<RunOcrResult>
 					role: 'system',
 					content: spec.system && spec.system.length > 0
 						? spec.system
-						: buildOcrSystemPrompt(spec.targetLang)
+						: buildLegacyOcrSystemPrompt('한국어')
 				},
 				{
 					role: 'user',
-					content: OCR_USER_PROMPT,
+					content: LEGACY_OCR_USER_PROMPT,
 					images: [imageB64]
 				}
 			]
