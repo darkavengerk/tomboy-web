@@ -10,6 +10,8 @@ All non-health endpoints require Bearer token matching `BRIDGE_SHARED_TOKEN`.
 """
 from __future__ import annotations
 
+import secrets
+
 from fastapi import FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel
 
@@ -29,7 +31,7 @@ def get_engine(request: Request) -> OcrEngine:
 def require_bearer(authorization: str | None) -> None:
     settings = get_settings()
     expected = f"Bearer {settings.shared_token}"
-    if authorization != expected:
+    if authorization is None or not secrets.compare_digest(authorization, expected):
         raise HTTPException(401, "unauthorized")
 
 

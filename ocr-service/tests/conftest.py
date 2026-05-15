@@ -9,24 +9,7 @@ from ocr_service.app import app
 from ocr_service.config import Settings
 from ocr_service.model import OcrEngine
 
-
-class FakeRunner:
-    def __init__(self) -> None:
-        self._loaded = False
-        self.last_input = ""
-
-    def load(self) -> None:
-        self._loaded = True
-
-    def unload(self) -> None:
-        self._loaded = False
-
-    def is_loaded(self) -> bool:
-        return self._loaded
-
-    def run(self, image_b64: str) -> str:
-        self.last_input = image_b64
-        return f"OCR[{len(image_b64)}]"
+from ._fakes import FakeRunner
 
 
 @pytest.fixture
