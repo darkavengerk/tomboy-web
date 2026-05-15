@@ -80,6 +80,10 @@ interface DropboxSdkClient {
 		path: string;
 		direct_only?: boolean;
 	}) => Promise<{ result: { links: Array<{ url: string }> } }>;
+	sharingGetSharedLinkFile: (arg: {
+		url: string;
+		path?: string;
+	}) => Promise<{ result: { fileBlob?: Blob } }>;
 }
 
 /**
@@ -140,6 +144,35 @@ async function resolveSharedUrl(
 		if (!first) throw err;
 		return first.url;
 	}
+}
+
+/**
+ * Download the bytes behind a Dropbox shared-link URL.
+ *
+ * Why we need this: a `www.dropbox.com/scl/...?raw=1` URL works fine as an
+ * `<img src>` (cross-origin image loads don't go through CORS) but fails
+ * under `fetch()` — Dropbox's edge serves a 302 redirect with no
+ * Access-Control-Allow-Origin header. The SDK's
+ * `sharingGetSharedLinkFile` routes through `api.dropboxapi.com` /
+ * `content.dropboxapi.com`, both of which return proper CORS headers, so
+ * the same bytes become reachable.
+ *
+ * Use this when you need the image bytes on a device that didn't paste
+ * the image (e.g. cross-device retry of an OCR that failed on the
+ * uploading device). Requires the Dropbox client to be authenticated to
+ * the same account that owns the link.
+ */
+export async function downloadImageFromDropboxUrl(url: string): Promise<Blob> {
+	const dbx = getClient() as DropboxSdkClient | null;
+	if (!dbx) {
+		throw new Error('Dropbox에 연결되지 않았습니다');
+	}
+	const res = await dbx.sharingGetSharedLinkFile({ url });
+	const blob = res.result.fileBlob;
+	if (!blob) {
+		throw new Error('Dropbox 이미지 응답이 비어 있습니다');
+	}
+	return blob;
 }
 
 /**

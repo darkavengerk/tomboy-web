@@ -1,7 +1,8 @@
 import type { Editor } from '@tiptap/core';
 import { sendChat, LlmChatError } from '../llmNote/sendChat.js';
 import type { ChatRequestBody } from '../llmNote/buildChatRequest.js';
-import { imageUrlToBase64 } from './imageToBase64.js';
+import { imageBlobToBase64 } from './imageToBase64.js';
+import { downloadImageFromDropboxUrl } from '../sync/imageUpload.js';
 import {
 	OCR_DEFAULT_NUM_CTX,
 	OCR_DEFAULT_TEMPERATURE,
@@ -13,7 +14,17 @@ import type { OcrNoteSpec } from './parseOcrNote.js';
 export interface RunOcrOptions {
 	editor: Editor;
 	spec: OcrNoteSpec;
+	/** URL of the uploaded image (for logging/UI only — NOT fetched if `imageBlob` is also supplied). */
 	imageUrl: string;
+	/**
+	 * In-memory bytes of the image. When present, this is used directly for
+	 * base64 encoding — no network fetch. The paste/drop flow always has
+	 * this. URL-only callers (e.g. cross-device retry on a note that
+	 * already has the image URL but not the original File) fall through to
+	 * `downloadImageFromDropboxUrl(imageUrl)`, which routes via the
+	 * Dropbox SDK to side-step the www.dropbox.com CORS limitation.
+	 */
+	imageBlob?: Blob;
 	bridgeUrl: string;
 	bridgeToken: string;
 	onStatus?: (msg: string) => void;
@@ -67,7 +78,8 @@ export async function runOcrInEditor(opts: RunOcrOptions): Promise<RunOcrResult>
 
 		let imageB64: string;
 		try {
-			imageB64 = await imageUrlToBase64(imageUrl);
+			const blob = opts.imageBlob ?? (await downloadImageFromDropboxUrl(imageUrl));
+			imageB64 = await imageBlobToBase64(blob);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			replaceOcrBlock(editor, placeholderPos, `[OCR 오류: ${msg}]`);

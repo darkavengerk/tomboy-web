@@ -341,7 +341,7 @@
 	 * resize, so manual user resizes between toggles are preserved
 	 * proportionally.
 	 */
-	async function handleImageInserted(url: string): Promise<void> {
+	async function handleImageInserted(url: string, file: File): Promise<void> {
 		const ed = getEditor();
 		if (!ed) return;
 		const spec = parseOcrNote(ed.getJSON());
@@ -356,6 +356,7 @@
 				editor: ed,
 				spec,
 				imageUrl: url,
+				imageBlob: file,
 				bridgeUrl: llmBridgeUrl,
 				bridgeToken: llmBridgeToken
 			});

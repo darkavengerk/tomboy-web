@@ -1,5 +1,5 @@
 /**
- * Fetch an image URL, downscale it, and return JPEG base64 (no data: prefix).
+ * Downscale an image blob and return JPEG base64 (no data: prefix).
  *
  * Why downscale: the bridge's `/llm/chat` body cap is 1 MiB. With JSON +
  * base64 overhead (~1.37x), an unscaled 4 MiB phone photo would blow past the
@@ -9,18 +9,22 @@
  *
  * Why JPEG: PNG re-encodes of photos balloon in size. JPEG q0.85 is a tighter
  * fit while preserving glyph edges well enough for OCR.
+ *
+ * Why this module takes Blob, not URL: Dropbox shared links
+ * (`www.dropbox.com/scl/...`) respond with a 302 redirect but no permissive
+ * CORS headers, so `fetch(url)` is blocked by the browser. Callers must
+ * obtain the Blob through a CORS-safe route — either the in-memory File
+ * from paste/drop, or `downloadImageFromDropboxUrl()` which routes through
+ * the SDK's `api.dropboxapi.com` host.
  */
 const MAX_LONG_EDGE = 1280;
 const JPEG_QUALITY = 0.85;
 
-export async function imageUrlToBase64(url: string): Promise<string> {
-	const blob = await fetchAsBlob(url);
+export async function imageBlobToBase64(blob: Blob): Promise<string> {
 	const bitmap = await blobToBitmap(blob);
 	try {
 		const { canvas, ctx } = drawScaled(bitmap, MAX_LONG_EDGE);
 		const out = await canvasToBlob(canvas, 'image/jpeg', JPEG_QUALITY);
-		// Free GPU/CPU resources before the slow base64 encode.
-		bitmap.close?.();
 		void ctx;
 		return blobToBase64(out);
 	} finally {
@@ -28,13 +32,6 @@ export async function imageUrlToBase64(url: string): Promise<string> {
 	}
 }
 
-async function fetchAsBlob(url: string): Promise<Blob> {
-	const resp = await fetch(url, { mode: 'cors', credentials: 'omit' });
-	if (!resp.ok) {
-		throw new Error(`이미지 다운로드 실패 (HTTP ${resp.status})`);
-	}
-	return resp.blob();
-}
 
 async function blobToBitmap(blob: Blob): Promise<ImageBitmap> {
 	if (typeof createImageBitmap === 'function') {

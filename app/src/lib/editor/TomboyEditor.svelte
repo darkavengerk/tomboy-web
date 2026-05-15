@@ -154,10 +154,12 @@
 		 *  note simultaneously. */
 		noteFocused?: boolean;
 		/** Fired AFTER an image has been successfully uploaded to Dropbox AND
-		 *  the resulting URL has been inserted into the editor. Carries the
-		 *  inserted Dropbox URL. The host can use this to trigger downstream
-		 *  pipelines (currently: OCR for ocr:// notes — see ocrNote/). */
-		onimageinserted?: (url: string) => void;
+		 *  the resulting URL has been inserted into the editor. Carries both
+		 *  the inserted Dropbox URL and the ORIGINAL File. The File lets
+		 *  downstream consumers (e.g. OCR for ocr:// notes) read the bytes
+		 *  without re-fetching the URL — Dropbox shared links block CORS
+		 *  `fetch()` even though `<img src>` works. */
+		onimageinserted?: (url: string, file: File) => void;
 	}
 
 	let {
@@ -963,7 +965,7 @@
 				})
 				.run();
 			pushToast("이미지 업로드 완료");
-			onimageinserted(url);
+			onimageinserted(url, file);
 		} catch (err) {
 			dismissToast(toastId);
 			const msg = err instanceof Error ? err.message : String(err);
