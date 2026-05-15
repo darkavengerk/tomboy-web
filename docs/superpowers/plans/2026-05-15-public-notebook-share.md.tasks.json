@@ -24,7 +24,7 @@
     {
       "id": 4,
       "subject": "Task 4: publicConfig client module",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [2, 3],
       "description": "**Goal:** Read/write publicConfig from host and discover host uid from guest via collectionGroup.\n\n**Files:** Create app/src/lib/sync/firebase/publicConfig.ts; create app/tests/unit/sync/firebase/publicConfig.test.ts\n\n**Verify:** `cd app && npm run test -- publicConfig`\n\n```json:metadata\n{\"files\":[\"app/src/lib/sync/firebase/publicConfig.ts\",\"app/tests/unit/sync/firebase/publicConfig.test.ts\"],\"verifyCommand\":\"cd app && npm run test -- publicConfig\",\"acceptanceCriteria\":[\"discoverPublicConfigForGuest via collectionGroup limit 1\",\"readPublicConfigForHost\",\"writePublicConfigAsHost with merge:true\",\"getCachedPublicConfig accessor\",\"4+ tests\"]}\n```"
     },
