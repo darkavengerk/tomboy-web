@@ -7,6 +7,20 @@ WorkingDirectory=%h/workspace/tomboy-web/pipeline
 # Evict Ollama models so diary's transformers VLM loading doesn't OOM.
 # Silent-fail on each model in case Ollama isn't running or model isn't pulled.
 ExecStartPre=/bin/bash -c 'for m in qwen2.5-coder:3b qwen2.5:7b bge-m3-cpu; do curl -sf -X POST http://localhost:11434/api/generate -d "{\"model\":\"$m\",\"keep_alive\":0}" >/dev/null || true; done'
+# Stop ocr-service entirely before diary OCR. `POST /unload` alone is
+# not enough — the uvicorn process keeps a CUDA context (~300 MiB) even
+# after the model is unloaded, and combined with desktop allocator
+# overhead it tips Qwen2.5-VL-7B nf4 over the 10 GB RTX 3080 budget
+# (load ~5.9 GiB + KV-cache ~2 GiB + uvicorn ~0.3 GiB + chrome ~0.2 GiB
+# + nvidia kernel reserve ~1 GiB > 9.6 GiB). Stopping the container
+# releases the full CUDA context and reliably leaves ~8 GiB free.
+# Silent-fail so this is a no-op when ocr-service wasn't running.
+ExecStartPre=/bin/bash -c 'systemctl --user stop ocr-service.service 2>/dev/null || true'
 ExecStart=%h/workspace/tomboy-web/pipeline/.venv/bin/python -m desktop.run_pipeline
+# Bring ocr-service back up after diary finishes, so the user's note
+# OCR/translate features keep working. Same silent-fail discipline — if
+# the service isn't installed (e.g. on a machine that only runs diary),
+# this is harmless.
+ExecStartPost=/bin/bash -c 'systemctl --user start ocr-service.service 2>/dev/null || true'
 StandardOutput=journal
 StandardError=journal

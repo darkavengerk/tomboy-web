@@ -143,7 +143,31 @@ Read/rerun side: each stage's `main()` calls `fetch_pending_reruns(cfg, log)` an
 
 Failures (no network, missing creds) are **best-effort silent** — pipeline progress trumps the optional admin mirror.
 
-### I13. Desktop trigger service auto-runs the pipeline on rerun
+### I13. `metadata_change_date` must be bumped to `now()` on every Firestore write
+
+The app's `conflictResolver.resolveNoteConflict` (`app/src/lib/sync/firebase/conflictResolver.ts`) compares `changeDate`, then `metadataChangeDate`, then falls through to **`tie-prefers-local`** which **PUSHES local content back over remote**. This is a deliberate safety for the user's in-progress edits, but it eats pipeline re-OCR writes:
+
+1. First pipeline run: `changeDate = metadataChangeDate = rM mtime` + initial OCR → Firestore.
+2. App pulls, local IDB now has same timestamps + initial OCR.
+3. Re-OCR run with the long-page fix produces a longer/different OCR. Pipeline writes again — **but `lastModified` (rM file mtime) hasn't changed**, so `changeDate` and `metadataChangeDate` stay identical to the previous write.
+4. App syncs → conflict resolver: both timestamps tie, `xmlContent` differs → `tie-prefers-local` → app pushes LOCAL (stale short OCR) BACK to Firestore. The pipeline's longer write is silently undone.
+
+`s4_write.write_pending` therefore passes `metadata_change_date=datetime.now(timezone.utc)` on every call. `change_date` stays at the rM mtime so the diary date in the title and `changeDate`-based sort still reflect the actual writing date. Title generation in `tomboy_payload.build_payload` uses `change_date`, not the bumped `metadata_change_date`.
+
+**Symptoms when this regresses:**
+- Firestore has older xmlContent than `~/.local/share/tomboy-pipeline/ocr/<uuid>.json`.
+- A specific note "doesn't sync" after a re-OCR while other (never-locally-opened) notes do.
+- App-side hard refresh of the note doesn't help (the resolver runs identically every time).
+
+**Recovery after a regression:**
+1. Apply the `metadata_change_date=now()` fix.
+2. `rm ~/.local/share/tomboy-pipeline/state/written.json` (so s4 re-resolves every uuid).
+3. `python -m desktop.stages.s4_write` — re-publishes every doc with bumped `metadataChangeDate`.
+4. User refreshes the app; resolver now picks remote (`metadataChangeDate` newer) and pulls the long OCR.
+
+Do NOT instead change `changeDate` to `now()` — it would break the diary-date title and `changeDate`-based sort.
+
+### I14. Desktop trigger service auto-runs the pipeline on rerun
 
 `pipeline/desktop/trigger_server.py` is a small stdlib HTTP service the admin page POSTs to so the user doesn't have to manually re-run the pipeline after clicking "재처리 요청".
 

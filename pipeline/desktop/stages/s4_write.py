@@ -227,6 +227,17 @@ def write_pending(
             )
 
             # 3. Build the payload.
+            # `metadata_change_date` is forced to "now" on every write — without
+            # this the app-side conflictResolver hits a `metadataChangeDate`
+            # tie on re-OCR (rM mtime doesn't change between runs) and falls
+            # through to `tie-prefers-local`, pushing the user's stale local
+            # short content BACK over our freshly-written long OCR. Bumping
+            # metadataChangeDate makes our writes strictly newer so the
+            # resolver pulls remote.
+            #
+            # changeDate stays at rM mtime so the diary date in the title and
+            # any changeDate-based sort still reflects when the user actually
+            # wrote the page on the tablet.
             payload = build_payload(
                 guid=target_guid,
                 page_uuid=rm_uuid,
@@ -236,6 +247,7 @@ def write_pending(
                 title_format=title_format,
                 create_date=create_dt,
                 change_date=change_dt,
+                metadata_change_date=datetime.now(timezone.utc),
             )
 
             # 4. Write doc.
