@@ -12,6 +12,7 @@ import { probePort, sendMagicPacket, waitForPort } from './wol.js';
 import { handleLlmChat } from './llm.js';
 import { handleRagSearch } from './rag.js';
 import { handleOcrProxy } from './ocr.js';
+import { handleGpuStatus } from './gpu.js';
 import { SpectatorSession } from './spectatorSession.js';
 
 const PORT = Number(process.env.BRIDGE_PORT || 3000);
@@ -19,6 +20,11 @@ const PASSWORD = requireEnv('BRIDGE_PASSWORD');
 const SECRET = requireEnv('BRIDGE_SECRET');
 const ALLOWED_ORIGIN = requireEnv('BRIDGE_ALLOWED_ORIGIN');
 const OCR_SERVICE_URL = requireEnv('OCR_SERVICE_URL');
+// Ollama runs on the desktop alongside ocr-service. The bridge reads this
+// from env so deployments without an Ollama on `localhost:11434` (i.e.
+// remote-LAN Ollama) can override it. `llm.ts` reads the same env var
+// independently — keep them in sync.
+const OLLAMA_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
 const HOSTS_FILE = process.env.BRIDGE_HOSTS_FILE;
 
 loadHostsFile(HOSTS_FILE);
@@ -102,6 +108,11 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 
 	if (url === '/ocr' && req.method === 'POST') {
 		await handleOcrProxy(req, res, SECRET, OCR_SERVICE_URL);
+		return;
+	}
+
+	if (url === '/gpu/status' && req.method === 'GET') {
+		await handleGpuStatus(req, res, SECRET, OCR_SERVICE_URL, OLLAMA_URL);
 		return;
 	}
 
