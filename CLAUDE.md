@@ -492,6 +492,17 @@ uses direct keyboard input instead). Popup quick-keys for
 `y/n/1/Enter/Esc/^C/PgUp/PgDn`. IME composition guarded with
 `!e.isComposing` on Enter/Escape.
 
+Desktop spectator keyboard shortcuts (window-level keydown CAPTURE
+listener so they beat xterm's textarea handler before `^H`/`^L` reach
+the shell): `Ctrl+H`/`Ctrl+L` → prev/next-pane (`‹` `›`),
+`Ctrl+Shift+H`/`Ctrl+Shift+L` → prev/next-window (`«` `»`). The
+listener is scoped to the focused note via `pageEl.contains(document.activeElement)`
+so concurrent terminal windows don't fight each other. Focus is held
+on xterm by auto-focusing in `onMount` + a bubble-phase `onclick` on
+`.terminal-page` that refocuses xterm after any descendant button
+click — so the user can type the whole time their cursor is "on the
+note", not just when xterm specifically has focus.
+
 Target tmux config: `window-size smallest` + `focus-events on` +
 `aggressive-resize on` (plugin at `bridge/deploy/tomboy-spectator.tmux`
 or add inline). **`window-size latest` is wrong** — the spectator's

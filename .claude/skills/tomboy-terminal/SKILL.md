@@ -502,6 +502,29 @@ actions are whitelisted on the server (`TMUX_NAV_ACTIONS` set in
     `« ‹ › »`, plus a 보내기 button **only on mobile** (`{#if isMobile}`).
     On desktop the popup is unnecessary — direct keyboard input
     handles every case the popup was built for.
+- **Desktop keyboard shortcuts** (spectator only — in shell mode the
+  same combos would clobber the user's own Ctrl+H/L on the remote
+  shell). Window-level `keydown` listener registered with
+  `capture: true` so it fires BEFORE xterm's textarea processes the
+  key — otherwise Ctrl+L would be converted to `^L` (clear-screen)
+  and shipped to the shell. Scoped via
+  `pageEl.contains(document.activeElement)` so multiple terminal
+  windows don't all respond:
+  - `Ctrl+H` → `tmuxNav('prev-pane')` (matches `‹`)
+  - `Ctrl+L` → `tmuxNav('next-pane')` (matches `›`)
+  - `Ctrl+Shift+H` → `tmuxNav('prev-window')` (matches `«`)
+  - `Ctrl+Shift+L` → `tmuxNav('next-window')` (matches `»`)
+- **Focus retention.** `term.focus()` is called in `onMount` and at
+  the end of `reconnect()` so the user can type immediately without
+  clicking the xterm canvas first. `.terminal-page` carries a bubble
+  `onclick` that calls `refocusTerminal()` — header/footer button
+  clicks run their own handlers first (bubble), then our handler
+  steals focus back to xterm. This makes typing work whenever the
+  note (window) is the active surface, not just when xterm itself
+  has focus. Mobile spectator skips both (`keyboardEnabled` derived
+  is false), so the OSK doesn't pop on entry. The svelte-ignore
+  pair on the wrapper div is intentional: the click handler is a
+  passive focus-redirect, not a new interaction surface.
     - `«` `‹` `›` `»` map to `tmuxNav('prev-window' | 'prev-pane' |
       'next-pane' | 'next-window')` respectively. All disabled while
       `status !== 'open'`. Bridge issues `select-pane -t <s>:.+/-` or

@@ -34,6 +34,7 @@
 	};
 	let { spec, guid, onedit }: Props = $props();
 
+	let pageEl: HTMLDivElement | undefined = $state();
 	let xtermContainer: HTMLDivElement | undefined = $state();
 	let xtermHostEl: HTMLDivElement | undefined = $state();
 	let xtermStageEl: HTMLDivElement | undefined = $state();
@@ -224,6 +225,65 @@
 	 */
 	function tmuxNav(action: 'next-pane' | 'prev-pane' | 'next-window' | 'prev-window'): void {
 		client?.tmuxNav(action);
+	}
+
+	/**
+	 * Whether keystrokes should flow into xterm at all. Mobile spectator
+	 * stays read-by-default — the on-screen keyboard popping up on every
+	 * tap would clobber the watch-only UX. Everywhere else (shell mode,
+	 * desktop spectator) we keep xterm focused so the user can type as
+	 * if it were a real terminal.
+	 */
+	const keyboardEnabled = $derived(!(isSpectator && isMobile));
+
+	function refocusTerminal(): void {
+		if (!keyboardEnabled) return;
+		try { term?.focus(); } catch { /* ignore */ }
+	}
+
+	/**
+	 * Click anywhere inside the terminal page → refocus xterm.
+	 * The original click target's `onclick` has already run by the time
+	 * this bubble-phase handler fires, so button actions complete normally
+	 * — we just steal focus back so the next keystroke lands in xterm
+	 * instead of a now-focused button.
+	 */
+	function handlePageClick(): void {
+		refocusTerminal();
+	}
+
+	/**
+	 * Capture-phase keyboard shortcuts. Registered at `window` level so
+	 * they fire BEFORE xterm's textarea processes the key — without
+	 * capture, Ctrl+L would be converted to `^L` and sent to the shell
+	 * (clear-screen) before we got a look. The `pageEl.contains(active)`
+	 * gate scopes the listener to the focused terminal note: with
+	 * multiple terminal note windows open on desktop, each instance
+	 * attaches its own listener and only the one containing focus
+	 * handles the key.
+	 *
+	 *   Ctrl+H        → prev-pane    (matches `‹` button)
+	 *   Ctrl+L        → next-pane    (matches `›` button)
+	 *   Ctrl+Shift+H  → prev-window  (matches `«` button)
+	 *   Ctrl+Shift+L  → next-window  (matches `»` button)
+	 *
+	 * Spectator-only; in shell mode these would clobber the user's own
+	 * Ctrl+H (^H = backspace) and Ctrl+L (^L = clear) keystrokes.
+	 */
+	function handleWindowKeydown(e: KeyboardEvent): void {
+		if (!isSpectator || isMobile || !client || !pageEl) return;
+		const active = document.activeElement;
+		if (active && active !== document.body && !pageEl.contains(active)) return;
+		if (!e.ctrlKey || e.altKey || e.metaKey) return;
+		const k = e.key.toLowerCase();
+		if (k !== 'h' && k !== 'l') return;
+		e.preventDefault();
+		e.stopPropagation();
+		if (e.shiftKey) {
+			tmuxNav(k === 'h' ? 'prev-window' : 'next-window');
+		} else {
+			tmuxNav(k === 'h' ? 'prev-pane' : 'next-pane');
+		}
 	}
 
 	onMount(async () => {
@@ -428,10 +488,22 @@
 			if (isSpectator && isMobile) return;
 			client?.send(data);
 		});
+
+		// Auto-focus so the user can type immediately without first
+		// clicking into the xterm canvas. The click-anywhere refocus
+		// handler on `.terminal-page` keeps focus on xterm even after
+		// header/footer button clicks. Mobile spectator stays unfocused
+		// so the on-screen keyboard doesn't pop on entry.
+		refocusTerminal();
+		// Capture-phase shortcut listener — must beat xterm's own
+		// textarea keydown handler, so we register on `window` with
+		// `capture: true`.
+		window.addEventListener('keydown', handleWindowKeydown, true);
 	});
 
 	onDestroy(() => {
 		unmounted = true;
+		window.removeEventListener('keydown', handleWindowKeydown, true);
 		if (bannerTimer) {
 			clearTimeout(bannerTimer);
 			bannerTimer = null;
@@ -498,10 +570,27 @@
 			}
 		});
 		client.connect();
+		refocusTerminal();
 	}
 </script>
 
-<div class="terminal-page" class:panel-open={panelOpen} class:mobile={isMobile} class:spectator={isSpectator}>
+<!--
+	The click handler is a passive focus-redirect that fires on bubble
+	AFTER interactive children (buttons inside this container) handle
+	their own clicks. It does not introduce a new interaction surface
+	on the div — it just steals focus back to xterm so subsequent
+	keystrokes land in the terminal instead of a now-focused button.
+-->
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+	class="terminal-page"
+	class:panel-open={panelOpen}
+	class:mobile={isMobile}
+	class:spectator={isSpectator}
+	bind:this={pageEl}
+	onclick={handlePageClick}
+>
 	<div class="terminal-header">
 		<div class="meta">
 			<div class="line"><span class="label">target</span><code>{spec.target}</code></div>
