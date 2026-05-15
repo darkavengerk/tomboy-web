@@ -51,6 +51,20 @@ export class TmuxControlParser extends EventEmitter {
 	private block:
 		| { unixTime: string; cmdId: string; flags: string; lines: string[] }
 		| null = null;
+	/**
+	 * Partial DCS sequence carried over from a previous `feed()` chunk —
+	 * non-null when a `\eP` has been seen but neither a final byte (for a
+	 * bare intro like `\eP1000p`) nor a terminator (`\e\`) has arrived yet.
+	 */
+	private pendingDcs: Buffer | null = null;
+	/**
+	 * `\eP1000p`-style bare DCS opens are only emitted ONCE at the very
+	 * start of `tmux -CC` mode. Every subsequent `\eP` is a passthrough that
+	 * MUST be terminated by `\e\` — without this flag we'd wrongly strip
+	 * `\ePt` from `\ePtmux;...` (the `t` looks like a DCS final byte by its
+	 * codepoint) and leave the passthrough body in the protocol stream.
+	 */
+	private seenIntro = false;
 
 	emit<K extends keyof ParserEvents>(event: K, ...args: ParserEvents[K]): boolean;
 	emit(event: string, ...args: unknown[]): boolean {
@@ -62,7 +76,21 @@ export class TmuxControlParser extends EventEmitter {
 	}
 
 	feed(chunk: Buffer): void {
-		this.buf = this.buf.length === 0 ? chunk : Buffer.concat([this.buf, chunk]);
+		// tmux -CC wraps its control protocol in DCS:
+		//   - the initial introducer `\eP1000p` is a bare DCS open with no
+		//     terminator (it stays open until tmux exits)
+		//   - inline `\ePtmux;<wrapped>\e\` passthroughs forward OSC bytes
+		//     from inner shells (e.g. our shell-integration OSC 133) to the
+		//     "outer terminal" — but in spectator mode we ARE the outer
+		//     terminal, so they should be dropped
+		// Both forms appear *inline* with `%begin` lines (no \r\n separator),
+		// so they must be stripped BEFORE splitting on newlines. Otherwise
+		// the next `%begin` is glued to a `\eP...` prefix, the parser sees a
+		// first byte of `\e` and emits the whole line as `notification`, the
+		// %begin is missed, and the command-response FIFO shifts by one —
+		// hanging the next `await client.command(...)` forever.
+		const sanitized = this.stripDcs(chunk);
+		this.buf = this.buf.length === 0 ? sanitized : Buffer.concat([this.buf, sanitized]);
 		while (true) {
 			const nl = this.buf.indexOf(0x0a);
 			if (nl < 0) break;
@@ -72,6 +100,109 @@ export class TmuxControlParser extends EventEmitter {
 			this.buf = this.buf.subarray(nl + 1);
 			this.processLine(line);
 		}
+	}
+
+	/**
+	 * Remove every complete DCS (`\eP...`) sequence from the chunk. Two
+	 * forms:
+	 *   1. Bare intro: `\eP <params> <intermediates> <final-byte>` where
+	 *      params are 0x30-0x3F, intermediates 0x20-0x2F, final 0x40-0x7E
+	 *      (`\eP1000p` is params="1000", final='p'). No terminator — the
+	 *      body follows the final byte.
+	 *   2. Terminated: `\eP <body> \e\` — strip start through terminator.
+	 *
+	 * In a terminated DCS, the body may contain doubled `\e\e` (an escaped
+	 * `\e`); we treat `\e\` (0x1b 0x5c) as the terminator regardless,
+	 * because `\e\e` (0x1b 0x1b) doesn't match.
+	 *
+	 * Incomplete DCS at the end of the chunk is parked in `pendingDcs` and
+	 * prepended to the next `feed()` call.
+	 */
+	private stripDcs(chunk: Buffer): Buffer {
+		if (this.pendingDcs) {
+			chunk = Buffer.concat([this.pendingDcs, chunk]);
+			this.pendingDcs = null;
+		}
+		const parts: Buffer[] = [];
+		let i = 0;
+		while (i < chunk.length) {
+			const esc = chunk.indexOf(0x1b, i);
+			if (esc < 0) {
+				parts.push(chunk.subarray(i));
+				break;
+			}
+			// Need at least one byte after the ESC to classify.
+			if (esc + 1 >= chunk.length) {
+				parts.push(chunk.subarray(i, esc));
+				this.pendingDcs = Buffer.from([0x1b]);
+				return Buffer.concat(parts);
+			}
+			if (chunk[esc + 1] !== 0x50 /* 'P' */) {
+				// Not a DCS — emit `\e` and continue past it. Any other
+				// escape sequence (CSI, OSC, etc.) is data we don't interpret.
+				parts.push(chunk.subarray(i, esc + 1));
+				i = esc + 1;
+				continue;
+			}
+			// `\eP` introducer at position `esc`. Flush bytes before it.
+			if (esc > i) parts.push(chunk.subarray(i, esc));
+			// Search for terminator `\e\` and (only if the bytes after `\eP`
+			// look like a standard DCS intro — at least one param byte then
+			// the final) for the bare-intro final byte. tmux's passthrough
+			// form `\ePtmux;...\e\` starts with `t` (0x74) which is in the
+			// final-byte range, so we explicitly require at least one byte
+			// in the param range (0x30-0x3F) before declaring a final byte
+			// — otherwise `\ePt` would be mis-stripped as `\eP <final=t>`.
+			let term = -1;
+			let bareFinal = -1;
+			let sawParamByte = false;
+			let introStillValid = true;
+			for (let k = esc + 2; k + 1 < chunk.length; k++) {
+				const c = chunk[k];
+				if (c === 0x1b && chunk[k + 1] === 0x5c /* '\' */) {
+					term = k;
+					break;
+				}
+				// Doubled `\e\e` inside DCS body — skip the second escape so
+				// we don't mis-detect it as the start of a terminator pair.
+				if (c === 0x1b && chunk[k + 1] === 0x1b) {
+					k++;
+					introStillValid = false;
+					continue;
+				}
+				if (introStillValid && bareFinal < 0) {
+					if (c >= 0x30 && c <= 0x3f) {
+						sawParamByte = true;
+					} else if (c >= 0x20 && c <= 0x2f) {
+						// intermediate — allowed but doesn't count as param
+					} else if (c >= 0x40 && c <= 0x7e && sawParamByte) {
+						bareFinal = k;
+						introStillValid = false;
+					} else {
+						introStillValid = false;
+					}
+				}
+			}
+			if (term >= 0) {
+				// Complete terminated DCS — skip through `\e\`.
+				i = term + 2;
+				this.seenIntro = true;
+				continue;
+			}
+			if (!this.seenIntro && bareFinal >= 0) {
+				// Bare DCS intro at the very start of the stream
+				// (`\eP1000p`) — strip introducer only; body continues
+				// inline (the rest of the chunk is the protocol body).
+				i = bareFinal + 1;
+				this.seenIntro = true;
+				continue;
+			}
+			// Incomplete DCS (no terminator yet, and not a first-time bare
+			// intro). Park from `\eP` onwards for the next `feed()` call.
+			this.pendingDcs = chunk.subarray(esc);
+			return Buffer.concat(parts);
+		}
+		return Buffer.concat(parts);
 	}
 
 	private processLine(line: Buffer): void {

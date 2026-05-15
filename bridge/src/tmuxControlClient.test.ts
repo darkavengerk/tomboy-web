@@ -215,6 +215,56 @@ test('parser: handles LF-only line endings', () => {
 	assert.equal(events[1][0], 'exit');
 });
 
+// ─── Parser: tmux -CC DCS framing ──────────────────────────────────────────
+//
+// In real `tmux -CC attach` output, the very first byte sequence is the DCS
+// introducer `\eP1000p` (sent without a trailing newline) — glued to the
+// initial `%begin` line. Inline `\ePtmux;<wrapped>\e\` passthrough sequences
+// are emitted from inner shells (e.g. an OSC 133 from a bash shell-integration
+// snippet running inside the tmux pane). Both must be stripped before
+// line-based parsing — otherwise the `%begin` they precede starts with `\e`
+// instead of `%` and the parser misses the entire block, shifting the
+// commandResponse FIFO by one and hanging the bootstrap.
+
+test('parser: strips the leading \\eP1000p protocol introducer', () => {
+	const { p, events } = makeParser();
+	p.feed(
+		Buffer.from(
+			'\x1bP1000p%begin 1 1 0\r\nfoo\r\n%end 1 1 0\r\n',
+			'binary'
+		)
+	);
+	assert.equal(events.length, 1);
+	assert.deepEqual(events[0], ['commandResponse', true, ['foo']]);
+});
+
+test('parser: strips inline \\ePtmux;...\\e\\ passthrough that prefixes a %begin', () => {
+	const { p, events } = makeParser();
+	// Reproduces the captured output: passthrough OSC 133 immediately before
+	// a command response block, no newline between them.
+	const stream =
+		'%session-changed $1 desktop\r\n' +
+		'\x1bPtmux;\x1b\x1b]133;W;@2\x07\x1b\\' +
+		'%begin 1 1 0\r\nlineA\r\n%end 1 1 0\r\n';
+	p.feed(Buffer.from(stream, 'binary'));
+	// Expect: notification for session-changed + commandResponse for the block.
+	const kinds = events.map((e) => e[0]);
+	assert.ok(kinds.includes('commandResponse'), `got: ${JSON.stringify(kinds)}`);
+	const resp = events.find((e) => e[0] === 'commandResponse');
+	assert.deepEqual(resp, ['commandResponse', true, ['lineA']]);
+});
+
+test('parser: handles chunked DCS spanning two feed() calls', () => {
+	const { p, events } = makeParser();
+	// Split the passthrough mid-sequence.
+	p.feed(Buffer.from('\x1bPtmux;\x1b\x1b]133;', 'binary'));
+	p.feed(
+		Buffer.from('W;@2\x07\x1b\\%begin 1 1 0\r\nx\r\n%end 1 1 0\r\n', 'binary')
+	);
+	const resp = events.find((e) => e[0] === 'commandResponse');
+	assert.deepEqual(resp, ['commandResponse', true, ['x']]);
+});
+
 // ─── Client: command queue ────────────────────────────────────────────────
 
 test('client: command() resolves with response lines (FIFO)', async () => {
