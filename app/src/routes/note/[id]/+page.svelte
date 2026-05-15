@@ -869,10 +869,6 @@
 		flex: 1;
 		overflow-y: auto;
 		-webkit-overflow-scrolling: touch;
-		/* Size container for image previews (max-height: 100cqh inside
-		   TomboyEditor). Safe here: .editor-area has a definite height
-		   via flex:1 in the .editor-page flex column. */
-		container-type: size;
 	}
 
 	/* Visual cue that this note is a terminal note in edit mode — the

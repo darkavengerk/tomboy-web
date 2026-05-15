@@ -999,17 +999,6 @@
 		padding: 0.5rem;
 		font-size: 16px;
 		line-height: 1.4;
-		/* NOTE: we deliberately do NOT set `container-type: size` here.
-		   That would imply `contain: size`, which prevents the element
-		   from being sized by its contents. It works on the desktop
-		   NoteWindow (where .body is a flex column giving .tomboy-editor
-		   a definite height via flex:1), but collapses the editor to 0
-		   on the mobile /note/[id] page where .editor-area is a plain
-		   block scroller — .tomboy-editor there is content-sized, so
-		   size containment zeroes it out and the note appears blank.
-		   Instead, the outer scroll container in each consumer sets
-		   `container-type: size` (see .editor-area and .body). Image
-		   previews reference that container via `100cqh` below. */
 	}
 
 	.tomboy-editor :global(.tiptap) {
@@ -1087,13 +1076,13 @@
 	   underlying text (including any <link:url> mark) is preserved verbatim
 	   for round-trip compatibility with Tomboy desktop.
 
-	   Sizing: default to the image's natural size, but cap to the note's
-	   visible width (max-width: 100%) and height (max-height: 100cqh, the
-	   size-container set on .tomboy-editor). Aspect ratio is preserved. */
+	   Sizing: width-only — natural size up to the note's visible width
+	   (max-width: 100%), then shrink to fit. Tall images extend past the
+	   viewport vertically and scroll, rather than being squeezed thin by
+	   a height cap. */
 	.tomboy-editor :global(img.tomboy-image-preview) {
 		display: block;
 		max-width: 100%;
-		max-height: 100cqh;
 		width: auto;
 		height: auto;
 		margin: 0.4em 0;
