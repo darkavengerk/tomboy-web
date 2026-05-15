@@ -632,6 +632,12 @@ to add the three lines inline than to source the plugin file.
 
 ## Invariants
 
+- **Pi 브릿지는 GPU가 없다 (Bridge ≠ model host).** 브릿지는 라우팅·인증·SSH
+  터미널만 담당하고 모델(Ollama, ocr-service, llama.cpp 등)은 절대
+  호스팅하지 않는다. 모든 모델은 별도 데스크탑(RTX 3080)에서 실행되며
+  브릿지가 `OLLAMA_BASE_URL`, `OCR_SERVICE_URL`, `RAG_SEARCH_URL` 환경변수로
+  데스크탑 LAN IP 를 가리킨다. **같은 머신을 가정하면 안 된다** — 과거에
+  이 가정 때문에 OCR 분리 작업과 RAG 도입에서 잘못된 설계로 되돌린 적이 있다.
 - **Note body = 1–2 metadata paragraphs + optional `connect:` / `pinned:` / `history:` sections.** A 3rd free paragraph (or any non-recognized block) means it's no longer a terminal note — by design, so users opt out simply by typing more.
 - **Default view is the editor.** Terminal notes open in `<TomboyEditor>` with a banner; clicking 접속 sets `terminalConnectMode = true` and starts the WS session. "편집 모드" sets it back to false. There is no separate "terminal edit mode" flag.
 - **`connect:` is single-bucket only** — no `connect:tmux:...` variant. On every WS `'open'` transition, `runConnectScript` sends each item as `text + '\r'` in order with a 50 ms gap. The `connectFired` flag in `TerminalView.svelte` ensures one run per open lifetime; reconnect resets it so the next open re-runs.
