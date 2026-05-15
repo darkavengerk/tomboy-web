@@ -16,7 +16,11 @@ model = [
     # 깨짐. GOT-OCR2 가 검증된 torch 2.4 LTS 라인으로 핀.
     "torch>=2.3,<2.5",
     "torchvision>=0.18,<0.20",
-    "transformers>=4.45,<4.50",
+    # transformers 4.46+ removed `DynamicCache.get_max_length()` which
+    # GOT-OCR2's `modeling_GOT.py` (frozen at HF revision 979938b) calls
+    # in `prepare_inputs_for_generation`. Pin to the last compatible
+    # range. The model was developed against 4.40-4.44 era.
+    "transformers>=4.40,<4.45",
     "accelerate>=0.33",
     "verovio>=4.3",
     # GOT-OCR2 의 tokenizer가 trust_remote_code 로 동적 import 함.
