@@ -23,7 +23,8 @@ import {
 import { ensureGuestSignedIn } from '$lib/firebase/app.js';
 import {
 	discoverPublicConfigForGuest,
-	getCachedPublicConfig
+	getCachedPublicConfig,
+	readPublicConfigForHost
 } from './publicConfig.js';
 import { mode } from '$lib/stores/guestMode.svelte.js';
 
@@ -39,6 +40,7 @@ export async function isFirebaseNotesEnabledSetting(): Promise<boolean> {
 export const FIREBASE_NOTES_ENABLED_KEY = ENABLED_SETTING_KEY;
 
 let installed = false;
+let hostPublicConfigPrimed = false;
 
 /**
  * Wire the orchestrator with real Firestore adapters and apply the persisted
@@ -92,6 +94,16 @@ export async function installRealNoteSync(): Promise<void> {
 		push: async (note) => {
 			const uid = await getCurrentNoteSyncUid();
 			if (!uid) return;
+			if (!hostPublicConfigPrimed) {
+				// First push of this session — populate publicConfig cache so the
+				// payload builder can compute the `public` flag correctly.
+				try {
+					await readPublicConfigForHost(uid);
+				} catch (e) {
+					console.warn('[install] readPublicConfigForHost failed; pushes will stamp public:false until next attempt', e);
+				}
+				hostPublicConfigPrimed = true;
+			}
 			await client.setNoteDoc(uid, note);
 		},
 		getNote: (g) => noteStore.getNote(g),

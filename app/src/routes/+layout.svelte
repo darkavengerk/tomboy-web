@@ -18,7 +18,7 @@
 	import { installRealNoteSync } from '$lib/sync/firebase/install.js';
 	import { pushToast } from '$lib/stores/toast.js';
 	import { getAllNotes } from '$lib/storage/noteStore.js';
-	import { getCachedPublicConfig } from '$lib/sync/firebase/publicConfig.js';
+	import { getCachedPublicConfig, discoverPublicConfigForGuest } from '$lib/sync/firebase/publicConfig.js';
 
 	let { children } = $props();
 
@@ -49,7 +49,11 @@
 		canGoForward = tracker.canGoForward();
 		const derived = modeFromUrl(page.url.pathname, page.url.searchParams);
 		if (derived) appMode.set(derived);
-		if (mode.value === 'visitor' && !page.url.pathname.startsWith('/welcome')) {
+		const isOauthCallback =
+			page.url.pathname === '/settings' && page.url.searchParams.has('code');
+		if (mode.value === 'visitor'
+				&& !page.url.pathname.startsWith('/welcome')
+				&& !isOauthCallback) {
 			void goto('/welcome', { replaceState: true });
 			return;
 		}
@@ -71,7 +75,15 @@
 	});
 
 	async function redirectGuestHome() {
-		const shared = getCachedPublicConfig()?.sharedNotebooks ?? [];
+		let cfg = getCachedPublicConfig();
+		if (!cfg) {
+			try {
+				cfg = await discoverPublicConfigForGuest();
+			} catch {
+				cfg = null;
+			}
+		}
+		const shared = cfg?.sharedNotebooks ?? [];
 		if (shared.length === 0) {
 			void goto('/notes', { replaceState: true });
 			return;
