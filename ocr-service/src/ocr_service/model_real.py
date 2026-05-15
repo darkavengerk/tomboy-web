@@ -3,9 +3,9 @@ that use FakeRunner never touch torch/transformers."""
 from __future__ import annotations
 
 import base64
-import io
 import logging
 import os
+import tempfile
 from threading import Lock
 
 # MUST be set before any `import torch` anywhere in the process. The lazy
@@ -86,10 +86,20 @@ class GotOcr2Runner:
     def run(self, image_b64: str) -> str:
         if self._model is None or self._tokenizer is None:
             raise RuntimeError("model not loaded")
-        from PIL import Image
         raw = base64.b64decode(image_b64)
-        image = Image.open(io.BytesIO(raw)).convert("RGB")
-        # GOT-OCR2's custom chat method. ocr_type='format' returns Markdown-like
-        # structured output suited for general documents.
-        result = self._model.chat(self._tokenizer, image, ocr_type="format")
-        return str(result)
+        # GOT-OCR2's custom chat() calls load_image(image_file) which does
+        # image_file.startswith("http") — so it must be a path or URL string,
+        # NOT a PIL Image. Write bytes to a temp file and pass the path.
+        fd, path = tempfile.mkstemp(suffix=".png")
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(raw)
+            # ocr_type='format' returns Markdown-like structured output suited
+            # for general documents.
+            result = self._model.chat(self._tokenizer, path, ocr_type="format")
+            return str(result)
+        finally:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
