@@ -7,7 +7,8 @@
   "scripts": {
     "build": "tsc -p .",
     "start": "node dist/server.js",
-    "dev": "tsc -p . --watch & node --watch dist/server.js"
+    "dev": "tsc -p . --watch & node --watch dist/server.js",
+    "deploy": "node scripts/deploy.mjs"
   },
   "dependencies": {
     "@types/node": "^22.0.0",
