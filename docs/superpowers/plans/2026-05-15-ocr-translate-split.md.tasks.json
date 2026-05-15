@@ -37,41 +37,41 @@
     {
       "id": 6,
       "subject": "Task 5: bridge /gpu/status fan-out 합본",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [2, 3],
       "description": "**Goal:** Merge ocr-service /gpu/raw + /status + Ollama /api/ps into single JSON.\n\n```json:metadata\n{\"files\": [\"bridge/src/gpu.ts\", \"bridge/src/gpu.test.ts\", \"bridge/src/server.ts\"], \"verifyCommand\": \"cd bridge && npm test -- --run gpu\", \"acceptanceCriteria\": [\"3 vitest tests pass\", \"merges all three upstreams\", \"graceful partial failure\", \"spec §4.4 shape\"]}\n```"
     },
     {
       "id": 7,
       "subject": "Task 6: bridge /gpu/unload 백엔드 라우팅",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [2],
       "description": "**Goal:** Backend-routed unload. ollama → /api/generate keep_alive:0. ocr → ocr-service /unload.\n\n```json:metadata\n{\"files\": [\"bridge/src/gpu.ts\", \"bridge/src/gpu.test.ts\", \"bridge/src/server.ts\"], \"verifyCommand\": \"cd bridge && npm test -- --run gpu\", \"acceptanceCriteria\": [\"ollama backend → /api/generate keep_alive:0\", \"ocr backend → /unload\", \"423 passthrough\", \"unknown backend → 400\", \"missing name on ollama → 400\"]}\n```"
     },
     {
       "id": 8,
       "subject": "Task 7: 노트 시그니처 translate: 헤더 + defaults 단순화",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** OCR note schema extension with translate: header + legacy flag. Remove target_lang.\n\n```json:metadata\n{\"files\": [\"app/src/lib/ocrNote/defaults.ts\", \"app/src/lib/ocrNote/parseOcrNote.ts\", \"app/tests/unit/ocrNote/parseOcrNote.test.ts\"], \"verifyCommand\": \"cd app && npm test -- --run parseOcrNote\", \"acceptanceCriteria\": [\"translateModel field added\", \"legacy flag true when no translate: header\", \"target_lang silently ignored\", \"7 tests pass\"]}\n```"
     },
     {
       "id": 9,
       "subject": "Task 8: runOcrInEditor 두 단계 분리",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [5, 8],
       "description": "**Goal:** OCR → translate sequential calls. [원문]/[번역] blocks streamed. Legacy notes fall back to single-call.\n\n```json:metadata\n{\"files\": [\"app/src/lib/ocrNote/sendOcr.ts\", \"app/src/lib/ocrNote/runOcrInEditor.ts\", \"app/tests/unit/ocrNote/sendOcr.test.ts\"], \"verifyCommand\": \"cd app && npm test -- --run ocrNote && npm run check\", \"acceptanceCriteria\": [\"sendOcr happy path + 401/503/400/network\", \"two-stage flow streams [원문] then [번역]\", \"legacy fallback retains old single-call\", \"svelte-check 0 errors\"]}\n```"
     },
     {
       "id": 10,
       "subject": "Task 9: /admin/gpu 페이지",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [6, 7],
       "description": "**Goal:** GPU monitor page in admin with VRAM bar, model list, manual unload buttons. 5s polling while visible.\n\n```json:metadata\n{\"files\": [\"app/src/lib/gpuMonitor/types.ts\", \"app/src/lib/gpuMonitor/client.ts\", \"app/src/routes/admin/gpu/+page.svelte\", \"app/src/routes/admin/+layout.svelte\", \"app/tests/unit/gpuMonitor/client.test.ts\"], \"verifyCommand\": \"cd app && npm test -- --run gpuMonitor && npm run check\", \"acceptanceCriteria\": [\"5 client tests pass\", \"polling 5s + visibility-gated\", \"unload buttons + toast feedback\", \"empty/error states\", \"subtab in admin nav\"]}\n```"
     },
     {
       "id": 11,
       "subject": "Task 10: invariant 문서화 (머신 분리)",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Record \"Pi bridge has no GPU; all models on desktop\" invariant in two places to prevent regression.\n\n```json:metadata\n{\"files\": [\".claude/skills/tomboy-terminal/SKILL.md\", \"CLAUDE.md\"], \"verifyCommand\": \"grep -l 'Bridge.*no GPU\\\\|Bridge ≠ model host' CLAUDE.md .claude/skills/tomboy-terminal/SKILL.md\", \"acceptanceCriteria\": [\"tomboy-terminal SKILL has invariant\", \"CLAUDE.md has invariant bullet\", \"env vars OLLAMA_BASE_URL/OCR_SERVICE_URL/RAG_SEARCH_URL mentioned\"]}\n```"
     }
   ],
