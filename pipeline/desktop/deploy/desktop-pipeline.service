@@ -6,7 +6,7 @@ Type=oneshot
 WorkingDirectory=%h/workspace/tomboy-web/pipeline
 # Evict Ollama models so diary's transformers VLM loading doesn't OOM.
 # Silent-fail on each model in case Ollama isn't running or model isn't pulled.
-ExecStartPre=/bin/bash -c 'for m in qwen2.5-coder:3b qwen2.5:7b bge-m3; do curl -sf -X POST http://localhost:11434/api/generate -d "{\"model\":\"$m\",\"keep_alive\":0}" >/dev/null || true; done'
+ExecStartPre=/bin/bash -c 'for m in qwen2.5-coder:3b qwen2.5:7b bge-m3-cpu; do curl -sf -X POST http://localhost:11434/api/generate -d "{\"model\":\"$m\",\"keep_alive\":0}" >/dev/null || true; done'
 ExecStart=%h/workspace/tomboy-web/pipeline/.venv/bin/python -m desktop.run_pipeline
 StandardOutput=journal
 StandardError=journal

@@ -26,7 +26,7 @@ _log = logging.getLogger(__name__)
 _DATA_DIR = Path("~/.local/share/tomboy-rag").expanduser()
 _POLL_INTERVAL_S = 30
 _OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-_EMBED_MODEL = os.environ.get("RAG_EMBED_MODEL", "bge-m3")
+_EMBED_MODEL = os.environ.get("RAG_EMBED_MODEL", "bge-m3-cpu")
 
 _PIPELINE_CONFIG_PATH = (
     Path(__file__).resolve().parents[2] / "config" / "pipeline.yaml"

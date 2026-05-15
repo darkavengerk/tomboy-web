@@ -21,7 +21,7 @@ class OllamaEmbedder:
     def __init__(
         self,
         base_url: str = "http://localhost:11434",
-        model: str = "bge-m3",
+        model: str = "bge-m3-cpu",
         timeout: float = 30.0,
     ) -> None:
         self.base_url = base_url.rstrip("/")

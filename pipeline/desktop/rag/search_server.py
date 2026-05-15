@@ -62,7 +62,7 @@ def build_app(store: VectorStore, embedder: OllamaEmbedder) -> FastAPI:
 # Module-level app for uvicorn (`uvicorn desktop.rag.search_server:app`)
 _DATA_DIR = Path("~/.local/share/tomboy-rag").expanduser()
 _OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-_EMBED_MODEL = os.environ.get("RAG_EMBED_MODEL", "bge-m3")
+_EMBED_MODEL = os.environ.get("RAG_EMBED_MODEL", "bge-m3-cpu")
 
 
 def _make_default_app() -> FastAPI:
