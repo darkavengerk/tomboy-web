@@ -78,3 +78,17 @@ def test_unload_when_in_flight_returns_423(client) -> None:
     _app.state.engine._in_flight = 1
     r = client.post("/unload", headers={"Authorization": "Bearer test-token"})
     assert r.status_code == 423
+
+
+def test_gpu_raw_requires_auth(client) -> None:
+    assert client.get("/gpu/raw").status_code == 401
+
+
+def test_gpu_raw_returns_available_false_no_nvidia(client, monkeypatch) -> None:
+    # In CI / dev machines without nvidia-smi we should still get 200.
+    def boom(cmd):
+        raise FileNotFoundError("nvidia-smi")
+    monkeypatch.setattr("ocr_service.gpu._real_runner", boom)
+    r = client.get("/gpu/raw", headers={"Authorization": "Bearer test-token"})
+    assert r.status_code == 200
+    assert r.json()["available"] is False

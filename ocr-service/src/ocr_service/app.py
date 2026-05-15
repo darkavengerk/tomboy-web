@@ -19,6 +19,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel
 
 from .config import get_settings
+from .gpu import query_gpu
 from .idle import idle_watcher
 from .model import OcrEngine
 
@@ -106,3 +107,11 @@ def post_unload(
     if not ok:
         raise HTTPException(423, "in_flight")
     return {"unloaded": True}
+
+
+@app.get("/gpu/raw")
+def get_gpu_raw(
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    require_bearer(authorization)
+    return query_gpu()
