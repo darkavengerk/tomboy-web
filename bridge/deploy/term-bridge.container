@@ -14,6 +14,11 @@
 #        # RAG 검색 서버 (desktop FastAPI). 같은 호스트면 생략 가능.
 #        # 분리된 머신이면 (예: bridge=Pi, indexer=Desktop) 명시:
 #        #   RAG_SEARCH_URL=http://<desktop-host-ip>:8743/search
+#        # OCR 서비스 URL. 같은 머신이면 http://localhost:8080. 분리된 머신
+#        # (예: bridge=Pi, ocr=Desktop) 면 명시 필요:
+#        #   OCR_SERVICE_URL=http://<desktop-host-ip>:8080
+#        # 누락 시 부팅 거부. 같은 머신 가정으로 빠뜨려서 OCR이 안 되는
+#        # 실수를 사전 차단한다.
 #   4. Create ~/.config/term-bridge/hosts.json BEFORE starting the unit
 #      (podman creates a directory at the source path if the file is
 #      missing, which silently breaks the bind mount). For the no-WOL

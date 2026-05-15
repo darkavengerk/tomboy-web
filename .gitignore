@@ -25,3 +25,9 @@ pipeline/logs/
 pipeline/state/
 pipeline/.venv/
 pipeline/__pycache__/
+
+# OCR service (FastAPI GOT-OCR2 sidecar) — see ocr-service/
+ocr-service/.venv/
+ocr-service/**/__pycache__/
+ocr-service/.pytest_cache/
+ocr-service/src/*.egg-info/

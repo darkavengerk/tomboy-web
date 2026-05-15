@@ -2,13 +2,21 @@ import type { JSONContent } from '@tiptap/core';
 import {
 	OCR_SIGNATURE_RE,
 	OCR_HEADER_KEY_RE,
-	OCR_DEFAULT_TARGET_LANG,
 	type OcrHeaderKey
 } from './defaults.js';
 
 export interface OcrNoteSpec {
+	/** OCR model (signature). For the post-split flow this is `got-ocr2`
+	 *  or whatever ocr-service exposes. For legacy notes it's an Ollama
+	 *  vision model id. */
 	model: string;
-	targetLang: string;
+	/** Ollama translation model. Undefined when the note has no
+	 *  `translate:` header — caller falls back to the legacy
+	 *  single-call flow using `model` for both steps. */
+	translateModel?: string;
+	/** True when the note has NO `translate:` header. UI uses this to
+	 *  pick the legacy code path. */
+	legacy: boolean;
 	system?: string;
 	options: {
 		temperature?: number;
@@ -29,15 +37,6 @@ function paragraphLines(block: JSONContent | undefined): string[] {
 
 const INT_KEYS = new Set<OcrHeaderKey>(['num_ctx']);
 
-/**
- * Parse a note's TipTap JSON into an OCR spec.
- *
- * Mirrors the parseLlmNote shape — signature line at content[0] OR content[1]
- * (so a title line above is allowed), header block until the first blank
- * paragraph. Anything after the blank paragraph is the OCR result history and
- * is NOT parsed (the runner appends new results below the trigger image, but
- * existing results don't influence subsequent runs).
- */
 export function parseOcrNote(doc: JSONContent | null | undefined): OcrNoteSpec | null {
 	if (!doc || !Array.isArray(doc.content) || doc.content.length === 0) return null;
 
@@ -62,7 +61,6 @@ export function parseOcrNote(doc: JSONContent | null | undefined): OcrNoteSpec |
 	for (let i = 1; i < sigParaLines.length; i++) {
 		headerLines.push(sigParaLines[i]);
 	}
-
 	for (let i = sigIndex + 1; i < doc.content.length; i++) {
 		const text = paragraphText(doc.content[i]);
 		if (text === '') break;
@@ -73,7 +71,7 @@ export function parseOcrNote(doc: JSONContent | null | undefined): OcrNoteSpec |
 
 	const result: OcrNoteSpec = {
 		model,
-		targetLang: OCR_DEFAULT_TARGET_LANG,
+		legacy: true,
 		options: {}
 	};
 
@@ -85,9 +83,12 @@ export function parseOcrNote(doc: JSONContent | null | undefined): OcrNoteSpec |
 		const value = currentValueLines.join('\n');
 		if (currentKey === 'system') {
 			result.system = value;
-		} else if (currentKey === 'target_lang') {
+		} else if (currentKey === 'translate') {
 			const trimmed = value.trim();
-			if (trimmed !== '') result.targetLang = trimmed;
+			if (trimmed !== '') {
+				result.translateModel = trimmed;
+				result.legacy = false;
+			}
 		} else {
 			const trimmed = value.trim();
 			const n = INT_KEYS.has(currentKey) ? parseInt(trimmed, 10) : parseFloat(trimmed);

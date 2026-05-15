@@ -526,6 +526,12 @@ Quick map:
 
 Cross-cutting invariants worth caching (full set lives in the skill):
 
+- **Bridge ≠ model host.** The Pi-side bridge has no GPU. Ollama,
+  ocr-service, and any other model runtime live on a separate desktop
+  (RTX 3080). Bridge points to them via `OLLAMA_BASE_URL` /
+  `OCR_SERVICE_URL` / `RAG_SEARCH_URL`. Same-machine assumption has
+  bitten past work (OCR split, RAG intro both nearly went down this
+  path) — don't.
 - **Default view is the editor.** Terminal notes open in `<TomboyEditor>`
   with a banner; clicking 접속 sets `terminalConnectMode = true` and
   starts the WS session. No separate "terminal edit mode" flag.

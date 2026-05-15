@@ -1,0 +1,79 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-15-ocr-translate-split.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 0: ocr-service 스캐폴드 + /ocr + /healthz",
+      "status": "completed",
+      "description": "**Goal:** Python FastAPI 서비스를 만들고 GOT-OCR2 로 단일 이미지를 처리하는 최소 동작 흐름을 검증.\n\n```json:metadata\n{\"files\": [\"ocr-service/pyproject.toml\", \"ocr-service/src/ocr_service/app.py\", \"ocr-service/src/ocr_service/model.py\", \"ocr-service/src/ocr_service/config.py\", \"ocr-service/tests/conftest.py\", \"ocr-service/tests/test_app.py\"], \"verifyCommand\": \"cd ocr-service && pytest -v\", \"acceptanceCriteria\": [\"pip install passes\", \"6 pytest tests pass\", \"GET /healthz returns 200\", \"POST /ocr enforces Bearer + image_b64\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 1: GOT-OCR2 실제 로딩 + idle 자동 언로드 + /status + /unload",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "**Goal:** GOT-OCR2 real loading + idle timer + status/unload endpoints.\n\n```json:metadata\n{\"files\": [\"ocr-service/src/ocr_service/model_real.py\", \"ocr-service/src/ocr_service/idle.py\", \"ocr-service/src/ocr_service/app.py\", \"ocr-service/tests/test_model.py\"], \"verifyCommand\": \"cd ocr-service && pytest -v\", \"acceptanceCriteria\": [\"/status returns loaded state\", \"/unload returns 423 if in-flight\", \"idle watcher unloads via fake clock\", \"startup wires GotOcr2Runner\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 2: ocr-service /gpu/raw (nvidia-smi)",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "**Goal:** Expose nvidia-smi totals + per-process VRAM via /gpu/raw.\n\n```json:metadata\n{\"files\": [\"ocr-service/src/ocr_service/gpu.py\", \"ocr-service/src/ocr_service/app.py\", \"ocr-service/tests/test_gpu.py\"], \"verifyCommand\": \"cd ocr-service && pytest tests/test_gpu.py tests/test_app.py -v\", \"acceptanceCriteria\": [\"parses totals + processes\", \"missing nvidia-smi returns 200 + available:false\", \"Bearer auth required\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 3: ocr-service 컨테이너화 (Containerfile + Quadlet)",
+      "status": "completed",
+      "blockedBy": [1, 2, 3],
+      "description": "**Goal:** Containerfile + Quadlet unit for desktop deploy.\n\n```json:metadata\n{\"files\": [\"ocr-service/Containerfile\", \"ocr-service/deploy/ocr-service.container\", \"ocr-service/deploy/README.md\"], \"verifyCommand\": \"podman build -t ocr-service:dev ocr-service/\", \"acceptanceCriteria\": [\"podman build succeeds\", \"container refuses no-token start\", \"/healthz smoke passes\", \"README desktop-only emphasized\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 4: bridge /ocr 프록시 추가",
+      "status": "completed",
+      "description": "**Goal:** Bridge proxies /ocr POSTs to desktop ocr-service. OCR_SERVICE_URL required env.\n\n```json:metadata\n{\"files\": [\"bridge/src/ocr.ts\", \"bridge/src/ocr.test.ts\", \"bridge/src/server.ts\", \"bridge/deploy/term-bridge.container\"], \"verifyCommand\": \"cd bridge && npm test -- --run ocr\", \"acceptanceCriteria\": [\"4 vitest tests pass\", \"Bearer + image_b64 validation\", \"503 on upstream error\", \"OCR_SERVICE_URL required\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 5: bridge /gpu/status fan-out 합본",
+      "status": "completed",
+      "blockedBy": [2, 3],
+      "description": "**Goal:** Merge ocr-service /gpu/raw + /status + Ollama /api/ps into single JSON.\n\n```json:metadata\n{\"files\": [\"bridge/src/gpu.ts\", \"bridge/src/gpu.test.ts\", \"bridge/src/server.ts\"], \"verifyCommand\": \"cd bridge && npm test -- --run gpu\", \"acceptanceCriteria\": [\"3 vitest tests pass\", \"merges all three upstreams\", \"graceful partial failure\", \"spec §4.4 shape\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 6: bridge /gpu/unload 백엔드 라우팅",
+      "status": "completed",
+      "blockedBy": [2],
+      "description": "**Goal:** Backend-routed unload. ollama → /api/generate keep_alive:0. ocr → ocr-service /unload.\n\n```json:metadata\n{\"files\": [\"bridge/src/gpu.ts\", \"bridge/src/gpu.test.ts\", \"bridge/src/server.ts\"], \"verifyCommand\": \"cd bridge && npm test -- --run gpu\", \"acceptanceCriteria\": [\"ollama backend → /api/generate keep_alive:0\", \"ocr backend → /unload\", \"423 passthrough\", \"unknown backend → 400\", \"missing name on ollama → 400\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 7: 노트 시그니처 translate: 헤더 + defaults 단순화",
+      "status": "completed",
+      "description": "**Goal:** OCR note schema extension with translate: header + legacy flag. Remove target_lang.\n\n```json:metadata\n{\"files\": [\"app/src/lib/ocrNote/defaults.ts\", \"app/src/lib/ocrNote/parseOcrNote.ts\", \"app/tests/unit/ocrNote/parseOcrNote.test.ts\"], \"verifyCommand\": \"cd app && npm test -- --run parseOcrNote\", \"acceptanceCriteria\": [\"translateModel field added\", \"legacy flag true when no translate: header\", \"target_lang silently ignored\", \"7 tests pass\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 8: runOcrInEditor 두 단계 분리",
+      "status": "completed",
+      "blockedBy": [5, 8],
+      "description": "**Goal:** OCR → translate sequential calls. [원문]/[번역] blocks streamed. Legacy notes fall back to single-call.\n\n```json:metadata\n{\"files\": [\"app/src/lib/ocrNote/sendOcr.ts\", \"app/src/lib/ocrNote/runOcrInEditor.ts\", \"app/tests/unit/ocrNote/sendOcr.test.ts\"], \"verifyCommand\": \"cd app && npm test -- --run ocrNote && npm run check\", \"acceptanceCriteria\": [\"sendOcr happy path + 401/503/400/network\", \"two-stage flow streams [원문] then [번역]\", \"legacy fallback retains old single-call\", \"svelte-check 0 errors\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 9: /admin/gpu 페이지",
+      "status": "completed",
+      "blockedBy": [6, 7],
+      "description": "**Goal:** GPU monitor page in admin with VRAM bar, model list, manual unload buttons. 5s polling while visible.\n\n```json:metadata\n{\"files\": [\"app/src/lib/gpuMonitor/types.ts\", \"app/src/lib/gpuMonitor/client.ts\", \"app/src/routes/admin/gpu/+page.svelte\", \"app/src/routes/admin/+layout.svelte\", \"app/tests/unit/gpuMonitor/client.test.ts\"], \"verifyCommand\": \"cd app && npm test -- --run gpuMonitor && npm run check\", \"acceptanceCriteria\": [\"5 client tests pass\", \"polling 5s + visibility-gated\", \"unload buttons + toast feedback\", \"empty/error states\", \"subtab in admin nav\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 10: invariant 문서화 (머신 분리)",
+      "status": "completed",
+      "description": "**Goal:** Record \"Pi bridge has no GPU; all models on desktop\" invariant in two places to prevent regression.\n\n```json:metadata\n{\"files\": [\".claude/skills/tomboy-terminal/SKILL.md\", \"CLAUDE.md\"], \"verifyCommand\": \"grep -l 'Bridge.*no GPU\\\\|Bridge ≠ model host' CLAUDE.md .claude/skills/tomboy-terminal/SKILL.md\", \"acceptanceCriteria\": [\"tomboy-terminal SKILL has invariant\", \"CLAUDE.md has invariant bullet\", \"env vars OLLAMA_BASE_URL/OCR_SERVICE_URL/RAG_SEARCH_URL mentioned\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-15T15:43:50+09:00"
+}
