@@ -470,10 +470,14 @@ and forwards only the active pane; switching panes on the desktop
 re-seeds via `capture-pane -epJ`. The `stty cols/rows` + a follow-up
 `refresh-client -C 500x200` together claim a virtual 500x200 client
 size — combined with target-side `window-size smallest`, this prevents
-the spectator from shrinking the desktop user's window. On-screen-keyboard
-input is inert (no `term.onData` wiring); explicit input flows only
-through the **보내기 popup** → `send-keys -t <activePane> -H <hex>` for
-binary-safe injection (tmux 3.0+).
+the spectator from shrinking the desktop user's window. Input wiring
+is **viewport-conditional**: on desktop (`min-width: 768px`)
+`term.onData` is wired straight to `client.send`, so typing into the
+focused xterm feels like a real terminal; on mobile the wiring is
+skipped (the closure early-returns) so the on-screen keyboard stays
+inert and explicit input flows only through the **보내기 popup**.
+Both paths land on the same bridge call → `send-keys -t <activePane>
+-H <hex>` for binary-safe injection (tmux 3.0+).
 
 Mobile UI: width-fit via `transform: scale` on a three-layer
 `.xterm-host > .xterm-stage > .xterm-mount` DOM (NOT CSS `zoom` — breaks
@@ -483,7 +487,8 @@ buttons); bottom footer with two rows — top is current window label
 `[<idx>] <name>`, bottom is pane/window nav buttons `« ‹ › »` (issue
 `select-pane -t <s>:.+/-` / `select-window -t <s>:+/-` via WS
 `tmux-nav` frame; affects desktop view too since they're SESSION-level
-targets) + 보내기 button. Popup quick-keys for
+targets) + 보내기 button (mobile-only — gated `{#if isMobile}`; desktop
+uses direct keyboard input instead). Popup quick-keys for
 `y/n/1/Enter/Esc/^C/PgUp/PgDn`. IME composition guarded with
 `!e.isComposing` on Enter/Escape.
 

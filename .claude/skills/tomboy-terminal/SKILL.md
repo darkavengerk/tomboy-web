@@ -444,12 +444,18 @@ Client → server (spectator mode only):
 ```
 
 `data` frames are unchanged from shell mode. `resize` frames are still
-dropped in spectator mode (bridge dictates size from tmux). The client
-does NOT wire `term.onData` → `client.send` in spectator mode (so
-on-screen keyboards / accidental touches stay inert); input only flows
-via the explicit "보내기" popup. `tmux-nav` actions are whitelisted on
-the server (`TMUX_NAV_ACTIONS` set in `server.ts`) — unknown actions
-are dropped silently.
+dropped in spectator mode (bridge dictates size from tmux). Input
+wiring in spectator mode is **viewport-conditional**: on desktop
+(`min-width: 768px`) `term.onData` is wired straight to `client.send`
+so typing into a focused xterm feels like a real terminal; on mobile
+the wiring is skipped (the closure early-returns) so the on-screen
+keyboard / accidental touches stay inert and explicit input flows
+only through the "보내기" popup. The popup itself is also gated
+`{#if isMobile}` — desktop users use the keyboard. The breakpoint is
+read live inside the `onData` closure, so a viewport resize crossing
+768 px takes effect on the next keystroke without re-wiring. `tmux-nav`
+actions are whitelisted on the server (`TMUX_NAV_ACTIONS` set in
+`server.ts`) — unknown actions are dropped silently.
 
 ### Client-side behavior in spectator mode
 
@@ -458,7 +464,14 @@ are dropped silently.
 - No `FitAddon` — bridge dictates pane dimensions; `term.resize(cols, rows)`
   is driven by `pane-switch` / `pane-resize` callbacks.
 - No OSC 133 handler registered → no command history capture.
-- No `term.onData` → `client.send` wiring → on-screen keyboard inert.
+- `term.onData` → `client.send` wiring is **desktop-only**. On mobile
+  (`isMobile` = `!matchMedia('(min-width: 768px)')`), the handler
+  early-returns so the on-screen keyboard stays inert and explicit
+  input flows only through the 보내기 popup. On desktop, typing into
+  a focused xterm sends keystrokes directly to the active pane via
+  the same `send-keys -H` path — natural terminal feel, no popup
+  hop. `isMobile` is reactive, so a viewport crossing 768 px is
+  honored on the next keystroke.
 - No `runConnectScript` on `'open'`.
 - No history panel toggle in the header; `connect:` / `pinned:` /
   `history:` sections (if accidentally present) are still parsed but
@@ -486,7 +499,9 @@ are dropped silently.
     `[<window_index>] <window_name>` (or "윈도우 정보 대기 중…"
     until the first `pane-switch` lands). Updated on every pane-switch.
   - Bottom row (`.spec-controls`): pane/window nav button group
-    `« ‹ › »` + 보내기 button.
+    `« ‹ › »`, plus a 보내기 button **only on mobile** (`{#if isMobile}`).
+    On desktop the popup is unnecessary — direct keyboard input
+    handles every case the popup was built for.
     - `«` `‹` `›` `»` map to `tmuxNav('prev-window' | 'prev-pane' |
       'next-pane' | 'next-window')` respectively. All disabled while
       `status !== 'open'`. Bridge issues `select-pane -t <s>:.+/-` or

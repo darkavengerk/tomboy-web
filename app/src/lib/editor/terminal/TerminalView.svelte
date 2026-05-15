@@ -396,7 +396,6 @@
 				}
 			}, 30_000);
 
-			term.onData((data) => client?.send(data));
 			term.onResize(({ cols, rows }) => client?.resize(cols, rows));
 
 			// Refit on container size changes (window resize, panel toggles).
@@ -412,6 +411,23 @@
 			resizeObserver = new ResizeObserver(() => applySpectatorFit());
 			resizeObserver.observe(xtermHostEl);
 		}
+
+		// Keyboard input wiring:
+		//   - Shell mode: always send (normal terminal use).
+		//   - Spectator on desktop: send — typing into a focused xterm
+		//     should feel like a real terminal, so we wire onData
+		//     straight through to send-keys on the active pane.
+		//   - Spectator on mobile: stays inert. The on-screen keyboard
+		//     would pop up on every tap and clobber the read-by-default
+		//     experience; explicit input on phones flows through the
+		//     보내기 popup instead.
+		// `isMobile` is reactive ($state); the closure re-reads it on
+		// every call so viewport-breakpoint changes are honored without
+		// re-wiring the handler.
+		term.onData((data) => {
+			if (isSpectator && isMobile) return;
+			client?.send(data);
+		});
 	});
 
 	onDestroy(() => {
@@ -604,13 +620,15 @@
 						disabled={status !== 'open'}
 					>&raquo;</button>
 				</div>
-				<button
-					type="button"
-					class="send-btn"
-					onclick={openSendPopup}
-					disabled={status !== 'open'}
-					title="활성 패널에 키 입력 전송"
-				>보내기</button>
+				{#if isMobile}
+					<button
+						type="button"
+						class="send-btn"
+						onclick={openSendPopup}
+						disabled={status !== 'open'}
+						title="활성 패널에 키 입력 전송"
+					>보내기</button>
+				{/if}
 			</div>
 		</div>
 	{/if}
