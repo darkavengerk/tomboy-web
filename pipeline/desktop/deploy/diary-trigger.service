@@ -1,0 +1,25 @@
+[Unit]
+Description=Tomboy diary pipeline on-demand trigger (HTTP)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/workspace/tomboy-web/pipeline
+# DIARY_TRIGGER_TOKEN must be set; put it in an EnvironmentFile so it
+# isn't visible in `systemctl status` or `ps`. Example:
+#   echo 'DIARY_TRIGGER_TOKEN=<long random hex>' > %h/.config/diary-trigger.env
+#   chmod 600 %h/.config/diary-trigger.env
+EnvironmentFile=%h/.config/diary-trigger.env
+# Bind to 127.0.0.1 by default — front the service with Caddy / the
+# existing terminal-bridge reverse proxy when exposing to the network.
+# Override with `--host 0.0.0.0` (and proper firewall rules) if direct
+# LAN access is desired.
+ExecStart=%h/workspace/tomboy-web/pipeline/.venv/bin/python -m desktop.trigger_server --host 127.0.0.1 --port 8765
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

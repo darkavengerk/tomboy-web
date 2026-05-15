@@ -92,3 +92,32 @@ export async function getTerminalShellIntegrationBannerDismissed(): Promise<bool
 export async function setTerminalShellIntegrationBannerDismissed(value: boolean): Promise<void> {
 	await setSetting(TERM_HIST_BANNER_DISMISSED, value);
 }
+
+// ── Diary pipeline trigger settings ──────────────────────────────────
+//
+// The /admin/remarkable page can be configured with the URL of a
+// desktop-side trigger service (see pipeline/desktop/trigger_server.py)
+// and the Bearer token it expects. When set, clicking "재처리 요청"
+// fires off the Firestore flag AND POSTs to the trigger URL so the
+// pipeline runs immediately instead of waiting for a manual desktop run.
+
+const DIARY_TRIGGER_URL = 'diaryTriggerUrl';
+const DIARY_TRIGGER_TOKEN = 'diaryTriggerToken';
+
+export async function getDiaryTriggerUrl(): Promise<string> {
+	const v = await getSetting<string>(DIARY_TRIGGER_URL);
+	return typeof v === 'string' ? v : '';
+}
+
+export async function setDiaryTriggerUrl(value: string): Promise<void> {
+	await setSetting(DIARY_TRIGGER_URL, value);
+}
+
+export async function getDiaryTriggerToken(): Promise<string> {
+	const v = await getSetting<string>(DIARY_TRIGGER_TOKEN);
+	return typeof v === 'string' ? v : '';
+}
+
+export async function setDiaryTriggerToken(value: string): Promise<void> {
+	await setSetting(DIARY_TRIGGER_TOKEN, value);
+}

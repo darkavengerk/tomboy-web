@@ -130,3 +130,124 @@ export async function cancelRerun(pageUuid: string): Promise<void> {
 export function isScrollExtended(p: DiaryPipelinePage): boolean {
 	return typeof p.imageHeight === 'number' && p.imageHeight > 1872;
 }
+
+// ── Desktop trigger ──────────────────────────────────────────────────
+//
+// Companion to `pipeline/desktop/trigger_server.py`. The browser posts
+// here when the user clicks "재처리 요청" — the desktop spawns the
+// pipeline in the background and returns 202 immediately.
+
+export interface TriggerStatus {
+	running: boolean;
+	jobId?: string;
+	startedAt?: string;
+	finishedAt?: string;
+	exitCode?: number;
+	stdoutTail?: string;
+	stderrTail?: string;
+}
+
+export interface TriggerResult {
+	ok: boolean;
+	started?: boolean;
+	alreadyRunning?: boolean;
+	status?: TriggerStatus;
+	error?: string;
+}
+
+function normalizeBaseUrl(url: string): string {
+	const trimmed = url.trim().replace(/\/+$/, '');
+	return trimmed;
+}
+
+/** POST to ``<triggerUrl>/run`` with the Bearer token. Returns a
+ * structured result the UI can render: success, already-running, network
+ * error, or auth error. Never throws — callers reliably get a payload. */
+export async function triggerPipelineRun(
+	triggerUrl: string,
+	token: string
+): Promise<TriggerResult> {
+	const base = normalizeBaseUrl(triggerUrl);
+	if (!base) {
+		return { ok: false, error: '트리거 URL이 설정되지 않았습니다' };
+	}
+	if (!token) {
+		return { ok: false, error: '트리거 토큰이 설정되지 않았습니다' };
+	}
+	let res: Response;
+	try {
+		res = await fetch(base + '/run', {
+			method: 'POST',
+			headers: {
+				Authorization: 'Bearer ' + token,
+				'Content-Type': 'application/json'
+			},
+			body: '{}'
+		});
+	} catch (e) {
+		return { ok: false, error: '네트워크 오류: ' + String(e) };
+	}
+	let body: Record<string, unknown> = {};
+	try {
+		body = (await res.json()) as Record<string, unknown>;
+	} catch {
+		body = {};
+	}
+	if (res.status === 202) {
+		return { ok: true, started: true, status: body as unknown as TriggerStatus };
+	}
+	if (res.status === 409) {
+		return {
+			ok: true,
+			alreadyRunning: true,
+			status: body as unknown as TriggerStatus
+		};
+	}
+	if (res.status === 401) {
+		return { ok: false, error: '인증 실패 (토큰 확인)' };
+	}
+	return {
+		ok: false,
+		error: 'HTTP ' + String(res.status) + ' ' + JSON.stringify(body)
+	};
+}
+
+/** GET ``<triggerUrl>/status``. Used to refresh the live status panel. */
+export async function fetchTriggerStatus(
+	triggerUrl: string,
+	token: string
+): Promise<TriggerResult> {
+	const base = normalizeBaseUrl(triggerUrl);
+	if (!base || !token) {
+		return { ok: false, error: 'not configured' };
+	}
+	let res: Response;
+	try {
+		res = await fetch(base + '/status', {
+			headers: { Authorization: 'Bearer ' + token }
+		});
+	} catch (e) {
+		return { ok: false, error: '네트워크 오류: ' + String(e) };
+	}
+	if (res.status !== 200) {
+		return { ok: false, error: 'HTTP ' + String(res.status) };
+	}
+	try {
+		const body = (await res.json()) as Record<string, unknown>;
+		return { ok: true, status: body as unknown as TriggerStatus };
+	} catch {
+		return { ok: false, error: 'invalid JSON' };
+	}
+}
+
+/** GET ``<triggerUrl>/health`` — no auth needed; used to verify URL is reachable. */
+export async function pingTrigger(triggerUrl: string): Promise<boolean> {
+	const base = normalizeBaseUrl(triggerUrl);
+	if (!base) return false;
+	try {
+		const res = await fetch(base + '/health');
+		return res.ok;
+	} catch {
+		return false;
+	}
+}

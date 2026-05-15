@@ -143,6 +143,25 @@ Read/rerun side: each stage's `main()` calls `fetch_pending_reruns(cfg, log)` an
 
 Failures (no network, missing creds) are **best-effort silent** — pipeline progress trumps the optional admin mirror.
 
+### I13. Desktop trigger service auto-runs the pipeline on rerun
+
+`pipeline/desktop/trigger_server.py` is a small stdlib HTTP service the admin page POSTs to so the user doesn't have to manually re-run the pipeline after clicking "재처리 요청".
+
+Endpoints:
+- `GET  /health` (no auth) — readiness probe used by the admin to color the connection chip.
+- `GET  /status` (Bearer) — current job snapshot: `{ running, jobId, startedAt, finishedAt, exitCode, stderrTail, stdoutTail }`.
+- `POST /run` (Bearer) — fire-and-forget. Returns 202 immediately and runs `python -m desktop.run_pipeline` in a worker thread. Concurrent calls get 409 (`alreadyRunning: true`).
+
+Auth: Bearer token from the `DIARY_TRIGGER_TOKEN` env var (preferred — kept out of `argv`) or `trigger.token` in `pipeline.yaml` as a fallback.
+
+CORS: the admin (deployed PWA origin) calls a different origin (the user's desktop / their reverse proxy). The service responds to OPTIONS preflight and echoes the request origin in `Access-Control-Allow-Origin`. Security still rests on the Bearer token — `*` origin without credentials is fine because cookies aren't part of the flow.
+
+Deployment: `pipeline/desktop/deploy/diary-trigger.service` (user systemd unit). Default bind is `127.0.0.1:8765` — front with Caddy / the existing terminal-bridge reverse proxy when exposing beyond loopback. The unit reads the token from `~/.config/diary-trigger.env` so it isn't visible in `systemctl status`.
+
+Admin side wiring (`app/src/lib/storage/appSettings.ts` keys `diaryTriggerUrl` + `diaryTriggerToken`, called from `app/src/routes/admin/remarkable/+page.svelte`): when both are configured, clicking 재처리 요청 sets the Firestore flag AND POSTs to `<url>/run`. If unconfigured, the page falls back to the manual-run instructions (the Firestore-only path of I12 still works).
+
+The trigger NEVER passes per-page UUIDs in the body — every stage drains the Firestore rerun queue at startup (I12), so a single trigger call processes everything that's pending. Don't add a per-uuid HTTP shape; it would duplicate the queue's role.
+
 ## 3. End-to-end workflow
 
 ### 3a. rM tablet (one-time setup)
@@ -278,6 +297,7 @@ To force a re-run of a stage: delete the relevant file or pass `--force <uuid>`.
   - `dropbox_uploader.py` — PNG upload + share-link. `share_link()` rewrites Dropbox's default `?dl=0` (HTML preview page) to `?raw=1` (raw bytes) via `_to_inline_url`, so the URL works as an inline image source — without it, the URL only opens a Dropbox preview when clicked and is useless inside an `<img src>`.
   - `pipeline_status.py` — `PipelineStatusClient` (Firebase Admin SDK) for per-page status docs at `users/{uid}/diary-pipeline-pages/{pageUuid}` (see I12). `fetch_pending_reruns(cfg, log)` is the best-effort helper every stage's `main()` uses to fold admin-page rerun requests into its `force` set.
   - `state.py`, `log.py`, `config.py` — shared infrastructure.
+- `pipeline/desktop/trigger_server.py` — stdlib HTTP trigger (see I13). Bearer-authed, CORS-enabled, fire-and-forget run of `desktop.run_pipeline`. Unit file at `pipeline/desktop/deploy/diary-trigger.service`.
 - `pipeline/desktop/bootstrap.py` — `sanitize_account_id` MUST mirror `functions/src/index.ts:280-281` byte-for-byte. Tests in `tests/test_bootstrap.py` lock the contract.
 - `pipeline/config/pipeline.yaml` — gitignored. Holds `firebase_uid`, service-account path, Dropbox refresh token, host details. `bootstrap.py` emits it.
 - `pipeline/config/prompts/diary-ko.txt` — Qwen2.5-VL system prompt for Korean handwriting.
@@ -285,7 +305,7 @@ To force a re-run of a stage: delete the relevant file or pass `--force <uuid>`.
 ### App-side helpers added during bring-up
 
 - `app/src/lib/editor/NoteXmlViewer.svelte` — modal that shows raw `xmlContent` for any note. Accessible from the **⋯** menu → "원본 XML 보기" on both mobile (`NoteActionSheet`) and desktop (`NoteContextMenu`). Critical for verifying what s4 actually wrote without firing up the Firestore console.
-- `app/src/lib/admin/remarkablePipeline.ts` + `app/src/routes/admin/remarkable/+page.svelte` — the `/admin/remarkable` operator UI. Reads from `users/{uid}/diary-pipeline-pages`, writes the `rerunRequested` flag. Surfaces page UUID → tomboy GUID mapping, Dropbox image thumb, PNG dimensions, OCR char count + model, and a "스크롤" badge for `imageHeight > 1872`. Added to `admin/+layout.svelte` tabs as "리마커블".
+- `app/src/lib/admin/remarkablePipeline.ts` + `app/src/routes/admin/remarkable/+page.svelte` — the `/admin/remarkable` operator UI. Reads from `users/{uid}/diary-pipeline-pages`, writes the `rerunRequested` flag, and (when configured) POSTs to the desktop trigger server. Surfaces page UUID → tomboy GUID mapping, Dropbox image thumb, PNG dimensions, OCR char count + model, a "스크롤" badge for `imageHeight > 1872`, and a trigger panel with URL/token inputs + connection health + last-run status. Added to `admin/+layout.svelte` tabs as "리마커블".
 
 ## 7. Tests guarding the bring-up bugs
 
