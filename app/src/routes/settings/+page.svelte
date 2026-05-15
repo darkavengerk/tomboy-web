@@ -120,9 +120,17 @@
 	let termHistOpenMobile = $state(false);
 	let termHistBlocklistText = $state('');
 	let snippetCopied = $state(false);
+	let loaderCopied = $state(false);
 	let tmuxSnippetCopied = $state(false);
 
-	const shellSnippet = `# Append to ~/.bashrc (bash 4.4+; zsh users need a different snippet)
+	// Recommended remote path for the integration script. Single file in
+	// $HOME keeps the setup simple (no mkdir step) and the user's ~/.bashrc
+	// stays clean — only the loader line below lives in .bashrc.
+	const shellSnippetPath = '~/.tomboy-terminal.sh';
+	const shellLoaderLine = `[ -f ${shellSnippetPath} ] && . ${shellSnippetPath}`;
+
+	const shellSnippet = `# ~/.tomboy-terminal.sh — Tomboy 터미널 노트 셸 통합 (bash 4.4+)
+# Load from ~/.bashrc:  ${shellLoaderLine}
 __th_state_file="\${XDG_RUNTIME_DIR:-/tmp}/.th_state_$$"
 
 __th_osc() {
@@ -270,6 +278,14 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 		snippetCopied = true;
 		setTimeout(() => {
 			snippetCopied = false;
+		}, 2000);
+	}
+
+	async function copyLoader(): Promise<void> {
+		await navigator.clipboard.writeText(shellLoaderLine);
+		loaderCopied = true;
+		setTimeout(() => {
+			loaderCopied = false;
 		}, 2000);
 	}
 
@@ -1061,12 +1077,26 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 			<section class="section">
 				<h2>셸 통합 (OSC 133)</h2>
 				<p class="info-text">
-					히스토리 캡처에는 원격 셸에 1회 설정이 필요합니다. 아래 스니펫을
-					원격의 <code>~/.bashrc</code> (또는 <code>~/.zshrc</code>) 끝에
-					추가하세요.
+					히스토리 캡처에는 원격 셸에 1회 설정이 필요합니다.
+					<code>~/.bashrc</code>가 지저분해지지 않도록, 스니펫은 별도 파일에
+					저장하고 <code>~/.bashrc</code>에서 한 줄로 로드합니다.
+				</p>
+
+				<p class="info-text small">
+					<strong>1단계.</strong> 아래 스니펫을 원격의
+					<code>{shellSnippetPath}</code> 파일로 저장하세요.
 				</p>
 				<pre class="snippet"><code>{shellSnippet}</code></pre>
 				<button class="btn btn-secondary" onclick={copySnippet}>{snippetCopied ? '복사됨' : '복사'}</button>
+
+				<p class="info-text small">
+					<strong>2단계.</strong> 원격의 <code>~/.bashrc</code> 끝에 다음 한 줄을
+					추가하세요 (zsh 사용 시 <code>~/.zshrc</code>; 위 스니펫은 bash 4.4+
+					전용이라 zsh에서는 다른 스니펫이 필요합니다).
+				</p>
+				<pre class="snippet"><code>{shellLoaderLine}</code></pre>
+				<button class="btn btn-secondary" onclick={copyLoader}>{loaderCopied ? '복사됨' : '복사'}</button>
+
 				<p class="info-text small">
 					tmux 사용 시: 위 스니펫이 <code>$TMUX</code> 환경변수를 자동 감지해
 					DCS 패스스루로 래핑합니다. 추가로, 윈도우 전환 즉시 패널을
