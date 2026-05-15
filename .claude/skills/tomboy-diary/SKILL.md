@@ -167,7 +167,36 @@ The app's `conflictResolver.resolveNoteConflict` (`app/src/lib/sync/firebase/con
 
 Do NOT instead change `changeDate` to `now()` — it would break the diary-date title and `changeDate`-based sort.
 
-### I14. Desktop trigger service auto-runs the pipeline on rerun
+### I14. ocr-service shares the same RTX 3080 — must be fully stopped before diary OCR
+
+After the May 2026 main-branch merge brought in the on-host `ocr-service` container (GOT-OCR2 for note OCR/translate), the diary pipeline started OOM'ing reliably on every re-OCR. Root cause: when ocr-service has its model loaded, it sits at ~5.5 GiB. The pipeline's `local_vlm` Qwen2.5-VL-7B (nf4) at ~5.9 GiB + KV-cache ~2 GiB + nvidia kernel reserve ~1 GiB just barely tips a 10 GB RTX 3080 over.
+
+**`POST /unload` is not sufficient.** Even after `engine.unload()` empties the model from VRAM, the uvicorn Python process holds a ~300 MiB CUDA context (allocator, cuBLAS handles, etc.) until the process exits. That residual + chrome's GPU process (~200 MiB) is enough to push the diary load over the edge.
+
+The fix is in `pipeline/desktop/deploy/desktop-pipeline.service`:
+```
+ExecStartPre=/bin/bash -c 'systemctl --user stop ocr-service.service 2>/dev/null || true'
+ExecStartPost=/bin/bash -c 'systemctl --user start ocr-service.service 2>/dev/null || true'
+```
+
+`stop` releases the full CUDA context; `ExecStartPost` brings the container back so the user's note-OCR/translate features keep working during the ~3-minute window between diary runs. Both lines silent-fail so a machine without ocr-service installed is unaffected.
+
+**Don't "simplify" back to a curl `/unload` call** — that path was tried and shipped, then immediately reverted when reruns kept OOM'ing.
+
+Trade-off: while diary is running (typically ~6–8 min when there's work, ~30 s when idle), the bridge's `/ocr` / `/translate` proxy returns errors. The 5-min systemd timer means at most ~8 min downtime per cycle. If the churn ever bothers a user, guard the stop with a "do we have pending work?" precondition before adding complexity.
+
+### I15. Diagnosing "OCR text feels truncated" — per-tile probe recipe
+
+When a user reports a long page's OCR seems to cut off mid-content, the actual chain is:
+
+1. **Verify the canvas captures all strokes**: `rmscene.read_tree(...)` + iterate Line items, compute `y_max`. Should equal `png_height - BOTTOM_PADDING`.
+2. **Verify all tiles produced output**: pull tile count from `_split_to_tiles(image)`, then call `_infer_image(tile, prompt)` per tile in a probe script. Log per-tile `gen_tokens`, `chars`, and `hit_cap` (= `gen_ids[-1] != eos and gen_len >= max_new_tokens-1`). Hit cap is the only legitimate truncation signal.
+3. **Verify Firestore has the long content**: `FirestoreClient.get_note(tomboy_guid)` and print `xmlContent` length. If it's shorter than `~/.local/share/tomboy-pipeline/ocr/<uuid>.json`, the user's device has push-clobbered remote per I13 — apply the recovery procedure there.
+4. **Only after 1–3 are clean** is "model accuracy" the right answer (nf4 quantization loses ~10-15% recall on dense Korean handwriting).
+
+The probe script lives in shell history of the May 15 2026 session, but the gist is: stop ocr-service, lazy-load model, walk tiles, decode per-tile, check eos. Don't write production code for this — it's a one-off diagnostic.
+
+### I16. Desktop trigger service auto-runs the pipeline on rerun
 
 `pipeline/desktop/trigger_server.py` is a small stdlib HTTP service the admin page POSTs to so the user doesn't have to manually re-run the pipeline after clicking "재처리 요청".
 
@@ -274,6 +303,8 @@ mapping below is faster than re-deriving.
 | s4 writes succeed but image URLs return 404 / no preview | Dropbox upload failed silently. | Check `~/.local/share/tomboy-pipeline/logs/s4_write.log` for `dropbox_upload_failed`. |
 | Image URL is clickable but doesn't render inline / loads Dropbox HTML page | Dropbox SDK returns share links with `?dl=0` by default — that's the HTML preview, not raw bytes. | `dropbox_uploader._to_inline_url` rewrites `dl=0` → `raw=1`, preserving every other query param. `share_link` applies it to both the create-new and fall-back-to-existing paths. |
 | OCR transcribes only the top portion of a long page (rest is missing) | Page was scrolled on the rM but `RmsceneRenderer` was hardcoded to a 1404×1872 canvas, clipping strokes with `y > 1872`. Even after extending the canvas, single-shot OCR on a tall image gets aggressively downsampled by Qwen2.5-VL's `max_pixels` ≈ 1.0 M. | Renderer now grows the canvas to `max(PAGE_HEIGHT, max_stroke_y + BOTTOM_PADDING)`; `LocalVlmBackend._split_to_tiles` slices the tall PNG along blank-row line gaps and OCRs each tile separately. To re-process pages OCR'd before this change, delete `state/{prepared,ocr-done,written}.json` for affected uuids (or pass `--force <uuid>` to each stage). `mappings.json` is kept so the same handwriting still maps to the same Tomboy note (per I1). |
+| All re-OCR attempts fail with CUDA OOM after ocr-service deployed | Even with `engine.unload()` cleared the model, the ocr-service uvicorn process keeps a ~300 MiB CUDA context. Combined with chrome's GPU buffer and the nvidia kernel reserve, there's not enough headroom for Qwen2.5-VL-7B nf4 (~5.9 GiB) + KV-cache (~2 GiB) on the 10 GB RTX 3080. | `desktop-pipeline.service` now `systemctl --user stop`s ocr-service entirely in `ExecStartPre` and `ExecStartPost`-starts it again. Releases the full CUDA context (see I14). |
+| Re-OCR succeeds in Firestore but the app still shows the old short content even after hard refresh | App-side `conflictResolver` hits `metadataChangeDate` tie (rM mtime is the same on both writes) → falls to `tie-prefers-local` → the user's device pushes its stale local content BACK over Firestore. | `s4_write` now sets `metadata_change_date=datetime.now(timezone.utc)` so the pipeline's write is strictly newer; the receiver pulls (see I13). After applying the fix, `rm state/written.json && python -m desktop.stages.s4_write` to re-publish every note with bumped timestamps. |
 
 ## 5. State files (desktop)
 
@@ -321,7 +352,7 @@ To force a re-run of a stage: delete the relevant file or pass `--force <uuid>`.
   - `dropbox_uploader.py` — PNG upload + share-link. `share_link()` rewrites Dropbox's default `?dl=0` (HTML preview page) to `?raw=1` (raw bytes) via `_to_inline_url`, so the URL works as an inline image source — without it, the URL only opens a Dropbox preview when clicked and is useless inside an `<img src>`.
   - `pipeline_status.py` — `PipelineStatusClient` (Firebase Admin SDK) for per-page status docs at `users/{uid}/diary-pipeline-pages/{pageUuid}` (see I12). `fetch_pending_reruns(cfg, log)` is the best-effort helper every stage's `main()` uses to fold admin-page rerun requests into its `force` set.
   - `state.py`, `log.py`, `config.py` — shared infrastructure.
-- `pipeline/desktop/trigger_server.py` — stdlib HTTP trigger (see I13). Bearer-authed, CORS-enabled, fire-and-forget run of `desktop.run_pipeline`. Unit file at `pipeline/desktop/deploy/diary-trigger.service`.
+- `pipeline/desktop/trigger_server.py` — stdlib HTTP trigger (see I16). Bearer-authed, CORS-enabled, fire-and-forget run of `desktop.run_pipeline`. Unit file at `pipeline/desktop/deploy/diary-trigger.service`.
 - `pipeline/desktop/bootstrap.py` — `sanitize_account_id` MUST mirror `functions/src/index.ts:280-281` byte-for-byte. Tests in `tests/test_bootstrap.py` lock the contract.
 - `pipeline/config/pipeline.yaml` — gitignored. Holds `firebase_uid`, service-account path, Dropbox refresh token, host details. `bootstrap.py` emits it.
 - `pipeline/config/prompts/diary-ko.txt` — Qwen2.5-VL system prompt for Korean handwriting.

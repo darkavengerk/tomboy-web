@@ -229,6 +229,39 @@ Tombstones flow through unchanged: a remote `deleted=true` with a newer
 Documents are never `deleteDoc`'d — soft-delete only, so other devices learn
 about the deletion when they reconcile.
 
+### Warning to out-of-band Firestore writers
+
+Rule 6 (`tie-prefers-local`) is correct for in-app writes — both sides
+are using the editor's "every save bumps `changeDate` to now" discipline,
+so a tie genuinely means "no meaningful difference, keep what the user is
+looking at."
+
+It is **wrong** for any *external* writer (Cloud Function, batch job,
+**the diary pipeline's `s4_write`**) that re-publishes a note with the
+same content-derived timestamps as a prior write. Scenario that has bit
+us in production:
+
+1. External writer publishes note N with `changeDate=metadataChangeDate=T0`.
+2. User's device pulls N, local IDB now has the same timestamps + content.
+3. External writer re-publishes N with **identical timestamps** (because
+   T0 was derived from upstream metadata that hasn't changed) but **new
+   content**.
+4. User refreshes; resolver sees both timestamps tie, content differs →
+   `tie-prefers-local` → user's device pushes its **stale** content back
+   over the new write. The external update is silently undone.
+
+The fix lives on the writer side, not here: bump `metadataChangeDate` to
+`Date.now()` on every external write. `changeDate` can stay anchored to
+the upstream "creation/edit" semantics (e.g. diary keeps the rM mtime so
+the title and `changeDate` sort still reflect the writing date) — only
+the tiebreaker needs to advance.
+
+If you're adding a new Firestore writer, follow this rule: **every write
+must set `metadataChangeDate` to strictly newer than any value the
+receiver could already have.** Otherwise plan on the receiver clobbering
+you. See the diary pipeline's `tomboy-diary` skill, invariant I13, for
+the worked example.
+
 ## Gating: feature flag + sign-in
 
 Two independent gates. Both must pass for any Firestore I/O to happen:
