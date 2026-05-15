@@ -77,7 +77,7 @@
 		TERMINAL_HISTORY_BLOCKLIST_DEFAULT
 	} from '$lib/storage/appSettings.js';
 
-	type Tab = 'sync' | 'config' | 'terminal' | 'notify' | 'advanced';
+	type Tab = 'sync' | 'config' | 'terminal' | 'notify' | 'guide' | 'shortcuts' | 'advanced';
 	let activeTab = $state<Tab>('sync');
 
 	let authenticated = $state(false);
@@ -718,6 +718,8 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 		{ id: 'config', label: '동기화 설정' },
 		{ id: 'terminal', label: '터미널' },
 		{ id: 'notify', label: '알림' },
+		{ id: 'guide', label: '가이드' },
+		{ id: 'shortcuts', label: '단축키' },
 		{ id: 'advanced', label: '고급' }
 	];
 </script>
@@ -1255,6 +1257,260 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 				{/if}
 			</section>
 
+		{:else if activeTab === 'guide'}
+			<!-- ── 가이드 탭 ───────────────────────────────────────────────── -->
+			<section class="section">
+				<p class="info-text">
+					이 노트앱의 노트 형식 규칙과 브라우저/환경 요구사항을 정리한 페이지입니다. 새 기기에서
+					처음 쓸 때 한 번씩 훑어보세요.
+				</p>
+			</section>
+
+			<section class="section">
+				<h2>구조화 노트 형식</h2>
+				<p class="info-text">
+					아래 노트들은 본문이 정해진 형식을 따를 때만 특수 기능이 동작합니다. 형식이 깨지면
+					일반 노트로 떨어집니다.
+				</p>
+
+				<details class="guide-card" open>
+					<summary>터미널 노트 — SSH 세션을 노트로 열기</summary>
+					<p class="info-text">
+						본문 1–3줄이 메타데이터로 인식되면 노트가 터미널 화면으로 열립니다. 4번째 자유 단락이
+						있으면 일반 노트로 떨어집니다.
+					</p>
+					<pre class="snippet">ssh://[user@]host[:port]
+bridge: wss://your-bridge.example.com
+spectate: &lt;tmux-session-name&gt;
+
+connect:
+&nbsp; - 접속 직후 자동 실행할 명령
+pinned:
+&nbsp; - 오래 두고 볼 명령 (히스토리에서 분리)
+history:
+&nbsp; - 자주 쓰는 명령</pre>
+					<ul class="guide-list">
+						<li><code>bridge:</code> — 이 노트 전용 브릿지 URL(없으면 설정 → 터미널 기본값 사용).</li>
+						<li><code>spectate:</code> — tmux 세션 관전 모드. 데스크탑에서 활성 페인만 따라감.</li>
+						<li>자격증명은 노트에 쓰지 않습니다. 인증은 브릿지 Bearer 토큰 + ssh 키.</li>
+						<li><code>ssh://localhost</code>은 컨테이너 안 셸, <code>ssh://user@localhost</code>은 호스트 sshd. 다릅니다.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
+					<summary>일정 노트 — 푸시 알림 받기</summary>
+					<p class="info-text">
+						설정 → 알림에서 일정 노트로 지정한 노트만 푸시 대상이 됩니다. <code>N월</code> 헤더
+						아래 한글 날짜 리스트 아이템으로 적습니다.
+					</p>
+					<pre class="snippet">5월
+&nbsp; - 5월 15일 (금): 점심 약속
+&nbsp; - 5월 16일 (토) 14:00: 회의
+&nbsp; - 5월 20일 09:30: 병원</pre>
+					<ul class="guide-list">
+						<li>모든 항목 → 당일 <strong>07:00</strong>에 일괄 알림.</li>
+						<li>시간이 있는 항목은 추가로 <strong>1시간 전</strong>과 <strong>해당 시각</strong>에도 알림.</li>
+						<li>월요일 07:00에 주간 요약, 매월 1일 07:00에 월간 요약.</li>
+						<li>요일은 자동 채워집니다(자동 요일 플러그인).</li>
+						<li>여러 기기에서 같은 알림을 받으려면 <strong>각 기기마다 알림을 활성화</strong>해야 합니다(Dropbox 동기화로는 안 됨).</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
+					<summary>슬립노트 — 노트 체인 형식</summary>
+					<p class="info-text">
+						<code>[0] Slip-Box</code> 노트북 안의 노트들이 <code>이전</code> / <code>다음</code> 링크로
+						단방향 연결 리스트를 이룹니다. 형식이 엄격하므로 <code>/admin/sleepnote</code>에서 검증
+						가능합니다.
+					</p>
+					<pre class="snippet">제목 라인
+
+이전: [[이전-슬립노트-제목]]
+다음: [[다음-슬립노트-제목]]
+
+이론
+&nbsp; - …
+실용
+&nbsp; - …
+기록
+&nbsp; - …</pre>
+					<ul class="guide-list">
+						<li>인덱스 노트(<code>1c97d161-…</code>) 가 체인의 루트. TopNav의 "슬립노트" 항목이 여기로 이동.</li>
+						<li>체인 편집은 화살표 위젯의 액션 버튼(추가/잘라내기/연결/붙여넣기) 사용 권장.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
+					<summary>일기 노트 — reMarkable OCR 자동 생성</summary>
+					<p class="info-text">
+						reMarkable 태블릿 → Pi → 데스크탑 OCR → Firestore 파이프라인으로 자동 생성됩니다.
+						<code>system:notebook:일기</code> 태그가 붙고 제목에 <code>[&lt;rm-page-uuid&gt;]</code>
+						마커가 들어갑니다.
+					</p>
+					<ul class="guide-list">
+						<li><strong>중요:</strong> 제목의 <code>[&lt;uuid&gt;]</code> 마커가 보호 신호입니다. 교정 후 마커를 지우면
+							같은 페이지를 다시 OCR해도 그 노트는 덮어쓰이지 않습니다.</li>
+						<li>일기가 앱에서 안 보이면 <strong>설정 → 동기화 설정 → 파이어베이스 실시간 노트 동기화</strong>를
+							먼저 확인하세요(기본 OFF).</li>
+					</ul>
+				</details>
+			</section>
+
+			<section class="section">
+				<h2>환경 / 호환성 요구사항</h2>
+				<p class="info-text">이게 안 맞으면 해당 기능이 동작하지 않거나 깨져 보입니다.</p>
+
+				<details class="guide-card" open>
+					<summary>Firefox — 세로 칼럼 분할 활성화</summary>
+					<p class="info-text">
+						본문에 <code>---</code> 만 있는 단락에 <strong>Ctrl/Cmd+클릭</strong>하면 가로 구분선이
+						세로 칼럼 분할로 토글됩니다. 이 기능은 <strong>Firefox 전용</strong>이며 다음 플래그를
+						켜야 합니다.
+					</p>
+					<pre class="snippet">about:config
+→ layout.css.grid-template-masonry-value.enabled
+→ true</pre>
+					<p class="info-text">
+						플래그가 꺼져 있거나 다른 브라우저면 짧은 구분선 토막으로만 보입니다(런타임에서 감지해서
+						높이 동기화는 자동 스킵).
+					</p>
+				</details>
+
+				<details class="guide-card">
+					<summary>iOS — PWA 설치가 푸시 알림의 전제조건</summary>
+					<p class="info-text">
+						iOS Safari에서 일정 푸시 알림을 받으려면 <strong>홈 화면에 추가</strong>해서 PWA로 설치해야
+						합니다. 브라우저 탭에서는 푸시 구독이 유지되지 않습니다.
+					</p>
+					<ul class="guide-list">
+						<li>Safari → 공유 → "홈 화면에 추가".</li>
+						<li>설치한 PWA를 한 번 열어 설정 → 알림에서 권한을 허용.</li>
+						<li>아이콘 PNG가 로드되어야 구독이 유지되므로 PWA 메타데이터 변경 시 재설치 권장.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
+					<summary>알림 권한 — 일정 푸시</summary>
+					<p class="info-text">
+						브라우저의 알림 권한과 별개로, 이 앱에서 "알림 활성화"를 눌러야 FCM 토큰이 등록됩니다.
+						<button type="button" class="link-btn" onclick={() => (activeTab = 'notify')}>알림 탭</button>에서 처리하세요.
+					</p>
+				</details>
+
+				<details class="guide-card">
+					<summary>Firebase 실시간 노트 동기화 — 기본 OFF</summary>
+					<p class="info-text">
+						기본값은 꺼짐입니다. Dropbox 동기화는 백업 채널로 그대로 두고, 이 옵션은 다른 기기와의
+						실시간 반영용입니다.
+					</p>
+					<ul class="guide-list">
+						<li><strong>일기 OCR 노트가 앱에 보이려면 반드시 켜져 있어야 합니다</strong>(파이프라인이
+							Firestore로 씁니다).</li>
+						<li>다른 기기에서 일정 노트를 갱신해도 이게 켜져 있어야 같은 기기에서 푸시 스케줄이
+							재계산됩니다.</li>
+						<li><button type="button" class="link-btn" onclick={() => (activeTab = 'config')}>동기화 설정 탭</button>에서 토글.</li>
+					</ul>
+				</details>
+			</section>
+
+		{:else if activeTab === 'shortcuts'}
+			<!-- ── 단축키 탭 ───────────────────────────────────────────────── -->
+			<section class="section">
+				<p class="info-text">
+					코드에 실제로 등록된 단축키 목록입니다. 별도 표기가 없으면 에디터 안에서만 동작합니다.
+					macOS에서는 <kbd>Ctrl</kbd> 대신 <kbd>Cmd</kbd>를 쓰세요.
+				</p>
+			</section>
+
+			<section class="section">
+				<h2>텍스트 서식</h2>
+				<table class="shortcut-table">
+					<tbody>
+						<tr><td><kbd>Ctrl</kbd>+<kbd>B</kbd></td><td>굵게 (Bold)</td></tr>
+						<tr><td><kbd>Ctrl</kbd>+<kbd>I</kbd></td><td>기울임 (Italic)</td></tr>
+						<tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>취소선</td></tr>
+						<tr><td><kbd>Ctrl</kbd>+<kbd>H</kbd></td><td>형광펜 (Highlight)</td></tr>
+						<tr><td><kbd>Ctrl</kbd>+<kbd>M</kbd></td><td>고정폭 글꼴 (Monospace)</td></tr>
+					</tbody>
+				</table>
+			</section>
+
+			<section class="section">
+				<h2>삽입</h2>
+				<table class="shortcut-table">
+					<tbody>
+						<tr><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>오늘 날짜 (<code>yyyy-mm-dd</code>) 삽입 — 브라우저 북마크 단축키 가로챔</td></tr>
+						<tr><td><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>현재 줄은 유지하고 아래에 빈 블록 추가</td></tr>
+						<tr><td><kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>TODO 블록 삽입</td></tr>
+						<tr><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>현재 줄(블록 또는 리스트 아이템) 통째로 삭제</td></tr>
+					</tbody>
+				</table>
+			</section>
+
+			<section class="section">
+				<h2>리스트 / 들여쓰기</h2>
+				<table class="shortcut-table">
+					<tbody>
+						<tr><td><kbd>Tab</kbd></td><td>리스트 안: 표준 들여쓰기(서브트리 통째로 이동) / 리스트 밖: 탭 문자 삽입</td></tr>
+						<tr><td><kbd>Shift</kbd>+<kbd>Tab</kbd></td><td>표준 내어쓰기(서브트리 통째로 이동)</td></tr>
+						<tr><td><kbd>Alt</kbd>+<kbd>→</kbd></td><td>외과적 깊이 ↑ — 자식은 절대 깊이 유지(리스트 밖이면 리스트 시작)</td></tr>
+						<tr><td><kbd>Alt</kbd>+<kbd>←</kbd></td><td>외과적 깊이 ↓ — 자식은 절대 깊이 유지</td></tr>
+						<tr><td><kbd>Alt</kbd>+<kbd>↑</kbd></td><td>리스트 아이템 위로 이동</td></tr>
+						<tr><td><kbd>Alt</kbd>+<kbd>↓</kbd></td><td>리스트 아이템 아래로 이동</td></tr>
+					</tbody>
+				</table>
+			</section>
+
+			<section class="section">
+				<h2>마우스 제스처</h2>
+				<table class="shortcut-table">
+					<tbody>
+						<tr><td><kbd>Ctrl</kbd>+<kbd>Click</kbd> on <code>---</code></td><td>가로 구분선 ↔ 세로 칼럼 분할 토글 (Firefox + masonry 플래그 필요)</td></tr>
+						<tr><td><kbd>Ctrl</kbd>+<kbd>Click</kbd> on 날짜 화살표</td><td>이전/다음 날짜 노트를 같은 창에서 열기(replace)</td></tr>
+						<tr><td><kbd>Ctrl</kbd>+<kbd>Click</kbd> on 슬립노트 화살표</td><td>이전/다음 슬립노트를 같은 창에서 열기(replace)</td></tr>
+						<tr><td>타이틀바 <strong>중클릭</strong></td><td>(데스크탑 모드) 윈도우 맨 뒤로 보내기</td></tr>
+						<tr><td>우클릭</td><td>(데스크탑 모드) 잘라내기/복사/형식 복사/붙여넣기/오늘 날짜 등 컨텍스트 메뉴</td></tr>
+					</tbody>
+				</table>
+			</section>
+
+			<section class="section">
+				<h2>데스크탑 모드 (<code>/desktop</code>)</h2>
+				<table class="shortcut-table">
+					<tbody>
+						<tr><td><kbd>Ctrl</kbd>+<kbd>L</kbd></td><td>선택한 텍스트로 새 노트 만들기 (에디터 포커스 상태에서)</td></tr>
+						<tr><td><kbd>Ctrl</kbd>+<kbd>[</kbd></td><td>이전 날짜/슬립노트로 이동 (현재 창을 교체)</td></tr>
+						<tr><td><kbd>Ctrl</kbd>+<kbd>]</kbd></td><td>다음 날짜/슬립노트로 이동 (현재 창을 교체)</td></tr>
+						<tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>←</kbd> / <kbd>→</kbd> / <kbd>↑</kbd> / <kbd>↓</kbd></td><td>인접 워크스페이스로 전환</td></tr>
+						<tr><td><kbd>Esc</kbd></td><td>활성 윈도우/모달 닫기</td></tr>
+					</tbody>
+				</table>
+			</section>
+
+			<section class="section">
+				<h2>터미널 노트 — 보내기 팝업</h2>
+				<table class="shortcut-table">
+					<tbody>
+						<tr><td><kbd>Enter</kbd></td><td>입력한 명령을 활성 페인으로 전송 (IME 조합 중 제외)</td></tr>
+						<tr><td><kbd>Esc</kbd></td><td>팝업 닫기</td></tr>
+					</tbody>
+				</table>
+				<p class="info-text">
+					팝업의 빠른 키 버튼: <code>y</code>, <code>n</code>, <code>1</code>, <code>Enter</code>,
+					<code>Esc</code>, <code>^C</code>, <code>PgUp</code>, <code>PgDn</code>.
+				</p>
+			</section>
+
+			<section class="section">
+				<h2>참고 — 자동화 (단축키 아님)</h2>
+				<ul class="guide-list">
+					<li><strong>자동 내부 링크</strong>: 본문에 다른 노트의 제목 문자열이 나타나면 자동으로 내부 링크 마크가 붙음(자기 자신 제외).</li>
+					<li><strong>자동 요일</strong>: 일정 노트의 날짜 뒤에 요일이 비어 있으면 자동 채움.</li>
+					<li><strong>자동 이미지 미리보기</strong>: <code>http(s)://…</code> 이미지 URL은 인라인 썸네일로 렌더.</li>
+					<li><strong>제목 중복 방지</strong>: 같은 제목으로 저장 시 자동 거부(임포트/풀은 <code>(2)</code> 접미사).</li>
+				</ul>
+			</section>
+
 		{:else if activeTab === 'advanced'}
 			<!-- ── 고급 탭 ─────────────────────────────────────────────────── -->
 			{#if authenticated}
@@ -1642,5 +1898,109 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 		overflow-x: auto;
 		white-space: pre;
 		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+	}
+
+	/* ── 가이드 / 단축키 탭 ──────────────────────────────────────────── */
+
+	.guide-card {
+		border: 1px solid var(--color-border, #e5e5e5);
+		border-radius: 8px;
+		padding: 10px 14px;
+		margin-bottom: 10px;
+		background: var(--color-bg, #fff);
+	}
+
+	.guide-card > summary {
+		cursor: pointer;
+		font-weight: 600;
+		font-size: 0.95rem;
+		padding: 4px 0;
+		color: var(--color-text);
+		list-style: revert;
+	}
+
+	.guide-card[open] > summary {
+		margin-bottom: 8px;
+		border-bottom: 1px solid var(--color-border, #eee);
+		padding-bottom: 8px;
+	}
+
+	.guide-card .snippet {
+		margin: 8px 0;
+	}
+
+	.guide-list {
+		padding-left: 20px;
+		margin: 6px 0;
+		font-size: 0.85rem;
+		color: var(--color-text-secondary, #555);
+		line-height: 1.55;
+	}
+
+	.guide-list li {
+		margin: 4px 0;
+	}
+
+	.guide-list code,
+	.guide-card code,
+	.shortcut-table code,
+	.info-text code {
+		background: var(--color-bg-secondary, #f1f1f1);
+		padding: 1px 5px;
+		border-radius: 4px;
+		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+		font-size: 0.85em;
+	}
+
+	.shortcut-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.88rem;
+	}
+
+	.shortcut-table td {
+		padding: 7px 10px;
+		border-bottom: 1px solid var(--color-border, #eee);
+		vertical-align: top;
+	}
+
+	.shortcut-table tr:last-child td {
+		border-bottom: none;
+	}
+
+	.shortcut-table td:first-child {
+		white-space: nowrap;
+		width: 1%;
+		color: var(--color-text);
+	}
+
+	.shortcut-table td:last-child {
+		color: var(--color-text-secondary, #555);
+		line-height: 1.5;
+	}
+
+	.link-btn {
+		background: none;
+		border: none;
+		padding: 0;
+		color: var(--color-primary);
+		text-decoration: underline;
+		cursor: pointer;
+		font: inherit;
+	}
+
+	kbd {
+		display: inline-block;
+		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+		font-size: 0.8em;
+		padding: 1px 6px;
+		border: 1px solid var(--color-border, #ccc);
+		border-bottom-width: 2px;
+		border-radius: 4px;
+		background: var(--color-bg-secondary, #f7f7f7);
+		color: var(--color-text);
+		line-height: 1.4;
+		min-width: 1.6em;
+		text-align: center;
 	}
 </style>
