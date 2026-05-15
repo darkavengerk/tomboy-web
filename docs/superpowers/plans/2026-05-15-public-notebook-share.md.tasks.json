@@ -45,7 +45,7 @@
     {
       "id": 7,
       "subject": "Task 7: `/welcome` landing route",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [3],
       "description": "**Goal:** Visitor landing page with name input + Dropbox login button.\n\n**Files:** Create app/src/routes/welcome/+page.svelte; modify app/src/routes/+layout.svelte\n\n**Verify:** Manual smoke per plan.\n\n```json:metadata\n{\"files\":[\"app/src/routes/welcome/+page.svelte\",\"app/src/routes/+layout.svelte\"],\"verifyCommand\":\"cd app && npm run check\",\"acceptanceCriteria\":[\"/welcome renders form\",\"Empty name shows error\",\"Submit sets localStorage + redirect to /\",\"Dropbox button starts OAuth\",\"Visitors redirected to /welcome\"]}\n```"
     },
