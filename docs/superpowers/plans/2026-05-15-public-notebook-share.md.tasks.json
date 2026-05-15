@@ -66,7 +66,7 @@
     {
       "id": 10,
       "subject": "Task 10: Guest guards (note + favorites + routes + home + link)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [3, 6],
       "description": "**Goal:** Per-note guard, favorites filter, route blocks (settings/admin/desktop/sleepnote), home redirect, internal-link toast.\n\n**Files:** Modify app/src/routes/note/[id]/+page.svelte; app/src/lib/components/TopNav.svelte; app/src/routes/+layout.svelte; app/src/lib/editor/TomboyEditor.svelte\n\n**Verify:** `cd app && npm run check`; manual smoke per path.\n\n```json:metadata\n{\"files\":[\"app/src/routes/note/[id]/+page.svelte\",\"app/src/lib/components/TopNav.svelte\",\"app/src/routes/+layout.svelte\",\"app/src/lib/editor/TomboyEditor.svelte\"],\"verifyCommand\":\"cd app && npm run check\",\"acceptanceCriteria\":[\"Non-public /note/{guid} → /notes\",\"Favorites filtered\",\"Settings/admin/desktop/sleepnote → /notes\",\"Home → first shared notebook's recent note\",\"Link click miss → toast\"]}\n```"
     },

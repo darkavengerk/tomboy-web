@@ -8,7 +8,7 @@
 	import { appMode, type AppMode } from '$lib/stores/appMode.svelte.js';
 	import { mode } from '$lib/stores/guestMode.svelte.js';
 	import { getCachedPublicConfig } from '$lib/sync/firebase/publicConfig.js';
-	import { assignNotebook } from '$lib/core/notebooks.js';
+	import { assignNotebook, getNotebook } from '$lib/core/notebooks.js';
 	import { pushToast } from '$lib/stores/toast.js';
 
 	interface Props {
@@ -78,7 +78,15 @@
 
 	async function openFavorites() {
 		const all = await getAllNotes();
-		favoriteNotes = all.filter(isFavorite);
+		let favs = all.filter(isFavorite);
+		if (mode.value === 'guest') {
+			const shared = getCachedPublicConfig()?.sharedNotebooks ?? [];
+			favs = favs.filter((n) => {
+				const nb = getNotebook(n);
+				return nb !== null && shared.includes(nb);
+			});
+		}
+		favoriteNotes = favs;
 		showFavorites = true;
 	}
 

@@ -17,6 +17,8 @@
 	import { subscribeForegroundMessages } from '$lib/schedule/notification.js';
 	import { installRealNoteSync } from '$lib/sync/firebase/install.js';
 	import { pushToast } from '$lib/stores/toast.js';
+	import { getAllNotes } from '$lib/storage/noteStore.js';
+	import { getCachedPublicConfig } from '$lib/sync/firebase/publicConfig.js';
 
 	let { children } = $props();
 
@@ -49,8 +51,42 @@
 		if (derived) appMode.set(derived);
 		if (mode.value === 'visitor' && !page.url.pathname.startsWith('/welcome')) {
 			void goto('/welcome', { replaceState: true });
+			return;
+		}
+		if (mode.value === 'guest') {
+			const path = page.url.pathname;
+			const blocked =
+				path.startsWith('/settings') ||
+				path.startsWith('/admin') ||
+				path.startsWith('/desktop') ||
+				path === '/sleepnote';
+			if (blocked) {
+				void goto('/notes', { replaceState: true });
+				return;
+			}
+			if (path === '/') {
+				void redirectGuestHome();
+			}
 		}
 	});
+
+	async function redirectGuestHome() {
+		const shared = getCachedPublicConfig()?.sharedNotebooks ?? [];
+		if (shared.length === 0) {
+			void goto('/notes', { replaceState: true });
+			return;
+		}
+		const all = await getAllNotes();
+		const first = shared[0];
+		const cand = all
+			.filter((n) => !n.deleted && n.tags.includes(`system:notebook:${first}`))
+			.sort((a, b) => b.changeDate.localeCompare(a.changeDate))[0];
+		if (cand) {
+			void goto(`/note/${cand.guid}`, { replaceState: true });
+		} else {
+			void goto('/notes', { replaceState: true });
+		}
+	}
 
 	function handleBack() {
 		tracker.goBack();
