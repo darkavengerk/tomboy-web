@@ -8,6 +8,9 @@ import logging
 import os
 from threading import Lock
 
+# MUST be set before any `import torch` anywhere in the process. The lazy
+# imports inside load()/unload() rely on this module being imported first
+# (which app.py's lifespan startup ensures).
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 log = logging.getLogger(__name__)
@@ -54,7 +57,7 @@ class GotOcr2Runner:
             if self._model is None:
                 return
             import torch
-            self._model = self._model.to("cpu")
+            del self._model
             self._model = None
             self._tokenizer = None
             if torch.cuda.is_available():
@@ -69,9 +72,16 @@ class GotOcr2Runner:
             if self._model is None:
                 return False
             p = next(self._model.parameters())
-            return str(p.device).startswith(self.device.split(":")[0])
         except StopIteration:
             return False
+        # Compare via torch.device fields rather than string-prefix so
+        # `cuda` (any index) doesn't spuriously match `cuda:1` etc.
+        expected_type, _, expected_idx = self.device.partition(":")
+        if p.device.type != expected_type:
+            return False
+        if expected_idx == "":
+            return True
+        return p.device.index == int(expected_idx)
 
     def run(self, image_b64: str) -> str:
         if self._model is None or self._tokenizer is None:

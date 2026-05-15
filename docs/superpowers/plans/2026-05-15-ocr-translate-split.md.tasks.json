@@ -10,7 +10,7 @@
     {
       "id": 2,
       "subject": "Task 1: GOT-OCR2 실제 로딩 + idle 자동 언로드 + /status + /unload",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "**Goal:** GOT-OCR2 real loading + idle timer + status/unload endpoints.\n\n```json:metadata\n{\"files\": [\"ocr-service/src/ocr_service/model_real.py\", \"ocr-service/src/ocr_service/idle.py\", \"ocr-service/src/ocr_service/app.py\", \"ocr-service/tests/test_model.py\"], \"verifyCommand\": \"cd ocr-service && pytest -v\", \"acceptanceCriteria\": [\"/status returns loaded state\", \"/unload returns 423 if in-flight\", \"idle watcher unloads via fake clock\", \"startup wires GotOcr2Runner\"]}\n```"
     },

@@ -28,9 +28,14 @@ async def idle_watcher(
     tick = clock or time.time
     while True:
         await asyncio.sleep(poll_interval_s)
-        if not engine.runner.is_loaded():
-            continue
-        idle_for = tick() - engine.last_called_at
-        if idle_for >= idle_unload_s:
-            if engine.unload():
+        try:
+            if not engine.runner.is_loaded():
+                continue
+            idle_for = tick() - engine.last_called_at
+            if idle_for >= idle_unload_s and engine.unload():
                 log.info("idle unload after %.0fs", idle_for)
+        except Exception:
+            # Don't let one failed poll kill the watcher — log and keep
+            # going. A torch hiccup during empty_cache() shouldn't disable
+            # idle unload for the rest of the process's lifetime.
+            log.exception("idle_watcher iteration failed")

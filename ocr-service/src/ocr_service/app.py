@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import asyncio
 import secrets
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from pydantic import BaseModel
@@ -20,7 +22,30 @@ from .config import get_settings
 from .idle import idle_watcher
 from .model import OcrEngine
 
-app = FastAPI(title="tomboy ocr-service")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    # Tests pre-populate `app.state.engine` via the `client` fixture; skip
+    # wiring the real GotOcr2Runner in that case so tests never hit
+    # transformers.
+    if getattr(app.state, "engine", None) is None:
+        settings = get_settings()
+        from .model_real import GotOcr2Runner
+
+        runner = GotOcr2Runner(model_id=settings.model_id, device=settings.device)
+        app.state.engine = OcrEngine(runner=runner)
+        app.state.idle_task = asyncio.create_task(
+            idle_watcher(app.state.engine, settings.idle_unload_s)
+        )
+    try:
+        yield
+    finally:
+        task = getattr(app.state, "idle_task", None)
+        if task is not None:
+            task.cancel()
+
+
+app = FastAPI(title="tomboy ocr-service", lifespan=lifespan)
 
 
 def get_engine(request: Request) -> OcrEngine:
@@ -39,30 +64,6 @@ def require_bearer(authorization: str | None) -> None:
 
 class OcrBody(BaseModel):
     image_b64: str
-
-
-@app.on_event("startup")
-async def _startup() -> None:
-    # Tests pre-populate `app.state.engine` via the `client` fixture; skip
-    # wiring the real GotOcr2Runner in that case so tests never hit
-    # transformers.
-    if getattr(app.state, "engine", None) is not None:
-        return
-    settings = get_settings()
-    from .model_real import GotOcr2Runner
-
-    runner = GotOcr2Runner(model_id=settings.model_id, device=settings.device)
-    app.state.engine = OcrEngine(runner=runner)
-    app.state.idle_task = asyncio.create_task(
-        idle_watcher(app.state.engine, settings.idle_unload_s)
-    )
-
-
-@app.on_event("shutdown")
-async def _shutdown() -> None:
-    task = getattr(app.state, "idle_task", None)
-    if task is not None:
-        task.cancel()
 
 
 @app.get("/healthz")
