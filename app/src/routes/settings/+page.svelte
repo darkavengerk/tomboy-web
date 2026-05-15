@@ -76,8 +76,13 @@
 		setTerminalHistoryBlocklist,
 		TERMINAL_HISTORY_BLOCKLIST_DEFAULT
 	} from '$lib/storage/appSettings.js';
+	import { listNotebooks, getNotebook } from '$lib/core/notebooks.js';
+	import { getAllNotes } from '$lib/storage/noteStore.js';
+	import { setNotebookPublic } from '$lib/sync/firebase/publishNotebook.js';
+	import { readPublicConfigForHost } from '$lib/sync/firebase/publicConfig.js';
+	import { ensureSignedIn } from '$lib/firebase/app.js';
 
-	type Tab = 'sync' | 'config' | 'terminal' | 'notify' | 'guide' | 'shortcuts' | 'advanced';
+	type Tab = 'sync' | 'config' | 'share' | 'terminal' | 'notify' | 'guide' | 'shortcuts' | 'advanced';
 	let activeTab = $state<Tab>('sync');
 
 	let authenticated = $state(false);
@@ -338,6 +343,66 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 			firebaseNotesBusy = false;
 		}
 	}
+
+	// ── 공유 탭 ──────────────────────────────────────────────────────────
+	let shareNotebooks = $state<string[]>([]);
+	let shareCounts = $state(new Map<string, number>());
+	let sharedSet = $state(new Set<string>());
+	let shareBusy = $state(false);
+	let shareBusyDone = $state(0);
+	let shareBusyTotal = $state(0);
+	let shareLoaded = $state(false);
+
+	async function loadShareTab(): Promise<void> {
+		shareLoaded = false;
+		shareNotebooks = await listNotebooks();
+		const all = await getAllNotes();
+		const counts = new Map<string, number>();
+		for (const n of all) {
+			if (n.deleted) continue;
+			const nb = getNotebook(n);
+			if (nb) counts.set(nb, (counts.get(nb) ?? 0) + 1);
+		}
+		shareCounts = counts;
+		try {
+			const user = await ensureSignedIn();
+			const cfg = await readPublicConfigForHost(user.uid);
+			sharedSet = new Set(cfg.sharedNotebooks);
+		} catch {
+			sharedSet = new Set();
+		}
+		shareLoaded = true;
+	}
+
+	async function toggleShareNotebook(name: string, on: boolean): Promise<void> {
+		const count = shareCounts.get(name) ?? 0;
+		const verb = on ? '공유 시작' : '공유 해제';
+		const msg = `노트북 '${name}'의 ${count}개 노트를 ${verb}하시겠습니까?`;
+		if (!confirm(msg)) {
+			// restore checkbox state — reload share tab
+			await loadShareTab();
+			return;
+		}
+		shareBusy = true;
+		shareBusyDone = 0;
+		shareBusyTotal = count;
+		try {
+			await setNotebookPublic(name, on, (d, t) => {
+				shareBusyDone = d;
+				shareBusyTotal = t;
+			});
+		} catch (e) {
+			pushToast(`작업 실패: ${(e as Error).message ?? e}`, { kind: 'error' });
+		}
+		shareBusy = false;
+		await loadShareTab();
+	}
+
+	$effect(() => {
+		if (activeTab === 'share' && !shareLoaded) {
+			void loadShareTab();
+		}
+	});
 
 	// ── 일정 알림 (notify 탭) ────────────────────────────────────────────
 	let notifyNotes = $state<{ guid: string; title: string }[]>([]);
@@ -716,6 +781,7 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 	const tabs: { id: Tab; label: string }[] = [
 		{ id: 'sync', label: '동기화' },
 		{ id: 'config', label: '동기화 설정' },
+		{ id: 'share', label: '공유' },
 		{ id: 'terminal', label: '터미널' },
 		{ id: 'notify', label: '알림' },
 		{ id: 'guide', label: '가이드' },
@@ -991,6 +1057,41 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 					{/if}
 				</section>
 			{/if}
+		{:else if activeTab === 'share'}
+			<!-- ── 공유 탭 ───────────────────────────────────────────────────── -->
+			<section class="section">
+				<h2>공유 노트북</h2>
+				<p class="hint">체크된 노트북은 Dropbox 로그인 없이 누구나 접근할 수 있습니다.</p>
+				{#if !shareLoaded}
+					<p>로딩 중…</p>
+				{:else if shareNotebooks.length === 0}
+					<p>노트북이 없습니다.</p>
+				{:else}
+					<ul class="share-list">
+						{#each shareNotebooks as nb (nb)}
+							<li class="share-row">
+								<label>
+									<input
+										type="checkbox"
+										checked={sharedSet.has(nb)}
+										disabled={shareBusy}
+										onchange={(e) => toggleShareNotebook(nb, e.currentTarget.checked)}
+									/>
+									<span class="share-name">{nb}</span>
+									<span class="share-count">노트 {shareCounts.get(nb) ?? 0}개</span>
+								</label>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+
+				{#if shareBusy}
+					<div class="share-progress">
+						<progress max={shareBusyTotal} value={shareBusyDone}></progress>
+						<p>{shareBusyDone} / {shareBusyTotal}</p>
+					</div>
+				{/if}
+			</section>
 		{:else if activeTab === 'terminal'}
 			<!-- ── 터미널 탭 ───────────────────────────────────────────────── -->
 			<section class="section">
@@ -2002,5 +2103,46 @@ history:
 		line-height: 1.4;
 		min-width: 1.6em;
 		text-align: center;
+	}
+
+	.hint {
+		font-size: 0.88rem;
+		color: var(--color-text-secondary, #888);
+		margin-bottom: 12px;
+	}
+
+	.share-list {
+		list-style: none;
+		padding: 0;
+		margin: 8px 0;
+	}
+
+	.share-row {
+		padding: 8px 0;
+		border-bottom: 1px solid var(--color-border, #eee);
+	}
+
+	.share-row label {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		cursor: pointer;
+	}
+
+	.share-name {
+		flex: 1;
+	}
+
+	.share-count {
+		color: var(--color-text-secondary, #888);
+		font-size: 0.85rem;
+	}
+
+	.share-progress {
+		margin-top: 12px;
+	}
+
+	.share-progress progress {
+		width: 100%;
 	}
 </style>
