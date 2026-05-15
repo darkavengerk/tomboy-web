@@ -61,15 +61,27 @@
 		const filtered = filterByNotebook(allNotes, selectedNotebook);
 		const q = query.trim();
 		const base = q ? searchNotes(filtered, q, 200).map((r) => r.note) : filtered;
-		// Side panel is a "recents" surface ordered by when the user last
-		// opened a note in desktop mode (recentOpens, local-only). Notes
-		// without an open record fall back to changeDate. Pinned notes stay
-		// at the top regardless. Cap so long histories don't balloon DOM.
+		// Sort key depends on the workspace:
+		// - Slipnote workspace: "recents" by when the user last opened a
+		//   note in desktop mode (recentOpens, local-only). Notes without
+		//   an open record fall back to changeDate.
+		// - All other workspaces: changeDate directly, so the sidebar
+		//   mirrors the 전체 page's "최근 수정순" default.
+		// Pinned notes always float to the top. Cap at 50 so long
+		// histories don't balloon DOM.
 		const recents = recentOpens.map;
+		const useRecents = currentWorkspace === SLIPNOTE_WORKSPACE_INDEX;
 		const keyed = base.map((n) => {
-			const opened = recents[n.guid];
-			let key = opened ?? 0;
-			if (!opened) {
+			let key = 0;
+			if (useRecents) {
+				const opened = recents[n.guid];
+				if (opened) {
+					key = opened;
+				} else {
+					const t = parseTomboyDate(n.changeDate).getTime();
+					key = Number.isFinite(t) ? t : 0;
+				}
+			} else {
 				const t = parseTomboyDate(n.changeDate).getTime();
 				key = Number.isFinite(t) ? t : 0;
 			}
