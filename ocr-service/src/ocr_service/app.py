@@ -3,12 +3,19 @@
   POST /ocr        — run GOT-OCR2 on a base64 image
   GET  /status     — model load/idle state
   POST /unload     — release GPU memory
-  GET  /gpu/raw    — nvidia-smi parse (Task 2)
+  GET  /gpu/raw    — nvidia-smi parse
   GET  /healthz    — liveness
 
 All non-health endpoints require Bearer token matching `BRIDGE_SHARED_TOKEN`.
 """
 from __future__ import annotations
+
+import os
+
+# MUST be set before any `import torch` anywhere in this process. Placed
+# at the absolute top of app.py (the process entrypoint) to ensure it
+# fires before model_real lazy-imports torch in the lifespan hook.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 import asyncio
 import secrets

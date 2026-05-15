@@ -13,19 +13,24 @@ dependencies = [
 model = [
     # torch/torchvision: 최신 2.12+ 의 `_dynamo.polyfills.sys` 가 컨테이너의
     # python3.11에 없는 `sys.get_int_max_str_digits` 를 import 시점에 참조해
-    # 깨짐. GOT-OCR2 가 검증된 torch 2.4 LTS 라인으로 핀.
-    "torch>=2.3,<2.5",
-    "torchvision>=0.18,<0.20",
-    # transformers 4.46+ removed `DynamicCache.get_max_length()` which
-    # GOT-OCR2's `modeling_GOT.py` (frozen at HF revision 979938b) calls
-    # in `prepare_inputs_for_generation`. Pin to the last compatible
-    # range. The model was developed against 4.40-4.44 era.
-    "transformers>=4.40,<4.45",
-    "accelerate>=0.33",
-    "verovio>=4.3",
-    # GOT-OCR2 의 tokenizer가 trust_remote_code 로 동적 import 함.
-    # transformers 가 자동으로 안 끌어와서 [model] extras 에 명시.
-    "tiktoken>=0.7",
+    # 깨짐. 2.4 LTS 라인이 안전. (Ubuntu 22.04 base image 의 한계라 model 변경
+    # 과 무관.)
+    "torch>=2.4,<2.5",
+    "torchvision>=0.19,<0.20",
+    # GOT-OCR-2.0-hf 는 transformers >=4.49 에 정식 통합된 native 모델이라
+    # trust_remote_code 가 필요 없고 옛 transformers cache API 도 안 씀.
+    # 상위 호환을 위해 최신 허용.
+    "transformers>=4.49",
+    # low_cpu_mem_usage=True / device_map="auto" 가 accelerate 를 요구함.
+    # 1.0 의 API 재작성을 피해 <1.0 으로 캡.
+    "accelerate>=0.33,<1.0",
+    # safetensors: from_pretrained(use_safetensors=True) 의 명시적 dep.
+    # 보통 transformers 가 끌어오지만 resolver 변동 방어용.
+    "safetensors>=0.4",
+    # requests: HF native 모델의 image_processor 가 URL/path 로딩에 사용.
+    # huggingface_hub 가 transitively 끌어오긴 하지만 명시.
+    "requests>=2.31",
+    "pillow>=10.4,<12",
 ]
 dev = [
     "pytest>=8",
