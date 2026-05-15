@@ -596,3 +596,62 @@ Cross-cutting invariants worth caching:
 ⚠️ 노트가 앱에 안 보이면 **설정 → 동기화 설정 → "파이어베이스 실시간 노트
 동기화"** 가 켜져 있는지 먼저 확인 (default OFF).
 
+## OCR 노트 + GPU 모니터
+
+See the **`tomboy-ocr-note`** skill for the full design. Notes whose
+first content line is `ocr://<model>` are OCR-trigger notes: pasting an
+image runs a two-stage flow (GOT-OCR-2.0-hf for OCR on the desktop's
+ocr-service, then an Ollama model for English→Korean translation) and
+streams `[원문]` / `[번역]` blocks into the note. A companion
+`/admin/gpu` page shows VRAM usage + per-model unload buttons.
+
+Distinct from the **diary pipeline** above — different stack
+(transformers-native HF model vs. local Qwen2.5-VL pipeline), different
+trigger (paste-in-note vs. tablet-pushed batch), different output
+(synchronous in-editor vs. Firestore write).
+
+Quick map:
+
+- `app/src/lib/ocrNote/` — `parseOcrNote` (spec + legacy flag),
+  `sendOcr` (POST /ocr helper), `runOcrInEditor` (two-stage flow with
+  legacy fallback), `defaults.ts` (translation system prompt +
+  `OCR_DEFAULT_TRANSLATE_MODEL`).
+- `app/src/lib/gpuMonitor/{types,client}.ts` — `/gpu/status` typing +
+  fetch helpers.
+- `app/src/routes/admin/gpu/+page.svelte` — VRAM bar + model list +
+  unload buttons, 5s polling while visible.
+- `bridge/src/ocr.ts` — `POST /ocr` proxy to desktop ocr-service.
+- `bridge/src/gpu.ts` — `GET /gpu/status` fan-out (ocr-service +
+  Ollama `/api/ps`) + `POST /gpu/unload` backend routing.
+- `ocr-service/` — Python FastAPI service. `GotOcr2Runner`
+  (transformers-native), idle auto-unload, `/gpu/raw` nvidia-smi
+  parse, Containerfile + Quadlet for desktop deploy. Tests use
+  `FakeRunner` so no GPU needed locally.
+
+Cross-cutting invariants worth caching:
+
+- **`stepfun-ai/GOT-OCR-2.0-hf` (HF native), NOT `stepfun-ai/GOT-OCR2_0`
+  (legacy custom code).** The legacy variant chains compatibility
+  breakages with every transformers/torch update; the `-hf` variant is
+  maintained alongside transformers itself.
+- **`spec.legacy` is the flow switch.** Absence of `translate:` header
+  → `legacy=true` → single-call combined-prompt flow (preserved for old
+  notes). Presence → two-stage flow.
+- **`target_lang:` header is dropped silently** for backward compat.
+  Don't reintroduce — the post-split flow is fixed English → Korean.
+- **OCR is single-shot, translation streams.** `[원문]` block appears
+  at once after the HTTP round-trip; `[번역]` block streams tokens.
+- **VRAM coexists with Ollama.** ocr-service + Ollama share the same
+  GPU pool but neither sees the other's allocation. ocr-service idle
+  auto-unloads after `OCR_IDLE_UNLOAD_S` (default 300s).
+- **`BRIDGE_SECRET` (Pi) == `BRIDGE_SHARED_TOKEN` (Desktop ocr-service)**
+  byte-identical. Bridge forwards its own SECRET as Bearer to
+  ocr-service.
+- **`OCR_SERVICE_URL` has no default.** Bridge boot refuses if missing
+  to prevent the same-machine-host assumption.
+- **Bridge tests use `node:test` + `mintToken(SECRET)`**, NOT vitest.
+- **Dependency cage**: `torch>=2.4,<2.5` / `transformers>=4.49,<4.50` /
+  `accelerate<1.0`. Lift the cage by moving the container base image
+  to Ubuntu 24.04 + Python 3.12 (gets `sys.get_int_max_str_digits` →
+  unlocks torch 2.5+ → unlocks transformers 4.50+ with MoE).
+
