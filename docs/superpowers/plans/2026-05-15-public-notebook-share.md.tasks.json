@@ -1,0 +1,89 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-15-public-notebook-share.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Update spec — IDB approach + write-uid bootstrap",
+      "status": "pending",
+      "description": "**Goal:** Replace spec's \"memory-only\" IDB section with \"separate IDB database\" + record host-uid bootstrap via collectionGroup.\n\n**Files:** Modify docs/superpowers/specs/2026-05-15-public-notebook-share-design.md\n\n**Verify:** `git log --oneline -1 docs/superpowers/specs/2026-05-15-public-notebook-share-design.md`\n\n```json:metadata\n{\"files\":[\"docs/superpowers/specs/2026-05-15-public-notebook-share-design.md\"],\"verifyCommand\":\"git log --oneline -1 docs/superpowers/specs/2026-05-15-public-notebook-share-design.md\",\"acceptanceCriteria\":[\"IDB section says separate tomboy-web-guest\",\"Bootstrap explains collectionGroup('publicConfig')\",\"Rules section confirms collectionGroup compat\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Firestore rules + composite index",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** Land public-notes rules + (public, serverUpdatedAt) collectionGroup index.\n\n**Files:** firestore.rules, firestore.indexes.json\n\n**Verify:** `node -e \"JSON.parse(require('fs').readFileSync('firestore.indexes.json'))\" && echo OK`\n\n```json:metadata\n{\"files\":[\"firestore.rules\",\"firestore.indexes.json\"],\"verifyCommand\":\"node -e \\\"JSON.parse(require('fs').readFileSync('firestore.indexes.json'))\\\" && echo OK\",\"acceptanceCriteria\":[\"4 allow blocks per spec\",\"publicConfig rule\",\"collectionGroup notes (public,serverUpdatedAt) index\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Guest mode rune store + ensureGuestSignedIn",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** Single source of truth for app mode + anonymous Firebase auth helper.\n\n**Files:** Create app/src/lib/stores/guestMode.svelte.ts; modify app/src/lib/firebase/app.ts; create app/tests/unit/stores/guestMode.test.ts\n\n**Verify:** `cd app && npm run test -- guestMode`\n\n```json:metadata\n{\"files\":[\"app/src/lib/stores/guestMode.svelte.ts\",\"app/src/lib/firebase/app.ts\",\"app/tests/unit/stores/guestMode.test.ts\"],\"verifyCommand\":\"cd app && npm run test -- guestMode\",\"acceptanceCriteria\":[\"mode.value typed 'visitor'|'guest'|'host'\",\"detectAndSet derives from Dropbox token + localStorage name\",\"ensureGuestSignedIn signs in anonymously, idempotent\",\"3 mode derivation tests pass\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: publicConfig client module",
+      "status": "pending",
+      "blockedBy": [2, 3],
+      "description": "**Goal:** Read/write publicConfig from host and discover host uid from guest via collectionGroup.\n\n**Files:** Create app/src/lib/sync/firebase/publicConfig.ts; create app/tests/unit/sync/firebase/publicConfig.test.ts\n\n**Verify:** `cd app && npm run test -- publicConfig`\n\n```json:metadata\n{\"files\":[\"app/src/lib/sync/firebase/publicConfig.ts\",\"app/tests/unit/sync/firebase/publicConfig.test.ts\"],\"verifyCommand\":\"cd app && npm run test -- publicConfig\",\"acceptanceCriteria\":[\"discoverPublicConfigForGuest via collectionGroup limit 1\",\"readPublicConfigForHost\",\"writePublicConfigAsHost with merge:true\",\"getCachedPublicConfig accessor\",\"4+ tests\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: Note payload `public` field + auto-public on push",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** Firestore push computes public from (notebook, sharedNotebooks).\n\n**Files:** Modify app/src/lib/sync/firebase/notePayload.ts; modify app/src/lib/sync/firebase/noteSyncClient.firestore.ts; modify or create app/tests/unit/sync/firebase/notePayload.test.ts\n\n**Verify:** `cd app && npm run test -- notePayload && npm run check`\n\n```json:metadata\n{\"files\":[\"app/src/lib/sync/firebase/notePayload.ts\",\"app/src/lib/sync/firebase/noteSyncClient.firestore.ts\",\"app/tests/unit/sync/firebase/notePayload.test.ts\"],\"verifyCommand\":\"cd app && npm run test -- notePayload && npm run check\",\"acceptanceCriteria\":[\"FirestoreNotePayload has public:boolean\",\"noteToFirestorePayload(note, sharedNotebooks) computes public\",\"All call sites updated\",\"Tests cover 3 cases\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: Guest IDB + guest-mode sync wiring",
+      "status": "pending",
+      "blockedBy": [3, 4, 5],
+      "description": "**Goal:** Guest mode uses tomboy-web-guest IDB, queries Firestore via collectionGroup(public==true), writes to host namespace.\n\n**Files:** Modify app/src/lib/storage/db.ts; modify app/src/lib/sync/firebase/install.ts; modify app/src/lib/sync/firebase/noteSyncClient.firestore.ts; create app/tests/unit/storage/dbName.test.ts\n\n**Verify:** `cd app && npm run test -- dbName && npm run check`\n\n```json:metadata\n{\"files\":[\"app/src/lib/storage/db.ts\",\"app/src/lib/sync/firebase/install.ts\",\"app/src/lib/sync/firebase/noteSyncClient.firestore.ts\",\"app/tests/unit/storage/dbName.test.ts\"],\"verifyCommand\":\"cd app && npm run test -- dbName && npm run check\",\"acceptanceCriteria\":[\"db.ts setDbMode/getDbName parameterized\",\"subscribeAllPublicNotesAfter adapter\",\"Install branches on mode.value\",\"Guest watermark key firebaseGuestLastSyncAt\",\"Guest mode unconditionally enabled\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: `/welcome` landing route",
+      "status": "pending",
+      "blockedBy": [3],
+      "description": "**Goal:** Visitor landing page with name input + Dropbox login button.\n\n**Files:** Create app/src/routes/welcome/+page.svelte; modify app/src/routes/+layout.svelte\n\n**Verify:** Manual smoke per plan.\n\n```json:metadata\n{\"files\":[\"app/src/routes/welcome/+page.svelte\",\"app/src/routes/+layout.svelte\"],\"verifyCommand\":\"cd app && npm run check\",\"acceptanceCriteria\":[\"/welcome renders form\",\"Empty name shows error\",\"Submit sets localStorage + redirect to /\",\"Dropbox button starts OAuth\",\"Visitors redirected to /welcome\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: TopNav guest mode",
+      "status": "pending",
+      "blockedBy": [3, 4],
+      "description": "**Goal:** Guest top nav shows shared notebooks + 전체, no gear icon, distinct theme color.\n\n**Files:** Modify app/src/lib/components/TopNav.svelte\n\n**Verify:** `cd app && npm run check`; manual smoke.\n\n```json:metadata\n{\"files\":[\"app/src/lib/components/TopNav.svelte\"],\"verifyCommand\":\"cd app && npm run check\",\"acceptanceCriteria\":[\"Mode-aware navItems\",\"Gear button omitted from DOM in guest\",\"theme-guest CSS class\",\"Host mode unchanged\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: New-note guest behavior",
+      "status": "pending",
+      "blockedBy": [4, 6],
+      "description": "**Goal:** Guest + button creates a note already tagged with sharedNotebooks[0].\n\n**Files:** Modify app/src/lib/components/TopNav.svelte (handleNewNote)\n\n**Verify:** `cd app && npm run check`; manual smoke.\n\n```json:metadata\n{\"files\":[\"app/src/lib/components/TopNav.svelte\"],\"verifyCommand\":\"cd app && npm run check\",\"acceptanceCriteria\":[\"Guest path assignNotebook sharedNotebooks[0]\",\"Empty shared list → toast, no create\",\"Host path unchanged\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 10: Guest guards (note + favorites + routes + home + link)",
+      "status": "pending",
+      "blockedBy": [3, 6],
+      "description": "**Goal:** Per-note guard, favorites filter, route blocks (settings/admin/desktop/sleepnote), home redirect, internal-link toast.\n\n**Files:** Modify app/src/routes/note/[id]/+page.svelte; app/src/lib/components/TopNav.svelte; app/src/routes/+layout.svelte; app/src/lib/editor/TomboyEditor.svelte\n\n**Verify:** `cd app && npm run check`; manual smoke per path.\n\n```json:metadata\n{\"files\":[\"app/src/routes/note/[id]/+page.svelte\",\"app/src/lib/components/TopNav.svelte\",\"app/src/routes/+layout.svelte\",\"app/src/lib/editor/TomboyEditor.svelte\"],\"verifyCommand\":\"cd app && npm run check\",\"acceptanceCriteria\":[\"Non-public /note/{guid} → /notes\",\"Favorites filtered\",\"Settings/admin/desktop/sleepnote → /notes\",\"Home → first shared notebook's recent note\",\"Link click miss → toast\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 11: Settings — \"공유\" tab",
+      "status": "pending",
+      "blockedBy": [4, 5],
+      "description": "**Goal:** Host toggles notebooks public from settings. Batched updates + publicConfig rewrite.\n\n**Files:** Create app/src/lib/sync/firebase/publishNotebook.ts; modify app/src/routes/settings/+page.svelte\n\n**Verify:** `cd app && npm run check`; manual end-to-end.\n\n```json:metadata\n{\"files\":[\"app/src/lib/sync/firebase/publishNotebook.ts\",\"app/src/routes/settings/+page.svelte\"],\"verifyCommand\":\"cd app && npm run check\",\"acceptanceCriteria\":[\"Tab type union has 'share'\",\"setNotebookPublic batched writeBatch (≤500)\",\"publicConfig.sharedNotebooks updated\",\"Per-notebook note count shown\",\"Progress bar during batch\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 12: End-to-end smoke + deploy",
+      "status": "pending",
+      "blockedBy": [7, 8, 9, 10, 11],
+      "description": "**Goal:** Deploy rules + indexes, then run host and guest smoke flows.\n\n**Files:** None (operational).\n\n**Verify:** Manual smoke list passes.\n\n```json:metadata\n{\"files\":[],\"verifyCommand\":\"firebase deploy --only firestore:rules,firestore:indexes\",\"acceptanceCriteria\":[\"Rules + indexes deployed\",\"Host toggle smoke passes\",\"Guest welcome→edit→refresh smoke passes\",\"Internal-link guard smoke passes\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-15T00:00:00Z"
+}
