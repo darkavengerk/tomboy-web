@@ -17,21 +17,21 @@
     {
       "id": 3,
       "subject": "Task 2: ocr-service /gpu/raw (nvidia-smi)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "**Goal:** Expose nvidia-smi totals + per-process VRAM via /gpu/raw.\n\n```json:metadata\n{\"files\": [\"ocr-service/src/ocr_service/gpu.py\", \"ocr-service/src/ocr_service/app.py\", \"ocr-service/tests/test_gpu.py\"], \"verifyCommand\": \"cd ocr-service && pytest tests/test_gpu.py tests/test_app.py -v\", \"acceptanceCriteria\": [\"parses totals + processes\", \"missing nvidia-smi returns 200 + available:false\", \"Bearer auth required\"]}\n```"
     },
     {
       "id": 4,
       "subject": "Task 3: ocr-service 컨테이너화 (Containerfile + Quadlet)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1, 2, 3],
       "description": "**Goal:** Containerfile + Quadlet unit for desktop deploy.\n\n```json:metadata\n{\"files\": [\"ocr-service/Containerfile\", \"ocr-service/deploy/ocr-service.container\", \"ocr-service/deploy/README.md\"], \"verifyCommand\": \"podman build -t ocr-service:dev ocr-service/\", \"acceptanceCriteria\": [\"podman build succeeds\", \"container refuses no-token start\", \"/healthz smoke passes\", \"README desktop-only emphasized\"]}\n```"
     },
     {
       "id": 5,
       "subject": "Task 4: bridge /ocr 프록시 추가",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Bridge proxies /ocr POSTs to desktop ocr-service. OCR_SERVICE_URL required env.\n\n```json:metadata\n{\"files\": [\"bridge/src/ocr.ts\", \"bridge/src/ocr.test.ts\", \"bridge/src/server.ts\", \"bridge/deploy/term-bridge.container\"], \"verifyCommand\": \"cd bridge && npm test -- --run ocr\", \"acceptanceCriteria\": [\"4 vitest tests pass\", \"Bearer + image_b64 validation\", \"503 on upstream error\", \"OCR_SERVICE_URL required\"]}\n```"
     },
     {

@@ -1,0 +1,46 @@
+# Podman Quadlet unit for the tomboy-web OCR service.
+#
+# Install (on the DESKTOP — never on the Pi):
+#   1. Build the image (or pull from your registry):
+#        cd ocr-service && podman build -t ocr-service:latest .
+#   2. Drop this file at ~/.config/containers/systemd/ocr-service.container
+#   3. Create ~/.config/ocr-service.env with:
+#        BRIDGE_SHARED_TOKEN=<same as bridge's BRIDGE_SECRET-derived shared token>
+#        OCR_IDLE_UNLOAD_S=300
+#        OCR_MODEL_ID=stepfun-ai/GOT-OCR2_0
+#   4. Make sure the GPU is visible:
+#        - CDI: install nvidia-container-toolkit-cdi, generate /etc/cdi/nvidia.yaml
+#        - This unit uses `--device nvidia.com/gpu=all`
+#   5. systemctl --user daemon-reload
+#      systemctl --user enable --now ocr-service.service
+#   6. Linger:
+#        loginctl enable-linger $USER
+#
+# Important: this unit listens on 0.0.0.0:8080 INSIDE THE LAN ONLY. Do
+# NOT expose 8080 to the public internet — Bearer auth is the only
+# protection. The bridge (on a separate Pi machine) calls this via LAN.
+
+[Unit]
+Description=tomboy-web OCR service (GOT-OCR2)
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=localhost/ocr-service:latest
+ContainerName=ocr-service
+PublishPort=8080:8080
+EnvironmentFile=%h/.config/ocr-service.env
+
+# HuggingFace model cache survives container rebuilds.
+Volume=%h/.cache/huggingface:/root/.cache/huggingface:Z
+
+# GPU access via CDI.
+AddDevice=nvidia.com/gpu=all
+
+# Restart on failure but not on clean shutdown.
+[Service]
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

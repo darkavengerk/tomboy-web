@@ -1,0 +1,35 @@
+# Two-stage build: install deps first (slow, cached), then app code.
+#
+# Base: nvidia/cuda runtime image so the host's CUDA driver is enough —
+# we don't compile anything inside.
+FROM docker.io/nvidia/cuda:12.4.1-runtime-ubuntu22.04 AS base
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.11 python3.11-venv python3-pip \
+        ca-certificates \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/src
+
+WORKDIR /app
+
+# Need both metadata and src present before pip install because pyproject's
+# `[tool.setuptools.packages.find] where = ["src"]` resolves the package
+# tree at install time. (Trade-off: any src change invalidates the heavy
+# transformers/torch install layer. The model deps are still cached at
+# the apt-layer level above, which is the biggest chunk.)
+COPY pyproject.toml /app/
+COPY src /app/src
+RUN python3.11 -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir -U pip setuptools wheel \
+    && /opt/venv/bin/pip install --no-cache-dir ".[model]"
+
+ENV PATH="/opt/venv/bin:$PATH"
+
+EXPOSE 8080
+
+# uvicorn with a single worker — model is in-memory so we can't multi-process.
+CMD ["uvicorn", "ocr_service.app:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
