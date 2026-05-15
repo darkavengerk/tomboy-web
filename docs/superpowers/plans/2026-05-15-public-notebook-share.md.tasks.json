@@ -52,14 +52,14 @@
     {
       "id": 8,
       "subject": "Task 8: TopNav guest mode",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [3, 4],
       "description": "**Goal:** Guest top nav shows shared notebooks + 전체, no gear icon, distinct theme color.\n\n**Files:** Modify app/src/lib/components/TopNav.svelte\n\n**Verify:** `cd app && npm run check`; manual smoke.\n\n```json:metadata\n{\"files\":[\"app/src/lib/components/TopNav.svelte\"],\"verifyCommand\":\"cd app && npm run check\",\"acceptanceCriteria\":[\"Mode-aware navItems\",\"Gear button omitted from DOM in guest\",\"theme-guest CSS class\",\"Host mode unchanged\"]}\n```"
     },
     {
       "id": 9,
       "subject": "Task 9: New-note guest behavior",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [4, 6],
       "description": "**Goal:** Guest + button creates a note already tagged with sharedNotebooks[0].\n\n**Files:** Modify app/src/lib/components/TopNav.svelte (handleNewNote)\n\n**Verify:** `cd app && npm run check`; manual smoke.\n\n```json:metadata\n{\"files\":[\"app/src/lib/components/TopNav.svelte\"],\"verifyCommand\":\"cd app && npm run check\",\"acceptanceCriteria\":[\"Guest path assignNotebook sharedNotebooks[0]\",\"Empty shared list → toast, no create\",\"Host path unchanged\"]}\n```"
     },
