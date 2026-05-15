@@ -19,6 +19,7 @@ import {
 	noteToFirestorePayload,
 	type FirestoreNotePayload
 } from './notePayload.js';
+import { getCachedPublicConfig } from './publicConfig.js';
 import type { Unsubscribe } from './openNoteRegistry.js';
 
 export interface DocSnapshot {
@@ -101,7 +102,10 @@ export function createNoteSyncClient(prim: FirestorePrimitives): NoteSyncClient 
 	}
 
 	async function setNoteDoc(uid: string, note: NoteData): Promise<void> {
-		const payload = noteToFirestorePayload(note);
+		const payload = noteToFirestorePayload(
+			note,
+			getCachedPublicConfig()?.sharedNotebooks ?? []
+		);
 		await prim.setDoc(noteDocPath(uid, note.guid), {
 			...payload,
 			serverUpdatedAt: prim.serverTimestamp()

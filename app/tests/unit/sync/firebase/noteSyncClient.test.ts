@@ -36,7 +36,8 @@ function validPayload(): FirestoreNotePayload {
 		changeDate: '2026-04-27T10:00:00.0000000+09:00',
 		metadataChangeDate: '2026-04-27T10:00:00.0000000+09:00',
 		tags: ['x'],
-		deleted: false
+		deleted: false,
+		public: false
 	};
 }
 

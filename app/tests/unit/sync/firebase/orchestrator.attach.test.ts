@@ -44,6 +44,7 @@ function payloadFromNote(n: NoteData, overrides: Partial<FirestoreNotePayload> =
 		metadataChangeDate: n.metadataChangeDate,
 		tags: [...n.tags],
 		deleted: n.deleted,
+		public: false,
 		...overrides
 	};
 }

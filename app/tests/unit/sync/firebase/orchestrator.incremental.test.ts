@@ -45,6 +45,7 @@ function payloadFromNote(
 		metadataChangeDate: n.metadataChangeDate,
 		tags: [...n.tags],
 		deleted: n.deleted,
+		public: false,
 		...overrides
 	};
 }
@@ -165,7 +166,8 @@ describe('orchestrator incremental collection sync', () => {
 			changeDate: '2026-04-27T10:00:00.0000000+09:00',
 			metadataChangeDate: '2026-04-27T10:00:00.0000000+09:00',
 			tags: [],
-			deleted: false
+			deleted: false,
+			public: false
 		};
 
 		subs[0].onChange([{ payload: remote, serverUpdatedAtMillis: 1234567 }]);
@@ -204,7 +206,8 @@ describe('orchestrator incremental collection sync', () => {
 					changeDate: '2026-04-27T10:00:00.0000000+09:00',
 					metadataChangeDate: '2026-04-27T10:00:00.0000000+09:00',
 					tags: [],
-					deleted: false
+					deleted: false,
+					public: false
 				},
 				serverUpdatedAtMillis: 9999
 			}
@@ -338,7 +341,8 @@ describe('orchestrator incremental collection sync', () => {
 			changeDate: '2026-04-27T10:00:00.0000000+09:00',
 			metadataChangeDate: '2026-04-27T10:00:00.0000000+09:00',
 			tags: [],
-			deleted: false
+			deleted: false,
+			public: false
 		};
 		subs[0].onChange([{ payload: remote, serverUpdatedAtMillis: 1234 }]);
 		await tick();
@@ -395,7 +399,8 @@ describe('orchestrator incremental collection sync', () => {
 					changeDate: '2026-04-27T10:00:00.0000000+09:00',
 					metadataChangeDate: '2026-04-27T10:00:00.0000000+09:00',
 					tags: [],
-					deleted: false
+					deleted: false,
+					public: false
 				},
 				serverUpdatedAtMillis: 7000
 			}

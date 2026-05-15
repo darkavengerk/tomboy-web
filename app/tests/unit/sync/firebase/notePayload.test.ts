@@ -9,6 +9,7 @@ import {
 	type FirestoreNotePayload
 } from '$lib/sync/firebase/notePayload.js';
 import type { NoteData } from '$lib/core/note.js';
+import { createEmptyNote } from '$lib/core/note.js';
 
 function makeNote(overrides: Partial<NoteData> = {}): NoteData {
 	return {
@@ -38,7 +39,7 @@ function makeNote(overrides: Partial<NoteData> = {}): NoteData {
 describe('noteToFirestorePayload', () => {
 	it('returns the canonical content/metadata fields', () => {
 		const note = makeNote();
-		const payload = noteToFirestorePayload(note);
+		const payload = noteToFirestorePayload(note, []);
 		expect(payload).toEqual({
 			guid: note.guid,
 			uri: note.uri,
@@ -48,13 +49,14 @@ describe('noteToFirestorePayload', () => {
 			changeDate: note.changeDate,
 			metadataChangeDate: note.metadataChangeDate,
 			tags: note.tags,
-			deleted: false
+			deleted: false,
+			public: false
 		});
 	});
 
 	it('omits local-only and per-device fields', () => {
 		const note = makeNote();
-		const payload = noteToFirestorePayload(note) as unknown as Record<string, unknown>;
+		const payload = noteToFirestorePayload(note, []) as unknown as Record<string, unknown>;
 		for (const key of [
 			'localDirty',
 			'syncedXmlContent',
@@ -72,20 +74,20 @@ describe('noteToFirestorePayload', () => {
 
 	it('returns a fresh tags array (no aliasing)', () => {
 		const note = makeNote({ tags: ['a', 'b'] });
-		const payload = noteToFirestorePayload(note);
+		const payload = noteToFirestorePayload(note, []);
 		expect(payload.tags).toEqual(['a', 'b']);
 		expect(payload.tags).not.toBe(note.tags);
 	});
 
 	it('preserves deleted=true tombstones', () => {
-		const payload = noteToFirestorePayload(makeNote({ deleted: true }));
+		const payload = noteToFirestorePayload(makeNote({ deleted: true }), []);
 		expect(payload.deleted).toBe(true);
 	});
 
 	it('throws NotePayloadTooLargeError when serialised payload exceeds the limit', () => {
 		const huge = 'x'.repeat(MAX_FIRESTORE_NOTE_BYTES + 1);
 		const note = makeNote({ xmlContent: huge });
-		expect(() => noteToFirestorePayload(note)).toThrow(NotePayloadTooLargeError);
+		expect(() => noteToFirestorePayload(note, [])).toThrow(NotePayloadTooLargeError);
 	});
 });
 
@@ -99,7 +101,8 @@ describe('assertValidPayload', () => {
 		changeDate: '2026-04-27T09:00:00.0000000+09:00',
 		metadataChangeDate: '2026-04-27T09:00:00.0000000+09:00',
 		tags: [],
-		deleted: false
+		deleted: false,
+		public: false
 	};
 
 	it('accepts a complete object', () => {
@@ -134,6 +137,12 @@ describe('assertValidPayload', () => {
 			assertValidPayload({ ...valid, deleted: 'true' })
 		).toThrow(InvalidNotePayloadError);
 	});
+
+	it('rejects when public is not a boolean', () => {
+		expect(() =>
+			assertValidPayload({ ...valid, public: 'true' })
+		).toThrow(InvalidNotePayloadError);
+	});
 });
 
 describe('mergeRemoteIntoLocal', () => {
@@ -146,7 +155,8 @@ describe('mergeRemoteIntoLocal', () => {
 		changeDate: '2026-04-27T15:00:00.0000000+09:00',
 		metadataChangeDate: '2026-04-27T15:00:00.0000000+09:00',
 		tags: ['system:notebook:Inbox'],
-		deleted: false
+		deleted: false,
+		public: false
 	};
 
 	it('with no local note produces a full NoteData ready to persist as synced', () => {
@@ -214,5 +224,28 @@ describe('mergeRemoteIntoLocal', () => {
 		const merged = mergeRemoteIntoLocal(undefined, remote);
 		merged.tags.push('mutation');
 		expect(remote.tags).toEqual(['system:notebook:Inbox']);
+	});
+});
+
+describe('noteToFirestorePayload public flag', () => {
+	function noteIn(nb: string | null) {
+		const n = createEmptyNote('g1');
+		if (nb) n.tags.push(`system:notebook:${nb}`);
+		return n;
+	}
+
+	it('marks public when notebook is in shared list', () => {
+		const p = noteToFirestorePayload(noteIn('공유A'), ['공유A', '공유B']);
+		expect(p.public).toBe(true);
+	});
+
+	it('marks not-public when notebook is outside shared list', () => {
+		const p = noteToFirestorePayload(noteIn('비공유'), ['공유A']);
+		expect(p.public).toBe(false);
+	});
+
+	it('marks not-public when note has no notebook', () => {
+		const p = noteToFirestorePayload(noteIn(null), ['공유A']);
+		expect(p.public).toBe(false);
 	});
 });

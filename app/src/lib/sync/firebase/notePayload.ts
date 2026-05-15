@@ -14,6 +14,7 @@
  */
 import type { NoteData } from '$lib/core/note.js';
 import { createEmptyNote } from '$lib/core/note.js';
+import { getNotebook } from '$lib/core/notebooks.js';
 
 export interface FirestoreNotePayload {
 	guid: string;
@@ -25,6 +26,7 @@ export interface FirestoreNotePayload {
 	metadataChangeDate: string;
 	tags: string[];
 	deleted: boolean;
+	public: boolean;
 }
 
 /**
@@ -50,7 +52,11 @@ export class InvalidNotePayloadError extends Error {
 	}
 }
 
-export function noteToFirestorePayload(note: NoteData): FirestoreNotePayload {
+export function noteToFirestorePayload(
+	note: NoteData,
+	sharedNotebooks: string[]
+): FirestoreNotePayload {
+	const nb = getNotebook(note);
 	const payload: FirestoreNotePayload = {
 		guid: note.guid,
 		uri: note.uri,
@@ -60,7 +66,8 @@ export function noteToFirestorePayload(note: NoteData): FirestoreNotePayload {
 		changeDate: note.changeDate,
 		metadataChangeDate: note.metadataChangeDate,
 		tags: [...note.tags],
-		deleted: note.deleted
+		deleted: note.deleted,
+		public: nb !== null && sharedNotebooks.includes(nb)
 	};
 	const size = byteLengthUtf8(JSON.stringify(payload));
 	if (size > MAX_FIRESTORE_NOTE_BYTES) {
@@ -92,6 +99,9 @@ export function assertValidPayload(
 	}
 	if (typeof obj.deleted !== 'boolean') {
 		throw new InvalidNotePayloadError('field "deleted" must be a boolean');
+	}
+	if (typeof obj.public !== 'boolean') {
+		throw new InvalidNotePayloadError('field "public" must be a boolean');
 	}
 	if (!Array.isArray(obj.tags) || obj.tags.some((t) => typeof t !== 'string')) {
 		throw new InvalidNotePayloadError('field "tags" must be a string array');
