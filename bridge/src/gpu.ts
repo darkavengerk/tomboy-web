@@ -136,3 +136,109 @@ export async function handleGpuStatus(
 		})
 	);
 }
+
+interface UnloadBody {
+	backend?: unknown;
+	name?: unknown;
+}
+
+/**
+ * POST /gpu/unload {backend, name?} — route a model unload to the right
+ * backend.
+ *
+ * - `backend: "ollama"` + `name` → POST `${OLLAMA_URL}/api/generate` with
+ *   `{model, prompt: "", keep_alive: 0}`. This is Ollama's official
+ *   trick to evict a loaded model: load with zero keep_alive forces
+ *   immediate eviction.
+ * - `backend: "ocr"` → POST `${OCR_SERVICE_URL}/unload` with the
+ *   re-Bearered bridge secret. The ocr-service returns 423 with a JSON
+ *   body when generation is in-flight; we pass that through verbatim so
+ *   the UI can display the localized "busy, try again" message.
+ * - Anything else → 400 unknown_backend.
+ */
+export async function handleGpuUnload(
+	req: IncomingMessage,
+	res: ServerResponse,
+	secret: string,
+	ocrServiceUrl: string,
+	ollamaUrl: string
+): Promise<void> {
+	const token = extractBearer(req.headers.authorization);
+	if (!verifyToken(secret, token)) {
+		res.writeHead(401, { 'Content-Type': 'application/json' });
+		res.end(JSON.stringify({ error: 'unauthorized' }));
+		return;
+	}
+
+	let body: UnloadBody;
+	try {
+		body = (await readJson(req)) as UnloadBody;
+	} catch {
+		res.writeHead(400, { 'Content-Type': 'application/json' });
+		res.end(JSON.stringify({ error: 'bad_json' }));
+		return;
+	}
+
+	const backend = typeof body.backend === 'string' ? body.backend : '';
+	if (backend === 'ollama') {
+		const name = typeof body.name === 'string' ? body.name : '';
+		if (!name) {
+			res.writeHead(400, { 'Content-Type': 'application/json' });
+			res.end(JSON.stringify({ error: 'missing_name' }));
+			return;
+		}
+		await proxy(
+			res,
+			`${ollamaUrl}/api/generate`,
+			{
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' }
+			},
+			JSON.stringify({ model: name, prompt: '', keep_alive: 0 })
+		);
+		return;
+	}
+
+	if (backend === 'ocr') {
+		await proxy(
+			res,
+			`${ocrServiceUrl}/unload`,
+			{
+				method: 'POST',
+				headers: { Authorization: `Bearer ${secret}` }
+			},
+			null
+		);
+		return;
+	}
+
+	res.writeHead(400, { 'Content-Type': 'application/json' });
+	res.end(JSON.stringify({ error: 'unknown_backend' }));
+}
+
+async function proxy(
+	res: ServerResponse,
+	url: string,
+	init: RequestInit,
+	body: string | null
+): Promise<void> {
+	let resp: Response;
+	try {
+		resp = await fetch(url, body !== null ? { ...init, body } : init);
+	} catch {
+		res.writeHead(503, { 'Content-Type': 'application/json' });
+		res.end(JSON.stringify({ error: 'upstream_unavailable' }));
+		return;
+	}
+	const text = await resp.text();
+	res.writeHead(resp.status, { 'Content-Type': 'application/json' });
+	res.end(text);
+}
+
+async function readJson(req: IncomingMessage): Promise<unknown> {
+	const chunks: Buffer[] = [];
+	for await (const chunk of req) chunks.push(chunk as Buffer);
+	const raw = Buffer.concat(chunks).toString('utf8');
+	if (!raw) return {};
+	return JSON.parse(raw);
+}

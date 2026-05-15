@@ -12,7 +12,7 @@ import { probePort, sendMagicPacket, waitForPort } from './wol.js';
 import { handleLlmChat } from './llm.js';
 import { handleRagSearch } from './rag.js';
 import { handleOcrProxy } from './ocr.js';
-import { handleGpuStatus } from './gpu.js';
+import { handleGpuStatus, handleGpuUnload } from './gpu.js';
 import { SpectatorSession } from './spectatorSession.js';
 
 const PORT = Number(process.env.BRIDGE_PORT || 3000);
@@ -113,6 +113,11 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 
 	if (url === '/gpu/status' && req.method === 'GET') {
 		await handleGpuStatus(req, res, SECRET, OCR_SERVICE_URL, OLLAMA_URL);
+		return;
+	}
+
+	if (url === '/gpu/unload' && req.method === 'POST') {
+		await handleGpuUnload(req, res, SECRET, OCR_SERVICE_URL, OLLAMA_URL);
 		return;
 	}
 

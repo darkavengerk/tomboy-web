@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
 import { mintToken } from './auth.js';
-import { handleGpuStatus } from './gpu.js';
+import { handleGpuStatus, handleGpuUnload } from './gpu.js';
 
 const SECRET = 'test-secret';
 const OCR_URL = 'http://ocr.test';
@@ -13,6 +13,13 @@ function mockReq(headers: Record<string, string>): IncomingMessage {
 	const r = Readable.from([]) as unknown as IncomingMessage;
 	(r as { headers: Record<string, string> }).headers = headers;
 	(r as { method: string }).method = 'GET';
+	return r;
+}
+
+function postReq(headers: Record<string, string>, body: object): IncomingMessage {
+	const r = Readable.from([Buffer.from(JSON.stringify(body), 'utf8')]) as unknown as IncomingMessage;
+	(r as { headers: Record<string, string> }).headers = headers;
+	(r as { method: string }).method = 'POST';
 	return r;
 }
 
@@ -301,4 +308,94 @@ test('handleGpuStatus: ocr model marked unloadable=false when in_flight>0', asyn
 	const ocrModel = body.models.find((m) => m.backend === 'ocr');
 	assert.ok(ocrModel);
 	assert.equal(ocrModel!.unloadable, false);
+});
+
+test('handleGpuUnload: routes ollama to /api/generate with keep_alive:0', async () => {
+	const token = mintToken(SECRET);
+	let calledUrl = '';
+	let calledBody = '';
+	globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+		calledUrl = String(url);
+		calledBody = (init?.body as string) ?? '';
+		return new Response('{}', { status: 200 });
+	}) as typeof fetch;
+	const { res, get } = mockRes();
+	await handleGpuUnload(
+		postReq({ authorization: `Bearer ${token}` }, { backend: 'ollama', name: 'exaone3.5:2.4b' }),
+		res,
+		SECRET,
+		OCR_URL,
+		OLLAMA_URL
+	);
+	assert.equal(get().status, 200);
+	assert.equal(calledUrl, `${OLLAMA_URL}/api/generate`);
+	assert.deepEqual(JSON.parse(calledBody), {
+		model: 'exaone3.5:2.4b',
+		prompt: '',
+		keep_alive: 0
+	});
+});
+
+test('handleGpuUnload: routes ocr to ocr-service /unload with Bearer', async () => {
+	const token = mintToken(SECRET);
+	let calledUrl = '';
+	let calledAuth = '';
+	globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+		calledUrl = String(url);
+		calledAuth =
+			((init?.headers ?? {}) as Record<string, string>)['Authorization'] ?? '';
+		return new Response('{"unloaded":true}', { status: 200 });
+	}) as typeof fetch;
+	const { res, get } = mockRes();
+	await handleGpuUnload(
+		postReq({ authorization: `Bearer ${token}` }, { backend: 'ocr' }),
+		res,
+		SECRET,
+		OCR_URL,
+		OLLAMA_URL
+	);
+	assert.equal(get().status, 200);
+	assert.equal(calledUrl, `${OCR_URL}/unload`);
+	assert.equal(calledAuth, `Bearer ${SECRET}`);
+});
+
+test('handleGpuUnload: forwards 423 from ocr-service unchanged', async () => {
+	const token = mintToken(SECRET);
+	globalThis.fetch = (async () =>
+		new Response(JSON.stringify({ error: 'in_flight' }), { status: 423 })) as typeof fetch;
+	const { res, get } = mockRes();
+	await handleGpuUnload(
+		postReq({ authorization: `Bearer ${token}` }, { backend: 'ocr' }),
+		res,
+		SECRET,
+		OCR_URL,
+		OLLAMA_URL
+	);
+	assert.equal(get().status, 423);
+});
+
+test('handleGpuUnload: 400 on unknown backend', async () => {
+	const token = mintToken(SECRET);
+	const { res, get } = mockRes();
+	await handleGpuUnload(
+		postReq({ authorization: `Bearer ${token}` }, { backend: 'mystery' }),
+		res,
+		SECRET,
+		OCR_URL,
+		OLLAMA_URL
+	);
+	assert.equal(get().status, 400);
+});
+
+test('handleGpuUnload: 400 on ollama without name', async () => {
+	const token = mintToken(SECRET);
+	const { res, get } = mockRes();
+	await handleGpuUnload(
+		postReq({ authorization: `Bearer ${token}` }, { backend: 'ollama' }),
+		res,
+		SECRET,
+		OCR_URL,
+		OLLAMA_URL
+	);
+	assert.equal(get().status, 400);
 });
