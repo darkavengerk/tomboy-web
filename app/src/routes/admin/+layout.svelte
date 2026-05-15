@@ -8,6 +8,7 @@
 		{ href: '/admin/revisions', label: '리비전' },
 		{ href: '/admin/browse', label: '파일 탐색' },
 		{ href: '/admin/sleepnote', label: '슬립노트' },
+		{ href: '/admin/remarkable', label: '리마커블' },
 		{ href: '/admin/tools', label: '도구' }
 	];
 

@@ -89,6 +89,7 @@ Mirrors `functions/src/index.ts:280-281` exactly. **Do NOT strip the `dbid:` pre
 - `rmrl.render(source)` requires a path that either is a `.zip` notebook bundle OR has a `<stem>.content` sibling (see `rmrl/sources.py:get_source`). The pipeline's per-page flat layout has neither.
 - `s2_prepare.RmsceneRenderer` uses `rmscene.read_tree()` to parse `.rm` v6 → Pillow `ImageDraw.line` for each stroke → PNG. ~80 LOC, pure Python.
 - **rM2 coordinate space**: x centered (~`[-702, +702]`), y **top-anchored** (~`[0, 1872]`). Translate only x by `+PAGE_WIDTH/2`; y is already top-down. Initially translating y too pushed handwriting off the bottom and left huge top whitespace.
+- **Page height is NOT a hard ceiling.** rM users can scroll the page down and keep writing past y=1872. `RmsceneRenderer` runs a two-pass: first pass collects strokes + `max_y`; second pass allocates `canvas_h = max(PAGE_HEIGHT, int(max_y + BOTTOM_PADDING))`. Standard non-scrolled pages still render at exactly 1404×1872 (no regression). Scrolled pages get a tall PNG that the OCR backend then tile-slices (see I11).
 
 ### I7. rM userland is busybox + dropbear, not GNU/OpenSSH
 
@@ -111,6 +112,36 @@ OpenSSH 9+ defaults scp to SFTP mode, which `ftruncate`+`lseek`s the destination
 ### I10. rM systemd, not cron
 
 The rM doesn't ship cron. Schedule the push via a systemd timer (`/etc/systemd/system/diary-push.timer`). Canonical unit files live in `/home/root/diary-push/` (survives firmware updates) and an `install.sh` re-installs them into `/etc/systemd/system/` after each rM firmware update (which wipes `/etc/`).
+
+### I11. Tall (scrolled) pages must be tile-OCR'd, not single-shot
+
+A scrolled rM page can produce a PNG taller than the Qwen2.5-VL processor's default `max_pixels` (~1.0 M) downsampling budget, and KV-cache for a much longer generation blows the 10 GB RTX 3080. `LocalVlmBackend._run_inference` calls `_split_to_tiles` first:
+
+- Image height ≤ `TILE_THRESHOLD` (2400): pass-through (one tile). Standard 1404×1872 pages → no behavior change vs. M1–M3.
+- Image height > `TILE_THRESHOLD`: slice into `TILE_HEIGHT` (1872)-tall tiles. Each cut is snapped to the longest blank row within ±`LINE_GAP_SEARCH` (240) of the target so a line of handwriting is never split. Falls back to the exact target row if no blank band exists in the window (graceful degradation — at worst one line is bisected, OCR'd as two partials).
+- Each tile is fed to the existing single-image inference path; outputs are stripped per tile and joined with `\n`.
+
+No overlap + no dedup — the line-gap snap is what prevents text being split, so concatenation is just `"\n".join(...)`. Don't reintroduce an overlap-with-dedup scheme without first measuring that the gap-snap approach actually misses lines.
+
+`_ink_row_mask` does the scan in pure Pillow (`Image.tobytes()` + per-row `min()`) — no numpy dep added.
+
+### I12. Admin status mirror lives at `users/{uid}/diary-pipeline-pages/{pageUuid}`
+
+A small per-page mirror that lets `/admin/remarkable` show what the pipeline has processed without reaching the desktop filesystem. Schema (all optional except the four core fields):
+
+```
+{ pageUuid, tomboyGuid, imageUrl, writtenAt,
+  imageWidth?, imageHeight?,     // height > 1872 = scroll-extended page
+  ocrModel?, ocrCharCount?, ocrAt?,
+  preparedAt?, lastModifiedMs?,
+  rerunRequested?: bool, rerunRequestedAt?: ISO|null }
+```
+
+Write side: `s4_write` calls `PipelineStatusClient.set` after every successful Firestore note write, then `clear_rerun` to drop any pending flag. It also runs `backfill_status` at startup for any uuid in `written.json` that lacks a status doc — so the admin view is populated for pages OCR'd before this feature.
+
+Read/rerun side: each stage's `main()` calls `fetch_pending_reruns(cfg, log)` and folds the returned UUIDs into its `force` set. The admin's "재처리 요청" button writes `rerunRequested: true`; the next manual `s2 → s3 → s4` run picks it up, and `s4` clears the flag on success.
+
+Failures (no network, missing creds) are **best-effort silent** — pipeline progress trumps the optional admin mirror.
 
 ## 3. End-to-end workflow
 
@@ -199,6 +230,7 @@ mapping below is faster than re-deriving.
 | The `---` separator does not render as a horizontal rule | The app's `noteContentArchiver.ts` has no `horizontalRule` case (neither parse nor serialize). The HR support was attempted in this session and reverted at user's request; user said "나중에 따로 고칠게". | Currently `---` is plain text. To add HR support cleanly: parser branch on `tagName === 'hr'` → `{type:'horizontalRule'}`; serializer branch on `node.type === 'horizontalRule'` → `<hr/>`; pipeline emits `<hr/>` instead of `---`. Tomboy desktop compatibility on round-trip is the open question. |
 | s4 writes succeed but image URLs return 404 / no preview | Dropbox upload failed silently. | Check `~/.local/share/tomboy-pipeline/logs/s4_write.log` for `dropbox_upload_failed`. |
 | Image URL is clickable but doesn't render inline / loads Dropbox HTML page | Dropbox SDK returns share links with `?dl=0` by default — that's the HTML preview, not raw bytes. | `dropbox_uploader._to_inline_url` rewrites `dl=0` → `raw=1`, preserving every other query param. `share_link` applies it to both the create-new and fall-back-to-existing paths. |
+| OCR transcribes only the top portion of a long page (rest is missing) | Page was scrolled on the rM but `RmsceneRenderer` was hardcoded to a 1404×1872 canvas, clipping strokes with `y > 1872`. Even after extending the canvas, single-shot OCR on a tall image gets aggressively downsampled by Qwen2.5-VL's `max_pixels` ≈ 1.0 M. | Renderer now grows the canvas to `max(PAGE_HEIGHT, max_stroke_y + BOTTOM_PADDING)`; `LocalVlmBackend._split_to_tiles` slices the tall PNG along blank-row line gaps and OCRs each tile separately. To re-process pages OCR'd before this change, delete `state/{prepared,ocr-done,written}.json` for affected uuids (or pass `--force <uuid>` to each stage). `mappings.json` is kept so the same handwriting still maps to the same Tomboy note (per I1). |
 
 ## 5. State files (desktop)
 
@@ -233,25 +265,27 @@ To force a re-run of a stage: delete the relevant file or pass `--force <uuid>`.
 
 - `pipeline/desktop/stages/`
   - `s1_fetch.py` — `SshRsyncTransport` uses `ssh ... cat` for the index + `rsync -e "ssh -p ..."` for pull. Pulls into `raw/<page-uuid>/`.
-  - `s2_prepare.py` — `RmsceneRenderer` produces `png/<page-uuid>/page.png`. PAGE_WIDTH=1404 PAGE_HEIGHT=1872 STROKE_WIDTH=2 + `_COLOR_MAP` for rM PenColor enum.
+  - `s2_prepare.py` — `RmsceneRenderer` produces `png/<page-uuid>/page.png`. PAGE_WIDTH=1404, PAGE_HEIGHT=1872 (floor — canvas grows to `max_stroke_y + BOTTOM_PADDING=32` for scrolled pages), STROKE_WIDTH=2 + `_COLOR_MAP` for rM PenColor enum.
   - `s3_ocr.py` — drives `LocalVlmBackend`. Supports `--force <uuid>` and `--uuid <uuid>` (filter to specific page uuids for smoke tests).
   - `s4_write.py` — Firestore upsert + Dropbox image upload + mappings update per spec I1.
 - `pipeline/desktop/ocr_backends/`
   - `base.py` — `OCRBackend` ABC + `@register_backend(name)` decorator + `get_backend(name)` registry.
   - `__init__.py` — `from . import local_vlm` to side-effect-register the built-in backend (the `s3_ocr` import path doesn't hit `local_vlm` directly).
-  - `local_vlm.py` — Qwen2.5-VL-7B via `AutoModelForImageTextToText`. nf4 + double-quant + fp16 compute. `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` set at module top.
+  - `local_vlm.py` — Qwen2.5-VL-7B via `AutoModelForImageTextToText`. nf4 + double-quant + fp16 compute. `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` set at module top. Auto-tiles tall scrolled pages via `_split_to_tiles` (TILE_THRESHOLD=2400, TILE_HEIGHT=1872, line-gap-snap with LINE_GAP_SEARCH=240); per-tile outputs joined with `\n`.
 - `pipeline/desktop/lib/`
   - `tomboy_payload.py` — builds the Firestore document (per app's `FirestoreNotePayload` shape). Wraps image URL in `<link:url>` mark.
   - `firestore_client.py` — Firebase Admin SDK wrapper.
   - `dropbox_uploader.py` — PNG upload + share-link. `share_link()` rewrites Dropbox's default `?dl=0` (HTML preview page) to `?raw=1` (raw bytes) via `_to_inline_url`, so the URL works as an inline image source — without it, the URL only opens a Dropbox preview when clicked and is useless inside an `<img src>`.
+  - `pipeline_status.py` — `PipelineStatusClient` (Firebase Admin SDK) for per-page status docs at `users/{uid}/diary-pipeline-pages/{pageUuid}` (see I12). `fetch_pending_reruns(cfg, log)` is the best-effort helper every stage's `main()` uses to fold admin-page rerun requests into its `force` set.
   - `state.py`, `log.py`, `config.py` — shared infrastructure.
 - `pipeline/desktop/bootstrap.py` — `sanitize_account_id` MUST mirror `functions/src/index.ts:280-281` byte-for-byte. Tests in `tests/test_bootstrap.py` lock the contract.
 - `pipeline/config/pipeline.yaml` — gitignored. Holds `firebase_uid`, service-account path, Dropbox refresh token, host details. `bootstrap.py` emits it.
 - `pipeline/config/prompts/diary-ko.txt` — Qwen2.5-VL system prompt for Korean handwriting.
 
-### App-side helper added during bring-up
+### App-side helpers added during bring-up
 
 - `app/src/lib/editor/NoteXmlViewer.svelte` — modal that shows raw `xmlContent` for any note. Accessible from the **⋯** menu → "원본 XML 보기" on both mobile (`NoteActionSheet`) and desktop (`NoteContextMenu`). Critical for verifying what s4 actually wrote without firing up the Firestore console.
+- `app/src/lib/admin/remarkablePipeline.ts` + `app/src/routes/admin/remarkable/+page.svelte` — the `/admin/remarkable` operator UI. Reads from `users/{uid}/diary-pipeline-pages`, writes the `rerunRequested` flag. Surfaces page UUID → tomboy GUID mapping, Dropbox image thumb, PNG dimensions, OCR char count + model, and a "스크롤" badge for `imageHeight > 1872`. Added to `admin/+layout.svelte` tabs as "리마커블".
 
 ## 7. Tests guarding the bring-up bugs
 

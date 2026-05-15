@@ -10,6 +10,7 @@ from typing import Iterable
 
 from desktop.lib.config import load_config
 from desktop.lib.log import StageLogger
+from desktop.lib.pipeline_status import fetch_pending_reruns
 from desktop.lib.state import StateFile
 from desktop.ocr_backends.base import OCRBackend, get_backend
 
@@ -102,13 +103,14 @@ def main(argv: list[str] | None = None) -> int:
         system_prompt_path=cfg.ocr.local_vlm.system_prompt_path,
     )
 
+    rerun_uuids = fetch_pending_reruns(cfg, log)
     processed = run_ocr(
         prepared_state=prepared_state,
         ocr_state=ocr_state,
         ocr_root=ocr_root,
         log=log,
         backend=backend,
-        force=args.force,
+        force=set(args.force) | set(rerun_uuids),
         only_uuids=args.uuid or None,
     )
     print(f"s3_ocr: {len(processed)} pages OCR'd")
