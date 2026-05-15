@@ -6,6 +6,10 @@
 	import type { NoteData } from '$lib/core/note.js';
 	import { page } from '$app/state';
 	import { appMode, type AppMode } from '$lib/stores/appMode.svelte.js';
+	import { mode } from '$lib/stores/guestMode.svelte.js';
+	import { getCachedPublicConfig } from '$lib/sync/firebase/publicConfig.js';
+	import { assignNotebook } from '$lib/core/notebooks.js';
+	import { pushToast } from '$lib/stores/toast.js';
 
 	interface Props {
 		canGoBack: boolean;
@@ -16,29 +20,56 @@
 
 	let { canGoBack, canGoForward, onback, onforward }: Props = $props();
 
-	const items: { href: string; label: string; mode: AppMode }[] = [
-		{ href: '/', label: '홈', mode: 'home' },
-		{ href: '/sleepnote', label: '슬립노트', mode: 'sleepnote' },
-		{ href: '/notes', label: '전체', mode: 'notes' }
-	];
+	const isGuest = $derived(mode.value === 'guest');
 
-	function handleNavClick(e: MouseEvent, mode: AppMode) {
-		appMode.set(mode);
+	const navItems = $derived.by(() => {
+		if (mode.value === 'guest') {
+			const shared = getCachedPublicConfig()?.sharedNotebooks ?? [];
+			const items: { href: string; label: string; mode: AppMode }[] = shared.map((name) => ({
+				href: `/notes?nb=${encodeURIComponent(name)}`,
+				label: name,
+				mode: 'notes' as AppMode
+			}));
+			items.push({ href: '/notes', label: '전체', mode: 'notes' });
+			return items;
+		}
+		return [
+			{ href: '/', label: '홈', mode: 'home' as AppMode },
+			{ href: '/sleepnote', label: '슬립노트', mode: 'sleepnote' as AppMode },
+			{ href: '/notes', label: '전체', mode: 'notes' as AppMode }
+		];
+	});
+
+	function handleNavClick(e: MouseEvent, navMode: AppMode) {
+		appMode.set(navMode);
 		// let the <a> navigate normally
 		void e;
 	}
 
 	async function handleNewNote() {
+		if (mode.value === 'guest') {
+			const shared = getCachedPublicConfig()?.sharedNotebooks ?? [];
+			if (shared.length === 0) {
+				pushToast('공유 노트북이 없습니다.', { kind: 'info' });
+				return;
+			}
+			const n = await createNote();
+			await assignNotebook(n.guid, shared[0]);
+			void goto(`/note/${n.guid}`);
+			return;
+		}
 		const n = await createNote();
-		goto(`/note/${n.guid}`);
+		void goto(`/note/${n.guid}`);
 	}
 
-	function isActive(mode: AppMode): boolean {
-		return appMode.value === mode;
+	function isActive(navMode: AppMode): boolean {
+		return appMode.value === navMode;
 	}
 
 	const themeClass = $derived(
-		page.url.pathname === '/settings' ? 'theme-settings' : `theme-${appMode.value}`
+		mode.value === 'guest' ? 'theme-guest' :
+		page.url.pathname === '/settings' ? 'theme-settings' :
+		`theme-${appMode.value}`
 	);
 
 	// Favorites sheet state
@@ -105,7 +136,7 @@
 	</div>
 
 	<nav class="nav-links" aria-label="주요 탐색">
-		{#each items as item (item.href)}
+		{#each navItems as item (item.href)}
 			<a
 				href={item.href}
 				class="nav-link"
@@ -132,12 +163,14 @@
 				<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
 			</svg>
 		</button>
-		<button class="nav-btn" aria-label="설정" onclick={handleSettings}>
-			<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-				<circle cx="12" cy="12" r="3" />
-				<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-			</svg>
-		</button>
+		{#if !isGuest}
+			<button class="nav-btn" aria-label="설정" onclick={handleSettings}>
+				<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<circle cx="12" cy="12" r="3" />
+					<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+				</svg>
+			</button>
+		{/if}
 	</div>
 </header>
 
@@ -192,6 +225,7 @@
 	.theme-sleepnote { background: #2563eb; }
 	.theme-notes    { background: #6b7280; }
 	.theme-settings { background: #b45309; }
+	.theme-guest    { background: #3f6b66; }
 
 	.nav-left {
 		display: flex;
