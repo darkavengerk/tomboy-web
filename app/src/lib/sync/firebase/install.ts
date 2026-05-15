@@ -5,17 +5,31 @@
  * orchestrator with real Firestore adapters, and applies the saved enable
  * state. Safe to call more than once (idempotent — subsequent calls just
  * re-apply).
+ *
+ * Guest mode: when `mode.value === 'guest'`, uses a separate IDB database
+ * (`tomboy-web-guest`), signs in anonymously, discovers the host's publicConfig,
+ * and configures the orchestrator to read public notes from Firestore while
+ * writing back to the host's uid namespace. Sync is force-enabled.
  */
 import { getSetting, setSetting } from '$lib/storage/appSettings.js';
 import * as noteStore from '$lib/storage/noteStore.js';
+import { setDbMode } from '$lib/storage/db.js';
 import { configureNoteSync, setNoteSyncEnabled } from './orchestrator.js';
 import {
 	getCurrentNoteSyncUid,
-	getRealNoteSyncClient
+	getRealNoteSyncClient,
+	subscribeAllPublicNotesAfter
 } from './noteSyncClient.firestore.js';
+import { ensureGuestSignedIn } from '$lib/firebase/app.js';
+import {
+	discoverPublicConfigForGuest,
+	getCachedPublicConfig
+} from './publicConfig.js';
+import { mode } from '$lib/stores/guestMode.svelte.js';
 
 const ENABLED_SETTING_KEY = 'firebaseNotesEnabled';
-const LAST_SYNC_MILLIS_KEY = 'firebaseNotesLastSyncAt';
+const HOST_LAST_SYNC_KEY = 'firebaseNotesLastSyncAt';
+const GUEST_LAST_SYNC_KEY = 'firebaseGuestLastSyncAt';
 
 export async function isFirebaseNotesEnabledSetting(): Promise<boolean> {
 	const v = await getSetting<boolean>(ENABLED_SETTING_KEY);
@@ -34,12 +48,46 @@ let installed = false;
  */
 export async function installRealNoteSync(): Promise<void> {
 	if (installed) {
-		setNoteSyncEnabled(await isFirebaseNotesEnabledSetting());
+		if (mode.value !== 'guest') {
+			setNoteSyncEnabled(await isFirebaseNotesEnabledSetting());
+		}
 		return;
 	}
 	installed = true;
 
 	const client = getRealNoteSyncClient();
+
+	if (mode.value === 'guest') {
+		setDbMode('guest');
+		await ensureGuestSignedIn();
+		const cfg = getCachedPublicConfig() ?? (await discoverPublicConfigForGuest());
+		if (!cfg) {
+			// No host has published a publicConfig — leave sync disabled, UI will show empty.
+			return;
+		}
+		const hostUid = cfg.hostUid;
+		configureNoteSync({
+			push: async (note) => {
+				await client.setNoteDoc(hostUid, note);
+			},
+			getNote: (g) => noteStore.getNote(g),
+			getUid: async () => hostUid,
+			subscribeRemote: (_uid, guid, cb) => client.subscribeNoteDoc(hostUid, guid, cb),
+			subscribeNoteCollection: subscribeAllPublicNotesAfter,
+			getLastSyncMillis: async () => {
+				const v = await getSetting<number>(GUEST_LAST_SYNC_KEY);
+				return typeof v === 'number' ? v : 0;
+			},
+			setLastSyncMillis: async (m) => {
+				await setSetting(GUEST_LAST_SYNC_KEY, m);
+			},
+			debounceMs: 500
+		});
+		setNoteSyncEnabled(true); // force-enable for guests
+		return;
+	}
+
+	// Host mode — existing behavior.
 	configureNoteSync({
 		push: async (note) => {
 			const uid = await getCurrentNoteSyncUid();
@@ -52,11 +100,11 @@ export async function installRealNoteSync(): Promise<void> {
 		subscribeNoteCollection: (uid, sinceMillis, onChange, onError) =>
 			client.subscribeNoteCollection(uid, sinceMillis, onChange, onError),
 		getLastSyncMillis: async () => {
-			const v = await getSetting<number>(LAST_SYNC_MILLIS_KEY);
+			const v = await getSetting<number>(HOST_LAST_SYNC_KEY);
 			return typeof v === 'number' ? v : 0;
 		},
 		setLastSyncMillis: async (m) => {
-			await setSetting(LAST_SYNC_MILLIS_KEY, m);
+			await setSetting(HOST_LAST_SYNC_KEY, m);
 		},
 		debounceMs: 500
 	});

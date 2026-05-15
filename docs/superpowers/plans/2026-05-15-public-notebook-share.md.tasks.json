@@ -31,14 +31,14 @@
     {
       "id": 5,
       "subject": "Task 5: Note payload `public` field + auto-public on push",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [2],
       "description": "**Goal:** Firestore push computes public from (notebook, sharedNotebooks).\n\n**Files:** Modify app/src/lib/sync/firebase/notePayload.ts; modify app/src/lib/sync/firebase/noteSyncClient.firestore.ts; modify or create app/tests/unit/sync/firebase/notePayload.test.ts\n\n**Verify:** `cd app && npm run test -- notePayload && npm run check`\n\n```json:metadata\n{\"files\":[\"app/src/lib/sync/firebase/notePayload.ts\",\"app/src/lib/sync/firebase/noteSyncClient.firestore.ts\",\"app/tests/unit/sync/firebase/notePayload.test.ts\"],\"verifyCommand\":\"cd app && npm run test -- notePayload && npm run check\",\"acceptanceCriteria\":[\"FirestoreNotePayload has public:boolean\",\"noteToFirestorePayload(note, sharedNotebooks) computes public\",\"All call sites updated\",\"Tests cover 3 cases\"]}\n```"
     },
     {
       "id": 6,
       "subject": "Task 6: Guest IDB + guest-mode sync wiring",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [3, 4, 5],
       "description": "**Goal:** Guest mode uses tomboy-web-guest IDB, queries Firestore via collectionGroup(public==true), writes to host namespace.\n\n**Files:** Modify app/src/lib/storage/db.ts; modify app/src/lib/sync/firebase/install.ts; modify app/src/lib/sync/firebase/noteSyncClient.firestore.ts; create app/tests/unit/storage/dbName.test.ts\n\n**Verify:** `cd app && npm run test -- dbName && npm run check`\n\n```json:metadata\n{\"files\":[\"app/src/lib/storage/db.ts\",\"app/src/lib/sync/firebase/install.ts\",\"app/src/lib/sync/firebase/noteSyncClient.firestore.ts\",\"app/tests/unit/storage/dbName.test.ts\"],\"verifyCommand\":\"cd app && npm run test -- dbName && npm run check\",\"acceptanceCriteria\":[\"db.ts setDbMode/getDbName parameterized\",\"subscribeAllPublicNotesAfter adapter\",\"Install branches on mode.value\",\"Guest watermark key firebaseGuestLastSyncAt\",\"Guest mode unconditionally enabled\"]}\n```"
     },

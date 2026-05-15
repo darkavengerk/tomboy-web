@@ -5,6 +5,7 @@
  */
 import {
 	collection,
+	collectionGroup,
 	doc,
 	getDoc as fsGetDoc,
 	setDoc as fsSetDoc,
@@ -22,6 +23,8 @@ import {
 	type CollectionDocChange,
 	type FirestorePrimitives
 } from './noteSyncClient.js';
+import type { IncrementalSyncChange } from './incrementalSync.js';
+import { assertValidPayload } from './notePayload.js';
 
 function primitives(): FirestorePrimitives {
 	return {
@@ -93,4 +96,51 @@ export async function getCurrentNoteSyncUid(): Promise<string | null> {
 		console.warn('[noteSync] sign-in failed', err);
 		return null;
 	}
+}
+
+/**
+ * Guest-mode collection-level listener: queries ALL public notes across all
+ * users via a collectionGroup query, filtered by `public == true` and
+ * `serverUpdatedAt > sinceMillis`.
+ *
+ * The `uid` parameter is accepted to satisfy the `IncrementalSyncDeps.subscribe`
+ * interface but is unused — the collectionGroup query spans all users.
+ */
+export function subscribeAllPublicNotesAfter(
+	_uid: string,
+	sinceMillis: number,
+	onChange: (changes: IncrementalSyncChange[]) => void,
+	onError: (err: Error) => void
+): () => void {
+	const db = getFirebaseFirestore();
+	const q = query(
+		collectionGroup(db, 'notes'),
+		where('public', '==', true),
+		where('serverUpdatedAt', '>', Timestamp.fromMillis(sinceMillis))
+	);
+	return fsOnSnapshot(
+		q,
+		(snap) => {
+			const out: IncrementalSyncChange[] = [];
+			for (const change of snap.docChanges()) {
+				if (change.type !== 'added' && change.type !== 'modified') continue;
+				const changeDoc = change.doc as QueryDocumentSnapshot<DocumentData>;
+				const data = changeDoc.data();
+				const ts = data.serverUpdatedAt;
+				if (!ts || typeof (ts as Timestamp).toMillis !== 'function') {
+					// serverTimestamp() not yet finalised — wait for the follow-up snapshot.
+					continue;
+				}
+				try {
+					const { serverUpdatedAt: _omit, ...rest } = data as Record<string, unknown>;
+					assertValidPayload(rest);
+					out.push({ payload: rest, serverUpdatedAtMillis: (ts as Timestamp).toMillis() });
+				} catch (err) {
+					console.warn('[noteSync] dropping malformed public note in collectionGroup', err);
+				}
+			}
+			onChange(out);
+		},
+		onError
+	);
 }
