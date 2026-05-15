@@ -17,7 +17,7 @@
     {
       "id": 3,
       "subject": "Task 3: Guest mode rune store + ensureGuestSignedIn",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [2],
       "description": "**Goal:** Single source of truth for app mode + anonymous Firebase auth helper.\n\n**Files:** Create app/src/lib/stores/guestMode.svelte.ts; modify app/src/lib/firebase/app.ts; create app/tests/unit/stores/guestMode.test.ts\n\n**Verify:** `cd app && npm run test -- guestMode`\n\n```json:metadata\n{\"files\":[\"app/src/lib/stores/guestMode.svelte.ts\",\"app/src/lib/firebase/app.ts\",\"app/tests/unit/stores/guestMode.test.ts\"],\"verifyCommand\":\"cd app && npm run test -- guestMode\",\"acceptanceCriteria\":[\"mode.value typed 'visitor'|'guest'|'host'\",\"detectAndSet derives from Dropbox token + localStorage name\",\"ensureGuestSignedIn signs in anonymously, idempotent\",\"3 mode derivation tests pass\"]}\n```"
     },
