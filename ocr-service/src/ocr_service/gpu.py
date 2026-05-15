@@ -48,8 +48,16 @@ def query_gpu(runner: GpuRunner | None = None) -> dict[str, object]:
             "reason": f"nvidia-smi_exit_{exc.returncode}",
         }
 
-    totals_line = totals_csv.strip().splitlines()[0]
-    total_s, used_s, free_s = [x.strip() for x in totals_line.split(",")]
+    # Multi-GPU note: nvidia-smi prints one row per GPU. We assume a
+    # single-GPU host (RTX 3080 desktop) and take the first row. If
+    # multi-GPU support is ever needed, the response shape needs a list.
+    try:
+        totals_line = totals_csv.strip().splitlines()[0]
+        total_s, used_s, free_s = [x.strip() for x in totals_line.split(",")[:3]]
+        total_mb, used_mb, free_mb = int(total_s), int(used_s), int(free_s)
+    except (IndexError, ValueError) as exc:
+        log.warning("nvidia-smi totals parse failed: %r (raw=%r)", exc, totals_csv)
+        return {"available": False, "reason": "nvidia-smi_parse_error"}
 
     processes: list[dict[str, object]] = []
     for line in procs_csv.strip().splitlines():
@@ -67,8 +75,8 @@ def query_gpu(runner: GpuRunner | None = None) -> dict[str, object]:
 
     return {
         "available": True,
-        "total_mb": int(total_s),
-        "used_mb": int(used_s),
-        "free_mb": int(free_s),
+        "total_mb": total_mb,
+        "used_mb": used_mb,
+        "free_mb": free_mb,
         "processes": processes,
     }

@@ -56,3 +56,26 @@ def test_handles_timeout() -> None:
     result = query_gpu(runner=slow)
     assert result["available"] is False
     assert "timeout" in result["reason"]
+
+
+def test_handles_unparseable_totals() -> None:
+    # If nvidia-smi runs but returns garbage for the totals query (driver
+    # in a weird state, version drift, etc.), the contract is still 200
+    # with available:false — NOT a 500 from the endpoint.
+    runner = _fake_runner({
+        "--query-gpu": "garbage no commas\n",
+        "--query-compute-apps": "\n",
+    })
+    result = query_gpu(runner=runner)
+    assert result["available"] is False
+    assert "parse" in result["reason"]
+
+
+def test_handles_empty_totals() -> None:
+    runner = _fake_runner({
+        "--query-gpu": "\n",
+        "--query-compute-apps": "\n",
+    })
+    result = query_gpu(runner=runner)
+    assert result["available"] is False
+    assert "parse" in result["reason"]
