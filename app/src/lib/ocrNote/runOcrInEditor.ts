@@ -1,37 +1,17 @@
 import type { Editor } from '@tiptap/core';
+import type { Node as PMNode } from 'prosemirror-model';
 import { sendChat, LlmChatError } from '../llmNote/sendChat.js';
 import type { ChatRequestBody } from '../llmNote/buildChatRequest.js';
+import { sendOcr, OcrSendError } from './sendOcr.js';
 import { imageBlobToBase64 } from './imageToBase64.js';
 import { downloadImageFromDropboxUrl } from '../sync/imageUpload.js';
 import {
 	OCR_DEFAULT_NUM_CTX,
-	OCR_DEFAULT_TEMPERATURE
+	OCR_DEFAULT_TEMPERATURE,
+	OCR_DEFAULT_TRANSLATE_MODEL,
+	buildTranslatePrompt
 } from './defaults.js';
 import type { OcrNoteSpec } from './parseOcrNote.js';
-
-// Module-local legacy fallbacks (Task 8 refactor will move these into the
-// legacy branch of the runner — until then this preserves the old single-call
-// flow while defaults.ts drops the unused exports).
-const LEGACY_OCR_USER_PROMPT = '이 이미지의 텍스트를 추출해줘.';
-
-function buildLegacyOcrSystemPrompt(targetLang: string): string {
-	return [
-		'당신은 이미지에서 텍스트를 정확히 추출하는 OCR 어시스턴트입니다.',
-		'',
-		'규칙:',
-		`1. 이미지의 모든 텍스트를 원본 그대로 추출합니다. 줄바꿈, 들여쓰기, 기호를 최대한 보존합니다.`,
-		`2. 추출한 텍스트가 ${targetLang}가 아니면, ${targetLang} 번역도 함께 제공합니다.`,
-		`3. 추출한 텍스트가 이미 ${targetLang}이면 [번역] 섹션은 생략합니다.`,
-		'4. 출력 외의 설명/주석을 덧붙이지 않습니다.',
-		'',
-		'출력 형식:',
-		'[원문]',
-		'<추출한 텍스트 그대로>',
-		'',
-		`[번역] (${targetLang}가 아닐 때만)`,
-		`<${targetLang} 번역>`
-	].join('\n');
-}
 
 export interface RunOcrOptions {
 	editor: Editor;
@@ -58,116 +38,291 @@ export interface RunOcrResult {
 }
 
 /**
- * Run OCR for one image URL and stream the result into the editor as new
- * paragraphs immediately following the paragraph that contains the URL.
+ * Run OCR for one image URL and stream the result into the editor.
  *
- * Contract:
- *   - Editor is set non-editable for the duration of the call. Any pending
- *     user typing is on hold; this matches LlmSendBar's behavior for the
- *     same reason — we'd otherwise have to track positions through user
- *     edits, which gets ugly fast.
- *   - The first appended paragraph is a "[OCR 진행 중…]" placeholder so
- *     the user sees something immediately even before the model produces
- *     its first token. The first arriving token replaces the placeholder.
- *   - On error / cancel / non-2xx, an "[OCR 오류: …]" line is appended in
- *     place of the placeholder. The image URL above stays untouched.
- *   - The result block is NOT wrapped in any special mark, so the next
- *     parseOcrNote call won't see it as a header. The OCR note's parser
- *     only looks at the header region (above the first blank paragraph),
- *     and we always emit a blank paragraph before our placeholder.
+ * Branches on `spec.legacy`:
+ *   - `legacy=false` (note has a `translate:` header): two-stage flow.
+ *     Stage 1 POSTs the image to the bridge's `/ocr` proxy (single
+ *     round-trip; ocr-service does the extraction). Result is rendered
+ *     as `[원문]\n<text>`. Stage 2 streams a separate `[번역]\n<text>`
+ *     block via `sendChat` with the translation system prompt.
+ *   - `legacy=true` (no `translate:` header): one-shot call to
+ *     `sendChat` with the combined `[원문]/[번역]` system prompt that
+ *     pre-split OCR notes have always used. The streamed output replaces
+ *     a single placeholder block.
+ *
+ * Editor is set non-editable for the duration; restored in `finally`.
  */
 export async function runOcrInEditor(opts: RunOcrOptions): Promise<RunOcrResult> {
-	const { editor, spec, imageUrl, bridgeUrl, bridgeToken } = opts;
-
-	const httpBase = bridgeUrl
-		.replace(/^wss:\/\//, 'https://')
-		.replace(/^ws:\/\//, 'http://')
-		.replace(/\/(ws|llm\/chat)\/?$/, '')
-		.replace(/\/$/, '');
+	const { editor, spec, bridgeUrl } = opts;
+	const httpBase = normalizeHttpBase(bridgeUrl);
 
 	editor.setEditable(false);
-	let placeholderPos: number | null = null;
-	let firstTokenSeen = false;
-	const accumulatedRef = { value: '' };
-
 	try {
 		opts.onStatus?.('이미지 처리 중…');
-		// Insert placeholder block at end of doc BEFORE we start the slow base64
-		// encode, so the user gets immediate feedback. Position is tracked by
-		// (placeholderPos, accumulated.length) — the placeholder paragraph holds
-		// the streaming text.
-		placeholderPos = appendOcrBlock(editor, '[OCR 진행 중…]');
-
-		let imageB64: string;
-		try {
-			const blob = opts.imageBlob ?? (await downloadImageFromDropboxUrl(imageUrl));
-			imageB64 = await imageBlobToBase64(blob);
-		} catch (err) {
-			const msg = err instanceof Error ? err.message : String(err);
-			replaceOcrBlock(editor, placeholderPos, `[OCR 오류: ${msg}]`);
+		const imageB64 = await loadImageB64(opts);
+		if (imageB64 === null) {
 			return { reason: 'error', text: '' };
 		}
 
-		opts.onStatus?.('OCR 분석 중…');
-		const body: ChatRequestBody = {
-			model: spec.model,
-			options: {
-				temperature: spec.options.temperature ?? OCR_DEFAULT_TEMPERATURE,
-				num_ctx: spec.options.num_ctx ?? OCR_DEFAULT_NUM_CTX
-			},
-			messages: [
-				{
-					role: 'system',
-					content: spec.system && spec.system.length > 0
-						? spec.system
-						: buildLegacyOcrSystemPrompt('한국어')
-				},
-				{
-					role: 'user',
-					content: LEGACY_OCR_USER_PROMPT,
-					images: [imageB64]
-				}
-			]
-		};
+		if (spec.legacy) {
+			return await runLegacy(opts, httpBase, imageB64);
+		}
 
+		return await runTwoStage(opts, httpBase, imageB64);
+	} finally {
+		editor.setEditable(true);
+	}
+}
+
+async function runTwoStage(
+	opts: RunOcrOptions,
+	httpBase: string,
+	imageB64: string
+): Promise<RunOcrResult> {
+	const { editor, spec, bridgeToken } = opts;
+
+	// Stage 1: OCR (single shot). Show placeholder while we wait.
+	opts.onStatus?.('OCR 분석 중…');
+	const ocrBlockPos = appendBlock(editor, '[원문]\nOCR 진행 중…');
+	let extractedText: string;
+	try {
+		const out = await sendOcr({
+			url: `${httpBase}/ocr`,
+			token: bridgeToken,
+			imageB64
+		});
+		extractedText = out.text;
+		replaceBlockContent(editor, ocrBlockPos, `[원문]\n${extractedText}`);
+	} catch (err) {
+		const msg = formatOcrError(err);
+		replaceBlockContent(editor, ocrBlockPos, `[OCR 오류: ${msg}]`);
+		return { reason: 'error', text: '' };
+	}
+
+	if (!extractedText.trim()) {
+		return { reason: 'done', text: '' };
+	}
+
+	// Stage 2: Translate. Stream tokens into [번역] block.
+	opts.onStatus?.('번역 중…');
+	const translateModel = spec.translateModel ?? OCR_DEFAULT_TRANSLATE_MODEL;
+	const translateSystem =
+		spec.system && spec.system.length > 0 ? spec.system : buildTranslatePrompt();
+	const transBlockPos = appendBlock(editor, '[번역]\n');
+	let translatedAccum = '';
+	const body: ChatRequestBody = {
+		model: translateModel,
+		options: {
+			temperature: spec.options.temperature ?? OCR_DEFAULT_TEMPERATURE,
+			num_ctx: spec.options.num_ctx ?? OCR_DEFAULT_NUM_CTX
+		},
+		messages: [
+			{ role: 'system', content: translateSystem },
+			{ role: 'user', content: extractedText }
+		]
+	};
+	try {
 		const result = await sendChat({
 			url: `${httpBase}/llm/chat`,
 			token: bridgeToken,
 			body,
 			onToken: (delta) => {
-				if (placeholderPos === null) return;
+				translatedAccum += delta;
+				replaceBlockContent(editor, transBlockPos, `[번역]\n${translatedAccum}`);
+			}
+		});
+		return { reason: result.reason, text: `${extractedText}\n\n${translatedAccum}` };
+	} catch (err) {
+		const msg = err instanceof LlmChatError ? formatLlmError(err) : (err as Error).message;
+		replaceBlockContent(editor, transBlockPos, `[번역 오류: ${msg}]`);
+		return { reason: 'error', text: extractedText };
+	}
+}
+
+async function runLegacy(
+	opts: RunOcrOptions,
+	httpBase: string,
+	imageB64: string
+): Promise<RunOcrResult> {
+	const { editor, spec, bridgeToken } = opts;
+	opts.onStatus?.('OCR 분석 중…');
+	const placeholderPos = appendBlock(editor, '[OCR 진행 중…]');
+	let firstTokenSeen = false;
+	let accumulated = '';
+
+	const body: ChatRequestBody = {
+		model: spec.model,
+		options: {
+			temperature: spec.options.temperature ?? OCR_DEFAULT_TEMPERATURE,
+			num_ctx: spec.options.num_ctx ?? OCR_DEFAULT_NUM_CTX
+		},
+		messages: [
+			{
+				role: 'system',
+				content:
+					spec.system && spec.system.length > 0
+						? spec.system
+						: buildLegacyOcrSystemPrompt('한국어')
+			},
+			{
+				role: 'user',
+				content: LEGACY_OCR_USER_PROMPT,
+				images: [imageB64]
+			}
+		]
+	};
+
+	try {
+		const result = await sendChat({
+			url: `${httpBase}/llm/chat`,
+			token: bridgeToken,
+			body,
+			onToken: (delta) => {
 				if (!firstTokenSeen) {
-					replaceOcrBlock(editor, placeholderPos, delta);
-					accumulatedRef.value = delta;
+					replaceBlockContent(editor, placeholderPos, delta);
+					accumulated = delta;
 					firstTokenSeen = true;
 				} else {
-					accumulatedRef.value += delta;
-					appendToOcrBlock(editor, placeholderPos, accumulatedRef.value.length, delta);
+					accumulated += delta;
+					replaceBlockContent(editor, placeholderPos, accumulated);
 				}
 			}
 		});
-
 		if (!firstTokenSeen) {
-			// Stream completed with zero tokens — replace placeholder with a
-			// minimal "no result" line so the user isn't left staring at the
-			// "in progress" text forever.
-			replaceOcrBlock(editor, placeholderPos, '[OCR 결과 없음]');
+			replaceBlockContent(editor, placeholderPos, '[OCR 결과 없음]');
 		}
-
-		return { reason: result.reason, text: result.content };
+		return { reason: result.reason, text: accumulated };
 	} catch (err) {
-		if (placeholderPos !== null) {
-			const msg = err instanceof LlmChatError ? formatLlmError(err) : (err as Error).message;
-			if (firstTokenSeen) {
-				appendOcrBlock(editor, `[OCR 오류: ${msg}]`);
-			} else {
-				replaceOcrBlock(editor, placeholderPos, `[OCR 오류: ${msg}]`);
-			}
-		}
+		const msg = err instanceof LlmChatError ? formatLlmError(err) : (err as Error).message;
+		replaceBlockContent(editor, placeholderPos, `[OCR 오류: ${msg}]`);
 		return { reason: 'error', text: '' };
-	} finally {
-		editor.setEditable(true);
 	}
+}
+
+const LEGACY_OCR_USER_PROMPT = '이 이미지의 텍스트를 추출해줘.';
+
+function buildLegacyOcrSystemPrompt(targetLang: string): string {
+	return [
+		'당신은 이미지에서 텍스트를 정확히 추출하는 OCR 어시스턴트입니다.',
+		'',
+		'규칙:',
+		`1. 이미지의 모든 텍스트를 원본 그대로 추출합니다. 줄바꿈, 들여쓰기, 기호를 최대한 보존합니다.`,
+		`2. 추출한 텍스트가 ${targetLang}가 아니면, ${targetLang} 번역도 함께 제공합니다.`,
+		`3. 추출한 텍스트가 이미 ${targetLang}이면 [번역] 섹션은 생략합니다.`,
+		'4. 출력 외의 설명/주석을 덧붙이지 않습니다.',
+		'',
+		'출력 형식:',
+		'[원문]',
+		'<추출한 텍스트 그대로>',
+		'',
+		`[번역] (${targetLang}가 아닐 때만)`,
+		`<${targetLang} 번역>`
+	].join('\n');
+}
+
+// --- helpers ---
+
+function normalizeHttpBase(bridgeUrl: string): string {
+	return bridgeUrl
+		.replace(/^wss:\/\//, 'https://')
+		.replace(/^ws:\/\//, 'http://')
+		.replace(/\/(ws|llm\/chat|ocr)\/?$/, '')
+		.replace(/\/$/, '');
+}
+
+async function loadImageB64(opts: RunOcrOptions): Promise<string | null> {
+	try {
+		const blob = opts.imageBlob ?? (await downloadImageFromDropboxUrl(opts.imageUrl));
+		return await imageBlobToBase64(blob);
+	} catch (err) {
+		const msg = err instanceof Error ? err.message : String(err);
+		appendBlock(opts.editor, `[OCR 오류: ${msg}]`);
+		return null;
+	}
+}
+
+/**
+ * Append a separator paragraph + a content paragraph holding `initialText`.
+ * Returns the doc-level position of the content paragraph node so subsequent
+ * `replaceBlockContent` calls can re-target it without re-scanning.
+ *
+ * `initialText` may contain `\n` — each line becomes a text run with a
+ * `hardBreak` node between them, matching how the editor renders typed-in
+ * line breaks.
+ */
+function appendBlock(editor: Editor, initialText: string): number {
+	const { state, view } = editor;
+	const endPos = state.doc.content.size;
+	const blank = state.schema.nodes.paragraph.create();
+	const block = state.schema.nodes.paragraph.create(
+		null,
+		buildLineFragments(state.schema, initialText)
+	);
+	const tr = state.tr.insert(endPos, [blank, block]);
+	view.dispatch(tr);
+	scrollToBottom(editor);
+	// `endPos` was the doc-level position right before the inserted nodes.
+	// After insertion, the blank paragraph occupies endPos..endPos+2 and the
+	// content paragraph starts at endPos+2.
+	return endPos + 2;
+}
+
+/**
+ * Replace the entire text content of a paragraph identified by its node
+ * position. The paragraph node is preserved so its absolute position stays
+ * stable across subsequent updates (its `content.size` will change, of
+ * course — re-query via `state.doc.nodeAt(paragraphPos)` before next replace).
+ */
+function replaceBlockContent(editor: Editor, paragraphPos: number, newText: string): void {
+	const { state, view } = editor;
+	const para = state.doc.nodeAt(paragraphPos);
+	if (!para || para.type.name !== 'paragraph') return;
+	const fragments = buildLineFragments(state.schema, newText);
+	const innerStart = paragraphPos + 1;
+	const innerEnd = paragraphPos + 1 + para.content.size;
+	const tr = state.tr.replaceWith(innerStart, innerEnd, fragments);
+	view.dispatch(tr);
+	scrollToBottom(editor);
+}
+
+function buildLineFragments(
+	schema: Editor['schema'],
+	text: string
+): PMNode[] {
+	const lines = text.split('\n');
+	const fragments: PMNode[] = [];
+	const hardBreak = schema.nodes.hardBreak;
+	for (let i = 0; i < lines.length; i++) {
+		if (i > 0 && hardBreak) fragments.push(hardBreak.create());
+		if (lines[i].length > 0) fragments.push(schema.text(lines[i]));
+	}
+	return fragments;
+}
+
+function scrollToBottom(editor: Editor): void {
+	try {
+		editor.view.dom.scrollTop = editor.view.dom.scrollHeight;
+	} catch {
+		/* ignore */
+	}
+}
+
+function formatOcrError(err: unknown): string {
+	if (err instanceof OcrSendError) {
+		switch (err.kind) {
+			case 'unauthorized':
+				return '인증 실패 — 설정에서 브릿지 재로그인';
+			case 'ocr_service_unavailable':
+				return '데스크탑 OCR 서비스 응답 없음';
+			case 'bad_request':
+				return `잘못된 요청: ${err.message}`;
+			case 'network':
+			default:
+				return '연결 실패';
+		}
+	}
+	return (err as Error).message;
 }
 
 function formatLlmError(err: LlmChatError): string {
@@ -185,103 +340,5 @@ function formatLlmError(err: LlmChatError): string {
 		case 'network':
 		default:
 			return '연결 실패';
-	}
-}
-
-/**
- * Append a single paragraph to the end of the doc with the given text and
- * return the position of the paragraph node (NOT its inner text content).
- *
- * The returned position is the offset of the paragraph node itself; the inner
- * text starts at `pos + 1`. We pre-pend an empty paragraph as a separator so
- * the OCR result is visually offset from the image URL above.
- */
-function appendOcrBlock(editor: Editor, _initialText: string): number {
-	void _initialText;
-	const { state, view } = editor;
-	// Two paragraphs: empty separator + content. Position of content paragraph
-	// = endPos + 2 (we count the inserted separator paragraph's open + close).
-	const endPos = state.doc.content.size;
-	const blank = state.schema.nodes.paragraph.create();
-	const block = state.schema.nodes.paragraph.create(null, state.schema.text(_initialText));
-	const tr = state.tr.insert(endPos, [blank, block]);
-	view.dispatch(tr);
-	scrollToBottom(editor);
-	// `endPos` was the doc-level position right before the inserted nodes.
-	// After insertion, the blank paragraph occupies endPos..endPos+2 and the
-	// content paragraph starts at endPos+2.
-	return endPos + 2;
-}
-
-/**
- * Replace the entire text content of the OCR placeholder paragraph with new
- * text, preserving the paragraph node itself (so positions of subsequent
- * insertions remain stable).
- */
-function replaceOcrBlock(editor: Editor, paragraphPos: number, newText: string): void {
-	const { state, view } = editor;
-	const para = state.doc.nodeAt(paragraphPos);
-	if (!para || para.type.name !== 'paragraph') return;
-	const innerStart = paragraphPos + 1;
-	const innerEnd = paragraphPos + 1 + para.content.size;
-	const tr = state.tr.replaceWith(
-		innerStart,
-		innerEnd,
-		newText === '' ? [] : state.schema.text(newText)
-	);
-	view.dispatch(tr);
-	scrollToBottom(editor);
-}
-
-/**
- * Append text to the OCR paragraph. `prevAccumulatedLen` lets us insert at
- * a known absolute offset without re-querying the doc — necessary because the
- * accumulated string may contain newlines, which when inserted as plain text
- * via `insertText` get materialized into hard-break nodes by ProseMirror's
- * default text-input handling, shifting the document size in non-1:1 ways.
- *
- * Strategy: re-derive insertion position from the paragraph node's current
- * end on each call. This is O(treewalk) but the paragraph stays small enough
- * (a typical OCR result is a few hundred chars) that it doesn't matter.
- */
-function appendToOcrBlock(
-	editor: Editor,
-	paragraphPos: number,
-	_expectedLen: number,
-	delta: string
-): void {
-	void _expectedLen;
-	const { state, view } = editor;
-	const para = state.doc.nodeAt(paragraphPos);
-	if (!para || para.type.name !== 'paragraph') return;
-	const innerEnd = paragraphPos + 1 + para.content.size;
-
-	// Split delta on \n to insert as plain text + hard breaks. Empty lines
-	// produce two consecutive hard breaks.
-	const tr = state.tr;
-	const lines = delta.split('\n');
-	const hardBreak = state.schema.nodes.hardBreak;
-	let insertPos = innerEnd;
-	for (let i = 0; i < lines.length; i++) {
-		if (i > 0 && hardBreak) {
-			const node = hardBreak.create();
-			tr.insert(insertPos, node);
-			insertPos += 1;
-		}
-		const line = lines[i];
-		if (line !== '') {
-			tr.insertText(line, insertPos);
-			insertPos += line.length;
-		}
-	}
-	view.dispatch(tr);
-	scrollToBottom(editor);
-}
-
-function scrollToBottom(editor: Editor): void {
-	try {
-		editor.view.dom.scrollTop = editor.view.dom.scrollHeight;
-	} catch {
-		/* ignore */
 	}
 }
