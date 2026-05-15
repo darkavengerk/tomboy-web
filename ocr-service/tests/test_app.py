@@ -58,3 +58,25 @@ def test_ocr_success(client: TestClient) -> None:
     body = r.json()
     assert "text" in body
     assert body["text"].startswith("OCR[")
+
+
+def test_status_requires_auth(client) -> None:
+    assert client.get("/status").status_code == 401
+
+
+def test_status_ok(client) -> None:
+    r = client.get("/status", headers={"Authorization": "Bearer test-token"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["loaded"] is False
+    assert body["in_flight"] == 0
+
+
+def test_unload_when_in_flight_returns_423(client) -> None:
+    # Force in_flight via the engine on app.state (set up by the fixture).
+    from ocr_service.app import app as _app
+
+    _app.state.engine._in_flight = 1
+    r = _app  # placate type checker; actual call below
+    r = client.post("/unload", headers={"Authorization": "Bearer test-token"})
+    assert r.status_code == 423

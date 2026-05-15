@@ -4,7 +4,7 @@
     {
       "id": 1,
       "subject": "Task 0: ocr-service 스캐폴드 + /ocr + /healthz",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Python FastAPI 서비스를 만들고 GOT-OCR2 로 단일 이미지를 처리하는 최소 동작 흐름을 검증.\n\n```json:metadata\n{\"files\": [\"ocr-service/pyproject.toml\", \"ocr-service/src/ocr_service/app.py\", \"ocr-service/src/ocr_service/model.py\", \"ocr-service/src/ocr_service/config.py\", \"ocr-service/tests/conftest.py\", \"ocr-service/tests/test_app.py\"], \"verifyCommand\": \"cd ocr-service && pytest -v\", \"acceptanceCriteria\": [\"pip install passes\", \"6 pytest tests pass\", \"GET /healthz returns 200\", \"POST /ocr enforces Bearer + image_b64\"]}\n```"
     },
     {
