@@ -11,6 +11,7 @@ from typing import Iterable, Protocol
 
 from desktop.lib.config import load_config
 from desktop.lib.log import StageLogger
+from desktop.lib.pipeline_status import fetch_pending_reruns
 from desktop.lib.state import StateFile
 
 
@@ -25,6 +26,32 @@ class FakeRenderer:
     def render(self, raw_dir: Path, output_path: Path) -> None:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(self.png_bytes)
+
+
+def _read_png_size(path: Path) -> tuple[int, int] | None:
+    """Return (width, height) of a PNG by reading the IHDR chunk.
+
+    Avoids requiring Pillow in stages/tests that use ``FakeRenderer``
+    with synthetic tiny PNGs. Returns ``None`` if the file isn't a
+    parseable PNG (we want size-recording to fail open — pipeline
+    progress trumps a missing metadata field).
+    """
+    try:
+        with open(path, "rb") as f:
+            sig = f.read(8)
+            if sig != b"\x89PNG\r\n\x1a\n":
+                return None
+            # IHDR is always the first chunk; bytes 16..24 are width+height
+            # big-endian uint32.
+            f.read(8)  # length + "IHDR"
+            wh = f.read(8)
+            if len(wh) != 8:
+                return None
+            w = int.from_bytes(wh[0:4], "big")
+            h = int.from_bytes(wh[4:8], "big")
+            return w, h
+    except OSError:
+        return None
 
 
 class RmsceneRenderer:
@@ -43,12 +70,17 @@ class RmsceneRenderer:
     image link in the Tomboy note.
     """
 
-    # rM2 stroke coordinate space: ~1404×1872 centered at origin. The exact
-    # bounds vary slightly between firmware versions and pen types, so we
-    # render at a fixed target canvas and translate from centered coords.
+    # rM2 stroke coordinate space: x centered at 0 (range ~[-702, +702]),
+    # y top-anchored at 0 (range ~[0, 1872]). PAGE_HEIGHT is the on-device
+    # viewport height (one screen), NOT a hard ceiling — the user can
+    # scroll the page on the rM and keep writing below 1872. We render to
+    # `max(PAGE_HEIGHT, max_stroke_y + BOTTOM_PADDING)` so scrolled pages
+    # are captured in full instead of being silently clipped to the first
+    # screen. PAGE_WIDTH stays fixed (no horizontal scroll on rM).
     PAGE_WIDTH = 1404
     PAGE_HEIGHT = 1872
     STROKE_WIDTH = 2
+    BOTTOM_PADDING = 32
 
     _COLOR_MAP: dict[int, tuple[int, int, int]] = {
         # PenColor enum values, by .value (avoid import-time enum dependency).
@@ -82,12 +114,13 @@ class RmsceneRenderer:
         with open(rms[0], "rb") as f:
             tree = rmscene.read_tree(f)
 
-        img = Image.new("RGB", (self.PAGE_WIDTH, self.PAGE_HEIGHT), color="white")
-        draw = ImageDraw.Draw(img)
-        # rmscene's coordinate system on rM2: x is centered at 0 (range ~ -702..+702),
-        # y is top-anchored at 0 (range ~ 0..1872). Only x needs translation.
         cx = self.PAGE_WIDTH / 2
 
+        # First pass: collect drawable strokes and the max y observed. We
+        # need the extent before allocating the canvas so scrolled-down
+        # handwriting isn't clipped.
+        strokes: list[tuple[tuple[int, int, int], list[tuple[float, float]]]] = []
+        max_y: float = 0.0
         for item in tree.walk():
             if not isinstance(item, Line):
                 continue
@@ -104,6 +137,15 @@ class RmsceneRenderer:
             else:
                 color = self._COLOR_MAP.get(int(item.color), (0, 0, 0))
             pts = [(p.x + cx, p.y) for p in item.points]
+            strokes.append((color, pts))
+            for _, py in pts:
+                if py > max_y:
+                    max_y = py
+
+        canvas_h = max(self.PAGE_HEIGHT, int(max_y + self.BOTTOM_PADDING))
+        img = Image.new("RGB", (self.PAGE_WIDTH, canvas_h), color="white")
+        draw = ImageDraw.Draw(img)
+        for color, pts in strokes:
             draw.line(pts, fill=color, width=self.STROKE_WIDTH)
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -136,15 +178,18 @@ def prepare(
             metadata = json.loads(meta_path.read_text(encoding="utf-8"))
             target = png_root / uuid / "page.png"
             renderer.render(uuid_dir, target)
-            state.update(
-                {
-                    uuid: {
-                        "prepared_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                        "png_path": str(target.resolve()),
-                        "metadata": metadata,
-                    }
-                }
-            )
+            record: dict[str, object] = {
+                "prepared_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "png_path": str(target.resolve()),
+                "metadata": metadata,
+            }
+            # PNG size lets the admin view flag scroll-extended pages
+            # (height > 1872). Missing here just means the admin will
+            # show "—" for that field; pipeline keeps moving.
+            size = _read_png_size(target)
+            if size is not None:
+                record["png_width"], record["png_height"] = size
+            state.update({uuid: record})
             log.info("prepared", uuid=uuid)
             prepared.append(uuid)
         except Exception as e:
@@ -172,13 +217,18 @@ def main(argv: list[str] | None = None) -> int:
         # Simplest: reuse `prepare` with `force={uuid}` and let it process all then early-return.
         # For now, just call with force; the per-uuid skip prevents redundant work.
         pass
+    # Fold in any UUIDs the admin page has marked for re-processing.
+    rerun_uuids = fetch_pending_reruns(cfg, log)
+    force = set(args.force) | set(rerun_uuids)
+    if args.uuid:
+        force.add(args.uuid)
     prepared = prepare(
         raw_root=raw_root,
         png_root=png_root,
         state=state,
         log=log,
         renderer=renderer,
-        force=set(args.force) | ({args.uuid} if args.uuid else set()),
+        force=force,
     )
     print(f"s2_prepare: {len(prepared)} pages prepared")
     return 0

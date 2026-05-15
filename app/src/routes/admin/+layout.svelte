@@ -1,21 +1,22 @@
 <script lang="ts">
-	import { page } from '$app/state';
+	import { page } from "$app/state";
 
 	let { children } = $props();
 
 	const tabs = [
-		{ href: '/admin', label: '대시보드', exact: true },
-		{ href: '/admin/revisions', label: '리비전' },
-		{ href: '/admin/browse', label: '파일 탐색' },
-		{ href: '/admin/sleepnote', label: '슬립노트' },
-		{ href: '/admin/gpu', label: 'GPU' },
-		{ href: '/admin/tools', label: '도구' }
+		{ href: "/admin", label: "대시보드", exact: true },
+		{ href: "/admin/revisions", label: "리비전" },
+		{ href: "/admin/browse", label: "파일 탐색" },
+		{ href: "/admin/sleepnote", label: "슬립노트" },
+		{ href: "/admin/remarkable", label: "리마커블" },
+		{ href: "/admin/gpu", label: "GPU" },
+		{ href: "/admin/tools", label: "도구" },
 	];
 
 	function isActive(href: string, exact: boolean | undefined): boolean {
 		const p = page.url.pathname;
 		if (exact) return p === href;
-		return p === href || p.startsWith(href + '/');
+		return p === href || p.startsWith(href + "/");
 	}
 </script>
 
@@ -48,7 +49,8 @@
 		flex-direction: column;
 		height: 100%;
 		overflow: hidden;
-		font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+		font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+			sans-serif;
 	}
 	.admin-header {
 		border-bottom: 1px solid var(--color-border, #e5e7eb);
@@ -71,7 +73,9 @@
 		color: var(--color-text-secondary, #6b7280);
 		text-decoration: none;
 	}
-	.back-link:hover { text-decoration: underline; }
+	.back-link:hover {
+		text-decoration: underline;
+	}
 
 	.admin-tabs {
 		display: flex;
@@ -85,7 +89,9 @@
 		border-bottom: 2px solid transparent;
 		transition: color 0.1s;
 	}
-	.tab:hover { color: var(--color-text, #111); }
+	.tab:hover {
+		color: var(--color-text, #111);
+	}
 	.tab.active {
 		color: var(--color-primary, #2563eb);
 		border-bottom-color: var(--color-primary, #2563eb);

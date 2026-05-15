@@ -9,7 +9,7 @@ import pytest
 
 from desktop.lib.log import StageLogger
 from desktop.lib.state import StateFile
-from desktop.stages.s4_write import write_pending
+from desktop.stages.s4_write import backfill_status, write_pending
 
 
 @pytest.fixture
@@ -272,3 +272,112 @@ def test_image_path_format(tmp_path, stub_log):
 
     target = dbx.upload.call_args.args[1]
     assert target == "/Apps/Tomboy/diary-images/2024/05/10/rm-1/page.png"
+
+
+# --- pipeline status integration ---------------------------------------------
+
+
+class _FakeStatus:
+    """In-memory _PipelineStatus stub. Tracks set/clear_rerun calls."""
+
+    def __init__(self, seed: dict | None = None):
+        self.docs: dict[str, dict] = dict(seed or {})
+        self.set_calls: list[tuple[str, dict]] = []
+        self.clear_calls: list[str] = []
+
+    def get(self, page_uuid: str):
+        return self.docs.get(page_uuid)
+
+    def set(self, page_uuid: str, fields: dict):
+        self.set_calls.append((page_uuid, fields))
+        # Mimic Firestore merge.
+        current = self.docs.get(page_uuid, {})
+        merged = {**current, **fields}
+        self.docs[page_uuid] = merged
+
+    def clear_rerun(self, page_uuid: str):
+        self.clear_calls.append(page_uuid)
+        self.set(page_uuid, {"rerunRequested": False, "rerunRequestedAt": None})
+
+
+def test_write_pending_records_status_and_clears_rerun(tmp_path, stub_log):
+    prepared = StateFile(tmp_path / "state" / "prepared.json")
+    ocr_state = StateFile(tmp_path / "state" / "ocr-done.json")
+    written = StateFile(tmp_path / "state" / "written.json")
+    mappings = StateFile(tmp_path / "state" / "mappings.json")
+    ocr_root = tmp_path / "ocr"
+    _seed_uuid(
+        tmp_path=tmp_path, prepared=prepared, ocr_state=ocr_state,
+        ocr_root=ocr_root, rm_uuid="rm-1",
+    )
+    # Stamp the prepared record with image dims as s2 now does.
+    rec = prepared.get("rm-1")
+    rec.update({"png_width": 1404, "png_height": 2800})
+    prepared.update({"rm-1": rec})
+
+    status = _FakeStatus(seed={"rm-1": {"rerunRequested": True, "rerunRequestedAt": "x"}})
+    fs, dbx = _build_clients(existing_doc=None)
+
+    write_pending(
+        ocr_root=ocr_root, prepared_state=prepared, ocr_state=ocr_state,
+        written_state=written, mappings=mappings,
+        firestore=fs, dropbox=dbx, log=stub_log,
+        notebook_name="일기", title_format="{date} 리마커블([{page_uuid}])",
+        status=status,
+    )
+
+    # A status doc was written, and the rerun flag was explicitly cleared.
+    set_uuids = [c[0] for c in status.set_calls]
+    assert "rm-1" in set_uuids
+    assert "rm-1" in status.clear_calls
+
+    # The status doc carries the dims we recorded in prepared.
+    rec = status.docs["rm-1"]
+    assert rec["imageWidth"] == 1404
+    assert rec["imageHeight"] == 2800
+    assert rec["pageUuid"] == "rm-1"
+    assert rec["tomboyGuid"]  # non-empty
+    assert rec["imageUrl"] == "https://dropbox.example/page.png"
+    assert rec["rerunRequested"] is False
+
+
+def test_backfill_writes_only_for_missing_docs(tmp_path, stub_log):
+    prepared = StateFile(tmp_path / "state" / "prepared.json")
+    ocr_state = StateFile(tmp_path / "state" / "ocr-done.json")
+    written = StateFile(tmp_path / "state" / "written.json")
+    ocr_root = tmp_path / "ocr"
+    _seed_uuid(
+        tmp_path=tmp_path, prepared=prepared, ocr_state=ocr_state,
+        ocr_root=ocr_root, rm_uuid="rm-already",
+    )
+    _seed_uuid(
+        tmp_path=tmp_path, prepared=prepared, ocr_state=ocr_state,
+        ocr_root=ocr_root, rm_uuid="rm-missing",
+    )
+    written.write({
+        "rm-already": {"written_at": "x", "tomboy_guid": "g1", "image_url": "u1"},
+        "rm-missing": {"written_at": "y", "tomboy_guid": "g2", "image_url": "u2"},
+    })
+
+    status = _FakeStatus(seed={"rm-already": {"pageUuid": "rm-already"}})
+    n = backfill_status(
+        written_state=written, prepared_state=prepared,
+        ocr_root=ocr_root, status=status, log=stub_log,
+    )
+    assert n == 1
+    # Only rm-missing got a fresh write; rm-already was untouched.
+    backfilled = [c[0] for c in status.set_calls]
+    assert backfilled == ["rm-missing"]
+
+
+def test_backfill_skips_when_status_unavailable(tmp_path, stub_log):
+    """Pipeline must keep working if Firestore status is misconfigured."""
+    prepared = StateFile(tmp_path / "state" / "prepared.json")
+    written = StateFile(tmp_path / "state" / "written.json")
+    written.write({"rm-1": {"written_at": "x", "tomboy_guid": "g", "image_url": "u"}})
+
+    n = backfill_status(
+        written_state=written, prepared_state=prepared,
+        ocr_root=tmp_path / "ocr", status=None, log=stub_log,
+    )
+    assert n == 0

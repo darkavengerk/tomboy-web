@@ -20,6 +20,11 @@ from desktop.lib.config import load_config
 from desktop.lib.dropbox_uploader import DropboxUploader
 from desktop.lib.firestore_client import FirestoreClient
 from desktop.lib.log import StageLogger
+from desktop.lib.pipeline_status import (
+    PipelineStatusClient,
+    build_status_fields,
+    fetch_pending_reruns,
+)
 from desktop.lib.state import StateFile
 from desktop.lib.tomboy_payload import build_payload
 
@@ -32,6 +37,12 @@ class _Firestore(Protocol):
 class _Dropbox(Protocol):
     def upload(self, local_path: Path, target_path: str) -> Any: ...
     def share_link(self, target_path: str) -> str: ...
+
+
+class _PipelineStatus(Protocol):
+    def get(self, page_uuid: str) -> dict[str, Any] | None: ...
+    def set(self, page_uuid: str, fields: dict[str, Any]) -> None: ...
+    def clear_rerun(self, page_uuid: str) -> None: ...
 
 
 def _resolve_target_guid(
@@ -64,6 +75,103 @@ def _ms_to_dt(ms_str: str) -> datetime:
     return datetime.fromtimestamp(int(ms_str) / 1000, tz=timezone.utc)
 
 
+def _ocr_summary(ocr_root: Path, rm_uuid: str) -> tuple[str | None, int | None, str | None]:
+    """Best-effort: return (model, char_count, ts) from ``ocr/<uuid>.json``
+    so we can backfill status docs even for old pages. Returns triple of
+    ``None`` if the file is missing or malformed."""
+    p = ocr_root / f"{rm_uuid}.json"
+    if not p.exists():
+        return None, None, None
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None, None, None
+    text = data.get("text") if isinstance(data, dict) else None
+    chars = len(text) if isinstance(text, str) else None
+    return (
+        data.get("model") if isinstance(data, dict) else None,
+        chars,
+        data.get("ts") if isinstance(data, dict) else None,
+    )
+
+
+def _status_for_uuid(
+    *,
+    rm_uuid: str,
+    written_entry: dict[str, Any],
+    prep_entry: dict[str, Any] | None,
+    ocr_root: Path,
+) -> dict[str, Any]:
+    """Build the status doc fields for one rM page from local state."""
+    image_url = written_entry.get("image_url") or ""
+    written_at = written_entry.get("written_at") or ""
+    tomboy_guid = written_entry.get("tomboy_guid") or ""
+    img_w: int | None = None
+    img_h: int | None = None
+    prepared_at: str | None = None
+    last_modified_ms: int | None = None
+    if prep_entry:
+        img_w = prep_entry.get("png_width") if isinstance(prep_entry.get("png_width"), int) else None
+        img_h = prep_entry.get("png_height") if isinstance(prep_entry.get("png_height"), int) else None
+        prepared_at = prep_entry.get("prepared_at")
+        meta = prep_entry.get("metadata") or {}
+        lm = meta.get("lastModified") if isinstance(meta, dict) else None
+        if isinstance(lm, (int, str)):
+            try:
+                last_modified_ms = int(lm)
+            except (ValueError, TypeError):
+                last_modified_ms = None
+    ocr_model, ocr_chars, ocr_at = _ocr_summary(ocr_root, rm_uuid)
+    return build_status_fields(
+        page_uuid=rm_uuid,
+        tomboy_guid=tomboy_guid,
+        image_url=image_url,
+        image_width=img_w,
+        image_height=img_h,
+        ocr_model=ocr_model,
+        ocr_char_count=ocr_chars,
+        ocr_at=ocr_at,
+        prepared_at=prepared_at,
+        written_at=written_at,
+        last_modified_ms=last_modified_ms,
+    )
+
+
+def backfill_status(
+    *,
+    written_state: StateFile,
+    prepared_state: StateFile,
+    ocr_root: Path,
+    status: _PipelineStatus | None,
+    log: StageLogger,
+) -> int:
+    """For each entry in ``written.json`` lacking a status doc in
+    Firestore, write one. Lets the admin page surface pages that were
+    OCR'd before this feature existed (or before the long-page renderer
+    fix), so users can re-process them."""
+    if status is None:
+        return 0
+    prep_index = prepared_state.read()
+    count = 0
+    for rm_uuid, entry in written_state.read().items():
+        try:
+            if status.get(rm_uuid) is not None:
+                continue
+            fields = _status_for_uuid(
+                rm_uuid=rm_uuid,
+                written_entry=entry,
+                prep_entry=prep_index.get(rm_uuid),
+                ocr_root=ocr_root,
+            )
+            status.set(rm_uuid, fields)
+            count += 1
+        except Exception as e:
+            log.error("status_backfill_failed", uuid=rm_uuid, reason=str(e))
+    if count > 0:
+        log.info("status_backfilled", count=count)
+    return count
+
+
 def write_pending(
     *,
     ocr_root: Path,
@@ -77,6 +185,7 @@ def write_pending(
     notebook_name: str,
     title_format: str,
     force: Iterable[str] | None = None,
+    status: _PipelineStatus | None = None,
 ) -> list[str]:
     force = set(force or [])
     for u in force:
@@ -141,15 +250,36 @@ def write_pending(
                     }
                 }
             )
+            written_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
             written_state.update(
                 {
                     rm_uuid: {
-                        "written_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                        "written_at": written_at,
                         "tomboy_guid": target_guid,
                         "image_url": image_url,
                     }
                 }
             )
+            # Sync admin-visible status. Best-effort: a Firestore hiccup
+            # here must not roll back the note write we just succeeded at.
+            if status is not None:
+                try:
+                    fields = _status_for_uuid(
+                        rm_uuid=rm_uuid,
+                        written_entry={
+                            "written_at": written_at,
+                            "tomboy_guid": target_guid,
+                            "image_url": image_url,
+                        },
+                        prep_entry=prep,
+                        ocr_root=ocr_root,
+                    )
+                    status.set(rm_uuid, fields)
+                    # Successful write clears any pending re-process flag
+                    # regardless of whether this run originated from one.
+                    status.clear_rerun(rm_uuid)
+                except Exception as e:
+                    log.error("status_write_failed", uuid=rm_uuid, reason=str(e))
             log.info(
                 "wrote_note",
                 uuid=rm_uuid,
@@ -178,6 +308,25 @@ def main(argv: list[str] | None = None) -> int:
 
     fs = FirestoreClient(cfg.firebase_uid, cfg.firebase_service_account)
     dbx = DropboxUploader(cfg.dropbox_refresh_token, cfg.dropbox_app_key)
+    status: PipelineStatusClient | None
+    try:
+        status = PipelineStatusClient(
+            uid=cfg.firebase_uid,
+            service_account_path=cfg.firebase_service_account,
+        )
+    except Exception as e:
+        log.error("pipeline_status_init_failed", reason=str(e))
+        status = None
+
+    rerun_uuids = fetch_pending_reruns(cfg, log)
+
+    backfilled = backfill_status(
+        written_state=written,
+        prepared_state=prepared,
+        ocr_root=ocr_root,
+        status=status,
+        log=log,
+    )
 
     processed = write_pending(
         ocr_root=ocr_root,
@@ -190,9 +339,13 @@ def main(argv: list[str] | None = None) -> int:
         log=log,
         notebook_name=cfg.tomboy.diary_notebook_name,
         title_format=cfg.tomboy.title_format,
-        force=args.force,
+        force=set(args.force) | set(rerun_uuids),
+        status=status,
     )
-    print(f"s4_write: {len(processed)} pages written to Firestore")
+    print(
+        f"s4_write: {len(processed)} pages written to Firestore"
+        + (f" (+{backfilled} status docs backfilled)" if backfilled else "")
+    )
     return 0
 
 

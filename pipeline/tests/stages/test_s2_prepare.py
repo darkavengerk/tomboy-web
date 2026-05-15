@@ -162,3 +162,112 @@ def test_rmscene_renderer_draws_lines_to_png(tmp_path: Path):
     # not draw anything (so a white canvas with eraser-only would still pass
     # by accident — the diagonal line is what guarantees ink).
     assert img.convert("L").getextrema()[0] < 250, "expected drawn strokes, image is blank"
+
+
+def test_prepare_records_png_dimensions(tmp_path: Path, stub_log):
+    """The admin page needs PNG width/height to flag scroll-extended pages.
+    s2 reads the IHDR chunk and stamps the state record."""
+    PIL = pytest.importorskip("PIL")
+    from PIL import Image
+
+    raw_root = tmp_path / "raw"
+    png_root = tmp_path / "png"
+    raw_root.mkdir()
+    png_root.mkdir()
+    _seed_raw(raw_root, "abc")
+
+    # Build a 7×11 PNG so we can assert known dimensions are recorded.
+    pil_path = tmp_path / "tmp.png"
+    Image.new("RGB", (7, 11), "white").save(pil_path, "PNG")
+    png_bytes = pil_path.read_bytes()
+
+    state = StateFile(tmp_path / "state" / "prepared.json")
+    renderer = FakeRenderer(png_bytes)
+    prepare(raw_root=raw_root, png_root=png_root, state=state, log=stub_log, renderer=renderer)
+
+    rec = state.get("abc")
+    assert rec["png_width"] == 7
+    assert rec["png_height"] == 11
+
+
+def test_rmscene_renderer_extends_canvas_for_scrolled_page(tmp_path: Path):
+    """Strokes below the standard 1872-row screen (user scrolled the rM
+    page down and kept writing) must NOT be clipped — the canvas grows
+    to fit them plus a small bottom padding."""
+    rmscene = pytest.importorskip("rmscene")
+    PIL = pytest.importorskip("PIL")
+    from rmscene.scene_items import Line, Pen, PenColor, Point
+
+    # A stroke that sits well below the first screen — simulates a
+    # scrolled page where the user kept writing past y=1872.
+    deep_y_top, deep_y_bot = 2400.0, 2800.0
+    line = Line(
+        color=PenColor.BLACK,
+        tool=Pen.FINELINER_1,
+        points=[
+            Point(x=-100, y=deep_y_top, speed=0, direction=0, width=0, pressure=0),
+            Point(x=100, y=deep_y_bot, speed=0, direction=0, width=0, pressure=0),
+        ],
+        thickness_scale=1.0,
+        starting_length=0.0,
+    )
+
+    class FakeTree:
+        def walk(self):
+            return [line]
+
+    raw_dir = tmp_path / "page-uuid"
+    raw_dir.mkdir()
+    (raw_dir / "page-uuid.rm").write_bytes(b"\x00")
+    out = tmp_path / "page.png"
+
+    with patch("rmscene.read_tree", return_value=FakeTree()):
+        RmsceneRenderer().render(raw_dir, out)
+
+    from PIL import Image
+
+    img = Image.open(out)
+    expected_h = int(deep_y_bot + RmsceneRenderer.BOTTOM_PADDING)
+    assert img.size == (RmsceneRenderer.PAGE_WIDTH, expected_h)
+    # The stroke must actually have been drawn in the lower half — if we
+    # had drawn into a clipped/extended buffer with no shift, the bottom
+    # would still be white.
+    gray = img.convert("L")
+    bottom_band = gray.crop((0, RmsceneRenderer.PAGE_HEIGHT, img.size[0], img.size[1]))
+    assert bottom_band.getextrema()[0] < 250, "expected ink in the extended bottom band"
+
+
+def test_rmscene_renderer_keeps_standard_height_when_strokes_fit(tmp_path: Path):
+    """Short pages stay exactly PAGE_HEIGHT — no spurious padding for
+    every normal page."""
+    rmscene = pytest.importorskip("rmscene")
+    PIL = pytest.importorskip("PIL")
+    from rmscene.scene_items import Line, Pen, PenColor, Point
+
+    line = Line(
+        color=PenColor.BLACK,
+        tool=Pen.FINELINER_1,
+        points=[
+            Point(x=0, y=100, speed=0, direction=0, width=0, pressure=0),
+            Point(x=10, y=200, speed=0, direction=0, width=0, pressure=0),
+        ],
+        thickness_scale=1.0,
+        starting_length=0.0,
+    )
+
+    class FakeTree:
+        def walk(self):
+            return [line]
+
+    raw_dir = tmp_path / "page-uuid"
+    raw_dir.mkdir()
+    (raw_dir / "page-uuid.rm").write_bytes(b"\x00")
+    out = tmp_path / "page.png"
+
+    with patch("rmscene.read_tree", return_value=FakeTree()):
+        RmsceneRenderer().render(raw_dir, out)
+
+    from PIL import Image
+
+    img = Image.open(out)
+    assert img.size == (RmsceneRenderer.PAGE_WIDTH, RmsceneRenderer.PAGE_HEIGHT)
