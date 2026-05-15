@@ -176,6 +176,13 @@ __th_emit_W() {
 PS0='$(: > "$__th_state_file" 2>/dev/null
        [ -n "$TMUX" ] && tmux display -p "#{window_id}" \\
          > "\${__th_state_file}.win" 2>/dev/null)'
+# If PS1 is unset/empty when this snippet is sourced (typical when the
+# loader line in ~/.bashrc runs before PS1 is set, or when /etc/bashrc
+# defers PS1 to login profile), the wrapper below would produce a prompt
+# made entirely of zero-width markers — the xterm would render as blank
+# because the OSC 133 handler suppresses the markers. Fall back to a
+# minimal default so the prompt is always visible.
+[ -z "$PS1" ] && PS1='\\u@\\h:\\w\\$ '
 PS1='\\[$(__th_osc A)$(__th_emit_W)\\]'"$PS1"'\\[$(__th_osc B)\\]'
 PROMPT_COMMAND='rm -f "$__th_state_file" "\${__th_state_file}.win" 2>/dev/null
                 __th_osc "D;$?"'"\${PROMPT_COMMAND:+; \$PROMPT_COMMAND}"
