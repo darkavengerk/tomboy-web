@@ -297,6 +297,11 @@ export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
 				for (const child of Array.from(root.children) as HTMLElement[]) {
 					if (child.classList.contains('tomboy-hr-split-divider')) continue;
 					if (child.classList.contains('tomboy-hr-split-header')) continue;
+					// PM widget rows that span all columns (e.g. the date-arrow
+					// row) are placed via `grid-column: 1 / -1` in CSS, not via
+					// a node decoration. Skip them like headers — counting them
+					// in column 1's height would inflate the divider.
+					if (child.classList.contains('datelink-arrow-row')) continue;
 					const track = parseInt(getComputedStyle(child).gridColumnStart, 10);
 					if (!Number.isFinite(track) || track < 1) continue;
 					heightByTrack.set(

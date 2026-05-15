@@ -1374,6 +1374,13 @@
 		padding: 0;
 		user-select: none;
 	}
+	/* In split mode the editor root is a CSS Grid; the arrow row is a PM
+	   widget decoration (not a doc node), so hrSplitPlugin can't assign it
+	   a grid-column. Span all columns like a header so the arrows sit on
+	   the outer edges of the full note width instead of inside column 1. */
+	.tomboy-editor :global(.tomboy-hr-split-active > .datelink-arrow-row) {
+		grid-column: 1 / -1;
+	}
 	.tomboy-editor :global(.datelink-arrow) {
 		display: inline-flex;
 		align-items: center;
