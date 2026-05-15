@@ -82,8 +82,8 @@ export interface GridStyleOutput {
 	 *  layout is needed (totalColumns === 1 AND headerCount === 0). */
 	styleFor: (string | null)[];
 	/** Value for `grid-template-columns` on the editor root. Alternates
-	 *  `1fr` content tracks with `auto` divider tracks. Null when no grid
-	 *  layout is needed. */
+	 *  content tracks (`<w>fr`, where `w` defaults to 1) with `auto` divider
+	 *  tracks. Null when no grid layout is needed. */
 	template: string | null;
 	totalColumns: number;
 }
@@ -110,7 +110,8 @@ export interface GridStyleOutput {
  */
 export function computeGridStyles(
 	placements: ReadonlyArray<Placement>,
-	totalColumns: number
+	totalColumns: number,
+	widths?: ReadonlyArray<number>
 ): GridStyleOutput {
 	if (totalColumns <= 1) {
 		return {
@@ -127,12 +128,29 @@ export function computeGridStyles(
 		return `grid-column:${2 * p.col - 1};`;
 	});
 
+	// Per-column fr fractions. `widths` is honored only when it lines up
+	// with totalColumns and every entry is a positive finite number;
+	// otherwise we fall back to equal 1fr tracks. Each entry is rendered
+	// to a fixed precision so transitions during drag don't produce
+	// pathologically long inline-style strings.
+	const useWidths =
+		!!widths &&
+		widths.length === totalColumns &&
+		widths.every(w => Number.isFinite(w) && w > 0);
+
 	const parts: string[] = [];
 	for (let c = 1; c <= totalColumns; c++) {
 		if (c > 1) parts.push('auto');
-		parts.push('1fr');
+		const w = useWidths ? widths![c - 1] : 1;
+		parts.push(w === 1 ? '1fr' : `${formatFr(w)}fr`);
 	}
 	const template = parts.join(' ');
 
 	return { styleFor, template, totalColumns };
+}
+
+function formatFr(n: number): string {
+	// Trim trailing zeros (`1.5000` → `1.5`, `2.0000` → `2`).
+	const s = n.toFixed(4);
+	return s.replace(/\.?0+$/, '');
 }

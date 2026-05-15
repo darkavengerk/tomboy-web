@@ -324,6 +324,58 @@ describe('computeGridStyles — masonry grid template, grid-column only', () => 
 		expect(out.styleFor[2]).toBe('grid-column:3;');
 	});
 
+	it('honors widths when length matches totalColumns', () => {
+		const placements: Placement[] = [
+			{ role: 'block', col: 1 },
+			{ role: 'v-divider', dividerIdx: 0 },
+			{ role: 'block', col: 2 }
+		];
+		const out = computeGridStyles(placements, 2, [2, 1]);
+		expect(out.template).toBe('2fr auto 1fr');
+	});
+
+	it('renders 1fr literally when an entry is exactly 1', () => {
+		const placements: Placement[] = [
+			{ role: 'block', col: 1 },
+			{ role: 'v-divider', dividerIdx: 0 },
+			{ role: 'block', col: 2 },
+			{ role: 'v-divider', dividerIdx: 1 },
+			{ role: 'block', col: 3 }
+		];
+		const out = computeGridStyles(placements, 3, [1.5, 1, 0.5]);
+		expect(out.template).toBe('1.5fr auto 1fr auto 0.5fr');
+	});
+
+	it('falls back to 1fr per column when widths length mismatches', () => {
+		const placements: Placement[] = [
+			{ role: 'block', col: 1 },
+			{ role: 'v-divider', dividerIdx: 0 },
+			{ role: 'block', col: 2 }
+		];
+		const out = computeGridStyles(placements, 2, [1, 1, 1]);
+		expect(out.template).toBe('1fr auto 1fr');
+	});
+
+	it('falls back to 1fr per column when any width is non-positive', () => {
+		const placements: Placement[] = [
+			{ role: 'block', col: 1 },
+			{ role: 'v-divider', dividerIdx: 0 },
+			{ role: 'block', col: 2 }
+		];
+		const out = computeGridStyles(placements, 2, [2, 0]);
+		expect(out.template).toBe('1fr auto 1fr');
+	});
+
+	it('trims trailing zeros on fractional widths', () => {
+		const placements: Placement[] = [
+			{ role: 'block', col: 1 },
+			{ role: 'v-divider', dividerIdx: 0 },
+			{ role: 'block', col: 2 }
+		];
+		const out = computeGridStyles(placements, 2, [1.5, 0.5]);
+		expect(out.template).toBe('1.5fr auto 0.5fr');
+	});
+
 	it('no inline styles carry grid-row (masonry axis cannot be spanned)', () => {
 		const placements: Placement[] = [
 			{ role: 'header' },

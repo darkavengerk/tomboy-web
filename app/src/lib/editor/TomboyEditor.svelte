@@ -55,6 +55,8 @@
 	import {
 		loadActiveOrdinals,
 		saveActiveOrdinals,
+		loadColumnWidths,
+		saveColumnWidths,
 	} from "./hrSplit/hrSplitStore.js";
 	import { extractImageFile } from "./imagePreview/extractImageFile.js";
 	import { uploadImageToDropbox } from "$lib/sync/imageUpload.js";
@@ -424,7 +426,7 @@
 						return [
 							createHrSplitPlugin({
 								enabled: () => hrSplitEnabledFlag,
-								onChange: (active, prev) => {
+								onChange: (active, widths, prev) => {
 									// Persist whichever guid is currently bound
 									// to the editor. Closure-read via the
 									// `lastAppliedGuid` tracker so re-keying on
@@ -432,6 +434,10 @@
 									saveActiveOrdinals(
 										lastAppliedGuid,
 										active,
+									);
+									saveColumnWidths(
+										lastAppliedGuid,
+										widths,
 									);
 									if (active.size !== prev.size) {
 										hrSplitChangeFn?.(active.size, prev.size);
@@ -745,11 +751,15 @@
 			lastAppliedContent = c;
 			lastAppliedGuid = g;
 			// Seed HR split state from localStorage for the initial note.
-			ed.view.dispatch(
-				ed.state.tr.setMeta(hrSplitPluginKey, {
-					replace: Array.from(loadActiveOrdinals(g)),
-				}),
-			);
+			{
+				const persistedWidths = loadColumnWidths(g);
+				ed.view.dispatch(
+					ed.state.tr.setMeta(hrSplitPluginKey, {
+						replace: Array.from(loadActiveOrdinals(g)),
+						...(persistedWidths ? { widths: persistedWidths } : {}),
+					}),
+				);
+			}
 			return;
 		}
 
@@ -765,11 +775,15 @@
 		// the doc. If we did it after, setContent's docChanged reconciliation
 		// would prune the OLD note's active ordinals against the NEW doc and
 		// then persist that mangled set under the new guid's storage key.
-		ed.view.dispatch(
-			ed.state.tr.setMeta(hrSplitPluginKey, {
-				replace: Array.from(loadActiveOrdinals(g)),
-			}),
-		);
+		{
+			const persistedWidths = loadColumnWidths(g);
+			ed.view.dispatch(
+				ed.state.tr.setMeta(hrSplitPluginKey, {
+					replace: Array.from(loadActiveOrdinals(g)),
+					...(persistedWidths ? { widths: persistedWidths } : {}),
+				}),
+			);
+		}
 		// emitUpdate:false so the parent's onchange doesn't interpret this
 		// as a user edit (no spurious save triggered for just loading a
 		// note). The plugin still sees the underlying PM transaction and
@@ -1202,6 +1216,25 @@
 		width: 12px;
 		caret-color: transparent;
 		height: var(--hr-split-divider-height, auto);
+		/* Drag-to-resize affordance. Ctrl/Cmd-hold restores `cursor: pointer`
+		   via the higher-specificity `.tomboy-todo-ctrl-hold .tomboy-hr-marker`
+		   rule above, so the toggle gesture still feels clickable. */
+		cursor: col-resize;
+		touch-action: none;
+		user-select: none;
+	}
+	/* While a divider drag is active, suppress text selection across the
+	   whole grid and lock the col-resize cursor regardless of where the
+	   pointer ends up. */
+	.tomboy-editor
+		:global(.tiptap.tomboy-hr-split-active.tomboy-hr-split-dragging) {
+		cursor: col-resize;
+		user-select: none;
+	}
+	.tomboy-editor
+		:global(.tiptap.tomboy-hr-split-active.tomboy-hr-split-dragging *) {
+		cursor: col-resize !important;
+		user-select: none;
 	}
 	.tomboy-editor
 		:global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider::before) {

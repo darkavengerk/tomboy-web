@@ -11,6 +11,9 @@ import {
 
 interface PluginState {
 	activeOrdinals: Set<number>;
+	/** Per-column fr fractions, length = activeOrdinals.size + 1.
+	 *  Equal-width columns are stored as `[1, 1, ...]`. */
+	widths: number[];
 }
 
 interface ToggleMeta {
@@ -19,9 +22,18 @@ interface ToggleMeta {
 
 interface ReplaceMeta {
 	replace: ReadonlyArray<number>;
+	/** Optional initial column widths to apply alongside the active set.
+	 *  Used by the host to seed persisted ratios when loading a note. */
+	widths?: ReadonlyArray<number>;
 }
 
-type Meta = ToggleMeta | ReplaceMeta;
+interface ResizeMeta {
+	/** New per-column fr fractions, length must equal totalColumns; values
+	 *  must be positive finite numbers. Invalid arrays are ignored. */
+	resize: ReadonlyArray<number>;
+}
+
+type Meta = ToggleMeta | ReplaceMeta | ResizeMeta;
 
 function isToggle(m: Meta): m is ToggleMeta {
 	return typeof (m as ToggleMeta).toggle === 'number';
@@ -29,14 +41,22 @@ function isToggle(m: Meta): m is ToggleMeta {
 function isReplace(m: Meta): m is ReplaceMeta {
 	return Array.isArray((m as ReplaceMeta).replace);
 }
+function isResize(m: Meta): m is ResizeMeta {
+	return Array.isArray((m as ResizeMeta).resize);
+}
 
 export const hrSplitPluginKey = new PluginKey<PluginState>('tomboyHrSplit');
 
 export interface HrSplitOptions {
 	/** Fired after every state-changing transition with the new and previous
-	 *  active sets. NOT called for `replace` meta (note-load) since the host
-	 *  is already in sync with the persisted state. */
-	onChange?: (active: ReadonlySet<number>, prev: ReadonlySet<number>) => void;
+	 *  active sets plus the new column widths. NOT called for `replace`
+	 *  meta (note-load) since the host is already in sync with the
+	 *  persisted state. */
+	onChange?: (
+		active: ReadonlySet<number>,
+		widths: number[],
+		prev: ReadonlySet<number>
+	) => void;
 	/** Optional gate. When this returns `false`, the click handler ignores
 	 *  Ctrl+click and the decoration pass treats activeOrdinals as empty
 	 *  (so persisted column splits don't bleed into a disabled context).
@@ -60,6 +80,11 @@ export function isDashParagraph(node: PMNode): boolean {
  *  These are the title (index 0) and the subtitle/date line (index 1),
  *  which always render full-width above the split area. */
 const HEADER_COUNT = 2;
+
+/** Lower bound on any single column's share of (left + right) when
+ *  dragging the divider between them. Keeps a column from being dragged
+ *  down to invisibility. */
+const MIN_COLUMN_FRACTION = 0.1;
 
 function describeTopLevel(doc: PMNode): {
 	kinds: BlockKind[];
@@ -114,6 +139,7 @@ interface Layout {
 function buildLayout(
 	doc: PMNode,
 	active: ReadonlySet<number>,
+	widths: ReadonlyArray<number>,
 	enabled: boolean
 ): Layout {
 	const { kinds, topLevelPositions } = describeTopLevel(doc);
@@ -126,7 +152,13 @@ function buildLayout(
 		activeOrdinals: effectiveActive,
 		headerCount: HEADER_COUNT
 	});
-	const { styleFor, template } = computeGridStyles(placements, totalColumns);
+	const effectiveWidths =
+		enabled && widths.length === totalColumns ? widths : undefined;
+	const { styleFor, template } = computeGridStyles(
+		placements,
+		totalColumns,
+		effectiveWidths
+	);
 
 	const decos: Decoration[] = [];
 	for (let i = 0; i < kinds.length; i++) {
@@ -170,28 +202,73 @@ function reconcileActiveAgainstDoc(
 	return { changed, next };
 }
 
+function equalWidths(n: number): number[] {
+	const out = new Array<number>(Math.max(1, n));
+	for (let i = 0; i < out.length; i++) out[i] = 1;
+	return out;
+}
+
+function sanitizeWidths(
+	candidate: ReadonlyArray<number>,
+	totalColumns: number
+): number[] | null {
+	if (!Array.isArray(candidate)) return null;
+	if (candidate.length !== totalColumns) return null;
+	const out: number[] = [];
+	for (const v of candidate) {
+		if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) return null;
+		out.push(v);
+	}
+	return out;
+}
+
 export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
 	return new Plugin<PluginState>({
 		key: hrSplitPluginKey,
 		state: {
 			init(): PluginState {
-				return { activeOrdinals: new Set() };
+				return { activeOrdinals: new Set(), widths: [1] };
 			},
 			apply(tr: Transaction, prev: PluginState, _oldState, newState): PluginState {
 				const meta = tr.getMeta(hrSplitPluginKey) as Meta | undefined;
-				let next = prev.activeOrdinals;
+				let activeNext = prev.activeOrdinals;
+				let widthsNext = prev.widths;
+				let activeChanged = false;
+				let widthsExplicitlySet = false;
 				let cameFromReplace = false;
 
 				if (meta) {
 					if (isReplace(meta)) {
-						next = new Set(
+						const replacedActive = new Set(
 							meta.replace.filter(n => Number.isInteger(n) && n >= 0)
 						);
+						activeNext = replacedActive;
+						activeChanged = true;
 						cameFromReplace = true;
+						if (meta.widths) {
+							const sanitized = sanitizeWidths(
+								meta.widths,
+								replacedActive.size + 1
+							);
+							if (sanitized) {
+								widthsNext = sanitized;
+								widthsExplicitlySet = true;
+							}
+						}
 					} else if (isToggle(meta)) {
-						next = new Set(prev.activeOrdinals);
-						if (next.has(meta.toggle)) next.delete(meta.toggle);
-						else next.add(meta.toggle);
+						activeNext = new Set(prev.activeOrdinals);
+						if (activeNext.has(meta.toggle)) activeNext.delete(meta.toggle);
+						else activeNext.add(meta.toggle);
+						activeChanged = true;
+					} else if (isResize(meta)) {
+						const sanitized = sanitizeWidths(
+							meta.resize,
+							prev.activeOrdinals.size + 1
+						);
+						if (sanitized) {
+							widthsNext = sanitized;
+							widthsExplicitlySet = true;
+						}
 					}
 				}
 
@@ -199,20 +276,44 @@ export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
 				if (tr.docChanged) {
 					const { changed, next: reconciled } = reconcileActiveAgainstDoc(
 						newState.doc,
-						next
+						activeNext
 					);
 					if (changed) {
-						next = reconciled;
+						activeNext = reconciled;
 						prunedByDoc = true;
+						activeChanged = true;
 					}
 				}
 
-				if (next === prev.activeOrdinals) return prev;
+				const totalColumns = activeNext.size + 1;
+				if (!widthsExplicitlySet) {
+					if (activeChanged || widthsNext.length !== totalColumns) {
+						// Active set just shifted (toggle, replace without widths,
+						// or doc-prune) — reset to equal widths. The previous
+						// custom ratio doesn't make sense for a different column
+						// count.
+						widthsNext = equalWidths(totalColumns);
+					}
+				} else if (widthsNext.length !== totalColumns) {
+					// Defensive: the meta's widths array was the wrong length
+					// after reconciliation. Fall back to equal.
+					widthsNext = equalWidths(totalColumns);
+				}
+
+				if (
+					activeNext === prev.activeOrdinals &&
+					widthsNext === prev.widths
+				) {
+					return prev;
+				}
 				if (!cameFromReplace || prunedByDoc) {
 					const prevSnapshot = prev.activeOrdinals;
-					queueMicrotask(() => options.onChange?.(next, prevSnapshot));
+					const widthsSnapshot = widthsNext;
+					queueMicrotask(() =>
+						options.onChange?.(activeNext, widthsSnapshot, prevSnapshot)
+					);
 				}
-				return { activeOrdinals: next };
+				return { activeOrdinals: activeNext, widths: widthsNext };
 			}
 		},
 		props: {
@@ -220,13 +321,13 @@ export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
 				const s = hrSplitPluginKey.getState(state);
 				if (!s) return null;
 				const enabled = options.enabled?.() ?? true;
-				return buildLayout(state.doc, s.activeOrdinals, enabled).decorations;
+				return buildLayout(state.doc, s.activeOrdinals, s.widths, enabled).decorations;
 			},
 			attributes(state: EditorState): Record<string, string> {
 				const s = hrSplitPluginKey.getState(state);
 				const enabled = options.enabled?.() ?? true;
 				if (!s || !enabled || s.activeOrdinals.size === 0) return {};
-				const { template } = buildLayout(state.doc, s.activeOrdinals, enabled);
+				const { template } = buildLayout(state.doc, s.activeOrdinals, s.widths, enabled);
 				const attrs: Record<string, string> = { class: 'tomboy-hr-split-active' };
 				if (template) attrs.style = `grid-template-columns:${template};`;
 				return attrs;
@@ -331,6 +432,175 @@ export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
 
 			queueMicrotask(syncDividerHeights);
 
+			// --- Divider drag-to-resize ---------------------------------
+			// Plain (non-Ctrl/Cmd) pointerdown on a `.tomboy-hr-split-divider`
+			// starts a drag that adjusts the fr ratio of the two adjacent
+			// content columns while preserving their sum (and the rest of
+			// the columns). Ctrl/Cmd-click still toggles the divider on/off
+			// via handleClick — we early-out before claiming the event.
+			//
+			// Live preview is driven by PM transactions (meta-only, no
+			// docChanged), throttled to one per animation frame so the
+			// pointermove rate doesn't flood the editor with redundant
+			// state updates. On pointerup the onChange callback persists
+			// the final ratio.
+			interface DragState {
+				dividerIdx: number;
+				startWidths: number[];
+				startLeftPx: number;
+				startRightPx: number;
+				startX: number;
+				divider: HTMLElement;
+				pointerId: number;
+			}
+			let drag: DragState | null = null;
+			let rafHandle: number | null = null;
+			let pendingWidths: number[] | null = null;
+
+			function getRenderedTrackPx(): number[] {
+				const cs = getComputedStyle(view.dom);
+				const parts = cs.gridTemplateColumns.split(/\s+/);
+				return parts.map(s => parseFloat(s));
+			}
+
+			function flushPending(): void {
+				rafHandle = null;
+				if (!pendingWidths || view.isDestroyed) return;
+				const w = pendingWidths;
+				pendingWidths = null;
+				view.dispatch(view.state.tr.setMeta(hrSplitPluginKey, { resize: w }));
+			}
+
+			function onPointerMove(e: PointerEvent): void {
+				if (!drag) return;
+				e.preventDefault();
+				const dx = e.clientX - drag.startX;
+				const sumPx = drag.startLeftPx + drag.startRightPx;
+				if (sumPx <= 0) return;
+				const minPx = sumPx * MIN_COLUMN_FRACTION;
+				const newLeftPx = Math.max(
+					minPx,
+					Math.min(sumPx - minPx, drag.startLeftPx + dx)
+				);
+				const newRightPx = sumPx - newLeftPx;
+				const leftIdx = drag.dividerIdx;
+				const rightIdx = leftIdx + 1;
+				const sumFr = drag.startWidths[leftIdx] + drag.startWidths[rightIdx];
+				const newLeftFr = (newLeftPx / sumPx) * sumFr;
+				const newRightFr = sumFr - newLeftFr;
+				const next = drag.startWidths.slice();
+				next[leftIdx] = newLeftFr;
+				next[rightIdx] = newRightFr;
+				pendingWidths = next;
+				if (rafHandle === null) {
+					rafHandle = requestAnimationFrame(flushPending);
+				}
+			}
+
+			function endDrag(e: PointerEvent): void {
+				if (!drag) return;
+				const finishing = drag;
+				drag = null;
+				view.dom.classList.remove('tomboy-hr-split-dragging');
+				try {
+					finishing.divider.releasePointerCapture(finishing.pointerId);
+				} catch {
+					// pointer already released (e.g. element detached) — ignore.
+				}
+				finishing.divider.removeEventListener('pointermove', onPointerMove);
+				finishing.divider.removeEventListener('pointerup', endDrag);
+				finishing.divider.removeEventListener('pointercancel', endDrag);
+				// Flush any pending RAF dispatch so the final state matches
+				// the user's last pointer position even if pointerup beats
+				// the next frame.
+				if (rafHandle !== null) {
+					cancelAnimationFrame(rafHandle);
+					rafHandle = null;
+				}
+				if (pendingWidths && !view.isDestroyed) {
+					const w = pendingWidths;
+					pendingWidths = null;
+					view.dispatch(view.state.tr.setMeta(hrSplitPluginKey, { resize: w }));
+				}
+				// Swallow the click that the browser synthesizes after a
+				// drag-style pointer interaction. Without this, the
+				// subsequent click event could be interpreted by other
+				// handlers (e.g. the autoLink mark) as a navigation.
+				e.preventDefault();
+				e.stopPropagation();
+			}
+
+			function onPointerDown(e: PointerEvent): void {
+				if (!(options.enabled?.() ?? true)) return;
+				// Only the primary mouse button / touch initiates resize.
+				if (e.button !== 0 && e.pointerType === 'mouse') return;
+				// Ctrl/Cmd is reserved for the toggle gesture (handleClick).
+				if (e.ctrlKey || e.metaKey) return;
+				const target = e.target as HTMLElement | null;
+				if (!target) return;
+				const divider = target.closest<HTMLElement>('.tomboy-hr-split-divider');
+				if (!divider) return;
+				if (divider.parentElement !== view.dom) return;
+				const state = hrSplitPluginKey.getState(view.state);
+				if (!state || state.activeOrdinals.size === 0) return;
+
+				// Index of this divider among siblings (matches dividerIdx
+				// emitted by computeGridStyles).
+				const dividerEls = Array.from(
+					view.dom.querySelectorAll<HTMLElement>(
+						':scope > .tomboy-hr-split-divider'
+					)
+				);
+				const dividerIdx = dividerEls.indexOf(divider);
+				if (dividerIdx < 0) return;
+				if (dividerIdx + 1 >= state.widths.length) return;
+
+				// Read the rendered px widths of the two adjacent content
+				// tracks. The grid template alternates content/divider, so
+				// content column C sits at parsed-track index 2C (0-based).
+				const trackPx = getRenderedTrackPx();
+				const leftTrack = 2 * dividerIdx;
+				const rightTrack = 2 * (dividerIdx + 1);
+				const startLeftPx = trackPx[leftTrack];
+				const startRightPx = trackPx[rightTrack];
+				if (
+					!Number.isFinite(startLeftPx) ||
+					!Number.isFinite(startRightPx) ||
+					startLeftPx <= 0 ||
+					startRightPx <= 0
+				) {
+					return;
+				}
+
+				drag = {
+					dividerIdx,
+					startWidths: state.widths.slice(),
+					startLeftPx,
+					startRightPx,
+					startX: e.clientX,
+					divider,
+					pointerId: e.pointerId
+				};
+				view.dom.classList.add('tomboy-hr-split-dragging');
+				try {
+					divider.setPointerCapture(e.pointerId);
+				} catch {
+					// Pointer capture is best-effort; if it fails the
+					// pointermove listener attached to the divider below
+					// will still fire because the pointer remains over the
+					// element under typical drags.
+				}
+				divider.addEventListener('pointermove', onPointerMove);
+				divider.addEventListener('pointerup', endDrag);
+				divider.addEventListener('pointercancel', endDrag);
+				// Stop PM from treating this pointerdown as a selection
+				// gesture inside the divider paragraph.
+				e.preventDefault();
+				e.stopPropagation();
+			}
+
+			view.dom.addEventListener('pointerdown', onPointerDown);
+
 			return {
 				update(_view: EditorView, _prevState: EditorState) {
 					queueMicrotask(syncDividerHeights);
@@ -338,6 +608,18 @@ export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
 				destroy() {
 					ro?.disconnect();
 					ro = null;
+					view.dom.removeEventListener('pointerdown', onPointerDown);
+					if (drag) {
+						drag.divider.removeEventListener('pointermove', onPointerMove);
+						drag.divider.removeEventListener('pointerup', endDrag);
+						drag.divider.removeEventListener('pointercancel', endDrag);
+						drag = null;
+					}
+					if (rafHandle !== null) {
+						cancelAnimationFrame(rafHandle);
+						rafHandle = null;
+					}
+					pendingWidths = null;
 				}
 			};
 		}
@@ -347,4 +629,9 @@ export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
 export function getActiveOrdinals(state: EditorState): ReadonlySet<number> {
 	const s = hrSplitPluginKey.getState(state);
 	return s?.activeOrdinals ?? new Set();
+}
+
+export function getColumnWidths(state: EditorState): number[] {
+	const s = hrSplitPluginKey.getState(state);
+	return s?.widths.slice() ?? [1];
 }
