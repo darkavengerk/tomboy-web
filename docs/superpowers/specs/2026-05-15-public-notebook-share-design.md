@@ -56,6 +56,12 @@ filtered on `public == true` — so the client never has to know the
 host uid up front (a single-host domain today, multi-host later if we
 want, without schema change).
 
+**Discovering the host uid (guest side):** A guest's first Firestore call
+is `collectionGroup('publicConfig').limit(1).get()`. The returned doc's
+`ref.parent.parent.id` is the host's uid — the guest caches it in memory
+for the rest of the session and uses it to build write paths
+(`/users/{hostUid}/notes/{guid}`).
+
 ## Firestore Rules
 
 ```
@@ -96,6 +102,10 @@ Notes:
 - A `collectionGroup` composite index on `(public, serverUpdatedAt)`
   is required for the guest catch-up query (matches the existing
   incremental-sync watermark pattern).
+- The `publicConfig` match works for `collectionGroup('publicConfig')`
+  queries because Firestore evaluates the rule on each candidate doc
+  using its parent path — the guest reads any host's publicConfig with
+  `ref.parent.parent.id` yielding the hostUid for follow-up writes.
 
 ## Routing & Mode Detection
 
@@ -225,17 +235,16 @@ second always-on listener.
 
 ## IDB & Data Storage
 
-Guests do **not** use IndexedDB. All note data lives in:
+Guests use a **separate IndexedDB database** named `tomboy-web-guest`,
+opened by parameterizing the DB name in `lib/storage/db.ts`. The host's
+`tomboy-web` DB is never touched in guest mode. Same-browser cohabitation
+(household tablet etc.) is safe because the two DBs are fully isolated;
+guest data persisting on disk is acceptable since it is data the host
+has explicitly marked public.
 
-- Memory only on the guest side — fetched fresh from Firestore on entry
-  and kept reactive via Firestore listeners on the public-notes
-  collectionGroup query.
-- The same Firestore docs the host already writes.
-
-This avoids polluting the host's `tomboy-web` IDB when host and guest
-share the same browser (e.g. household tablet where the host occasionally
-signs into Dropbox). When a guest leaves (clears name / closes the tab),
-nothing on disk needs cleanup.
+The guest's `tomboy-web-guest` is a filtered mirror of the host's
+namespace: it only ever contains notes the incremental-sync listener
+received (i.e. notes with `public == true`).
 
 Host IDB and the host's Firestore-based realtime sync stay exactly as
 today.
