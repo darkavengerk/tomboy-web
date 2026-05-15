@@ -16,6 +16,9 @@ model = [
     "transformers>=4.45,<4.50",
     "accelerate>=0.33",
     "verovio>=4.3",
+    # GOT-OCR2 의 tokenizer가 trust_remote_code 로 동적 import 함.
+    # transformers 가 자동으로 안 끌어와서 [model] extras 에 명시.
+    "tiktoken>=0.7",
 ]
 dev = [
     "pytest>=8",
