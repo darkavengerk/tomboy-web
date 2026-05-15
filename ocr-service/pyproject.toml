@@ -11,8 +11,11 @@ dependencies = [
 
 [project.optional-dependencies]
 model = [
-    "torch>=2.3,<3",
-    "torchvision>=0.18",
+    # torch/torchvision: 최신 2.12+ 의 `_dynamo.polyfills.sys` 가 컨테이너의
+    # python3.11에 없는 `sys.get_int_max_str_digits` 를 import 시점에 참조해
+    # 깨짐. GOT-OCR2 가 검증된 torch 2.4 LTS 라인으로 핀.
+    "torch>=2.3,<2.5",
+    "torchvision>=0.18,<0.20",
     "transformers>=4.45,<4.50",
     "accelerate>=0.33",
     "verovio>=4.3",
