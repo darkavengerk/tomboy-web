@@ -73,7 +73,7 @@
     {
       "id": 11,
       "subject": "Task 11: Settings — \"공유\" tab",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [4, 5],
       "description": "**Goal:** Host toggles notebooks public from settings. Batched updates + publicConfig rewrite.\n\n**Files:** Create app/src/lib/sync/firebase/publishNotebook.ts; modify app/src/routes/settings/+page.svelte\n\n**Verify:** `cd app && npm run check`; manual end-to-end.\n\n```json:metadata\n{\"files\":[\"app/src/lib/sync/firebase/publishNotebook.ts\",\"app/src/routes/settings/+page.svelte\"],\"verifyCommand\":\"cd app && npm run check\",\"acceptanceCriteria\":[\"Tab type union has 'share'\",\"setNotebookPublic batched writeBatch (≤500)\",\"publicConfig.sharedNotebooks updated\",\"Per-notebook note count shown\",\"Progress bar during batch\"]}\n```"
     },
