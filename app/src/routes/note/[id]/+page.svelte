@@ -26,6 +26,8 @@
 		type TerminalNoteSpec
 	} from '$lib/editor/terminal/parseTerminalNote.js';
 	import LlmSendBar from '$lib/editor/llmNote/LlmSendBar.svelte';
+	import { parseOcrNote } from '$lib/ocrNote/parseOcrNote.js';
+	import { runOcrInEditor } from '$lib/ocrNote/runOcrInEditor.js';
 	import {
 		getDefaultTerminalBridge,
 		getTerminalBridgeToken
@@ -45,7 +47,7 @@
 	import { slipClipboard } from '$lib/sleepnote/clipboard.svelte.js';
 	import { slipNoteGuids } from '$lib/sleepnote/slipNoteGuids.js';
 	import type { JSONContent, Editor } from '@tiptap/core';
-	import { pushToast } from '$lib/stores/toast.js';
+	import { pushToast, dismissToast } from '$lib/stores/toast.js';
 	import { removeNoteRevision } from '$lib/sync/manifest.js';
 	import { purgeLocalOnly } from '$lib/storage/noteStore.js';
 	import { sync } from '$lib/sync/syncManager.js';
@@ -369,6 +371,31 @@
 		return editorComponent?.getEditor() ?? null;
 	}
 
+	async function handleImageInserted(url: string): Promise<void> {
+		const ed = getEditor();
+		if (!ed) return;
+		const spec = parseOcrNote(ed.getJSON());
+		if (!spec) return;
+		if (!llmBridgeUrl || !llmBridgeToken) {
+			pushToast('OCR 실패 — 브릿지가 설정되지 않았습니다 (설정 → 터미널)', { kind: 'error' });
+			return;
+		}
+		const toastId = pushToast('OCR 진행 중…', { timeoutMs: 0 });
+		try {
+			const result = await runOcrInEditor({
+				editor: ed,
+				spec,
+				imageUrl: url,
+				bridgeUrl: llmBridgeUrl,
+				bridgeToken: llmBridgeToken
+			});
+			if (result.reason === 'done') pushToast('OCR 완료');
+			else if (result.reason === 'error') pushToast('OCR 오류 — 결과 영역 참고', { kind: 'error' });
+		} finally {
+			dismissToast(toastId);
+		}
+	}
+
 	async function handleExtractNote() {
 		const editor = getEditor();
 		if (!editor) return;
@@ -681,6 +708,7 @@
 					ondatenavigate={handleInternalLink}
 					sendListItemActive={sendActive}
 					hrSplitEnabled={false}
+					onimageinserted={handleImageInserted}
 				/>
 				{#if editorComponent?.getEditor() && llmBridgeUrl && llmBridgeToken}
 					<LlmSendBar

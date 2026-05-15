@@ -19,6 +19,8 @@
 		type TerminalNoteSpec
 	} from '$lib/editor/terminal/parseTerminalNote.js';
 	import LlmSendBar from '$lib/editor/llmNote/LlmSendBar.svelte';
+	import { parseOcrNote } from '$lib/ocrNote/parseOcrNote.js';
+	import { runOcrInEditor } from '$lib/ocrNote/runOcrInEditor.js';
 	import {
 		getDefaultTerminalBridge,
 		getTerminalBridgeToken
@@ -34,7 +36,7 @@
 	import { setHomeNote, clearHomeNote, getHomeNoteGuid } from '$lib/core/home.js';
 	import { getScheduleNoteGuid } from '$lib/core/schedule.js';
 	import { isScrollBottomNote, setScrollBottomNote } from '$lib/core/scrollBottom.js';
-	import { pushToast } from '$lib/stores/toast.js';
+	import { pushToast, dismissToast } from '$lib/stores/toast.js';
 	import { removeNoteRevision } from '$lib/sync/manifest.js';
 	import { purgeLocalOnly } from '$lib/storage/noteStore.js';
 	import { sync } from '$lib/sync/syncManager.js';
@@ -339,6 +341,31 @@
 	 * resize, so manual user resizes between toggles are preserved
 	 * proportionally.
 	 */
+	async function handleImageInserted(url: string): Promise<void> {
+		const ed = getEditor();
+		if (!ed) return;
+		const spec = parseOcrNote(ed.getJSON());
+		if (!spec) return;
+		if (!llmBridgeUrl || !llmBridgeToken) {
+			pushToast('OCR 실패 — 브릿지가 설정되지 않았습니다 (설정 → 터미널)', { kind: 'error' });
+			return;
+		}
+		const toastId = pushToast('OCR 진행 중…', { timeoutMs: 0 });
+		try {
+			const result = await runOcrInEditor({
+				editor: ed,
+				spec,
+				imageUrl: url,
+				bridgeUrl: llmBridgeUrl,
+				bridgeToken: llmBridgeToken
+			});
+			if (result.reason === 'done') pushToast('OCR 완료');
+			else if (result.reason === 'error') pushToast('OCR 오류 — 결과 영역 참고', { kind: 'error' });
+		} finally {
+			dismissToast(toastId);
+		}
+	}
+
 	function handleHrSplitChange(newCount: number, prevCount: number) {
 		const ratio = (newCount + 1) / (prevCount + 1);
 		if (!Number.isFinite(ratio) || ratio === 1) return;
@@ -859,6 +886,7 @@
 					ondatenavigate={handleDateNavigate}
 					noteFocused={isFocused}
 					onhrsplitchange={handleHrSplitChange}
+					onimageinserted={handleImageInserted}
 				/>
 				{#if editorComponent?.getEditor() && llmBridgeUrl && llmBridgeToken}
 					<LlmSendBar

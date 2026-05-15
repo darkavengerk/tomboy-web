@@ -1,9 +1,22 @@
 import type { LlmNoteSpec } from './parseLlmNote.js';
 
+/**
+ * One message in a chat request. `images` is optional — Ollama's /api/chat
+ * accepts a `images: string[]` field on user messages for vision models
+ * (qwen2.5-vl, llava, gemma3, ...). Each entry is a base64-encoded image
+ * (no `data:` prefix). The field is ignored by text-only models, so it's
+ * safe to include conditionally.
+ */
+export interface ChatMessage {
+	role: 'system' | 'user' | 'assistant';
+	content: string;
+	images?: string[];
+}
+
 export interface ChatRequestBody {
 	model: string;
 	options: Record<string, number>;
-	messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+	messages: ChatMessage[];
 }
 
 /**

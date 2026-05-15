@@ -153,6 +153,11 @@
 		 *  so a Ctrl press doesn't activate edit chrome on every open
 		 *  note simultaneously. */
 		noteFocused?: boolean;
+		/** Fired AFTER an image has been successfully uploaded to Dropbox AND
+		 *  the resulting URL has been inserted into the editor. Carries the
+		 *  inserted Dropbox URL. The host can use this to trigger downstream
+		 *  pipelines (currently: OCR for ocr:// notes — see ocrNote/). */
+		onimageinserted?: (url: string) => void;
 	}
 
 	let {
@@ -180,6 +185,7 @@
 		hrSplitEnabled = true,
 		onhrsplitchange,
 		noteFocused = true,
+		onimageinserted = () => {},
 	}: Props = $props();
 
 	let ctxMenu = $state<{ x: number; y: number } | null>(null);
@@ -957,6 +963,7 @@
 				})
 				.run();
 			pushToast("이미지 업로드 완료");
+			onimageinserted(url);
 		} catch (err) {
 			dismissToast(toastId);
 			const msg = err instanceof Error ? err.message : String(err);
