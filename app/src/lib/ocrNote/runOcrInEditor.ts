@@ -1,7 +1,7 @@
 import type { Editor } from '@tiptap/core';
 import { sendChat, LlmChatError } from '../llmNote/sendChat.js';
 import type { ChatRequestBody } from '../llmNote/buildChatRequest.js';
-import { imageUrlToBase64 } from './imageToBase64.js';
+import { imageBlobToBase64, imageUrlToBase64 } from './imageToBase64.js';
 import {
 	OCR_DEFAULT_NUM_CTX,
 	OCR_DEFAULT_TEMPERATURE,
@@ -13,7 +13,15 @@ import type { OcrNoteSpec } from './parseOcrNote.js';
 export interface RunOcrOptions {
 	editor: Editor;
 	spec: OcrNoteSpec;
+	/** URL of the uploaded image (for logging/UI only — NOT fetched if `imageBlob` is also supplied). */
 	imageUrl: string;
+	/**
+	 * In-memory bytes of the image. When present, this is used directly for
+	 * base64 encoding — no network fetch, no CORS exposure. The paste/drop
+	 * flow always has this. URL-only callers (none yet) would fall through
+	 * to fetching `imageUrl`, which is subject to CORS.
+	 */
+	imageBlob?: Blob;
 	bridgeUrl: string;
 	bridgeToken: string;
 	onStatus?: (msg: string) => void;
@@ -67,7 +75,9 @@ export async function runOcrInEditor(opts: RunOcrOptions): Promise<RunOcrResult>
 
 		let imageB64: string;
 		try {
-			imageB64 = await imageUrlToBase64(imageUrl);
+			imageB64 = opts.imageBlob
+				? await imageBlobToBase64(opts.imageBlob)
+				: await imageUrlToBase64(imageUrl);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : String(err);
 			replaceOcrBlock(editor, placeholderPos, `[OCR 오류: ${msg}]`);

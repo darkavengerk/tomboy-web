@@ -1,5 +1,5 @@
 /**
- * Fetch an image URL, downscale it, and return JPEG base64 (no data: prefix).
+ * Downscale an image (File / Blob / URL) and return JPEG base64 (no data: prefix).
  *
  * Why downscale: the bridge's `/llm/chat` body cap is 1 MiB. With JSON +
  * base64 overhead (~1.37x), an unscaled 4 MiB phone photo would blow past the
@@ -9,24 +9,43 @@
  *
  * Why JPEG: PNG re-encodes of photos balloon in size. JPEG q0.85 is a tighter
  * fit while preserving glyph edges well enough for OCR.
+ *
+ * Why prefer Blob over URL: Dropbox shared links (`www.dropbox.com/scl/...`)
+ * respond with a 302 redirect but no permissive CORS headers, so `fetch()`
+ * is blocked by the browser. `<img src>` works (cross-origin image loads
+ * don't need CORS), but `fetch().then(blob)` doesn't. Image paste/drop
+ * gives us the File object directly — we use that instead of round-tripping
+ * through the network.
  */
 const MAX_LONG_EDGE = 1280;
 const JPEG_QUALITY = 0.85;
 
-export async function imageUrlToBase64(url: string): Promise<string> {
-	const blob = await fetchAsBlob(url);
+/**
+ * The fast path: caller already has the File / Blob in hand (e.g. from a
+ * paste or drop event). No network involved.
+ */
+export async function imageBlobToBase64(blob: Blob): Promise<string> {
 	const bitmap = await blobToBitmap(blob);
 	try {
 		const { canvas, ctx } = drawScaled(bitmap, MAX_LONG_EDGE);
 		const out = await canvasToBlob(canvas, 'image/jpeg', JPEG_QUALITY);
-		// Free GPU/CPU resources before the slow base64 encode.
-		bitmap.close?.();
 		void ctx;
 		return blobToBase64(out);
 	} finally {
 		bitmap.close?.();
 	}
 }
+
+/**
+ * Fallback path for URLs without an accompanying File. Subject to CORS —
+ * Dropbox `www.dropbox.com/scl/...` links will fail here. Used only when
+ * no File is available (e.g. future "OCR existing image" flows).
+ */
+export async function imageUrlToBase64(url: string): Promise<string> {
+	const blob = await fetchAsBlob(url);
+	return imageBlobToBase64(blob);
+}
+
 
 async function fetchAsBlob(url: string): Promise<Blob> {
 	const resp = await fetch(url, { mode: 'cors', credentials: 'omit' });
