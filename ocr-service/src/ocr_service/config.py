@@ -25,7 +25,7 @@ class Settings:
             )
         return cls(
             shared_token=token,
-            model_id=os.environ.get("OCR_MODEL_ID", "stepfun-ai/GOT-OCR2_0"),
+            model_id=os.environ.get("OCR_MODEL_ID", "stepfun-ai/GOT-OCR-2.0-hf"),
             idle_unload_s=int(os.environ.get("OCR_IDLE_UNLOAD_S", "300")),
             device=os.environ.get("OCR_DEVICE", "cuda:0"),
         )
