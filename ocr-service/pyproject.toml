@@ -17,10 +17,13 @@ model = [
     # 과 무관.)
     "torch>=2.4,<2.5",
     "torchvision>=0.19,<0.20",
-    # GOT-OCR-2.0-hf 는 transformers >=4.49 에 정식 통합된 native 모델이라
-    # trust_remote_code 가 필요 없고 옛 transformers cache API 도 안 씀.
-    # 상위 호환을 위해 최신 허용.
-    "transformers>=4.49",
+    # GOT-OCR-2.0-hf 는 transformers 4.49 에 정식 통합. 그 이후 버전들은
+    # `transformers/integrations/moe.py` 가 torch 2.5+ API (`custom_op`
+    # type annotation 신문법) 를 요구해서 torch 2.4 LTS 와 깨짐.
+    # 4.49 시리즈로 좁게 핀해서 MoE 이전 + 모델 native 지원 둘 다 확보.
+    # 향후 base image를 Ubuntu 24.04 + Python 3.12로 교체하면 torch 2.5+
+    # 와 함께 이 캡 풀 수 있음.
+    "transformers>=4.49,<4.50",
     # low_cpu_mem_usage=True / device_map="auto" 가 accelerate 를 요구함.
     # 1.0 의 API 재작성을 피해 <1.0 으로 캡.
     "accelerate>=0.33,<1.0",
