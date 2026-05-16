@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
 	import { mode } from '$lib/stores/guestMode.svelte.js';
 	import { startAuth } from '$lib/sync/dropboxClient.js';
 
@@ -16,8 +15,11 @@
 		}
 		busy = true;
 		mode.setGuestName(v);
-		await mode.detectAndSet();
-		void goto('/');
+		// Full reload — soft `goto('/')` doesn't re-run `installRealNoteSync`
+		// (it's `installed`-flag-gated) so guest mode would never wire its
+		// adapters. A reload re-initialises every module with the new
+		// localStorage state, including `db.ts` picking up `dbMode = 'guest'`.
+		window.location.href = '/';
 	}
 
 	async function connectDropbox() {

@@ -52,7 +52,25 @@ const DB_VERSION = 3;
 
 type DbMode = 'host' | 'guest';
 
-let dbMode: DbMode = 'host';
+/**
+ * Detect mode at module-load time from localStorage so the FIRST `getDB()`
+ * call (which happens during page mount, before `installRealNoteSync` runs
+ * its async setup) opens the right IDB. Without this, a refresh as guest
+ * reads from `tomboy-web` (host DB), sees empty, and caches the empty
+ * result before the orchestrator switches modes — UI never shows notes.
+ *
+ * Storage keys are owned by other modules (`dropboxClient` for the access
+ * token, `guestMode` store for the guest name) but the literal strings are
+ * stable and we read them directly here to avoid a circular import.
+ */
+function detectInitialDbMode(): DbMode {
+	if (typeof localStorage === 'undefined') return 'host';
+	if (localStorage.getItem('tomboy-dropbox-access-token')) return 'host';
+	if (localStorage.getItem('tomboy.guestName')) return 'guest';
+	return 'host';
+}
+
+let dbMode: DbMode = detectInitialDbMode();
 let dbPromise: Promise<IDBPDatabase<TomboyDB>> | null = null;
 let dbPromiseMode: DbMode | null = null;
 
