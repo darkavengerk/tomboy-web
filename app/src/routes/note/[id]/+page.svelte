@@ -53,6 +53,8 @@
 	import { sync } from '$lib/sync/syncManager.js';
 	import { assignNotebook, getNotebook } from '$lib/core/notebooks.js';
 	import { setHomeNote, clearHomeNote, getHomeNoteGuid } from '$lib/core/home.js';
+	import { mode } from '$lib/stores/guestMode.svelte.js';
+	import { getCachedPublicConfig } from '$lib/sync/firebase/publicConfig.js';
 	import { getScheduleNoteGuid } from '$lib/core/schedule.js';
 	import { isScrollBottomNote, setScrollBottomNote } from '$lib/core/scrollBottom.js';
 	import { modKeys, installModKeyListeners } from '$lib/desktop/modKeys.svelte.js';
@@ -205,6 +207,14 @@
 		return () => detachOpenNote(id);
 	});
 
+	function isPublicForGuest(n: NoteData | undefined): boolean {
+		if (!n) return false;
+		const nb = getNotebook(n);
+		if (!nb) return false;
+		const shared = getCachedPublicConfig()?.sharedNotebooks ?? [];
+		return shared.includes(nb);
+	}
+
 	// Route 변경 시 에디터 콘텐츠 교체
 	//
 	// The TomboyEditor instance is created on first load and kept alive
@@ -232,6 +242,10 @@
 			if (id !== noteId) return;
 			if (!loaded) {
 				goto('/');
+				return;
+			}
+			if (mode.value === 'guest' && !isPublicForGuest(loaded)) {
+				void goto('/notes', { replaceState: true });
 				return;
 			}
 			note = loaded;
@@ -351,6 +365,17 @@
 	async function handleInternalLink(target: string) {
 		const title = target.trim();
 		if (!title) return;
+
+		if (mode.value === 'guest') {
+			const linked = await findNoteByTitle(title);
+			if (!linked || !isPublicForGuest(linked)) {
+				pushToast('공개되지 않은 노트입니다.', { kind: 'info' });
+				return;
+			}
+			if (linked.guid === noteId) return;
+			goto(`/note/${linked.guid}`);
+			return;
+		}
 
 		if (saveTimer) {
 			clearTimeout(saveTimer);

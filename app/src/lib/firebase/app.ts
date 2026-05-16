@@ -21,6 +21,7 @@
 import { initializeApp, type FirebaseApp } from 'firebase/app';
 import {
 	getAuth,
+	signInAnonymously,
 	signInWithCustomToken,
 	signOut,
 	type Auth,
@@ -123,6 +124,24 @@ export async function ensureSignedIn(): Promise<User> {
 	>(functions, 'dropboxAuthExchange');
 	const { data } = await exchange({ dropboxAccessToken: dropboxToken });
 	const cred = await signInWithCustomToken(auth, data.customToken);
+	return cred.user;
+}
+
+/**
+ * Ensure Firebase Auth has an anonymous user. Idempotent — returns the
+ * current user immediately if it's already anonymous.
+ *
+ * If a non-anonymous user is currently signed in (host session), it is
+ * signed out first so the anonymous credential takes over cleanly. This
+ * path should not normally occur in production (host and guest are
+ * different browsing contexts), but is handled defensively.
+ */
+export async function ensureGuestSignedIn(): Promise<User> {
+	const auth = getFirebaseAuth();
+	await auth.authStateReady();
+	if (auth.currentUser?.isAnonymous) return auth.currentUser;
+	if (auth.currentUser) await signOut(auth);
+	const cred = await signInAnonymously(auth);
 	return cred.user;
 }
 

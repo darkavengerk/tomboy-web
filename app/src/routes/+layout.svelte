@@ -1,13 +1,14 @@
 <script lang="ts">
 	import '../app.css';
 	import { onMount } from 'svelte';
-	import { afterNavigate } from '$app/navigation';
+	import { afterNavigate, goto } from '$app/navigation';
 	import Toast from '$lib/components/Toast.svelte';
 	import ImageViewerModal from '$lib/components/ImageViewerModal.svelte';
 	import TopNav from '$lib/components/TopNav.svelte';
 	import { page } from '$app/state';
 	import { createHistoryTracker } from '$lib/nav/history.js';
 	import { appMode, modeFromUrl } from '$lib/stores/appMode.svelte.js';
+	import { mode } from '$lib/stores/guestMode.svelte.js';
 	import { bindViewportHeight } from '$lib/viewport/viewportHeight.js';
 	import {
 		installOnlineFlushListener,
@@ -16,12 +17,18 @@
 	import { subscribeForegroundMessages } from '$lib/schedule/notification.js';
 	import { installRealNoteSync } from '$lib/sync/firebase/install.js';
 	import { pushToast } from '$lib/stores/toast.js';
+	import { getAllNotes } from '$lib/storage/noteStore.js';
+	import { getCachedPublicConfig, discoverPublicConfigForGuest } from '$lib/sync/firebase/publicConfig.js';
 
 	let { children } = $props();
 
 	const isDesktopRoute = $derived(page.url.pathname.startsWith('/desktop'));
 	const isEmbedded = $derived(page.url.searchParams.get('embed') === '1');
-	const isChromeless = $derived(isDesktopRoute || isEmbedded);
+	const isChromeless = $derived(
+		isDesktopRoute ||
+		isEmbedded ||
+		page.url.pathname.startsWith('/welcome')
+	);
 
 	let offline = $state(false);
 	let installPrompt: BeforeInstallPromptEvent | null = $state(null);
@@ -42,7 +49,56 @@
 		canGoForward = tracker.canGoForward();
 		const derived = modeFromUrl(page.url.pathname, page.url.searchParams);
 		if (derived) appMode.set(derived);
+		const isOauthCallback =
+			page.url.pathname === '/settings' && page.url.searchParams.has('code');
+		if (mode.value === 'visitor'
+				&& !page.url.pathname.startsWith('/welcome')
+				&& !isOauthCallback) {
+			void goto('/welcome', { replaceState: true });
+			return;
+		}
+		if (mode.value === 'guest') {
+			const path = page.url.pathname;
+			const blocked =
+				path.startsWith('/settings') ||
+				path.startsWith('/admin') ||
+				path.startsWith('/desktop') ||
+				path === '/sleepnote';
+			if (blocked) {
+				void goto('/notes', { replaceState: true });
+				return;
+			}
+			if (path === '/') {
+				void redirectGuestHome();
+			}
+		}
 	});
+
+	async function redirectGuestHome() {
+		let cfg = getCachedPublicConfig();
+		if (!cfg) {
+			try {
+				cfg = await discoverPublicConfigForGuest();
+			} catch {
+				cfg = null;
+			}
+		}
+		const shared = cfg?.sharedNotebooks ?? [];
+		if (shared.length === 0) {
+			void goto('/notes', { replaceState: true });
+			return;
+		}
+		const all = await getAllNotes();
+		const first = shared[0];
+		const cand = all
+			.filter((n) => !n.deleted && n.tags.includes(`system:notebook:${first}`))
+			.sort((a, b) => b.changeDate.localeCompare(a.changeDate))[0];
+		if (cand) {
+			void goto(`/note/${cand.guid}`, { replaceState: true });
+		} else {
+			void goto('/notes', { replaceState: true });
+		}
+	}
 
 	function handleBack() {
 		tracker.goBack();
@@ -80,9 +136,13 @@
 		installOnlineFlushListener();
 		void flushIfEnabled();
 
-		// 파이어베이스 노트 실시간 동기화: 저장된 토글 값을 읽어 활성화 상태로 복원.
-		// 토글이 OFF면 push/subscribe 모두 no-op 으로 비용 없음.
-		void installRealNoteSync();
+		// 방문자/게스트/호스트 모드 감지 — note sync 보다 먼저 실행.
+		// async 이므로 void 로 실행; 완료 후 installRealNoteSync 연쇄.
+		void mode.detectAndSet().then(() => {
+			// 파이어베이스 노트 실시간 동기화: 저장된 토글 값을 읽어 활성화 상태로 복원.
+			// 토글이 OFF면 push/subscribe 모두 no-op 으로 비용 없음.
+			void installRealNoteSync();
+		});
 
 		// 포그라운드 푸시 구독 — 사용자가 같은 세션에서 알림을 활성화한 직후 테스트
 		// 시 구독이 누락되지 않도록 무조건 호출. Firebase 미지원/미초기화면 no-op 반환.

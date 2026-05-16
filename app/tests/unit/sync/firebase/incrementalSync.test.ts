@@ -17,6 +17,7 @@ function payload(guid: string, overrides: Partial<FirestoreNotePayload> = {}): F
 		metadataChangeDate: '2026-04-27T10:00:00.0000000+09:00',
 		tags: [],
 		deleted: false,
+		public: false,
 		...overrides
 	};
 }
