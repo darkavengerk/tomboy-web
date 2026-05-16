@@ -143,6 +143,13 @@ describe('assertValidPayload', () => {
 			assertValidPayload({ ...valid, public: 'true' })
 		).toThrow(InvalidNotePayloadError);
 	});
+
+	it('coerces missing public to false (legacy docs)', () => {
+		const { public: _omit, ...legacy } = valid;
+		const obj = { ...legacy } as Record<string, unknown>;
+		expect(() => assertValidPayload(obj)).not.toThrow();
+		expect(obj.public).toBe(false);
+	});
 });
 
 describe('mergeRemoteIntoLocal', () => {
