@@ -100,7 +100,12 @@ export function assertValidPayload(
 	if (typeof obj.deleted !== 'boolean') {
 		throw new InvalidNotePayloadError('field "deleted" must be a boolean');
 	}
-	if (typeof obj.public !== 'boolean') {
+	// `public` was added after this app shipped — old Firestore docs lack it.
+	// Treat missing as `false` (= not publicly shared) so legacy snapshots
+	// validate. Existing values still must be boolean.
+	if (obj.public === undefined) {
+		obj.public = false;
+	} else if (typeof obj.public !== 'boolean') {
 		throw new InvalidNotePayloadError('field "public" must be a boolean');
 	}
 	if (!Array.isArray(obj.tags) || obj.tags.some((t) => typeof t !== 'string')) {
