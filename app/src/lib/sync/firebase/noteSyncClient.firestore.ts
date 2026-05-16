@@ -100,16 +100,12 @@ export async function getCurrentNoteSyncUid(): Promise<string | null> {
 
 /**
  * Guest-mode collection-level listener: queries ALL public notes across all
- * users via a collectionGroup query filtered by `public == true`.
+ * users via a collectionGroup query, filtered by `public == true` and
+ * `serverUpdatedAt > sinceMillis`.
  *
- * The `sinceMillis` watermark is enforced **client-side** in the snapshot
- * handler rather than as a `where('serverUpdatedAt', '>', X)` clause. The
- * server-side multi-where + the `resource.data.public == true` rule predicate
- * trip Firestore's query-safety analyzer (returns "Missing or insufficient
- * permissions" even when rules and indexes are correct). A single-field
- * `where('public', '==', true)` is analyzer-friendly. Trade-off: every
- * snapshot delivers all public docs in the initial pass — fine for a
- * personal-scale app.
+ * Requires the composite index `(public ASC, serverUpdatedAt DESC)` at
+ * collectionGroup scope on `notes`. Declared in `firestore.indexes.json`
+ * and deployable via `firebase deploy --only firestore:indexes`.
  *
  * The `uid` parameter is accepted to satisfy the `IncrementalSyncDeps.subscribe`
  * interface but is unused — the collectionGroup query spans all users.
@@ -121,7 +117,11 @@ export function subscribeAllPublicNotesAfter(
 	onError: (err: Error) => void
 ): () => void {
 	const db = getFirebaseFirestore();
-	const q = query(collectionGroup(db, 'notes'), where('public', '==', true));
+	const q = query(
+		collectionGroup(db, 'notes'),
+		where('public', '==', true),
+		where('serverUpdatedAt', '>', Timestamp.fromMillis(sinceMillis))
+	);
 	return fsOnSnapshot(
 		q,
 		(snap) => {
@@ -135,13 +135,10 @@ export function subscribeAllPublicNotesAfter(
 					// serverTimestamp() not yet finalised — wait for the follow-up snapshot.
 					continue;
 				}
-				const tsMillis = (ts as Timestamp).toMillis();
-				// Client-side watermark filter (see header comment for rationale).
-				if (tsMillis <= sinceMillis) continue;
 				try {
 					const { serverUpdatedAt: _omit, ...rest } = data as Record<string, unknown>;
 					assertValidPayload(rest);
-					out.push({ payload: rest, serverUpdatedAtMillis: tsMillis });
+					out.push({ payload: rest, serverUpdatedAtMillis: (ts as Timestamp).toMillis() });
 				} catch (err) {
 					console.warn('[noteSync] dropping malformed public note in collectionGroup', err);
 				}
