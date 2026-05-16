@@ -1,26 +1,20 @@
+// SOLO MODE — default rule set.
+// Host's own data, no guest access.
+//
+// To enable guest sharing temporarily: swap to firestore.rules.shared via
+// Firebase Console (Firestore → Rules → paste contents of firestore.rules.shared
+// → Publish). Switch back when sharing is done.
+//
+// Background: Firestore's list-query analyzer cannot reliably handle a
+// collectionGroup query (`where('public','==',true)`) against a rule like
+// `resource.data.public == true` combined with the host-only catch-all.
+// Empirically rejects with "Missing or insufficient permissions" even when
+// the rule is logically correct. The shared rule sidesteps this by being
+// fully permissive for authenticated users.
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    match /users/{hostUid}/notes/{noteId} {
-      allow read:   if request.auth.uid == hostUid
-                    || (request.auth != null && resource.data.public == true);
-      allow create: if request.auth.uid == hostUid
-                    || (request.auth != null && request.resource.data.public == true);
-      allow update: if request.auth.uid == hostUid
-                    || (request.auth != null
-                        && resource.data.public == true
-                        && request.resource.data.public == true);
-      allow delete: if request.auth.uid == hostUid
-                    || (request.auth != null && resource.data.public == true);
-    }
-
-    match /users/{hostUid}/publicConfig/{doc} {
-      allow read:  if true;
-      allow write: if request.auth.uid == hostUid;
-    }
-
     match /users/{uid}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
