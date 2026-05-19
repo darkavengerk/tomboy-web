@@ -1,10 +1,28 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { mode } from '$lib/stores/guestMode.svelte.js';
-	import { startAuth } from '$lib/sync/dropboxClient.js';
+	import { startAuth, isAuthenticated } from '$lib/sync/dropboxClient.js';
 
 	let name = $state('');
 	let error = $state('');
 	let busy = $state(false);
+
+	// Defense-in-depth: if the user already has a Dropbox token or a stored
+	// guest name in localStorage, the welcome page is the wrong place to
+	// land — the layout's visitor-redirect race must have flashed us here
+	// (or the user typed `/welcome` directly). Bounce them home so they
+	// don't see the login form and re-authenticate unnecessarily.
+	onMount(() => {
+		if (typeof localStorage === 'undefined') return;
+		if (isAuthenticated()) {
+			void goto('/', { replaceState: true });
+			return;
+		}
+		if (mode.getGuestName()) {
+			void goto('/notes', { replaceState: true });
+		}
+	});
 
 	async function submitGuest(e: SubmitEvent) {
 		e.preventDefault();
