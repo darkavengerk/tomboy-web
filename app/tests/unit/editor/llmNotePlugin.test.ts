@@ -9,7 +9,7 @@ import {
 function createTestEditor(): Editor {
 	const editor = new Editor({
 		extensions: [
-			StarterKit.configure({ history: false }),
+			StarterKit.configure({ undoRedo: false }),
 			Extension.create({
 				name: 'llmNoteExt',
 				addProseMirrorPlugins() {
