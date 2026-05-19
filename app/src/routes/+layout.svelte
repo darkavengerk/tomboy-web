@@ -138,7 +138,15 @@
 
 		// 방문자/게스트/호스트 모드 감지 — note sync 보다 먼저 실행.
 		// async 이므로 void 로 실행; 완료 후 installRealNoteSync 연쇄.
-		void mode.detectAndSet().then(() => {
+		// mode 의 초기값은 guestMode.svelte.ts 의 detectInitialMode 가 localStorage 에서
+		// 동기로 세팅함. 여기서는 토큰 refresh 실패로 진짜 'visitor' 로 latch 되는 경우를
+		// 잡아 사용자에게 알려준다 (race-resolved-bad: 토큰은 있었지만 refresh 가 실패).
+		const initialMode = mode.value;
+		void mode.detectAndSet().then((finalMode) => {
+			if (initialMode === 'host' && finalMode === 'visitor') {
+				pushToast('Dropbox 연결이 끊겼습니다. 다시 로그인해주세요.', { kind: 'error' });
+				void goto('/welcome', { replaceState: true });
+			}
 			// 파이어베이스 노트 실시간 동기화: 저장된 토글 값을 읽어 활성화 상태로 복원.
 			// 토글이 OFF면 push/subscribe 모두 no-op 으로 비용 없음.
 			void installRealNoteSync();
