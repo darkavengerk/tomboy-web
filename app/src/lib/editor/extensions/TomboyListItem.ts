@@ -19,6 +19,14 @@ export const TomboyListItem = ListItem.extend({
 			tomboyTrailingNewline: {
 				default: null,
 				rendered: false
+			},
+			checked: {
+				// 체크리스트 항목의 완료 여부. 체크리스트 영역 밖의 일반
+				// 리스트 항목에서는 의미 없이 false 로 남는다. 화면 표시는
+				// checklist 플러그인이 데코레이션으로 처리하므로 DOM 에
+				// 렌더링하지 않는다(rendered: false).
+				default: false,
+				rendered: false
 			}
 		};
 	}
