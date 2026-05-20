@@ -16,7 +16,7 @@
     {
       "id": 9,
       "subject": "Task 3: 브릿지 — 배경화면 적용 코어 로직",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [8],
       "description": "**Goal:** 슬롯 파일 매핑 + 의존성 주입형 applyWallpapers + 인증/검증 processWallpaperRequest — I/O 전부 주입, 페이크로 완전 테스트.\n\n**Files:** create bridge/src/remarkable.ts, bridge/src/remarkable.test.ts; modify bridge/package.json\n\n**Verify:** cd bridge && npx tsc -p . && node --test dist/remarkable.test.js\n\n```json:metadata\n{\"files\": [\"bridge/src/remarkable.ts\", \"bridge/src/remarkable.test.ts\", \"bridge/package.json\"], \"verifyCommand\": \"cd bridge && npx tsc -p . && node --test dist/remarkable.test.js\", \"acceptanceCriteria\": [\"RM_SLOT_FILES covers 5 slot ids with restart flags\", \"applyWallpapers returns 400 unknown_host for undefined host\", \"per-slot failure isolated, others still processed\", \"restartXochitl called once when a restart slot succeeds\", \"processWallpaperRequest returns 401/503/400 for bad token/unconfigured/bad body\"]}\n```"
     },
@@ -49,5 +49,5 @@
       "description": "**Goal:** Quadlet 유닛에 리마커블 호스트 파일 마운트·배선 + bridge/README.md에 셋업 절차·노트 형식·펌웨어 한계 문서화.\n\n**Files:** modify bridge/deploy/term-bridge.container, bridge/README.md\n\n**Verify:** cd bridge && podman build -t term-bridge:test . 2>&1 | tail -5\n\n```json:metadata\n{\"files\": [\"bridge/deploy/term-bridge.container\", \"bridge/README.md\"], \"verifyCommand\": \"cd bridge && podman build -t term-bridge:test . 2>&1 | tail -5\", \"acceptanceCriteria\": [\"term-bridge.container mounts remarkable.json read-only + sets BRIDGE_REMARKABLE_HOSTS_FILE\", \"unit header comment documents remarkable.json setup + ssh key\", \"README documents note format, endpoint, firmware 3.x + OTA caveats\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-20T16:30:00Z"
+  "lastUpdated": "2026-05-20T16:45:00Z"
 }
