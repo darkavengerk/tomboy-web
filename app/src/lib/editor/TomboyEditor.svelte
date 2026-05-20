@@ -1627,6 +1627,8 @@
 	}
 	.tomboy-editor :global(.tomboy-fn-ref) {
 		font-size: 0.75em;
+		vertical-align: super;
+		line-height: 0;
 		color: #2563eb;
 		cursor: pointer;
 	}
