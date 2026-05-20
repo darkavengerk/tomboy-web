@@ -1620,7 +1620,8 @@
 	}
 
 	/* 각주 [^N] — footnote 플러그인이 [^ 와 ] 를 .tomboy-fn-bracket 로
-	   폭 0 처리하고, 가운데 라벨을 <sup class="tomboy-fn-ref"> 로 감싼다.
+	   폭 0 처리한다. 참조 라벨은 <sup class="tomboy-fn-ref"> 작은 위첨자,
+	   설명 마커 라벨은 <span class="tomboy-fn-def"> 일반 크기로 표시한다.
 	   마커는 .note XML 본문에 [^N] 텍스트로 그대로 남는다. */
 	.tomboy-editor :global(.tomboy-fn-bracket) {
 		font-size: 0;
@@ -1629,6 +1630,12 @@
 		font-size: 0.75em;
 		vertical-align: super;
 		line-height: 0;
+		color: #2563eb;
+		cursor: pointer;
+	}
+	/* 설명 마커(줄 맨 앞 [^N]) — 일반 크기. 작은 위첨자면 설명 시작이
+	   어색하므로 본문과 같은 크기·기준선으로 둔다. */
+	.tomboy-editor :global(.tomboy-fn-def) {
 		color: #2563eb;
 		cursor: pointer;
 	}

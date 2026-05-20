@@ -1,8 +1,9 @@
 /**
  * 각주 ProseMirror 플러그인 — 표시 전용.
  *
- * 모든 [^N] 매치에 인라인 데코레이션을 단다([^ 와 ] 는 폭 0으로 접고
- * 가운데 라벨은 <sup> 로 감싼다). 클릭하면 짝(참조↔설명)으로 스크롤한다.
+ * 모든 [^N] 매치에 인라인 데코레이션을 단다([^ 와 ] 는 폭 0으로 접고,
+ * 참조 라벨은 작은 위첨자, 설명 마커 라벨은 일반 크기로 표시). 클릭하면
+ * 짝(참조↔설명)으로 스크롤한다.
  * 문서를 변형하지 않는다.
  */
 import { Plugin, PluginKey } from '@tiptap/pm/state';
@@ -41,13 +42,21 @@ function buildDecorations(
 		decos.push(
 			Decoration.inline(m.from, m.from + 2, { class: 'tomboy-fn-bracket' })
 		);
-		// 라벨 → <sup class="tomboy-fn-ref">.
-		decos.push(
-			Decoration.inline(m.from + 2, m.to - 1, {
-				nodeName: 'sup',
-				class: 'tomboy-fn-ref'
-			})
-		);
+		// 라벨: 참조는 작은 위첨자(<sup>), 설명 마커는 일반 크기(<span>).
+		if (m.isDefinitionMarker) {
+			decos.push(
+				Decoration.inline(m.from + 2, m.to - 1, {
+					class: 'tomboy-fn-def'
+				})
+			);
+		} else {
+			decos.push(
+				Decoration.inline(m.from + 2, m.to - 1, {
+					nodeName: 'sup',
+					class: 'tomboy-fn-ref'
+				})
+			);
+		}
 		// 닫는 ] (1자) 숨김.
 		decos.push(
 			Decoration.inline(m.to - 1, m.to, { class: 'tomboy-fn-bracket' })

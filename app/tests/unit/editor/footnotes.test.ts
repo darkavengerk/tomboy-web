@@ -125,7 +125,7 @@ describe('findFootnotePartner', () => {
 		return findFootnoteMatches(doc);
 	}
 
-	it('reference → first definition marker of same label', () => {
+	it('reference → nearest following definition marker of same label', () => {
 		const matches = setup();
 		const ref = matches.find((m) => m.label === '7' && !m.isDefinitionMarker)!;
 		const partner = findFootnotePartner(matches, ref);
@@ -133,7 +133,7 @@ describe('findFootnotePartner', () => {
 		expect(partner?.label).toBe('7');
 	});
 
-	it('definition marker → first reference of same label', () => {
+	it('definition marker → nearest preceding reference of same label', () => {
 		const matches = setup();
 		const def = matches.find((m) => m.isDefinitionMarker)!;
 		const partner = findFootnotePartner(matches, def);
@@ -145,5 +145,29 @@ describe('findFootnotePartner', () => {
 		const matches = setup();
 		const ref9 = matches.find((m) => m.label === '9')!;
 		expect(findFootnotePartner(matches, ref9)).toBeNull();
+	});
+
+	it('pairs repeated labels by proximity across documents', () => {
+		// 한 노트에 두 문서. 둘 다 [^1] 을 쓰지만 위치로 짝이 갈린다.
+		const doc = makeDoc([
+			P('제목'),
+			P('문서A 본문 [^1] 끝'),
+			P('[^1] 문서A 각주1'),
+			P('문서B 본문 [^1] 끝'),
+			P('[^1] 문서B 각주1')
+		]);
+		const matches = findFootnoteMatches(doc);
+		const refs = matches.filter((m) => !m.isDefinitionMarker);
+		const defs = matches.filter((m) => m.isDefinitionMarker);
+		expect(refs).toHaveLength(2);
+		expect(defs).toHaveLength(2);
+		const [refA, refB] = refs;
+		const [defA, defB] = defs;
+		// 참조 → 자신 뒤의 첫 설명 (이전 문서 설명이 아니라).
+		expect(findFootnotePartner(matches, refA)).toBe(defA);
+		expect(findFootnotePartner(matches, refB)).toBe(defB);
+		// 설명 → 자신 앞의 마지막 참조.
+		expect(findFootnotePartner(matches, defA)).toBe(refA);
+		expect(findFootnotePartner(matches, defB)).toBe(refB);
 	});
 });

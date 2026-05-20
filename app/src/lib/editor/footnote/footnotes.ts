@@ -1,9 +1,10 @@
 /**
  * 각주 마커 [^라벨] 탐색 (순수 함수).
  *
- * 본문 어디든 나오는 [^N] 은 "참조", 최상위 단락의 맨 앞(선행 공백
- * 제외)에 오는 [^N] 은 "설명 마커"다. 화면 표시는 동일하고, 역할은
- * 클릭 시 스크롤 대상 결정에만 쓰인다. 제목(0번 단락)은 제외한다.
+ * 본문 어디든 나오는 [^N] 은 "참조"(작은 위첨자로 표시), 최상위 단락의
+ * 맨 앞(선행 공백 제외)에 오는 [^N] 은 "설명 마커"(일반 크기로 표시)다.
+ * 역할은 표시 크기와 클릭 시 짝(스크롤 대상) 결정에 쓰인다. 제목(0번
+ * 단락)은 제외한다.
  *
  * 마커는 라이브 문서와 .note XML 양쪽에 평범한 텍스트로 남는다 —
  * 아카이버(noteContentArchiver.ts)는 이 파일을 거치지 않는다.
@@ -105,20 +106,41 @@ export function findFootnoteAt(
 }
 
 /**
- * 클릭된 매치의 짝을 반환:
- *  - 설명 마커 클릭 → 같은 라벨의 첫 참조
- *  - 참조 클릭     → 같은 라벨의 첫 설명 마커
- * 짝이 없으면 null.
+ * 클릭된 매치의 짝을 반환. 한 노트에 여러 문서가 있어 각주 라벨이 겹칠
+ * 수 있으므로(문서끼리 인터리브하지 않는다고 가정), 라벨이 같은 매치
+ * 중 위치가 가장 가까운 것을 고른다:
+ *  - 참조 클릭     → 자신보다 뒤에 오는 첫 설명 마커
+ *  - 설명 마커 클릭 → 자신보다 앞에 오는 마지막 참조
+ * 짝이 없으면 null. `matches` 는 문서 순서로 정렬돼 있어야 한다
+ * (findFootnoteMatches 의 반환값이 그렇다).
  */
 export function findFootnotePartner(
 	matches: FootnoteMatch[],
 	clicked: FootnoteMatch
 ): FootnoteMatch | null {
-	const wantDefinition = !clicked.isDefinitionMarker;
-	for (const m of matches) {
-		if (m === clicked) continue;
-		if (m.label !== clicked.label) continue;
-		if (m.isDefinitionMarker === wantDefinition) return m;
+	if (!clicked.isDefinitionMarker) {
+		// 참조 → 뒤따르는 첫 설명 마커(같은 라벨).
+		for (const m of matches) {
+			if (
+				m.label === clicked.label &&
+				m.isDefinitionMarker &&
+				m.from > clicked.from
+			) {
+				return m;
+			}
+		}
+		return null;
 	}
-	return null;
+	// 설명 마커 → 앞서는 마지막 참조(같은 라벨).
+	let found: FootnoteMatch | null = null;
+	for (const m of matches) {
+		if (
+			m.label === clicked.label &&
+			!m.isDefinitionMarker &&
+			m.from < clicked.from
+		) {
+			found = m;
+		}
+	}
+	return found;
 }

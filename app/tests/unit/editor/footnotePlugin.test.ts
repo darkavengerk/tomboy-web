@@ -63,6 +63,18 @@ describe('footnote plugin decorations', () => {
 		expect(st.matches[0].label).toBe('9');
 		expect(st.decorations.find()).toHaveLength(3);
 	});
+
+	it('renders a reference label as a superscript', () => {
+		const e = makeEditor([P('제목'), P('본문 [^7] 끝')]);
+		expect(e.view.dom.querySelector('sup.tomboy-fn-ref')).not.toBeNull();
+		expect(e.view.dom.querySelector('.tomboy-fn-def')).toBeNull();
+	});
+
+	it('renders a definition marker label at normal size, not a superscript', () => {
+		const e = makeEditor([P('제목'), P('[^7] 설명 내용')]);
+		expect(e.view.dom.querySelector('.tomboy-fn-def')).not.toBeNull();
+		expect(e.view.dom.querySelector('sup.tomboy-fn-ref')).toBeNull();
+	});
 });
 
 describe('footnote plugin click', () => {
