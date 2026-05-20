@@ -18,6 +18,7 @@ export type {
 	ChecklistItemRef
 } from './regions.js';
 export { checklistPluginKey };
+export { toggleCheckboxAt, insertChecklistBlock } from './commands.js';
 export type { ChecklistPluginOptions };
 
 export const TomboyChecklist = Extension.create<ChecklistPluginOptions>({
