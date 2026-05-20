@@ -77,6 +77,13 @@ describe('findQuotedParagraphs', () => {
 			P('보통'),
 			P('> 떨어진 인용')
 		]);
-		expect(findQuotedParagraphs(doc)).toHaveLength(3);
+		const quoted = findQuotedParagraphs(doc);
+		expect(quoted).toHaveLength(3);
+		expect(quoted.every((q) => q.textStart === q.paraPos + 1)).toBe(true);
+	});
+
+	it('ignores empty paragraphs mixed into the document', () => {
+		const doc = makeDoc([P('제목'), P(''), P('> 인용'), P('')]);
+		expect(findQuotedParagraphs(doc)).toHaveLength(1);
 	});
 });

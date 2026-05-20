@@ -16,7 +16,7 @@ export interface QuotedParagraph {
 	/** 단락 노드의 절대 위치. */
 	paraPos: number;
 	paraNode: PMNode;
-	/** 단락 내용 시작 위치 = paraPos + 1 ('>' 의 위치). */
+	/** 단락 내용 시작 위치 = paraPos + 1 (첫 인라인 콘텐츠의 절대 위치). */
 	textStart: number;
 }
 
