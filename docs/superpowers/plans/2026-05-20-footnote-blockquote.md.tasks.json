@@ -1,0 +1,39 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-20-footnote-blockquote.md",
+  "tasks": [
+    {
+      "id": 20,
+      "subject": "Task 1: 각주 마커 탐색 모듈",
+      "status": "pending",
+      "description": "**Goal:** 문서에서 `[^N]` 마커를 찾아 참조/설명마커로 분류하고 짝을 찾는 순수 함수 모듈을 만든다.\n\n**Files:**\n- Create: `app/src/lib/editor/footnote/footnotes.ts`\n- Test: `app/tests/unit/editor/footnotes.test.ts`\n\n**Acceptance Criteria:**\n- [ ] `findFootnoteMatches` 가 `[^N]` 매치를 문서 순서대로 찾고, 잘못된 형태(`[^]`, 닫는 `]` 없음, `[^ x]`)는 무시하며, 제목(0번 단락)을 제외한다\n- [ ] 최상위 단락 맨 앞(선행 공백 제외)의 `[^N]` 은 `isDefinitionMarker: true`, 그 외는 `false`\n- [ ] `findFootnoteAt` 가 위치를 포함하는 매치를, `findFootnotePartner` 가 같은 라벨의 반대 역할 매치를 반환\n- [ ] `cd app && npm run test -- footnotes` 통과\n\n**Verify:** `cd app && npm run test -- footnotes` → 모든 테스트 PASS\n\n**Steps:** 계획서 Task 1 의 Step 1–5. 완전한 코드는 `docs/superpowers/plans/2026-05-20-footnote-blockquote.md` Task 1 참조.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/footnote/footnotes.ts\", \"app/tests/unit/editor/footnotes.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- footnotes\", \"acceptanceCriteria\": [\"findFootnoteMatches 가 매치를 문서 순서대로 찾고 잘못된 형태 무시 + 제목 제외\", \"최상위 단락 맨 앞 [^N] 은 isDefinitionMarker true, 그 외는 false\", \"findFootnoteAt 위치 포함 매치 반환, findFootnotePartner 짝 반환\", \"npm run test -- footnotes 통과\"], \"planRef\": \"docs/superpowers/plans/2026-05-20-footnote-blockquote.md\"}\n```"
+    },
+    {
+      "id": 21,
+      "subject": "Task 2: 각주 데코레이션 플러그인 + 확장",
+      "status": "pending",
+      "blockedBy": [20],
+      "description": "**Goal:** `[^N]` 매치마다 브래킷을 숨기고 라벨을 위첨자로 그리는 데코레이션 플러그인, 클릭 시 짝으로 스크롤하는 핸들러, 그리고 `TomboyFootnote` TipTap 확장을 만든다.\n\n**Files:**\n- Create: `app/src/lib/editor/footnote/plugin.ts`\n- Create: `app/src/lib/editor/footnote/index.ts`\n- Test: `app/tests/unit/editor/footnotePlugin.test.ts`\n\n**Acceptance Criteria:**\n- [ ] `[^N]` 매치마다 인라인 데코레이션 3개 — `[^` 숨김, 라벨 `<sup>`, `]` 숨김\n- [ ] 플러그인 상태가 매치 목록과 `DecorationSet` 을 보관하고 doc 변경 시 재계산\n- [ ] `handleClick` 이 각주 클릭 시 짝으로 스크롤하고, 짝이 없으면 `onMissing(label, kind)` 호출 후 `true` 반환; 각주 밖 클릭은 `false`\n- [ ] `cd app && npm run test -- footnotePlugin` 통과\n\n**Verify:** `cd app && npm run test -- footnotePlugin` → 모든 테스트 PASS\n\n**Steps:** 계획서 Task 2 의 Step 1–6. 완전한 코드는 `docs/superpowers/plans/2026-05-20-footnote-blockquote.md` Task 2 참조.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/footnote/plugin.ts\", \"app/src/lib/editor/footnote/index.ts\", \"app/tests/unit/editor/footnotePlugin.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- footnotePlugin\", \"acceptanceCriteria\": [\"매치마다 인라인 데코 3개 ([^ 숨김, 라벨 sup, ] 숨김)\", \"플러그인 상태가 매치+DecorationSet 보관 + doc 변경 시 재계산\", \"handleClick 짝으로 스크롤 / 짝 없으면 onMissing 후 true / 각주 밖 false\", \"npm run test -- footnotePlugin 통과\"], \"planRef\": \"docs/superpowers/plans/2026-05-20-footnote-blockquote.md\"}\n```"
+    },
+    {
+      "id": 22,
+      "subject": "Task 3: 인용 단락 탐색 모듈",
+      "status": "pending",
+      "description": "**Goal:** `> ` 로 시작하는 최상위 단락(인용 단락)을 찾는 순수 함수 모듈을 만든다.\n\n**Files:**\n- Create: `app/src/lib/editor/blockquote/blockquote.ts`\n- Test: `app/tests/unit/editor/blockquote.test.ts`\n\n**Acceptance Criteria:**\n- [ ] `isQuotedParagraphText` 가 `> `(꺾쇠+공백)로 시작하는 텍스트에만 true (공백 없는 `>`, 앞 공백 있는 경우는 false)\n- [ ] `findQuotedParagraphs` 가 인용 최상위 단락을 문서 순서대로 찾고, 제목(0번)·리스트 내부 단락은 제외하며, `textStart = paraPos + 1` 을 반환\n- [ ] `cd app && npm run test -- editor/blockquote.test` 통과\n\n**Verify:** `cd app && npm run test -- editor/blockquote.test` → 모든 테스트 PASS\n\n**Steps:** 계획서 Task 3 의 Step 1–5. 완전한 코드는 `docs/superpowers/plans/2026-05-20-footnote-blockquote.md` Task 3 참조.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/blockquote/blockquote.ts\", \"app/tests/unit/editor/blockquote.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- editor/blockquote.test\", \"acceptanceCriteria\": [\"isQuotedParagraphText 가 '> ' 시작 텍스트에만 true\", \"findQuotedParagraphs 가 인용 최상위 단락 탐색 + 제목/리스트 내부 제외 + textStart=paraPos+1\", \"npm run test -- editor/blockquote.test 통과\"], \"planRef\": \"docs/superpowers/plans/2026-05-20-footnote-blockquote.md\"}\n```"
+    },
+    {
+      "id": 23,
+      "subject": "Task 4: 인용 데코레이션 플러그인 + 확장",
+      "status": "pending",
+      "blockedBy": [22],
+      "description": "**Goal:** 인용 단락마다 `<p>` 에 클래스를 달고 맨 앞 `> ` 를 숨기는 데코레이션 플러그인, 그리고 `TomboyBlockquote` TipTap 확장을 만든다.\n\n**Files:**\n- Create: `app/src/lib/editor/blockquote/plugin.ts`\n- Create: `app/src/lib/editor/blockquote/index.ts`\n- Test: `app/tests/unit/editor/blockquotePlugin.test.ts`\n\n**Acceptance Criteria:**\n- [ ] 인용 단락마다 데코레이션 2개 — `<p>` 노드 데코(`tomboy-quote`) + `> ` 2자 인라인 숨김 데코(`tomboy-quote-marker`)\n- [ ] 비인용 단락은 미장식; doc 변경 시 재계산\n- [ ] `TomboyBlockquote` 확장이 플러그인을 등록\n- [ ] `cd app && npm run test -- blockquotePlugin` 통과\n\n**Verify:** `cd app && npm run test -- blockquotePlugin` → 모든 테스트 PASS\n\n**Steps:** 계획서 Task 4 의 Step 1–6. 완전한 코드는 `docs/superpowers/plans/2026-05-20-footnote-blockquote.md` Task 4 참조.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/blockquote/plugin.ts\", \"app/src/lib/editor/blockquote/index.ts\", \"app/tests/unit/editor/blockquotePlugin.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- blockquotePlugin\", \"acceptanceCriteria\": [\"인용 단락마다 데코 2개 (노드 tomboy-quote + 인라인 tomboy-quote-marker)\", \"비인용 단락 미장식 + doc 변경 시 재계산\", \"TomboyBlockquote 확장이 플러그인 등록\", \"npm run test -- blockquotePlugin 통과\"], \"planRef\": \"docs/superpowers/plans/2026-05-20-footnote-blockquote.md\"}\n```"
+    },
+    {
+      "id": 24,
+      "subject": "Task 5: 에디터 연결 — 확장 등록 · onMissing 토스트 · CSS",
+      "status": "pending",
+      "blockedBy": [21, 23],
+      "description": "**Goal:** `TomboyEditor.svelte` 에 `TomboyFootnote`/`TomboyBlockquote` 확장을 등록하고, 각주 onMissing 을 토스트로 연결하고, 각주·인용 CSS 를 추가한다.\n\n**Files:**\n- Modify: `app/src/lib/editor/TomboyEditor.svelte` — 확장 import, 확장 배열, `<style>` 블록\n\n**Acceptance Criteria:**\n- [ ] `TomboyFootnote.configure({ onMissing })` 와 `TomboyBlockquote` 가 확장 배열에 등록됨\n- [ ] `onMissing` 이 `pushToast` 로 한국어 오류 메시지를 띄움 (참조→설명 없음, 설명→참조 없음)\n- [ ] 각주 `[^N]` 은 위첨자 작은 숫자로 + `[^`/`]` 숨김; 인용 `> ` 단락은 왼쪽 테두리+들여쓰기 + `> ` 숨김; 연속 인용은 간격 좁힘\n- [ ] `cd app && npm run check && npm run test` 통과 (타입 0 오류, 전체 테스트 통과)\n\n**Verify:** `cd app && npm run check && npm run test` → svelte-check 0 errors, 전체 vitest PASS. 이어서 계획서 Task 5 Step 5 의 수동 확인.\n\n**Steps:** 계획서 Task 5 의 Step 1–6. 완전한 코드는 `docs/superpowers/plans/2026-05-20-footnote-blockquote.md` Task 5 참조.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/TomboyEditor.svelte\"], \"verifyCommand\": \"cd app && npm run check && npm run test\", \"acceptanceCriteria\": [\"TomboyFootnote.configure({onMissing}) + TomboyBlockquote 확장 배열 등록\", \"onMissing 이 pushToast 로 한국어 오류 메시지 표시\", \"각주 위첨자+브래킷 숨김 / 인용 테두리+들여쓰기+마커 숨김 / 연속 인용 간격 좁힘\", \"npm run check 와 npm run test 통과\"], \"planRef\": \"docs/superpowers/plans/2026-05-20-footnote-blockquote.md\"}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-20T00:00:00Z"
+}
