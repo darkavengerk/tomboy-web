@@ -76,6 +76,11 @@
 		moveTodoItem,
 		insertTodoBlock,
 	} from "./todoRegion/index.js";
+	import {
+		TomboyChecklist,
+		toggleCheckboxAt,
+		insertChecklistBlock,
+	} from "./checklist/index.js";
 	import type { JSONContent } from "@tiptap/core";
 	import EditorContextMenu from "./EditorContextMenu.svelte";
 	import {
@@ -456,6 +461,13 @@
 						moveTodoItem(ed, liPos, fromKind);
 					},
 				}),
+				TomboyChecklist.configure({
+					onToggle: (liPos) => {
+						const ed = editor;
+						if (!ed || ed.isDestroyed) return;
+						toggleCheckboxAt(ed, liPos);
+					},
+				}),
 			],
 			content: content ?? {
 				type: "doc",
@@ -541,6 +553,10 @@
 							case "o":
 								event.preventDefault();
 								insertTodoBlock(ed);
+								return true;
+							case "p":
+								event.preventDefault();
+								insertChecklistBlock(ed);
 								return true;
 							case "k":
 								event.preventDefault();
@@ -1557,6 +1573,37 @@
 			opacity: 1;
 			pointer-events: auto;
 		}
+	}
+
+	/* 체크리스트 영역 항목 — 불릿 대신 체크박스 위젯. checklist 플러그인이
+	   영역 안의 각 listItem 에 .tomboy-checkbox-item 노드 데코와 첫 문단
+	   시작 위치에 .tomboy-checkbox-box 위젯을 단다. */
+	.tomboy-editor :global(li.tomboy-checkbox-item) {
+		list-style: none;
+	}
+	/* 체크된 항목은 자기 직계 문단만 흐리게 — 중첩 자식 항목은 제외. */
+	.tomboy-editor :global(li.tomboy-checkbox-item.is-checked > p) {
+		opacity: 0.6;
+	}
+	.tomboy-editor :global(.tomboy-checkbox-box) {
+		display: inline-block;
+		width: 1em;
+		height: 1em;
+		margin-right: 0.4em;
+		padding: 0;
+		vertical-align: -0.12em;
+		border: 1.5px solid #888;
+		border-radius: 3px;
+		background: #fff;
+		cursor: pointer;
+	}
+	.tomboy-editor :global(.tomboy-checkbox-box.is-checked) {
+		border-color: #2e7d32;
+		background-color: #2e7d32;
+		background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M6.4 11.2L3 7.8l1.1-1.1 2.3 2.3L11.9 4l1.1 1.1z' fill='white'/></svg>");
+		background-repeat: no-repeat;
+		background-position: center;
+		background-size: contain;
 	}
 
 	/* CSV/TSV table block.
