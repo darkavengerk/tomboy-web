@@ -967,10 +967,6 @@
     "mtime": 1776493723.9428618,
     "hash": "8138b8805d275044f54fb9b065e19193"
   },
-  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/components/TopNav.svelte": {
-    "mtime": 1776493723.9429107,
-    "hash": "a79728507b41219716e1258b834786d2"
-  },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/components/SyncPlanView.svelte": {
     "mtime": 1776670816.5000777,
     "hash": "9194265e960c33eedb25258e5eb6e8da"
@@ -978,6 +974,10 @@
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/components/ImageViewerModal.svelte": {
     "mtime": 1777092651.693201,
     "hash": "c4c76a063296dd05b83c65345dc07626"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/components/TopNav.svelte": {
+    "mtime": 1778909540.3719091,
+    "hash": "edc68bcf77195c8aba108f2ebbd79621"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/core/scrollBottom.ts": {
     "mtime": 1776229771.6804178,
@@ -1020,8 +1020,8 @@
     "hash": "3da4482da89622338ce59b00f1984987"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/core/noteContentArchiver.ts": {
-    "mtime": 1778497231.1956244,
-    "hash": "ddb716433b317ff1f1e507ac91d0e3bd"
+    "mtime": 1779251773.2776597,
+    "hash": "14d8c8644e283d8c67dbb1693aca8558"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/insertDate.ts": {
     "mtime": 1776244585.0468705,
@@ -1080,16 +1080,12 @@
     "hash": "b377dcb91a793f55a1114b925c677f57"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/TomboyEditor.svelte": {
-    "mtime": 1778575805.8808365,
-    "hash": "7074f54f2f7703db2ebdfb26fa6c5438"
+    "mtime": 1779251773.2779481,
+    "hash": "6d5d63e89f9e92f1dafad760ffb64d58"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/extensions/TomboySize.ts": {
     "mtime": 1775979894.4442964,
     "hash": "3ee471fed653e961587bd3189d4c5a0c"
-  },
-  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/extensions/TomboyListItem.ts": {
-    "mtime": 1776071148.487076,
-    "hash": "871f66ae82369b362575573f0854e22a"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/extensions/TomboyParagraph.ts": {
     "mtime": 1776071155.822161,
@@ -1127,6 +1123,10 @@
     "mtime": 1777347561.0875182,
     "hash": "e66c9792e6d1eaf555e62e04d3923609"
   },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/extensions/TomboyListItem.ts": {
+    "mtime": 1779251773.2783623,
+    "hash": "b8573e0b8f8a20712189cc14a00a3a33"
+  },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/autoLink/titleProvider.ts": {
     "mtime": 1776930087.130734,
     "hash": "f861512f10632b8535c99af8078db787"
@@ -1151,10 +1151,6 @@
     "mtime": 1777092651.694491,
     "hash": "ca9cce554e89c0b02309f68ffb071083"
   },
-  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/sendListItem/transferListItem.ts": {
-    "mtime": 1776495762.8432384,
-    "hash": "471a1afafc0038d9148b8131e66cf378"
-  },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/sendListItem/sendListItemPlugin.ts": {
     "mtime": 1776495437.5654042,
     "hash": "63263b480eac85a8cd6e426459874921"
@@ -1162,6 +1158,14 @@
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/sendListItem/sendActiveGate.ts": {
     "mtime": 1777269334.2285678,
     "hash": "06828c8db8c01e6d18baa2b8b6ef2536"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/sendListItem/recurringCopy.ts": {
+    "mtime": 1778658091.8499207,
+    "hash": "c94d82b10ff5beafa35dffe203ed93a6"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/sendListItem/transferListItem.ts": {
+    "mtime": 1778658091.8501673,
+    "hash": "a240070231fa7df0cb3121a4b3c7dd28"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/dateLink/findAdjacentDateNotes.ts": {
     "mtime": 1777172928.5254838,
@@ -1236,32 +1240,48 @@
     "hash": "5b712af98b01359d6759f40b782f707e"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/terminal/wsClient.ts": {
-    "mtime": 1778574396.7159781,
-    "hash": "ff93a05c1a7510880c722bce0aa9e35f"
+    "mtime": 1778642005.2750177,
+    "hash": "e5599f4a1996b443171aea07cb6e847e"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/terminal/TerminalView.svelte": {
-    "mtime": 1778635770.786726,
-    "hash": "2a6b0b99dc7f6088ebdfe636bdc87e08"
-  },
-  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/hrSplit/hrSplitStore.ts": {
-    "mtime": 1778478509.0734975,
-    "hash": "99c9d3f84b0384d2c174674bc49c32c1"
+    "mtime": 1778821862.3383982,
+    "hash": "79551a3d3faf22345478ceff3489be98"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/hrSplit/assignColumns.ts": {
-    "mtime": 1778575805.8810403,
-    "hash": "e547021a143c1eb50bb5f19739049407"
+    "mtime": 1778860438.1676173,
+    "hash": "1daf92a8f32fc329122904d2137a78a7"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/hrSplit/hrSplitPlugin.ts": {
-    "mtime": 1778575805.8811948,
-    "hash": "aaed814ee8a718b12a67abc30d279a8c"
+    "mtime": 1778860438.1681108,
+    "hash": "1d5b35683abdc640bb88cec79dde41c5"
   },
-  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/llmNote/LlmSendBar.svelte": {
-    "mtime": 1778573354.2718868,
-    "hash": "1feed2ebc353938224dbcaa6e7bf5377"
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/hrSplit/hrSplitStore.ts": {
+    "mtime": 1778860438.1681108,
+    "hash": "955d4442b20d952dc893f145ebc80ae9"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/llmNote/llmNotePlugin.ts": {
     "mtime": 1778573354.2719865,
     "hash": "a75ff2935d6ffa4b3be6cdc05440fc83"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/llmNote/LlmSendBar.svelte": {
+    "mtime": 1778658997.0225303,
+    "hash": "10f668e1e5dacd89db4689d86ca43aa3"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/checklist/commands.ts": {
+    "mtime": 1779251773.2780075,
+    "hash": "5b26aa763428f31a5f4162584fa65ecd"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/checklist/index.ts": {
+    "mtime": 1779251773.278073,
+    "hash": "3e7f2be73b533b58e65c10ea83b6385e"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/checklist/plugin.ts": {
+    "mtime": 1779251773.2781558,
+    "hash": "17b5778264d770876cc3fdf0a0070373"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/checklist/regions.ts": {
+    "mtime": 1779251773.2782266,
+    "hash": "9a64ab23192cf1c6854f7362cb5a974c"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/nav/history.ts": {
     "mtime": 1775979894.4442964,
@@ -1271,17 +1291,17 @@
     "mtime": 1776493723.9439676,
     "hash": "a108a1b54386fd048ed355e001d7e280"
   },
-  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/storage/db.ts": {
-    "mtime": 1776670816.5014603,
-    "hash": "125235498b3932255d15bebf633c250c"
-  },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/storage/noteStore.ts": {
     "mtime": 1777281341.2135487,
     "hash": "cc5eb7147718419c386749797f96ca81"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/storage/appSettings.ts": {
-    "mtime": 1778237567.9092355,
-    "hash": "8ecd1b581fad2ab562f53dfec3814ba9"
+    "mtime": 1778849106.5616589,
+    "hash": "1553af5001def2cb4fd09cabb498f17b"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/storage/db.ts": {
+    "mtime": 1778922787.4734328,
+    "hash": "20ac465137c3c1784c0f91333272f96f"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/stores/noteListCache.ts": {
     "mtime": 1775979894.4445493,
@@ -1302,6 +1322,10 @@
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/stores/imageViewer.svelte.ts": {
     "mtime": 1777092651.6948884,
     "hash": "b80708d7cdec22ef0cc29e7d67de204b"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/stores/guestMode.svelte.ts": {
+    "mtime": 1779188767.5837328,
+    "hash": "5616921c307f8390df803c2b4d79b890"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/utils/guid.ts": {
     "mtime": 1775979894.4446313,
@@ -1331,10 +1355,6 @@
     "mtime": 1776909067.177235,
     "hash": "25cdbb8904fc71ac9b148bf570787ef3"
   },
-  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/SidePanel.svelte": {
-    "mtime": 1777868808.8150718,
-    "hash": "e6507ca39439f2bc7c18440c6cd779ac"
-  },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/DesktopWorkspace.svelte": {
     "mtime": 1778237583.693048,
     "hash": "a4cceb2cf8bc1fd9e80fabbc7e756c0a"
@@ -1351,9 +1371,13 @@
     "mtime": 1778316924.6246393,
     "hash": "71b5560c769e1f95914f2972f28110d8"
   },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/SidePanel.svelte": {
+    "mtime": 1778808300.178393,
+    "hash": "f935f6ea587b3f11d89f6c5bf53cde8e"
+  },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/NoteWindow.svelte": {
-    "mtime": 1778573354.2717175,
-    "hash": "80f1aa3cbec5d5d1f847f3d6d264042e"
+    "mtime": 1778855361.8573086,
+    "hash": "e5fe43fa324ef96ac238ae029e81d4c0"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/components/CodeNodePanel.svelte": {
     "mtime": 1777868808.8150718,
@@ -1411,10 +1435,6 @@
     "mtime": 1776493723.944167,
     "hash": "f2a1bfcff2aff82dcc60e9b04b6dff4f"
   },
-  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/imageUpload.ts": {
-    "mtime": 1776493723.9442132,
-    "hash": "0a53343888520a43fabd4e8f73553ea3"
-  },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/manifest.ts": {
     "mtime": 1776493723.9442132,
     "hash": "976ea888d9939071e5eb3424ab5ab5c9"
@@ -1435,13 +1455,13 @@
     "mtime": 1777868816.3046865,
     "hash": "aca3c889737232b82f09bf54161611ea"
   },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/imageUpload.ts": {
+    "mtime": 1778814146.1432917,
+    "hash": "df1c9a754e098cd224081dc0d677bae9"
+  },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/firebase/conflictResolver.ts": {
     "mtime": 1777265962.7683597,
     "hash": "df9399fa083b7ac6ef1d45b9cc9b09d9"
-  },
-  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/firebase/notePayload.ts": {
-    "mtime": 1777265962.768489,
-    "hash": "010f95d9db14e1c04360a84e233ab78b"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/firebase/openNoteRegistry.ts": {
     "mtime": 1777265962.768489,
@@ -1455,21 +1475,33 @@
     "mtime": 1777278189.144123,
     "hash": "017c8fd5c8e3a30b617d2c2fd75e6175"
   },
-  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/firebase/install.ts": {
-    "mtime": 1777278189.1442597,
-    "hash": "27a8f65ce254645746c6b6a5398277b1"
-  },
-  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/firebase/noteSyncClient.firestore.ts": {
-    "mtime": 1777278189.1444452,
-    "hash": "ee73afdb5b6d8b91b5ef6792a817b59b"
-  },
-  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/firebase/noteSyncClient.ts": {
-    "mtime": 1777278189.144571,
-    "hash": "c32c4ce3c23dcc5cab8bd448d0b88c82"
-  },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/firebase/orchestrator.ts": {
     "mtime": 1777281341.2137034,
     "hash": "a23aae1255ac27f33ef22b4c1b57752b"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/firebase/install.ts": {
+    "mtime": 1778909540.3720307,
+    "hash": "535e0a97962a7483f4f3af894079ac29"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/firebase/noteSyncClient.ts": {
+    "mtime": 1778909540.3720307,
+    "hash": "f01077cb66057f15a3d2f419d3b322e0"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/firebase/publicConfig.ts": {
+    "mtime": 1778909540.3720307,
+    "hash": "153ad93b6efd3b07ab62f4210ad2e208"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/firebase/publishNotebook.ts": {
+    "mtime": 1778909540.3720307,
+    "hash": "b7d86ac124d001b0327b4bb778b11624"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/firebase/notePayload.ts": {
+    "mtime": 1778910178.2743852,
+    "hash": "24f02c3ed09c4b83baa2cac6a5cd18f0"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sync/firebase/noteSyncClient.firestore.ts": {
+    "mtime": 1778922316.570874,
+    "hash": "42d3412674fae2e8dfb6640fdc15bb05"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/sleepnote/validator.ts": {
     "mtime": 1776561223.9414232,
@@ -1552,8 +1584,8 @@
     "hash": "4c70b0e2c998f8dd0e7fe77084a4ffd5"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/firebase/app.ts": {
-    "mtime": 1777432164.6796215,
-    "hash": "8419ffb2f6791d1d523f102e92a0d2d1"
+    "mtime": 1778909540.3720307,
+    "hash": "a5e742dcfa9a71d5436b4ee89bfed615"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/codegraph/codegraphTypes.ts": {
     "mtime": 1777868808.8130717,
@@ -1575,21 +1607,57 @@
     "mtime": 1777868808.8140717,
     "hash": "83835ad74aeea550ed78e22e62a54d7d"
   },
-  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/llmNote/buildChatRequest.ts": {
-    "mtime": 1778573354.2719865,
-    "hash": "e9906863d0802f285b5dfbfb87cb2d82"
-  },
-  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/llmNote/defaults.ts": {
-    "mtime": 1778573354.27205,
-    "hash": "e15d709eae74eee9511a6ae7601a8b28"
-  },
-  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/llmNote/parseLlmNote.ts": {
-    "mtime": 1778573354.27205,
-    "hash": "909e6468bf6270c6aab7986b0ebd7c9e"
-  },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/llmNote/sendChat.ts": {
     "mtime": 1778573354.272099,
     "hash": "d928d8d5ec362b2543a732450ba2c82a"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/llmNote/defaults.ts": {
+    "mtime": 1778658099.8571265,
+    "hash": "91af31c21349a85eb50e418b06c23701"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/llmNote/parseLlmNote.ts": {
+    "mtime": 1778658099.8571265,
+    "hash": "84435e0b7f04bbc5791970cc267fe642"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/llmNote/searchRag.ts": {
+    "mtime": 1778658099.8571265,
+    "hash": "d06aee50b7c7c3d678e74713774a9989"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/llmNote/buildChatRequest.ts": {
+    "mtime": 1778812215.5797338,
+    "hash": "acd36832e9c243324e062e78fa764e22"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/ocrNote/imageToBase64.ts": {
+    "mtime": 1778814146.1430464,
+    "hash": "d2b925e6b6340721caf3c756476ff366"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/ocrNote/defaults.ts": {
+    "mtime": 1778835796.1833506,
+    "hash": "6ebf2147e0652fa7a9fdd8aa218ea572"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/ocrNote/parseOcrNote.ts": {
+    "mtime": 1778835796.1833506,
+    "hash": "875ba2f04e7bc00e669e9550890955a2"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/ocrNote/runOcrInEditor.ts": {
+    "mtime": 1778835796.1833506,
+    "hash": "313f28dd4921b140ddf1489a272481b9"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/ocrNote/sendOcr.ts": {
+    "mtime": 1778835796.1833506,
+    "hash": "c979096a6eb79d51c7f38361efe56c64"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/admin/remarkablePipeline.ts": {
+    "mtime": 1778849106.5616589,
+    "hash": "a2144681a639bf59f4c70d2832bc456b"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/gpuMonitor/client.ts": {
+    "mtime": 1778835796.182428,
+    "hash": "941ef229bc9b1a2976de9915ac948a14"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/gpuMonitor/types.ts": {
+    "mtime": 1778835796.1833506,
+    "hash": "ac40e06cc342bb1f422a1e0badab7e9d"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/+layout.ts": {
     "mtime": 1775979894.4447505,
@@ -1604,16 +1672,16 @@
     "hash": "518e2c2ee8381e79d4401695b162daa2"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/+layout.svelte": {
-    "mtime": 1777265962.7687469,
-    "hash": "e6b7ec744eb8cfb2c45b4177f682e2e3"
+    "mtime": 1779188767.5838912,
+    "hash": "5d7fcc6ee86784bc071258b0a9be56ae"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/note/[id]/+page.ts": {
     "mtime": 1775979894.4448552,
     "hash": "e7b0e83eacc1321b3a006a975acafa45"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/note/[id]/+page.svelte": {
-    "mtime": 1778573354.2721567,
-    "hash": "b82ff1018fa52e78baae6ac0cf6b7503"
+    "mtime": 1778909540.3725312,
+    "hash": "40825518860b5af89ba15adfcaf7f290"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/note/[id]/compare/+page.svelte": {
     "mtime": 1776493723.9485273,
@@ -1628,8 +1696,8 @@
     "hash": "e7b0e83eacc1321b3a006a975acafa45"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/settings/+page.svelte": {
-    "mtime": 1778573354.2723749,
-    "hash": "d6235648610be85c5eefba170fed264f"
+    "mtime": 1778909540.373039,
+    "hash": "b002fc7953d643f0df5fdcf024a823bb"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/sleepnote/+page.svelte": {
     "mtime": 1776229771.6812596,
@@ -1647,13 +1715,13 @@
     "mtime": 1777868808.8157413,
     "hash": "ecdb5c82d5f3297b8c20083d0058b591"
   },
-  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/admin/+layout.svelte": {
-    "mtime": 1776559925.8343835,
-    "hash": "b6628ea26fc96db29eb463ef27108ded"
-  },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/admin/+page.svelte": {
     "mtime": 1776602367.8757167,
     "hash": "f238f849e4e4c7b7133b682ca2fc2c69"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/admin/+layout.svelte": {
+    "mtime": 1778835845.6610477,
+    "hash": "d7045edbaa8415a1a81b3f4f56b9ae3d"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/admin/browse/+page.svelte": {
     "mtime": 1776493723.9471664,
@@ -1678,6 +1746,18 @@
   "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/admin/sleepnote/+page.svelte": {
     "mtime": 1776603615.1594186,
     "hash": "793bf7d90d00819ae5a54fd9973f1548"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/admin/remarkable/+page.svelte": {
+    "mtime": 1778849106.5616589,
+    "hash": "abf656587f26ea066e3307fc85cc8113"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/admin/gpu/+page.svelte": {
+    "mtime": 1778835796.1833506,
+    "hash": "078daaacdafe2dcbfd236d6d82278510"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/welcome/+page.svelte": {
+    "mtime": 1779188767.5840836,
+    "hash": "0d368f0b07261ab7aae4eaee0f1099c0"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/stores/notes.ts": {
     "mtime": 1775979894.4449542,
@@ -1995,21 +2075,41 @@
     "mtime": 1778315552.6808596,
     "hash": "a6de271397f46f3e36e9ba66b8c59fa7"
   },
-  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/editor/hrSplitStore.test.ts": {
-    "mtime": 1778478509.073761,
-    "hash": "168c154347a4ac20e51fd53dadef1410"
-  },
-  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/editor/llmNotePlugin.test.ts": {
-    "mtime": 1778573354.2723749,
-    "hash": "54f3c92521974e38b8473bd0ae339f2f"
-  },
   "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/editor/parseTerminalNote.test.ts": {
     "mtime": 1778574369.4506555,
     "hash": "3e8b8db3130ece4b663a62118c0f0865"
   },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/editor/recurringCopy.test.ts": {
+    "mtime": 1778658091.8506782,
+    "hash": "9955defabad27fb47856b7b402cd3ec4"
+  },
   "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/editor/hrSplitAssignColumns.test.ts": {
-    "mtime": 1778575805.8814197,
-    "hash": "07dc05ac4846fddbe467a1c46cdde062"
+    "mtime": 1778860438.168216,
+    "hash": "6ccd4648c74919043e91250ad550bcf4"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/editor/hrSplitStore.test.ts": {
+    "mtime": 1778860438.168216,
+    "hash": "9be1fd27601e736b9f67d06e556580a2"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/editor/llmNotePlugin.test.ts": {
+    "mtime": 1779188509.7182024,
+    "hash": "639b570749935ca0b7457c3dd343643c"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/editor/checklistArchiver.test.ts": {
+    "mtime": 1779251773.2784393,
+    "hash": "462a701f649d553d50c7e5e2d9ac573e"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/editor/checklistCommands.test.ts": {
+    "mtime": 1779251773.278506,
+    "hash": "92d06edb4087b62e21c8f4a62afd6baa"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/editor/checklistPlugin.test.ts": {
+    "mtime": 1779251773.278571,
+    "hash": "05707ea80ab88edec25b88a6e818078b"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/editor/checklistRegions.test.ts": {
+    "mtime": 1779251773.2786274,
+    "hash": "2154c9477dc04bc4ca769966beccf699"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/graph/extractInternalLinks.test.ts": {
     "mtime": 1776229771.681479,
@@ -2063,10 +2163,6 @@
     "mtime": 1777265962.7689085,
     "hash": "8919672ea33149a037be90565d527dd9"
   },
-  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/sync/firebase/notePayload.test.ts": {
-    "mtime": 1777265962.7690523,
-    "hash": "8ad0399fe1c4301dd8e890dcba49e6b1"
-  },
   "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/sync/firebase/openNoteRegistry.test.ts": {
     "mtime": 1777265962.7691095,
     "hash": "9e44a4962737a976757b29571e847335"
@@ -2079,25 +2175,33 @@
     "mtime": 1777265962.7691095,
     "hash": "8e14396d36a7f8dcbeb1ca7808fd5fe6"
   },
-  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/sync/firebase/incrementalSync.test.ts": {
-    "mtime": 1777278189.1446848,
-    "hash": "abdd4842d371c612b1e916eac3f58219"
-  },
-  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/sync/firebase/noteSyncClient.test.ts": {
-    "mtime": 1777278189.1448443,
-    "hash": "2c93d68a6795638edd92c0d52da271ec"
-  },
-  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/sync/firebase/orchestrator.attach.test.ts": {
-    "mtime": 1777281341.2139194,
-    "hash": "041e9be07bec908081c6381b0d41c961"
-  },
-  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/sync/firebase/orchestrator.incremental.test.ts": {
-    "mtime": 1777281341.213965,
-    "hash": "07466351210c7a703db84d002964e594"
-  },
   "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/sync/firebase/orchestrator.integration.test.ts": {
     "mtime": 1777281341.21403,
     "hash": "0a7366ac3c7ca9d2f85e3c1fa29f9d41"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/sync/firebase/incrementalSync.test.ts": {
+    "mtime": 1778909540.373039,
+    "hash": "f542dbf3e4ac6a0797fa4be2857c6d2b"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/sync/firebase/noteSyncClient.test.ts": {
+    "mtime": 1778909540.373039,
+    "hash": "5239c75bcfa2eedc1519b7fe79ab0c1b"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/sync/firebase/orchestrator.attach.test.ts": {
+    "mtime": 1778909540.373039,
+    "hash": "376932e9ee2c897b89ca3f0334c4bf9a"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/sync/firebase/orchestrator.incremental.test.ts": {
+    "mtime": 1778909540.373039,
+    "hash": "4717f85e504a5bc10d797c8a3edac669"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/sync/firebase/publicConfig.test.ts": {
+    "mtime": 1778909540.373531,
+    "hash": "d5870c27765979a0b0f88dd359e6b92b"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/sync/firebase/notePayload.test.ts": {
+    "mtime": 1778910178.2743852,
+    "hash": "c322cada245c7a97a34eea77365243c9"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/sleepnote/validator.test.ts": {
     "mtime": 1776561297.1652877,
@@ -2227,24 +2331,48 @@
     "mtime": 1778573354.2723749,
     "hash": "9e8ab188363d1d7cd553112a6d66cfc3"
   },
-  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/llmNote/parseLlmNote.test.ts": {
-    "mtime": 1778573354.2724812,
-    "hash": "f0229c6a71d6e1bb49e8d5b2297cee83"
-  },
   "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/llmNote/sendChat.test.ts": {
     "mtime": 1778573354.2725089,
     "hash": "ce48d08347bebca079fdc0012e20577c"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/llmNote/parseLlmNote.test.ts": {
+    "mtime": 1778658099.8571265,
+    "hash": "96d14c600ffc0fb24212042bfe0b79c7"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/llmNote/searchRag.test.ts": {
+    "mtime": 1778658099.8571265,
+    "hash": "1ee4cd9a0235ca3a1785f8ee8865f70d"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/ocrNote/parseOcrNote.test.ts": {
+    "mtime": 1778835796.1833506,
+    "hash": "047e09d989eafe0d22a949f90337ea28"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/ocrNote/sendOcr.test.ts": {
+    "mtime": 1778835796.1833506,
+    "hash": "7420d29840c8539a586ef67ff4c79c96"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/gpuMonitor/client.test.ts": {
+    "mtime": 1778835796.1833506,
+    "hash": "b36f5718df21b3753c183d33ee48aa6f"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/storage/dbName.test.ts": {
+    "mtime": 1778909540.373039,
+    "hash": "72a5f8f11cb870636caea4338551764d"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/stores/guestMode.test.ts": {
+    "mtime": 1779188767.584223,
+    "hash": "eca019268d89c8a98d5f36213d93537f"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/scripts/sync-codegraph.mjs": {
     "mtime": 1777868808.8130717,
     "hash": "fcbec752edb80bf2a1cc44d621a6cb59"
   },
   "/var/home/umayloveme/workspace/tomboy-web/functions/lib/index.js": {
-    "mtime": 1777539066.8039227,
+    "mtime": 1778914115.842791,
     "hash": "a6b408c9cb3270a12e7c72f60f638d3d"
   },
   "/var/home/umayloveme/workspace/tomboy-web/functions/lib/summary.js": {
-    "mtime": 1777539066.792458,
+    "mtime": 1778914115.8322308,
     "hash": "0fbe06fe10c84508d03e89c5e20f9e54"
   },
   "/var/home/umayloveme/workspace/tomboy-web/functions/src/index.ts": {
@@ -2275,21 +2403,45 @@
     "mtime": 1778573354.2725089,
     "hash": "5e3a954014d8e8b0b481a62a5e390aca"
   },
+  "/var/home/umayloveme/workspace/tomboy-web/bridge/src/spectatorSession.ts": {
+    "mtime": 1778651956.1521547,
+    "hash": "77eee8d1db60a4f4a16a23c820d43917"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/bridge/src/rag.ts": {
+    "mtime": 1778658099.8571265,
+    "hash": "647d1e675ff44c16ebd9219c38d89d9f"
+  },
   "/var/home/umayloveme/workspace/tomboy-web/bridge/src/tmuxControlClient.ts": {
-    "mtime": 1778573607.8737113,
-    "hash": "a3afb544770206d26eba0f73fcc9707a"
+    "mtime": 1778819944.8068607,
+    "hash": "4601010003d009799d5a246388fbc9b1"
   },
   "/var/home/umayloveme/workspace/tomboy-web/bridge/src/tmuxControlClient.test.ts": {
-    "mtime": 1778573658.2223022,
-    "hash": "5a7d6c88724252fda463a968340742a9"
+    "mtime": 1778820045.7658236,
+    "hash": "9df75fd8785e84085a22c263c1627ef4"
   },
-  "/var/home/umayloveme/workspace/tomboy-web/bridge/src/spectatorSession.ts": {
-    "mtime": 1778635395.532237,
-    "hash": "2136e066049a2d9b7bfa1a863f2f0ba7"
+  "/var/home/umayloveme/workspace/tomboy-web/bridge/src/gpu.test.ts": {
+    "mtime": 1778835796.1833506,
+    "hash": "4e6257a028e3dc6ad506cbf523db0546"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/bridge/src/gpu.ts": {
+    "mtime": 1778835796.1833506,
+    "hash": "b5be6b67f7aa8261f0a788330be76e7d"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/bridge/src/ocr.test.ts": {
+    "mtime": 1778835796.1833506,
+    "hash": "7e2c24229bc2dee72b2cdb3ad5931bc9"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/bridge/src/ocr.ts": {
+    "mtime": 1778835796.1833506,
+    "hash": "0a0041cf4775f5385b01214e3c696e7f"
   },
   "/var/home/umayloveme/workspace/tomboy-web/bridge/src/server.ts": {
-    "mtime": 1778635408.8963852,
-    "hash": "dc436700d018cabd3ae7fee73d59d0c0"
+    "mtime": 1778835796.1833506,
+    "hash": "4f9db6f1daeaeb6254b748c5f423b7c6"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/bridge/scripts/deploy.mjs": {
+    "mtime": 1778832308.6806078,
+    "hash": "a5932b0e04c6980e4b346160893eab80"
   },
   "/var/home/umayloveme/workspace/tomboy-web/pipeline/conftest.py": {
     "mtime": 1778478492.5178652,
@@ -2306,6 +2458,10 @@
   "/var/home/umayloveme/workspace/tomboy-web/pipeline/desktop/bootstrap.py": {
     "mtime": 1778495902.48072,
     "hash": "280e7ed38df5529e1fb6442b85b57efe"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/pipeline/desktop/trigger_server.py": {
+    "mtime": 1778849106.5616589,
+    "hash": "77c8b9da80985cf60c101b1c97ceffd4"
   },
   "/var/home/umayloveme/workspace/tomboy-web/pipeline/desktop/lib/__init__.py": {
     "mtime": 1778478492.5180535,
@@ -2335,25 +2491,29 @@
     "mtime": 1778498253.6981597,
     "hash": "ea7f7c4f874b8d6dfeb36baba57c89de"
   },
+  "/var/home/umayloveme/workspace/tomboy-web/pipeline/desktop/lib/pipeline_status.py": {
+    "mtime": 1778832109.3917823,
+    "hash": "f488dd634eecdd27728eaa78481992d9"
+  },
   "/var/home/umayloveme/workspace/tomboy-web/pipeline/desktop/stages/__init__.py": {
     "mtime": 1778478492.518537,
     "hash": "d41d8cd98f00b204e9800998ecf8427e"
-  },
-  "/var/home/umayloveme/workspace/tomboy-web/pipeline/desktop/stages/s4_write.py": {
-    "mtime": 1778478492.5188403,
-    "hash": "552a8545c7b139f4f3bf86e2b5e02e4a"
   },
   "/var/home/umayloveme/workspace/tomboy-web/pipeline/desktop/stages/s1_fetch.py": {
     "mtime": 1778488835.9187067,
     "hash": "d17aa04db7e1bd75a82f5349562c97b3"
   },
   "/var/home/umayloveme/workspace/tomboy-web/pipeline/desktop/stages/s2_prepare.py": {
-    "mtime": 1778489872.8570065,
-    "hash": "c1a2d259bc2dfd94de39e515a2e8571e"
+    "mtime": 1778832109.3929856,
+    "hash": "96d8add629c5a1384fba7ceb6db06ef7"
   },
   "/var/home/umayloveme/workspace/tomboy-web/pipeline/desktop/stages/s3_ocr.py": {
-    "mtime": 1778490527.1627684,
-    "hash": "728438615edd357c73423018c443e027"
+    "mtime": 1778832109.3929856,
+    "hash": "1c908a7fdb01a7b255a1a2f5e03e4bb5"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/pipeline/desktop/stages/s4_write.py": {
+    "mtime": 1778854691.3030732,
+    "hash": "99cc4f12249448a88d89da00dfa8be22"
   },
   "/var/home/umayloveme/workspace/tomboy-web/pipeline/desktop/tools/__init__.py": {
     "mtime": 1778478492.5188403,
@@ -2376,8 +2536,40 @@
     "hash": "c2d2861f811d62114eb44f6f5ee0d6c3"
   },
   "/var/home/umayloveme/workspace/tomboy-web/pipeline/desktop/ocr_backends/local_vlm.py": {
-    "mtime": 1778493692.0120275,
-    "hash": "fa2cbb232d600723ef902a53f85606d0"
+    "mtime": 1778832109.392805,
+    "hash": "978f0729e31d1c8490b92d58371e3cb3"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/pipeline/desktop/rag/__init__.py": {
+    "mtime": 1778658099.857998,
+    "hash": "fe002fdb7767c29be236843f59f0f1be"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/pipeline/desktop/rag/firestore_source.py": {
+    "mtime": 1778658099.857998,
+    "hash": "2475eab8eb276430cff42de623be4d98"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/pipeline/desktop/rag/note_parser.py": {
+    "mtime": 1778658099.857998,
+    "hash": "da422366fdc821e4bb8d7ae43d955f4e"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/pipeline/desktop/rag/vector_store.py": {
+    "mtime": 1778658099.857998,
+    "hash": "268edafd1120101d7c35189845bcb1bb"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/pipeline/desktop/rag/zip_bootstrap.py": {
+    "mtime": 1778658099.857998,
+    "hash": "f9dec3e6be0b893a9d2a3f1853c8b586"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/pipeline/desktop/rag/embeddings.py": {
+    "mtime": 1778677645.762972,
+    "hash": "d7167a1e4ea0b519afe6e533924e0e71"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/pipeline/desktop/rag/indexer.py": {
+    "mtime": 1778677646.7359843,
+    "hash": "f4d10d1095c007950c7a0bebc5f967f2"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/pipeline/desktop/rag/search_server.py": {
+    "mtime": 1778677648.3580046,
+    "hash": "ef82161d64d807a656853b69b3057194"
   },
   "/var/home/umayloveme/workspace/tomboy-web/pipeline/pi/__init__.py": {
     "mtime": 1778478492.5190508,
@@ -2411,6 +2603,10 @@
     "mtime": 1778495929.042063,
     "hash": "2b3ba58938a31b8cdf131d32c55c445a"
   },
+  "/var/home/umayloveme/workspace/tomboy-web/pipeline/tests/test_trigger_server.py": {
+    "mtime": 1778849106.5616589,
+    "hash": "09bbf188f424cb1381fb199f8b1f206c"
+  },
   "/var/home/umayloveme/workspace/tomboy-web/pipeline/tests/lib/__init__.py": {
     "mtime": 1778478492.5193594,
     "hash": "d41d8cd98f00b204e9800998ecf8427e"
@@ -2439,6 +2635,10 @@
     "mtime": 1778498275.9994304,
     "hash": "d29dad0cb2da5521a6ee469f649f1637"
   },
+  "/var/home/umayloveme/workspace/tomboy-web/pipeline/tests/lib/test_pipeline_status.py": {
+    "mtime": 1778832109.3929856,
+    "hash": "fae21eb3be45d6f6b29125285e1ee6cb"
+  },
   "/var/home/umayloveme/workspace/tomboy-web/pipeline/tests/ocr_backends/__init__.py": {
     "mtime": 1778478492.5196903,
     "hash": "d41d8cd98f00b204e9800998ecf8427e"
@@ -2448,28 +2648,28 @@
     "hash": "d7a3dc5c0471baca3401f9d1f004d135"
   },
   "/var/home/umayloveme/workspace/tomboy-web/pipeline/tests/ocr_backends/test_local_vlm.py": {
-    "mtime": 1778490097.7626746,
-    "hash": "828edd645d42c1684405d4a66ee61f3a"
+    "mtime": 1778832109.3929856,
+    "hash": "8360befd181d4231354273cfb881e0f5"
   },
   "/var/home/umayloveme/workspace/tomboy-web/pipeline/tests/stages/__init__.py": {
     "mtime": 1778478492.5198922,
     "hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
-  "/var/home/umayloveme/workspace/tomboy-web/pipeline/tests/stages/test_s4_write.py": {
-    "mtime": 1778478492.5201426,
-    "hash": "1e6a1125e8741c068773ee9bcfead8e5"
-  },
   "/var/home/umayloveme/workspace/tomboy-web/pipeline/tests/stages/test_s1_fetch.py": {
     "mtime": 1778489005.318716,
     "hash": "91994f2df7b8b859fb4dea4f266da753"
   },
-  "/var/home/umayloveme/workspace/tomboy-web/pipeline/tests/stages/test_s2_prepare.py": {
-    "mtime": 1778489887.5221806,
-    "hash": "a44d71b57771c2cab951498be0a58c5c"
-  },
   "/var/home/umayloveme/workspace/tomboy-web/pipeline/tests/stages/test_s3_ocr.py": {
     "mtime": 1778490553.5810819,
     "hash": "80673727f0916450efa85a2a7d9a64b9"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/pipeline/tests/stages/test_s2_prepare.py": {
+    "mtime": 1778832109.3929856,
+    "hash": "1fba40c14bb7c46bc93d6d86395d5bbb"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/pipeline/tests/stages/test_s4_write.py": {
+    "mtime": 1778832109.3929856,
+    "hash": "c031d647230568f770af1cf48592fa7a"
   },
   "/var/home/umayloveme/workspace/tomboy-web/pipeline/tests/pi/__init__.py": {
     "mtime": 1778478492.5196903,
@@ -2479,9 +2679,93 @@
     "mtime": 1778478492.5198922,
     "hash": "fedaeaee26e9273c3b64003002208492"
   },
+  "/var/home/umayloveme/workspace/tomboy-web/pipeline/tests/rag/__init__.py": {
+    "mtime": 1778658099.8587134,
+    "hash": "41e66a887b10a224e99da072e18940f6"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/pipeline/tests/rag/test_embeddings.py": {
+    "mtime": 1778658099.8587134,
+    "hash": "e2c334bcee399869ef24a4c5e60b7982"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/pipeline/tests/rag/test_firestore_source.py": {
+    "mtime": 1778658099.8587134,
+    "hash": "e7c3895479c1e41f742d48e895879f31"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/pipeline/tests/rag/test_indexer.py": {
+    "mtime": 1778658099.8587134,
+    "hash": "b2ddf203e477527203723dce385f0586"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/pipeline/tests/rag/test_note_parser.py": {
+    "mtime": 1778658099.8587134,
+    "hash": "bdc22bc5884595569eff2e60045bee80"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/pipeline/tests/rag/test_search_server.py": {
+    "mtime": 1778658099.8587134,
+    "hash": "9d09cfe22c10241cb4d1aa8248df137a"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/pipeline/tests/rag/test_vector_store.py": {
+    "mtime": 1778658099.8587134,
+    "hash": "3f16747287f3424e4a4d3bafc0cc15a9"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/pipeline/tests/rag/test_zip_bootstrap.py": {
+    "mtime": 1778658099.8587134,
+    "hash": "d2a33c6780f8abb49926358c46fe2c80"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/ocr-service/src/ocr_service/__init__.py": {
+    "mtime": 1778835796.1845918,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/ocr-service/src/ocr_service/gpu.py": {
+    "mtime": 1778835796.1846325,
+    "hash": "66df3273aa9c443563b22017ab29d493"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/ocr-service/src/ocr_service/idle.py": {
+    "mtime": 1778835796.1846325,
+    "hash": "21cfec94f24d454d77bbd1fbd1afd78f"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/ocr-service/src/ocr_service/model.py": {
+    "mtime": 1778835796.1846325,
+    "hash": "f0e3ca3acb03cdcec1b1c97345447a5f"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/ocr-service/src/ocr_service/app.py": {
+    "mtime": 1778841676.8094108,
+    "hash": "eb4ee7fc5fc037d9b195eb9f198b4cfe"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/ocr-service/src/ocr_service/config.py": {
+    "mtime": 1778841676.8094108,
+    "hash": "902152bad9d51d282ba7843e2dd46667"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/ocr-service/src/ocr_service/model_real.py": {
+    "mtime": 1778841676.8094108,
+    "hash": "28def6f273a4d346c89dad0dbaa3511c"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/ocr-service/tests/__init__.py": {
+    "mtime": 1778835796.1846325,
+    "hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/ocr-service/tests/_fakes.py": {
+    "mtime": 1778835796.1847987,
+    "hash": "cf3cf06ae4486efb55a01b0620de1683"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/ocr-service/tests/conftest.py": {
+    "mtime": 1778835796.1847987,
+    "hash": "36182323ad47e284bb97239f79862a0a"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/ocr-service/tests/test_app.py": {
+    "mtime": 1778835796.1847987,
+    "hash": "c6553b3ea89c7c60e0ab91d0b5becac5"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/ocr-service/tests/test_gpu.py": {
+    "mtime": 1778835796.1847987,
+    "hash": "8ea198d5b67424611b17b132a8e26180"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/ocr-service/tests/test_model.py": {
+    "mtime": 1778835796.1847987,
+    "hash": "b68992fd367360c9110166896c330452"
+  },
   "/var/home/umayloveme/workspace/tomboy-web/CLAUDE.md": {
-    "mtime": 1778635979.2551155,
-    "hash": "5c098d2e2920e23626107a9244b72c79"
+    "mtime": 1778909540.371747,
+    "hash": "f533d9aabe5474feb6989c4c5330603b"
   },
   "/var/home/umayloveme/workspace/tomboy-web/ref/README.md": {
     "mtime": 1775785097.776391,
@@ -2587,6 +2871,22 @@
     "mtime": 1778564102.157935,
     "hash": "ed4777c56ad805393131a1ca0962b184"
   },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/specs/2026-05-13-rag-infrastructure-design.md": {
+    "mtime": 1778651410.0446124,
+    "hash": "3bc430ae8abad7469ed150f2a4495016"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/specs/2026-05-15-ocr-translate-split-design.md": {
+    "mtime": 1778835796.1834278,
+    "hash": "8422939f83f5bd68477f07f6170d3eb2"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/specs/2026-05-15-public-notebook-share-design.md": {
+    "mtime": 1778909540.373531,
+    "hash": "7c83cbd877a6fecb6bf3de430a0995f7"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/specs/2026-05-20-checkbox-feature-design.md": {
+    "mtime": 1779251773.2789726,
+    "hash": "992b48865d30b1e1a893aaf7ef432504"
+  },
   "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/plans/2026-05-02-codegraph-plan.md": {
     "mtime": 1777693062.781212,
     "hash": "3ac6458555ee66ca49705a42ce281502"
@@ -2606,6 +2906,22 @@
   "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/plans/2026-05-12-llm-note-quick-helper.md": {
     "mtime": 1778573354.272873,
     "hash": "05f4c57500b62da90890000859a83c38"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/plans/2026-05-13-rag-infrastructure.md": {
+    "mtime": 1778652238.6145437,
+    "hash": "2741e2ff1e84a29861f97713e654795f"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/plans/2026-05-15-ocr-translate-split.md": {
+    "mtime": 1778835796.1834278,
+    "hash": "c6f9eff4c7bd4237421070c322b98b46"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/plans/2026-05-15-public-notebook-share.md": {
+    "mtime": 1778909540.373531,
+    "hash": "80637aa02182dd997d752ec895f2866e"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/plans/2026-05-20-checkbox-feature.md": {
+    "mtime": 1779251773.278825,
+    "hash": "4c00bc6c1290cbf8e87b901b8ff8a963"
   },
   "/var/home/umayloveme/workspace/tomboy-web/bridge/README.md": {
     "mtime": 1778574584.2321978,
@@ -2634,6 +2950,10 @@
   "/var/home/umayloveme/workspace/tomboy-web/pipeline/config/prompts/diary-ko.txt": {
     "mtime": 1778478492.517799,
     "hash": "0196b16b0a001c40ba70724568e89421"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/ocr-service/deploy/README.md": {
+    "mtime": 1778835796.1845028,
+    "hash": "f331315d0533310fb4cf2cef2b2ad80c"
   },
   "/var/home/umayloveme/workspace/tomboy-web/ref/Tomboy/Addins/Bugzilla/bug.png": {
     "mtime": 1775785097.783572,
