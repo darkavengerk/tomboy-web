@@ -56,8 +56,10 @@ export function findChecklistRegions(doc: PMNode): ChecklistRegion[] {
 		let j = i + 1;
 		while (j < childCount) {
 			const c = doc.child(j);
-			const name = c.type.name;
-			if (name === 'bulletList' || name === 'orderedList') {
+			// bulletList 만 영역 리스트로 본다. 아카이버(serializeContent)는
+			// 최상위 orderedList 를 직렬화하지 않으므로, orderedList 를
+			// 체크리스트로 취급하면 저장 시 내용이 사라진다.
+			if (c.type.name === 'bulletList') {
 				lists.push({ pos: positions[j], node: c, childIndex: j });
 				j++;
 			} else {
@@ -130,10 +132,8 @@ function collectChecklistItems(
 			// 이 listItem 안의 중첩 리스트로 재귀.
 			let inLiOffset = liPos + 1;
 			li.forEach((sub) => {
-				if (
-					sub.type.name === 'bulletList' ||
-					sub.type.name === 'orderedList'
-				) {
+				// bulletList 만 — orderedList 는 아카이버가 직렬화하지 않는다.
+				if (sub.type.name === 'bulletList') {
 					collectChecklistItems(sub, inLiOffset, out);
 				}
 				inLiOffset += sub.nodeSize;

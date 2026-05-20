@@ -116,6 +116,22 @@ describe('checklist marker serialization', () => {
 		expect(out).toContain('[ ] 우유');
 	});
 
+	it('round-trips a checklist item whose content text is marked', () => {
+		const xml = wrap(
+			'제목\n체크리스트:\n<list>' +
+				'<list-item dir="ltr">[X] <bold>우유</bold></list-item>' +
+				'</list>'
+		);
+		const doc = deserializeContent(xml);
+		const li0 = doc.content![2].content![0];
+		expect(li0.attrs!.checked).toBe(true);
+		// 마커는 제거되고, 굵게 표시된 본문 텍스트만 남는다.
+		const firstText = li0.content![0].content![0];
+		expect(firstText.text).toBe('우유');
+		expect(firstText.marks?.[0].type).toBe('bold');
+		expect(serializeContent(doc)).toBe(xml);
+	});
+
 	it('does not treat a checklist-format title as a region header', () => {
 		// 제목 줄(블록 0)은 절대 헤더가 아니다 — 영역 미형성, 마커는 평문 유지.
 		const xml = wrap(

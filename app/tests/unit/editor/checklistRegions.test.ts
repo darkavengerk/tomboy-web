@@ -96,6 +96,17 @@ describe('findChecklistRegions', () => {
 		const e = makeEditor({ type: 'doc', content: [P('체크리스트:'), UL(LI('a'))] });
 		expect(findChecklistRegions(e.state.doc)).toHaveLength(0);
 	});
+	it('does not treat an orderedList after the header as a region', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				P('제목'),
+				P('체크리스트:'),
+				{ type: 'orderedList', content: [LI('우유')] }
+			]
+		});
+		expect(findChecklistRegions(e.state.doc)).toHaveLength(0);
+	});
 });
 
 describe('findChecklistItems', () => {
