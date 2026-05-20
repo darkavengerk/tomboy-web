@@ -7,6 +7,9 @@
  *
  * 마커는 라이브 문서와 .note XML 양쪽에 평범한 텍스트로 남는다 —
  * 아카이버(noteContentArchiver.ts)는 이 파일을 거치지 않는다.
+ *
+ * 한계: 마크(굵게 등) 경계가 마커 안에서 끊기면(예: `[^` 굵게, `7]` 일반)
+ * 해당 마커는 탐지되지 않는다. 데코레이션 전용 방식의 알려진 트레이드오프.
  */
 import type { Node as PMNode } from '@tiptap/pm/model';
 
@@ -96,7 +99,7 @@ export function findFootnoteAt(
 	pos: number
 ): FootnoteMatch | null {
 	for (const m of matches) {
-		if (pos >= m.from && pos <= m.to) return m;
+		if (pos > m.from && pos < m.to) return m;
 	}
 	return null;
 }

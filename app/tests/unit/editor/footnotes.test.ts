@@ -100,6 +100,19 @@ describe('findFootnoteAt', () => {
 		expect(findFootnoteAt(matches, matches[0].from + 2)).toBe(matches[0]);
 		expect(findFootnoteAt(matches, 1)).toBeNull();
 	});
+
+	it('excludes the boundary positions (just before [ and just after ])', () => {
+		const doc = makeDoc([P('제목'), P('가[^7]')]);
+		const matches = findFootnoteMatches(doc);
+		expect(findFootnoteAt(matches, matches[0].from)).toBeNull();
+		expect(findFootnoteAt(matches, matches[0].to)).toBeNull();
+	});
+
+	it('includes a position just inside the closing bracket', () => {
+		const doc = makeDoc([P('제목'), P('가[^7]')]);
+		const matches = findFootnoteMatches(doc);
+		expect(findFootnoteAt(matches, matches[0].to - 1)).toBe(matches[0]);
+	});
 });
 
 describe('findFootnotePartner', () => {
