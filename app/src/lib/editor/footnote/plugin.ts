@@ -58,10 +58,10 @@ function buildDecorations(
 
 /** 대상 매치가 있는 블록으로 부드럽게 스크롤 + 약 1.2초 하이라이트. */
 function scrollToMatch(view: EditorView, target: FootnoteMatch): void {
-	const { node } = view.domAtPos(target.from);
+	const { node } = view.domAtPos(target.from + 2);
 	const el = node.nodeType === 1 ? (node as HTMLElement) : node.parentElement;
 	if (!el) return;
-	const block = el.closest('p, li, h1, h2, h3') ?? el;
+	const block = el.closest('p, li, h1, h2, h3, h4, h5, h6') ?? el;
 	block.scrollIntoView({ behavior: 'smooth', block: 'center' });
 	block.classList.add('tomboy-fn-flash');
 	window.setTimeout(() => block.classList.remove('tomboy-fn-flash'), 1200);

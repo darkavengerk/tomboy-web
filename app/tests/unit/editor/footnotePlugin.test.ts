@@ -53,6 +53,16 @@ describe('footnote plugin decorations', () => {
 		const st = footnotePluginKey.getState(e.state)!;
 		expect(st.decorations.find()).toHaveLength(0);
 	});
+
+	it('recomputes decorations when the document changes', () => {
+		const e = makeEditor([P('제목'), P('본문')]);
+		expect(footnotePluginKey.getState(e.state)!.matches).toHaveLength(0);
+		e.commands.insertContentAt(e.state.doc.content.size - 1, ' [^9]');
+		const st = footnotePluginKey.getState(e.state)!;
+		expect(st.matches).toHaveLength(1);
+		expect(st.matches[0].label).toBe('9');
+		expect(st.decorations.find()).toHaveLength(3);
+	});
 });
 
 describe('footnote plugin click', () => {
@@ -68,7 +78,7 @@ describe('footnote plugin click', () => {
 		const onMissing = vi.fn();
 		const e = makeEditor([P('제목'), P('[^7] 설명만 있음')], onMissing);
 		const def = findFootnoteMatches(e.state.doc)[0];
-		clickAt(e, def.from + 2);
+		expect(clickAt(e, def.from + 2)).toBe(true);
 		expect(onMissing).toHaveBeenCalledWith('7', 'definition');
 	});
 
