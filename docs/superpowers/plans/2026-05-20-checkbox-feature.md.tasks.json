@@ -4,37 +4,36 @@
     {
       "id": 7,
       "subject": "Task 1: 체크리스트 데이터 모델 — 영역 감지 + checked 속성",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** 체크리스트 영역/항목을 감지하는 순수 함수 모듈과, listItem 의 checked 스키마 속성을 만든다.\n\n**Files:** Create app/src/lib/editor/checklist/regions.ts; Modify app/src/lib/editor/extensions/TomboyListItem.ts; Test app/tests/unit/editor/checklistRegions.test.ts\n\n**Verify:** cd app && npm run test -- checklistRegions\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/checklist/regions.ts\", \"app/src/lib/editor/extensions/TomboyListItem.ts\", \"app/tests/unit/editor/checklistRegions.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- checklistRegions\", \"acceptanceCriteria\": [\"isChecklistHeaderText 콜론 필수 판정\", \"findChecklistRegions 헤더+연속리스트 영역 감지\", \"findChecklistItems 중첩 포함 수집 + checked 읽기\", \"TomboyListItem checked 속성 라운드트립 보존\"], \"planRef\": \"docs/superpowers/plans/2026-05-20-checkbox-feature.md\"}\n```"
     },
     {
       "id": 8,
       "subject": "Task 2: 아카이버 마커 합성 — .note XML ↔ JSON 라운드트립",
-      "status": "pending",
-      "blockedBy": [7],
+      "status": "completed",
       "description": "**Goal:** noteContentArchiver.ts 가 직렬화 시 체크리스트 영역 항목에 [ ]/[X] 마커를 붙이고, 역직렬화 시 떼어내며 checked 를 설정하게 한다.\n\n**Files:** Modify app/src/lib/core/noteContentArchiver.ts; Test app/tests/unit/editor/checklistArchiver.test.ts\n\n**Verify:** cd app && npm run test -- checklistArchiver, 이어서 cd app && npm run test 전체\n\n```json:metadata\n{\"files\": [\"app/src/lib/core/noteContentArchiver.ts\", \"app/tests/unit/editor/checklistArchiver.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- checklistArchiver\", \"acceptanceCriteria\": [\"serialize 가 영역 항목에 [X]/[ ] 마커 부착\", \"deserialize 가 마커 제거 + checked 설정\", \"XML→JSON→XML 바이트 동일\", \"영역 밖 리스트 라운드트립 불변 + 기존 테스트 통과\"], \"planRef\": \"docs/superpowers/plans/2026-05-20-checkbox-feature.md\"}\n```"
     },
     {
       "id": 9,
       "subject": "Task 3: 체크박스 플러그인 — 데코레이션 렌더 + 위젯",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [7],
       "description": "**Goal:** 체크리스트 영역 항목마다 불릿을 숨기는 노드 데코와 클릭 가능한 체크박스 위젯을 그리는 ProseMirror 플러그인, 그리고 TomboyChecklist TipTap Extension 을 만든다.\n\n**Files:** Create app/src/lib/editor/checklist/plugin.ts; Create app/src/lib/editor/checklist/index.ts; Test app/tests/unit/editor/checklistPlugin.test.ts\n\n**Verify:** cd app && npm run test -- checklistPlugin\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/checklist/plugin.ts\", \"app/src/lib/editor/checklist/index.ts\", \"app/tests/unit/editor/checklistPlugin.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- checklistPlugin\", \"acceptanceCriteria\": [\"영역 항목에 tomboy-checkbox-item 노드 데코 + is-checked\", \"체크박스 위젯 렌더\", \"위젯 클릭 → onToggle(liPos)\", \"영역 밖 리스트 미장식\"], \"planRef\": \"docs/superpowers/plans/2026-05-20-checkbox-feature.md\"}\n```"
     },
     {
       "id": 10,
       "subject": "Task 4: 명령 — 체크 토글 + Ctrl+P 블록 삽입",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [7, 9],
       "description": "**Goal:** 체크박스 토글(toggleCheckboxAt)과 체크리스트 블록 삽입(insertChecklistBlock) 명령을 만들고 index.ts 에서 재export 한다.\n\n**Files:** Create app/src/lib/editor/checklist/commands.ts; Modify app/src/lib/editor/checklist/index.ts; Test app/tests/unit/editor/checklistCommands.test.ts\n\n**Verify:** cd app && npm run test -- checklistCommands\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/checklist/commands.ts\", \"app/src/lib/editor/checklist/index.ts\", \"app/tests/unit/editor/checklistCommands.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- checklistCommands\", \"acceptanceCriteria\": [\"toggleCheckboxAt checked 반전\", \"insertChecklistBlock 헤더+빈 항목 삽입 + 커서 이동\", \"빈 비제목 문단 대체\", \"제목 미대체\"], \"planRef\": \"docs/superpowers/plans/2026-05-20-checkbox-feature.md\"}\n```"
     },
     {
       "id": 11,
       "subject": "Task 5: 에디터 연결 — 확장 등록 · Ctrl+P · CSS",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [8, 10],
       "description": "**Goal:** TomboyEditor.svelte 에 TomboyChecklist 확장을 등록하고, Ctrl+P 키 처리와 체크리스트 CSS 를 추가한다.\n\n**Files:** Modify app/src/lib/editor/TomboyEditor.svelte\n\n**Verify:** cd app && npm run check && npm run test, 이어서 계획서 Task 5 Step 5 의 수동 확인\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/TomboyEditor.svelte\"], \"verifyCommand\": \"cd app && npm run check && npm run test\", \"acceptanceCriteria\": [\"TomboyChecklist 확장 등록 + onToggle 연결\", \"Ctrl/Cmd+P → insertChecklistBlock + 인쇄 차단\", \"불릿 숨김 + 체크박스 표시 + 체크 항목 흐림\", \"npm run check 와 npm run test 통과\"], \"planRef\": \"docs/superpowers/plans/2026-05-20-checkbox-feature.md\"}\n```"
     }
   ],
-  "lastUpdated": "2026-05-20"
+  "lastUpdated": "2026-05-20T12:30:00Z"
 }
