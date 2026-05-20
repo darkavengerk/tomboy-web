@@ -1,0 +1,53 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-20-remarkable-wallpaper.md",
+  "tasks": [
+    {
+      "id": 7,
+      "subject": "Task 1: 앱 — 노트 파서 + 슬롯 상수",
+      "status": "pending",
+      "description": "**Goal:** TipTap JSON을 RemarkableNoteSpec으로 파싱하는 순수 함수와 섹션 라벨↔슬롯 매핑 상수.\n\n**Files:** create app/src/lib/remarkable/slots.ts, app/src/lib/remarkable/parseRemarkableNote.ts; test app/tests/unit/remarkable/slots.test.ts, app/tests/unit/remarkable/parseRemarkableNote.test.ts\n\n**Verify:** cd app && npx vitest run tests/unit/remarkable/\n\n```json:metadata\n{\"files\": [\"app/src/lib/remarkable/slots.ts\", \"app/src/lib/remarkable/parseRemarkableNote.ts\", \"app/tests/unit/remarkable/slots.test.ts\", \"app/tests/unit/remarkable/parseRemarkableNote.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/remarkable/\", \"acceptanceCriteria\": [\"parseRemarkableNote returns null without signature\", \"signature recognized at content[0] or content[1]\", \"first URL under a label collected per slot\", \"unknown labels ignored, duplicate labels keep first\", \"matchSlotLabel maps 5 Korean labels\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 2: 브릿지 — 리마커블 호스트 설정 로더",
+      "status": "pending",
+      "description": "**Goal:** BRIDGE_REMARKABLE_HOSTS_FILE JSON을 읽어 별칭→SSH 좌표로 해석하는 모듈.\n\n**Files:** create bridge/src/remarkableHosts.ts; test bridge/src/remarkableHosts.test.ts\n\n**Verify:** cd bridge && npx tsc -p . && node --test dist/remarkableHosts.test.js\n\n```json:metadata\n{\"files\": [\"bridge/src/remarkableHosts.ts\", \"bridge/src/remarkableHosts.test.ts\"], \"verifyCommand\": \"cd bridge && npx tsc -p . && node --test dist/remarkableHosts.test.js\", \"acceptanceCriteria\": [\"valid hosts file resolves via lookupRemarkableHost\", \"missing/invalid file yields empty table without throwing\", \"host-less entry skipped, user defaults to root\", \"remarkableHostsConfigured reflects loaded entries\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 3: 브릿지 — 배경화면 적용 코어 로직",
+      "status": "pending",
+      "blockedBy": [8],
+      "description": "**Goal:** 슬롯 파일 매핑 + 의존성 주입형 applyWallpapers + 인증/검증 processWallpaperRequest — I/O 전부 주입, 페이크로 완전 테스트.\n\n**Files:** create bridge/src/remarkable.ts, bridge/src/remarkable.test.ts; modify bridge/package.json\n\n**Verify:** cd bridge && npx tsc -p . && node --test dist/remarkable.test.js\n\n```json:metadata\n{\"files\": [\"bridge/src/remarkable.ts\", \"bridge/src/remarkable.test.ts\", \"bridge/package.json\"], \"verifyCommand\": \"cd bridge && npx tsc -p . && node --test dist/remarkable.test.js\", \"acceptanceCriteria\": [\"RM_SLOT_FILES covers 5 slot ids with restart flags\", \"applyWallpapers returns 400 unknown_host for undefined host\", \"per-slot failure isolated, others still processed\", \"restartXochitl called once when a restart slot succeeds\", \"processWallpaperRequest returns 401/503/400 for bad token/unconfigured/bad body\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 4: 브릿지 — 실 의존성 + HTTP 핸들러 + 서버 배선",
+      "status": "pending",
+      "blockedBy": [9],
+      "description": "**Goal:** sharp/fetch/ssh 실 의존성 + POST /remarkable/wallpaper 핸들러 + server.ts 라우트·호스트 로드 배선.\n\n**Files:** modify bridge/src/remarkable.ts, bridge/src/server.ts, bridge/package.json\n\n**Verify:** cd bridge && npm install && npm test\n\n```json:metadata\n{\"files\": [\"bridge/src/remarkable.ts\", \"bridge/src/server.ts\", \"bridge/package.json\"], \"verifyCommand\": \"cd bridge && npm install && npm test\", \"acceptanceCriteria\": [\"realWallpaperDeps wires fetch+sharp+ssh\", \"handleRemarkableWallpaper returns processWallpaperRequest result as JSON\", \"server.ts loads remarkable hosts and routes POST /remarkable/wallpaper\", \"npm run build passes with no type errors\", \"Task 3 node:test still all pass\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 5: 앱 — 배경화면 적용 클라이언트",
+      "status": "pending",
+      "blockedBy": [7, 9],
+      "description": "**Goal:** 브릿지 POST /remarkable/wallpaper를 호출하고 슬롯별 결과를 반환하거나 분류된 에러를 던지는 클라이언트.\n\n**Files:** create app/src/lib/remarkable/applyWallpaper.ts; test app/tests/unit/remarkable/applyWallpaper.test.ts\n\n**Verify:** cd app && npx vitest run tests/unit/remarkable/applyWallpaper.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/remarkable/applyWallpaper.ts\", \"app/tests/unit/remarkable/applyWallpaper.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/remarkable/applyWallpaper.test.ts\", \"acceptanceCriteria\": [\"returns results array on 200\", \"throws classified WallpaperApplyError for 401/503/400\", \"throws network error when fetch rejects\", \"throws server_error on unexpected 200 shape\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 6: 앱 — RemarkableActionBar 컴포넌트 + 라우트 배선",
+      "status": "pending",
+      "blockedBy": [7, 11],
+      "description": "**Goal:** 에디터를 받아 리마커블 노트면 배너+[적용] 버튼을 렌더하고 슬롯별 상태를 표시하는 컴포넌트 + 모바일/데스크탑 노트 화면 배선.\n\n**Files:** create app/src/lib/editor/remarkable/RemarkableActionBar.svelte, app/tests/unit/remarkable/RemarkableActionBar.test.ts; modify app/src/routes/note/[id]/+page.svelte, app/src/lib/desktop/NoteWindow.svelte\n\n**Verify:** cd app && npx vitest run tests/unit/remarkable/RemarkableActionBar.test.ts && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/remarkable/RemarkableActionBar.svelte\", \"app/tests/unit/remarkable/RemarkableActionBar.test.ts\", \"app/src/routes/note/[id]/+page.svelte\", \"app/src/lib/desktop/NoteWindow.svelte\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/remarkable/RemarkableActionBar.test.ts && npm run check\", \"acceptanceCriteria\": [\"renders nothing for non-remarkable note\", \"renders host + slot labels + apply button for remarkable note\", \"apply click calls applyWallpaper and shows per-slot status\", \"empty notice + disabled button when no slots\", \"npm run check passes\"]}\n```"
+    },
+    {
+      "id": 13,
+      "subject": "Task 7: 브릿지 배포 설정 + 문서",
+      "status": "pending",
+      "blockedBy": [10],
+      "description": "**Goal:** Quadlet 유닛에 리마커블 호스트 파일 마운트·배선 + bridge/README.md에 셋업 절차·노트 형식·펌웨어 한계 문서화.\n\n**Files:** modify bridge/deploy/term-bridge.container, bridge/README.md\n\n**Verify:** cd bridge && podman build -t term-bridge:test . 2>&1 | tail -5\n\n```json:metadata\n{\"files\": [\"bridge/deploy/term-bridge.container\", \"bridge/README.md\"], \"verifyCommand\": \"cd bridge && podman build -t term-bridge:test . 2>&1 | tail -5\", \"acceptanceCriteria\": [\"term-bridge.container mounts remarkable.json read-only + sets BRIDGE_REMARKABLE_HOSTS_FILE\", \"unit header comment documents remarkable.json setup + ssh key\", \"README documents note format, endpoint, firmware 3.x + OTA caveats\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-20T00:00:00Z"
+}
