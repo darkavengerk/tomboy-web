@@ -1,0 +1,136 @@
+import { describe, it, expect, afterEach } from 'vitest';
+import { Editor } from '@tiptap/core';
+import StarterKit from '@tiptap/starter-kit';
+import type { JSONContent } from '@tiptap/core';
+import type { Node as PMNode } from '@tiptap/pm/model';
+
+import {
+	findFootnoteMatches,
+	findFootnoteAt,
+	findFootnotePartner
+} from '$lib/editor/footnote/footnotes.js';
+
+let currentEditor: Editor | null = null;
+afterEach(() => {
+	currentEditor?.destroy();
+	currentEditor = null;
+});
+
+function makeDoc(blocks: JSONContent[]): PMNode {
+	currentEditor = new Editor({
+		extensions: [StarterKit],
+		content: { type: 'doc', content: blocks }
+	});
+	return currentEditor.state.doc;
+}
+
+const P = (text: string): JSONContent => ({
+	type: 'paragraph',
+	content: text ? [{ type: 'text', text }] : []
+});
+
+describe('findFootnoteMatches', () => {
+	it('finds a reference in a body paragraph', () => {
+		const doc = makeDoc([P('제목'), P('진술하였다:[^7] 끝')]);
+		const matches = findFootnoteMatches(doc);
+		expect(matches).toHaveLength(1);
+		expect(matches[0].label).toBe('7');
+		expect(matches[0].isDefinitionMarker).toBe(false);
+		expect(doc.textBetween(matches[0].from, matches[0].to)).toBe('[^7]');
+	});
+
+	it('ignores malformed markers', () => {
+		const doc = makeDoc([P('제목'), P('[^] [^ x] [^abc 끝')]);
+		expect(findFootnoteMatches(doc)).toHaveLength(0);
+	});
+
+	it('marks a paragraph-leading [^N] as a definition marker', () => {
+		const doc = makeDoc([P('제목'), P('[^7] 설명 내용')]);
+		const matches = findFootnoteMatches(doc);
+		expect(matches).toHaveLength(1);
+		expect(matches[0].isDefinitionMarker).toBe(true);
+	});
+
+	it('treats a definition marker after leading whitespace as a definition', () => {
+		const doc = makeDoc([P('제목'), P('   [^7] 설명')]);
+		expect(findFootnoteMatches(doc)[0].isDefinitionMarker).toBe(true);
+	});
+
+	it('treats a mid-paragraph [^N] as a reference', () => {
+		const doc = makeDoc([P('제목'), P('앞 글자 [^7]')]);
+		expect(findFootnoteMatches(doc)[0].isDefinitionMarker).toBe(false);
+	});
+
+	it('excludes the title (block index 0)', () => {
+		const doc = makeDoc([P('[^7] 제목'), P('본문')]);
+		expect(findFootnoteMatches(doc)).toHaveLength(0);
+	});
+
+	it('treats a [^N] inside a list item as a reference', () => {
+		const doc = makeDoc([
+			P('제목'),
+			{
+				type: 'bulletList',
+				content: [{ type: 'listItem', content: [P('[^7] 항목')] }]
+			}
+		]);
+		const matches = findFootnoteMatches(doc);
+		expect(matches).toHaveLength(1);
+		expect(matches[0].label).toBe('7');
+		expect(matches[0].isDefinitionMarker).toBe(false);
+		expect(doc.textBetween(matches[0].from, matches[0].to)).toBe('[^7]');
+	});
+
+	it('returns multiple matches in document order', () => {
+		const doc = makeDoc([
+			P('제목'),
+			P('가[^7] 나[^8]'),
+			P('[^7] 설명7')
+		]);
+		const matches = findFootnoteMatches(doc);
+		expect(matches.map((m) => m.label)).toEqual(['7', '8', '7']);
+		expect(matches[2].isDefinitionMarker).toBe(true);
+	});
+});
+
+describe('findFootnoteAt', () => {
+	it('returns the match containing a position, else null', () => {
+		const doc = makeDoc([P('제목'), P('가[^7]')]);
+		const matches = findFootnoteMatches(doc);
+		expect(findFootnoteAt(matches, matches[0].from + 2)).toBe(matches[0]);
+		expect(findFootnoteAt(matches, 1)).toBeNull();
+	});
+});
+
+describe('findFootnotePartner', () => {
+	function setup() {
+		const doc = makeDoc([
+			P('제목'),
+			P('본문 [^7] 그리고 [^9]'),
+			P('[^7] 라벨7 설명')
+		]);
+		return findFootnoteMatches(doc);
+	}
+
+	it('reference → first definition marker of same label', () => {
+		const matches = setup();
+		const ref = matches.find((m) => m.label === '7' && !m.isDefinitionMarker)!;
+		const partner = findFootnotePartner(matches, ref);
+		expect(partner?.isDefinitionMarker).toBe(true);
+		expect(partner?.label).toBe('7');
+	});
+
+	it('definition marker → first reference of same label', () => {
+		const matches = setup();
+		const def = matches.find((m) => m.isDefinitionMarker)!;
+		const partner = findFootnotePartner(matches, def);
+		expect(partner?.isDefinitionMarker).toBe(false);
+		expect(partner?.label).toBe('7');
+	});
+
+	it('returns null when no partner exists', () => {
+		const matches = setup();
+		const ref9 = matches.find((m) => m.label === '9')!;
+		expect(findFootnotePartner(matches, ref9)).toBeNull();
+	});
+});
