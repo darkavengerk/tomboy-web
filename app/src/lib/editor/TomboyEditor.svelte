@@ -81,6 +81,8 @@
 		toggleCheckboxAt,
 		insertChecklistBlock,
 	} from "./checklist/index.js";
+	import { TomboyFootnote } from "./footnote/index.js";
+	import { TomboyBlockquote } from "./blockquote/index.js";
 	import type { JSONContent } from "@tiptap/core";
 	import EditorContextMenu from "./EditorContextMenu.svelte";
 	import {
@@ -468,6 +470,17 @@
 						toggleCheckboxAt(ed, liPos);
 					},
 				}),
+				TomboyFootnote.configure({
+					onMissing: (label, kind) => {
+						pushToast(
+							kind === "reference"
+								? `각주 '${label}' 설명을 찾을 수 없습니다`
+								: `각주 '${label}' 참조를 찾을 수 없습니다`,
+							{ kind: "error" },
+						);
+					},
+				}),
+				TomboyBlockquote,
 			],
 			content: content ?? {
 				type: "doc",
@@ -1604,6 +1617,46 @@
 		background-repeat: no-repeat;
 		background-position: center;
 		background-size: contain;
+	}
+
+	/* 각주 [^N] — footnote 플러그인이 [^ 와 ] 를 .tomboy-fn-bracket 로
+	   폭 0 처리하고, 가운데 라벨을 <sup class="tomboy-fn-ref"> 로 감싼다.
+	   마커는 .note XML 본문에 [^N] 텍스트로 그대로 남는다. */
+	.tomboy-editor :global(.tomboy-fn-bracket) {
+		font-size: 0;
+	}
+	.tomboy-editor :global(.tomboy-fn-ref) {
+		font-size: 0.75em;
+		color: #2563eb;
+		cursor: pointer;
+	}
+	/* 클릭 스크롤 도착 시 약 1.2초 하이라이트 깜빡임. */
+	.tomboy-editor :global(.tomboy-fn-flash) {
+		animation: tomboy-fn-flash 1.2s ease-out;
+	}
+	@keyframes -global-tomboy-fn-flash {
+		from {
+			background-color: rgba(250, 204, 21, 0.55);
+		}
+		to {
+			background-color: transparent;
+		}
+	}
+
+	/* 인용 단락 — blockquote 플러그인이 '> ' 로 시작하는 최상위 단락에
+	   .tomboy-quote 노드 데코를, 맨 앞 '> ' 2자에 .tomboy-quote-marker
+	   폭 0 데코를 단다. 연속 인용은 인접 형제 선택자로 위 여백을 좁혀
+	   한 덩어리처럼 보이게 한다. */
+	.tomboy-editor :global(p.tomboy-quote) {
+		border-left: 3px solid #d1d5db;
+		padding-left: 0.9em;
+		color: #4b5563;
+	}
+	.tomboy-editor :global(p.tomboy-quote + p.tomboy-quote) {
+		margin-top: 0.2em;
+	}
+	.tomboy-editor :global(.tomboy-quote-marker) {
+		font-size: 0;
 	}
 
 	/* CSV/TSV table block.
