@@ -76,7 +76,9 @@ function buildDecorations(
 				{
 					side: -1,
 					ignoreSelection: true,
-					key: `tomboy-checkbox-${it.checked ? 'on' : 'off'}`
+					// liPos 로 항목마다 고유 + checked 로 토글 시 변경 → PM 이
+					// 잘못된 위젯 DOM 을 재사용하지 않고, 토글 시 다시 렌더한다.
+					key: `tomboy-checkbox-${it.liPos}-${it.checked ? 'on' : 'off'}`
 				}
 			)
 		);

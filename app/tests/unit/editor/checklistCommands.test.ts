@@ -65,7 +65,7 @@ describe('toggleCheckboxAt', () => {
 					content: [
 						{
 							type: 'listItem',
-							attrs: { checked: false },
+							attrs: { checked: false, tomboyTrailingNewline: true },
 							content: [P('우유')]
 						}
 					]
@@ -77,6 +77,9 @@ describe('toggleCheckboxAt', () => {
 		expect(e.state.doc.nodeAt(liPos)!.attrs.checked).toBe(true);
 		expect(toggleCheckboxAt(e, liPos)).toBe(true);
 		expect(e.state.doc.nodeAt(liPos)!.attrs.checked).toBe(false);
+		// 토글이 다른 속성(tomboyTrailingNewline)을 보존해야 한다 — 라운드트립
+		// 충실성 속성이라 누락되면 Dropbox 동기화 노트가 어긋난다.
+		expect(e.state.doc.nodeAt(liPos)!.attrs.tomboyTrailingNewline).toBe(true);
 	});
 
 	it('returns false for a non-listItem position', () => {
