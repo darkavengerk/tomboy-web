@@ -45,4 +45,11 @@ describe('blockquote plugin decorations', () => {
 		const set = blockquotePluginKey.getState(e.state)!;
 		expect(set.find()).toHaveLength(4);
 	});
+
+	it('recomputes decorations when the document changes', () => {
+		const e = makeEditor([P('제목'), P('보통')]);
+		expect(blockquotePluginKey.getState(e.state)!.find()).toHaveLength(0);
+		e.commands.insertContentAt(5, '> ');
+		expect(blockquotePluginKey.getState(e.state)!.find()).toHaveLength(2);
+	});
 });
