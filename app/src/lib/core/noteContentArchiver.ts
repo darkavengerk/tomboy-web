@@ -20,6 +20,7 @@
  */
 
 import type { JSONContent } from '@tiptap/core';
+import { isChecklistHeaderText } from '../editor/checklist/regions.js';
 
 // Mark types that must NEVER span a paragraph boundary — a link or datetime
 // reference is a self-contained anchor, so `<link:internal>A\nB</link:internal>`
@@ -67,6 +68,7 @@ export function deserializeContent(xmlContent: string): JSONContent {
 		return { type: 'doc', content: [{ type: 'paragraph' }] };
 	}
 
+	applyChecklistMarkersOnParse(blocks);
 	return { type: 'doc', content: blocks };
 }
 
@@ -161,12 +163,21 @@ export function serializeContent(doc: JSONContent): string {
 		}
 	}
 
+	// 체크리스트 영역 추적: 헤더 문단을 만나면 켜지고, 그 뒤 연속 리스트
+	// 동안 유지되며, 헤더 아닌 문단/헤딩을 만나면 꺼진다.
+	let inChecklistRegion = false;
+
 	for (let i = 0; i < nodes.length; i++) {
 		const node = nodes[i];
 
 		if (node.type === 'bulletList') {
 			closeAll();
-			result += serializeBulletList(node, /*isTopLevel=*/ true);
+			result += serializeBulletList(
+				node,
+				/*isTopLevel=*/ true,
+				inChecklistRegion
+			);
+			// 연속 리스트는 같은 영역 — inChecklistRegion 유지.
 		} else if (node.type === 'paragraph' || node.type === 'heading') {
 			for (const inline of node.content ?? []) {
 				if (inline.type === 'text') {
@@ -176,6 +187,11 @@ export function serializeContent(doc: JSONContent): string {
 					result += '\n';
 				}
 			}
+			// 헤더 문단이면 영역 시작, 그 외 문단/헤딩이면 영역 종료.
+			inChecklistRegion =
+				i > 0 &&
+				node.type === 'paragraph' &&
+				isChecklistHeaderText(getPlainText(node));
 		}
 
 		if (i < nodes.length - 1) {
@@ -663,7 +679,11 @@ function marksEqual(a: JSONContent, b: JSONContent): boolean {
  * a nested list DOES keep its trailing '\n' because it sits inside a
  * containing list-item.
  */
-function serializeBulletList(node: JSONContent, isTopLevel: boolean): string {
+function serializeBulletList(
+	node: JSONContent,
+	isTopLevel: boolean,
+	checklist: boolean
+): string {
 	let result = '<list>';
 
 	const items = node.content ?? [];
@@ -671,7 +691,7 @@ function serializeBulletList(node: JSONContent, isTopLevel: boolean): string {
 		const item = items[i];
 		if (item.type === 'listItem') {
 			const isLastTopLevel = isTopLevel && i === items.length - 1;
-			result += serializeListItem(item, isLastTopLevel);
+			result += serializeListItem(item, isLastTopLevel, checklist);
 		}
 	}
 
@@ -689,8 +709,17 @@ function serializeBulletList(node: JSONContent, isTopLevel: boolean): string {
  *   last item of a top-level list → no trailing '\n'
  *   any other item                 → trailing '\n'
  */
-function serializeListItem(item: JSONContent, isLastTopLevel: boolean): string {
+function serializeListItem(
+	item: JSONContent,
+	isLastTopLevel: boolean,
+	checklist: boolean
+): string {
 	let result = '<list-item dir="ltr">';
+	if (checklist) {
+		// 체크리스트 영역 항목: 첫 문단 내용 앞에 마커 텍스트를 박는다.
+		// '[', ']', 공백, 'X' 는 XML 안전 문자라 이스케이프 불필요.
+		result += item.attrs?.checked ? '[X] ' : '[ ] ';
+	}
 
 	const children = item.content ?? [];
 	let hasNestedList = false;
@@ -718,7 +747,11 @@ function serializeListItem(item: JSONContent, isLastTopLevel: boolean): string {
 		result += trailingMarks ? wrapWithMarks('\n', trailingMarks) : '\n';
 		for (const child of children) {
 			if (child.type === 'bulletList') {
-				result += serializeBulletList(child, /*isTopLevel=*/ false);
+				result += serializeBulletList(
+					child,
+					/*isTopLevel=*/ false,
+					checklist
+				);
 			}
 		}
 		// The `\n` AFTER the nested list (before </list-item>) only appears
@@ -802,4 +835,61 @@ function getPlainText(node: JSONContent): string {
 	if (node.text) return node.text;
 	if (!node.content) return '';
 	return node.content.map(getPlainText).join('');
+}
+
+// 체크리스트 항목 마커: [ ] 미체크 / [X] 체크 (소문자 x 도 체크로 인정).
+const CHECKLIST_MARKER_RE = /^\[([ xX])\] /;
+
+/**
+ * parseBlocks 결과를 후처리해 체크리스트 영역 항목의 마커를 떼고
+ * `attrs.checked` 를 설정한다. 헤더 다음의 연속 리스트가 영역이다.
+ */
+function applyChecklistMarkersOnParse(blocks: JSONContent[]): void {
+	for (let i = 1; i < blocks.length; i++) {
+		const b = blocks[i];
+		if (b.type !== 'paragraph') continue;
+		if (!isChecklistHeaderText(getPlainText(b))) continue;
+		let j = i + 1;
+		// parseList 은 <list> 를 항상 bulletList 로 만든다 — 역직렬화 결과에
+		// 최상위 orderedList 는 존재하지 않으므로 bulletList 만 본다.
+		while (j < blocks.length && blocks[j].type === 'bulletList') {
+			stripChecklistMarkersInList(blocks[j]);
+			j++;
+		}
+		i = j - 1;
+	}
+}
+
+function stripChecklistMarkersInList(listNode: JSONContent): void {
+	for (const li of listNode.content ?? []) {
+		if (li.type !== 'listItem') continue;
+		stripChecklistMarkerInItem(li);
+		for (const child of li.content ?? []) {
+			// 중첩 <list> 도 parseList 가 bulletList 로 만든다.
+			if (child.type === 'bulletList') {
+				stripChecklistMarkersInList(child);
+			}
+		}
+	}
+}
+
+function stripChecklistMarkerInItem(li: JSONContent): void {
+	const para = li.content?.[0];
+	let checked = false;
+	if (para && para.type === 'paragraph' && para.content) {
+		const first = para.content[0];
+		if (first && first.type === 'text' && typeof first.text === 'string') {
+			const m = CHECKLIST_MARKER_RE.exec(first.text);
+			if (m) {
+				checked = m[1] === 'x' || m[1] === 'X';
+				const rest = first.text.slice(4);
+				if (rest.length === 0) {
+					para.content.shift();
+				} else {
+					first.text = rest;
+				}
+			}
+		}
+	}
+	li.attrs = { ...(li.attrs ?? {}), checked };
 }
