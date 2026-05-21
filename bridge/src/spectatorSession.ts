@@ -5,7 +5,8 @@
  *
  * When the desktop user switches panes or windows, this module:
  *   1. Notices via `%window-pane-changed` / `%session-window-changed`.
- *   2. Issues `display-message` + `capture-pane -epJ` for the new pane.
+ *   2. Issues `display-message` + `capture-pane -epJ -S -<N>` (visible
+ *      region + scrollback) for the new pane.
  *   3. Sends a `pane-switch` control frame to the WS client carrying the
  *      new pane's size + alt-screen state, immediately followed by a
  *      seed: reset → optional alt-screen toggle → captured content →
@@ -51,6 +52,15 @@ export interface SpectatorOptions {
  * panes A→B→C, we only seed the final one — avoids screen flicker.
  */
 const SWITCH_DEBOUNCE_MS = 100;
+
+/**
+ * Scrollback lines to include in the pane seed. `capture-pane -S -<N>` is a
+ * read-only query — it never alters the desktop pane's history buffer, and
+ * tmux clamps to whatever history it actually holds. Keep ≤ the client
+ * xterm's `scrollback` option (currently 5000) so the seed isn't truncated
+ * on arrival.
+ */
+const SCROLLBACK_SEED_LINES = 1000;
 
 const SAFE_SESSION_RE = /^[A-Za-z0-9_\-./@:]+$/;
 
@@ -316,7 +326,9 @@ export class SpectatorSession {
 		if (altScreen) seed += '\x1b[?1049h';
 
 		try {
-			const captured = await this.tmux.command(`capture-pane -epJ -t ${paneId}`);
+			const captured = await this.tmux.command(
+				`capture-pane -epJ -S -${SCROLLBACK_SEED_LINES} -t ${paneId}`
+			);
 			seed += captured.join('\r\n');
 		} catch (err) {
 			this.cb.error(`capture-pane: ${(err as Error).message}`);
