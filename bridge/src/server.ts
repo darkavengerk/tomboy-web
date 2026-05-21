@@ -13,6 +13,8 @@ import { handleLlmChat } from './llm.js';
 import { handleRagSearch } from './rag.js';
 import { handleOcrProxy } from './ocr.js';
 import { handleGpuStatus, handleGpuUnload } from './gpu.js';
+import { handleRemarkableWallpaper } from './remarkable.js';
+import { loadRemarkableHosts } from './remarkableHosts.js';
 import { SpectatorSession } from './spectatorSession.js';
 
 const PORT = Number(process.env.BRIDGE_PORT || 3000);
@@ -26,8 +28,10 @@ const OCR_SERVICE_URL = requireEnv('OCR_SERVICE_URL');
 // independently — keep them in sync.
 const OLLAMA_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
 const HOSTS_FILE = process.env.BRIDGE_HOSTS_FILE;
+const REMARKABLE_HOSTS_FILE = process.env.BRIDGE_REMARKABLE_HOSTS_FILE;
 
 loadHostsFile(HOSTS_FILE);
+loadRemarkableHosts(REMARKABLE_HOSTS_FILE);
 
 // Auth grace window after WebSocket open. The first client message MUST be
 // a `connect` frame with a valid token; otherwise the connection is closed.
@@ -118,6 +122,11 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 
 	if (url === '/gpu/unload' && req.method === 'POST') {
 		await handleGpuUnload(req, res, SECRET, OCR_SERVICE_URL, OLLAMA_URL);
+		return;
+	}
+
+	if (url === '/remarkable/wallpaper' && req.method === 'POST') {
+		await handleRemarkableWallpaper(req, res, SECRET);
 		return;
 	}
 

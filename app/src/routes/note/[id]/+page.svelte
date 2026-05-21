@@ -26,6 +26,7 @@
 		type TerminalNoteSpec
 	} from '$lib/editor/terminal/parseTerminalNote.js';
 	import LlmSendBar from '$lib/editor/llmNote/LlmSendBar.svelte';
+	import RemarkableActionBar from '$lib/editor/remarkable/RemarkableActionBar.svelte';
 	import { parseOcrNote } from '$lib/ocrNote/parseOcrNote.js';
 	import { runOcrInEditor } from '$lib/ocrNote/runOcrInEditor.js';
 	import {
@@ -738,6 +739,11 @@
 				/>
 				{#if editorComponent?.getEditor() && llmBridgeUrl && llmBridgeToken}
 					<LlmSendBar
+						editor={editorComponent.getEditor()!}
+						bridgeUrl={llmBridgeUrl}
+						bridgeToken={llmBridgeToken}
+					/>
+					<RemarkableActionBar
 						editor={editorComponent.getEditor()!}
 						bridgeUrl={llmBridgeUrl}
 						bridgeToken={llmBridgeToken}

@@ -298,3 +298,54 @@ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:3000/health
   modify the host filesystem outside the volumes it's been given.
 - Ports `80` and `443` on the router are the only exposed surface — don't
   publish `3000` directly.
+
+---
+
+## 리마커블 배경화면 (`/remarkable/wallpaper`)
+
+`remarkable://<별칭>` 시그니처 노트의 섹션별 이미지 링크를 reMarkable의
+시스템 스플래시 PNG로 교체한다. 앱이 `POST /remarkable/wallpaper`로 보내면
+브릿지가 이미지를 페치 → 1404×1872 그레이스케일 PNG로 변환(`sharp`) →
+`ssh`로 기기 `/usr/share/remarkable/<file>.png`에 기록한다.
+
+### 노트 형식
+
+```
+remarkable://rm2
+
+절전 중:
+https://www.dropbox.com/s/.../sleep.png?dl=1
+
+부팅 중:
+https://.../boot.png
+```
+
+인식되는 섹션 라벨 → 기기 파일:
+
+| 라벨 | 파일 | xochitl 재시작 |
+|---|---|---|
+| 절전 중 | `suspended.png` | 예 |
+| 부팅 중 | `starting.png` | 아니오 |
+| 전원 꺼짐 | `poweroff.png` | 아니오 |
+| 재부팅 중 | `rebooting.png` | 아니오 |
+| 배터리 없음 | `batteryempty.png` | 아니오 |
+
+### 설정
+
+`~/.config/term-bridge/remarkable.json` (Quadlet 헤더 주석 참조):
+별칭 → `{host, user, port?, keyPath?}`. SSH 인증은 브릿지에 마운트된
+`~/.ssh` 키를 쓴다 — 사전에 **브릿지 호스트에서** `ssh-copy-id
+root@<리마커블-IP>` 를 1회 실행해 키를 등록할 것.
+`~/.ssh` 는 읽기전용 마운트라 첫 접속 시 host key 를 저장하지 못하므로,
+`ssh-keyscan -H <리마커블-IP> >> ~/.ssh/known_hosts` 로 미리 채워 둘 것.
+`remarkable.json` 이 없거나 유효한 호스트 항목이 없으면
+`/remarkable/wallpaper` 는 503을 반환한다.
+
+### 알려진 한계
+
+- **펌웨어 3.x 절전 화면**: `suspended.png` 교체는 리마커블 설정의 절전
+  화면이 *정적 화면*일 때만 반영된다. "마지막 필기 페이지" 등 동적
+  옵션이면 파일 교체가 무시될 수 있다. 부팅/전원 끔 스플래시는 안정적.
+- **OTA 펌웨어 업데이트가 splash 파일을 초기화**한다(A/B 파티션 교체).
+  업데이트 후 [적용]을 다시 누르면 복구된다.
+- 적용 시점에 리마커블이 깨어 있고 SSH가 닿아야 한다(동기 push).
