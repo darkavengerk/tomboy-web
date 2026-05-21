@@ -30,7 +30,7 @@
     {
       "id": 11,
       "subject": "Task 5: 앱 — 배경화면 적용 클라이언트",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [7, 9],
       "description": "**Goal:** 브릿지 POST /remarkable/wallpaper를 호출하고 슬롯별 결과를 반환하거나 분류된 에러를 던지는 클라이언트.\n\n**Files:** create app/src/lib/remarkable/applyWallpaper.ts; test app/tests/unit/remarkable/applyWallpaper.test.ts\n\n**Verify:** cd app && npx vitest run tests/unit/remarkable/applyWallpaper.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/remarkable/applyWallpaper.ts\", \"app/tests/unit/remarkable/applyWallpaper.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/remarkable/applyWallpaper.test.ts\", \"acceptanceCriteria\": [\"returns results array on 200\", \"throws classified WallpaperApplyError for 401/503/400\", \"throws network error when fetch rejects\", \"throws server_error on unexpected 200 shape\"]}\n```"
     },
@@ -49,5 +49,5 @@
       "description": "**Goal:** Quadlet 유닛에 리마커블 호스트 파일 마운트·배선 + bridge/README.md에 셋업 절차·노트 형식·펌웨어 한계 문서화.\n\n**Files:** modify bridge/deploy/term-bridge.container, bridge/README.md\n\n**Verify:** cd bridge && podman build -t term-bridge:test . 2>&1 | tail -5\n\n```json:metadata\n{\"files\": [\"bridge/deploy/term-bridge.container\", \"bridge/README.md\"], \"verifyCommand\": \"cd bridge && podman build -t term-bridge:test . 2>&1 | tail -5\", \"acceptanceCriteria\": [\"term-bridge.container mounts remarkable.json read-only + sets BRIDGE_REMARKABLE_HOSTS_FILE\", \"unit header comment documents remarkable.json setup + ssh key\", \"README documents note format, endpoint, firmware 3.x + OTA caveats\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-21T00:00:00Z"
+  "lastUpdated": "2026-05-21T10:20:00Z"
 }
