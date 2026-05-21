@@ -92,6 +92,7 @@
 	 * the pure helper. The guard and wiring are exercised via manual QA.
 	 */
 	let connectFired = false;
+	let spectatorBufferLogged = false;
 
 	const currentItems = $derived(histories.get(currentWindowKey ?? '') ?? []);
 	const bucketLabel = $derived.by(() => {
@@ -416,7 +417,16 @@
 			cols: term.cols,
 			rows: term.rows,
 			spectate: spec.spectate,
-			onData: (chunk) => term?.write(chunk),
+			onData: (chunk) => {
+				term?.write(chunk);
+				if (isSpectator && !spectatorBufferLogged && term) {
+					spectatorBufferLogged = true;
+					const b = term.buffer.active;
+					console.log('[spectator] buffer after seed:', {
+						length: b.length, baseY: b.baseY, viewportY: b.viewportY, rows: term.rows
+					});
+				}
+			},
 			onStatus: (s, info) => {
 				status = s;
 				if (info?.message) statusMessage = info.message;
@@ -544,7 +554,16 @@
 			cols: term?.cols ?? 80,
 			rows: term?.rows ?? 24,
 			spectate: spec.spectate,
-			onData: (chunk) => term?.write(chunk),
+			onData: (chunk) => {
+				term?.write(chunk);
+				if (isSpectator && !spectatorBufferLogged && term) {
+					spectatorBufferLogged = true;
+					const b = term.buffer.active;
+					console.log('[spectator] buffer after seed:', {
+						length: b.length, baseY: b.baseY, viewportY: b.viewportY, rows: term.rows
+					});
+				}
+			},
 			onStatus: (s, info) => {
 				status = s;
 				if (info?.message) statusMessage = info.message;
@@ -1012,14 +1031,16 @@
 		height: 100%;
 	}
 
-	/* Spectator: width-fit + vertical overflow. transform:scale on the
-	   mount is paired with an explicit-pixel stage so the host's
-	   overflow-y can compute scroll bounds correctly. Horizontal is
-	   always hidden — width fit guarantees no horizontal overflow. */
+	/* Spectator: width-fit. Both axes hidden on the outer host so it
+	   does NOT become a competing scroll container — xterm's own
+	   .xterm-viewport (inside .xterm-mount) is the sole vertical scroll
+	   surface. Removing overflow-y:auto lets touch events propagate
+	   through the outer layers and reach the native xterm scrollback
+	   scroller. Horizontal is always hidden — width fit guarantees no
+	   horizontal overflow. */
 	.terminal-page.spectator .xterm-host {
 		overflow-x: hidden;
-		overflow-y: auto;
-		-webkit-overflow-scrolling: touch;
+		overflow-y: hidden;
 	}
 	.terminal-page.spectator .xterm-stage {
 		/* width / height set inline by applySpectatorFit. */
