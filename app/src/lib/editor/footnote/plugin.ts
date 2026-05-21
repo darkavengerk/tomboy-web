@@ -2,7 +2,10 @@
  * 각주 ProseMirror 플러그인 — 표시 전용.
  *
  * 모든 [^N] 매치에 인라인 데코레이션을 단다([^ 와 ] 는 폭 0으로 접고,
- * 참조 라벨은 작은 위첨자, 설명 마커 라벨은 일반 크기로 표시). 클릭하면
+ * 참조 라벨은 작은 위첨자, 설명 마커 라벨은 일반 크기로 표시).
+ *
+ * 각주 탭은 mousedown 에서 가로채 preventDefault 로 에디터 포커스를
+ * 막은 뒤(모바일에서 키보드가 올라와 본문을 가리는 문제 방지) 곧바로
  * 짝(참조↔설명)으로 스크롤한다.
  * 문서를 변형하지 않는다.
  */
@@ -102,21 +105,44 @@ export function createFootnotePlugin(
 			decorations(state) {
 				return footnotePluginKey.getState(state)?.decorations ?? null;
 			},
-			handleClick(view, pos) {
-				const st = footnotePluginKey.getState(view.state);
-				if (!st) return false;
-				const hit = findFootnoteAt(st.matches, pos);
-				if (!hit) return false;
-				const partner = findFootnotePartner(st.matches, hit);
-				if (!partner) {
-					options.onMissing(
-						hit.label,
-						hit.isDefinitionMarker ? 'definition' : 'reference'
-					);
+			handleDOMEvents: {
+				// 각주 탭은 mousedown 단계에서 처리한다. preventDefault 로
+				// 에디터 포커스/캐럿 이동을 막아(모바일에서 키보드가 본문을
+				// 가리는 문제 방지) 하고, true 를 반환해 PM 의 기본 클릭
+				// 처리를 통째로 건너뛴 뒤 곧바로 짝으로 스크롤한다.
+				mousedown(view, event) {
+					const target = event.target;
+					const fnEl =
+						target instanceof Element
+							? target.closest('.tomboy-fn-ref, .tomboy-fn-def')
+							: null;
+					if (!fnEl) return false;
+					event.preventDefault();
+					const st = footnotePluginKey.getState(view.state);
+					if (!st) return true;
+					let pos: number | null = null;
+					try {
+						pos = view.posAtDOM(fnEl, 0);
+					} catch {
+						pos = null;
+					}
+					const hit =
+						pos != null ? findFootnoteAt(st.matches, pos) : null;
+					if (hit) {
+						const partner = findFootnotePartner(st.matches, hit);
+						if (partner) {
+							scrollToMatch(view, partner);
+						} else {
+							options.onMissing(
+								hit.label,
+								hit.isDefinitionMarker
+									? 'definition'
+									: 'reference'
+							);
+						}
+					}
 					return true;
 				}
-				scrollToMatch(view, partner);
-				return true;
 			}
 		}
 	});

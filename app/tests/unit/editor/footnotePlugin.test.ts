@@ -5,8 +5,7 @@ import type { JSONContent } from '@tiptap/core';
 
 import {
 	TomboyFootnote,
-	footnotePluginKey,
-	findFootnoteMatches
+	footnotePluginKey
 } from '$lib/editor/footnote/index.js';
 
 // jsdom 은 레이아웃을 구현하지 않아 scrollIntoView 가 없을 수 있다.
@@ -33,11 +32,16 @@ function makeEditor(blocks: JSONContent[], onMissing = () => {}): Editor {
 	return currentEditor;
 }
 
-function clickAt(e: Editor, pos: number): boolean {
-	const handled = e.view.someProp('handleClick', (fn) =>
-		fn(e.view, pos, new MouseEvent('click'))
-	);
-	return handled === true;
+/** 각주 요소에 실제 mousedown 이벤트를 디스패치한다(버블 → PM 리스너). */
+function tapFootnote(e: Editor, selector: string): MouseEvent {
+	const el = e.view.dom.querySelector(selector);
+	if (!el) throw new Error(`footnote element not found: ${selector}`);
+	const event = new MouseEvent('mousedown', {
+		bubbles: true,
+		cancelable: true
+	});
+	el.dispatchEvent(event);
+	return event;
 }
 
 describe('footnote plugin decorations', () => {
@@ -77,20 +81,18 @@ describe('footnote plugin decorations', () => {
 	});
 });
 
-describe('footnote plugin click', () => {
+describe('footnote plugin tap (mousedown)', () => {
 	it('calls onMissing for a reference with no definition', () => {
 		const onMissing = vi.fn();
 		const e = makeEditor([P('제목'), P('본문 [^7]')], onMissing);
-		const ref = findFootnoteMatches(e.state.doc)[0];
-		expect(clickAt(e, ref.from + 2)).toBe(true);
+		tapFootnote(e, 'sup.tomboy-fn-ref');
 		expect(onMissing).toHaveBeenCalledWith('7', 'reference');
 	});
 
 	it('calls onMissing for a definition marker with no reference', () => {
 		const onMissing = vi.fn();
 		const e = makeEditor([P('제목'), P('[^7] 설명만 있음')], onMissing);
-		const def = findFootnoteMatches(e.state.doc)[0];
-		expect(clickAt(e, def.from + 2)).toBe(true);
+		tapFootnote(e, '.tomboy-fn-def');
 		expect(onMissing).toHaveBeenCalledWith('7', 'definition');
 	});
 
@@ -100,17 +102,13 @@ describe('footnote plugin click', () => {
 			[P('제목'), P('본문 [^7]'), P('[^7] 설명')],
 			onMissing
 		);
-		const ref = findFootnoteMatches(e.state.doc).find(
-			(m) => !m.isDefinitionMarker
-		)!;
-		expect(clickAt(e, ref.from + 2)).toBe(true);
+		tapFootnote(e, 'sup.tomboy-fn-ref');
 		expect(onMissing).not.toHaveBeenCalled();
 	});
 
-	it('returns false for a click outside any footnote', () => {
-		const onMissing = vi.fn();
-		const e = makeEditor([P('제목'), P('본문 [^7]')], onMissing);
-		expect(clickAt(e, 1)).toBe(false);
-		expect(onMissing).not.toHaveBeenCalled();
+	it('prevents the default on a footnote tap (no editor focus → no mobile keyboard)', () => {
+		const e = makeEditor([P('제목'), P('본문 [^7]'), P('[^7] 설명')]);
+		const event = tapFootnote(e, 'sup.tomboy-fn-ref');
+		expect(event.defaultPrevented).toBe(true);
 	});
 });
