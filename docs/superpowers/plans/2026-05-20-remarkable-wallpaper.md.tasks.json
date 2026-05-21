@@ -23,7 +23,7 @@
     {
       "id": 10,
       "subject": "Task 4: 브릿지 — 실 의존성 + HTTP 핸들러 + 서버 배선",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [9],
       "description": "**Goal:** sharp/fetch/ssh 실 의존성 + POST /remarkable/wallpaper 핸들러 + server.ts 라우트·호스트 로드 배선.\n\n**Files:** modify bridge/src/remarkable.ts, bridge/src/server.ts, bridge/package.json\n\n**Verify:** cd bridge && npm install && npm test\n\n```json:metadata\n{\"files\": [\"bridge/src/remarkable.ts\", \"bridge/src/server.ts\", \"bridge/package.json\"], \"verifyCommand\": \"cd bridge && npm install && npm test\", \"acceptanceCriteria\": [\"realWallpaperDeps wires fetch+sharp+ssh\", \"handleRemarkableWallpaper returns processWallpaperRequest result as JSON\", \"server.ts loads remarkable hosts and routes POST /remarkable/wallpaper\", \"npm run build passes with no type errors\", \"Task 3 node:test still all pass\"]}\n```"
     },
@@ -49,5 +49,5 @@
       "description": "**Goal:** Quadlet 유닛에 리마커블 호스트 파일 마운트·배선 + bridge/README.md에 셋업 절차·노트 형식·펌웨어 한계 문서화.\n\n**Files:** modify bridge/deploy/term-bridge.container, bridge/README.md\n\n**Verify:** cd bridge && podman build -t term-bridge:test . 2>&1 | tail -5\n\n```json:metadata\n{\"files\": [\"bridge/deploy/term-bridge.container\", \"bridge/README.md\"], \"verifyCommand\": \"cd bridge && podman build -t term-bridge:test . 2>&1 | tail -5\", \"acceptanceCriteria\": [\"term-bridge.container mounts remarkable.json read-only + sets BRIDGE_REMARKABLE_HOSTS_FILE\", \"unit header comment documents remarkable.json setup + ssh key\", \"README documents note format, endpoint, firmware 3.x + OTA caveats\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-20T16:45:00Z"
+  "lastUpdated": "2026-05-21T00:00:00Z"
 }

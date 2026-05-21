@@ -11,6 +11,8 @@ import { loadHostsFile, lookupWolTarget, type WolEntry } from './hosts.js';
 import { probePort, sendMagicPacket, waitForPort } from './wol.js';
 import { handleLlmChat } from './llm.js';
 import { handleRagSearch } from './rag.js';
+import { handleRemarkableWallpaper } from './remarkable.js';
+import { loadRemarkableHosts } from './remarkableHosts.js';
 import { SpectatorSession } from './spectatorSession.js';
 
 const PORT = Number(process.env.BRIDGE_PORT || 3000);
@@ -18,8 +20,10 @@ const PASSWORD = requireEnv('BRIDGE_PASSWORD');
 const SECRET = requireEnv('BRIDGE_SECRET');
 const ALLOWED_ORIGIN = requireEnv('BRIDGE_ALLOWED_ORIGIN');
 const HOSTS_FILE = process.env.BRIDGE_HOSTS_FILE;
+const REMARKABLE_HOSTS_FILE = process.env.BRIDGE_REMARKABLE_HOSTS_FILE;
 
 loadHostsFile(HOSTS_FILE);
+loadRemarkableHosts(REMARKABLE_HOSTS_FILE);
 
 // Auth grace window after WebSocket open. The first client message MUST be
 // a `connect` frame with a valid token; otherwise the connection is closed.
@@ -95,6 +99,11 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 
 	if (url === '/rag/search' && req.method === 'POST') {
 		await handleRagSearch(req, res, SECRET);
+		return;
+	}
+
+	if (url === '/remarkable/wallpaper' && req.method === 'POST') {
+		await handleRemarkableWallpaper(req, res, SECRET);
 		return;
 	}
 
