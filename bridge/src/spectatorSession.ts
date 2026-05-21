@@ -5,7 +5,8 @@
  *
  * When the desktop user switches panes or windows, this module:
  *   1. Notices via `%window-pane-changed` / `%session-window-changed`.
- *   2. Issues `display-message` + `capture-pane -epJ` for the new pane.
+ *   2. Issues `display-message` + `capture-pane -epJ -S -<N>` (visible
+ *      region + scrollback) for the new pane.
  *   3. Sends a `pane-switch` control frame to the WS client carrying the
  *      new pane's size + alt-screen state, immediately followed by a
  *      seed: reset → optional alt-screen toggle → captured content →
