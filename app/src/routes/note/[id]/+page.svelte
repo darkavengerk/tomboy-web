@@ -753,6 +753,7 @@
 				editor={getEditor()}
 				onextractnote={handleExtractNote}
 				onuploadimage={(file) => editorComponent?.uploadAndInsertImage(file)}
+				onfind={() => editorComponent?.openFind()}
 			/>
 		</div>
 	{/if}

@@ -919,6 +919,7 @@
 			<Toolbar
 				editor={getEditor()}
 				onuploadimage={(file) => editorComponent?.uploadAndInsertImage(file)}
+				onfind={() => editorComponent?.openFind()}
 			/>
 			{#if note}
 				<div class="toolbar-right">
@@ -1151,7 +1152,7 @@
 		overflow: hidden;
 	}
 
-	.body :global(.tomboy-editor) {
+	.body :global(.tomboy-editor-shell) {
 		flex: 1;
 		min-height: 0;
 	}

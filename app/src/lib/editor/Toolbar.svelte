@@ -13,9 +13,10 @@
 		editor: Editor | null;
 		onextractnote?: () => void;
 		onuploadimage?: (file: File) => void;
+		onfind?: () => void;
 	}
 
-	let { editor, onextractnote, onuploadimage }: Props = $props();
+	let { editor, onextractnote, onuploadimage, onfind }: Props = $props();
 
 	let fileInput: HTMLInputElement | undefined = $state(undefined);
 	let drawerOpen = $state(false);
@@ -242,6 +243,20 @@
 				</button>
 			{/if}
 		</div>
+
+		{#if onfind}
+			<button
+				class="find-toggle"
+				onclick={() => onfind?.()}
+				title="노트에서 찾기"
+				aria-label="노트에서 찾기"
+			>
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+					<circle cx="11" cy="11" r="7" />
+					<line x1="21" y1="21" x2="16.65" y2="16.65" />
+				</svg>
+			</button>
+		{/if}
 
 		<button
 			class="drawer-toggle"
@@ -501,5 +516,24 @@
 
 	.icon-btn {
 		color: #495057;
+	}
+
+	.find-toggle {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 34px;
+		height: 34px;
+		border: none;
+		background: transparent;
+		border-radius: 6px;
+		color: #495057;
+		cursor: pointer;
+		flex-shrink: 0;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	.find-toggle:active {
+		background: #dee2e6;
 	}
 </style>
