@@ -192,9 +192,9 @@
 	 *     and `transform: scale(s)` with `top left` origin. It renders
 	 *     visually at `naturalW * s × naturalH * s`.
 	 *   - `.xterm-stage` is sized at `naturalW * s × naturalH * s` —
-	 *     reserves the layout box for `.xterm-host`'s overflow:auto to
-	 *     compute scroll bounds. Without this, transform-scaled content
-	 *     wouldn't make the host scrollable.
+	 *     reserves the layout box so `.xterm-host`'s dimensions and
+	 *     `clientWidth` reflect the scaled footprint, preventing clipping
+	 *     of the transformed content.
 	 *
 	 * `min(host_w / naturalW, 1)` — width-fit, never scale up.
 	 */
@@ -656,10 +656,12 @@
 	<div class="body">
 		<!--
 			Three-layer DOM for the spectator's width-fit + scroll:
-			  .xterm-host  — flex, overflow-y:auto in spectator.
+			  .xterm-host  — flex container; in spectator, overflow is hidden
+			                 (NOT a scroll surface). xterm's own .xterm-viewport
+			                 (inside .xterm-mount) provides vertical scrollback.
 			  .xterm-stage — explicit scaled-pixel dimensions in spectator
-			                 so .xterm-host's scrollbar reflects the visual
-			                 size of the transformed mount.
+			                 so .xterm-host's layout box reflects the visual
+			                 footprint of the transformed mount.
 			  .xterm-mount — natural cell-based dimensions; xterm.js mounts
 			                 here. In spectator, gets transform:scale(s).
 			Non-spectator: stage + mount stay 100%×100% (transparent).
