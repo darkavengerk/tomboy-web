@@ -83,6 +83,8 @@
 	} from "./checklist/index.js";
 	import { TomboyFootnote } from "./footnote/index.js";
 	import { TomboyBlockquote } from "./blockquote/index.js";
+	import { createFindPlugin, findPluginKey } from "./find/findPlugin.js";
+	import FindBar from "./find/FindBar.svelte";
 	import type { JSONContent } from "@tiptap/core";
 	import EditorContextMenu from "./EditorContextMenu.svelte";
 	import {
@@ -221,6 +223,14 @@
 
 	let editorElement: HTMLDivElement;
 	let editor: Editor | null = $state(null);
+	// --- In-note find ("Ctrl/Cmd+F") state ---
+	// findOpen drives the FindBar; findQuery is the controlled input value;
+	// findCount / findActiveIndex mirror the find plugin's state on every
+	// transaction so the bar can render "3 / 12".
+	let findOpen = $state(false);
+	let findQuery = $state("");
+	let findCount = $state(0);
+	let findActiveIndex = $state(-1);
 	// Ctrl/Cmd-held gate for the TODO/Done per-item buttons. Unified with
 	// the shared modKeys state so the mobile "Ctrl 고정" toggle and the
 	// physical Ctrl/Cmd key both light up the same per-item actions.
@@ -481,6 +491,12 @@
 					},
 				}),
 				TomboyBlockquote,
+				Extension.create({
+					name: "tomboyFind",
+					addProseMirrorPlugins() {
+						return [createFindPlugin()];
+					},
+				}),
 			],
 			content: content ?? {
 				type: "doc",
@@ -544,6 +560,10 @@
 							return true;
 						}
 						switch (event.key) {
+							case "f":
+								event.preventDefault();
+								openFind();
+								return true;
 							case "d":
 								event.preventDefault();
 								insertTodayDate(ed);
@@ -707,6 +727,15 @@
 			prevCursorInTitle = nowInTitle;
 		});
 
+		// Mirror the find plugin's match count + active index into Svelte
+		// state on every transaction, so the FindBar can render "3 / 12".
+		editor.on("transaction", ({ editor: ed }) => {
+			const fs = findPluginKey.getState(ed.state);
+			if (!fs) return;
+			findCount = fs.matches.length;
+			findActiveIndex = fs.activeIndex;
+		});
+
 		// Seed the slip-note arrow storage with the current props. Subsequent
 		// changes are synced via the $effect below.
 		const slipStorage = (
@@ -834,6 +863,15 @@
 		}
 		// Any pending scan timer was for the previous note; drop it.
 		cancelAutoLinkScan();
+
+		// Close the find bar — find is scoped to a single note.
+		if (findOpen) {
+			findOpen = false;
+			ed.view.dispatch(
+				ed.state.tr.setMeta(findPluginKey, { close: true }),
+			);
+		}
+		findQuery = "";
 	});
 
 	// Toggle the "send list item" plugin's active flag whenever the parent's
@@ -976,6 +1014,53 @@
 		setTableBlockCtrlHeld(ed, held);
 	});
 
+	/**
+	 * Open the in-note find bar. If the current selection is non-empty and
+	 * lies within a single textblock, its text prefills the query;
+	 * otherwise the last query (if any) is re-applied. Exposed so the
+	 * Toolbar's 찾기 button can open find on mobile.
+	 */
+	export function openFind(): void {
+		const ed = editor;
+		if (!ed || ed.isDestroyed) return;
+		findOpen = true;
+		const { from, to, empty } = ed.state.selection;
+		let prefill: string | null = null;
+		if (!empty) {
+			const resolvedFrom = ed.state.doc.resolve(from);
+			const resolvedTo = ed.state.doc.resolve(to);
+			if (resolvedFrom.sameParent(resolvedTo) && resolvedFrom.parent.isTextblock) {
+				prefill = ed.state.doc.textBetween(from, to);
+			}
+		}
+		const q = prefill ? prefill : findQuery;
+		findQuery = q;
+		ed.view.dispatch(ed.state.tr.setMeta(findPluginKey, { query: q }));
+	}
+
+	function handleFindQuery(q: string): void {
+		const ed = editor;
+		if (!ed || ed.isDestroyed) return;
+		findQuery = q;
+		ed.view.dispatch(ed.state.tr.setMeta(findPluginKey, { query: q }));
+	}
+
+	function handleFindNav(direction: "next" | "prev"): void {
+		const ed = editor;
+		if (!ed || ed.isDestroyed) return;
+		ed.view.dispatch(
+			ed.state.tr.setMeta(findPluginKey, { nav: direction }),
+		);
+	}
+
+	function closeFind(): void {
+		findOpen = false;
+		const ed = editor;
+		if (!ed || ed.isDestroyed) return;
+		ed.view.dispatch(ed.state.tr.setMeta(findPluginKey, { close: true }));
+		ed.commands.focus();
+	}
+
 	export function getEditor(): Editor | null {
 		return editor;
 	}
@@ -1018,12 +1103,27 @@
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div
-	bind:this={editorElement}
-	class="tomboy-editor"
-	class:tomboy-todo-ctrl-hold={ctrlHeld}
-	oncontextmenu={handleContextMenu}
-></div>
+<div class="tomboy-editor-shell">
+	{#if findOpen}
+		<div class="find-bar-slot">
+			<FindBar
+				query={findQuery}
+				count={findCount}
+				activeIndex={findActiveIndex}
+				onquery={handleFindQuery}
+				onnext={() => handleFindNav("next")}
+				onprev={() => handleFindNav("prev")}
+				onclose={closeFind}
+			/>
+		</div>
+	{/if}
+	<div
+		bind:this={editorElement}
+		class="tomboy-editor"
+		class:tomboy-todo-ctrl-hold={ctrlHeld}
+		oncontextmenu={handleContextMenu}
+	></div>
+</div>
 
 {#if ctxMenu && editor}
 	<EditorContextMenu
@@ -1036,9 +1136,28 @@
 {/if}
 
 <style>
+	.tomboy-editor-shell {
+		position: relative;
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+	}
+
+	/* Find bar floats at the editor's top-right. The shell does not scroll
+	   (the inner .tomboy-editor does), so the bar stays pinned. */
+	.find-bar-slot {
+		position: absolute;
+		top: 6px;
+		right: 6px;
+		z-index: 10;
+	}
+
 	.tomboy-editor {
 		flex: 1;
+		min-height: 0;
 		overflow-y: auto;
+		-webkit-overflow-scrolling: touch;
 		padding: 0.5rem;
 		font-size: 16px;
 		line-height: 1.4;
@@ -1145,6 +1264,16 @@
 	/* Highlight */
 	.tomboy-editor :global(mark) {
 		background-color: #fff176;
+	}
+
+	/* In-note find matches (decorations — never part of the document). */
+	.tomboy-editor :global(.tomboy-find-match) {
+		background-color: #a5d6a7;
+		border-radius: 2px;
+	}
+	.tomboy-editor :global(.tomboy-find-active) {
+		background-color: #66bb6a;
+		box-shadow: 0 0 0 1px #2e7d32;
 	}
 
 	/* HR split layout.

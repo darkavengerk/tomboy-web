@@ -892,8 +892,10 @@
 
 	.editor-area {
 		flex: 1;
-		overflow-y: auto;
-		-webkit-overflow-scrolling: touch;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
 	}
 
 	/* Visual cue that this note is a terminal note in edit mode — the
