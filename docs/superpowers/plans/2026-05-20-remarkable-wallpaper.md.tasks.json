@@ -37,7 +37,7 @@
     {
       "id": 12,
       "subject": "Task 6: 앱 — RemarkableActionBar 컴포넌트 + 라우트 배선",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [7, 11],
       "description": "**Goal:** 에디터를 받아 리마커블 노트면 배너+[적용] 버튼을 렌더하고 슬롯별 상태를 표시하는 컴포넌트 + 모바일/데스크탑 노트 화면 배선.\n\n**Files:** create app/src/lib/editor/remarkable/RemarkableActionBar.svelte, app/tests/unit/remarkable/RemarkableActionBar.test.ts; modify app/src/routes/note/[id]/+page.svelte, app/src/lib/desktop/NoteWindow.svelte\n\n**Verify:** cd app && npx vitest run tests/unit/remarkable/RemarkableActionBar.test.ts && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/remarkable/RemarkableActionBar.svelte\", \"app/tests/unit/remarkable/RemarkableActionBar.test.ts\", \"app/src/routes/note/[id]/+page.svelte\", \"app/src/lib/desktop/NoteWindow.svelte\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/remarkable/RemarkableActionBar.test.ts && npm run check\", \"acceptanceCriteria\": [\"renders nothing for non-remarkable note\", \"renders host + slot labels + apply button for remarkable note\", \"apply click calls applyWallpaper and shows per-slot status\", \"empty notice + disabled button when no slots\", \"npm run check passes\"]}\n```"
     },
@@ -49,5 +49,5 @@
       "description": "**Goal:** Quadlet 유닛에 리마커블 호스트 파일 마운트·배선 + bridge/README.md에 셋업 절차·노트 형식·펌웨어 한계 문서화.\n\n**Files:** modify bridge/deploy/term-bridge.container, bridge/README.md\n\n**Verify:** cd bridge && podman build -t term-bridge:test . 2>&1 | tail -5\n\n```json:metadata\n{\"files\": [\"bridge/deploy/term-bridge.container\", \"bridge/README.md\"], \"verifyCommand\": \"cd bridge && podman build -t term-bridge:test . 2>&1 | tail -5\", \"acceptanceCriteria\": [\"term-bridge.container mounts remarkable.json read-only + sets BRIDGE_REMARKABLE_HOSTS_FILE\", \"unit header comment documents remarkable.json setup + ssh key\", \"README documents note format, endpoint, firmware 3.x + OTA caveats\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-21T10:20:00Z"
+  "lastUpdated": "2026-05-21T10:30:00Z"
 }
