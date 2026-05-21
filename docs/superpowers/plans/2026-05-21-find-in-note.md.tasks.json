@@ -4,36 +4,36 @@
     {
       "id": 9,
       "subject": "Task 1: findMatches 매칭 함수",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** 문서와 검색어를 받아 대소문자 무시로 모든 매치를 문서 위치로 반환하는 순수 함수.\n\n**Files:**\n- Create: app/src/lib/editor/find/findMatches.ts\n- Test: app/tests/unit/editor/findMatches.test.ts\n\n**Verify:** cd app && npm run test -- findMatches\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/find/findMatches.ts\", \"app/tests/unit/editor/findMatches.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- findMatches\", \"acceptanceCriteria\": [\"findMatches가 {from,to}[] 오름차순 반환\", \"빈 쿼리는 [] 반환\", \"대소문자 무시\", \"단어 중간 마크 매치\", \"문단/하드브레이크 경계 거짓 매치 없음\", \"헤딩·리스트 항목 스캔\"]}\n```"
     },
     {
       "id": 10,
       "subject": "Task 2: findPlugin ProseMirror 플러그인",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [9],
       "description": "**Goal:** 활성 검색을 상태로 보유하고 매치를 인라인 데코레이션으로 그리며, 메타로 쿼리·이동·닫기를 처리하고 편집 시 재스캔하는 ProseMirror 플러그인.\n\n**Files:**\n- Create: app/src/lib/editor/find/findPlugin.ts\n- Test: app/tests/unit/editor/findPlugin.test.ts\n\n**Verify:** cd app && npm run test -- findPlugin\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/find/findPlugin.ts\", \"app/tests/unit/editor/findPlugin.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- findPlugin\", \"acceptanceCriteria\": [\"query 메타 재스캔 + activeIndex 0/-1\", \"nav 메타 순환 이동\", \"close 메타 초기화\", \"docChanged 재스캔 + 클램프\", \"decorations 클래스 부여\", \"문서 미수정\"]}\n```"
     },
     {
       "id": 11,
       "subject": "Task 3: FindBar 검색바 UI 컴포넌트",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** props와 콜백만 받는 표현 전용 검색바 컴포넌트 — 입력창·매치 카운트·이전/다음·닫기.\n\n**Files:**\n- Create: app/src/lib/editor/find/FindBar.svelte\n\n**Verify:** cd app && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/find/FindBar.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"props/콜백 인터페이스\", \"마운트 시 입력 자동 포커스+선택\", \"카운트 표시 분기\", \"Enter/Shift+Enter/Esc 키 처리 + IME 가드\", \"count 0 일 때 버튼 비활성\", \"npm run check 통과\"]}\n```"
     },
     {
       "id": 12,
       "subject": "Task 4: 에디터에 찾기 통합 + 호스트 레이아웃",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [10, 11],
       "description": "**Goal:** TomboyEditor 에 찾기 플러그인·FindBar·Ctrl/Cmd+F·openFind() 를 통합하고, 찾기 바가 고정되도록 에디터를 셸로 감싸 모바일 노트 라우트의 .editor-area 를 flex column 으로 만든다.\n\n**Files:**\n- Modify: app/src/lib/editor/TomboyEditor.svelte\n- Modify: app/src/routes/note/[id]/+page.svelte\n\n**Verify:** cd app && npm run check && npm run test; npm run dev 수동 확인\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/TomboyEditor.svelte\", \"app/src/routes/note/[id]/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check && npm run test\", \"acceptanceCriteria\": [\"tomboyFind 플러그인 등록\", \"Ctrl/Cmd+F 가 브라우저 찾기 막고 바 엶\", \"단일 텍스트블록 선택 프리필\", \"매치 연녹색/활성 진녹색+테두리\", \"Enter/Shift+Enter 이동 + 스크롤\", \"Esc/✕ 닫기 + 포커스 복귀\", \"노트 전환 시 닫힘\", \"openFind 노출\", \"찾기 바 우상단 고정\"]}\n```"
     },
     {
       "id": 13,
       "subject": "Task 5: 모바일 툴바 찾기 버튼",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [12],
       "description": "**Goal:** Toolbar 에 선택적 onfind prop 과 항상 보이는 dock 행의 🔍 버튼을 추가하고, 두 호스트에서 openFind() 로 배선한다.\n\n**Files:**\n- Modify: app/src/lib/editor/Toolbar.svelte\n- Modify: app/src/routes/note/[id]/+page.svelte\n- Modify: app/src/lib/desktop/NoteWindow.svelte\n\n**Verify:** cd app && npm run check; npm run dev 모바일 폭 수동 확인\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/Toolbar.svelte\", \"app/src/routes/note/[id]/+page.svelte\", \"app/src/lib/desktop/NoteWindow.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"Toolbar onfind prop\", \"dock 행 찾기 버튼 (모바일 전용 노출)\", \"버튼 클릭 시 onfind 호출\", \"두 호스트 onfind 배선\", \"npm run check 통과\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-21T18:30:00+09:00"
+  "lastUpdated": "2026-05-21T21:30:00+09:00"
 }
