@@ -44,10 +44,10 @@
     {
       "id": 13,
       "subject": "Task 7: 브릿지 배포 설정 + 문서",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [10],
       "description": "**Goal:** Quadlet 유닛에 리마커블 호스트 파일 마운트·배선 + bridge/README.md에 셋업 절차·노트 형식·펌웨어 한계 문서화.\n\n**Files:** modify bridge/deploy/term-bridge.container, bridge/README.md\n\n**Verify:** cd bridge && podman build -t term-bridge:test . 2>&1 | tail -5\n\n```json:metadata\n{\"files\": [\"bridge/deploy/term-bridge.container\", \"bridge/README.md\"], \"verifyCommand\": \"cd bridge && podman build -t term-bridge:test . 2>&1 | tail -5\", \"acceptanceCriteria\": [\"term-bridge.container mounts remarkable.json read-only + sets BRIDGE_REMARKABLE_HOSTS_FILE\", \"unit header comment documents remarkable.json setup + ssh key\", \"README documents note format, endpoint, firmware 3.x + OTA caveats\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-21T10:30:00Z"
+  "lastUpdated": "2026-05-21T10:45:00Z"
 }
