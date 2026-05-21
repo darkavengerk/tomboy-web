@@ -1,0 +1,12 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-21-spectator-scrollback-seed.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: 시드 capture-pane 에 스크롤백 범위 추가",
+      "status": "completed",
+      "description": "**Goal:** `SpectatorSession.activateAndSeed`의 `capture-pane` 명령이 스크롤백 최근 1000줄을 함께 캡처하도록 `-S` 옵션을 추가한다.\n\n**Files:**\n- Modify: `bridge/src/spectatorSession.ts` (상수 추가 — `SWITCH_DEBOUNCE_MS` 블록 다음 line 53 이후; `capture-pane` 명령 — `activateAndSeed` 안 line 319)\n\n**Acceptance Criteria:**\n- [ ] `SCROLLBACK_SEED_LINES = 1000` 모듈 상수가 추가됨\n- [ ] `activateAndSeed`의 `capture-pane` 명령이 `capture-pane -epJ -S -1000 -t <pane>` 형태로 발행됨\n- [ ] `npm run build` (`tsc -p .`) 성공 — 타입 에러 없음\n- [ ] `npm run test` 기존 테스트(`gpu.test.ts`, `ocr.test.ts`, `tmuxControlClient.test.ts`) 전부 통과 — 회귀 없음\n- [ ] 수동 스모크: 관전 노트 접속 시 모바일에서 데스크탑 페인 과거 출력(~1000줄)을 터치 스크롤로 열람 가능\n- [ ] 수동 스모크: 페인 전환 / 모바일 재연결 시 새 페인·최신 스크롤백 재시드 확인\n- [ ] 수동 스모크: alt-screen 앱 페인 / 커서 위치 / `transform: scale` 폭맞춤 회귀 없음\n\n**Verify:** `cd bridge && npm run build && npm run test` → tsc 성공 + 모든 테스트 PASS\n\n**Steps:**\n1. `bridge/src/spectatorSession.ts` line 49-55(상수 영역), 318-323(`activateAndSeed`의 capture-pane) 확인.\n2. `SWITCH_DEBOUNCE_MS` 선언 다음, `SAFE_SESSION_RE` 앞에 `SCROLLBACK_SEED_LINES = 1000` 상수 추가 — `capture-pane -S`는 read-only 쿼리이고 tmux가 보유분으로 클램프하며 클라이언트 xterm `scrollback`(5000) 이하여야 한다는 WHY 주석 포함.\n3. `capture-pane -epJ -t ${paneId}` → `capture-pane -epJ -S -${SCROLLBACK_SEED_LINES} -t ${paneId}`. 시드 구조·커서 위치 계산은 수정 불필요.\n4. `cd bridge && npm run build` — tsc 성공 확인.\n5. `cd bridge && npm run test` — 기존 테스트 전부 통과(회귀 없음) 확인.\n6. 수동 스모크: dev 브릿지 + 관전 노트로 스크롤백 열람 / 페인 전환·재연결 재시드 / alt-screen·커서·폭맞춤 회귀 없음 확인.\n7. `git add bridge/src/spectatorSession.ts && git commit`.\n\n```json:metadata\n{\"files\": [\"bridge/src/spectatorSession.ts\"], \"verifyCommand\": \"cd bridge && npm run build && npm run test\", \"acceptanceCriteria\": [\"SCROLLBACK_SEED_LINES=1000 모듈 상수 추가\", \"capture-pane 명령이 -S -1000 포함 형태로 발행\", \"npm run build 성공\", \"npm run test 기존 테스트 전부 통과 — 회귀 없음\", \"수동 스모크: 모바일에서 스크롤백 ~1000줄 터치 스크롤 열람 가능\", \"수동 스모크: 페인 전환·재연결 시 재시드\", \"수동 스모크: alt-screen·커서·폭맞춤 회귀 없음\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-21T21:30:00Z"
+}
