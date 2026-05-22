@@ -80,6 +80,14 @@ describe('parseLabeledDivider — left', () => {
 		expect(r!.align).toBe('left');
 		expect(r!.label).toBe('hello -- world');
 	});
+
+	it('folds trailing whitespace into trailMark', () => {
+		const r = parseLabeledDivider('hello ---  ');
+		expect(r).not.toBeNull();
+		expect(r!.align).toBe('left');
+		expect(r!.label).toBe('hello');
+		expect(r!.trailMark).toEqual([5, 11]);
+	});
 });
 
 describe('parseLabeledDivider — precedence', () => {

@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { Editor, Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { createLabeledDividerPlugin } from '$lib/editor/labeledDivider/labeledDividerPlugin.js';
+import { createHrSplitPlugin } from '$lib/editor/hrSplit/hrSplitPlugin.js';
 
 let currentEditor: Editor | null = null;
 
@@ -78,6 +79,29 @@ describe('labeledDividerPlugin', () => {
 		expect(
 			editor.view.dom.querySelector('.tomboy-labeled-divider')
 		).toBeNull();
+	});
+
+	it('coexists with the hrSplit plugin — a pure --- stays an hr-marker', () => {
+		const editor = new Editor({
+			extensions: [
+				StarterKit,
+				Extension.create({
+					name: 'tomboyLabeledDividerCoexistTest',
+					addProseMirrorPlugins() {
+						return [createLabeledDividerPlugin(), createHrSplitPlugin()];
+					}
+				})
+			],
+			content: '<p>title</p><p>sub</p><p>-- 회의록 --</p><p>-----</p>'
+		});
+		currentEditor = editor;
+		const dom = editor.view.dom;
+		// The labeled divider is decorated by labeledDividerPlugin.
+		expect(dom.querySelector('p.tomboy-labeled-divider--center')).not.toBeNull();
+		// The pure --- paragraph is an hrSplit marker, NOT a labeled divider.
+		const hr = dom.querySelector('p.tomboy-hr-marker');
+		expect(hr).not.toBeNull();
+		expect(hr!.classList.contains('tomboy-labeled-divider')).toBe(false);
 	});
 
 	it('re-parses live when the paragraph text changes', () => {
