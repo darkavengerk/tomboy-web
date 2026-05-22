@@ -31,7 +31,7 @@ export function computeScrollState(
 	baseY: number
 ): SpectatorScrollState {
 	if (viewportY >= baseY) {
-		return INITIAL_SCROLL_STATE;
+		return { atBottom: true, freezeBaseY: null, newLines: 0 };
 	}
 	const freezeBaseY = prev.freezeBaseY ?? baseY;
 	const newLines = Math.max(0, baseY - freezeBaseY);
