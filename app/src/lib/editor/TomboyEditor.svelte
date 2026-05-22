@@ -1359,7 +1359,10 @@
 		/* Create a stacking context so the ::before line (z-index:0) and
 		   the label span (z-index:1) layer reliably within this paragraph. */
 		isolation: isolate;
-		margin: 0.6em 0;
+		/* Generous vertical margin — neighbouring paragraphs have margin:0,
+		   so this is the whole gap. Wider than the hr-marker's 0.6em so the
+		   divider breathes without the user adding blank lines by hand. */
+		margin: 1.5em 0;
 		min-height: 1.2em;
 		padding: 0;
 	}
