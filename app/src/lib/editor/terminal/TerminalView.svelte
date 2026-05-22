@@ -13,6 +13,7 @@
 	import { appendCommandToTerminalHistory, flushTerminalHistoryNow, removeCommandFromTerminalHistory, clearTerminalHistory, pinCommandInTerminalHistory, unpinCommandInTerminalHistory } from './historyStore.js';
 	import { runConnectScript } from './connectAutoRun.js';
 	import {
+		accumulateTouchScroll,
 		computeScrollState,
 		INITIAL_SCROLL_STATE,
 		type SpectatorScrollState
@@ -228,6 +229,47 @@
 		if (!isSpectator || !term) return;
 		const b = term.buffer.active;
 		scrollState = computeScrollState(scrollState, b.viewportY, b.baseY);
+	}
+
+	/*
+	 * 모바일 관전 터치 스크롤. xterm v6 자체 터치 스크롤 제스처는 관전 모드의
+	 * `transform: scale` 안에서 화면 픽셀↔버퍼 좌표가 어긋나 동작하지 않는다
+	 * (데스크탑 휠은 버블링으로 xterm 휠 핸들러에 닿아 멀쩡). 그래서 모바일
+	 * 관전에서는 터치 드래그를 직접 term.scrollLines() 로 환산한다 — 휠과 같은
+	 * 프로그래매틱 경로라 transform 의 영향을 받지 않는다. 줄 환산·잔차 누적은
+	 * accumulateTouchScroll 순수 헬퍼가 맡고, CSS `touch-action: none`(모바일
+	 * 관전 .xterm-host)이 브라우저 네이티브 제스처를 끄므로 preventDefault 불필요.
+	 */
+	let touchLastY: number | null = null;
+	let touchScrollRemainder = 0;
+
+	function onSpectatorTouchStart(e: TouchEvent): void {
+		if (!isSpectator || !isMobile || e.touches.length !== 1) {
+			touchLastY = null;
+			return;
+		}
+		touchLastY = e.touches[0].clientY;
+		touchScrollRemainder = 0;
+	}
+
+	function onSpectatorTouchMove(e: TouchEvent): void {
+		if (touchLastY === null || !term || !xtermStageEl) return;
+		if (e.touches.length !== 1) {
+			touchLastY = null;
+			return;
+		}
+		const y = e.touches[0].clientY;
+		const deltaPx = y - touchLastY;
+		touchLastY = y;
+		const pxPerLine = xtermStageEl.clientHeight / term.rows;
+		const { lines, remainder } = accumulateTouchScroll(touchScrollRemainder, deltaPx, pxPerLine);
+		touchScrollRemainder = remainder;
+		// 손가락을 아래로 끌면 과거(위쪽) 출력이 드러나야 하므로 scrollLines 는 음수.
+		if (lines !== 0) term.scrollLines(-lines);
+	}
+
+	function onSpectatorTouchEnd(): void {
+		touchLastY = null;
 	}
 
 	/**
@@ -677,7 +719,14 @@
 			                 here. In spectator, gets transform:scale(s).
 			Non-spectator: stage + mount stay 100%×100% (transparent).
 		-->
-		<div class="xterm-host" bind:this={xtermHostEl}>
+		<div
+			class="xterm-host"
+			bind:this={xtermHostEl}
+			ontouchstart={onSpectatorTouchStart}
+			ontouchmove={onSpectatorTouchMove}
+			ontouchend={onSpectatorTouchEnd}
+			ontouchcancel={onSpectatorTouchEnd}
+		>
 			<div class="xterm-stage" bind:this={xtermStageEl}>
 				<div class="xterm-mount" bind:this={xtermContainer}></div>
 			</div>
@@ -1064,6 +1113,13 @@
 	.terminal-page.spectator .xterm-host {
 		overflow-x: hidden;
 		overflow-y: hidden;
+	}
+	/* Mobile spectator: own the vertical drag. `touch-action: none` disables
+	   the browser's native pan/zoom so our touch→scrollLines handler is the
+	   sole scroll path — xterm v6's own touch gesture is desynced by the
+	   transform:scale and cannot be relied on here. */
+	.terminal-page.spectator.mobile .xterm-host {
+		touch-action: none;
 	}
 	.terminal-page.spectator .xterm-stage {
 		/* width / height set inline by applySpectatorFit. */

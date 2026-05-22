@@ -37,3 +37,29 @@ export function computeScrollState(
 	const newLines = Math.max(0, baseY - freezeBaseY);
 	return { atBottom: false, freezeBaseY, newLines };
 }
+
+/**
+ * 모바일 관전 모드의 터치 드래그를 xterm 줄 스크롤로 환산한다. 순수 함수.
+ *
+ * xterm v6 자체 터치 스크롤 제스처는 관전 모드의 `transform: scale` 안에서
+ * 화면 픽셀↔버퍼 좌표가 어긋나 동작하지 않으므로, `TerminalView`가 터치
+ * 델타를 직접 `term.scrollLines()`로 넘긴다 — 데스크탑 휠과 같은
+ * 프로그래매틱 경로라 transform 의 영향을 받지 않는다.
+ *
+ * `term.scrollLines()`는 정수만 받으므로, 한 줄에 못 미치는 드래그가
+ * 버려지지 않도록 소수 잔차를 누적해 다음 호출로 넘긴다. `0` 방향 절삭이라
+ * 잔차 부호가 델타 부호와 일치 → 위/아래 드래그 모두 매끄럽게 이어진다.
+ *
+ * `pxPerLine` = 화면 픽셀 기준 한 줄 높이(스케일된 .xterm-stage 높이 /
+ * term.rows). 0 이하(레이아웃 미확정)면 아무것도 하지 않는다.
+ */
+export function accumulateTouchScroll(
+	remainder: number,
+	deltaPx: number,
+	pxPerLine: number
+): { lines: number; remainder: number } {
+	if (!(pxPerLine > 0)) return { lines: 0, remainder };
+	const total = remainder + deltaPx / pxPerLine;
+	const lines = Math.trunc(total);
+	return { lines, remainder: total - lines };
+}
