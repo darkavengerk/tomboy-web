@@ -219,8 +219,9 @@
 	// closures so prop changes take effect without re-creating extensions.
 	// Seeded to safe defaults; the $effect below syncs from the props.
 	let hrSplitEnabledFlag = true;
-	let hrSplitChangeFn: ((newCount: number, prevCount: number) => void) | undefined =
-		undefined;
+	let hrSplitChangeFn:
+		| ((newCount: number, prevCount: number) => void)
+		| undefined = undefined;
 
 	let editorElement: HTMLDivElement;
 	let editor: Editor | null = $state(null);
@@ -449,16 +450,13 @@
 									// to the editor. Closure-read via the
 									// `lastAppliedGuid` tracker so re-keying on
 									// note swap is automatic.
-									saveActiveOrdinals(
-										lastAppliedGuid,
-										active,
-									);
-									saveColumnWidths(
-										lastAppliedGuid,
-										widths,
-									);
+									saveActiveOrdinals(lastAppliedGuid, active);
+									saveColumnWidths(lastAppliedGuid, widths);
 									if (active.size !== prev.size) {
-										hrSplitChangeFn?.(active.size, prev.size);
+										hrSplitChangeFn?.(
+											active.size,
+											prev.size,
+										);
 									}
 								},
 							}),
@@ -1036,7 +1034,10 @@
 		if (!empty) {
 			const resolvedFrom = ed.state.doc.resolve(from);
 			const resolvedTo = ed.state.doc.resolve(to);
-			if (resolvedFrom.sameParent(resolvedTo) && resolvedFrom.parent.isTextblock) {
+			if (
+				resolvedFrom.sameParent(resolvedTo) &&
+				resolvedFrom.parent.isTextblock
+			) {
 				prefill = ed.state.doc.textBetween(from, to);
 			}
 		}
@@ -1325,7 +1326,7 @@
 	}
 	.tomboy-editor :global(.tomboy-hr-marker::before) {
 		/* Default state: thin grey horizontal line centered in the row. */
-		content: '';
+		content: "";
 		position: absolute;
 		inset: 0;
 		background: linear-gradient(
@@ -1362,7 +1363,7 @@
 		/* Generous vertical margin — neighbouring paragraphs have margin:0,
 		   so this is the whole gap. Wider than the hr-marker's 0.6em so the
 		   divider breathes without the user adding blank lines by hand. */
-		margin: 1.5em 0;
+		margin: 2.5em 0;
 		min-height: 1.2em;
 		padding: 0;
 	}
@@ -1375,7 +1376,7 @@
 		padding-left: 1.6em;
 	}
 	.tomboy-editor :global(.tomboy-labeled-divider::before) {
-		content: '';
+		content: "";
 		position: absolute;
 		inset: 0;
 		z-index: 0;
@@ -1459,7 +1460,9 @@
 		user-select: none;
 	}
 	.tomboy-editor
-		:global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider::before) {
+		:global(
+			.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider::before
+		) {
 		background: linear-gradient(
 			to right,
 			transparent calc(50% - 0.5px),
@@ -1469,7 +1472,10 @@
 		);
 	}
 	.tomboy-editor.tomboy-todo-ctrl-hold
-		:global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider:hover::before) {
+		:global(
+			.tiptap.tomboy-hr-split-active
+				> .tomboy-hr-split-divider:hover::before
+		) {
 		background: linear-gradient(
 			to right,
 			transparent calc(50% - 1px),
@@ -1898,7 +1904,8 @@
 		cursor: pointer;
 		z-index: 1;
 	}
-	.tomboy-editor :global(.tomboy-table-block-widget:hover .tomboy-table-block-toggle) {
+	.tomboy-editor
+		:global(.tomboy-table-block-widget:hover .tomboy-table-block-toggle) {
 		opacity: 1;
 	}
 	.tomboy-editor :global(.tomboy-table-block-toggle input) {
@@ -1961,8 +1968,10 @@
 	/* While a cell is being edited, suppress the hover-only chrome (toggle
 	   checkbox) so it doesn't flicker over the cell the user is editing. */
 	.tomboy-editor
-		:global(.tomboy-table-block-widget.tomboy-table-block-editing
-			.tomboy-table-block-toggle) {
+		:global(
+			.tomboy-table-block-widget.tomboy-table-block-editing
+				.tomboy-table-block-toggle
+		) {
 		display: none;
 	}
 
@@ -1976,8 +1985,10 @@
 	   The toggle checkbox (hover-only in non-ctrl) is suppressed in
 	   favor of the structural-edit buttons. */
 	.tomboy-editor
-		:global(.tomboy-table-block-widget.tomboy-table-block-ctrl
-			.tomboy-table-block-toggle) {
+		:global(
+			.tomboy-table-block-widget.tomboy-table-block-ctrl
+				.tomboy-table-block-toggle
+		) {
 		display: none;
 	}
 	.tomboy-editor :global(.tomboy-table-block-widget.tomboy-table-block-ctrl) {
@@ -1989,20 +2000,26 @@
 		max-width: 100%;
 	}
 	.tomboy-editor
-		:global(.tomboy-table-block-widget.tomboy-table-block-ctrl
-			> .tomboy-table-block-table) {
+		:global(
+			.tomboy-table-block-widget.tomboy-table-block-ctrl
+				> .tomboy-table-block-table
+		) {
 		grid-column: 1;
 		grid-row: 1;
 	}
 	.tomboy-editor
-		:global(.tomboy-table-block-widget.tomboy-table-block-ctrl
-			> .tomboy-table-block-add-col) {
+		:global(
+			.tomboy-table-block-widget.tomboy-table-block-ctrl
+				> .tomboy-table-block-add-col
+		) {
 		grid-column: 2;
 		grid-row: 1;
 	}
 	.tomboy-editor
-		:global(.tomboy-table-block-widget.tomboy-table-block-ctrl
-			> .tomboy-table-block-add-row) {
+		:global(
+			.tomboy-table-block-widget.tomboy-table-block-ctrl
+				> .tomboy-table-block-add-row
+		) {
 		grid-column: 1;
 		grid-row: 2;
 	}
