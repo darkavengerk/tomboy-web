@@ -33,6 +33,10 @@ export interface SpectatorCallbacks {
 		altScreen: boolean;
 		windowIndex: string;
 		windowName: string;
+		/** Active pane's 1-based footer-button ordinal; 0 = unknown. */
+		paneOrdinal: number;
+		/** Total panes in the spectated window; 0 = unknown. */
+		paneCount: number;
 	}): void;
 	/** UTF-8 text to write into the client's xterm. */
 	data(text: string): void;
@@ -317,22 +321,41 @@ export class SpectatorSession {
 		// bytes from the old pane can't corrupt the new pane's first chunk.
 		this.decoder = new TextDecoder('utf-8', { fatal: false });
 
-		this.cb.paneSwitch({ paneId, cols, rows, altScreen, windowIndex, windowName });
+		// Kick off both tmux queries up front so they pipeline on the control
+		// channel (command() is FIFO-safe — see tmuxControlClient). list-panes
+		// gives the active pane's footer-button ordinal; capture-pane gives the
+		// seed. Each promise swallows its own failure so a transient query
+		// error degrades gracefully instead of aborting the pane switch.
+		const panesPromise = this.tmux
+			.command(`list-panes -t ${this.sessionName} -F '#{pane_id}'`)
+			.catch(() => [] as string[]);
+		const capturePromise = this.tmux
+			.command(`capture-pane -epJ -S -${SCROLLBACK_SEED_LINES} -t ${paneId}`)
+			.catch((err) => {
+				this.cb.error(`capture-pane: ${(err as Error).message}`);
+				return [] as string[];
+			});
+
+		const paneIds = (await panesPromise).map((l) => l.trim());
+		const { ordinal: paneOrdinal, count: paneCount } = panePosition(paneIds, paneId);
+
+		this.cb.paneSwitch({
+			paneId,
+			cols,
+			rows,
+			altScreen,
+			windowIndex,
+			windowName,
+			paneOrdinal,
+			paneCount
+		});
 
 		// Build seed: reset → optional alt-screen → captured content → cursor.
 		// '\x1bc' (RIS) clears scrollback + resets all attributes/modes.
 		// '\x1b[?1049l' first to exit alt-screen if we were left in one.
 		let seed = '\x1b[?1049l\x1bc';
 		if (altScreen) seed += '\x1b[?1049h';
-
-		try {
-			const captured = await this.tmux.command(
-				`capture-pane -epJ -S -${SCROLLBACK_SEED_LINES} -t ${paneId}`
-			);
-			seed += captured.join('\r\n');
-		} catch (err) {
-			this.cb.error(`capture-pane: ${(err as Error).message}`);
-		}
+		seed += (await capturePromise).join('\r\n');
 
 		// Cursor positioning: CSI row;col H is 1-indexed; tmux reports 0-indexed.
 		if (Number.isFinite(cursorY) && Number.isFinite(cursorX)) {
@@ -487,4 +510,18 @@ export class SpectatorSession {
 			});
 	}
 
+}
+
+/**
+ * Active pane's 1-based position among the window's panes, plus the total
+ * count. Position is the index in `list-panes -F '#{pane_id}'` order — the
+ * same ordering `SpectatorSession.selectPane()` resolves footer-button
+ * numbers against, so a highlighted button always matches the button that
+ * would re-select it. Ordinal is 0 when the active pane id is not in the list.
+ */
+export function panePosition(
+	paneIds: string[],
+	activePaneId: string
+): { ordinal: number; count: number } {
+	return { ordinal: paneIds.indexOf(activePaneId) + 1, count: paneIds.length };
 }
