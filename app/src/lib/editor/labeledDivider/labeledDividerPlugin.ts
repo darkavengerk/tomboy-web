@@ -18,7 +18,7 @@ const HEADER_COUNT = 2;
  * top-level children (paragraphs don't nest), so this is cheap to run on
  * every state.
  */
-export function buildLabeledDividerDecorations(doc: PMNode): DecorationSet {
+function buildLabeledDividerDecorations(doc: PMNode): DecorationSet {
 	const decos: Decoration[] = [];
 	doc.forEach((node, offset, index) => {
 		if (index < HEADER_COUNT) return;

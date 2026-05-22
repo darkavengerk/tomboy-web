@@ -46,6 +46,15 @@ describe('labeledDividerPlugin', () => {
 		expect(dom.querySelector('.tomboy-labeled-divider-label')?.textContent).toBe(
 			'회의록'
 		);
+		expect(dom.querySelectorAll('.tomboy-labeled-divider-mark').length).toBe(1);
+	});
+
+	it('decorates multiple labeled dividers in one document', () => {
+		const editor = makeEditor(
+			'<p>title</p><p>sub</p><p>-- A --</p><p>plain</p><p>B ---</p>'
+		);
+		const dom = editor.view.dom;
+		expect(dom.querySelectorAll('p.tomboy-labeled-divider').length).toBe(2);
 	});
 
 	it('never decorates the title / subtitle lines (index 0 and 1)', () => {
