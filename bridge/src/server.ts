@@ -6,7 +6,10 @@ import {
 	passwordMatches,
 	verifyToken
 } from './auth.js';
-import { parseSshTarget, spawnForTarget, type SshTarget } from './pty.js';
+import { parseSshTarget, spawnForTarget, isLocalTarget, type SshTarget } from './pty.js';
+import { mkdirSync } from 'node:fs';
+import { unlink } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { loadHostsFile, lookupWolTarget, type WolEntry } from './hosts.js';
 import { probePort, sendMagicPacket, waitForPort } from './wol.js';
 import { handleLlmChat } from './llm.js';
@@ -33,12 +36,18 @@ const REMARKABLE_HOSTS_FILE = process.env.BRIDGE_REMARKABLE_HOSTS_FILE;
 loadHostsFile(HOSTS_FILE);
 loadRemarkableHosts(REMARKABLE_HOSTS_FILE);
 
+// ControlMaster 소켓이 사는 디렉터리. Unix 소켓 경로 길이 제한 때문에 /tmp 아래.
+const CTRL_DIR = '/tmp/tomboy-ctl';
+mkdirSync(CTRL_DIR, { recursive: true });
+
 // Auth grace window after WebSocket open. The first client message MUST be
 // a `connect` frame with a valid token; otherwise the connection is closed.
 const AUTH_TIMEOUT_MS = 5000;
 
 const server = createServer(handleHttp);
-const wss = new WebSocketServer({ noServer: true });
+// maxPayload: 이미지 프레임 수용(10 MB 이미지의 base64 ≈ 13.3 MB). 일반 data
+// 프레임은 작으므로 영향 없음.
+const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 * 1024 });
 
 server.on('upgrade', (req, socket, head) => {
 	if (req.url !== '/ws') {
@@ -194,6 +203,8 @@ function handleWs(ws: WebSocket): void {
 	let pty: ReturnType<typeof spawnForTarget> | null = null;
 	let spectator: SpectatorSession | null = null;
 	let connected = false;
+	let controlPath: string | null = null;
+	let sessionTarget: SshTarget | null = null;
 	const abortCtrl = new AbortController();
 	const authTimer = setTimeout(() => {
 		if (!connected) {
@@ -299,6 +310,11 @@ function handleWs(ws: WebSocket): void {
 			try { spectator.close(); } catch { /* ignore */ }
 			spectator = null;
 		}
+		if (controlPath) {
+			// ssh 마스터가 죽으면 소켓도 사라지지만 best-effort로 정리.
+			unlink(controlPath).catch(() => { /* 이미 없음 */ });
+			controlPath = null;
+		}
 	});
 
 	async function startSpectator(target: SshTarget, session: string): Promise<void> {
@@ -349,6 +365,11 @@ function handleWs(ws: WebSocket): void {
 	}
 
 	async function startSession(target: SshTarget, cols: number, rows: number): Promise<void> {
+		sessionTarget = target;
+		// 원격 타깃만 ControlMaster — 로컬 셸 타깃은 ssh 자체가 없다.
+		if (!isLocalTarget(target)) {
+			controlPath = `${CTRL_DIR}/${randomUUID().slice(0, 8)}.sock`;
+		}
 		const wol = lookupWolTarget(target.host);
 		console.log(`[term-bridge] connect target=${target.user ?? ''}@${target.host}:${target.port ?? 22} wol=${wol ? wol.mac : 'none'}`);
 		if (wol) {
@@ -363,7 +384,7 @@ function handleWs(ws: WebSocket): void {
 		}
 		if (abortCtrl.signal.aborted) return;
 		try {
-			pty = spawnForTarget(target, cols, rows);
+			pty = spawnForTarget(target, cols, rows, controlPath ?? undefined);
 		} catch (err) {
 			send({ type: 'error', message: `spawn failed: ${(err as Error).message}` });
 			try { ws.close(1011, 'spawn failed'); } catch { /* ignore */ }

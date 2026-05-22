@@ -20,26 +20,51 @@ export function parseSshTarget(raw: string): SshTarget | null {
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
 
 /**
- * Spawn a PTY for the given target.
- *  - Local target with no user → just a login shell on the bridge host.
- *    (Useful when the bridge runs natively as the target user.)
- *  - Otherwise → `ssh user@host -p port`. Auth (key/password) flows
- *    through the PTY directly; we don't broker credentials.
- *
- * The `!t.user` guard matters when the bridge runs inside a container:
- * `ssh://localhost` would otherwise drop into the container's own shell
- * (running as the unprivileged container user) instead of the operator's
- * actual host account. Writing `ssh://you@localhost` routes through ssh,
- * which — together with `Network=host` on the container — hits the host's
- * sshd and gives a real login shell as `you`.
+ * 타깃이 "로컬"인지 — user 없는 localhost/127.0.0.1/::1 또는 브릿지 호스트명.
+ * 로컬이면 ssh 없이 브릿지의 로그인 셸을 띄운다.
  */
-export function spawnForTarget(t: SshTarget, cols: number, rows: number): IPty {
-	const isLocal =
+export function isLocalTarget(t: SshTarget): boolean {
+	return (
 		!t.user &&
-		(LOCAL_HOSTS.has(t.host) || t.host.toLowerCase() === hostname().toLowerCase());
+		(LOCAL_HOSTS.has(t.host) || t.host.toLowerCase() === hostname().toLowerCase())
+	);
+}
 
+/**
+ * `ssh` 명령의 argv(ssh 자신 뒤의 인자들)를 구성한다. 순수 함수.
+ *
+ * `controlPath`가 주어지면 이 연결을 멀티플렉싱 "마스터"로 설정한다 — 같은
+ * ControlPath를 가리키는 이후의 `ssh` 호출(imageTransfer.ts)이 이미 인증된 이
+ * 연결을 재사용한다. 호스트 인자는 항상 마지막 — OpenSSH는 호스트 뒤의 토큰을
+ * 원격 명령으로 취급하므로 옵션은 모두 호스트 앞에 와야 한다.
+ */
+export function buildSshArgs(t: SshTarget, controlPath?: string): string[] {
+	const args: string[] = [];
+	if (t.port) args.push('-p', String(t.port));
+	args.push('-o', 'StrictHostKeyChecking=accept-new');
+	if (controlPath) {
+		args.push('-o', 'ControlMaster=auto');
+		args.push('-o', `ControlPath=${controlPath}`);
+	}
+	args.push(t.user ? `${t.user}@${t.host}` : t.host);
+	return args;
+}
+
+/**
+ * 타깃용 PTY를 띄운다.
+ *  - 로컬 타깃 → 브릿지 호스트의 로그인 셸.
+ *  - 그 외 → `ssh ...`. 인증(키/비번)은 PTY를 통해 직접 흐른다 —
+ *    자격증명을 중개하지 않는다.
+ *  - `controlPath`가 주어지면 ControlMaster 마스터로 띄운다(이미지 전송용).
+ */
+export function spawnForTarget(
+	t: SshTarget,
+	cols: number,
+	rows: number,
+	controlPath?: string
+): IPty {
 	const env = sanitizedEnv();
-	if (isLocal) {
+	if (isLocalTarget(t)) {
 		const shell = process.env.SHELL || '/bin/bash';
 		return spawn(shell, ['-l'], {
 			name: 'xterm-256color',
@@ -49,12 +74,7 @@ export function spawnForTarget(t: SshTarget, cols: number, rows: number): IPty {
 			env
 		});
 	}
-
-	const args: string[] = [];
-	if (t.port) args.push('-p', String(t.port));
-	args.push('-o', 'StrictHostKeyChecking=accept-new');
-	args.push(t.user ? `${t.user}@${t.host}` : t.host);
-	return spawn('ssh', args, {
+	return spawn('ssh', buildSshArgs(t, controlPath), {
 		name: 'xterm-256color',
 		cols,
 		rows,
