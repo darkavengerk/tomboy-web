@@ -93,6 +93,17 @@ export async function setTerminalShellIntegrationBannerDismissed(value: boolean)
 	await setSetting(TERM_HIST_BANNER_DISMISSED, value);
 }
 
+const TERM_BELL_ENABLED = 'terminalBellEnabled';
+
+export async function getTerminalBellEnabled(): Promise<boolean> {
+	const v = await getSetting<boolean>(TERM_BELL_ENABLED);
+	return typeof v === 'boolean' ? v : true;
+}
+
+export async function setTerminalBellEnabled(value: boolean): Promise<void> {
+	await setSetting(TERM_BELL_ENABLED, value);
+}
+
 // ── Diary pipeline trigger settings ──────────────────────────────────
 //
 // The /admin/remarkable page can be configured with the URL of a

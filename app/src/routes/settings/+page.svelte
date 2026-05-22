@@ -74,7 +74,9 @@
 		setTerminalHistoryPanelOpenMobile,
 		getTerminalHistoryBlocklist,
 		setTerminalHistoryBlocklist,
-		TERMINAL_HISTORY_BLOCKLIST_DEFAULT
+		TERMINAL_HISTORY_BLOCKLIST_DEFAULT,
+		getTerminalBellEnabled,
+		setTerminalBellEnabled
 	} from '$lib/storage/appSettings.js';
 	import { listNotebooks, getNotebook } from '$lib/core/notebooks.js';
 	import { getAllNotes } from '$lib/storage/noteStore.js';
@@ -124,6 +126,7 @@
 	let termHistOpenDesktop = $state(true);
 	let termHistOpenMobile = $state(false);
 	let termHistBlocklistText = $state('');
+	let termBellEnabled = $state(true);
 	let snippetCopied = $state(false);
 	let loaderCopied = $state(false);
 	let tmuxSnippetCopied = $state(false);
@@ -265,6 +268,7 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 		termHistOpenMobile = await getTerminalHistoryPanelOpenMobile();
 		const list = await getTerminalHistoryBlocklist();
 		termHistBlocklistText = list.join(', ');
+		termBellEnabled = await getTerminalBellEnabled();
 	}
 
 	async function saveTermHistOpenDesktop(): Promise<void> {
@@ -272,6 +276,9 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 	}
 	async function saveTermHistOpenMobile(): Promise<void> {
 		await setTerminalHistoryPanelOpenMobile(termHistOpenMobile);
+	}
+	async function saveTermBellEnabled(): Promise<void> {
+		await setTerminalBellEnabled(termBellEnabled);
 	}
 	async function saveTermHistBlocklist(): Promise<void> {
 		const items = termHistBlocklistText
@@ -1182,6 +1189,23 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 					onblur={saveTermHistBlocklist}
 				></textarea>
 				<button class="btn btn-secondary" onclick={resetTermHistBlocklist}>기본값으로 되돌리기</button>
+			</section>
+
+			<section class="section">
+				<h2>터미널 벨</h2>
+				<p class="info-text">
+					터미널이 벨(<code>{'\\x07'}</code>)을 울리면 — 예: 클로드 코드가
+					작업을 마칠 때 — 노트에서 짧은 소리와 진동으로 알립니다. shell
+					모드에서만 동작하며, 노트가 화면에 떠 있을 때만 인지됩니다.
+				</p>
+				<label class="profile-row">
+					<input
+						type="checkbox"
+						bind:checked={termBellEnabled}
+						onchange={saveTermBellEnabled}
+					/>
+					<span>터미널 벨 소리/진동 켜기</span>
+				</label>
 			</section>
 
 			<section class="section">

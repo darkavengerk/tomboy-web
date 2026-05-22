@@ -25,8 +25,10 @@
 		getTerminalHistoryPanelOpenMobile,
 		setTerminalHistoryPanelOpenMobile,
 		getTerminalShellIntegrationBannerDismissed,
-		setTerminalShellIntegrationBannerDismissed
+		setTerminalShellIntegrationBannerDismissed,
+		getTerminalBellEnabled
 	} from '$lib/storage/appSettings.js';
+	import { createBellRinger } from './terminalBell.js';
 	import { subscribeNoteReload } from '$lib/core/noteReloadBus.js';
 	import { getNote } from '$lib/storage/noteStore.js';
 	import { deserializeContent } from '$lib/core/noteContentArchiver.js';
@@ -438,6 +440,17 @@
 		window.addEventListener('pagehide', onPageHide);
 
 		} // end !isSpectator gate for OSC + history + shell-banner setup
+
+		// 터미널 벨 — shell 모드 + 설정 on일 때만. \x07은 이미 데이터 스트림으로
+		// 도착하므로 onBell 연결만으로 충분하다. 설정은 마운트 시점 1회 읽음 —
+		// 토글을 바꾸면 노트를 다시 열어야 반영된다(다른 터미널 설정과 동일).
+		if (!isSpectator) {
+			const bellEnabled = await getTerminalBellEnabled();
+			if (bellEnabled) {
+				const ringBell = createBellRinger();
+				term!.onBell(() => ringBell());
+			}
+		}
 
 		if (!isSpectator) {
 			fit = new FitAddon();
