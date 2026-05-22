@@ -1459,10 +1459,12 @@ history:
 				<details class="guide-card">
 					<summary>리마커블 배경화면 노트 — 태블릿 화면 바꾸기</summary>
 					<p class="info-text">
-						본문 첫 줄(제목 한 줄은 허용)이 <code>remarkable://&lt;별칭&gt;</code> 시그니처면 노트
-						상단에 "리마커블 배경화면" 액션바가 나타납니다. 없으면 일반 노트로 떨어집니다.
+						본문 <strong>둘째 줄</strong>이 <code>remarkable://&lt;별칭&gt;</code> 시그니처면 노트
+						상단에 "리마커블 배경화면" 액션바가 나타납니다. 첫 줄은 자유로운 노트 제목이며,
+						둘째 줄에 시그니처가 없으면 일반 노트로 떨어집니다.
 					</p>
-					<pre class="snippet">remarkable://rm2
+					<pre class="snippet">내 리마커블 배경
+remarkable://rm2
 
 절전 중
 https://www.dropbox.com/…/suspended.png

@@ -22,33 +22,28 @@ const URL_RE = /https?:\/\/[^\s]+/;
 /**
  * 노트의 TipTap JSON을 리마커블 배경화면 스펙으로 파싱.
  *
- * 인식: `remarkable://<alias>` 시그니처가 content[0] 또는 content[1]의 첫
- * 줄이어야 한다(제목 줄 1개 허용 — parseOcrNote와 동형). 없으면 null = 평범한 노트.
+ * 인식: `remarkable://<alias>` 시그니처가 content[1](노트 본문 2번째 줄)의
+ * 첫 줄이어야 한다. content[0](1번째 줄)은 항상 자유로운 노트 제목 —
+ * 파서가 건드리지 않는다. 시그니처가 2번째 줄에 없으면 null = 평범한 노트.
  *
- * 섹션: 시그니처 이후, 트림 텍스트가 알려진 라벨인 단락이 섹션을 연다. 그
- * 아래(다음 라벨 또는 문서 끝까지) 단락들에서 발견되는 첫 http(s) URL이 그
- * 슬롯의 이미지. 미인식 라벨·단락은 무시.
+ * 섹션: 시그니처 이후(3번째 줄~), 트림 텍스트가 알려진 라벨인 단락이 섹션을
+ * 연다. 그 아래(다음 라벨 또는 문서 끝까지) 단락들에서 발견되는 첫 http(s)
+ * URL이 그 슬롯의 이미지. 미인식 라벨·단락은 무시.
  */
 export function parseRemarkableNote(
 	doc: JSONContent | null | undefined
 ): RemarkableNoteSpec | null {
 	if (!doc || doc.type !== 'doc' || !Array.isArray(doc.content)) return null;
 	const blocks = doc.content;
-	if (blocks.length === 0) return null;
+	// 1번째 줄 = 제목, 2번째 줄 = 시그니처 — 최소 2개 블록 필요.
+	if (blocks.length < 2) return null;
 
-	let sigIndex = -1;
-	let host = '';
-	for (const idx of [0, 1]) {
-		if (idx >= blocks.length) break;
-		const firstLine = blockText(blocks[idx]).split('\n')[0].trim();
-		const m = SIGNATURE_RE.exec(firstLine);
-		if (m) {
-			sigIndex = idx;
-			host = m[1];
-			break;
-		}
-	}
-	if (sigIndex < 0) return null;
+	// 시그니처는 정확히 2번째 블록(content[1])의 첫 줄이어야 한다.
+	const sigLine = blockText(blocks[1]).split('\n')[0].trim();
+	const m = SIGNATURE_RE.exec(sigLine);
+	if (!m) return null;
+	const sigIndex = 1;
+	const host = m[1];
 
 	const slots: RemarkableSlotEntry[] = [];
 	const seen = new Set<RmSlotId>();

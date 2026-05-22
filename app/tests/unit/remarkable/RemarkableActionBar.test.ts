@@ -23,7 +23,7 @@ function para(text: string): JSONContent {
 
 const rmDoc: JSONContent = {
 	type: 'doc',
-	content: [para('remarkable://rm2'), para('절전 중:'), para('https://x/sleep.png')]
+	content: [para('내 배경'), para('remarkable://rm2'), para('절전 중:'), para('https://x/sleep.png')]
 };
 
 afterEach(() => {
@@ -73,7 +73,7 @@ describe('RemarkableActionBar', () => {
 
 	it('shows empty notice when there are no slots', () => {
 		render(RemarkableActionBar, {
-			editor: fakeEditor({ type: 'doc', content: [para('remarkable://rm2')] }),
+			editor: fakeEditor({ type: 'doc', content: [para('내 배경'), para('remarkable://rm2')] }),
 			bridgeUrl: 'wss://b',
 			bridgeToken: 't'
 		});

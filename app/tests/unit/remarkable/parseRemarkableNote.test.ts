@@ -23,27 +23,42 @@ describe('parseRemarkableNote', () => {
 		expect(parseRemarkableNote(doc('hello', 'world'))).toBeNull();
 	});
 
-	it('recognizes signature at content[0]', () => {
-		const r = parseRemarkableNote(doc('remarkable://rm2'));
+	it('returns null when the signature is on line 1 only (no 2nd line)', () => {
+		// 1번째 줄은 항상 제목 — 시그니처가 거기 있어도 인식하지 않는다.
+		expect(parseRemarkableNote(doc('remarkable://rm2'))).toBeNull();
+	});
+
+	it('returns null when the signature is on line 1 (line 2 is not a signature)', () => {
+		// content[0]은 제목으로 무시되고, content[1]('절전 중:')은 시그니처가 아니다.
+		expect(parseRemarkableNote(doc('remarkable://rm2', '절전 중:'))).toBeNull();
+	});
+
+	it('recognizes the signature on line 2, title on line 1', () => {
+		const r = parseRemarkableNote(doc('리마커블 배경', 'remarkable://rm2'));
 		expect(r).not.toBeNull();
 		expect(r!.host).toBe('rm2');
 		expect(r!.slots).toEqual([]);
 	});
 
-	it('recognizes signature at content[1] (title line above)', () => {
-		const r = parseRemarkableNote(doc('리마커블 배경', 'remarkable://rm2'));
+	it('treats line 1 as a free title — any text is allowed', () => {
+		const r = parseRemarkableNote(doc('아무 제목!@# 123 — 자유롭게', 'remarkable://rm2'));
+		expect(r!.host).toBe('rm2');
+	});
+
+	it('accepts an empty title line', () => {
+		const r = parseRemarkableNote(doc('', 'remarkable://rm2'));
 		expect(r!.host).toBe('rm2');
 	});
 
 	it('returns empty slots when a label has no following URL', () => {
-		const r = parseRemarkableNote(doc('remarkable://rm2', '절전 중:'));
+		const r = parseRemarkableNote(doc('제목', 'remarkable://rm2', '절전 중:'));
 		expect(r).not.toBeNull();
 		expect(r!.slots).toEqual([]);
 	});
 
 	it('collects an image URL under a section label', () => {
 		const r = parseRemarkableNote(
-			doc('remarkable://rm2', '절전 중:', 'https://example.com/sleep.png')
+			doc('제목', 'remarkable://rm2', '절전 중:', 'https://example.com/sleep.png')
 		);
 		expect(r!.slots).toEqual([{ slot: 'suspended', imageUrl: 'https://example.com/sleep.png' }]);
 	});
@@ -51,6 +66,7 @@ describe('parseRemarkableNote', () => {
 	it('collects multiple sections', () => {
 		const r = parseRemarkableNote(
 			doc(
+				'제목',
 				'remarkable://rm2',
 				'절전 중:',
 				'https://example.com/sleep.png',
@@ -66,7 +82,7 @@ describe('parseRemarkableNote', () => {
 
 	it('ignores unrecognized labels and stray paragraphs', () => {
 		const r = parseRemarkableNote(
-			doc('remarkable://rm2', '메모', '아무 텍스트', '전원 꺼짐:', 'https://x.io/off.png')
+			doc('제목', 'remarkable://rm2', '메모', '아무 텍스트', '전원 꺼짐:', 'https://x.io/off.png')
 		);
 		expect(r!.slots).toEqual([{ slot: 'poweroff', imageUrl: 'https://x.io/off.png' }]);
 	});
@@ -74,6 +90,7 @@ describe('parseRemarkableNote', () => {
 	it('keeps only the first URL / first occurrence per slot', () => {
 		const r = parseRemarkableNote(
 			doc(
+				'제목',
 				'remarkable://rm2',
 				'절전 중:',
 				'https://a.io/1.png',
@@ -89,6 +106,7 @@ describe('parseRemarkableNote', () => {
 		const d: JSONContent = {
 			type: 'doc',
 			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
 				{ type: 'paragraph', content: [{ type: 'text', text: 'remarkable://rm2' }] },
 				{ type: 'paragraph', content: [{ type: 'text', text: '부팅 중:' }] },
 				{
@@ -109,8 +127,8 @@ describe('parseRemarkableNote', () => {
 		]);
 	});
 
-	it('returns null for a malformed signature', () => {
-		expect(parseRemarkableNote(doc('remarkable://', '절전 중:'))).toBeNull();
-		expect(parseRemarkableNote(doc('remarkable:/rm2'))).toBeNull();
+	it('returns null for a malformed signature on line 2', () => {
+		expect(parseRemarkableNote(doc('제목', 'remarkable://'))).toBeNull();
+		expect(parseRemarkableNote(doc('제목', 'remarkable:/rm2'))).toBeNull();
 	});
 });
