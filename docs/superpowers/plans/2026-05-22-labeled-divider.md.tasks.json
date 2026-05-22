@@ -4,23 +4,23 @@
     {
       "id": 0,
       "subject": "Task 1: parseLabeledDivider pure parser",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** A pure, ProseMirror-free function that classifies a paragraph's text as a centered or left labeled divider (or neither) and returns the character ranges of the hidden dash runs and the visible label.\n\n**Files:**\n- Create: `app/src/lib/editor/labeledDivider/parseLabeledDivider.ts`\n- Test: `app/tests/unit/editor/parseLabeledDivider.test.ts`\n\n**Acceptance Criteria:**\n- `-- label --` (2+ dashes each side) parses as `align: 'center'`.\n- `label ---` (3+ trailing dashes, no leading dashes) parses as `align: 'left'`.\n- Dashes-on-both-sides input resolves to `center` (centered checked first).\n- A pure dash run (`---`, `-----`) returns `null`.\n- A label that is all-dashes/whitespace, or (for `left`) starts with a dash, returns `null`.\n- Returned ranges are contiguous and the label range matches the `label` string.\n\n**Verify:** `cd app && npx vitest run tests/unit/editor/parseLabeledDivider.test.ts` -> all tests pass.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/labeledDivider/parseLabeledDivider.ts\", \"app/tests/unit/editor/parseLabeledDivider.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/parseLabeledDivider.test.ts\", \"acceptanceCriteria\": [\"centered -- label -- parses as center\", \"left label --- parses as left\", \"dashes both sides resolve to center\", \"pure dash runs return null\", \"all-dash/whitespace or leading-dash labels return null\", \"ranges contiguous and match label\"]}\n```"
     },
     {
       "id": 1,
       "subject": "Task 2: labeledDividerPlugin ProseMirror plugin",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [0],
       "description": "**Goal:** A decoration-only ProseMirror plugin that, for each top-level paragraph (skipping the title + subtitle lines), runs `parseLabeledDivider` and emits a node decoration (line + alignment class) plus inline decorations (hide dash runs, style label).\n\n**Files:**\n- Create: `app/src/lib/editor/labeledDivider/labeledDividerPlugin.ts`\n- Test: `app/tests/unit/editor/labeledDividerPlugin.test.ts`\n\n**Acceptance Criteria:**\n- A centered-divider paragraph at index >= 2 gets `<p class=\"tomboy-labeled-divider tomboy-labeled-divider--center\">`.\n- A left-divider paragraph gets the `tomboy-labeled-divider--left` class.\n- The label is wrapped in `.tomboy-labeled-divider-label`; dash runs in `.tomboy-labeled-divider-mark`.\n- Paragraphs at index 0 and 1 (title/subtitle) are never decorated.\n- Plain paragraphs and pure `---` HR paragraphs are not decorated.\n- Decorations recompute when the document changes.\n\n**Verify:** `cd app && npx vitest run tests/unit/editor/labeledDividerPlugin.test.ts` -> all tests pass.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/labeledDivider/labeledDividerPlugin.ts\", \"app/tests/unit/editor/labeledDividerPlugin.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/labeledDividerPlugin.test.ts\", \"acceptanceCriteria\": [\"centered divider gets --center node class\", \"left divider gets --left node class\", \"label in .tomboy-labeled-divider-label span, dashes in .tomboy-labeled-divider-mark\", \"index 0 and 1 never decorated\", \"plain paragraphs and pure --- HR not decorated\", \"decorations recompute on doc change\"]}\n```"
     },
     {
       "id": 2,
       "subject": "Task 3: Register plugin in editor and add divider CSS",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "**Goal:** Wire `createLabeledDividerPlugin` into `TomboyEditor.svelte`'s extension list and add the CSS that paints the divider line and styles the label, so the feature is live in the running app.\n\n**Files:**\n- Modify: `app/src/lib/editor/TomboyEditor.svelte` (import near hrSplit import ~line 52-54; new `Extension.create` after the `tomboyHrSplit` block ~line 466; CSS after the `tomboy-hr-marker` rules, before `.tomboy-hr-split-active` ~line 1342)\n\n**Acceptance Criteria:**\n- `npm run check` passes (no new type errors).\n- Full test suite (`npm run test`) passes.\n- In the dev server, typing `-- label --` renders a centered divider; typing `label ---` renders a left divider.\n- The label stays directly editable; a real `---` HR still renders as a plain horizontal line.\n\n**Verify:** `cd app && npm run check && npm run test` -> both succeed; then `npm run dev` and visually confirm both divider layouts (manual).\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/TomboyEditor.svelte\"], \"verifyCommand\": \"cd app && npm run check && npm run test\", \"acceptanceCriteria\": [\"npm run check passes with no new type errors\", \"npm run test full suite passes\", \"-- label -- renders a centered divider in dev\", \"label --- renders a left divider in dev\", \"label stays editable and plain --- HR unchanged\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-22"
+  "lastUpdated": "2026-05-22T15:30:00Z"
 }
