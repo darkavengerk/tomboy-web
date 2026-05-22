@@ -1455,6 +1455,31 @@ history:
 							먼저 확인하세요(기본 OFF).</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>리마커블 배경화면 노트 — 태블릿 화면 바꾸기</summary>
+					<p class="info-text">
+						본문 첫 줄(제목 한 줄은 허용)이 <code>remarkable://&lt;별칭&gt;</code> 시그니처면 노트
+						상단에 "리마커블 배경화면" 액션바가 나타납니다. 없으면 일반 노트로 떨어집니다.
+					</p>
+					<pre class="snippet">remarkable://rm2
+
+절전 중
+https://www.dropbox.com/…/suspended.png
+
+부팅 중
+https://www.dropbox.com/…/starting.png</pre>
+					<ul class="guide-list">
+						<li>섹션 라벨 5종 — <code>절전 중</code> / <code>부팅 중</code> / <code>전원 꺼짐</code> /
+							<code>재부팅 중</code> / <code>배터리 없음</code>. 라벨 아래 첫 http(s) 링크가 그 화면 이미지.</li>
+						<li>액션바의 <strong>적용</strong> 버튼으로 전송. 이미지는 브릿지에서 흑백 ·
+							1404×1872로 자동 변환됩니다. "절전 중"을 바꾸면 태블릿의 xochitl이 자동 재시작됩니다.</li>
+						<li>인증은 터미널 브릿지와 동일(Bearer 토큰 + ssh 키). 자격증명은 노트에 쓰지 않습니다.</li>
+						<li>브릿지에 reMarkable 호스트 설정(<code>remarkable.json</code>)이 있어야 하며,
+							<code>&lt;별칭&gt;</code>은 그 설정의 키와 일치해야 합니다. 설정이 없으면
+							<strong>"브릿지에 리마커블 설정이 없습니다"</strong>(503) 오류가 납니다.</li>
+					</ul>
+				</details>
 			</section>
 
 			<section class="section">
