@@ -1122,6 +1122,11 @@
 	   scroller. Horizontal is always hidden — width fit guarantees no
 	   horizontal overflow. */
 	.terminal-page.spectator .xterm-host {
+		/* Bottom-anchor the scaled pane: when it's taller than the host
+		   the TOP overflows and is clipped, keeping prompt/cursor visible. */
+		display: flex;
+		flex-direction: column;
+		justify-content: flex-end;
 		overflow-x: hidden;
 		overflow-y: hidden;
 	}
@@ -1135,6 +1140,11 @@
 	.terminal-page.spectator .xterm-stage {
 		/* width / height set inline by applySpectatorFit. */
 		position: relative;
+		/* Keep the explicit scaled height — never let the flex parent
+		   shrink the stage. A taller-than-host pane must overflow the TOP
+		   (clipped), not compress; compression would desync the absolute
+		   .xterm-mount and the touch-scroll pxPerLine math. */
+		flex-shrink: 0;
 	}
 	.terminal-page.spectator .xterm-mount {
 		/* width / height / transform set inline by applySpectatorFit. */
