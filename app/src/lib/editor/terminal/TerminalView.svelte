@@ -13,6 +13,11 @@
 	import { appendCommandToTerminalHistory, flushTerminalHistoryNow, removeCommandFromTerminalHistory, clearTerminalHistory, pinCommandInTerminalHistory, unpinCommandInTerminalHistory } from './historyStore.js';
 	import { runConnectScript } from './connectAutoRun.js';
 	import {
+		computeScrollState,
+		INITIAL_SCROLL_STATE,
+		type SpectatorScrollState
+	} from './spectatorScroll.js';
+	import {
 		getTerminalHistoryBlocklist,
 		getTerminalHistoryPanelOpenDesktop,
 		setTerminalHistoryPanelOpenDesktop,
@@ -92,7 +97,7 @@
 	 * the pure helper. The guard and wiring are exercised via manual QA.
 	 */
 	let connectFired = false;
-	let spectatorBufferLogged = false;
+	let scrollState: SpectatorScrollState = $state(INITIAL_SCROLL_STATE);
 
 	const currentItems = $derived(histories.get(currentWindowKey ?? '') ?? []);
 	const bucketLabel = $derived.by(() => {
@@ -216,6 +221,13 @@
 		// bounds reflect what the user actually sees.
 		xtermStageEl.style.width = `${naturalW * scale}px`;
 		xtermStageEl.style.height = `${naturalH * scale}px`;
+	}
+
+	/** 관전 모드 스크롤 상태를 xterm 버퍼 좌표로부터 갱신한다. */
+	function recomputeScroll(): void {
+		if (!isSpectator || !term) return;
+		const b = term.buffer.active;
+		scrollState = computeScrollState(scrollState, b.viewportY, b.baseY);
 	}
 
 	/**
@@ -410,6 +422,10 @@
 			}
 		}
 
+		if (isSpectator) {
+			term.onScroll(() => recomputeScroll());
+		}
+
 		client = new TerminalWsClient({
 			bridge,
 			target: spec.target,
@@ -418,12 +434,9 @@
 			rows: term.rows,
 			spectate: spec.spectate,
 			onData: (chunk) => {
-				term?.write(chunk);
-				if (isSpectator && !spectatorBufferLogged && term) {
-					spectatorBufferLogged = true;
-					const b = term.buffer.active;
-					console.log('[spectator] buffer after seed:', {
-						length: b.length, baseY: b.baseY, viewportY: b.viewportY, rows: term.rows
+				if (term) {
+					term.write(chunk, () => {
+						if (isSpectator) recomputeScroll();
 					});
 				}
 			},
@@ -555,12 +568,9 @@
 			rows: term?.rows ?? 24,
 			spectate: spec.spectate,
 			onData: (chunk) => {
-				term?.write(chunk);
-				if (isSpectator && !spectatorBufferLogged && term) {
-					spectatorBufferLogged = true;
-					const b = term.buffer.active;
-					console.log('[spectator] buffer after seed:', {
-						length: b.length, baseY: b.baseY, viewportY: b.viewportY, rows: term.rows
+				if (term) {
+					term.write(chunk, () => {
+						if (isSpectator) recomputeScroll();
 					});
 				}
 			},
@@ -671,6 +681,15 @@
 				<div class="xterm-mount" bind:this={xtermContainer}></div>
 			</div>
 		</div>
+		{#if isSpectator && !scrollState.atBottom}
+			<button
+				type="button"
+				class="scroll-bottom-indicator"
+				onclick={() => { term?.scrollToBottom(); }}
+			>
+				{scrollState.newLines > 0 ? `↓ 새 출력 ${scrollState.newLines}줄` : '↓ 맨 아래로'}
+			</button>
+		{/if}
 		{#if panelOpen && !isSpectator}
 			<HistoryPanel
 				count={currentItems.length}
@@ -1011,6 +1030,7 @@
 		flex: 1;
 		display: flex;
 		min-height: 0;
+		position: relative;
 	}
 
 	/* Desktop (default): panel on the right */
@@ -1053,6 +1073,25 @@
 		position: absolute;
 		top: 0;
 		left: 0;
+	}
+
+	.scroll-bottom-indicator {
+		position: absolute;
+		left: 50%;
+		bottom: 12px;
+		transform: translateX(-50%);
+		z-index: 20;
+		background: #1e6f3f;
+		color: #fff;
+		border: 1px solid #2b8;
+		border-radius: 14px;
+		padding: 5px 14px;
+		font-size: 0.78rem;
+		cursor: pointer;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+	}
+	.scroll-bottom-indicator:active {
+		background: #28814c;
 	}
 
 	/* Mobile: panel becomes a bottom sheet ~50% height */
