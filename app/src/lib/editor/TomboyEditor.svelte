@@ -1356,6 +1356,9 @@
 	   gap through the line. */
 	.tomboy-editor :global(.tomboy-labeled-divider) {
 		position: relative;
+		/* Create a stacking context so the ::before line (z-index:0) and
+		   the label span (z-index:1) layer reliably within this paragraph. */
+		isolation: isolate;
 		margin: 0.6em 0;
 		min-height: 1.2em;
 		padding: 0;
