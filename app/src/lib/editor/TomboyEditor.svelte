@@ -1363,9 +1363,9 @@
 		/* Generous vertical margin — neighbouring paragraphs have margin:0,
 		   so this is the whole gap. Wider than the hr-marker's 0.6em so the
 		   divider breathes without the user adding blank lines by hand. */
-		margin: 2.5em 0;
+		margin: 1.5em 0;
 		min-height: 1.2em;
-		padding: 0;
+		padding: 0.5em 0;
 	}
 	.tomboy-editor :global(.tomboy-labeled-divider--center) {
 		text-align: center;
