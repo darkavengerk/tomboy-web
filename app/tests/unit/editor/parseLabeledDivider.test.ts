@@ -64,6 +64,22 @@ describe('parseLabeledDivider — left', () => {
 		expect(r!.labelRange).toEqual([0, 3]);
 		expect(r!.trailMark).toEqual([3, 6]);
 	});
+
+	it('produces a non-null leadMark when there is leading whitespace', () => {
+		const r = parseLabeledDivider('  회의록 ---');
+		expect(r).not.toBeNull();
+		expect(r!.align).toBe('left');
+		expect(r!.leadMark).toEqual([0, 2]);
+		expect(r!.labelRange).toEqual([2, 5]);
+		expect(r!.trailMark).toEqual([5, 9]);
+	});
+
+	it('allows internal dashes inside a left-layout label', () => {
+		const r = parseLabeledDivider('hello -- world ---');
+		expect(r).not.toBeNull();
+		expect(r!.align).toBe('left');
+		expect(r!.label).toBe('hello -- world');
+	});
 });
 
 describe('parseLabeledDivider — precedence', () => {

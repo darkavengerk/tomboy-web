@@ -14,10 +14,14 @@ export interface LabeledDivider {
 	label: string;
 	/**
 	 * Half-open `[start, end)` character ranges into the parsed string.
-	 * `leadMark` and `trailMark` are the hidden markup runs (dash runs plus
-	 * any adjacent whitespace); `labelRange` is the visible label. The three
-	 * ranges are contiguous and cover the whole string. `leadMark` is null
-	 * when there is no leading hidden run (the common `label ---` case).
+	 * `leadMark` and `trailMark` are the hidden markup runs. For centered
+	 * layout each contains a dash run plus adjacent whitespace; for left
+	 * layout leadMark (if present) is leading whitespace only. `labelRange`
+	 * is the visible label. leadMark (if present) immediately precedes
+	 * labelRange; labelRange immediately precedes trailMark. Together they
+	 * are contiguous and tile the whole string. When leadMark is null,
+	 * labelRange starts at 0. `leadMark` is null when there is no leading
+	 * hidden run (the common `label ---` case).
 	 */
 	leadMark: readonly [number, number] | null;
 	labelRange: readonly [number, number];
