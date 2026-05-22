@@ -484,17 +484,21 @@ Mobile UI: width-fit via `transform: scale` on a three-layer
 xterm cell positioning on mobile); native `overflow-y: auto` +
 `-webkit-overflow-scrolling: touch` for vertical drag (no scroll
 buttons); bottom footer with two rows — top is current window label
-`[<idx>] <name>`, bottom is pane/window nav buttons `« ‹ › »` (issue
-`select-pane -t <s>:.+/-` / `select-window -t <s>:+/-` via WS
-`tmux-nav` frame; affects desktop view too since they're SESSION-level
-targets) + 보내기 button (mobile-only — gated `{#if isMobile}`; desktop
-uses direct keyboard input instead). Popup quick-keys for
+`[<idx>] <name>`, bottom is nav buttons `« 1 2 3 4 »` — `«`/`»` cycle
+windows (`select-window -t <s>:+/-`); `1`–`4` jump to that-numbered pane
+(absolute — the bridge resolves the ordinal against `list-panes`, so it
+is correct regardless of the target's `pane-base-index`, then issues
+`select-pane -t %<paneId>`). All via the WS `tmux-nav` frame and
+SESSION-level, so they move the desktop view too. Plus a 보내기 button
+(mobile-only — gated `{#if isMobile}`; desktop uses direct keyboard
+input instead). Popup quick-keys for
 `y/n/1/Enter/Esc/^C/PgUp/PgDn`. IME composition guarded with
 `!e.isComposing` on Enter/Escape.
 
 Desktop spectator keyboard shortcuts (window-level keydown CAPTURE
 listener so they beat xterm's textarea handler before `^H`/`^L` reach
-the shell): `Ctrl+H`/`Ctrl+L` → prev/next-pane (`‹` `›`),
+the shell): `Ctrl+H`/`Ctrl+L` → prev/next-pane (relative cycle — the
+footer's `1`–`4` buttons are the absolute equivalent),
 `Ctrl+Shift+H`/`Ctrl+Shift+L` → prev/next-window (`«` `»`). The
 listener is scoped to the focused note via `pageEl.contains(document.activeElement)`
 so concurrent terminal windows don't fight each other. Focus is held
@@ -552,8 +556,9 @@ Cross-cutting invariants worth caching (full set lives in the skill):
   500x200 via stty + refresh-client; target must set `window-size
   smallest`. Both halves required — neither alone fixes the
   desktop-window-shrinks-on-attach symptom.
-- **Nav buttons (`« ‹ › »`) act on the SESSION, not just our client.**
-  `:.+/-` / `:+/-` targets change the session's active pane/window, so
+- **Nav buttons (`« 1 2 3 4 »`) act on the SESSION, not just our client.**
+  The `«`/`»` `:+/-` window targets and the `1`–`4` `select-pane -t
+  %<paneId>` switches all change the session's active pane/window, so
   the desktop user's view also moves. Intentional — mobile is acting
   as the user, not running a private viewport.
 

@@ -203,6 +203,17 @@ export class TerminalWsClient {
 		}
 	}
 
+	/**
+	 * Spectator-only: jump the active pane to the Nth pane (1-based) of the
+	 * current tmux window. The switch is observed via the existing
+	 * `pane-switch` frame, so no extra ack is needed.
+	 */
+	selectPane(index: number): void {
+		if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+			this.ws.send(JSON.stringify({ type: 'tmux-nav', action: 'select-pane', index }));
+		}
+	}
+
 
 	close(): void {
 		this.closed = true;

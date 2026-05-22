@@ -180,7 +180,8 @@ interface ClientMsg {
 	d?: string;
 	mode?: 'shell' | 'spectate';
 	session?: string;
-	action?: 'next-pane' | 'prev-pane' | 'next-window' | 'prev-window';
+	action?: 'next-pane' | 'prev-pane' | 'next-window' | 'prev-window' | 'select-pane';
+	index?: number;
 }
 
 const TMUX_NAV_ACTIONS = new Set([
@@ -261,12 +262,20 @@ function handleWs(ws: WebSocket): void {
 		if (spectator) {
 			if (msg.type === 'data' && typeof msg.d === 'string') {
 				spectator.sendInput(msg.d);
-			} else if (
-				msg.type === 'tmux-nav' &&
-				typeof msg.action === 'string' &&
-				TMUX_NAV_ACTIONS.has(msg.action)
-			) {
-				spectator.tmuxNav(msg.action as Parameters<SpectatorSession['tmuxNav']>[0]);
+			} else if (msg.type === 'tmux-nav' && typeof msg.action === 'string') {
+				if (msg.action === 'select-pane') {
+					// Absolute jump to the Nth pane (1-based) of the current
+					// window — backs the mobile footer's 1/2/3/4 buttons.
+					if (
+						typeof msg.index === 'number' &&
+						Number.isInteger(msg.index) &&
+						msg.index >= 1
+					) {
+						spectator.selectPane(msg.index);
+					}
+				} else if (TMUX_NAV_ACTIONS.has(msg.action)) {
+					spectator.tmuxNav(msg.action as Parameters<SpectatorSession['tmuxNav']>[0]);
+				}
 			}
 			return;
 		}

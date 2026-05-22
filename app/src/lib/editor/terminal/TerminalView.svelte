@@ -283,6 +283,15 @@
 	}
 
 	/**
+	 * Jump the spectated window's active pane to pane number `n` (1-based).
+	 * Backs the footer's 1/2/3/4 buttons. The bridge resolves the ordinal
+	 * against `list-panes`, so a number past the last pane is a no-op.
+	 */
+	function selectPane(n: number): void {
+		client?.selectPane(n);
+	}
+
+	/**
 	 * Whether keystrokes should flow into xterm at all. Mobile spectator
 	 * stays read-by-default — the on-screen keyboard popping up on every
 	 * tap would clobber the watch-only UX. Everywhere else (shell mode,
@@ -317,10 +326,13 @@
 	 * attaches its own listener and only the one containing focus
 	 * handles the key.
 	 *
-	 *   Ctrl+H        → prev-pane    (matches `‹` button)
-	 *   Ctrl+L        → next-pane    (matches `›` button)
+	 *   Ctrl+H        → prev-pane    (relative pane cycle)
+	 *   Ctrl+L        → next-pane    (relative pane cycle)
 	 *   Ctrl+Shift+H  → prev-window  (matches `«` button)
 	 *   Ctrl+Shift+L  → next-window  (matches `»` button)
+	 *
+	 * The footer's pane buttons are absolute (1/2/3/4 → that pane); the
+	 * Ctrl+H/L pair stays relative so desktop keeps a quick cycle.
 	 *
 	 * Spectator-only; in shell mode these would clobber the user's own
 	 * Ctrl+H (^H = backspace) and Ctrl+L (^L = clear) keystrokes.
@@ -777,20 +789,15 @@
 						onclick={() => tmuxNav('prev-window')}
 						disabled={status !== 'open'}
 					>&laquo;</button>
-					<button
-						type="button"
-						class="icon"
-						title="이전 패널"
-						onclick={() => tmuxNav('prev-pane')}
-						disabled={status !== 'open'}
-					>&lsaquo;</button>
-					<button
-						type="button"
-						class="icon"
-						title="다음 패널"
-						onclick={() => tmuxNav('next-pane')}
-						disabled={status !== 'open'}
-					>&rsaquo;</button>
+					{#each [1, 2, 3, 4] as n (n)}
+						<button
+							type="button"
+							class="icon pane-num"
+							title="패널 {n}"
+							onclick={() => selectPane(n)}
+							disabled={status !== 'open'}
+						>{n}</button>
+					{/each}
 					<button
 						type="button"
 						class="icon"
@@ -1008,6 +1015,10 @@
 		padding: 4px 9px;
 		min-width: 30px;
 		line-height: 1;
+	}
+	.spec-footer button.pane-num {
+		font-family: ui-monospace, Menlo, Consolas, monospace;
+		font-weight: 600;
 	}
 	.spec-footer button:active {
 		background: #4a4a4a;

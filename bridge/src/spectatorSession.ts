@@ -454,4 +454,37 @@ export class SpectatorSession {
 		});
 	}
 
+	/**
+	 * Jump the spectated window's active pane to the Nth pane (1-based),
+	 * counted in tmux's pane-index order. The mobile footer's 1/2/3/4
+	 * buttons map straight onto a pane this way — unlike `tmuxNav`'s
+	 * relative `next-pane` / `prev-pane`, this is an absolute switch.
+	 *
+	 * The ordinal is resolved through `list-panes` rather than
+	 * `select-pane -t <s>:.<n>` so it stays correct regardless of the
+	 * target's `pane-base-index` (0- or 1-based): the (ordinal-1)th pane
+	 * id in list order is always the Nth pane on screen. An ordinal past
+	 * the last pane resolves to nothing and is a silent no-op.
+	 *
+	 * The resulting `%window-pane-changed` notification flows through the
+	 * existing focus-follow path, so the view + size + label update
+	 * naturally — no separate ack frame.
+	 */
+	selectPane(ordinal: number): void {
+		if (this.closed || !Number.isInteger(ordinal) || ordinal < 1) return;
+		const s = this.sessionName;
+		this.tmux
+			.command(`list-panes -t ${s} -F '#{pane_id}'`)
+			.then((lines) => {
+				if (this.closed) return;
+				const paneId = (lines[ordinal - 1] ?? '').trim();
+				// Fewer panes than the requested ordinal → nothing to do.
+				if (!paneId) return;
+				return this.tmux.command(`select-pane -t ${paneId}`);
+			})
+			.catch((err) => {
+				console.error('[spectator] selectPane failed:', (err as Error).message);
+			});
+	}
+
 }

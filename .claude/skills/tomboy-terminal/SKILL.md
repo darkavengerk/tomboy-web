@@ -409,11 +409,23 @@ in either order. Duplicates of either reject the note.
    the command line is shell/tmux-quoting-safe regardless of payload
    (control chars, multibyte UTF-8, etc). `resize` frames are still
    dropped (bridge dictates size from tmux). Requires tmux 3.0+ for `-H`.
-10. **Pane/window nav**: WS `tmux-nav` frames (`action: 'next-pane' |
-    'prev-pane' | 'next-window' | 'prev-window'`) are routed to
-    `spectator.tmuxNav(action)` which issues `select-pane -t <s>:.+/-`
-    or `select-window -t <s>:+/-`. The resulting `%window-pane-changed`
-    / `%session-window-changed` notification flows through the existing
+10. **Pane/window nav**: WS `tmux-nav` frames carry one of two shapes:
+    - Relative cycle — `action: 'next-pane' | 'prev-pane' | 'next-window'
+      | 'prev-window'` → `spectator.tmuxNav(action)` issues
+      `select-pane -t <s>:.+/-` or `select-window -t <s>:+/-`. Backs the
+      desktop `Ctrl+H/L` + `Ctrl+Shift+H/L` shortcuts and the `«`/`»`
+      window buttons.
+    - Absolute pane jump — `action: 'select-pane', index: <1-based>` →
+      `spectator.selectPane(index)` resolves the ordinal via
+      `list-panes -t <s> -F '#{pane_id}'`, takes the `(index-1)`th pane
+      id, and issues `select-pane -t %<paneId>`. Resolving through
+      `list-panes` (instead of `select-pane -t <s>:.<n>`) keeps it
+      correct regardless of the target's `pane-base-index`; an index
+      past the last pane is a silent no-op. Backs the footer's
+      `1`–`4` buttons.
+
+    Either way the resulting `%window-pane-changed` /
+    `%session-window-changed` notification flows through the existing
     focus-follow path, so the spectator's view + size + window label
     update naturally — no separate ack frame.
 11. **Error surfacing**: ssh stderr is rolling-buffered (last 1 KB) and
@@ -437,10 +449,11 @@ Client → server (spectator mode only):
 
 ```jsonc
 {"type": "data", "d": "y\r"}                           // 보내기 popup
-{"type": "tmux-nav", "action": "next-pane"}            // « ‹ › » buttons
-{"type": "tmux-nav", "action": "prev-pane"}
-{"type": "tmux-nav", "action": "next-window"}
-{"type": "tmux-nav", "action": "prev-window"}
+{"type": "tmux-nav", "action": "next-window"}          // » button / Ctrl+Shift+L
+{"type": "tmux-nav", "action": "prev-window"}          // « button / Ctrl+Shift+H
+{"type": "tmux-nav", "action": "next-pane"}            // Ctrl+L (relative)
+{"type": "tmux-nav", "action": "prev-pane"}            // Ctrl+H (relative)
+{"type": "tmux-nav", "action": "select-pane", "index": 2}  // 1–4 buttons (1-based)
 ```
 
 `data` frames are unchanged from shell mode. `resize` frames are still
@@ -498,10 +511,12 @@ actions are whitelisted on the server (`TMUX_NAV_ACTIONS` set in
   - Top row (`.spec-windowbar`): current window label
     `[<window_index>] <window_name>` (or "윈도우 정보 대기 중…"
     until the first `pane-switch` lands). Updated on every pane-switch.
-  - Bottom row (`.spec-controls`): pane/window nav button group
-    `« ‹ › »`, plus a 보내기 button **only on mobile** (`{#if isMobile}`).
-    On desktop the popup is unnecessary — direct keyboard input
-    handles every case the popup was built for.
+  - Bottom row (`.spec-controls`): nav button group `« 1 2 3 4 »` —
+    `«`/`»` cycle windows, the `1`–`4` (`.pane-num`) buttons jump
+    straight to that-numbered pane (`selectPane(n)` → `client.selectPane`
+    → `tmux-nav` `select-pane` frame). Plus a 보내기 button **only on
+    mobile** (`{#if isMobile}`). On desktop the popup is unnecessary —
+    direct keyboard input handles every case the popup was built for.
 - **Desktop keyboard shortcuts** (spectator only — in shell mode the
   same combos would clobber the user's own Ctrl+H/L on the remote
   shell). Window-level `keydown` listener registered with
@@ -510,8 +525,9 @@ actions are whitelisted on the server (`TMUX_NAV_ACTIONS` set in
   and shipped to the shell. Scoped via
   `pageEl.contains(document.activeElement)` so multiple terminal
   windows don't all respond:
-  - `Ctrl+H` → `tmuxNav('prev-pane')` (matches `‹`)
-  - `Ctrl+L` → `tmuxNav('next-pane')` (matches `›`)
+  - `Ctrl+H` → `tmuxNav('prev-pane')` (relative pane cycle — no button;
+    the footer's `1`–`4` are the absolute equivalent)
+  - `Ctrl+L` → `tmuxNav('next-pane')` (relative pane cycle — no button)
   - `Ctrl+Shift+H` → `tmuxNav('prev-window')` (matches `«`)
   - `Ctrl+Shift+L` → `tmuxNav('next-window')` (matches `»`)
 - **Focus retention.** `term.focus()` is called in `onMount` and at
@@ -525,10 +541,11 @@ actions are whitelisted on the server (`TMUX_NAV_ACTIONS` set in
   is false), so the OSK doesn't pop on entry. The svelte-ignore
   pair on the wrapper div is intentional: the click handler is a
   passive focus-redirect, not a new interaction surface.
-    - `«` `‹` `›` `»` map to `tmuxNav('prev-window' | 'prev-pane' |
-      'next-pane' | 'next-window')` respectively. All disabled while
-      `status !== 'open'`. Bridge issues `select-pane -t <s>:.+/-` or
-      `select-window -t <s>:+/-`; we don't local-track state — the
+    - `«` / `»` map to `tmuxNav('prev-window' | 'next-window')`; the
+      `1`–`4` buttons map to `selectPane(n)`. All disabled while
+      `status !== 'open'`. Bridge issues `select-window -t <s>:+/-`
+      (windows) or `select-pane -t %<paneId>` after a `list-panes`
+      ordinal resolve (panes); we don't local-track state — the
       resulting `%window-pane-changed` flows back through the normal
       seed path. Because nav happens on the bridge's control client,
       it also changes the desktop client's view (same tmux session
@@ -623,10 +640,10 @@ to add the three lines inline than to source the plugin file.
   has been idle, because the spectator's attach counts as the most
   recent activity. Don't "simplify" by dropping the stty line or
   switching back to `latest`.
-- **Nav buttons drive both views.** `«` `‹` `›` `»` issue tmux
-  commands with `:.+/-` and `:+/-` targets, which change the SESSION's
-  active pane/window — affecting the desktop user's view too. This is
-  intentional (mobile is acting AS the user). If you ever want
+- **Nav buttons drive both views.** `«` `»` (`:+/-` window targets) and
+  the `1`–`4` pane buttons (`select-pane -t %<paneId>`) all change the
+  SESSION's active pane/window — affecting the desktop user's view too.
+  This is intentional (mobile is acting AS the user). If you ever want
   spectator-private navigation, you'd need per-client `switch-client`
   semantics, which tmux's control mode doesn't cleanly support.
 
