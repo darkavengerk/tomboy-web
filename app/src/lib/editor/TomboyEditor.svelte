@@ -52,6 +52,7 @@
 		createHrSplitPlugin,
 		hrSplitPluginKey,
 	} from "./hrSplit/hrSplitPlugin.js";
+	import { createLabeledDividerPlugin } from "./labeledDivider/labeledDividerPlugin.js";
 	import {
 		loadActiveOrdinals,
 		saveActiveOrdinals,
@@ -462,6 +463,12 @@
 								},
 							}),
 						];
+					},
+				}),
+				Extension.create({
+					name: "tomboyLabeledDivider",
+					addProseMirrorPlugins() {
+						return [createLabeledDividerPlugin()];
 					},
 				}),
 				SlipNoteArrows,
@@ -1339,6 +1346,60 @@
 			#888 calc(50% + 1px),
 			transparent calc(50% + 1px)
 		);
+	}
+
+	/* Labeled divider — a divider line with embedded text. The literal
+	   markup (`-- label --` / `label ---`) lives in a plain paragraph;
+	   labeledDividerPlugin hides the dash runs and styles the label.
+	   `::before` paints the line (same gradient/colour as the hr-marker);
+	   the label sits above it with an opaque background that punches a
+	   gap through the line. */
+	.tomboy-editor :global(.tomboy-labeled-divider) {
+		position: relative;
+		/* Create a stacking context so the ::before line (z-index:0) and
+		   the label span (z-index:1) layer reliably within this paragraph. */
+		isolation: isolate;
+		margin: 0.6em 0;
+		min-height: 1.2em;
+		padding: 0;
+	}
+	.tomboy-editor :global(.tomboy-labeled-divider--center) {
+		text-align: center;
+	}
+	.tomboy-editor :global(.tomboy-labeled-divider--left) {
+		text-align: left;
+		/* Left padding leaves a short stub of line before the label. */
+		padding-left: 1.6em;
+	}
+	.tomboy-editor :global(.tomboy-labeled-divider::before) {
+		content: '';
+		position: absolute;
+		inset: 0;
+		z-index: 0;
+		background: linear-gradient(
+			to bottom,
+			transparent calc(50% - 0.5px),
+			#b0b0b0 calc(50% - 0.5px),
+			#b0b0b0 calc(50% + 0.5px),
+			transparent calc(50% + 0.5px)
+		);
+		pointer-events: none;
+	}
+	/* Dash runs: collapsed to zero width so a long trailing run never
+	   shifts layout. Still caret-steppable. */
+	.tomboy-editor :global(.tomboy-labeled-divider-mark) {
+		font-size: 0;
+	}
+	/* The visible label. The opaque background must match the editor
+	   surface (white) so the label cuts a clean gap through the line
+	   drawn behind it. */
+	.tomboy-editor :global(.tomboy-labeled-divider-label) {
+		position: relative;
+		z-index: 1;
+		background: #fff;
+		padding: 0 0.5em;
+		color: #666;
+		font-size: 0.85em;
 	}
 
 	.tomboy-editor :global(.tiptap.tomboy-hr-split-active) {
