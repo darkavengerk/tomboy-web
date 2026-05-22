@@ -558,6 +558,7 @@
 		connectFired = false; // allow connect: script to re-run on next 'open'
 		client?.close();
 		term?.reset();
+		scrollState = INITIAL_SCROLL_STATE;
 		status = 'connecting';
 		statusMessage = '';
 		client = new TerminalWsClient({
