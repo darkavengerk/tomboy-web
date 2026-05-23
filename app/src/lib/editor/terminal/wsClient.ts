@@ -7,6 +7,10 @@ export interface PaneSwitchInfo {
 	altScreen: boolean;
 	windowIndex: string;
 	windowName: string;
+	/** Active pane's 1-based footer-button ordinal; 0 when unknown. */
+	paneOrdinal: number;
+	/** Total panes in the spectated window; 0 when unknown. */
+	paneCount: number;
 }
 
 interface ClientOptions {
@@ -40,6 +44,8 @@ interface ServerMsg {
 	altScreen?: boolean;
 	windowIndex?: string;
 	windowName?: string;
+	paneOrdinal?: number;
+	paneCount?: number;
 }
 
 /**
@@ -142,7 +148,9 @@ export class TerminalWsClient {
 						rows: msg.rows,
 						altScreen: !!msg.altScreen,
 						windowIndex: typeof msg.windowIndex === 'string' ? msg.windowIndex : '',
-						windowName: typeof msg.windowName === 'string' ? msg.windowName : ''
+						windowName: typeof msg.windowName === 'string' ? msg.windowName : '',
+						paneOrdinal: typeof msg.paneOrdinal === 'number' ? msg.paneOrdinal : 0,
+						paneCount: typeof msg.paneCount === 'number' ? msg.paneCount : 0
 					});
 				}
 			} else if (msg.type === 'pane-resize') {

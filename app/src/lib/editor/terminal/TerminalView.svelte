@@ -3,7 +3,7 @@
 	import { Terminal } from '@xterm/xterm';
 	import { FitAddon } from '@xterm/addon-fit';
 	import '@xterm/xterm/css/xterm.css';
-	import { TerminalWsClient, type WsClientStatus } from './wsClient.js';
+	import { TerminalWsClient, type WsClientStatus, type PaneSwitchInfo } from './wsClient.js';
 	import type { TerminalNoteSpec } from './parseTerminalNote.js';
 	import {
 		getDefaultTerminalBridge,
@@ -69,6 +69,12 @@
 	let spectatorRows = $state(0);
 	let spectatorWindowIndex = $state('');
 	let spectatorWindowName = $state('');
+	// Active pane's footer-button ordinal (1-based) + the window's pane count,
+	// reported by the bridge on every pane-switch. Ordinal 0 = unknown (or the
+	// active pane is past button 5). Count 0 = no info yet / bridge too old to
+	// send it — the footer then leaves all five buttons enabled.
+	let spectatorPaneOrdinal = $state(0);
+	let spectatorPaneCount = $state(0);
 	// Spectator "보내기" popup — explicit keystroke injection into the
 	// active pane. Useful for quick claude-code confirmations (y/n/Enter)
 	// from mobile without breaking the read-only-by-default invariant.
@@ -229,6 +235,28 @@
 		if (!isSpectator || !term) return;
 		const b = term.buffer.active;
 		scrollState = computeScrollState(scrollState, b.viewportY, b.baseY);
+	}
+
+	/** pane-switch 프레임에서 공통으로 갱신되는 7개 spectator 상태 변수를 한꺼번에 씁니다. */
+	function applyPaneSwitch({ paneId, cols, rows, windowIndex, windowName, paneOrdinal, paneCount }: PaneSwitchInfo): void {
+		spectatorPaneId = paneId;
+		spectatorCols = cols;
+		spectatorRows = rows;
+		spectatorWindowIndex = windowIndex;
+		spectatorWindowName = windowName;
+		spectatorPaneOrdinal = paneOrdinal;
+		spectatorPaneCount = paneCount;
+	}
+
+	/** 재연결 시 이전 세션의 패인 정보가 잠시 남아 있지 않도록 spectator 상태를 초기화합니다. */
+	function resetSpectatorState(): void {
+		spectatorPaneId = null;
+		spectatorCols = 0;
+		spectatorRows = 0;
+		spectatorWindowIndex = '';
+		spectatorWindowName = '';
+		spectatorPaneOrdinal = 0;
+		spectatorPaneCount = 0;
 	}
 
 	/*
@@ -506,13 +534,9 @@
 					void runConnectScript(spec.connect, (line) => client?.send(line));
 				}
 			},
-			onPaneSwitch: ({ paneId, cols, rows, windowIndex, windowName }) => {
-				spectatorPaneId = paneId;
-				spectatorCols = cols;
-				spectatorRows = rows;
-				spectatorWindowIndex = windowIndex;
-				spectatorWindowName = windowName;
-				try { term?.resize(cols, rows); } catch { /* ignore */ }
+			onPaneSwitch: (info) => {
+				applyPaneSwitch(info);
+				try { term?.resize(info.cols, info.rows); } catch { /* ignore */ }
 				// term.resize triggers an async re-render; defer the fit one
 				// frame so .xterm's new natural dimensions have settled.
 				requestAnimationFrame(() => applySpectatorFit());
@@ -609,6 +633,7 @@
 
 	function reconnect() {
 		if (!resolvedBridge || !resolvedToken) return;
+		resetSpectatorState(); // clear stale pane info so buttons reflect the new session
 		connectFired = false; // allow connect: script to re-run on next 'open'
 		client?.close();
 		term?.reset();
@@ -639,13 +664,9 @@
 					void runConnectScript(spec.connect, (line) => client?.send(line));
 				}
 			},
-			onPaneSwitch: ({ paneId, cols, rows, windowIndex, windowName }) => {
-				spectatorPaneId = paneId;
-				spectatorCols = cols;
-				spectatorRows = rows;
-				spectatorWindowIndex = windowIndex;
-				spectatorWindowName = windowName;
-				try { term?.resize(cols, rows); } catch { /* ignore */ }
+			onPaneSwitch: (info) => {
+				applyPaneSwitch(info);
+				try { term?.resize(info.cols, info.rows); } catch { /* ignore */ }
 			},
 			onPaneResize: ({ cols, rows }) => {
 				spectatorCols = cols;
@@ -789,13 +810,14 @@
 						onclick={() => tmuxNav('prev-window')}
 						disabled={status !== 'open'}
 					>&laquo;</button>
-					{#each [1, 2, 3, 4] as n (n)}
+					{#each [1, 2, 3, 4, 5] as n (n)}
 						<button
 							type="button"
 							class="icon pane-num"
+							class:active={n === spectatorPaneOrdinal}
 							title="패널 {n}"
 							onclick={() => selectPane(n)}
-							disabled={status !== 'open'}
+							disabled={status !== 'open' || (spectatorPaneCount > 0 && n > spectatorPaneCount)}
 						>{n}</button>
 					{/each}
 					<button
@@ -1019,6 +1041,13 @@
 	.spec-footer button.pane-num {
 		font-family: ui-monospace, Menlo, Consolas, monospace;
 		font-weight: 600;
+	}
+	/* Active pane: filled accent. Distinct from idle (#3a3a3a) and the
+	   disabled state (opacity 0.5 via `.spec-footer button:disabled`). */
+	.spec-footer button.pane-num.active {
+		background: #2563eb;
+		border-color: #5b8def;
+		color: #fff;
 	}
 	.spec-footer button:active {
 		background: #4a4a4a;
