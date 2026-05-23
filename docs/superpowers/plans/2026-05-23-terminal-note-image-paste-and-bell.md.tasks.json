@@ -4,67 +4,67 @@
     {
       "id": 10,
       "subject": "Task 1: 사전 검증 — 클로드 코드의 이미지 경로 인식 확인 (수동)",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** 경로 주입 방식이 실제로 동작하는지 코드 작성 전에 수동으로 확인해 접근법을 de-risk 한다.\n\n**Files:** 없음 (수동 검증).\n\n```json:metadata\n{\"files\": [], \"verifyCommand\": \"\", \"acceptanceCriteria\": [\"붙여넣은 경로의 첨부 인식 여부 기록\", \"타이핑 경로의 동작 기록\", \"둘 다 실패 시 진행 중단 후 재논의\"]}\n```"
     },
     {
       "id": 11,
       "subject": "Task 2: 터미널 벨 링어 모듈 (terminalBell.ts)",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** xterm onBell에 연결할 벨 링어 — 비프음 합성 + 진동 + 연타 스로틀.\n\n**Files:** Create app/src/lib/editor/terminal/terminalBell.ts, app/tests/unit/editor/terminalBell.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/terminalBell.ts\", \"app/tests/unit/editor/terminalBell.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- terminalBell\", \"acceptanceCriteria\": [\"shouldRing 첫 호출/300ms 억제/300ms 후 허용\", \"createBellRinger가 스로틀된 함수 반환\", \"테스트 3개 통과\"]}\n```"
     },
     {
       "id": 12,
       "subject": "Task 3: 벨 설정 + 설정 페이지 토글 + onBell 연결",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [11],
       "description": "**Goal:** 벨 on/off 설정 + 설정 페이지 토글 + TerminalView onBell 연결.\n\n**Files:** Modify app/src/lib/storage/appSettings.ts, app/src/routes/settings/+page.svelte, app/src/lib/editor/terminal/TerminalView.svelte\n\n```json:metadata\n{\"files\": [\"app/src/lib/storage/appSettings.ts\", \"app/src/routes/settings/+page.svelte\", \"app/src/lib/editor/terminal/TerminalView.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"getTerminalBellEnabled 기본 true\", \"설정 페이지 벨 토글 동작\", \"벨 on 시 비프음 off 시 무음\", \"npm run check 통과\"]}\n```"
     },
     {
       "id": 13,
       "subject": "Task 4: 브릿지 ControlMaster 배선 (pty.ts, server.ts)",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** PTY용 ssh를 ControlMaster 마스터로 띄우고 세션별 ControlPath 소켓 생성·정리.\n\n**Files:** Modify bridge/src/pty.ts, bridge/src/server.ts; Create bridge/src/pty.test.ts\n\n```json:metadata\n{\"files\": [\"bridge/src/pty.ts\", \"bridge/src/server.ts\", \"bridge/src/pty.test.ts\"], \"verifyCommand\": \"cd bridge && npm run build && npm test\", \"acceptanceCriteria\": [\"buildSshArgs 인자 순서 정확\", \"controlPath 시 ControlMaster 플래그 포함\", \"isLocalTarget 로컬/원격 판정\", \"pty.test.ts 통과\", \"tsc 통과\"]}\n```"
     },
     {
       "id": 14,
       "subject": "Task 5: 이미지 전송 모듈 (imageTransfer.ts)",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** 이미지 바이트를 타깃 호스트에 올리고 경로를 반환하는 브릿지 모듈.\n\n**Files:** Create bridge/src/imageTransfer.ts, bridge/src/imageTransfer.test.ts\n\n```json:metadata\n{\"files\": [\"bridge/src/imageTransfer.ts\", \"bridge/src/imageTransfer.test.ts\"], \"verifyCommand\": \"cd bridge && npm test\", \"acceptanceCriteria\": [\"mimeToExt 매핑+미지원 null\", \"safeImageName 안전 패턴+고유\", \"bracketedPaste 마커 래핑\", \"buildRemoteCatArgs 구성 정확\", \"테스트 통과\"]}\n```"
     },
     {
       "id": 15,
       "subject": "Task 6: 브릿지 image 메시지 처리 + 경로 주입",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [10, 13, 14],
       "description": "**Goal:** WS 핸들러가 image 메시지를 받아 transferImage 후 PTY에 경로를 bracketed-paste 주입.\n\n**Files:** Modify bridge/src/server.ts\n\n```json:metadata\n{\"files\": [\"bridge/src/server.ts\"], \"verifyCommand\": \"cd bridge && npm run build && npm test\", \"acceptanceCriteria\": [\"ClientMsg에 image/mime/data\", \"image 메시지→전송→PTY 경로 주입\", \"image-ok/image-error 회신\", \"관전 모드 무시\", \"build+test 통과\"]}\n```"
     },
     {
       "id": 16,
       "subject": "Task 7: 클라이언트 이미지 헬퍼 (imagePasteClient.ts)",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** 파일 검증 / FileList 필터 / File→base64 페이로드 변환 순수 헬퍼.\n\n**Files:** Create app/src/lib/editor/terminal/imagePasteClient.ts, app/tests/unit/editor/imagePasteClient.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/imagePasteClient.ts\", \"app/tests/unit/editor/imagePasteClient.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- imagePasteClient\", \"acceptanceCriteria\": [\"validateImageFile 타입/크기 검증\", \"imageFilesFromList 이미지만 추림\", \"fileToImagePayload base64+mime\", \"테스트 통과\"]}\n```"
     },
     {
       "id": 17,
       "subject": "Task 8: wsClient.ts — sendImage + onImageResult",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** WS 클라이언트에 이미지 프레임 전송 메서드 + image-ok/image-error 수신 콜백.\n\n**Files:** Modify app/src/lib/editor/terminal/wsClient.ts; Create app/tests/unit/editor/wsClientSendImage.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/wsClient.ts\", \"app/tests/unit/editor/wsClientSendImage.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- wsClientSendImage\", \"acceptanceCriteria\": [\"sendImage 프레임 전송+닫힘 no-op\", \"image-ok→onImageResult(true,path)\", \"image-error→onImageResult(false,message)\", \"테스트 통과\"]}\n```"
     },
     {
       "id": 18,
       "subject": "Task 9: TerminalView.svelte — 이미지 트리거 + UI",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [15, 16, 17],
       "description": "**Goal:** TerminalView에 Ctrl+V/드롭/버튼 트리거 + 업로드 상태 + 결과 토스트. shell 모드 전용.\n\n**Files:** Modify app/src/lib/editor/terminal/TerminalView.svelte\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/TerminalView.svelte\"], \"verifyCommand\": \"cd app && npm run check && npm run build\", \"acceptanceCriteria\": [\"Ctrl+V 이미지 전송\", \"드래그앤드롭 전송\", \"헤더 버튼+파일선택 전송\", \"업로드 중 상태 표시\", \"결과 토스트\", \"관전 모드 트리거 없음\", \"check+build 통과\"]}\n```"
     },
     {
       "id": 19,
       "subject": "Task 10: 문서 갱신 (tomboy-terminal 스킬 + CLAUDE.md)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [12, 18],
       "description": "**Goal:** 새 기능을 tomboy-terminal 스킬과 CLAUDE.md 터미널 노트 섹션에 반영.\n\n**Files:** Modify .claude/skills/tomboy-terminal/SKILL.md, CLAUDE.md\n\n```json:metadata\n{\"files\": [\".claude/skills/tomboy-terminal/SKILL.md\", \"CLAUDE.md\"], \"verifyCommand\": \"\", \"acceptanceCriteria\": [\"SKILL.md 이미지+벨 설명 추가\", \"SKILL.md Quick map 신규 파일\", \"CLAUDE.md 터미널 섹션 갱신\", \"graphify 갱신\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-23"
+  "lastUpdated": "2026-05-23T13:00:00Z"
 }
