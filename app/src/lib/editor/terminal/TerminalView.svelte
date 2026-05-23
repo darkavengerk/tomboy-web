@@ -69,6 +69,12 @@
 	let spectatorRows = $state(0);
 	let spectatorWindowIndex = $state('');
 	let spectatorWindowName = $state('');
+	// Active pane's footer-button ordinal (1-based) + the window's pane count,
+	// reported by the bridge on every pane-switch. Ordinal 0 = unknown (or the
+	// active pane is past button 5). Count 0 = no info yet / bridge too old to
+	// send it — the footer then leaves all five buttons enabled.
+	let spectatorPaneOrdinal = $state(0);
+	let spectatorPaneCount = $state(0);
 	// Spectator "보내기" popup — explicit keystroke injection into the
 	// active pane. Useful for quick claude-code confirmations (y/n/Enter)
 	// from mobile without breaking the read-only-by-default invariant.
@@ -506,12 +512,14 @@
 					void runConnectScript(spec.connect, (line) => client?.send(line));
 				}
 			},
-			onPaneSwitch: ({ paneId, cols, rows, windowIndex, windowName }) => {
+			onPaneSwitch: ({ paneId, cols, rows, windowIndex, windowName, paneOrdinal, paneCount }) => {
 				spectatorPaneId = paneId;
 				spectatorCols = cols;
 				spectatorRows = rows;
 				spectatorWindowIndex = windowIndex;
 				spectatorWindowName = windowName;
+				spectatorPaneOrdinal = paneOrdinal;
+				spectatorPaneCount = paneCount;
 				try { term?.resize(cols, rows); } catch { /* ignore */ }
 				// term.resize triggers an async re-render; defer the fit one
 				// frame so .xterm's new natural dimensions have settled.
@@ -639,12 +647,14 @@
 					void runConnectScript(spec.connect, (line) => client?.send(line));
 				}
 			},
-			onPaneSwitch: ({ paneId, cols, rows, windowIndex, windowName }) => {
+			onPaneSwitch: ({ paneId, cols, rows, windowIndex, windowName, paneOrdinal, paneCount }) => {
 				spectatorPaneId = paneId;
 				spectatorCols = cols;
 				spectatorRows = rows;
 				spectatorWindowIndex = windowIndex;
 				spectatorWindowName = windowName;
+				spectatorPaneOrdinal = paneOrdinal;
+				spectatorPaneCount = paneCount;
 				try { term?.resize(cols, rows); } catch { /* ignore */ }
 			},
 			onPaneResize: ({ cols, rows }) => {
@@ -789,13 +799,14 @@
 						onclick={() => tmuxNav('prev-window')}
 						disabled={status !== 'open'}
 					>&laquo;</button>
-					{#each [1, 2, 3, 4] as n (n)}
+					{#each [1, 2, 3, 4, 5] as n (n)}
 						<button
 							type="button"
 							class="icon pane-num"
+							class:active={n === spectatorPaneOrdinal}
 							title="패널 {n}"
 							onclick={() => selectPane(n)}
-							disabled={status !== 'open'}
+							disabled={status !== 'open' || (spectatorPaneCount > 0 && n > spectatorPaneCount)}
 						>{n}</button>
 					{/each}
 					<button
@@ -1019,6 +1030,13 @@
 	.spec-footer button.pane-num {
 		font-family: ui-monospace, Menlo, Consolas, monospace;
 		font-weight: 600;
+	}
+	/* Active pane: filled accent. Distinct from idle (#3a3a3a) and the
+	   disabled state (opacity 0.5 via `.spec-footer button:disabled`). */
+	.spec-footer button.pane-num.active {
+		background: #2563eb;
+		border-color: #5b8def;
+		color: #fff;
 	}
 	.spec-footer button:active {
 		background: #4a4a4a;
