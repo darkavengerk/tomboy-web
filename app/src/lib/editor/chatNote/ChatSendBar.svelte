@@ -1,10 +1,10 @@
 <script lang="ts">
 	import type { Editor } from '@tiptap/core';
 	import { onDestroy } from 'svelte';
-	import { parseLlmNote } from '$lib/llmNote/parseLlmNote.js';
-	import { buildChatRequest } from '$lib/llmNote/buildChatRequest.js';
-	import { sendChat, LlmChatError } from '$lib/llmNote/sendChat.js';
-	import { searchRag, RagSearchError, type RagHit } from '$lib/llmNote/searchRag.js';
+	import { parseChatNote } from '$lib/chatNote/parseChatNote.js';
+	import { buildChatRequest } from '$lib/chatNote/buildChatRequest.js';
+	import { sendChat, LlmChatError } from '$lib/chatNote/sendChat.js';
+	import { searchRag, RagSearchError, type RagHit } from '$lib/chatNote/searchRag.js';
 	import { pushToast } from '$lib/stores/toast.js';
 
 	type Props = {
@@ -35,7 +35,7 @@
 
 	let spec = $derived.by(() => {
 		lastEditorVersion; // subscribe to bump
-		return parseLlmNote(editor.getJSON());
+		return parseChatNote(editor.getJSON());
 	});
 
 	const sending = $derived(abortController !== null);

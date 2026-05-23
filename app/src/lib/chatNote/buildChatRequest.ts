@@ -1,4 +1,4 @@
-import type { LlmNoteSpec } from './parseLlmNote.js';
+import type { LlmNoteSpec } from './parseChatNote.js';
 
 /**
  * One message in a chat request. `images` is optional — Ollama's /api/chat

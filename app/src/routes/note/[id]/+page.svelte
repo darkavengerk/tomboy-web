@@ -25,7 +25,7 @@
 		parseTerminalNote,
 		type TerminalNoteSpec
 	} from '$lib/editor/terminal/parseTerminalNote.js';
-	import LlmSendBar from '$lib/editor/llmNote/LlmSendBar.svelte';
+	import ChatSendBar from '$lib/editor/chatNote/ChatSendBar.svelte';
 	import RemarkableActionBar from '$lib/editor/remarkable/RemarkableActionBar.svelte';
 	import { parseOcrNote } from '$lib/ocrNote/parseOcrNote.js';
 	import { runOcrInEditor } from '$lib/ocrNote/runOcrInEditor.js';
@@ -87,7 +87,7 @@
 	let terminalConnectMode = $state(false);
 	const showTerminal = $derived(!!terminalSpec && terminalConnectMode);
 
-	// Bridge settings for LlmSendBar — loaded once on mount from appSettings.
+	// Bridge settings for ChatSendBar — loaded once on mount from appSettings.
 	let llmBridgeUrl = $state('');
 	let llmBridgeToken = $state('');
 
@@ -298,7 +298,7 @@
 	}
 
 	onMount(() => {
-		// Load bridge URL and token for LlmSendBar.
+		// Load bridge URL and token for ChatSendBar.
 		void Promise.all([
 			getDefaultTerminalBridge(),
 			getTerminalBridgeToken()
@@ -738,7 +738,7 @@
 					onimageinserted={handleImageInserted}
 				/>
 				{#if editorComponent?.getEditor() && llmBridgeUrl && llmBridgeToken}
-					<LlmSendBar
+					<ChatSendBar
 						editor={editorComponent.getEditor()!}
 						bridgeUrl={llmBridgeUrl}
 						bridgeToken={llmBridgeToken}

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildChatRequest } from '$lib/llmNote/buildChatRequest.js';
-import type { LlmNoteSpec } from '$lib/llmNote/parseLlmNote.js';
+import { buildChatRequest } from '$lib/chatNote/buildChatRequest.js';
+import type { LlmNoteSpec } from '$lib/chatNote/parseChatNote.js';
 
 const baseSpec: LlmNoteSpec = {
 	model: 'qwen2.5-coder:3b',

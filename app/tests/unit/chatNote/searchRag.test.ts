@@ -1,5 +1,5 @@
 import { describe, test, expect, vi } from 'vitest';
-import { searchRag, RagSearchError } from '$lib/llmNote/searchRag.js';
+import { searchRag, RagSearchError } from '$lib/chatNote/searchRag.js';
 
 function mockFetch(status: number, body: unknown): typeof globalThis.fetch {
 	return vi.fn().mockResolvedValue({

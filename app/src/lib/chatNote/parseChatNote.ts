@@ -43,7 +43,7 @@ function paragraphLines(block: JSONContent | undefined): string[] {
 
 const INT_KEYS = new Set<LlmHeaderKey>(['num_ctx', 'seed', 'num_predict']);
 
-export function parseLlmNote(doc: JSONContent | null | undefined): LlmNoteSpec | null {
+export function parseChatNote(doc: JSONContent | null | undefined): LlmNoteSpec | null {
 	if (!doc || !Array.isArray(doc.content) || doc.content.length === 0) return null;
 
 	// Find signature: doc.content[1] preferred, doc.content[0] tolerated.

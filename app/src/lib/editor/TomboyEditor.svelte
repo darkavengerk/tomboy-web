@@ -43,7 +43,7 @@
 		createAutoWeekdayPlugin,
 		autoWeekdayPluginKey,
 	} from "./autoWeekday/autoWeekdayPlugin.js";
-	import { createLlmNotePlugin } from "./llmNote/llmNotePlugin.js";
+	import { createChatNotePlugin } from "./chatNote/chatNotePlugin.js";
 	import {
 		createTableBlockPlugin,
 		setCtrlHeld as setTableBlockCtrlHeld,
@@ -430,7 +430,7 @@
 				Extension.create({
 					name: "tomboyLlmNote",
 					addProseMirrorPlugins() {
-						return [createLlmNotePlugin()];
+						return [createChatNotePlugin()];
 					},
 				}),
 				Extension.create({
