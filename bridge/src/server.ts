@@ -276,6 +276,18 @@ function handleWs(ws: WebSocket): void {
 			return;
 		}
 
+		// `image` 라우팅은 spectator/pty 분기보다 먼저 — 두 모드 모두에서
+		// 동일하게 받아야 한다. handleImageMessage 안에서 sink(pty vs
+		// spectator)를 다시 분기한다. (이전엔 spectator 블록의 무조건
+		// return이 image까지 흡수해서 spectator 모드 업로드가 silently
+		// drop되던 버그가 있었다.)
+		if (msg.type === 'image') {
+			if (typeof msg.mime === 'string' && typeof msg.data === 'string') {
+				void handleImageMessage(msg.mime, msg.data);
+			}
+			return;
+		}
+
 		// Spectator mode: drop resize (bridge dictates size from tmux), but
 		// allow `data` frames so the mobile "보내기" popup can inject
 		// explicit keystrokes into the active pane via `send-keys -H`.
@@ -318,12 +330,6 @@ function handleWs(ws: WebSocket): void {
 				pty.resize(cols, rows);
 			} catch {
 				// PTY can be torn down between message and handler; ignore.
-			}
-			return;
-		}
-		if (msg.type === 'image') {
-			if (typeof msg.mime === 'string' && typeof msg.data === 'string') {
-				void handleImageMessage(msg.mime, msg.data);
 			}
 			return;
 		}
