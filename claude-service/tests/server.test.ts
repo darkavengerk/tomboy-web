@@ -59,7 +59,9 @@ describe('claude-service POST /chat', () => {
     while (fake.lastCall === null && Date.now() < deadline) {
       await new Promise((r) => setImmediate(r));
     }
-    fake.lastCall!.child.emitStdout('{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}]}}\n');
+    fake.lastCall!.child.emitStdout(
+      '{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}}\n',
+    );
     fake.lastCall!.child.emitStdout('{"type":"result","subtype":"success"}\n');
     fake.lastCall!.child.exit(0);
 
