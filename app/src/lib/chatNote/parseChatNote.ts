@@ -1,21 +1,18 @@
 import type { JSONContent } from '@tiptap/core';
 import {
-	LLM_SIGNATURE_RE,
-	LLM_HEADER_KEY_RE,
-	type LlmHeaderKey
+	CHAT_SIGNATURE_RE,
+	OLLAMA_HEADER_KEY_RE,
+	CLAUDE_HEADER_KEY_RE,
+	type OllamaHeaderKey,
+	type ClaudeHeaderKey
 } from './defaults.js';
 
-export interface LlmNoteSpec {
+export type ChatBackend = 'ollama' | 'claude';
+
+export interface ChatNoteSpec {
+	backend: ChatBackend;
 	model: string;
 	system?: string;
-	options: {
-		temperature?: number;
-		num_ctx?: number;
-		top_p?: number;
-		seed?: number;
-		num_predict?: number;
-		rag?: number;
-	};
 	messages: Array<{ role: 'user' | 'assistant'; content: string }>;
 	/**
 	 * True when the last message is a user turn awaiting a response (whether
@@ -23,7 +20,22 @@ export interface LlmNoteSpec {
 	 * verifies the content is non-empty.
 	 */
 	trailingEmptyUserTurn: boolean;
+	options: {
+		// ollama-specific
+		temperature?: number;
+		num_ctx?: number;
+		top_p?: number;
+		seed?: number;
+		num_predict?: number;
+		rag?: number;
+		// claude-specific
+		cwd?: string;
+		allowedTools?: string[];
+	};
 }
+
+/** Backward-compat alias — keeps backends/ollama.ts working unchanged. */
+export type LlmNoteSpec = ChatNoteSpec;
 
 /** Plain text of a paragraph block, joining only text-typed inline children. */
 function paragraphText(block: JSONContent | undefined): string {
@@ -41,27 +53,33 @@ function paragraphLines(block: JSONContent | undefined): string[] {
 	return paragraphText(block).split('\n');
 }
 
-const INT_KEYS = new Set<LlmHeaderKey>(['num_ctx', 'seed', 'num_predict']);
+const OLLAMA_INT_KEYS = new Set<OllamaHeaderKey>(['num_ctx', 'seed', 'num_predict']);
 
-export function parseChatNote(doc: JSONContent | null | undefined): LlmNoteSpec | null {
+export function parseChatNote(doc: JSONContent | null | undefined): ChatNoteSpec | null {
 	if (!doc || !Array.isArray(doc.content) || doc.content.length === 0) return null;
 
 	// Find signature: doc.content[1] preferred, doc.content[0] tolerated.
 	let sigIndex: number;
+	let backend: ChatBackend;
 	let model: string;
 
 	const c1FirstLine = doc.content.length > 1 ? paragraphLines(doc.content[1])[0] ?? '' : '';
-	const m1 = LLM_SIGNATURE_RE.exec(c1FirstLine);
+	const m1 = CHAT_SIGNATURE_RE.exec(c1FirstLine);
 	if (m1) {
 		sigIndex = 1;
-		model = m1[1];
+		backend = m1[1] === 'claude' ? 'claude' : 'ollama';
+		model = m1[2] ?? '';
 	} else {
 		const c0FirstLine = paragraphLines(doc.content[0])[0] ?? '';
-		const m0 = LLM_SIGNATURE_RE.exec(c0FirstLine);
+		const m0 = CHAT_SIGNATURE_RE.exec(c0FirstLine);
 		if (!m0) return null;
 		sigIndex = 0;
-		model = m0[1];
+		backend = m0[1] === 'claude' ? 'claude' : 'ollama';
+		model = m0[2] ?? '';
 	}
+
+	// For ollama (llm://) model is required.
+	if (backend === 'ollama' && model === '') return null;
 
 	// Header lines: collect every line after the signature line until the
 	// first BLANK paragraph (which is the header/turn boundary).
@@ -89,49 +107,78 @@ export function parseChatNote(doc: JSONContent | null | undefined): LlmNoteSpec 
 	}
 	if (!blankSeen) turnStartIndex = doc.content.length;
 
-	const result: LlmNoteSpec = {
+	const result: ChatNoteSpec = {
+		backend,
 		model,
 		options: {},
 		messages: [],
 		trailingEmptyUserTurn: false
 	};
 
-	let currentKey: LlmHeaderKey | null = null;
+	// Pick header regex by backend.
+	const headerKeyRe = backend === 'ollama' ? OLLAMA_HEADER_KEY_RE : CLAUDE_HEADER_KEY_RE;
+
+	let currentKey: OllamaHeaderKey | ClaudeHeaderKey | null = null;
 	let currentValueLines: string[] = [];
 
 	const flushKey = (): void => {
 		if (currentKey === null) return;
 		const value = currentValueLines.join('\n');
-		if (currentKey === 'system') {
-			result.system = value;
-		} else if (currentKey === 'rag') {
-			const trimmed = value.trim().toLowerCase();
-			if (trimmed === 'on') {
-				result.options.rag = 5;
-			} else if (trimmed === 'off' || trimmed === '') {
-				// undefined — leave unset
+
+		if (backend === 'ollama') {
+			const key = currentKey as OllamaHeaderKey;
+			if (key === 'system') {
+				result.system = value;
+			} else if (key === 'rag') {
+				const trimmed = value.trim().toLowerCase();
+				if (trimmed === 'on') {
+					result.options.rag = 5;
+				} else if (trimmed === 'off' || trimmed === '') {
+					// undefined — leave unset
+				} else {
+					const n = parseInt(trimmed, 10);
+					if (Number.isFinite(n)) {
+						result.options.rag = Math.min(Math.max(n, 1), 20);
+					}
+				}
 			} else {
-				const n = parseInt(trimmed, 10);
+				const trimmed = value.trim();
+				const n = OLLAMA_INT_KEYS.has(key)
+					? parseInt(trimmed, 10)
+					: parseFloat(trimmed);
 				if (Number.isFinite(n)) {
-					result.options.rag = Math.min(Math.max(n, 1), 20);
+					(result.options as Record<string, number>)[key] = n;
 				}
 			}
 		} else {
-			const trimmed = value.trim();
-			const n = INT_KEYS.has(currentKey) ? parseInt(trimmed, 10) : parseFloat(trimmed);
-			if (Number.isFinite(n)) {
-				(result.options as Record<string, number>)[currentKey] = n;
+			// claude backend
+			const key = currentKey as ClaudeHeaderKey;
+			if (key === 'system') {
+				result.system = value;
+			} else if (key === 'model') {
+				const trimmed = value.trim();
+				if (trimmed !== '') result.model = trimmed;
+			} else if (key === 'cwd') {
+				const trimmed = value.trim();
+				if (trimmed !== '') result.options.cwd = trimmed;
+			} else if (key === 'allowedTools') {
+				const tools = value
+					.split(',')
+					.map((t) => t.trim())
+					.filter((t) => t !== '');
+				if (tools.length > 0) result.options.allowedTools = tools;
 			}
 		}
+
 		currentKey = null;
 		currentValueLines = [];
 	};
 
 	for (const line of headerLines) {
-		const keyMatch = LLM_HEADER_KEY_RE.exec(line);
+		const keyMatch = headerKeyRe.exec(line);
 		if (keyMatch) {
 			flushKey();
-			currentKey = keyMatch[1] as LlmHeaderKey;
+			currentKey = keyMatch[1] as OllamaHeaderKey | ClaudeHeaderKey;
 			currentValueLines = [keyMatch[2]];
 		} else if (currentKey !== null) {
 			const stripped = line.replace(/^\s+/, '');

@@ -3,6 +3,7 @@ import { buildChatRequest } from '$lib/chatNote/backends/ollama.js';
 import type { LlmNoteSpec } from '$lib/chatNote/parseChatNote.js';
 
 const baseSpec: LlmNoteSpec = {
+	backend: 'ollama',
 	model: 'qwen2.5-coder:3b',
 	options: {},
 	messages: [{ role: 'user', content: 'hi' }],

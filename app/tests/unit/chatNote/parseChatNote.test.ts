@@ -246,3 +246,76 @@ describe('parseChatNote', () => {
 		});
 	});
 });
+
+describe('parseChatNote — claude:// backend', () => {
+	it('recognizes claude:// with no model', () => {
+		const r = parseChatNote(doc('타이틀', 'claude://'));
+		expect(r).not.toBeNull();
+		expect(r!.backend).toBe('claude');
+		expect(r!.model).toBe('');
+	});
+
+	it('recognizes claude://opus shortname', () => {
+		const r = parseChatNote(doc('타이틀', 'claude://opus'));
+		expect(r!.backend).toBe('claude');
+		expect(r!.model).toBe('opus');
+	});
+
+	it('recognizes claude://claude-opus-4-7 full id', () => {
+		const r = parseChatNote(doc('타이틀', 'claude://claude-opus-4-7'));
+		expect(r!.model).toBe('claude-opus-4-7');
+	});
+
+	it('parses cwd: header', () => {
+		const r = parseChatNote(
+			doc('t', 'claude://', 'cwd: /home/jh/workspace/foo')
+		);
+		expect(r!.options.cwd).toBe('/home/jh/workspace/foo');
+	});
+
+	it('parses allowedTools: header into array', () => {
+		const r = parseChatNote(
+			doc('t', 'claude://', 'cwd: /tmp', 'allowedTools: Read, Bash, Edit')
+		);
+		expect(r!.options.allowedTools).toEqual(['Read', 'Bash', 'Edit']);
+	});
+
+	it('ignores rag: header on claude:// note', () => {
+		const r = parseChatNote(doc('t', 'claude://', 'rag: on'));
+		expect(r!.options.rag).toBeUndefined();
+	});
+
+	it('ignores cwd: header on llm:// note', () => {
+		const r = parseChatNote(doc('t', 'llm://qwen2.5', 'cwd: /tmp'));
+		expect((r!.options as { cwd?: string }).cwd).toBeUndefined();
+	});
+
+	it('header model: overrides signature model on claude', () => {
+		const r = parseChatNote(
+			doc('t', 'claude://opus', 'model: claude-opus-4-7')
+		);
+		expect(r!.model).toBe('claude-opus-4-7');
+	});
+
+	it('claude:// preserves Q:/A: turn parsing', () => {
+		const r = parseChatNote(
+			doc('t', 'claude://', '', 'Q: hello', 'A: hi', 'Q: what', 'Q:')
+		);
+		expect(r!.messages).toEqual([
+			{ role: 'user', content: 'hello' },
+			{ role: 'assistant', content: 'hi' },
+			{ role: 'user', content: 'what' },
+			{ role: 'user', content: '' },
+		]);
+		expect(r!.trailingEmptyUserTurn).toBe(true);
+	});
+
+	it('llm:// returns backend: "ollama"', () => {
+		const r = parseChatNote(doc('t', 'llm://qwen2.5'));
+		expect(r!.backend).toBe('ollama');
+	});
+
+	it('llm:// still requires model (returns null without)', () => {
+		expect(parseChatNote(doc('t', 'llm://'))).toBeNull();
+	});
+});
