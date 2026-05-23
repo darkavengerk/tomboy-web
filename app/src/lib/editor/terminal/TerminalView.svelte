@@ -40,6 +40,7 @@
 		fileToImagePayload,
 		validateImageFile
 	} from './imagePasteClient.js';
+	import { extractImageFromClipboardItems } from './clipboardImage.js';
 	import { pushToast } from '$lib/stores/toast.js';
 
 	type Props = {
@@ -234,6 +235,39 @@
 		e.preventDefault();
 		e.stopPropagation();
 		void sendImageFile(file);
+	}
+
+	/** 보내기 팝업의 텍스트 입력에 paste된 이미지를 가로챈다. */
+	function onSendPopupPaste(e: ClipboardEvent): void {
+		const file = extractImageFile(e.clipboardData);
+		if (!file) return; // 이미지 없음 → 평문 paste fall-through
+		e.preventDefault();
+		void sendImageFile(file);
+	}
+
+	/** "📋 이미지 붙여넣기" 버튼 — navigator.clipboard.read() 시도. */
+	async function onClickPasteImage(): Promise<void> {
+		if (!navigator.clipboard || !navigator.clipboard.read) {
+			pushToast('이 브라우저는 클립보드 읽기를 지원하지 않습니다.', { kind: 'error' });
+			return;
+		}
+		try {
+			const items = await navigator.clipboard.read();
+			const file = await extractImageFromClipboardItems(items);
+			if (file) {
+				void sendImageFile(file);
+			} else {
+				pushToast('클립보드에 이미지가 없습니다.', { kind: 'error' });
+			}
+		} catch (err) {
+			const name = (err as Error).name;
+			pushToast(
+				name === 'NotAllowedError'
+					? '클립보드 접근 권한이 거부되었습니다.'
+					: '클립보드를 읽을 수 없습니다.',
+				{ kind: 'error' }
+			);
+		}
 	}
 
 	/** dragover — drop을 허용하려면 preventDefault 필요. */
@@ -972,6 +1006,7 @@
 						closeSendPopup();
 					}
 				}}
+				onpaste={onSendPopupPaste}
 			/>
 			<div class="send-quick">
 				<span class="send-quick-label">빠른 키</span>
@@ -983,6 +1018,22 @@
 				<button type="button" onclick={() => sendQuickKey('\x03')}>^C</button>
 				<button type="button" title="Page Up (TUI 내부 스크롤)" onclick={() => sendQuickKey('\x1b[5~')}>PgUp</button>
 				<button type="button" title="Page Down (TUI 내부 스크롤)" onclick={() => sendQuickKey('\x1b[6~')}>PgDn</button>
+			</div>
+			<div class="send-image-row">
+				<button
+					type="button"
+					onclick={onClickPasteImage}
+					disabled={imageUploadCount > 0 || status !== 'open'}
+				>
+					{imageUploadCount > 0 ? '업로드 중…' : '📋 이미지 붙여넣기'}
+				</button>
+				<button
+					type="button"
+					onclick={openImagePicker}
+					disabled={imageUploadCount > 0 || status !== 'open'}
+				>
+					📷 이미지 불러오기
+				</button>
 			</div>
 			<div class="send-actions">
 				<button type="button" onclick={closeSendPopup}>취소</button>
@@ -1349,6 +1400,25 @@
 	}
 	.send-quick button:active {
 		background: #4a4a4a;
+	}
+	.send-image-row {
+		display: flex;
+		gap: clamp(0.25rem, 1.5vw, 0.5rem);
+		margin-top: clamp(0.25rem, 1.5vw, 0.5rem);
+	}
+	.send-image-row button {
+		flex: 1;
+		padding: clamp(0.4rem, 2vw, 0.6rem);
+		font-size: clamp(0.75rem, 3vw, 0.85rem);
+		background: #3a3a3a;
+		color: #ddd;
+		border: 1px solid #555;
+		border-radius: 4px;
+		cursor: pointer;
+	}
+	.send-image-row button:disabled {
+		opacity: 0.45;
+		cursor: not-allowed;
 	}
 	.send-actions {
 		display: flex;
