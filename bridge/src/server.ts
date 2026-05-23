@@ -336,6 +336,11 @@ function handleWs(ws: WebSocket): void {
 	});
 
 	async function startSpectator(target: SshTarget, session: string): Promise<void> {
+		sessionTarget = target;
+		// 원격 타깃만 ControlMaster — 로컬 셸 타깃은 ssh 자체가 없다.
+		if (!isLocalTarget(target)) {
+			controlPath = `${CTRL_DIR}/${randomUUID().slice(0, 8)}.sock`;
+		}
 		const wol = lookupWolTarget(target.host);
 		console.log(
 			`[term-bridge] spectate target=${target.user ?? ''}@${target.host}:${target.port ?? 22} session=${session}`
@@ -355,6 +360,7 @@ function handleWs(ws: WebSocket): void {
 			spectator = new SpectatorSession({
 				target,
 				session,
+				controlPath: controlPath ?? undefined,
 				callbacks: {
 					paneSwitch: (info) => send({ type: 'pane-switch', ...info }),
 					data: (d) => send({ type: 'data', d }),
@@ -425,12 +431,20 @@ function handleWs(ws: WebSocket): void {
 	}
 
 	/**
-	 * `image` 메시지 처리 — base64 디코딩 → 타깃 호스트로 전송 → PTY에 경로를
-	 * bracketed-paste로 주입. shell 모드 전용(pty 필요). 경로 뒤 공백 한 칸은
-	 * 이미지를 연달아 붙여넣을 때 경로가 서로 붙지 않게 한다.
+	 * `image` 메시지 처리 — base64 디코딩 → 타깃 호스트로 전송 → PTY 또는
+	 * spectator 활성 패널에 경로를 bracketed-paste로 주입.
+	 *
+	 * - 셸 모드: pty.write(bracketedPaste(path) + ' ').
+	 * - 관전 모드: spectator.sendInput(bracketedPaste(path) + ' ') → tmux send-keys -H.
+	 * - 어느 쪽도 준비 안 된 race 상황: image-error 회신.
+	 *
+	 * 경로 뒤 공백 한 칸은 이미지를 연달아 붙여넣을 때 경로가 서로 붙지 않게 한다.
 	 */
 	async function handleImageMessage(mime: string, dataB64: string): Promise<void> {
-		if (!pty || !sessionTarget) return;
+		if (!sessionTarget) {
+			send({ type: 'image-error', message: '세션이 준비되지 않았습니다.' });
+			return;
+		}
 		let bytes: Buffer;
 		try {
 			bytes = Buffer.from(dataB64, 'base64');
@@ -445,7 +459,15 @@ function handleWs(ws: WebSocket): void {
 				mime,
 				bytes
 			});
-			pty.write(bracketedPaste(remotePath) + ' ');
+			const paste = bracketedPaste(remotePath) + ' ';
+			if (pty) {
+				pty.write(paste);
+			} else if (spectator?.hasActivePane()) {
+				spectator.sendInput(paste);
+			} else {
+				send({ type: 'image-error', message: '주입할 곳이 없습니다.' });
+				return;
+			}
 			send({ type: 'image-ok', path: remotePath });
 		} catch (err) {
 			send({ type: 'image-error', message: (err as Error).message });

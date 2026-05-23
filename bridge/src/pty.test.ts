@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSshArgs, isLocalTarget } from './pty.js';
+import { buildSshArgs, controlMasterArgs, isLocalTarget } from './pty.js';
 
 test('buildSshArgs: basic remote, no controlPath', () => {
 	assert.deepEqual(buildSshArgs({ host: 'example.com', user: 'me' }), [
@@ -34,6 +34,15 @@ test('buildSshArgs: adds ControlMaster flags when controlPath given', () => {
 	assert.ok(args.includes('ControlPath=/tmp/tomboy-ctl/abc.sock'));
 	// 호스트는 항상 마지막 — 옵션이 호스트 뒤로 새지 않아야 한다.
 	assert.equal(args[args.length - 1], 'u@h');
+});
+
+test('controlMasterArgs: returns ControlMaster + ControlPath flags', () => {
+	assert.deepEqual(controlMasterArgs('/tmp/tomboy-ctl/abc.sock'), [
+		'-o',
+		'ControlMaster=auto',
+		'-o',
+		'ControlPath=/tmp/tomboy-ctl/abc.sock'
+	]);
 });
 
 test('isLocalTarget: localhost with no user is local', () => {
