@@ -223,22 +223,13 @@ function handleWs(ws: WebSocket): void {
 
 	ws.on('message', (raw) => {
 		const rawBuf = raw as Buffer;
-		const rawLen = rawBuf.length;
 		let msg: ClientMsg;
 		try {
 			msg = JSON.parse(rawBuf.toString());
 		} catch {
-			console.log(`[ws] message: JSON parse failed, ${rawLen} bytes, first 80=${rawBuf.toString().slice(0, 80)}`);
+			// 깨진 JSON은 라우팅의 흔한 실수 신호 — 1줄 남김.
+			console.log(`[ws] bad JSON, ${rawBuf.length} bytes`);
 			return;
-		}
-		// 메시지 도착 자체를 가시화 — 'data' 프레임은 너무 시끄러우니 제외.
-		// 'image'는 base64 본문이 크므로 mime + bytes만 요약.
-		if (msg.type !== 'data') {
-			const summary =
-				msg.type === 'image'
-					? `image mime=${(msg as { mime?: string }).mime ?? '?'} b64Len=${((msg as { data?: string }).data ?? '').length}`
-					: msg.type;
-			console.log(`[ws] message: ${summary} (${rawLen} bytes total)`);
 		}
 
 		if (msg.type === 'connect') {
@@ -460,12 +451,9 @@ function handleWs(ws: WebSocket): void {
 	 * 경로 뒤 공백 한 칸은 이미지를 연달아 붙여넣을 때 경로가 서로 붙지 않게 한다.
 	 */
 	async function handleImageMessage(mime: string, dataB64: string): Promise<void> {
-		const sink = pty ? 'pty' : spectator?.hasActivePane() ? 'spectator' : 'none';
-		console.log(
-			`[image] received mime=${mime} b64Len=${dataB64.length} sink=${sink} controlPath=${controlPath ?? 'null'} sessionTarget=${sessionTarget ? `${sessionTarget.user ?? ''}@${sessionTarget.host}` : 'null'}`
-		);
+		const started = Date.now();
 		if (!sessionTarget) {
-			console.log('[image] reject: no sessionTarget');
+			console.log(`[image] reject ${mime}: no sessionTarget`);
 			send({ type: 'image-error', message: '세션이 준비되지 않았습니다.' });
 			return;
 		}
@@ -473,7 +461,7 @@ function handleWs(ws: WebSocket): void {
 		try {
 			bytes = Buffer.from(dataB64, 'base64');
 		} catch {
-			console.log('[image] reject: base64 decode failed');
+			console.log(`[image] reject ${mime}: base64 decode failed`);
 			send({ type: 'image-error', message: '이미지 데이터가 올바르지 않습니다.' });
 			return;
 		}
@@ -485,22 +473,26 @@ function handleWs(ws: WebSocket): void {
 				bytes
 			});
 			const paste = bracketedPaste(remotePath) + ' ';
+			let sink: 'pty' | 'spectator';
 			if (pty) {
-				console.log(`[image] inject via pty path=${remotePath}`);
 				pty.write(paste);
+				sink = 'pty';
 			} else if (spectator?.hasActivePane()) {
-				console.log(`[image] inject via spectator path=${remotePath}`);
 				spectator.sendInput(paste);
+				sink = 'spectator';
 			} else {
-				console.log('[image] reject: no active sink at inject time');
+				console.log(`[image] reject ${mime}: no active sink at inject time`);
 				send({ type: 'image-error', message: '주입할 곳이 없습니다.' });
 				return;
 			}
+			console.log(
+				`[image] OK ${mime} ${bytes.length}B → ${remotePath} via ${sink} (${Date.now() - started}ms)`
+			);
 			send({ type: 'image-ok', path: remotePath });
 		} catch (err) {
-			const msg = (err as Error).message;
-			console.log(`[image] transfer error: ${msg}`);
-			send({ type: 'image-error', message: msg });
+			const errMsg = (err as Error).message;
+			console.log(`[image] FAIL ${mime} after ${Date.now() - started}ms — ${errMsg}`);
+			send({ type: 'image-error', message: errMsg });
 		}
 	}
 }

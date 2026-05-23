@@ -105,9 +105,6 @@ function streamToRemote(
 ): Promise<void> {
 	return new Promise((resolve, reject) => {
 		const args = buildRemoteCatArgs(t, controlPath, remotePath);
-		console.log(
-			`[image-transfer] ssh start bytes=${bytes.length} controlPath=${controlPath} remotePath=${remotePath}`
-		);
 		const child = spawn('ssh', args);
 		let stderr = '';
 		let settled = false;
@@ -119,32 +116,24 @@ function streamToRemote(
 		};
 		const timer = setTimeout(() => {
 			settle(() => {
-				console.log(
-					`[image-transfer] timeout after ${TRANSFER_TIMEOUT_MS}ms — killing ssh. stderr so far: ${stderr.trim() || '(empty)'}`
-				);
 				try { child.kill('SIGTERM'); } catch { /* ignore */ }
-				reject(new Error(`이미지 전송 타임아웃(${TRANSFER_TIMEOUT_MS / 1000}s). ssh가 응답하지 않습니다.`));
+				reject(
+					new Error(
+						`이미지 전송 타임아웃(${TRANSFER_TIMEOUT_MS / 1000}s). stderr: ${stderr.trim() || '(empty)'}`
+					)
+				);
 			});
 		}, TRANSFER_TIMEOUT_MS);
 		child.stderr.on('data', (d) => {
 			stderr += d.toString();
 		});
 		child.on('error', (err) => {
-			settle(() => {
-				console.log(`[image-transfer] ssh spawn error: ${err.message}`);
-				reject(err);
-			});
+			settle(() => reject(err));
 		});
 		child.on('close', (code) => {
 			settle(() => {
-				if (code === 0) {
-					console.log(`[image-transfer] ssh ok remotePath=${remotePath}`);
-					resolve();
-				} else {
-					const msg = stderr.trim() || `ssh가 코드 ${code}로 종료됨`;
-					console.log(`[image-transfer] ssh failed code=${code} stderr=${msg}`);
-					reject(new Error(msg));
-				}
+				if (code === 0) resolve();
+				else reject(new Error(stderr.trim() || `ssh가 코드 ${code}로 종료됨`));
 			});
 		});
 		// 원격이 일찍 닫으면 stdin EPIPE — close 핸들러가 사유를 보고하므로 무시.
