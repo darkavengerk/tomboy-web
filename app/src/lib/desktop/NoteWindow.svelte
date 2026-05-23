@@ -721,11 +721,8 @@
 		}
 
 		if (kind === 'toggleFavorite') {
-			const updated = await toggleFavorite(note.guid);
-			if (updated) note = updated;
-			pushToast(
-				isFavorite(note!) ? '즐겨찾기에 추가되었습니다.' : '즐겨찾기에서 제거되었습니다.'
-			);
+			const nowFav = toggleFavorite(note.guid);
+			pushToast(nowFav ? '즐겨찾기에 추가되었습니다.' : '즐겨찾기에서 제거되었습니다.');
 			return;
 		}
 

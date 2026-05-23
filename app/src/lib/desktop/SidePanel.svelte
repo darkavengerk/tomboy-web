@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { listNotes, createNote, isFavorite } from '$lib/core/noteManager.js';
+	import { listNotes, createNote } from '$lib/core/noteManager.js';
 	import type { NoteData } from '$lib/core/note.js';
 	import { parseTomboyDate } from '$lib/core/note.js';
 	import {
@@ -87,12 +87,7 @@
 			}
 			return { n, key };
 		});
-		keyed.sort((a, b) => {
-			const pa = isFavorite(a.n) ? 1 : 0;
-			const pb = isFavorite(b.n) ? 1 : 0;
-			if (pa !== pb) return pb - pa;
-			return b.key - a.key;
-		});
+		keyed.sort((a, b) => b.key - a.key);
 		return keyed.slice(0, 50).map((x) => x.n);
 	});
 
