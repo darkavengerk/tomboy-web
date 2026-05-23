@@ -433,7 +433,7 @@ function handleWs(ws: WebSocket): void {
 	 */
 	async function handleImageMessage(mime: string, dataB64: string): Promise<void> {
 		if (!sessionTarget) {
-			send({ type: 'image-error', message: '세션 준비 안 됨' });
+			send({ type: 'image-error', message: '세션이 준비되지 않았습니다.' });
 			return;
 		}
 		let bytes: Buffer;
