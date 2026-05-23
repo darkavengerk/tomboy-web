@@ -668,13 +668,12 @@ to add the three lines inline than to source the plugin file.
 
 ### 관전 모드 데스크탑
 
-**트리거** — 셸 모드와 동일한 Ctrl+V / 드래그앤드롭 / 헤더 "이미지" 버튼
-(`isSpectator` true 분기).
+**트리거** — 셸 모드와 동일 (Ctrl+V / 드래그앤드롭 / 헤더 "이미지" 버튼) — Task 5에서 `isSpectator` 가드가 풀려 양 모드에서 동일 트리거가 발화한다.
 
 **전송 흐름:**
 
 - 브릿지의 spectator ssh 연결도 ControlMaster 마스터
-  (`-o ControlMaster=auto -o ControlPath=/tmp/tomboy-ctl/<uuid>-spectator.sock`)로 스폰된다.
+  (`-o ControlMaster=auto -o ControlPath=/tmp/tomboy-ctl/<8자 uuid>.sock`)로 스폰된다 — 셸 모드와 동일 패턴 (`randomUUID().slice(0, 8) + '.sock'`), `-spectator` 접미사 없음.
 - `handleImageMessage` 분기에서 `spectator.hasActivePane()`이 false면 즉시
   `image-error` 회신 (첫 pane-switch 프레임 전 race guard).
 - `imageTransfer.transferImage(controlPath, ...)` — 셸 모드와 동일한 ControlMaster 재사용 업로드.
@@ -689,7 +688,7 @@ to add the three lines inline than to source the plugin file.
    `clipboardImage.ts:extractImageFromClipboardItems`로 첫 `image/*` 항목을 `File`로 변환 후 전송.
 2. **"📷 이미지 불러오기"** — `<input type="file" accept="image/*">` 파일 선택기.
 
-팝업의 텍스트 입력 필드(`<textarea>`)에 `onpaste` 핸들러도 달려 있어 롱프레스 붙여넣기로
+팝업의 텍스트 입력 필드(`<input type="text">`)에 `onpaste` 핸들러도 달려 있어 롱프레스 붙여넣기로
 이미지를 가로챈다. 전송 경로는 관전 모드 데스크탑과 동일(`SpectatorSession.sendInput`).
 
 **안전 파일명** — `safeImageName` (`imageTransfer.ts`)이 MIME에서 확장자를 파생하고
@@ -714,7 +713,7 @@ to add the three lines inline than to source the plugin file.
 **불변 조건:**
 - 이미지 붙여넣기는 셸·관전 양 모드 모두 지원. 셸은 `pty.write(bracketedPaste(path))`, 관전은 `spectator.sendInput(bracketedPaste(path))` → `tmux send-keys -H <hex>`. 두 경로 모두 ControlMaster 멀티플렉싱으로 재인증 없이 업로드.
 - 셸 모드의 ControlMaster 마스터 소켓은 PTY ssh 연결이, 관전 모드는 spectator ssh 연결이 각각 생성한다. 둘 다 `WS close` 시 `unlink(controlPath)`로 소켓 파일을 삭제한다 — ssh 마스터 프로세스 자체는 `pty.kill()` / 관전 프로세스 종료로 함께 정리된다 (별도 `ssh -O exit` 호출 없음).
-- 관전 모드에서 `spectator.hasActivePane()`이 false면 업로드 전에 `image-error` 즉시 반환 — race guard.
+- 관전 모드에서 `transferImage` 후 `spectator.hasActivePane()`이 false면 `image-error` 즉시 반환 — race guard (파일은 이미 원격 `/tmp/tomboy-images/`에 기록된 상태).
 - 안전 파일명은 브릿지가 생성한다 — 노트 포맷에 경로 힌트 필드를 추가하지 말 것.
 - 로컬 타겟 경로는 브릿지 컨테이너 내부다. 볼륨 마운트 없이 외부에서 볼 수 없다.
 
