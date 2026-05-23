@@ -54,13 +54,16 @@ const BRIDGE_RE = /^bridge:\s*(wss?:\/\/\S+)\s*$/;
 | File | Role |
 |------|------|
 | `lib/editor/terminal/parseTerminalNote.ts` | Pure parser (above). |
-| `lib/editor/terminal/wsClient.ts` | WebSocket protocol wrapper. |
-| `lib/editor/terminal/TerminalView.svelte` | xterm.js + FitAddon, header (target/bridge/status/끊김/재연결/편집 모드). |
+| `lib/editor/terminal/wsClient.ts` | WebSocket protocol wrapper. Includes `sendImage` and `onImageResult` for image paste. |
+| `lib/editor/terminal/TerminalView.svelte` | xterm.js + FitAddon, header (target/bridge/status/끊김/재연결/편집 모드). Handles `onBell`, Ctrl+V / drag-and-drop / "이미지" button image triggers. |
 | `lib/editor/terminal/bridgeSettings.ts` | `appSettings` glue + `/login` `/logout` `/health` HTTP helpers. |
 | `lib/editor/terminal/historyStore.ts` | Read-modify-write history/pinned mutation + per-guid serialization + 500ms debounce. Exposes `pinCommandInTerminalHistory`, `unpinCommandInTerminalHistory`. |
 | `lib/editor/terminal/connectAutoRun.ts` | Pure `runConnectScript` — sends each `connect:` item as `text + '\r'` with 50 ms gap, skips empty lines, swallows per-line send errors. |
 | `lib/editor/terminal/oscCapture.ts` | Pure OSC 133 parser / command-extraction helpers. |
 | `lib/editor/terminal/HistoryPanel.svelte` | Desktop side panel + mobile bottom sheet UI for captured history + pinned commands. |
+| `lib/editor/terminal/terminalBell.ts` | 벨 링어 — Web Audio API로 단음 비프음 합성 + `navigator.vibrate(200)`. ~300ms 스로틀. |
+| `lib/editor/terminal/imagePasteClient.ts` | 클라이언트 이미지 헬퍼 — `validateImageFile`, `imageFilesFromList`, `fileToImagePayload`, `extractImageFile` re-export. |
+| `bridge/src/imageTransfer.ts` | 브릿지 이미지 전송 — `mimeToExt`, `safeImageName`, `bracketedPaste`, `buildRemoteCatArgs`, `transferImage`. |
 | `routes/note/[id]/+page.svelte` | Mobile route — branches on `parseTerminalNote(editorContent)` at load and after every IDB reload. |
 | `lib/desktop/NoteWindow.svelte` | Desktop route — same branch. |
 | `routes/settings/+page.svelte` (config tab → "터미널") | Bridge URL + login form + history settings + shell-integration snippet. |
@@ -629,6 +632,82 @@ to add the three lines inline than to source the plugin file.
   intentional (mobile is acting AS the user). If you ever want
   spectator-private navigation, you'd need per-client `switch-client`
   semantics, which tmux's control mode doesn't cleanly support.
+
+## 이미지 붙여넣기 (shell mode only)
+
+셸 모드 터미널 노트에서 이미지를 원격 호스트로 전송하고 경로를 PTY에 주입한다.
+관전(spectator) 모드는 지원하지 않는다 — 파일을 받을 쪽 컨텍스트가 없다.
+
+**트리거 세 가지 (TerminalView.svelte):**
+
+1. **Ctrl+V** — capture-phase `paste` 이벤트에서 `ClipboardEvent.clipboardData.items`
+   를 순회해 `image/*` 항목을 추출.
+2. **드래그 앤 드롭** — `drop` 이벤트에서 `DataTransfer.files`를 통해 이미지 파일 추출.
+3. **"이미지" 버튼** — 헤더 버튼; 모바일에서는 `accept="image/*" capture="environment"`
+   `<input type="file">` 로 카메라/갤러리를 열고, 데스크탑에서는 파일 선택 다이얼로그.
+
+**전송 흐름:**
+
+1. `imagePasteClient.ts` — `validateImageFile` (10 MB 상한, MIME 검증),
+   `fileToImagePayload` (Base64 인코딩) → `wsClient.sendImage({type:'image', mime, data})`.
+2. `bridge/src/server.ts` — `image` 메시지 수신.
+   PTY SSH 연결은 ControlMaster 마스터(`-o ControlMaster=auto -o ControlPath=/tmp/tomboy-ctl/<uuid>.sock`)
+   로 스폰된다. 마스터 소켓이 살아 있는 동안 이미지 전송 시 재인증 없이 연결을 재사용한다.
+3. `bridge/src/imageTransfer.ts:transferImage` — 로컬 타겟(`isLocalTarget`: user 없는 localhost)이면
+   파일을 브릿지 호스트에 직접 기록. 원격 타겟이면
+   `ssh -o ControlPath=<sock> -o BatchMode=yes user@host 'mkdir -p /tmp/tomboy-images && cat > <safe-path>'`
+   를 stdin 파이프로 실행해 이미지 바이트를 원격에 기록.
+4. 전송 성공 후 브릿지는 `\x1b[200~<remotePath>\x1b[201~ ` (bracketed paste + trailing space)
+   를 PTY에 기록한다. 셸/Claude Code는 이것을 붙여넣기로 인식해 경로를 커맨드라인에 삽입한다.
+5. `wsClient.ts:onImageResult` 콜백이 성공/실패 여부를 `TerminalView`에 알려
+   로딩 상태를 해제한다.
+
+**안전 파일명** — `safeImageName` (`imageTransfer.ts`)이 MIME에서 확장자를 파생하고
+`tomboy-<unix-ms>-<4바이트 hex>.<ext>` 패턴으로 이름을 만든다 — 셸 메타문자가 없어
+원격 `cat >` 경로에 셸 인젝션이 없다.
+
+**maxPayload** — 브릿지 WS 서버를 `maxPayload: 16 * 1024 * 1024`로 초기화한다
+(기본 1 MiB에서 변경; 10 MB 이미지의 base64 인코딩 ≈ 13.3 MB를 수용).
+
+**WS 프레임 추가 (이미지):**
+
+클라이언트 → 서버:
+```jsonc
+{"type": "image", "mime": "image/png", "data": "<base64>"}
+```
+서버 → 클라이언트:
+```jsonc
+{"type": "image-ok", "path": "/tmp/tomboy-images/tomboy-1716000000000-a1b2c3d4.png"}
+{"type": "image-error", "message": "transfer failed: ..."}
+```
+
+**불변 조건:**
+- 이미지 붙여넣기는 셸 모드(`spec.spectate` 없음)에서만 동작한다.
+- WS 연결이 닫히면 `ws.on('close')`가 `unlink(controlPath)`로 소켓 파일을 삭제한다 — ssh 마스터 프로세스 자체는 `pty.kill()`로 종료된다 (별도 `ssh -O exit` 호출 없음).
+- 안전 파일명은 브릿지가 생성한다 — 노트 포맷에 경로 힌트 필드를 추가하지 말 것.
+- 로컬 타겟 경로는 브릿지 컨테이너 내부다. 볼륨 마운트 없이 외부에서 볼 수 없다.
+
+## 터미널 벨 (shell mode only)
+
+xterm이 `\x07` (BEL) 바이트를 받으면 짧은 비프음과 진동이 발생한다.
+관전 모드는 제외한다 — 데스크탑이 이미 시스템 벨을 낸다.
+
+**구현 (`terminalBell.ts`):**
+
+- `term.onBell(() => ringBell())` — TerminalView.svelte에서 셸 모드 onMount 시 등록.
+- `ringBell()` — Web Audio API로 880 Hz 사인파(OscillatorNode)를 약 150 ms 재생.
+  10 ms attack + 60 ms release 엔벨로프로 클릭음 방지.
+  `AudioContext` 인스턴스는 싱글톤으로 지연 생성(브라우저 자동재생 정책 회피).
+  `navigator.vibrate(200)` 병렬 호출(지원 안 되면 무시).
+- **스로틀** — 마지막 벨로부터 300 ms 이내에 추가 BEL이 오면 무시. 연속 BEL 폭탄 방지.
+- **`terminalBellEnabled` 설정** — `appSettings.terminalBellEnabled` (boolean, 기본 `true`).
+  설정 → 터미널 브릿지 섹션에 토글 추가.
+
+**수동 QA 참고사항:**
+
+- tmux 대상에서는 `bell-action` 설정이 적용된다. `set -g bell-action any`이어야
+  백그라운드 창 BEL이 클라이언트로 전달된다.
+- `visual-bell on`이면 tmux가 BEL 대신 시각 신호만 내므로 클라이언트 onBell이 호출되지 않는다.
 
 ## Invariants
 

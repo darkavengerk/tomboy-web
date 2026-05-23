@@ -453,8 +453,10 @@ Rules:
 See the **`tomboy-terminal`** skill for the WS protocol, Bearer-token auth,
 SSH spawn modes, WOL host map, the rootless Podman + Quadlet deployment,
 SELinux + user-namespace constraints, OSC 133 capture, tmux-window-scoped
-history buckets, `connect:` auto-run gating, and the **`tmux -CC` spectator
-mode** (active-pane follow + opt-in mobile input via 보내기 popup).
+history buckets, `connect:` auto-run gating, the **`tmux -CC` spectator
+mode** (active-pane follow + opt-in mobile input via 보내기 popup),
+**이미지 붙여넣기** (ControlMaster 멀티플렉싱 + 원격 경로 PTY 주입, 셸 모드 전용),
+and **터미널 벨** (xterm `onBell` → Web Audio 비프 + 진동, 셸 모드 전용).
 
 A note matched as terminal-note when body = **1–3 metadata paragraphs (ssh
 URL + optional `bridge:` + optional `spectate:`, any order) + optional
@@ -514,13 +516,14 @@ Quick map:
 
 - `app/src/lib/editor/terminal/` — `parseTerminalNote.ts`, `wsClient.ts`,
   `TerminalView.svelte`, `bridgeSettings.ts`, `historyStore.ts`,
-  `connectAutoRun.ts`, `oscCapture.ts`, `HistoryPanel.svelte`.
+  `connectAutoRun.ts`, `oscCapture.ts`, `HistoryPanel.svelte`,
+  `terminalBell.ts`, `imagePasteClient.ts`.
 - `routes/note/[id]/+page.svelte` and `lib/desktop/NoteWindow.svelte` —
   branch between `TerminalView` and `TomboyEditor` based on
   `parseTerminalNote(editorContent)` at load and after every IDB reload.
 - `routes/settings/+page.svelte` (config tab → "터미널 브릿지") — default
   bridge URL + login form.
-- `bridge/` — `src/{server,auth,pty,hosts,wol,tmuxControlClient,spectatorSession}.ts`,
+- `bridge/` — `src/{server,auth,pty,hosts,wol,tmuxControlClient,spectatorSession,imageTransfer}.ts`,
   `Containerfile`, `deploy/term-bridge.container` (Quadlet),
   `deploy/Caddyfile`, `deploy/tomboy-spectator.tmux`.
 
@@ -556,6 +559,11 @@ Cross-cutting invariants worth caching (full set lives in the skill):
   `:.+/-` / `:+/-` targets change the session's active pane/window, so
   the desktop user's view also moves. Intentional — mobile is acting
   as the user, not running a private viewport.
+- **이미지 붙여넣기는 ControlMaster 멀티플렉싱으로 재인증 없이 전송 —
+  브릿지는 여전히 자격증명을 중개하지 않는다.** PTY SSH 연결이
+  ControlMaster 마스터 소켓을 생성하고, 이미지 전송은 그 소켓을 재사용해
+  `ssh -o ControlPath=... -o BatchMode=yes`로 파일을 기록한다.
+  노트 포맷에 경로·패스워드 힌트 필드를 추가하지 말 것.
 
 ## 리마커블 일기 OCR 파이프라인 (pipeline/)
 
