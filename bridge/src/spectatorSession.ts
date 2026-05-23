@@ -23,6 +23,7 @@
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { TmuxControlClient } from './tmuxControlClient.js';
+import { controlMasterArgs } from './pty.js';
 import type { SshTarget } from './pty.js';
 
 export interface SpectatorCallbacks {
@@ -44,6 +45,7 @@ export interface SpectatorCallbacks {
 export interface SpectatorOptions {
 	target: SshTarget;
 	session: string;
+	controlPath?: string;
 	callbacks: SpectatorCallbacks;
 }
 
@@ -65,6 +67,31 @@ const SCROLLBACK_SEED_LINES = 1000;
 const SAFE_SESSION_RE = /^[A-Za-z0-9_\-./@:]+$/;
 
 export type SpectatorNavAction = 'next-pane' | 'prev-pane' | 'next-window' | 'prev-window';
+
+/**
+ * Spectator용 ssh argv를 순수 함수로 구성한다. 단위 테스트 가능.
+ * `controlPath` 주어지면 ControlMaster 마스터 모드 (셸 모드 PTY ssh와 동일 패턴) —
+ * 같은 ControlPath를 가리키는 후속 ssh(imageTransfer.ts)가 이 인증된 연결을 재사용.
+ *
+ * 인자 순서: `-tt` → 포트 옵션 → StrictHostKeyChecking → (선택적 ControlMaster 옵션)
+ * → 호스트 → 인라인 셸 명령. 호스트는 인라인 명령 직전이어야 — OpenSSH는 호스트
+ * 뒤의 토큰을 원격 명령으로 취급한다.
+ */
+export function buildSpectatorSshArgs(
+	target: SshTarget,
+	session: string,
+	controlPath?: string
+): string[] {
+	const args: string[] = ['-tt'];
+	if (target.port) args.push('-p', String(target.port));
+	args.push('-o', 'StrictHostKeyChecking=accept-new');
+	if (controlPath) args.push(...controlMasterArgs(controlPath));
+	args.push(target.user ? `${target.user}@${target.host}` : target.host);
+	args.push(
+		`stty cols 500 rows 200 2>/dev/null; stty raw -echo; exec tmux -CC attach -t ${session}`
+	);
+	return args;
+}
 
 export class SpectatorSession {
 	private ssh: ChildProcess;
@@ -122,15 +149,7 @@ export class SpectatorSession {
 		//
 		// Session name is gated by SAFE_SESSION_RE so it's safe to embed
 		// unquoted in the shell command line.
-		const args: string[] = ['-tt'];
-		if (opts.target.port) args.push('-p', String(opts.target.port));
-		args.push('-o', 'StrictHostKeyChecking=accept-new');
-		args.push(
-			opts.target.user ? `${opts.target.user}@${opts.target.host}` : opts.target.host
-		);
-		args.push(
-			`stty cols 500 rows 200 2>/dev/null; stty raw -echo; exec tmux -CC attach -t ${opts.session}`
-		);
+		const args = buildSpectatorSshArgs(opts.target, opts.session, opts.controlPath);
 
 		this.ssh = spawn('ssh', args, { stdio: ['pipe', 'pipe', 'pipe'] });
 		if (!this.ssh.stdin || !this.ssh.stdout || !this.ssh.stderr) {
@@ -390,6 +409,15 @@ export class SpectatorSession {
 		} catch {
 			/* ignore */
 		}
+	}
+
+	/**
+	 * 활성 패널을 알고 있는지 (= sendInput이 의미 있는지). pane-switch 프레임이
+	 * 한 번이라도 와서 activePaneId가 채워졌고, 세션이 안 닫혔으면 true. server.ts의
+	 * handleImageMessage가 spectator 분기에서 이 메서드로 가드.
+	 */
+	hasActivePane(): boolean {
+		return this.activePaneId != null && !this.closed;
 	}
 
 	/**
