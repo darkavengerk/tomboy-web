@@ -47,6 +47,7 @@ export function runClaude(
     '-p',
     '--input-format', 'stream-json',
     '--output-format', 'stream-json',
+    '--include-partial-messages',
     '--verbose',
   ];
   if (req.model) args.push('--model', req.model);
@@ -87,6 +88,41 @@ export function runClaude(
     if (!out.destroyed) out.push(null);
   };
 
+  interface ClaudeStdoutEvent {
+    type?: string;
+    // type:'result' subtype: 'success' | 'error_max_turns' | etc.
+    subtype?: string;
+    // type:'stream_event' carries Anthropic Messages API streaming events.
+    event?: {
+      type?: string;
+      delta?: { type?: string; text?: string };
+    };
+  }
+
+  const handleEvent = (evt: ClaudeStdoutEvent): void => {
+    if (evt.type === 'stream_event' && evt.event) {
+      const e = evt.event;
+      // Only forward text_delta. Skip thinking_delta (extended thinking is
+      // internal), signature_delta, input_json_delta (tool args), and
+      // structural events (message_start/stop, content_block_start/stop,
+      // message_delta).
+      if (
+        e.type === 'content_block_delta' &&
+        e.delta?.type === 'text_delta' &&
+        typeof e.delta.text === 'string'
+      ) {
+        writeEvent({ delta: e.delta.text });
+      }
+    } else if (evt.type === 'result') {
+      writeEvent({ done: true, reason: evt.subtype ?? 'unknown' });
+      done = true;
+    }
+    // type:'assistant' (cumulative message recap — partial mode emits this
+    // after each block completes; forwarding would duplicate text already
+    // streamed via text_delta), type:'system', type:'rate_limit_event' →
+    // ignore.
+  };
+
   child.stdout!.on('data', (chunk: Buffer) => {
     buf += chunk.toString('utf8');
     let nl: number;
@@ -94,21 +130,10 @@ export function runClaude(
       const line = buf.slice(0, nl).trim();
       buf = buf.slice(nl + 1);
       if (!line) continue;
-      let evt: { type?: string; message?: { content?: Array<{ type: string; text?: string }> }; subtype?: string };
+      let evt: ClaudeStdoutEvent;
       try { evt = JSON.parse(line); }
       catch { continue; }
-
-      if (evt.type === 'assistant' && Array.isArray(evt.message?.content)) {
-        for (const c of evt.message.content) {
-          if (c.type === 'text' && typeof c.text === 'string') {
-            writeEvent({ delta: c.text });
-          }
-          // tool_use / tool_result ignored in MVP
-        }
-      } else if (evt.type === 'result') {
-        writeEvent({ done: true, reason: evt.subtype ?? 'unknown' });
-        done = true;
-      }
+      handleEvent(evt);
     }
   });
 
@@ -129,21 +154,7 @@ export function runClaude(
       buf = '';
       if (line) {
         try {
-          const evt = JSON.parse(line) as {
-            type?: string;
-            message?: { content?: Array<{ type: string; text?: string }> };
-            subtype?: string;
-          };
-          if (evt.type === 'assistant' && Array.isArray(evt.message?.content)) {
-            for (const c of evt.message.content) {
-              if (c.type === 'text' && typeof c.text === 'string') {
-                writeEvent({ delta: c.text });
-              }
-            }
-          } else if (evt.type === 'result') {
-            writeEvent({ done: true, reason: evt.subtype ?? 'unknown' });
-            done = true;
-          }
+          handleEvent(JSON.parse(line) as ClaudeStdoutEvent);
         } catch { /* ignore non-JSON trailing line */ }
       }
     }

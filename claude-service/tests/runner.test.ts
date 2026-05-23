@@ -56,22 +56,81 @@ describe('runClaude', () => {
     expect(fake.lastCall!.env.ANTHROPIC_API_KEY).toBe('');
   });
 
-  it('converts assistant text events to SSE delta', async () => {
+  it('passes --include-partial-messages flag', () => {
+    const fake = makeFakeSpawn();
+    void runClaude(
+      { messages: [] },
+      new AbortController().signal,
+      { spawn: fake.spawn },
+    );
+    expect(fake.lastCall!.args).toContain('--include-partial-messages');
+  });
+
+  it('converts text_delta stream events to SSE delta (streams in real time)', async () => {
     const fake = makeFakeSpawn();
     const stream = runClaude(
       { messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }] },
       new AbortController().signal,
       { spawn: fake.spawn },
     );
-    // Simulate stream-json output
-    fake.lastCall!.child.emitStdout('{"type":"assistant","message":{"content":[{"type":"text","text":"hello"}]}}\n');
-    fake.lastCall!.child.emitStdout('{"type":"assistant","message":{"content":[{"type":"text","text":" world"}]}}\n');
+    // Real CLI output shape under --include-partial-messages: each
+    // content_block_delta/text_delta is a single chunk of the response.
+    fake.lastCall!.child.emitStdout(
+      '{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hello"}}}\n',
+    );
+    fake.lastCall!.child.emitStdout(
+      '{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" world"}}}\n',
+    );
     fake.lastCall!.child.emitStdout('{"type":"result","subtype":"success"}\n');
     fake.lastCall!.child.exit(0);
     const out = await consume(stream);
     expect(out).toContain('data: {"delta":"hello"}');
     expect(out).toContain('data: {"delta":" world"}');
     expect(out).toContain('data: {"done":true');
+  });
+
+  it('ignores thinking_delta (extended thinking must not leak into note)', async () => {
+    const fake = makeFakeSpawn();
+    const stream = runClaude(
+      { messages: [] },
+      new AbortController().signal,
+      { spawn: fake.spawn },
+    );
+    fake.lastCall!.child.emitStdout(
+      '{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"internal reasoning"}}}\n',
+    );
+    fake.lastCall!.child.emitStdout(
+      '{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"actual reply"}}}\n',
+    );
+    fake.lastCall!.child.emitStdout('{"type":"result","subtype":"success"}\n');
+    fake.lastCall!.child.exit(0);
+    const out = await consume(stream);
+    expect(out).not.toContain('internal reasoning');
+    expect(out).toContain('actual reply');
+  });
+
+  it('ignores type:"assistant" cumulative recap (would duplicate text already streamed)', async () => {
+    const fake = makeFakeSpawn();
+    const stream = runClaude(
+      { messages: [] },
+      new AbortController().signal,
+      { spawn: fake.spawn },
+    );
+    fake.lastCall!.child.emitStdout(
+      '{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"streamed"}}}\n',
+    );
+    // After content_block_stop, partial mode emits a recap "assistant" message
+    // with the cumulative content. If we forwarded it, the client would see
+    // "streamed" twice.
+    fake.lastCall!.child.emitStdout(
+      '{"type":"assistant","message":{"content":[{"type":"text","text":"streamed"}]}}\n',
+    );
+    fake.lastCall!.child.emitStdout('{"type":"result","subtype":"success"}\n');
+    fake.lastCall!.child.exit(0);
+    const out = await consume(stream);
+    // Exactly one "streamed" delta should be present (no recap duplication).
+    const matches = out.match(/"delta":"streamed"/g) ?? [];
+    expect(matches.length).toBe(1);
   });
 
   it('handles partial line buffering', async () => {
@@ -82,8 +141,10 @@ describe('runClaude', () => {
       { spawn: fake.spawn },
     );
     // Emit a JSON line split across two chunks
-    fake.lastCall!.child.emitStdout('{"type":"assistant","message":{"content":[{"type":"');
-    fake.lastCall!.child.emitStdout('text","text":"split"}]}}\n');
+    fake.lastCall!.child.emitStdout(
+      '{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_',
+    );
+    fake.lastCall!.child.emitStdout('delta","text":"split"}}}\n');
     fake.lastCall!.child.emitStdout('{"type":"result","subtype":"success"}\n');
     fake.lastCall!.child.exit(0);
     const out = await consume(stream);
@@ -116,19 +177,33 @@ describe('runClaude', () => {
     expect(fake.lastCall!.child.killed).toBe(true);
   });
 
-  it('ignores tool_use events (MVP)', async () => {
+  it('ignores tool_use input_json_delta and structural events (MVP)', async () => {
     const fake = makeFakeSpawn();
     const stream = runClaude(
       { messages: [] },
       new AbortController().signal,
       { spawn: fake.spawn },
     );
-    fake.lastCall!.child.emitStdout('{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"path":"/foo"}}]}}\n');
-    fake.lastCall!.child.emitStdout('{"type":"assistant","message":{"content":[{"type":"text","text":"after tool"}]}}\n');
+    // Tool-use block: content_block_start with tool_use type + input_json_delta chunks.
+    fake.lastCall!.child.emitStdout(
+      '{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","name":"Read"}}}\n',
+    );
+    fake.lastCall!.child.emitStdout(
+      '{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"path\\":\\"/foo\\"}"}}}\n',
+    );
+    fake.lastCall!.child.emitStdout(
+      '{"type":"stream_event","event":{"type":"content_block_stop","index":0}}\n',
+    );
+    // Following text block.
+    fake.lastCall!.child.emitStdout(
+      '{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"after tool"}}}\n',
+    );
     fake.lastCall!.child.emitStdout('{"type":"result","subtype":"success"}\n');
     fake.lastCall!.child.exit(0);
     const out = await consume(stream);
     expect(out).not.toContain('tool_use');
+    expect(out).not.toContain('input_json_delta');
+    expect(out).not.toContain('content_block_start');
     expect(out).toContain('"delta":"after tool"');
   });
 });

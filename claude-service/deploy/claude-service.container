@@ -30,12 +30,21 @@ Wants=network-online.target
 [Container]
 Image=localhost/claude-service:latest
 ContainerName=claude-service
-PublishPort=7842:7842
+# Host networking — rootless Pasta+PublishPort breaks chunked SSE
+# (first byte gets buffered/lost on streaming responses, even though
+# request/response work fine for non-streaming endpoints). Same Pi-bridge
+# Bearer is the only auth, and the service is meant for LAN only, so the
+# loss of net namespace isolation is acceptable.
+Network=host
 EnvironmentFile=%h/.config/claude-service.env
 
-# OAuth credentials directory — claude CLI reads ~/.claude/*.
-# Mount the host's ~/.claude into the container's $HOME/.claude (HOME=/data).
+# OAuth credentials — claude CLI reads BOTH ~/.claude/ (directory) and
+# ~/.claude.json (settings file at $HOME root). The .json sits next to
+# the directory, so it requires its own mount; mounting only the
+# directory leaves the container regenerating an empty .claude.json on
+# every start, which the CLI rejects.
 Volume=%h/.claude:/data/.claude:Z
+Volume=%h/.claude.json:/data/.claude.json:Z
 
 [Service]
 Restart=on-failure

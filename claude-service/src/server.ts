@@ -48,6 +48,12 @@ export function buildServer(opts: BuildServerOpts): FastifyInstance {
       if (!reply.raw.writableEnded) ctrl.abort();
     });
 
+    // Tell Fastify we're taking over the response stream. Without this,
+    // Fastify v5 tries to manage the response lifecycle in parallel with
+    // our reply.raw.writeHead + stream.pipe, which races and drops the
+    // connection before any SSE bytes leave the socket.
+    reply.hijack();
+
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -55,9 +61,9 @@ export function buildServer(opts: BuildServerOpts): FastifyInstance {
 
     const stream = runClaude(body as RunRequest, ctrl.signal, { spawn: opts.spawn });
     stream.pipe(reply.raw);
-
-    // Prevent fastify from auto-replying — we manage the response stream.
-    return reply;
+    // No `return reply` — after hijack, Fastify ignores the handler's
+    // return value.
+    return;
   });
 
   return app;
