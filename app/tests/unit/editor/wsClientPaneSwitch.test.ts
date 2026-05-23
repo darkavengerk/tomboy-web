@@ -81,4 +81,23 @@ describe('TerminalWsClient pane-switch parsing', () => {
 		expect(switches[0].paneOrdinal).toBe(0);
 		expect(switches[0].paneCount).toBe(0);
 	});
+
+	it('defaults paneOrdinal/paneCount to 0 when the wire value is not a number', () => {
+		fake.onmessage?.({
+			data: JSON.stringify({
+				type: 'pane-switch',
+				paneId: '%3',
+				cols: 80,
+				rows: 24,
+				altScreen: false,
+				windowIndex: '1',
+				windowName: 'main',
+				paneOrdinal: '2',
+				paneCount: null
+			})
+		});
+		expect(switches).toHaveLength(1);
+		expect(switches[0].paneOrdinal).toBe(0);
+		expect(switches[0].paneCount).toBe(0);
+	});
 });
