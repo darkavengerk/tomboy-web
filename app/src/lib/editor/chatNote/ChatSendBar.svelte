@@ -2,9 +2,14 @@
 	import type { Editor } from '@tiptap/core';
 	import { onDestroy } from 'svelte';
 	import { parseChatNote } from '$lib/chatNote/parseChatNote.js';
-	import { buildChatRequest } from '$lib/chatNote/buildChatRequest.js';
-	import { sendChat, LlmChatError } from '$lib/chatNote/sendChat.js';
-	import { searchRag, RagSearchError, type RagHit } from '$lib/chatNote/searchRag.js';
+	import {
+		buildChatRequest,
+		sendChat,
+		LlmChatError,
+		searchRag,
+		RagSearchError,
+		type RagHit
+	} from '$lib/chatNote/backends/ollama.js';
 	import { pushToast } from '$lib/stores/toast.js';
 
 	type Props = {

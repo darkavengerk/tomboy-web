@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildChatRequest } from '$lib/chatNote/buildChatRequest.js';
+import { buildChatRequest } from '$lib/chatNote/backends/ollama.js';
 import type { LlmNoteSpec } from '$lib/chatNote/parseChatNote.js';
 
 const baseSpec: LlmNoteSpec = {

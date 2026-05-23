@@ -1,4 +1,18 @@
-import type { ChatRequestBody } from './buildChatRequest.js';
+/**
+ * Ollama backend bundle for chatNote.
+ *
+ * Combines three former sibling modules into one backend-scoped file:
+ *   - LlmChatError + sendChat  (POST /llm/chat streaming NDJSON)
+ *   - ChatRequestBody + buildChatRequest  (spec → request body)
+ *   - RagHit + RagSearchError + searchRag  (POST /rag/search)
+ *
+ * A future backends/claude.ts will sit alongside this file for the
+ * Anthropic Claude path (Task 4).
+ */
+
+import type { LlmNoteSpec } from '../parseChatNote.js';
+
+// ─── sendChat ──────────────────────────────────────────────────────────────
 
 export type LlmChatErrorKind =
 	| 'unauthorized'
@@ -154,4 +168,117 @@ export async function sendChat(opts: SendChatOptions): Promise<SendChatResult> {
 	}
 	// Stream ended without a `done: true` frame — treat as done with what we have.
 	return { content: accumulated, reason: 'done' };
+}
+
+// ─── buildChatRequest ──────────────────────────────────────────────────────
+
+/**
+ * One message in a chat request. `images` is optional — Ollama's /api/chat
+ * accepts a `images: string[]` field on user messages for vision models
+ * (qwen2.5-vl, llava, gemma3, ...). Each entry is a base64-encoded image
+ * (no `data:` prefix). The field is ignored by text-only models, so it's
+ * safe to include conditionally.
+ */
+export interface ChatMessage {
+	role: 'system' | 'user' | 'assistant';
+	content: string;
+	images?: string[];
+}
+
+export interface ChatRequestBody {
+	model: string;
+	options: Record<string, number>;
+	messages: ChatMessage[];
+}
+
+/**
+ * Convert a parsed LLM note spec into the JSON body POSTed to /llm/chat.
+ *
+ * - If `system` is a non-empty string, prepend it as a system message.
+ *   Empty string means "user deliberately left the persona blank" — we
+ *   omit the system message entirely rather than wasting a slot.
+ * - `options` only contains keys whose value is not undefined.
+ * - `model` is passed through unchanged.
+ */
+export function buildChatRequest(spec: LlmNoteSpec): ChatRequestBody {
+	const options: Record<string, number> = {};
+	for (const [k, v] of Object.entries(spec.options)) {
+		if (typeof v === 'number') options[k] = v;
+	}
+
+	const messages = spec.system && spec.system.length > 0
+		? [{ role: 'system' as const, content: spec.system }, ...spec.messages]
+		: [...spec.messages];
+
+	return { model: spec.model, options, messages };
+}
+
+// ─── searchRag ─────────────────────────────────────────────────────────────
+
+export interface RagHit {
+	guid: string;
+	title: string;
+	body: string;
+	score: number;
+}
+
+export type RagSearchErrorKind =
+	| 'unauthorized'
+	| 'rag_unavailable'
+	| 'bad_request'
+	| 'upstream_error'
+	| 'network';
+
+export class RagSearchError extends Error {
+	kind: RagSearchErrorKind;
+	status?: number;
+
+	constructor(kind: RagSearchErrorKind, opts: { status?: number; message?: string } = {}) {
+		super(opts.message ?? kind);
+		this.name = 'RagSearchError';
+		this.kind = kind;
+		this.status = opts.status;
+	}
+}
+
+export interface SearchRagOptions {
+	url: string;
+	token: string;
+	query: string;
+	k: number;
+	signal?: AbortSignal;
+}
+
+export async function searchRag(opts: SearchRagOptions): Promise<RagHit[]> {
+	let resp: Response;
+	try {
+		resp = await fetch(opts.url, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				Authorization: `Bearer ${opts.token}`
+			},
+			body: JSON.stringify({ query: opts.query, k: opts.k }),
+			signal: opts.signal
+		});
+	} catch (err) {
+		const e = err as { name?: string; message?: string };
+		throw new RagSearchError('network', { message: e.message ?? 'fetch failed' });
+	}
+
+	if (resp.status === 401) throw new RagSearchError('unauthorized', { status: 401 });
+	if (resp.status === 400) throw new RagSearchError('bad_request', { status: 400 });
+	if (resp.status === 503) throw new RagSearchError('rag_unavailable', { status: 503 });
+	if (resp.status >= 500 || !resp.ok)
+		throw new RagSearchError('upstream_error', { status: resp.status });
+
+	try {
+		const data = (await resp.json()) as RagHit[];
+		return Array.isArray(data) ? data : [];
+	} catch (err) {
+		throw new RagSearchError('upstream_error', {
+			status: resp.status,
+			message: 'bad json'
+		});
+	}
 }
