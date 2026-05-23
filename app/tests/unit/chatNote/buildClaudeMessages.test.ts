@@ -35,6 +35,48 @@ describe('buildClaudeMessages', () => {
     ]);
   });
 
+  it('drops a trailing empty A: placeholder (ChatSendBar appends this before calling)', () => {
+    // ChatSendBar's send() adds an 'A: ' paragraph as the response anchor
+    // before invoking buildClaudeMessages. That empty placeholder must not
+    // poison the consolidation logic into thinking last turn is assistant.
+    const d = docFrom(
+      textPara('title'),
+      textPara('claude://'),
+      textPara(''),
+      textPara('Q: 장내세균에 대해 설명해줘'),
+      textPara('A: '),
+    );
+    const msgs = buildClaudeMessages(d);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].role).toBe('user');
+    expect(msgs[0].content).toEqual([
+      { type: 'text', text: '장내세균에 대해 설명해줘' },
+    ]);
+  });
+
+  it('keeps a trailing A: with real content (real assistant turn, not placeholder)', () => {
+    const d = docFrom(
+      textPara('title'),
+      textPara('claude://'),
+      textPara(''),
+      textPara('Q: first'),
+      textPara('A: first answer'),
+      textPara('Q: second'),
+      textPara('A: '),
+    );
+    const msgs = buildClaudeMessages(d);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].role).toBe('user');
+    // History is real (preserves prior A: with content), placeholder dropped
+    const txt = msgs[0].content[0];
+    expect(txt.type).toBe('text');
+    expect((txt as { text: string }).text).toContain('A: first answer');
+    // Last block: the latest user turn's content (which is 'second' since
+    // the empty trailing A: was dropped)
+    const lastBlock = msgs[0].content[msgs[0].content.length - 1];
+    expect(lastBlock).toEqual({ type: 'text', text: 'second' });
+  });
+
   it('Q + A + Q consolidates into a single user message with history prefix', () => {
     // claude CLI's --input-format stream-json only accepts user-role messages
     // (it generates assistant turns; you can't replay assistant content as
