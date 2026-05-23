@@ -1,0 +1,39 @@
+# claude-service/Containerfile
+# Runs the Node service that proxies POST /chat → `claude -p` subprocess.
+# Built on the DESKTOP (host with the user's Claude Code OAuth credentials).
+#
+# Two-stage build: compile TypeScript in the builder stage, then copy
+# only the compiled JS + production node_modules into the final image.
+
+FROM docker.io/library/node:22-bookworm-slim AS builder
+
+WORKDIR /app
+COPY package.json package-lock.json* ./
+# Install all deps (including devDependencies for tsc)
+RUN npm install
+
+COPY tsconfig.json ./
+COPY src ./src
+RUN npx tsc
+
+# ---- final image ----
+FROM docker.io/library/node:22-bookworm-slim
+
+# Install claude CLI globally so we can spawn it.
+RUN npm install -g @anthropic-ai/claude-code@latest
+
+WORKDIR /app
+COPY package.json package-lock.json* ./
+RUN npm install --omit=dev
+
+# Copy compiled output from builder
+COPY --from=builder /app/dist ./dist
+
+# OAuth credentials are mounted at runtime via Quadlet (Volume= directive).
+# claude CLI reads $HOME/.claude/credentials.json
+ENV HOME=/data
+RUN mkdir -p /data/.claude
+
+EXPOSE 7842
+
+CMD ["node", "dist/server.js"]
