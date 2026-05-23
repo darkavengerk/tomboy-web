@@ -3,7 +3,7 @@
 	import { Terminal } from '@xterm/xterm';
 	import { FitAddon } from '@xterm/addon-fit';
 	import '@xterm/xterm/css/xterm.css';
-	import { TerminalWsClient, type WsClientStatus } from './wsClient.js';
+	import { TerminalWsClient, type WsClientStatus, type PaneSwitchInfo } from './wsClient.js';
 	import type { TerminalNoteSpec } from './parseTerminalNote.js';
 	import {
 		getDefaultTerminalBridge,
@@ -235,6 +235,28 @@
 		if (!isSpectator || !term) return;
 		const b = term.buffer.active;
 		scrollState = computeScrollState(scrollState, b.viewportY, b.baseY);
+	}
+
+	/** pane-switch 프레임에서 공통으로 갱신되는 7개 spectator 상태 변수를 한꺼번에 씁니다. */
+	function applyPaneSwitch({ paneId, cols, rows, windowIndex, windowName, paneOrdinal, paneCount }: PaneSwitchInfo): void {
+		spectatorPaneId = paneId;
+		spectatorCols = cols;
+		spectatorRows = rows;
+		spectatorWindowIndex = windowIndex;
+		spectatorWindowName = windowName;
+		spectatorPaneOrdinal = paneOrdinal;
+		spectatorPaneCount = paneCount;
+	}
+
+	/** 재연결 시 이전 세션의 패인 정보가 잠시 남아 있지 않도록 spectator 상태를 초기화합니다. */
+	function resetSpectatorState(): void {
+		spectatorPaneId = null;
+		spectatorCols = 0;
+		spectatorRows = 0;
+		spectatorWindowIndex = '';
+		spectatorWindowName = '';
+		spectatorPaneOrdinal = 0;
+		spectatorPaneCount = 0;
 	}
 
 	/*
@@ -512,15 +534,9 @@
 					void runConnectScript(spec.connect, (line) => client?.send(line));
 				}
 			},
-			onPaneSwitch: ({ paneId, cols, rows, windowIndex, windowName, paneOrdinal, paneCount }) => {
-				spectatorPaneId = paneId;
-				spectatorCols = cols;
-				spectatorRows = rows;
-				spectatorWindowIndex = windowIndex;
-				spectatorWindowName = windowName;
-				spectatorPaneOrdinal = paneOrdinal;
-				spectatorPaneCount = paneCount;
-				try { term?.resize(cols, rows); } catch { /* ignore */ }
+			onPaneSwitch: (info) => {
+				applyPaneSwitch(info);
+				try { term?.resize(info.cols, info.rows); } catch { /* ignore */ }
 				// term.resize triggers an async re-render; defer the fit one
 				// frame so .xterm's new natural dimensions have settled.
 				requestAnimationFrame(() => applySpectatorFit());
@@ -617,6 +633,7 @@
 
 	function reconnect() {
 		if (!resolvedBridge || !resolvedToken) return;
+		resetSpectatorState(); // clear stale pane info so buttons reflect the new session
 		connectFired = false; // allow connect: script to re-run on next 'open'
 		client?.close();
 		term?.reset();
@@ -647,15 +664,9 @@
 					void runConnectScript(spec.connect, (line) => client?.send(line));
 				}
 			},
-			onPaneSwitch: ({ paneId, cols, rows, windowIndex, windowName, paneOrdinal, paneCount }) => {
-				spectatorPaneId = paneId;
-				spectatorCols = cols;
-				spectatorRows = rows;
-				spectatorWindowIndex = windowIndex;
-				spectatorWindowName = windowName;
-				spectatorPaneOrdinal = paneOrdinal;
-				spectatorPaneCount = paneCount;
-				try { term?.resize(cols, rows); } catch { /* ignore */ }
+			onPaneSwitch: (info) => {
+				applyPaneSwitch(info);
+				try { term?.resize(info.cols, info.rows); } catch { /* ignore */ }
 			},
 			onPaneResize: ({ cols, rows }) => {
 				spectatorCols = cols;
