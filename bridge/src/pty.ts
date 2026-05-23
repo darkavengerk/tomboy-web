@@ -31,6 +31,14 @@ export function isLocalTarget(t: SshTarget): boolean {
 }
 
 /**
+ * `ssh -o ControlMaster=auto -o ControlPath=<path>` 두 옵션 페어를 생성.
+ * spectatorSession도 같은 헬퍼를 써서 ControlMaster 마스터를 띄운다.
+ */
+export function controlMasterArgs(controlPath: string): string[] {
+	return ['-o', 'ControlMaster=auto', '-o', `ControlPath=${controlPath}`];
+}
+
+/**
  * `ssh` 명령의 argv(ssh 자신 뒤의 인자들)를 구성한다. 순수 함수.
  *
  * `controlPath`가 주어지면 이 연결을 멀티플렉싱 "마스터"로 설정한다 — 같은
@@ -42,10 +50,7 @@ export function buildSshArgs(t: SshTarget, controlPath?: string): string[] {
 	const args: string[] = [];
 	if (t.port) args.push('-p', String(t.port));
 	args.push('-o', 'StrictHostKeyChecking=accept-new');
-	if (controlPath) {
-		args.push('-o', 'ControlMaster=auto');
-		args.push('-o', `ControlPath=${controlPath}`);
-	}
+	if (controlPath) args.push(...controlMasterArgs(controlPath));
 	args.push(t.user ? `${t.user}@${t.host}` : t.host);
 	return args;
 }
