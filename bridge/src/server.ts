@@ -12,6 +12,7 @@ import { probePort, sendMagicPacket, waitForPort } from './wol.js';
 import { handleLlmChat } from './llm.js';
 import { handleRagSearch } from './rag.js';
 import { handleOcrProxy } from './ocr.js';
+import { handleClaudeChat } from './claude.js';
 import { handleGpuStatus, handleGpuUnload } from './gpu.js';
 import { handleRemarkableWallpaper } from './remarkable.js';
 import { loadRemarkableHosts } from './remarkableHosts.js';
@@ -22,6 +23,8 @@ const PASSWORD = requireEnv('BRIDGE_PASSWORD');
 const SECRET = requireEnv('BRIDGE_SECRET');
 const ALLOWED_ORIGIN = requireEnv('BRIDGE_ALLOWED_ORIGIN');
 const OCR_SERVICE_URL = requireEnv('OCR_SERVICE_URL');
+// CLAUDE_SERVICE_URL is optional — bridge boots without it and returns 503.
+const CLAUDE_SERVICE_URL = process.env.CLAUDE_SERVICE_URL ?? '';
 // Ollama runs on the desktop alongside ocr-service. The bridge reads this
 // from env so deployments without an Ollama on `localhost:11434` (i.e.
 // remote-LAN Ollama) can override it. `llm.ts` reads the same env var
@@ -112,6 +115,11 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 
 	if (url === '/ocr' && req.method === 'POST') {
 		await handleOcrProxy(req, res, SECRET, OCR_SERVICE_URL);
+		return;
+	}
+
+	if (url === '/claude/chat' && req.method === 'POST') {
+		await handleClaudeChat(req, res, SECRET, CLAUDE_SERVICE_URL);
 		return;
 	}
 
