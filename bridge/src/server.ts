@@ -221,11 +221,23 @@ function handleWs(ws: WebSocket): void {
 	};
 
 	ws.on('message', (raw) => {
+		const rawBuf = raw as Buffer;
+		const rawLen = rawBuf.length;
 		let msg: ClientMsg;
 		try {
-			msg = JSON.parse(raw.toString());
+			msg = JSON.parse(rawBuf.toString());
 		} catch {
+			console.log(`[ws] message: JSON parse failed, ${rawLen} bytes, first 80=${rawBuf.toString().slice(0, 80)}`);
 			return;
+		}
+		// 메시지 도착 자체를 가시화 — 'data' 프레임은 너무 시끄러우니 제외.
+		// 'image'는 base64 본문이 크므로 mime + bytes만 요약.
+		if (msg.type !== 'data') {
+			const summary =
+				msg.type === 'image'
+					? `image mime=${(msg as { mime?: string }).mime ?? '?'} b64Len=${((msg as { data?: string }).data ?? '').length}`
+					: msg.type;
+			console.log(`[ws] message: ${summary} (${rawLen} bytes total)`);
 		}
 
 		if (msg.type === 'connect') {
@@ -308,7 +320,8 @@ function handleWs(ws: WebSocket): void {
 		}
 	});
 
-	ws.on('close', () => {
+	ws.on('close', (code, reason) => {
+		console.log(`[ws] close code=${code} reason=${reason?.toString() || '(none)'}`);
 		clearTimeout(authTimer);
 		abortCtrl.abort();
 		if (pty) {
