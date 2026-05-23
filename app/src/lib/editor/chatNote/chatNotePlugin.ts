@@ -5,9 +5,9 @@ import {
 	LLM_HEADER_DEFAULTS,
 	LLM_RECOGNIZED_HEADER_KEYS,
 	type LlmHeaderKey
-} from '$lib/llmNote/defaults.js';
+} from '$lib/chatNote/defaults.js';
 
-export const llmNotePluginKey = new PluginKey<undefined>('llmNote');
+export const chatNotePluginKey = new PluginKey<undefined>('llmNote');
 
 interface SignatureLocation {
 	paragraphIndex: number;
@@ -91,12 +91,12 @@ function buildAutoCompleteParagraphs(
 	return paras;
 }
 
-export function createLlmNotePlugin(): Plugin {
+export function createChatNotePlugin(): Plugin {
 	return new Plugin({
-		key: llmNotePluginKey,
+		key: chatNotePluginKey,
 		appendTransaction(trs, oldState, newState) {
 			const rescan = trs.some(
-				(tr) => tr.getMeta(llmNotePluginKey)?.rescan === true
+				(tr) => tr.getMeta(chatNotePluginKey)?.rescan === true
 			);
 			const docChanged = trs.some((tr) => tr.docChanged);
 

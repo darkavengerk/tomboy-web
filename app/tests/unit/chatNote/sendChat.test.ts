@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { sendChat, LlmChatError } from '$lib/llmNote/sendChat.js';
+import { sendChat, LlmChatError } from '$lib/chatNote/backends/ollama.js';
 
 function ndjsonStreamResponse(frames: object[], status = 200): Response {
 	const stream = new ReadableStream({

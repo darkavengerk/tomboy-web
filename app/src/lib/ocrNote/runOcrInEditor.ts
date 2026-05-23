@@ -1,7 +1,6 @@
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from 'prosemirror-model';
-import { sendChat, LlmChatError } from '../llmNote/sendChat.js';
-import type { ChatRequestBody } from '../llmNote/buildChatRequest.js';
+import { sendChat, LlmChatError, type ChatRequestBody } from '../chatNote/backends/ollama.js';
 import { sendOcr, OcrSendError } from './sendOcr.js';
 import { imageBlobToBase64 } from './imageToBase64.js';
 import { downloadImageFromDropboxUrl } from '../sync/imageUpload.js';

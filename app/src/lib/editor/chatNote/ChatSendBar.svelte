@@ -1,10 +1,23 @@
 <script lang="ts">
 	import type { Editor } from '@tiptap/core';
 	import { onDestroy } from 'svelte';
-	import { parseLlmNote } from '$lib/llmNote/parseLlmNote.js';
-	import { buildChatRequest } from '$lib/llmNote/buildChatRequest.js';
-	import { sendChat, LlmChatError } from '$lib/llmNote/sendChat.js';
-	import { searchRag, RagSearchError, type RagHit } from '$lib/llmNote/searchRag.js';
+	import { parseChatNote, type ChatNoteSpec } from '$lib/chatNote/parseChatNote.js';
+	import {
+		buildChatRequest,
+		sendChat,
+		LlmChatError,
+		searchRag,
+		RagSearchError,
+		type RagHit
+	} from '$lib/chatNote/backends/ollama.js';
+	import {
+		buildClaudeMessages
+	} from '$lib/chatNote/buildClaudeMessages.js';
+	import {
+		sendClaude,
+		ClaudeChatError,
+		type ClaudeChatBody
+	} from '$lib/chatNote/backends/claude.js';
 	import { pushToast } from '$lib/stores/toast.js';
 
 	type Props = {
@@ -35,7 +48,7 @@
 
 	let spec = $derived.by(() => {
 		lastEditorVersion; // subscribe to bump
-		return parseLlmNote(editor.getJSON());
+		return parseChatNote(editor.getJSON());
 	});
 
 	const sending = $derived(abortController !== null);
@@ -78,30 +91,14 @@
 		} catch { /* ignore */ }
 	}
 
-	async function send(): Promise<void> {
-		if (sendDisabled || !spec) return;
-
-		// Capture before any editor mutation — appendParagraph below changes
-		// the doc, which re-derives spec/lastUserContent and clears it.
-		const ragQuery = lastUserContent;
-		const ragK = spec.options.rag;
-
+	async function runOllama(
+		spec: ChatNoteSpec,
+		httpBase: string,
+		ctrl: AbortController,
+		ragQuery: string,
+		ragK: number | undefined
+	): Promise<void> {
 		const body = buildChatRequest(spec);
-		const ctrl = new AbortController();
-		abortController = ctrl;
-		tokenCount = 0;
-		editor.setEditable(false);
-
-		// Add empty A: paragraph as placeholder
-		appendParagraph('A: ');
-
-		// bridgeUrl 은 terminal note 용 WebSocket URL (wss://host/ws) 또는
-		// 일반 base URL 일 수 있음. HTTP base 로 정규화:
-		const httpBase = bridgeUrl
-			.replace(/^wss:\/\//, 'https://')
-			.replace(/^ws:\/\//, 'http://')
-			.replace(/\/(ws|llm\/chat)\/?$/, '')
-			.replace(/\/$/, '');
 
 		// RAG retrieval (opt-in via rag header). On failure, fall through to
 		// chat without context — RAG must never block a response.
@@ -181,6 +178,105 @@
 				appendToLastParagraph(line);
 				appendParagraph('');
 				appendParagraph('Q: ');
+			}
+		}
+	}
+
+	function formatClaudeError(err: ClaudeChatError): string {
+		switch (err.kind) {
+			case 'unauthorized':
+				return '[오류: 인증 실패 — 설정에서 브릿지 재로그인]';
+			case 'service_unavailable':
+				return '[오류: 데스크탑 Claude 서비스 응답 없음]';
+			case 'rate_limited':
+				return '[오류: Claude 사용량 한도 도달. 잠시 후 재시도]';
+			case 'cli_failed':
+				return `[오류: claude 실행 실패 — ${(err.detail ?? '').slice(0, 200)}]`;
+			case 'bad_request':
+				return `[오류: 요청 형식 오류 ${err.detail ?? ''}]`;
+			case 'payload_too_large':
+				return '[오류: 노트가 너무 큼]';
+			case 'network':
+			case 'upstream_error':
+			case 'stream_error':
+			default:
+				return '[오류: 연결 실패. 재시도?]';
+		}
+	}
+
+	async function runClaude(
+		spec: ChatNoteSpec,
+		httpBase: string,
+		ctrl: AbortController
+	): Promise<void> {
+		const messages = buildClaudeMessages(editor.getJSON());
+		const body: ClaudeChatBody = {
+			messages,
+			model: spec.model || undefined,
+			system: spec.system,
+			cwd: spec.options.cwd,
+			allowedTools: spec.options.allowedTools
+		};
+
+		try {
+			const r = await sendClaude({
+				url: `${httpBase}/claude/chat`,
+				token: bridgeToken,
+				body,
+				onToken: (delta) => {
+					appendToLastParagraph(delta);
+					tokenCount++;
+				},
+				signal: ctrl.signal
+			});
+			if (r.reason === 'done') {
+				appendParagraph('');
+				appendParagraph('Q: ');
+				const endPos = editor.state.doc.content.size;
+				editor.commands.setTextSelection(endPos - 1);
+			}
+			// abort → partial A: preserved, no new Q:
+		} catch (err) {
+			if (err instanceof ClaudeChatError) {
+				const line = formatClaudeError(err);
+				appendToLastParagraph(line);
+				appendParagraph('');
+				appendParagraph('Q: ');
+			} else {
+				throw err;
+			}
+		}
+	}
+
+	async function send(): Promise<void> {
+		if (sendDisabled || !spec) return;
+
+		// Capture before any editor mutation — appendParagraph below changes
+		// the doc, which re-derives spec/lastUserContent and clears it.
+		const ragQuery = lastUserContent;
+		const ragK = spec.backend === 'ollama' ? spec.options.rag : undefined;
+
+		const ctrl = new AbortController();
+		abortController = ctrl;
+		tokenCount = 0;
+		editor.setEditable(false);
+
+		// Add empty A: paragraph as placeholder
+		appendParagraph('A: ');
+
+		// bridgeUrl 은 terminal note 용 WebSocket URL (wss://host/ws) 또는
+		// 일반 base URL 일 수 있음. HTTP base 로 정규화:
+		const httpBase = bridgeUrl
+			.replace(/^wss:\/\//, 'https://')
+			.replace(/^ws:\/\//, 'http://')
+			.replace(/\/(ws|llm\/chat|claude\/chat)\/?$/, '')
+			.replace(/\/$/, '');
+
+		try {
+			if (spec.backend === 'claude') {
+				await runClaude(spec, httpBase, ctrl);
+			} else {
+				await runOllama(spec, httpBase, ctrl, ragQuery, ragK);
 			}
 		} finally {
 			abortController = null;

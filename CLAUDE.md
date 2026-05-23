@@ -670,3 +670,59 @@ Cross-cutting invariants worth caching:
   to Ubuntu 24.04 + Python 3.12 (gets `sys.get_int_max_str_digits` →
   unlocks torch 2.5+ → unlocks transformers 4.50+ with MoE).
 
+## 채팅 노트 (`llm://` + `claude://`)
+
+두 백엔드를 지원하는 채팅 노트. 시그니처:
+- `llm://<model>` — Ollama (기존, 데스크탑 Ollama 서비스)
+- `claude://[<model>]` — Claude Code CLI subprocess (구독 OAuth 경로)
+
+공통: Q:/A: 턴 구조, 보내기 버튼, 스트리밍, abort, 한국어 에러.
+백엔드별 헤더:
+- Ollama: `temperature`, `num_ctx`, `top_p`, `seed`, `num_predict`, `rag`
+- Claude: `cwd` (있으면 도구 활성, 없으면 chat-only), `allowedTools`, `model`
+- 공통: `system`
+
+`parseChatNote` 가 두 시그니처를 모두 인식. 알 수 없는/cross-backend 헤더는
+silently ignored. `ChatNoteSpec.backend` ∈ {`ollama`, `claude`}.
+
+Quick map:
+- `app/src/lib/chatNote/parseChatNote.ts` — 시그니처 + 헤더 + 턴 파싱 (양쪽 백엔드)
+- `app/src/lib/chatNote/defaults.ts` — `CHAT_SIGNATURE_RE`, 백엔드별 헤더 정규식
+- `app/src/lib/chatNote/backends/ollama.ts` — sendChat, RAG, buildChatRequest (Ollama 전용)
+- `app/src/lib/chatNote/backends/claude.ts` — sendClaude, ClaudeChatError, SSE 파서
+- `app/src/lib/chatNote/buildClaudeMessages.ts` — Q:/A: 턴 → Anthropic content blocks
+- `app/src/lib/editor/chatNote/ChatSendBar.svelte` — 보내기 버튼, spec.backend 분기
+- `bridge/src/claude.ts` — Pi 브릿지의 POST /claude/chat 프록시
+- `claude-service/` — 데스크탑 Node 서비스 (Fastify), `claude -p` subprocess + stream-json → SSE
+- 셋업: `claude-service/deploy/README.md`
+
+Cross-cutting invariants worth caching:
+
+- **Claude 백엔드는 구독 OAuth 경로 강제**. `claude-service/src/runner.ts`
+  가 spawn 시 `ANTHROPIC_API_KEY=''` 를 명시적으로 빈 문자열로 설정.
+  Host 환경에 API 키가 떠있으면 leak 위험 — 이를 차단.
+
+- **이미지는 Dropbox URL 패스스루**. `tomboyUrlLink` 마크 + 이미지
+  확장자(.png|.jpg|.jpeg|.gif|.webp|.svg) → Anthropic `image/url`
+  content block 으로 직통. base64 변환 없음, 페이로드는 KB 단위 유지.
+
+- **도구 활성 게이트는 `cwd:` 헤더 존재 여부**. 없으면 spawn args 에
+  `--disallowedTools '*'` 강제 (chat-only). 있으면 디폴트 도구셋
+  또는 `allowedTools:` 로 한정.
+
+- **claude-service 는 데스크탑에만**. ocr-service 와 같은 머신.
+  Pi 브릿지에는 절대 깔지 않음 (CPU only, GPU 의존 없음, OAuth
+  자격증명은 사용자 host 의 ~/.claude 에 있음).
+
+- **세션 resume 안 함**. 노트가 single source of truth. 매 전송마다
+  transcript 전체를 다시 messages 배열로 직렬화해 보냄. 사용자가
+  Q:/A: 히스토리를 편집하면 다음 보내기에 그대로 반영됨.
+
+- **이중 백엔드 호환성**: `llm://` 노트는 zero behavior change.
+  `LlmNoteSpec`, `LlmChatError`, `LLM_*` 상수는 `chatNote/` 안에 alias
+  로 살아있음 (코드/콘텐츠 마이그레이션 0건).
+
+⚠️ Claude 백엔드 사용 전: 데스크탑에서 `claude login` 한 번 실행해 OAuth
+자격증명 생성 필수. 없으면 `claude-service` 매 요청 실패. 셋업 가이드는
+`claude-service/deploy/README.md` 참조.
+

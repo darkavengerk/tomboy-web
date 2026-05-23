@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseLlmNote } from '$lib/llmNote/parseLlmNote.js';
+import { parseChatNote } from '$lib/chatNote/parseChatNote.js';
 import type { JSONContent } from '@tiptap/core';
 
 // Helper: build a doc from an array of paragraph strings
@@ -13,42 +13,42 @@ function doc(...paras: string[]): JSONContent {
 	};
 }
 
-describe('parseLlmNote', () => {
+describe('parseChatNote', () => {
 	it('returns null when doc is empty or undefined', () => {
-		expect(parseLlmNote(undefined)).toBeNull();
-		expect(parseLlmNote(null)).toBeNull();
-		expect(parseLlmNote({ type: 'doc', content: [] })).toBeNull();
+		expect(parseChatNote(undefined)).toBeNull();
+		expect(parseChatNote(null)).toBeNull();
+		expect(parseChatNote({ type: 'doc', content: [] })).toBeNull();
 	});
 
 	it('returns null when no signature line is present', () => {
-		expect(parseLlmNote(doc('hello', 'world'))).toBeNull();
+		expect(parseChatNote(doc('hello', 'world'))).toBeNull();
 	});
 
 	it('returns null when signature format is broken', () => {
-		expect(parseLlmNote(doc('title', 'llm://invalid format!'))).toBeNull();
+		expect(parseChatNote(doc('title', 'llm://invalid format!'))).toBeNull();
 	});
 
 	it('recognizes signature at doc.content[1] (canonical placement)', () => {
-		const result = parseLlmNote(doc('셸 도우미', 'llm://qwen2.5-coder:3b'));
+		const result = parseChatNote(doc('셸 도우미', 'llm://qwen2.5-coder:3b'));
 		expect(result).not.toBeNull();
 		expect(result!.model).toBe('qwen2.5-coder:3b');
 	});
 
 	it('recognizes signature at doc.content[0] (transient pre-auto-complete state)', () => {
-		const result = parseLlmNote(doc('llm://qwen2.5-coder:3b'));
+		const result = parseChatNote(doc('llm://qwen2.5-coder:3b'));
 		expect(result).not.toBeNull();
 		expect(result!.model).toBe('qwen2.5-coder:3b');
 	});
 
 	it('prefers doc.content[1] when both positions match (abnormal case)', () => {
-		const result = parseLlmNote(
+		const result = parseChatNote(
 			doc('llm://qwen2.5-coder:3b', 'llm://qwen2.5:7b')
 		);
 		expect(result!.model).toBe('qwen2.5:7b');
 	});
 
 	it('parses single-line header values', () => {
-		const result = parseLlmNote(
+		const result = parseChatNote(
 			doc(
 				'title',
 				'llm://qwen2.5-coder:3b',
@@ -63,7 +63,7 @@ describe('parseLlmNote', () => {
 	});
 
 	it('silently drops a header key whose value fails to parse as number', () => {
-		const result = parseLlmNote(
+		const result = parseChatNote(
 			doc(
 				'title',
 				'llm://qwen2.5-coder:3b',
@@ -76,7 +76,7 @@ describe('parseLlmNote', () => {
 	});
 
 	it('extracts Q/A turns from the turn region (after blank paragraph)', () => {
-		const result = parseLlmNote(
+		const result = parseChatNote(
 			doc(
 				'title',
 				'llm://qwen2.5-coder:3b',
@@ -97,7 +97,7 @@ describe('parseLlmNote', () => {
 	});
 
 	it('sets trailingEmptyUserTurn true when ending with empty Q:', () => {
-		const result = parseLlmNote(
+		const result = parseChatNote(
 			doc(
 				'title',
 				'llm://qwen2.5-coder:3b',
@@ -115,7 +115,7 @@ describe('parseLlmNote', () => {
 	});
 
 	it('sets trailingEmptyUserTurn true when ending with Q: containing text', () => {
-		const result = parseLlmNote(
+		const result = parseChatNote(
 			doc(
 				'title',
 				'llm://qwen2.5-coder:3b',
@@ -133,7 +133,7 @@ describe('parseLlmNote', () => {
 	});
 
 	it('sets trailingEmptyUserTurn false when ending with A:', () => {
-		const result = parseLlmNote(
+		const result = parseChatNote(
 			doc(
 				'title',
 				'llm://qwen2.5-coder:3b',
@@ -146,7 +146,7 @@ describe('parseLlmNote', () => {
 	});
 
 	it('treats unrecognized header keys as silent ignore', () => {
-		const result = parseLlmNote(
+		const result = parseChatNote(
 			doc(
 				'title',
 				'llm://qwen2.5-coder:3b',
@@ -161,7 +161,7 @@ describe('parseLlmNote', () => {
 	});
 
 	it('assembles a multi-line system value from indented continuation lines', () => {
-		const result = parseLlmNote(
+		const result = parseChatNote(
 			doc(
 				'title',
 				'llm://qwen2.5-coder:3b',
@@ -175,7 +175,7 @@ describe('parseLlmNote', () => {
 	});
 
 	it('returns empty messages when there is no blank separator paragraph', () => {
-		const result = parseLlmNote(
+		const result = parseChatNote(
 			doc('title', 'llm://qwen2.5-coder:3b', 'Q: hello', 'A: world')
 		);
 		expect(result).not.toBeNull();
@@ -183,13 +183,13 @@ describe('parseLlmNote', () => {
 	});
 
 	it('handles arbitrary whitespace after the colon (system: value vs system:  value)', () => {
-		const r1 = parseLlmNote(
+		const r1 = parseChatNote(
 			doc('title', 'llm://m', 'system: one space')
 		);
-		const r2 = parseLlmNote(
+		const r2 = parseChatNote(
 			doc('title', 'llm://m', 'system:  two spaces')
 		);
-		const r3 = parseLlmNote(
+		const r3 = parseChatNote(
 			doc('title', 'llm://m', 'system:no space')
 		);
 		expect(r1!.system).toBe('one space');
@@ -198,7 +198,7 @@ describe('parseLlmNote', () => {
 	});
 
 	it('parses headers and turns when signature is at doc.content[0] (transient state)', () => {
-		const result = parseLlmNote(
+		const result = parseChatNote(
 			doc(
 				'llm://qwen2.5-coder:3b',
 				'system: helper',
@@ -217,32 +217,105 @@ describe('parseLlmNote', () => {
 
 	describe('rag header key', () => {
 		it('rag: on → 5', () => {
-			const result = parseLlmNote(doc('t', 'llm://m', 'rag: on', '', 'Q: hi'));
+			const result = parseChatNote(doc('t', 'llm://m', 'rag: on', '', 'Q: hi'));
 			expect(result?.options.rag).toBe(5);
 		});
 		it('rag: 7 → 7', () => {
-			const result = parseLlmNote(doc('t', 'llm://m', 'rag: 7', '', 'Q: hi'));
+			const result = parseChatNote(doc('t', 'llm://m', 'rag: 7', '', 'Q: hi'));
 			expect(result?.options.rag).toBe(7);
 		});
 		it('rag: 30 → clamps to 20', () => {
-			const result = parseLlmNote(doc('t', 'llm://m', 'rag: 30', '', 'Q: hi'));
+			const result = parseChatNote(doc('t', 'llm://m', 'rag: 30', '', 'Q: hi'));
 			expect(result?.options.rag).toBe(20);
 		});
 		it('rag: 0 → clamps to 1', () => {
-			const result = parseLlmNote(doc('t', 'llm://m', 'rag: 0', '', 'Q: hi'));
+			const result = parseChatNote(doc('t', 'llm://m', 'rag: 0', '', 'Q: hi'));
 			expect(result?.options.rag).toBe(1);
 		});
 		it('rag: off → undefined', () => {
-			const result = parseLlmNote(doc('t', 'llm://m', 'rag: off', '', 'Q: hi'));
+			const result = parseChatNote(doc('t', 'llm://m', 'rag: off', '', 'Q: hi'));
 			expect(result?.options.rag).toBeUndefined();
 		});
 		it('rag: foo → undefined', () => {
-			const result = parseLlmNote(doc('t', 'llm://m', 'rag: foo', '', 'Q: hi'));
+			const result = parseChatNote(doc('t', 'llm://m', 'rag: foo', '', 'Q: hi'));
 			expect(result?.options.rag).toBeUndefined();
 		});
 		it('rag absent → undefined', () => {
-			const result = parseLlmNote(doc('t', 'llm://m', 'system: x', '', 'Q: hi'));
+			const result = parseChatNote(doc('t', 'llm://m', 'system: x', '', 'Q: hi'));
 			expect(result?.options.rag).toBeUndefined();
 		});
+	});
+});
+
+describe('parseChatNote — claude:// backend', () => {
+	it('recognizes claude:// with no model', () => {
+		const r = parseChatNote(doc('타이틀', 'claude://'));
+		expect(r).not.toBeNull();
+		expect(r!.backend).toBe('claude');
+		expect(r!.model).toBe('');
+	});
+
+	it('recognizes claude://opus shortname', () => {
+		const r = parseChatNote(doc('타이틀', 'claude://opus'));
+		expect(r!.backend).toBe('claude');
+		expect(r!.model).toBe('opus');
+	});
+
+	it('recognizes claude://claude-opus-4-7 full id', () => {
+		const r = parseChatNote(doc('타이틀', 'claude://claude-opus-4-7'));
+		expect(r!.model).toBe('claude-opus-4-7');
+	});
+
+	it('parses cwd: header', () => {
+		const r = parseChatNote(
+			doc('t', 'claude://', 'cwd: /home/jh/workspace/foo')
+		);
+		expect(r!.options.cwd).toBe('/home/jh/workspace/foo');
+	});
+
+	it('parses allowedTools: header into array', () => {
+		const r = parseChatNote(
+			doc('t', 'claude://', 'cwd: /tmp', 'allowedTools: Read, Bash, Edit')
+		);
+		expect(r!.options.allowedTools).toEqual(['Read', 'Bash', 'Edit']);
+	});
+
+	it('ignores rag: header on claude:// note', () => {
+		const r = parseChatNote(doc('t', 'claude://', 'rag: on'));
+		expect(r!.options.rag).toBeUndefined();
+	});
+
+	it('ignores cwd: header on llm:// note', () => {
+		const r = parseChatNote(doc('t', 'llm://qwen2.5', 'cwd: /tmp'));
+		expect((r!.options as { cwd?: string }).cwd).toBeUndefined();
+	});
+
+	it('header model: overrides signature model on claude', () => {
+		const r = parseChatNote(
+			doc('t', 'claude://opus', 'model: claude-opus-4-7')
+		);
+		expect(r!.model).toBe('claude-opus-4-7');
+	});
+
+	it('claude:// preserves Q:/A: turn parsing', () => {
+		const r = parseChatNote(
+			doc('t', 'claude://', '', 'Q: hello', 'A: hi', 'Q: what', 'Q:')
+		);
+		expect(r!.messages).toEqual([
+			{ role: 'user', content: 'hello' },
+			{ role: 'assistant', content: 'hi' },
+			{ role: 'user', content: 'what' },
+			{ role: 'user', content: '' },
+		]);
+		expect(r!.trailingEmptyUserTurn).toBe(true);
+	});
+
+	it('llm:// returns backend: "ollama"', () => {
+		const r = parseChatNote(doc('t', 'llm://qwen2.5'));
+		expect(r!.backend).toBe('ollama');
+	});
+
+	it('llm:// still requires model (returns null without)', () => {
+		expect(parseChatNote(doc('t', 'llm://'))).toBeNull();
 	});
 });

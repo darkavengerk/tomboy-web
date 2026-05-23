@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { Editor, Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import {
-	createLlmNotePlugin,
-	llmNotePluginKey
-} from '$lib/editor/llmNote/llmNotePlugin.js';
+	createChatNotePlugin,
+	chatNotePluginKey
+} from '$lib/editor/chatNote/chatNotePlugin.js';
 
 function createTestEditor(): Editor {
 	const editor = new Editor({
@@ -13,7 +13,7 @@ function createTestEditor(): Editor {
 			Extension.create({
 				name: 'llmNoteExt',
 				addProseMirrorPlugins() {
-					return [createLlmNotePlugin()];
+					return [createChatNotePlugin()];
 				}
 			})
 		],
@@ -30,7 +30,7 @@ function editorParagraphTexts(editor: Editor): string[] {
 	return out;
 }
 
-describe('llmNotePlugin', () => {
+describe('chatNotePlugin', () => {
 	it('inserts title paragraph + headers + empty Q: after signature is typed', () => {
 		const editor = createTestEditor();
 		editor.commands.setContent('');
@@ -86,7 +86,7 @@ describe('llmNotePlugin', () => {
 				{ type: 'paragraph', content: [{ type: 'text', text: 'llm://qwen2.5-coder:3b' }] }
 			]
 		});
-		const tr = editor.state.tr.setMeta(llmNotePluginKey, { rescan: true });
+		const tr = editor.state.tr.setMeta(chatNotePluginKey, { rescan: true });
 		editor.view.dispatch(tr);
 		const paras = editorParagraphTexts(editor);
 		expect(paras).toContain('system: ');
@@ -108,7 +108,7 @@ describe('llmNotePlugin', () => {
 		};
 		editor.commands.setContent(initialContent);
 		const before = editor.getJSON();
-		const tr = editor.state.tr.setMeta(llmNotePluginKey, { rescan: true });
+		const tr = editor.state.tr.setMeta(chatNotePluginKey, { rescan: true });
 		editor.view.dispatch(tr);
 		const after = editor.getJSON();
 		expect(after).toEqual(before);
@@ -127,7 +127,7 @@ describe('llmNotePlugin', () => {
 		// docChanged tr
 		editor.commands.insertContentAt(editor.state.doc.content.size, 'x');
 		// Trigger rescan too
-		const tr = editor.state.tr.setMeta(llmNotePluginKey, { rescan: true });
+		const tr = editor.state.tr.setMeta(chatNotePluginKey, { rescan: true });
 		editor.view.dispatch(tr);
 		const allTexts = JSON.stringify(editor.getJSON());
 		expect(allTexts).not.toContain('system: ');
@@ -149,7 +149,7 @@ describe('llmNotePlugin', () => {
 		});
 		const before = editor.getJSON();
 		editor.view.dispatch(
-			editor.state.tr.setMeta(llmNotePluginKey, { rescan: true })
+			editor.state.tr.setMeta(chatNotePluginKey, { rescan: true })
 		);
 		expect(editor.getJSON()).toEqual(before);
 		editor.destroy();
