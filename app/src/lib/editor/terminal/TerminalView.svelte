@@ -25,13 +25,22 @@
 		getTerminalHistoryPanelOpenMobile,
 		setTerminalHistoryPanelOpenMobile,
 		getTerminalShellIntegrationBannerDismissed,
-		setTerminalShellIntegrationBannerDismissed
+		setTerminalShellIntegrationBannerDismissed,
+		getTerminalBellEnabled
 	} from '$lib/storage/appSettings.js';
+	import { createBellRinger } from './terminalBell.js';
 	import { subscribeNoteReload } from '$lib/core/noteReloadBus.js';
 	import { getNote } from '$lib/storage/noteStore.js';
 	import { deserializeContent } from '$lib/core/noteContentArchiver.js';
 	import { parseTerminalNote } from './parseTerminalNote.js';
 	import HistoryPanel from './HistoryPanel.svelte';
+	import {
+		extractImageFile,
+		imageFilesFromList,
+		fileToImagePayload,
+		validateImageFile
+	} from './imagePasteClient.js';
+	import { pushToast } from '$lib/stores/toast.js';
 
 	type Props = {
 		spec: TerminalNoteSpec;
@@ -81,6 +90,10 @@
 	let sendPopupOpen = $state(false);
 	let sendPopupText = $state('');
 	let sendPopupInput: HTMLInputElement | undefined = $state();
+
+	// 이미지 붙여넣기 (shell 모드 전용). imageUploadCount > 0 → "업로드 중" 표시.
+	let imageUploadCount = $state(0);
+	let imageFileInput: HTMLInputElement | undefined = $state();
 
 	let term: Terminal | null = null;
 	let fit: FitAddon | null = null;
@@ -185,6 +198,63 @@
 	/** One-tap injection of a literal key/sequence, bypassing the text field. */
 	function sendQuickKey(bytes: string): void {
 		client?.send(bytes);
+	}
+
+	/** 이미지 File 하나를 검증 후 브릿지로 전송. */
+	async function sendImageFile(file: File): Promise<void> {
+		const v = validateImageFile(file);
+		if (!v.ok) {
+			pushToast(v.error ?? '이미지를 보낼 수 없습니다.', { kind: 'error' });
+			return;
+		}
+		if (!client || status !== 'open') {
+			pushToast('터미널이 연결되어 있지 않습니다.', { kind: 'error' });
+			return;
+		}
+		imageUploadCount += 1;
+		try {
+			const payload = await fileToImagePayload(file);
+			client.sendImage(payload);
+		} catch (err) {
+			imageUploadCount = Math.max(0, imageUploadCount - 1);
+			pushToast((err as Error).message, { kind: 'error' });
+		}
+	}
+
+	/** 헤더 "이미지" 버튼 → 숨겨진 파일 입력 열기. */
+	function openImagePicker(): void {
+		imageFileInput?.click();
+	}
+
+	/** 파일 입력 onchange — 고른 이미지들을 모두 전송. */
+	function onImageFilePicked(e: Event): void {
+		const input = e.currentTarget as HTMLInputElement;
+		for (const f of imageFilesFromList(input.files ?? [])) void sendImageFile(f);
+		input.value = ''; // 같은 파일을 다시 고를 수 있게 리셋
+	}
+
+	/** Ctrl+V 등 붙여넣기 — 클립보드에 이미지가 있으면 가로채 전송. */
+	function handleImagePaste(e: ClipboardEvent): void {
+		if (isSpectator) return;
+		const file = extractImageFile(e.clipboardData);
+		if (!file) return; // 이미지 없음 → xterm의 기본 텍스트 붙여넣기에 맡김
+		e.preventDefault();
+		e.stopPropagation();
+		void sendImageFile(file);
+	}
+
+	/** dragover — drop을 허용하려면 preventDefault 필요. */
+	function handleImageDragOver(e: DragEvent): void {
+		if (isSpectator) return;
+		e.preventDefault();
+	}
+
+	/** drop — 드롭된 이미지 파일을 모두 전송. */
+	function handleImageDrop(e: DragEvent): void {
+		if (isSpectator) return;
+		e.preventDefault();
+		const files = imageFilesFromList(e.dataTransfer?.files ?? []);
+		for (const f of files) void sendImageFile(f);
 	}
 
 	/**
@@ -479,6 +549,17 @@
 
 		} // end !isSpectator gate for OSC + history + shell-banner setup
 
+		// 터미널 벨 — shell 모드 + 설정 on일 때만. \x07은 이미 데이터 스트림으로
+		// 도착하므로 onBell 연결만으로 충분하다. 설정은 마운트 시점 1회 읽음 —
+		// 토글을 바꾸면 노트를 다시 열어야 반영된다(다른 터미널 설정과 동일).
+		if (!isSpectator) {
+			const bellEnabled = await getTerminalBellEnabled();
+			if (bellEnabled) {
+				const ringBell = createBellRinger();
+				term!.onBell(() => ringBell());
+			}
+		}
+
 		if (!isSpectator) {
 			fit = new FitAddon();
 			term.loadAddon(fit);
@@ -546,7 +627,12 @@
 				spectatorRows = rows;
 				try { term?.resize(cols, rows); } catch { /* ignore */ }
 				requestAnimationFrame(() => applySpectatorFit());
-			}
+			},
+			onImageResult: (ok, info) => {
+				imageUploadCount = Math.max(0, imageUploadCount - 1);
+				if (ok) pushToast('이미지 전송됨', {});
+				else pushToast(info.message ?? '이미지 전송 실패', { kind: 'error' });
+			},
 		});
 		client.connect();
 
@@ -600,11 +686,24 @@
 		// textarea keydown handler, so we register on `window` with
 		// `capture: true`.
 		window.addEventListener('keydown', handleWindowKeydown, true);
+		// 이미지 붙여넣기/드롭 — pageEl에 capture-phase로 등록해 xterm의 자체
+		// textarea 핸들러보다 먼저 가로챈다. shell 모드에서만 의미가 있고,
+		// 핸들러 내부에서 isSpectator를 다시 검사한다.
+		if (pageEl) {
+			pageEl.addEventListener('paste', handleImagePaste, true);
+			pageEl.addEventListener('dragover', handleImageDragOver, true);
+			pageEl.addEventListener('drop', handleImageDrop, true);
+		}
 	});
 
 	onDestroy(() => {
 		unmounted = true;
 		window.removeEventListener('keydown', handleWindowKeydown, true);
+		if (pageEl) {
+			pageEl.removeEventListener('paste', handleImagePaste, true);
+			pageEl.removeEventListener('dragover', handleImageDragOver, true);
+			pageEl.removeEventListener('drop', handleImageDrop, true);
+		}
 		if (bannerTimer) {
 			clearTimeout(bannerTimer);
 			bannerTimer = null;
@@ -635,6 +734,9 @@
 		if (!resolvedBridge || !resolvedToken) return;
 		resetSpectatorState(); // clear stale pane info so buttons reflect the new session
 		connectFired = false; // allow connect: script to re-run on next 'open'
+		// 이전 연결에서 in-flight 였던 이미지 업로드는 image-ok/error를 못 받았으므로
+		// 카운터가 stuck 상태일 수 있다 — 재연결 시 리셋해서 "업로드 중…" 버튼을 푼다.
+		imageUploadCount = 0;
 		client?.close();
 		term?.reset();
 		scrollState = INITIAL_SCROLL_STATE;
@@ -672,7 +774,12 @@
 				spectatorCols = cols;
 				spectatorRows = rows;
 				try { term?.resize(cols, rows); } catch { /* ignore */ }
-			}
+			},
+			onImageResult: (ok, info) => {
+				imageUploadCount = Math.max(0, imageUploadCount - 1);
+				if (ok) pushToast('이미지 전송됨', {});
+				else pushToast(info.message ?? '이미지 전송 실패', { kind: 'error' });
+			},
 		});
 		client.connect();
 		refocusTerminal();
@@ -714,6 +821,14 @@
 			{#if !isSpectator}
 				<button type="button" class="toggle" onclick={togglePanel}>
 					히스토리 ({currentItems.length})
+				</button>
+				<button
+					type="button"
+					class="toggle"
+					onclick={openImagePicker}
+					disabled={status !== 'open' || imageUploadCount > 0}
+				>
+					{imageUploadCount > 0 ? '업로드 중…' : '이미지'}
 				</button>
 			{/if}
 			<span class="status status-{status}">
@@ -841,6 +956,15 @@
 		</div>
 	{/if}
 </div>
+
+<input
+	type="file"
+	accept="image/*"
+	multiple
+	bind:this={imageFileInput}
+	onchange={onImageFilePicked}
+	style="display: none"
+/>
 
 {#if sendPopupOpen}
 	<div

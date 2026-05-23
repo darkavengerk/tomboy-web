@@ -6,7 +6,10 @@ import {
 	passwordMatches,
 	verifyToken
 } from './auth.js';
-import { parseSshTarget, spawnForTarget, type SshTarget } from './pty.js';
+import { parseSshTarget, spawnForTarget, isLocalTarget, type SshTarget } from './pty.js';
+import { mkdirSync } from 'node:fs';
+import { unlink } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import { loadHostsFile, lookupWolTarget, type WolEntry } from './hosts.js';
 import { probePort, sendMagicPacket, waitForPort } from './wol.js';
 import { handleLlmChat } from './llm.js';
@@ -16,6 +19,7 @@ import { handleGpuStatus, handleGpuUnload } from './gpu.js';
 import { handleRemarkableWallpaper } from './remarkable.js';
 import { loadRemarkableHosts } from './remarkableHosts.js';
 import { SpectatorSession } from './spectatorSession.js';
+import { transferImage, bracketedPaste } from './imageTransfer.js';
 
 const PORT = Number(process.env.BRIDGE_PORT || 3000);
 const PASSWORD = requireEnv('BRIDGE_PASSWORD');
@@ -33,12 +37,18 @@ const REMARKABLE_HOSTS_FILE = process.env.BRIDGE_REMARKABLE_HOSTS_FILE;
 loadHostsFile(HOSTS_FILE);
 loadRemarkableHosts(REMARKABLE_HOSTS_FILE);
 
+// ControlMaster 소켓이 사는 디렉터리. Unix 소켓 경로 길이 제한 때문에 /tmp 아래.
+const CTRL_DIR = '/tmp/tomboy-ctl';
+mkdirSync(CTRL_DIR, { recursive: true });
+
 // Auth grace window after WebSocket open. The first client message MUST be
 // a `connect` frame with a valid token; otherwise the connection is closed.
 const AUTH_TIMEOUT_MS = 5000;
 
 const server = createServer(handleHttp);
-const wss = new WebSocketServer({ noServer: true });
+// maxPayload: 이미지 프레임 수용(10 MB 이미지의 base64 ≈ 13.3 MB). 일반 data
+// 프레임은 작으므로 영향 없음.
+const wss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 * 1024 });
 
 server.on('upgrade', (req, socket, head) => {
 	if (req.url !== '/ws') {
@@ -172,7 +182,7 @@ function sleep(ms: number): Promise<void> {
 // --- WebSocket session ---
 
 interface ClientMsg {
-	type: 'connect' | 'data' | 'resize' | 'tmux-nav';
+	type: 'connect' | 'data' | 'resize' | 'tmux-nav' | 'image';
 	target?: string;
 	token?: string;
 	cols?: number;
@@ -182,6 +192,8 @@ interface ClientMsg {
 	session?: string;
 	action?: 'next-pane' | 'prev-pane' | 'next-window' | 'prev-window' | 'select-pane';
 	index?: number;
+	mime?: string;
+	data?: string;
 }
 
 const TMUX_NAV_ACTIONS = new Set([
@@ -195,6 +207,8 @@ function handleWs(ws: WebSocket): void {
 	let pty: ReturnType<typeof spawnForTarget> | null = null;
 	let spectator: SpectatorSession | null = null;
 	let connected = false;
+	let controlPath: string | null = null;
+	let sessionTarget: SshTarget | null = null;
 	const abortCtrl = new AbortController();
 	const authTimer = setTimeout(() => {
 		if (!connected) {
@@ -295,6 +309,12 @@ function handleWs(ws: WebSocket): void {
 			}
 			return;
 		}
+		if (msg.type === 'image') {
+			if (typeof msg.mime === 'string' && typeof msg.data === 'string') {
+				void handleImageMessage(msg.mime, msg.data);
+			}
+			return;
+		}
 	});
 
 	ws.on('close', () => {
@@ -307,6 +327,11 @@ function handleWs(ws: WebSocket): void {
 		if (spectator) {
 			try { spectator.close(); } catch { /* ignore */ }
 			spectator = null;
+		}
+		if (controlPath) {
+			// ssh 마스터가 죽으면 소켓도 사라지지만 best-effort로 정리.
+			unlink(controlPath).catch(() => { /* 이미 없음 */ });
+			controlPath = null;
 		}
 	});
 
@@ -358,6 +383,11 @@ function handleWs(ws: WebSocket): void {
 	}
 
 	async function startSession(target: SshTarget, cols: number, rows: number): Promise<void> {
+		sessionTarget = target;
+		// 원격 타깃만 ControlMaster — 로컬 셸 타깃은 ssh 자체가 없다.
+		if (!isLocalTarget(target)) {
+			controlPath = `${CTRL_DIR}/${randomUUID().slice(0, 8)}.sock`;
+		}
 		const wol = lookupWolTarget(target.host);
 		console.log(`[term-bridge] connect target=${target.user ?? ''}@${target.host}:${target.port ?? 22} wol=${wol ? wol.mac : 'none'}`);
 		if (wol) {
@@ -372,7 +402,7 @@ function handleWs(ws: WebSocket): void {
 		}
 		if (abortCtrl.signal.aborted) return;
 		try {
-			pty = spawnForTarget(target, cols, rows);
+			pty = spawnForTarget(target, cols, rows, controlPath ?? undefined);
 		} catch (err) {
 			send({ type: 'error', message: `spawn failed: ${(err as Error).message}` });
 			try { ws.close(1011, 'spawn failed'); } catch { /* ignore */ }
@@ -392,6 +422,34 @@ function handleWs(ws: WebSocket): void {
 		// WS open alone is not enough: the data-message branch silently drops
 		// frames that arrive before `pty` is non-null.
 		send({ type: 'ready' });
+	}
+
+	/**
+	 * `image` 메시지 처리 — base64 디코딩 → 타깃 호스트로 전송 → PTY에 경로를
+	 * bracketed-paste로 주입. shell 모드 전용(pty 필요). 경로 뒤 공백 한 칸은
+	 * 이미지를 연달아 붙여넣을 때 경로가 서로 붙지 않게 한다.
+	 */
+	async function handleImageMessage(mime: string, dataB64: string): Promise<void> {
+		if (!pty || !sessionTarget) return;
+		let bytes: Buffer;
+		try {
+			bytes = Buffer.from(dataB64, 'base64');
+		} catch {
+			send({ type: 'image-error', message: '이미지 데이터가 올바르지 않습니다.' });
+			return;
+		}
+		try {
+			const { remotePath } = await transferImage({
+				target: sessionTarget,
+				controlPath,
+				mime,
+				bytes
+			});
+			pty.write(bracketedPaste(remotePath) + ' ');
+			send({ type: 'image-ok', path: remotePath });
+		} catch (err) {
+			send({ type: 'image-error', message: (err as Error).message });
+		}
 	}
 }
 

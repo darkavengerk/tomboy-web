@@ -31,10 +31,20 @@ interface ClientOptions {
 	onPaneSwitch?: (info: PaneSwitchInfo) => void;
 	/** Called when the spectated pane's size changes in place. */
 	onPaneResize?: (info: { cols: number; rows: number }) => void;
+	/** Called when the bridge reports an image transfer result. */
+	onImageResult?: (ok: boolean, info: { path?: string; message?: string }) => void;
 }
 
 interface ServerMsg {
-	type: 'data' | 'exit' | 'error' | 'ready' | 'pane-switch' | 'pane-resize';
+	type:
+		| 'data'
+		| 'exit'
+		| 'error'
+		| 'ready'
+		| 'pane-switch'
+		| 'pane-resize'
+		| 'image-ok'
+		| 'image-error';
 	d?: string;
 	code?: number;
 	message?: string;
@@ -46,6 +56,7 @@ interface ServerMsg {
 	windowName?: string;
 	paneOrdinal?: number;
 	paneCount?: number;
+	path?: string;
 }
 
 /**
@@ -161,6 +172,10 @@ export class TerminalWsClient {
 				) {
 					this.opts.onPaneResize({ cols: msg.cols, rows: msg.rows });
 				}
+			} else if (msg.type === 'image-ok') {
+				this.opts.onImageResult?.(true, { path: msg.path });
+			} else if (msg.type === 'image-error') {
+				this.opts.onImageResult?.(false, { message: msg.message });
 			} else if (msg.type === 'exit') {
 				this.opts.onStatus('closed', { code: msg.code });
 			} else if (msg.type === 'error') {
@@ -192,6 +207,18 @@ export class TerminalWsClient {
 	 */
 	sendCommand(text: string, autoExecute: boolean): void {
 		this.send(autoExecute ? text + '\r' : text);
+	}
+
+	/**
+	 * Send an image to the bridge. The bridge places it on the target host
+	 * and pastes its path into the PTY. `data` is base64 (no data: prefix).
+	 */
+	sendImage(payload: { mime: string; data: string }): void {
+		if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+			this.ws.send(
+				JSON.stringify({ type: 'image', mime: payload.mime, data: payload.data })
+			);
+		}
 	}
 
 	resize(cols: number, rows: number): void {
