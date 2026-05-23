@@ -212,12 +212,26 @@ export class TerminalWsClient {
 	/**
 	 * Send an image to the bridge. The bridge places it on the target host
 	 * and pastes its path into the PTY. `data` is base64 (no data: prefix).
+	 *
+	 * Throws on closed/missing WS — silent no-op caused infinite "업로드 중"
+	 * toasts on mobile when the WS dropped without UI catching it. The caller
+	 * still tries to send because `status` was last seen as 'open'.
 	 */
 	sendImage(payload: { mime: string; data: string }): void {
-		if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+		if (!this.ws) {
+			throw new Error('WebSocket이 초기화되지 않았습니다.');
+		}
+		const state = this.ws.readyState;
+		if (state !== WebSocket.OPEN) {
+			const label = ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][state] ?? `state=${state}`;
+			throw new Error(`WebSocket이 열려있지 않습니다 (${label}).`);
+		}
+		try {
 			this.ws.send(
 				JSON.stringify({ type: 'image', mime: payload.mime, data: payload.data })
 			);
+		} catch (err) {
+			throw new Error(`이미지 전송 실패: ${(err as Error).message}`);
 		}
 	}
 

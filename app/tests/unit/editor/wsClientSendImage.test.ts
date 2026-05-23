@@ -51,9 +51,15 @@ describe('TerminalWsClient image', () => {
 		]);
 	});
 
-	it('no-ops when ws is not open', () => {
+	it('throws when ws is CLOSED so caller sees a real error', () => {
 		fake.readyState = 3; // CLOSED
-		client.sendImage({ mime: 'image/png', data: 'AQID' });
+		expect(() => client.sendImage({ mime: 'image/png', data: 'AQID' })).toThrow(/CLOSED/);
+		expect(fake.sent).toEqual([]);
+	});
+
+	it('throws when ws is CONNECTING (avoid silent drop)', () => {
+		fake.readyState = 0; // CONNECTING
+		expect(() => client.sendImage({ mime: 'image/png', data: 'AQID' })).toThrow(/CONNECTING/);
 		expect(fake.sent).toEqual([]);
 	});
 
