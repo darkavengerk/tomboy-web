@@ -85,7 +85,7 @@
 	let sendPopupText = $state('');
 	let sendPopupInput: HTMLInputElement | undefined = $state();
 
-	// 이미지 붙여넣기 (shell 모드 전용). imageUploadCount > 0 → "업로드 중" 표시.
+	// 이미지 붙여넣기 (셸·관전 모드 모두). imageUploadCount > 0 → "업로드 중" 표시.
 	let imageUploadCount = $state(0);
 	let imageFileInput: HTMLInputElement | undefined = $state();
 
@@ -648,8 +648,7 @@
 		// `capture: true`.
 		window.addEventListener('keydown', handleWindowKeydown, true);
 		// 이미지 붙여넣기/드롭 — pageEl에 capture-phase로 등록해 xterm의 자체
-		// textarea 핸들러보다 먼저 가로챈다. shell 모드에서만 의미가 있고,
-		// 핸들러 내부에서 isSpectator를 다시 검사한다.
+		// textarea 핸들러보다 먼저 가로챈다. 셸·관전 양 모드에서 모두 활성화된다.
 		if (pageEl) {
 			pageEl.addEventListener('paste', handleImagePaste, true);
 			pageEl.addEventListener('dragover', handleImageDragOver, true);
