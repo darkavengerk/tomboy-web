@@ -19,6 +19,7 @@ import { handleGpuStatus, handleGpuUnload } from './gpu.js';
 import { handleRemarkableWallpaper } from './remarkable.js';
 import { loadRemarkableHosts } from './remarkableHosts.js';
 import { SpectatorSession } from './spectatorSession.js';
+import { transferImage, bracketedPaste } from './imageTransfer.js';
 
 const PORT = Number(process.env.BRIDGE_PORT || 3000);
 const PASSWORD = requireEnv('BRIDGE_PASSWORD');
@@ -181,7 +182,7 @@ function sleep(ms: number): Promise<void> {
 // --- WebSocket session ---
 
 interface ClientMsg {
-	type: 'connect' | 'data' | 'resize' | 'tmux-nav';
+	type: 'connect' | 'data' | 'resize' | 'tmux-nav' | 'image';
 	target?: string;
 	token?: string;
 	cols?: number;
@@ -190,6 +191,8 @@ interface ClientMsg {
 	mode?: 'shell' | 'spectate';
 	session?: string;
 	action?: 'next-pane' | 'prev-pane' | 'next-window' | 'prev-window';
+	mime?: string;
+	data?: string;
 }
 
 const TMUX_NAV_ACTIONS = new Set([
@@ -294,6 +297,12 @@ function handleWs(ws: WebSocket): void {
 				pty.resize(cols, rows);
 			} catch {
 				// PTY can be torn down between message and handler; ignore.
+			}
+			return;
+		}
+		if (msg.type === 'image') {
+			if (typeof msg.mime === 'string' && typeof msg.data === 'string') {
+				void handleImageMessage(msg.mime, msg.data);
 			}
 			return;
 		}
@@ -404,6 +413,34 @@ function handleWs(ws: WebSocket): void {
 		// WS open alone is not enough: the data-message branch silently drops
 		// frames that arrive before `pty` is non-null.
 		send({ type: 'ready' });
+	}
+
+	/**
+	 * `image` 메시지 처리 — base64 디코딩 → 타깃 호스트로 전송 → PTY에 경로를
+	 * bracketed-paste로 주입. shell 모드 전용(pty 필요). 경로 뒤 공백 한 칸은
+	 * 이미지를 연달아 붙여넣을 때 경로가 서로 붙지 않게 한다.
+	 */
+	async function handleImageMessage(mime: string, dataB64: string): Promise<void> {
+		if (!pty || !sessionTarget) return;
+		let bytes: Buffer;
+		try {
+			bytes = Buffer.from(dataB64, 'base64');
+		} catch {
+			send({ type: 'image-error', message: '이미지 데이터가 올바르지 않습니다.' });
+			return;
+		}
+		try {
+			const { remotePath } = await transferImage({
+				target: sessionTarget,
+				controlPath,
+				mime,
+				bytes
+			});
+			pty.write(bracketedPaste(remotePath) + ' ');
+			send({ type: 'image-ok', path: remotePath });
+		} catch (err) {
+			send({ type: 'image-error', message: (err as Error).message });
+		}
 	}
 }
 
