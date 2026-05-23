@@ -67,8 +67,7 @@
 		//   an open record fall back to changeDate.
 		// - All other workspaces: changeDate directly, so the sidebar
 		//   mirrors the 전체 page's "최근 수정순" default.
-		// Pinned notes always float to the top. Cap at 50 so long
-		// histories don't balloon DOM.
+		// Cap at 50 so long histories don't balloon DOM.
 		const recents = recentOpens.map;
 		const useRecents = currentWorkspace === SLIPNOTE_WORKSPACE_INDEX;
 		const keyed = base.map((n) => {
