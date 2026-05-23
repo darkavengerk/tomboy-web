@@ -19,12 +19,16 @@ export class FakeChildProcess extends EventEmitter {
   endStdout(): void { this.stdout.push(null); }
   endStderr(): void { this.stderr.push(null); }
   exit(code: number): void {
-    // Match real child_process behavior: close stdio first, then emit exit.
-    // Emit exit asynchronously so that data events from previous push() calls
-    // are processed before the exit handler runs.
+    // Match real child_process behavior: close stdio first, then emit exit,
+    // then emit close (after stdio is fully drained). 'close' fires after
+    // 'exit' because runner.ts uses 'close' to defer the "no result"
+    // decision until all stdout 'data' events have flushed.
     this.endStdout();
     this.endStderr();
-    setImmediate(() => this.emit('exit', code, null));
+    setImmediate(() => {
+      this.emit('exit', code, null);
+      setImmediate(() => this.emit('close', code, null));
+    });
   }
 
   kill(_sig?: string): boolean { this.killed = true; this.exit(0); return true; }

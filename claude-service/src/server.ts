@@ -38,7 +38,15 @@ export function buildServer(opts: BuildServerOpts): FastifyInstance {
     }
 
     const ctrl = new AbortController();
-    req.raw.on('close', () => ctrl.abort());
+    // Watch the RESPONSE socket for disconnect, not req.raw.
+    // req.raw 'close' fires as soon as the request body is fully read —
+    // which for a small JSON POST happens immediately, before we've
+    // even started the response. Aborting on req.close kills the child
+    // process before claude can produce any output. The response socket
+    // only closes on actual client disconnect, which is what we want.
+    reply.raw.on('close', () => {
+      if (!reply.raw.writableEnded) ctrl.abort();
+    });
 
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',

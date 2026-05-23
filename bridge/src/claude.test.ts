@@ -51,6 +51,9 @@ function mockRes(): {
 			}
 		},
 		once: (_event: string, _cb: () => void) => res,
+		on: (_event: string, _cb: () => void) => res,
+		off: (_event: string, _cb: () => void) => res,
+		writableEnded: false,
 		setHeader: (k: string, v: string) => {
 			headers[k] = v;
 		}

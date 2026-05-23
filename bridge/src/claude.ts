@@ -62,8 +62,16 @@ export async function handleClaudeChat(
 	}
 
 	const ctrl = new AbortController();
-	const onClose = () => ctrl.abort();
-	req.on('close', onClose);
+	// Watch the RESPONSE socket for disconnect, not req.
+	// `req.on('close')` fires as soon as the request body is fully read,
+	// which for a small JSON POST happens immediately — before we've even
+	// started the upstream fetch. Aborting on req close kills upstream
+	// before claude-service can produce any output. Use res.on('close')
+	// instead — only fires on actual client disconnect.
+	const onClose = (): void => {
+		if (!res.writableEnded) ctrl.abort();
+	};
+	res.on('close', onClose);
 
 	let upstream: Response;
 	try {
@@ -79,13 +87,13 @@ export async function handleClaudeChat(
 	} catch (err) {
 		if (ctrl.signal.aborted) {
 			// client already disconnected — no response to write
-			req.off('close', onClose);
+			res.off('close', onClose);
 			return;
 		}
 		console.warn(`[term-bridge claude] upstream error: ${(err as Error).message}`);
 		res.writeHead(503, { 'Content-Type': 'application/json' });
 		res.end(JSON.stringify({ error: 'claude_service_unavailable' }));
-		req.off('close', onClose);
+		res.off('close', onClose);
 		return;
 	}
 
@@ -94,7 +102,7 @@ export async function handleClaudeChat(
 
 	if (!upstream.body) {
 		res.end();
-		req.off('close', onClose);
+		res.off('close', onClose);
 		return;
 	}
 
@@ -112,7 +120,7 @@ export async function handleClaudeChat(
 	} finally {
 		res.end();
 		reader.releaseLock();
-		req.off('close', onClose);
+		res.off('close', onClose);
 	}
 }
 

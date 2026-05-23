@@ -117,9 +117,38 @@ export function runClaude(
     if (stderrBuf.length > 4096) stderrBuf = stderrBuf.slice(-4096);
   });
 
-  child.on('exit', (code: number | null) => {
-    if (!done && (code ?? 0) !== 0) {
-      writeEvent({ error: `claude exit ${code}: ${stderrBuf.trim().slice(-200)}` });
+  // Use 'close' (not 'exit'): 'close' fires after all stdio streams have
+  // drained and all 'data' events have been emitted, so we don't race the
+  // final result event. Also flush any trailing partial line that didn't
+  // end with '\n' before deciding "no result seen".
+  let exitCode: number | null = null;
+  child.on('exit', (code: number | null) => { exitCode = code; });
+  child.on('close', () => {
+    if (buf.length > 0) {
+      const line = buf.trim();
+      buf = '';
+      if (line) {
+        try {
+          const evt = JSON.parse(line) as {
+            type?: string;
+            message?: { content?: Array<{ type: string; text?: string }> };
+            subtype?: string;
+          };
+          if (evt.type === 'assistant' && Array.isArray(evt.message?.content)) {
+            for (const c of evt.message.content) {
+              if (c.type === 'text' && typeof c.text === 'string') {
+                writeEvent({ delta: c.text });
+              }
+            }
+          } else if (evt.type === 'result') {
+            writeEvent({ done: true, reason: evt.subtype ?? 'unknown' });
+            done = true;
+          }
+        } catch { /* ignore non-JSON trailing line */ }
+      }
+    }
+    if (!done && (exitCode ?? 0) !== 0) {
+      writeEvent({ error: `claude exit ${exitCode}: ${stderrBuf.trim().slice(-200)}` });
     } else if (!done) {
       writeEvent({ error: 'stream ended without result' });
     }

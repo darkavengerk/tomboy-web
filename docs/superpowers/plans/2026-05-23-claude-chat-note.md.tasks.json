@@ -37,7 +37,7 @@
     {
       "id": 12,
       "subject": "Task 5: UI — ChatSendBar backend branching",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         9,
         10,
@@ -48,7 +48,7 @@
     {
       "id": 13,
       "subject": "Task 6: Bridge — POST /claude/chat proxy route",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Pi 브릿지에 /claude/chat 추가. Bearer 검증 후 데스크탑 claude-service 로 SSE pass-through.\n\n**Files:** Create bridge/src/claude.ts, claude.test.ts. Modify server.ts (라우트 등록 + CLAUDE_SERVICE_URL env).\n\n**Acceptance Criteria:** 401 on bad bearer; 503 when CLAUDE_SERVICE_URL unset; 400 on bad body; SSE pass-through on 200; AbortSignal on client close; 5xx propagated; body limit 2 MiB.\n\n**Verify:** `cd bridge && npm test`\n\n```json:metadata\n{\"files\": [\"bridge/src/claude.ts\", \"bridge/src/claude.test.ts\", \"bridge/src/server.ts\"], \"verifyCommand\": \"cd bridge && npm test\", \"acceptanceCriteria\": [\"401 on bad bearer\", \"503 when CLAUDE_SERVICE_URL unset\", \"400 on bad request body\", \"SSE pass-through on success\", \"AbortSignal on client close\", \"5xx upstream propagated\"]}\n```"
     },
     {
@@ -78,5 +78,5 @@
       "description": "**Goal:** End-to-end smoke + CLAUDE.md 업데이트.\n\n**USER-ORDERED GATE — NON-SKIPPABLE.** This task was requested by the user (스펙 § 7.2). MUST NOT be closed by walking around it. Close only after every acceptanceCriteria item validated independently with output captured.\n\n**Files:** Modify CLAUDE.md (채팅 노트 섹션). Create docs/superpowers/results/2026-05-23-claude-chat-note-verification.md (캡처).\n\n**Acceptance Criteria:** claude-service active; bridge listening with CLAUDE_SERVICE_URL; chat-only flow; opus model; cwd tool mode; image input; abort; service-down error; llm:// regression-free; no API key leak in journalctl; CLAUDE.md updated.\n\n**Verify:** `systemctl --user status claude-service.service` + 위 10가지 수동 캡처.\n\n```json:metadata\n{\"files\": [\"CLAUDE.md\", \"docs/superpowers/results/2026-05-23-claude-chat-note-verification.md\"], \"verifyCommand\": \"systemctl --user status claude-service.service\", \"acceptanceCriteria\": [\"claude-service active (running)\", \"bridge listening with CLAUDE_SERVICE_URL\", \"chat-only flow works\", \"opus model flow works\", \"cwd tool mode works\", \"image input flow works\", \"abort preserves partial response\", \"service-down error UI works\", \"llm:// regression-free\", \"no API key leak in journalctl\", \"CLAUDE.md updated with Claude backend section\"], \"userGate\": true, \"tags\": [\"user-gate\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-23T09:27:54.032055+00:00"
+  "lastUpdated": "2026-05-23T09:38:46.184536+00:00"
 }
