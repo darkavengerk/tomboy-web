@@ -35,7 +35,10 @@ describe('buildClaudeMessages', () => {
     ]);
   });
 
-  it('Q + A + Q produces three messages', () => {
+  it('Q + A + Q consolidates into a single user message with history prefix', () => {
+    // claude CLI's --input-format stream-json only accepts user-role messages
+    // (it generates assistant turns; you can't replay assistant content as
+    // input in `-p` mode). We embed history as text on the final user msg.
     const d = docFrom(
       textPara('title'),
       textPara('claude://'),
@@ -45,11 +48,46 @@ describe('buildClaudeMessages', () => {
       textPara('Q: what is 2+2'),
     );
     const msgs = buildClaudeMessages(d);
-    expect(msgs).toHaveLength(3);
+    expect(msgs).toHaveLength(1);
     expect(msgs[0].role).toBe('user');
-    expect(msgs[1].role).toBe('assistant');
-    expect(msgs[2].role).toBe('user');
-    expect(msgs[2].content).toEqual([{ type: 'text', text: 'what is 2+2' }]);
+    expect(msgs[0].content).toEqual([
+      { type: 'text', text: 'Q: hi\n\nA: hello!\n\nQ: ' },
+      { type: 'text', text: 'what is 2+2' },
+    ]);
+  });
+
+  it('image in prior turn becomes [이미지] placeholder in history text', () => {
+    const url = 'https://dropbox.com/old.png?raw=1';
+    const d: JSONContent = {
+      type: 'doc',
+      content: [
+        textPara('title'),
+        textPara('claude://'),
+        textPara(''),
+        {
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'Q: look at ' },
+            { type: 'text', text: url, marks: [{ type: 'tomboyUrlLink', attrs: { href: url } }] },
+          ],
+        },
+        textPara('A: I see it'),
+        textPara('Q: what about now'),
+      ],
+    };
+    const msgs = buildClaudeMessages(d);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].role).toBe('user');
+    // First content block is the history text — prior image becomes a placeholder
+    const first = msgs[0].content[0];
+    expect(first.type).toBe('text');
+    expect((first as { text: string }).text).toContain('look at [이미지]');
+    expect((first as { text: string }).text).toContain('A: I see it');
+    // Last block is the new user turn's content
+    expect(msgs[0].content[msgs[0].content.length - 1]).toEqual({
+      type: 'text',
+      text: 'what about now',
+    });
   });
 
   it('image URL in Q produces image content block', () => {

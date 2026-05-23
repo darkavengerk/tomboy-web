@@ -171,5 +171,45 @@ export function buildClaudeMessages(doc: JSONContent): AnthropicMessage[] {
   }
   flush();
 
-  return messages;
+  return consolidateToSingleUser(messages);
+}
+
+/**
+ * Claude CLI's `--input-format stream-json` only accepts user-role messages
+ * (it generates assistant turns; you cannot feed prior assistant responses
+ * back through stdin in `-p` mode without `--resume <session>`). To preserve
+ * multi-turn context from the note while staying stateless, fold any prior
+ * Q/A turns into a text prefix on the latest user turn.
+ *
+ * - Zero turns → []
+ * - One turn (must be user, the send-bar gate guarantees this) → unchanged
+ * - Multi turn → single user message: [text(history), ...latest user content]
+ *
+ * History text format mirrors what's in the note ("Q:" / "A:" prefixes) so
+ * Claude sees the same shape the user authored.
+ */
+function consolidateToSingleUser(messages: AnthropicMessage[]): AnthropicMessage[] {
+  if (messages.length === 0) return [];
+  const last = messages[messages.length - 1];
+  if (last.role !== 'user') return [];
+
+  if (messages.length === 1) return [last];
+
+  const lines: string[] = [];
+  for (let i = 0; i < messages.length - 1; i++) {
+    const m = messages[i];
+    const label = m.role === 'user' ? 'Q' : 'A';
+    const text = m.content
+      .map((b) => (b.type === 'text' ? b.text : '[이미지]'))
+      .join('');
+    lines.push(`${label}: ${text}`);
+  }
+  const historyText = lines.join('\n\n') + '\n\nQ: ';
+
+  return [
+    {
+      role: 'user',
+      content: [{ type: 'text', text: historyText }, ...last.content],
+    },
+  ];
 }
