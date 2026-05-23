@@ -697,6 +697,9 @@
 	function reconnect() {
 		if (!resolvedBridge || !resolvedToken) return;
 		connectFired = false; // allow connect: script to re-run on next 'open'
+		// 이전 연결에서 in-flight 였던 이미지 업로드는 image-ok/error를 못 받았으므로
+		// 카운터가 stuck 상태일 수 있다 — 재연결 시 리셋해서 "업로드 중…" 버튼을 푼다.
+		imageUploadCount = 0;
 		client?.close();
 		term?.reset();
 		scrollState = INITIAL_SCROLL_STATE;
