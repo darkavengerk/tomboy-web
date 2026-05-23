@@ -210,6 +210,19 @@
 		ctrl: AbortController
 	): Promise<void> {
 		const messages = buildClaudeMessages(editor.getJSON());
+		if (messages.length === 0) {
+			// parseChatNote saw a turn (sendDisabled was false) but
+			// buildClaudeMessages saw none — usually means the doc.content
+			// shape is unusual (e.g. signature without trailing blank line,
+			// turn region in a non-paragraph block). Surface a clear message
+			// instead of letting the server reject with "messages required".
+			appendToLastParagraph(
+				'[오류: 보낼 내용을 추출하지 못했어요. claude:// 다음에 빈 줄이 있는지, Q: 로 시작하는 단락이 있는지 확인해주세요.]'
+			);
+			appendParagraph('');
+			appendParagraph('Q: ');
+			return;
+		}
 		const body: ClaudeChatBody = {
 			messages,
 			model: spec.model || undefined,

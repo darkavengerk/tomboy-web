@@ -171,6 +171,23 @@ export function buildClaudeMessages(doc: JSONContent): AnthropicMessage[] {
   }
   flush();
 
+  // ChatSendBar appends an empty 'A: ' placeholder paragraph BEFORE calling
+  // buildClaudeMessages — it's the response anchor that streamed deltas
+  // accumulate into. That placeholder shows up as a trailing assistant turn
+  // with empty content. It's not real history, drop it so consolidate sees
+  // the prior user turn as the trailing one.
+  if (messages.length > 0) {
+    const tail = messages[messages.length - 1];
+    if (
+      tail.role === 'assistant' &&
+      tail.content.length === 1 &&
+      tail.content[0].type === 'text' &&
+      tail.content[0].text === ''
+    ) {
+      messages.pop();
+    }
+  }
+
   return consolidateToSingleUser(messages);
 }
 
