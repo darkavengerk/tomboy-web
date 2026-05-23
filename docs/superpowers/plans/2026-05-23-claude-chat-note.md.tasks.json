@@ -10,7 +10,7 @@
     {
       "id": 9,
       "subject": "Task 2: Reorganize — backends/ollama.ts consolidation",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         8
       ],
@@ -19,7 +19,7 @@
     {
       "id": 10,
       "subject": "Task 3: Parser — claude:// signature + headers + backend field",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         8
       ],
@@ -28,7 +28,7 @@
     {
       "id": 11,
       "subject": "Task 4: Client — buildClaudeMessages + backends/claude.ts (sendClaude)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [
         10
       ],
@@ -78,5 +78,5 @@
       "description": "**Goal:** End-to-end smoke + CLAUDE.md 업데이트.\n\n**USER-ORDERED GATE — NON-SKIPPABLE.** This task was requested by the user (스펙 § 7.2). MUST NOT be closed by walking around it. Close only after every acceptanceCriteria item validated independently with output captured.\n\n**Files:** Modify CLAUDE.md (채팅 노트 섹션). Create docs/superpowers/results/2026-05-23-claude-chat-note-verification.md (캡처).\n\n**Acceptance Criteria:** claude-service active; bridge listening with CLAUDE_SERVICE_URL; chat-only flow; opus model; cwd tool mode; image input; abort; service-down error; llm:// regression-free; no API key leak in journalctl; CLAUDE.md updated.\n\n**Verify:** `systemctl --user status claude-service.service` + 위 10가지 수동 캡처.\n\n```json:metadata\n{\"files\": [\"CLAUDE.md\", \"docs/superpowers/results/2026-05-23-claude-chat-note-verification.md\"], \"verifyCommand\": \"systemctl --user status claude-service.service\", \"acceptanceCriteria\": [\"claude-service active (running)\", \"bridge listening with CLAUDE_SERVICE_URL\", \"chat-only flow works\", \"opus model flow works\", \"cwd tool mode works\", \"image input flow works\", \"abort preserves partial response\", \"service-down error UI works\", \"llm:// regression-free\", \"no API key leak in journalctl\", \"CLAUDE.md updated with Claude backend section\"], \"userGate\": true, \"tags\": [\"user-gate\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-23T09:09:33.542262Z"
+  "lastUpdated": "2026-05-23T09:27:54.032055+00:00"
 }
