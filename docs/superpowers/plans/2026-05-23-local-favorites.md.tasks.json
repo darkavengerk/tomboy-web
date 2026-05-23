@@ -4,20 +4,20 @@
     {
       "id": 6,
       "subject": "Task 1: favoriteStore module + unit tests",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** 로컬 전용 즐겨찾기 `Record<string, true>` 저장소를 `$state` + appSettings persist로 제공한다.\n\n**Files:**\n- Create: `app/src/lib/storage/favoriteStore.svelte.ts`\n- Create: `app/tests/unit/storage/favoriteStore.test.ts`\n\n**Acceptance Criteria:**\n- has() returns false before load()\n- toggle() returns new state (true on add, false on remove)\n- forget() removes membership and is no-op for unknown\n- persist is debounced 300ms\n- load() is idempotent\n- load() restores existing data\n- _reset() clears state\n\n**Verify:** `cd app && npm run test -- favoriteStore && npm run check`\n\n```json:metadata\n{\"files\": [\"app/src/lib/storage/favoriteStore.svelte.ts\", \"app/tests/unit/storage/favoriteStore.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- favoriteStore && npm run check\", \"acceptanceCriteria\": [\"has() returns false before load()\", \"toggle() returns new state\", \"forget() no-op for unknown\", \"persist debounced 300ms\", \"load() idempotent\", \"load() restores existing data\", \"_reset() clears state\"]}\n```"
     },
     {
       "id": 7,
       "subject": "Task 2: Rewrite noteManager favorite API + callers + tests",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [6],
       "description": "**Goal:** `toggleFavorite`/`isFavorite`/`sortForList` 본체 교체 + 모든 callers + favorite.test.ts 재작성.\n\n**Files:**\n- Modify: `app/src/lib/core/noteManager.ts:261-292`\n- Modify: `app/tests/unit/favorite.test.ts`\n- Modify: `app/src/routes/note/[id]/+page.svelte:572-577`\n- Modify: `app/src/lib/desktop/NoteWindow.svelte:723-730`\n- Modify: `app/src/lib/desktop/SidePanel.svelte:90-95`\n\n**Acceptance Criteria:**\n- toggleFavorite returns boolean\n- note.tags and metadataChangeDate untouched\n- isFavorite ignores legacy system:pinned tag\n- sortForList ignores favorites in ordering\n- callers use sync toggleFavorite + boolean-based toast\n- SidePanel sort drops pinned bonus\n- all tests + svelte-check pass\n\n**Verify:** `cd app && npm run test && npm run check`\n\n```json:metadata\n{\"files\": [\"app/src/lib/core/noteManager.ts\", \"app/tests/unit/favorite.test.ts\", \"app/src/routes/note/[id]/+page.svelte\", \"app/src/lib/desktop/NoteWindow.svelte\", \"app/src/lib/desktop/SidePanel.svelte\"], \"verifyCommand\": \"cd app && npm run test && npm run check\", \"acceptanceCriteria\": [\"toggleFavorite returns boolean\", \"note.tags untouched\", \"legacy tag ignored\", \"sort ignores favorites\", \"callers sync with boolean toast\", \"SidePanel sort cleaned\", \"all tests + check pass\"]}\n```"
     },
     {
       "id": 8,
       "subject": "Task 3: Wire favoriteStore.load() into +layout + manual verify",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [7],
       "description": "**Goal:** 앱 부팅 시 favoriteStore가 한 번 로드되도록 wire하고, dev 서버에서 즐겨찾기 동작을 수동 확인한다.\n\n**Files:**\n- Modify: `app/src/routes/+layout.svelte`\n\n**Acceptance Criteria:**\n- favoriteStore.load() called in +layout onMount\n- tests + svelte-check pass\n- manual: badge toggles reactively, persists across refresh, does not affect sort order, appears in TopNav sheet, persisted in appSettings local:favorites\n\n**Verify:** `cd app && npm run test && npm run check` + manual dev server checks\n\n```json:metadata\n{\"files\": [\"app/src/routes/+layout.svelte\"], \"verifyCommand\": \"cd app && npm run test && npm run check\", \"acceptanceCriteria\": [\"load() wired in onMount\", \"tests + check pass\", \"manual dev verification\"]}\n```"
     }
