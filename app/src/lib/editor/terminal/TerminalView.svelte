@@ -229,7 +229,6 @@
 
 	/** Ctrl+V 등 붙여넣기 — 클립보드에 이미지가 있으면 가로채 전송. */
 	function handleImagePaste(e: ClipboardEvent): void {
-		if (isSpectator) return;
 		const file = extractImageFile(e.clipboardData);
 		if (!file) return; // 이미지 없음 → xterm의 기본 텍스트 붙여넣기에 맡김
 		e.preventDefault();
@@ -239,13 +238,11 @@
 
 	/** dragover — drop을 허용하려면 preventDefault 필요. */
 	function handleImageDragOver(e: DragEvent): void {
-		if (isSpectator) return;
 		e.preventDefault();
 	}
 
 	/** drop — 드롭된 이미지 파일을 모두 전송. */
 	function handleImageDrop(e: DragEvent): void {
-		if (isSpectator) return;
 		e.preventDefault();
 		const files = imageFilesFromList(e.dataTransfer?.files ?? []);
 		for (const f of files) void sendImageFile(f);
@@ -789,15 +786,15 @@
 				<button type="button" class="toggle" onclick={togglePanel}>
 					히스토리 ({currentItems.length})
 				</button>
-				<button
-					type="button"
-					class="toggle"
-					onclick={openImagePicker}
-					disabled={status !== 'open' || imageUploadCount > 0}
-				>
-					{imageUploadCount > 0 ? '업로드 중…' : '이미지'}
-				</button>
 			{/if}
+			<button
+				type="button"
+				class="toggle"
+				onclick={openImagePicker}
+				disabled={status !== 'open' || imageUploadCount > 0}
+			>
+				{imageUploadCount > 0 ? '업로드 중…' : '이미지'}
+			</button>
 			<span class="status status-{status}">
 				{#if status === 'connecting'}연결 중…
 				{:else if status === 'open'}{isSpectator ? '관전 중' : '연결됨'}
