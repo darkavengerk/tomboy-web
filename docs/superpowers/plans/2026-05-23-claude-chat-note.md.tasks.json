@@ -1,0 +1,66 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-23-claude-chat-note.md",
+  "tasks": [
+    {
+      "id": 8,
+      "subject": "Task 1: Refactor — llmNote/ → chatNote/ (mechanical rename)",
+      "status": "pending",
+      "description": "**Goal:** 디렉토리/파일 리네임 + 모든 import 경로 업데이트. 기능 변경 0.\n\n**Files:** Move `app/src/lib/llmNote/` → `chatNote/`, `app/src/lib/editor/llmNote/` → `editor/chatNote/`, `app/tests/unit/llmNote/` → `unit/chatNote/`. Rename: parseLlmNote→parseChatNote, LlmSendBar→ChatSendBar, llmNotePlugin→chatNotePlugin. Update imports in routes/note/[id]/+page.svelte, lib/desktop/NoteWindow.svelte, lib/editor/TomboyEditor.svelte, lib/ocrNote/runOcrInEditor.ts.\n\n**Acceptance Criteria:** no llmNote/ remains; symbols renamed (LlmChatError/LlmNoteSpec KEPT until Task 3); npm run check/test/build pass; manual llm:// smoke ok.\n\n**Verify:** `cd app && npm run check && npm run test -- --run`\n\n```json:metadata\n{\"files\": [\"app/src/lib/chatNote/\", \"app/src/lib/editor/chatNote/\", \"app/tests/unit/chatNote/\", \"app/src/routes/note/[id]/+page.svelte\", \"app/src/lib/desktop/NoteWindow.svelte\", \"app/src/lib/editor/TomboyEditor.svelte\", \"app/src/lib/ocrNote/runOcrInEditor.ts\"], \"verifyCommand\": \"cd app && npm run check && npm run test -- --run\", \"acceptanceCriteria\": [\"no llmNote/ directory remains\", \"symbols parseChatNote/ChatSendBar/createChatNotePlugin renamed\", \"npm run check passes\", \"npm run test passes\", \"npm run build succeeds\", \"manual llm:// smoke ok\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 2: Reorganize — backends/ollama.ts consolidation",
+      "status": "pending",
+      "blockedBy": [8],
+      "description": "**Goal:** chatNote/sendChat.ts + buildChatRequest.ts + searchRag.ts → backends/ollama.ts 통합.\n\n**Files:** Create `app/src/lib/chatNote/backends/ollama.ts`. Delete 3 old files. Update imports in ChatSendBar.svelte, runOcrInEditor.ts.\n\n**Acceptance Criteria:** ollama.ts exports sendChat/LlmChatError/buildChatRequest/ChatRequestBody/searchRag/RagSearchError/RagHit; 3 files deleted; all imports updated; tests pass; llm:// + RAG smoke ok.\n\n**Verify:** `cd app && npm run check && npm run test -- --run`\n\n```json:metadata\n{\"files\": [\"app/src/lib/chatNote/backends/ollama.ts\"], \"verifyCommand\": \"cd app && npm run check && npm run test -- --run\", \"acceptanceCriteria\": [\"backends/ollama.ts exports all 7 symbols\", \"old 3 files deleted\", \"all imports updated\", \"check + test pass\", \"llm:// + RAG manual smoke ok\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 3: Parser — claude:// signature + headers + backend field",
+      "status": "pending",
+      "blockedBy": [8],
+      "description": "**Goal:** parseChatNote 가 llm:// + claude:// 둘 다 인식. ChatNoteSpec 에 backend 필드. Claude 헤더(cwd, allowedTools, model) 파싱.\n\n**Files:** Modify parseChatNote.ts (backend 분기 + 타입), defaults.ts (시그니처/헤더 정규식), parseChatNote.test.ts (claude:// 케이스).\n\n**Acceptance Criteria:** claude://[model] parsed; ollama backend still requires model; cwd/allowedTools/model headers parsed; cross-backend keys silently ignored; Q:/A: turn parsing unchanged; all tests pass.\n\n**Verify:** `cd app && npm run test -- --run chatNote/parseChatNote && npm run check`\n\n```json:metadata\n{\"files\": [\"app/src/lib/chatNote/parseChatNote.ts\", \"app/src/lib/chatNote/defaults.ts\", \"app/tests/unit/chatNote/parseChatNote.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- --run chatNote/parseChatNote && npm run check\", \"acceptanceCriteria\": [\"claude:// signature parsed with optional model\", \"ollama signature still requires model\", \"cwd/allowedTools/model headers parsed for claude\", \"cross-backend keys silently ignored\", \"Q:/A: turn parsing unchanged\", \"all existing tests pass\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 4: Client — buildClaudeMessages + backends/claude.ts (sendClaude)",
+      "status": "pending",
+      "blockedBy": [10],
+      "description": "**Goal:** Q:/A: 턴 → Anthropic content block 직렬화 + SSE 스트림 소비자 + ClaudeChatError.\n\n**Files:** Create buildClaudeMessages.ts, backends/claude.ts, buildClaudeMessages.test.ts, sendClaude.test.ts.\n\n**Acceptance Criteria:** text + image URL 블록 순서 보존; tomboyUrlLink + 이미지 확장자로 이미지 식별; Q:/A: prefix → role; hardBreak → \\n; sendClaude SSE delta → onToken; HTTP 401/503/429/413/500 → ClaudeChatErrorKind; AbortSignal → reason 'abort'; stream 종료 without done → stream_error.\n\n**Verify:** `cd app && npm run test -- --run chatNote && npm run check`\n\n```json:metadata\n{\"files\": [\"app/src/lib/chatNote/buildClaudeMessages.ts\", \"app/src/lib/chatNote/backends/claude.ts\", \"app/tests/unit/chatNote/buildClaudeMessages.test.ts\", \"app/tests/unit/chatNote/sendClaude.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- --run chatNote && npm run check\", \"acceptanceCriteria\": [\"buildClaudeMessages serializes text and image URLs correctly\", \"Q:/A: prefix stripped to role\", \"sendClaude streams SSE deltas to onToken\", \"HTTP error codes map to correct ClaudeChatErrorKind\", \"AbortSignal handled cleanly\", \"stream without done → stream_error\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 5: UI — ChatSendBar backend branching",
+      "status": "pending",
+      "blockedBy": [9, 10, 11],
+      "description": "**Goal:** ChatSendBar 가 spec.backend 로 분기 — claude 면 sendClaude, ollama 면 기존 sendChat.\n\n**Files:** Modify ChatSendBar.svelte.\n\n**Acceptance Criteria:** backend 분기 동작; claude 경로에서 buildClaudeMessages 호출 + body 에 cwd/allowedTools/model/system 포함; 응답 스트림 → A:; 정상 종료 → 새 Q:; 에러 → 한국어 메시지 + 새 Q:; abort → 부분 응답 보존; llm:// 회귀 없음.\n\n**Verify:** `cd app && npm run check && npm run test -- --run && npm run build`\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/chatNote/ChatSendBar.svelte\"], \"verifyCommand\": \"cd app && npm run check && npm run test -- --run && npm run build\", \"acceptanceCriteria\": [\"backend branch logic in send()\", \"claude path calls sendClaude with buildClaudeMessages output\", \"ollama path behavior unchanged\", \"formatClaudeError 한국어 메시지\", \"abort/error/done 모두 새 Q: 추가\", \"build succeeds\"]}\n```"
+    },
+    {
+      "id": 13,
+      "subject": "Task 6: Bridge — POST /claude/chat proxy route",
+      "status": "pending",
+      "description": "**Goal:** Pi 브릿지에 /claude/chat 추가. Bearer 검증 후 데스크탑 claude-service 로 SSE pass-through.\n\n**Files:** Create bridge/src/claude.ts, claude.test.ts. Modify server.ts (라우트 등록 + CLAUDE_SERVICE_URL env).\n\n**Acceptance Criteria:** 401 on bad bearer; 503 when CLAUDE_SERVICE_URL unset; 400 on bad body; SSE pass-through on 200; AbortSignal on client close; 5xx propagated; body limit 2 MiB.\n\n**Verify:** `cd bridge && npm test`\n\n```json:metadata\n{\"files\": [\"bridge/src/claude.ts\", \"bridge/src/claude.test.ts\", \"bridge/src/server.ts\"], \"verifyCommand\": \"cd bridge && npm test\", \"acceptanceCriteria\": [\"401 on bad bearer\", \"503 when CLAUDE_SERVICE_URL unset\", \"400 on bad request body\", \"SSE pass-through on success\", \"AbortSignal on client close\", \"5xx upstream propagated\"]}\n```"
+    },
+    {
+      "id": 14,
+      "subject": "Task 7: claude-service — core (project + runner + server)",
+      "status": "pending",
+      "description": "**Goal:** 데스크탑 Node 서비스. POST /chat → claude -p subprocess + stream-json → SSE. FakeClaudeRunner 로 단위 테스트.\n\n**Files:** Create claude-service/{package.json,tsconfig.json,src/server.ts,src/runner.ts,src/auth.ts,tests/_fakes.ts,tests/runner.test.ts,tests/server.test.ts}.\n\n**Acceptance Criteria:** npm install + build 성공; FakeClaudeRunner 기반 테스트 통과 (실제 CLI 안 부름); stream-json → SSE delta/done/error 변환; AbortSignal → SIGTERM; cwd 없으면 --disallowedTools '*'; ANTHROPIC_API_KEY 빈 문자열; partial line buffering; tool_use 무시; 인증/검증/사이즈/cwd 체크.\n\n**Verify:** `cd claude-service && npm test && npm run build`\n\n```json:metadata\n{\"files\": [\"claude-service/package.json\", \"claude-service/tsconfig.json\", \"claude-service/src/server.ts\", \"claude-service/src/runner.ts\", \"claude-service/src/auth.ts\", \"claude-service/tests/_fakes.ts\", \"claude-service/tests/runner.test.ts\", \"claude-service/tests/server.test.ts\"], \"verifyCommand\": \"cd claude-service && npm test && npm run build\", \"acceptanceCriteria\": [\"all tests pass with FakeClaudeRunner (no real CLI)\", \"stream-json → SSE conversion correct\", \"--disallowedTools '*' when no cwd\", \"ANTHROPIC_API_KEY env cleared\", \"partial line buffering works\", \"auth + body validation + cwd check\", \"build succeeds\"]}\n```"
+    },
+    {
+      "id": 15,
+      "subject": "Task 8: claude-service — deployment (Containerfile + Quadlet + docs)",
+      "status": "pending",
+      "blockedBy": [14],
+      "description": "**Goal:** 컨테이너 이미지 + Quadlet unit + 셋업 README.\n\n**Files:** Create claude-service/{Containerfile, deploy/claude-service.container, deploy/README.md}.\n\n**Acceptance Criteria:** podman build 성공; claude CLI 글로벌 설치; Quadlet unit installable; Volume mount ~/.claude → /data/.claude; README 가 셋업 단계 명시; smoke curl → 400 bad_request.\n\n**Verify:** `cd claude-service && podman build -t claude-service:latest .`\n\n```json:metadata\n{\"files\": [\"claude-service/Containerfile\", \"claude-service/deploy/claude-service.container\", \"claude-service/deploy/README.md\"], \"verifyCommand\": \"cd claude-service && podman build -t claude-service:latest .\", \"acceptanceCriteria\": [\"podman build succeeds\", \"claude CLI installed in image\", \"Quadlet unit installable\", \"README covers setup steps\", \"smoke curl returns expected 400\"]}\n```"
+    },
+    {
+      "id": 16,
+      "subject": "Task 9: Manual verification + CLAUDE.md update",
+      "status": "pending",
+      "blockedBy": [12, 13, 15],
+      "description": "**Goal:** End-to-end smoke + CLAUDE.md 업데이트.\n\n**USER-ORDERED GATE — NON-SKIPPABLE.** This task was requested by the user (스펙 § 7.2). MUST NOT be closed by walking around it. Close only after every acceptanceCriteria item validated independently with output captured.\n\n**Files:** Modify CLAUDE.md (채팅 노트 섹션). Create docs/superpowers/results/2026-05-23-claude-chat-note-verification.md (캡처).\n\n**Acceptance Criteria:** claude-service active; bridge listening with CLAUDE_SERVICE_URL; chat-only flow; opus model; cwd tool mode; image input; abort; service-down error; llm:// regression-free; no API key leak in journalctl; CLAUDE.md updated.\n\n**Verify:** `systemctl --user status claude-service.service` + 위 10가지 수동 캡처.\n\n```json:metadata\n{\"files\": [\"CLAUDE.md\", \"docs/superpowers/results/2026-05-23-claude-chat-note-verification.md\"], \"verifyCommand\": \"systemctl --user status claude-service.service\", \"acceptanceCriteria\": [\"claude-service active (running)\", \"bridge listening with CLAUDE_SERVICE_URL\", \"chat-only flow works\", \"opus model flow works\", \"cwd tool mode works\", \"image input flow works\", \"abort preserves partial response\", \"service-down error UI works\", \"llm:// regression-free\", \"no API key leak in journalctl\", \"CLAUDE.md updated with Claude backend section\"], \"userGate\": true, \"tags\": [\"user-gate\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-23T00:00:00Z"
+}
