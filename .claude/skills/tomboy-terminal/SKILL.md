@@ -63,6 +63,7 @@ const BRIDGE_RE = /^bridge:\s*(wss?:\/\/\S+)\s*$/;
 | `lib/editor/terminal/HistoryPanel.svelte` | Desktop side panel + mobile bottom sheet UI for captured history + pinned commands. |
 | `lib/editor/terminal/terminalBell.ts` | 벨 링어 — Web Audio API로 단음 비프음 합성 + `navigator.vibrate(200)`. ~300ms 스로틀. |
 | `lib/editor/terminal/imagePasteClient.ts` | 클라이언트 이미지 헬퍼 — `validateImageFile`, `imageFilesFromList`, `fileToImagePayload`, `extractImageFile` re-export. |
+| `lib/editor/terminal/clipboardImage.ts` | `extractImageFromClipboardItems(items: ClipboardItem[]): Promise<File \| null>` — `navigator.clipboard.read()` 결과에서 첫 `image/*` 항목을 `File`로 추출. 보내기 팝업의 "📋 이미지 붙여넣기" 버튼이 사용. |
 | `bridge/src/imageTransfer.ts` | 브릿지 이미지 전송 — `mimeToExt`, `safeImageName`, `bracketedPaste`, `buildRemoteCatArgs`, `transferImage`. |
 | `routes/note/[id]/+page.svelte` | Mobile route — branches on `parseTerminalNote(editorContent)` at load and after every IDB reload. |
 | `lib/desktop/NoteWindow.svelte` | Desktop route — same branch. |
@@ -633,12 +634,14 @@ to add the three lines inline than to source the plugin file.
   spectator-private navigation, you'd need per-client `switch-client`
   semantics, which tmux's control mode doesn't cleanly support.
 
-## 이미지 붙여넣기 (shell mode only)
+## 이미지 붙여넣기
 
-셸 모드 터미널 노트에서 이미지를 원격 호스트로 전송하고 경로를 PTY에 주입한다.
-관전(spectator) 모드는 지원하지 않는다 — 파일을 받을 쪽 컨텍스트가 없다.
+터미널 노트에서 이미지를 원격 호스트로 전송하고 경로를 활성 패널에 주입한다.
+셸 모드와 관전(spectator) 모드 모두 지원한다.
 
-**트리거 세 가지 (TerminalView.svelte):**
+### 셸 모드
+
+**트리거 세 가지 (TerminalView.svelte, `isSpectator` false):**
 
 1. **Ctrl+V** — capture-phase `paste` 이벤트에서 `ClipboardEvent.clipboardData.items`
    를 순회해 `image/*` 항목을 추출.
@@ -658,9 +661,36 @@ to add the three lines inline than to source the plugin file.
    `ssh -o ControlPath=<sock> -o BatchMode=yes user@host 'mkdir -p /tmp/tomboy-images && cat > <safe-path>'`
    를 stdin 파이프로 실행해 이미지 바이트를 원격에 기록.
 4. 전송 성공 후 브릿지는 `\x1b[200~<remotePath>\x1b[201~ ` (bracketed paste + trailing space)
-   를 PTY에 기록한다. 셸/Claude Code는 이것을 붙여넣기로 인식해 경로를 커맨드라인에 삽입한다.
+   를 PTY에 기록한다(`pty.write`). 셸/Claude Code는 이것을 붙여넣기로 인식해 경로를
+   커맨드라인에 삽입한다.
 5. `wsClient.ts:onImageResult` 콜백이 성공/실패 여부를 `TerminalView`에 알려
    로딩 상태를 해제한다.
+
+### 관전 모드 데스크탑
+
+**트리거** — 셸 모드와 동일한 Ctrl+V / 드래그앤드롭 / 헤더 "이미지" 버튼
+(`isSpectator` true 분기).
+
+**전송 흐름:**
+
+- 브릿지의 spectator ssh 연결도 ControlMaster 마스터
+  (`-o ControlMaster=auto -o ControlPath=/tmp/tomboy-ctl/<uuid>-spectator.sock`)로 스폰된다.
+- `handleImageMessage` 분기에서 `spectator.hasActivePane()`이 false면 즉시
+  `image-error` 회신 (첫 pane-switch 프레임 전 race guard).
+- `imageTransfer.transferImage(controlPath, ...)` — 셸 모드와 동일한 ControlMaster 재사용 업로드.
+- 경로 주입은 `pty.write` 대신 `SpectatorSession.sendInput(bracketedPaste(path))`
+  → `tmux send-keys -t <activePane> -H <hex>`로 활성 패널에 binary-safe 주입.
+
+### 관전 모드 모바일
+
+**트리거** — 보내기 팝업의 두 버튼:
+
+1. **"📋 이미지 붙여넣기"** — `navigator.clipboard.read()`로 `ClipboardItem` 배열을 읽어
+   `clipboardImage.ts:extractImageFromClipboardItems`로 첫 `image/*` 항목을 `File`로 변환 후 전송.
+2. **"📷 이미지 불러오기"** — `<input type="file" accept="image/*">` 파일 선택기.
+
+팝업의 텍스트 입력 필드(`<textarea>`)에 `onpaste` 핸들러도 달려 있어 롱프레스 붙여넣기로
+이미지를 가로챈다. 전송 경로는 관전 모드 데스크탑과 동일(`SpectatorSession.sendInput`).
 
 **안전 파일명** — `safeImageName` (`imageTransfer.ts`)이 MIME에서 확장자를 파생하고
 `tomboy-<unix-ms>-<4바이트 hex>.<ext>` 패턴으로 이름을 만든다 — 셸 메타문자가 없어
@@ -682,8 +712,9 @@ to add the three lines inline than to source the plugin file.
 ```
 
 **불변 조건:**
-- 이미지 붙여넣기는 셸 모드(`spec.spectate` 없음)에서만 동작한다.
-- WS 연결이 닫히면 `ws.on('close')`가 `unlink(controlPath)`로 소켓 파일을 삭제한다 — ssh 마스터 프로세스 자체는 `pty.kill()`로 종료된다 (별도 `ssh -O exit` 호출 없음).
+- 이미지 붙여넣기는 셸·관전 양 모드 모두 지원. 셸은 `pty.write(bracketedPaste(path))`, 관전은 `spectator.sendInput(bracketedPaste(path))` → `tmux send-keys -H <hex>`. 두 경로 모두 ControlMaster 멀티플렉싱으로 재인증 없이 업로드.
+- 셸 모드의 ControlMaster 마스터 소켓은 PTY ssh 연결이, 관전 모드는 spectator ssh 연결이 각각 생성한다. 둘 다 `WS close` 시 `unlink(controlPath)`로 소켓 파일을 삭제한다 — ssh 마스터 프로세스 자체는 `pty.kill()` / 관전 프로세스 종료로 함께 정리된다 (별도 `ssh -O exit` 호출 없음).
+- 관전 모드에서 `spectator.hasActivePane()`이 false면 업로드 전에 `image-error` 즉시 반환 — race guard.
 - 안전 파일명은 브릿지가 생성한다 — 노트 포맷에 경로 힌트 필드를 추가하지 말 것.
 - 로컬 타겟 경로는 브릿지 컨테이너 내부다. 볼륨 마운트 없이 외부에서 볼 수 없다.
 
