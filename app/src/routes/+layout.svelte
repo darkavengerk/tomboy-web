@@ -18,7 +18,7 @@
 	import { installRealNoteSync } from '$lib/sync/firebase/install.js';
 	import { pushToast } from '$lib/stores/toast.js';
 	import { getAllNotes } from '$lib/storage/noteStore.js';
-import { favoriteStore } from '$lib/storage/favoriteStore.svelte.js';
+	import { favoriteStore } from '$lib/storage/favoriteStore.svelte.js';
 	import { getCachedPublicConfig, discoverPublicConfigForGuest } from '$lib/sync/firebase/publicConfig.js';
 
 	let { children } = $props();
