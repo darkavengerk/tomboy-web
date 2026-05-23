@@ -401,6 +401,24 @@
 		background: rgba(90, 153, 255, 0.35);
 	}
 
+	/* Main handle sits at .main's right edge — for default widths that's
+	   ~300px from the screen edge, well inside the canvas. If it captured
+	   pointer events while .main is collapsed, the user brushing this
+	   invisible 6px strip during unrelated work would trigger
+	   .side-panel:hover and pop the panel open from nowhere. Gate it on
+	   the panel actually being expanded (rail hover, focus inside .main,
+	   slipnote always-open) or an in-progress drag. The rail handle is
+	   adjacent to the visible rail and intentionally stays auto. */
+	.resize-handle.main-handle {
+		pointer-events: none;
+	}
+	.side-panel:hover .resize-handle.main-handle,
+	.side-panel:has(.main:focus-within) .resize-handle.main-handle,
+	.side-panel.always-open .resize-handle.main-handle,
+	.resize-handle.main-handle.resizing {
+		pointer-events: auto;
+	}
+
 	.rail-chips {
 		display: flex;
 		flex-direction: column;
