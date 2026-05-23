@@ -441,7 +441,12 @@ function handleWs(ws: WebSocket): void {
 	 * 경로 뒤 공백 한 칸은 이미지를 연달아 붙여넣을 때 경로가 서로 붙지 않게 한다.
 	 */
 	async function handleImageMessage(mime: string, dataB64: string): Promise<void> {
+		const sink = pty ? 'pty' : spectator?.hasActivePane() ? 'spectator' : 'none';
+		console.log(
+			`[image] received mime=${mime} b64Len=${dataB64.length} sink=${sink} controlPath=${controlPath ?? 'null'} sessionTarget=${sessionTarget ? `${sessionTarget.user ?? ''}@${sessionTarget.host}` : 'null'}`
+		);
 		if (!sessionTarget) {
+			console.log('[image] reject: no sessionTarget');
 			send({ type: 'image-error', message: '세션이 준비되지 않았습니다.' });
 			return;
 		}
@@ -449,6 +454,7 @@ function handleWs(ws: WebSocket): void {
 		try {
 			bytes = Buffer.from(dataB64, 'base64');
 		} catch {
+			console.log('[image] reject: base64 decode failed');
 			send({ type: 'image-error', message: '이미지 데이터가 올바르지 않습니다.' });
 			return;
 		}
@@ -461,16 +467,21 @@ function handleWs(ws: WebSocket): void {
 			});
 			const paste = bracketedPaste(remotePath) + ' ';
 			if (pty) {
+				console.log(`[image] inject via pty path=${remotePath}`);
 				pty.write(paste);
 			} else if (spectator?.hasActivePane()) {
+				console.log(`[image] inject via spectator path=${remotePath}`);
 				spectator.sendInput(paste);
 			} else {
+				console.log('[image] reject: no active sink at inject time');
 				send({ type: 'image-error', message: '주입할 곳이 없습니다.' });
 				return;
 			}
 			send({ type: 'image-ok', path: remotePath });
 		} catch (err) {
-			send({ type: 'image-error', message: (err as Error).message });
+			const msg = (err as Error).message;
+			console.log(`[image] transfer error: ${msg}`);
+			send({ type: 'image-error', message: msg });
 		}
 	}
 }

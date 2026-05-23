@@ -90,6 +90,13 @@ export async function transferImage(req: TransferRequest): Promise<TransferResul
 	return { remotePath };
 }
 
+/**
+ * 보조 ssh가 마스터 소켓 준비를 기다리거나 원격에서 매달리면 영원히 pending이
+ * 되어 프론트 토스트가 풀리지 않는다. 합리적 상한을 둬서 적어도 사용자가
+ * 에러를 보고 다시 시도할 수 있게 한다.
+ */
+const TRANSFER_TIMEOUT_MS = 20_000;
+
 function streamToRemote(
 	t: SshTarget,
 	controlPath: string,
@@ -97,15 +104,48 @@ function streamToRemote(
 	bytes: Buffer
 ): Promise<void> {
 	return new Promise((resolve, reject) => {
-		const child = spawn('ssh', buildRemoteCatArgs(t, controlPath, remotePath));
+		const args = buildRemoteCatArgs(t, controlPath, remotePath);
+		console.log(
+			`[image-transfer] ssh start bytes=${bytes.length} controlPath=${controlPath} remotePath=${remotePath}`
+		);
+		const child = spawn('ssh', args);
 		let stderr = '';
+		let settled = false;
+		const settle = (fn: () => void) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			fn();
+		};
+		const timer = setTimeout(() => {
+			settle(() => {
+				console.log(
+					`[image-transfer] timeout after ${TRANSFER_TIMEOUT_MS}ms — killing ssh. stderr so far: ${stderr.trim() || '(empty)'}`
+				);
+				try { child.kill('SIGTERM'); } catch { /* ignore */ }
+				reject(new Error(`이미지 전송 타임아웃(${TRANSFER_TIMEOUT_MS / 1000}s). ssh가 응답하지 않습니다.`));
+			});
+		}, TRANSFER_TIMEOUT_MS);
 		child.stderr.on('data', (d) => {
 			stderr += d.toString();
 		});
-		child.on('error', reject);
+		child.on('error', (err) => {
+			settle(() => {
+				console.log(`[image-transfer] ssh spawn error: ${err.message}`);
+				reject(err);
+			});
+		});
 		child.on('close', (code) => {
-			if (code === 0) resolve();
-			else reject(new Error(stderr.trim() || `ssh가 코드 ${code}로 종료됨`));
+			settle(() => {
+				if (code === 0) {
+					console.log(`[image-transfer] ssh ok remotePath=${remotePath}`);
+					resolve();
+				} else {
+					const msg = stderr.trim() || `ssh가 코드 ${code}로 종료됨`;
+					console.log(`[image-transfer] ssh failed code=${code} stderr=${msg}`);
+					reject(new Error(msg));
+				}
+			});
 		});
 		// 원격이 일찍 닫으면 stdin EPIPE — close 핸들러가 사유를 보고하므로 무시.
 		child.stdin.on('error', () => { /* ignore */ });
