@@ -85,6 +85,22 @@
 	// send it — the footer then leaves all five buttons enabled.
 	let spectatorPaneOrdinal = $state(0);
 	let spectatorPaneCount = $state(0);
+	/**
+	 * Pinned pane ordinal (1..5). When non-null, the spectator view stays locked
+	 * to this pane: pane-switch frames for other panes flip `pinDetached=true`
+	 * which suppresses incoming `data` and shows the detach banner. Initial
+	 * value comes from `spec.pinnedPane` (parsed from `spectate: <s>:<N>`);
+	 * subsequent updates are user-driven via the footer toggle, so capturing
+	 * only the initial spec value here is intentional.
+	 */
+	// svelte-ignore state_referenced_locally
+	let pinnedOrdinal: number | null = $state(spec.pinnedPane ?? null);
+	/**
+	 * True when pin is active AND the desktop's active pane is not our pinned
+	 * ordinal (or the ordinal is past the window's pane count). While detached,
+	 * incoming `data` is dropped and the last-seen frame stays frozen on screen.
+	 */
+	let pinDetached = $state(false);
 	// Spectator "보내기" popup — explicit keystroke injection into the
 	// active pane. Useful for quick claude-code confirmations (y/n/Enter)
 	// from mobile without breaking the read-only-by-default invariant.
@@ -417,6 +433,31 @@
 	 * against `list-panes`, so a number past the last pane is a no-op.
 	 */
 	function selectPane(n: number): void {
+		client?.selectPane(n);
+	}
+
+	/**
+	 * Footer pane-button click router. Three branches:
+	 *  - 자물쇠 버튼 (n === pinnedOrdinal) → 고정 해제.
+	 *  - pin 없음 + 클릭한 번호가 이미 active → 그 번호로 고정.
+	 *  - 그 외 → 일반 select-pane(n).
+	 *
+	 * pin 활성 + 다른 번호 클릭은 footer가 disabled로 막아 여기까지 안 옴.
+	 * 노트 영속 저장은 Task 5에서 persistPinToNote() 호출 추가 예정.
+	 */
+	function onPaneNumClick(n: number): void {
+		if (pinnedOrdinal === n) {
+			pinnedOrdinal = null;
+			pinDetached = false;
+			// TODO(task-5): persistPinToNote(null)
+			return;
+		}
+		if (pinnedOrdinal === null && n === spectatorPaneOrdinal) {
+			pinnedOrdinal = n;
+			pinDetached = false;
+			// TODO(task-5): persistPinToNote(n)
+			return;
+		}
 		client?.selectPane(n);
 	}
 
@@ -959,11 +1000,17 @@
 						<button
 							type="button"
 							class="icon pane-num"
-							class:active={n === spectatorPaneOrdinal}
-							title="패널 {n}"
-							onclick={() => selectPane(n)}
-							disabled={status !== 'open' || (spectatorPaneCount > 0 && n > spectatorPaneCount)}
-						>{n}</button>
+							class:active={n === spectatorPaneOrdinal && pinnedOrdinal === null}
+							class:pinned={n === pinnedOrdinal}
+							class:detached={n === pinnedOrdinal && pinDetached}
+							title={n === pinnedOrdinal
+								? `패널 ${n} 고정 (해제하려면 다시 누르세요)`
+								: `패널 ${n}`}
+							onclick={() => onPaneNumClick(n)}
+							disabled={status !== 'open'
+								|| (spectatorPaneCount > 0 && n > spectatorPaneCount)
+								|| (pinnedOrdinal !== null && n !== pinnedOrdinal)}
+						>{#if n === pinnedOrdinal}🔒{/if}{n}</button>
 					{/each}
 					<button
 						type="button"
@@ -1219,6 +1266,15 @@
 		background: #2563eb;
 		border-color: #5b8def;
 		color: #fff;
+	}
+	.spec-footer button.pane-num.pinned {
+		background: #2563eb;
+		border-color: #5b8def;
+		color: #fff;
+	}
+	.spec-footer button.pane-num.pinned.detached {
+		border-color: #f87171;
+		box-shadow: inset 0 0 0 1px #f87171;
 	}
 	.spec-footer button:active {
 		background: #4a4a4a;
