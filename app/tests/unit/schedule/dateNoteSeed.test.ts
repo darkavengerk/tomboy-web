@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
 	extractScheduleLabelsForDate,
-	buildTodoBlocks
+	buildChecklistBlocks
 } from '$lib/schedule/dateNoteSeed.js';
 import type { ParsedScheduleEntry } from '$lib/schedule/parseSchedule.js';
 import type { JSONContent } from '@tiptap/core';
@@ -11,6 +11,9 @@ function p(text: string): JSONContent {
 }
 function li(text: string): JSONContent {
 	return { type: 'listItem', content: [p(text)] };
+}
+function liChecked(text: string, checked: boolean): JSONContent {
+	return { type: 'listItem', attrs: { checked }, content: [p(text)] };
 }
 function ul(...items: JSONContent[]): JSONContent {
 	return { type: 'bulletList', content: items };
@@ -100,21 +103,28 @@ describe('extractScheduleLabelsForDate', () => {
 	});
 });
 
-describe('buildTodoBlocks', () => {
-	it('empty array → []', () => {
-		expect(buildTodoBlocks([])).toEqual([]);
+describe('buildChecklistBlocks', () => {
+	it('empty schedule + empty carryover → []', () => {
+		expect(buildChecklistBlocks([], [])).toEqual([]);
 	});
 
-	it('one label → [paragraph("TODO:"), bulletList(listItem(paragraph(label)))]', () => {
-		const blocks = buildTodoBlocks(['독서모임 7시']);
-		expect(blocks).toEqual([p('TODO:'), ul(li('독서모임 7시'))]);
-	});
-
-	it('multiple labels preserve order in bullet list', () => {
-		const blocks = buildTodoBlocks(['독서', '독서모임 7시', '산책 8시']);
+	it('one schedule label → [paragraph("체크리스트:"), bulletList(listItem(checked:false, label))]', () => {
+		const blocks = buildChecklistBlocks(['독서모임 7시'], []);
 		expect(blocks).toEqual([
-			p('TODO:'),
-			ul(li('독서'), li('독서모임 7시'), li('산책 8시'))
+			p('체크리스트:'),
+			ul(liChecked('독서모임 7시', false))
+		]);
+	});
+
+	it('multiple schedule labels preserve order, all checked:false', () => {
+		const blocks = buildChecklistBlocks(['독서', '독서모임 7시', '산책 8시'], []);
+		expect(blocks).toEqual([
+			p('체크리스트:'),
+			ul(
+				liChecked('독서', false),
+				liChecked('독서모임 7시', false),
+				liChecked('산책 8시', false)
+			)
 		]);
 	});
 });

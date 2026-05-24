@@ -26,18 +26,30 @@ export function extractScheduleLabelsForDate(
 	return out;
 }
 
-export function buildTodoBlocks(labels: string[]): JSONContent[] {
-	if (labels.length === 0) return [];
+/**
+ * 시드 체크리스트 블록을 만든다. 일정 라벨이 먼저, 캐리오버 항목이 그
+ * 다음에 배치된다. 둘 다 비면 [] (시드 자체 생략).
+ *
+ * 헤더 텍스트는 `체크리스트:` — 이건 editor/checklist/regions.ts 의
+ * isChecklistHeaderText 가 인식하는 토큰이고, ProseMirror 플러그인이
+ * 영역 안 listItem 을 체크박스로 렌더링하는 트리거다. 동일 규칙이
+ * noteContentArchiver.ts 의 applyChecklistMarkersOnParse 에도 있다.
+ */
+export function buildChecklistBlocks(
+	scheduleLabels: string[],
+	carryoverItems: JSONContent[]
+): JSONContent[] {
+	if (scheduleLabels.length === 0 && carryoverItems.length === 0) return [];
+	const scheduleItems: JSONContent[] = scheduleLabels.map((label) => ({
+		type: 'listItem',
+		attrs: { checked: false },
+		content: [{ type: 'paragraph', content: [{ type: 'text', text: label }] }]
+	}));
 	return [
-		{ type: 'paragraph', content: [{ type: 'text', text: 'TODO:' }] },
+		{ type: 'paragraph', content: [{ type: 'text', text: '체크리스트:' }] },
 		{
 			type: 'bulletList',
-			content: labels.map((label) => ({
-				type: 'listItem',
-				content: [
-					{ type: 'paragraph', content: [{ type: 'text', text: label }] }
-				]
-			}))
+			content: [...scheduleItems, ...carryoverItems]
 		}
 	];
 }
@@ -68,7 +80,7 @@ export async function buildDateNoteScheduleSeed(
 		const now = new Date(year, month - 1, day);
 		const entries = parseScheduleNote(doc, now);
 		const labels = extractScheduleLabelsForDate(entries, year, month, day);
-		return buildTodoBlocks(labels);
+		return buildChecklistBlocks(labels, []);
 	} catch (err) {
 		console.warn('[dateNoteSeed] failed', err);
 		return [];

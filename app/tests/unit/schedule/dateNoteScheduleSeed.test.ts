@@ -24,6 +24,9 @@ function p(text: string): JSONContent {
 function li(text: string): JSONContent {
 	return { type: 'listItem', content: [p(text)] };
 }
+function liChecked(text: string, checked: boolean): JSONContent {
+	return { type: 'listItem', attrs: { checked }, content: [p(text)] };
+}
 function ul(...items: JSONContent[]): JSONContent {
 	return { type: 'bulletList', content: items };
 }
@@ -82,7 +85,7 @@ describe('buildDateNoteScheduleSeed', () => {
 		expect(result).toEqual([]);
 	});
 
-	it('returns TODO blocks for matching entries (single match)', async () => {
+	it('returns checklist blocks for matching entries (single match)', async () => {
 		await setScheduleNote('sched-guid');
 		const note = makeNote(
 			'sched-guid',
@@ -91,12 +94,12 @@ describe('buildDateNoteScheduleSeed', () => {
 		await putNote(note);
 		const result = await buildDateNoteScheduleSeed(2026, 4, 15);
 		expect(result).toEqual([
-			p('TODO:'),
-			ul(li('독서모임 7시'))
+			p('체크리스트:'),
+			ul(liChecked('독서모임 7시', false))
 		]);
 	});
 
-	it('returns TODO blocks for multiple matches in input order, day-prefix stripped', async () => {
+	it('returns checklist blocks for multiple matches in input order, day-prefix stripped', async () => {
 		await setScheduleNote('sched-guid');
 		const note = makeNote(
 			'sched-guid',
@@ -110,8 +113,12 @@ describe('buildDateNoteScheduleSeed', () => {
 		await putNote(note);
 		const result = await buildDateNoteScheduleSeed(2026, 4, 15);
 		expect(result).toEqual([
-			p('TODO:'),
-			ul(li('독서'), li('독서모임 7시'), li('산책 8시'))
+			p('체크리스트:'),
+			ul(
+				liChecked('독서', false),
+				liChecked('독서모임 7시', false),
+				liChecked('산책 8시', false)
+			)
 		]);
 	});
 
