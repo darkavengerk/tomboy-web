@@ -1,0 +1,40 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-24-daily-note-checklist-carryover.md",
+  "tasks": [
+    {
+      "id": 0,
+      "subject": "Task 0: buildTodoBlocks → buildChecklistBlocks 교체",
+      "status": "pending",
+      "description": "**Goal:** 시드 헤더 텍스트를 `TODO:` 에서 `체크리스트:` 로 바꾸고, listItem 에 `attrs.checked: false` 를 명시. 신규 carryover 인자를 받되 본 태스크에서는 빈 배열만 전달. 사용자가 보는 변화: 일정만 있는 일일노트의 시드가 인터랙티브 체크박스로 렌더링됨.\n\n**Files:**\n- Modify: `app/src/lib/schedule/dateNoteSeed.ts:29-43` (`buildTodoBlocks`), `:57-76` (`buildDateNoteScheduleSeed`)\n- Modify: `app/tests/unit/schedule/dateNoteSeed.test.ts:103-120` (`buildTodoBlocks` describe block)\n- Modify: `app/tests/unit/schedule/dateNoteScheduleSeed.test.ts:85-116` (헤더 텍스트 assertion)\n\n**Acceptance Criteria:**\n- buildTodoBlocks 제거됨, buildChecklistBlocks(scheduleLabels, carryoverItems) 로 교체.\n- 헤더 텍스트가 '체크리스트:'.\n- schedule label listItem 에 attrs.checked=false 명시.\n- schedule + carryover 둘 다 빈 → [].\n- buildDateNoteScheduleSeed 가 빈 carryover 로 새 함수 호출 (외부 시그니처 동일).\n- dateNoteSeed.test.ts 와 dateNoteScheduleSeed.test.ts 모두 통과.\n\n**Verify:** `cd app && npm run test -- schedule/dateNoteSeed schedule/dateNoteScheduleSeed && npm run check`\n\n**Steps:** plan 문서 Task 0 참조.\n\n```json:metadata\n{\"files\": [\"app/src/lib/schedule/dateNoteSeed.ts\", \"app/tests/unit/schedule/dateNoteSeed.test.ts\", \"app/tests/unit/schedule/dateNoteScheduleSeed.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- schedule/dateNoteSeed schedule/dateNoteScheduleSeed && npm run check\", \"acceptanceCriteria\": [\"buildTodoBlocks 제거 + buildChecklistBlocks export\", \"헤더 '체크리스트:'\", \"schedule label listItem 에 checked=false\", \"둘 다 빈 → []\", \"buildDateNoteScheduleSeed 가 빈 carryover 로 호출\", \"두 테스트 파일 통과\"]}\n```"
+    },
+    {
+      "id": 1,
+      "subject": "Task 1: extractUncheckedFromDoc 순수 함수",
+      "status": "pending",
+      "blockedBy": [0],
+      "description": "**Goal:** 어제 노트의 deserialize 된 JSONContent doc 에서 `체크리스트:` 영역을 모두 찾아 미체크 listItem 가지만 추출. 순수 함수 — IDB 의존 없음.\n\n**Files:**\n- Modify: `app/src/lib/schedule/dateNoteSeed.ts` (신규 함수 추가)\n- Modify: `app/tests/unit/schedule/dateNoteSeed.test.ts` (신규 describe 블록 추가)\n\n**Acceptance Criteria:**\n- extractUncheckedFromDoc(doc) export.\n- 헤더 없음 → [].\n- 단일 미체크 → 그 항목.\n- 부모체크-자식미체크 → 자식 끌어올림 (평탄화).\n- 부모미체크-자식부분체크 → 부모 보존 + 미체크 자식만.\n- 부모미체크-자식전체체크 → 부모 보존 + 자식 list 제거.\n- 다중 영역 합치기.\n- 헤더 직후 비-list 블록 → 그 헤더 영역 비어 있음 처리.\n- 세 곳(regions.ts / archiver / 본 함수) 일관성 코멘트 명시.\n\n**Verify:** `cd app && npm run test -- schedule/dateNoteSeed && npm run check`\n\n**Steps:** plan 문서 Task 1 참조.\n\n```json:metadata\n{\"files\": [\"app/src/lib/schedule/dateNoteSeed.ts\", \"app/tests/unit/schedule/dateNoteSeed.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- schedule/dateNoteSeed && npm run check\", \"acceptanceCriteria\": [\"extractUncheckedFromDoc(doc) export\", \"헤더 없음 → []\", \"단일 미체크 → 그 항목\", \"부모체크-자식미체크 → 자식 끌어올림\", \"부모미체크-자식부분체크 → 부모 + 미체크 자식만\", \"부모미체크-자식전체체크 → 부모 + 자식 list 제거\", \"다중 영역 합치기\", \"헤더 직후 비-list 처리\", \"세 곳 일관성 코멘트\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: extractUncheckedFromYesterdayNote IDB 어댑터",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** 어제 날짜(`yyyy-mm-dd - 1day`) 제목의 노트를 IDB 에서 찾고, deserialize 후 `extractUncheckedFromDoc` 를 호출. 모든 실패 모드 → []. 일일노트 생성을 절대 막지 않도록 모든 예외 swallow.\n\n**Files:**\n- Modify: `app/src/lib/schedule/dateNoteSeed.ts` (신규 함수 추가)\n- Modify: `app/tests/unit/schedule/dateNoteScheduleSeed.test.ts` (신규 describe 블록 추가)\n\n**Acceptance Criteria:**\n- extractUncheckedFromYesterdayNote(y, m, d) export.\n- 어제 노트 없음 → [].\n- 어제 노트 deleted:true → [].\n- 체크리스트 영역 없음 → [].\n- 정상 미체크 추출.\n- 월 경계 (2026-05-01 → 2026-04-30).\n- 년 경계 (2026-01-01 → 2025-12-31).\n- xmlContent 손상 시 throw 안 함 + [].\n\n**Verify:** `cd app && npm run test -- schedule/dateNoteScheduleSeed && npm run check`\n\n**Steps:** plan 문서 Task 2 참조.\n\n```json:metadata\n{\"files\": [\"app/src/lib/schedule/dateNoteSeed.ts\", \"app/tests/unit/schedule/dateNoteScheduleSeed.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- schedule/dateNoteScheduleSeed && npm run check\", \"acceptanceCriteria\": [\"extractUncheckedFromYesterdayNote export\", \"어제 노트 없음 → []\", \"deleted:true → []\", \"체크리스트 영역 없음 → []\", \"정상 미체크 추출\", \"월 경계 2026-05-01 → 2026-04-30\", \"년 경계 2026-01-01 → 2025-12-31\", \"xmlContent 손상 시 throw 안 함\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: buildDateNoteScheduleSeed 통합 + 중복 제거",
+      "status": "pending",
+      "blockedBy": [0, 1, 2],
+      "description": "**Goal:** `buildDateNoteScheduleSeed` 내부에서 schedule + 어제 캐리오버를 합쳐 호출. `buildChecklistBlocks` 에 중복 제거 (schedule label 과 정확히 같은 텍스트의 carryover 최상위 항목 통째 스킵) + `attrs.checked: false` 강제. Integration 시나리오 검증.\n\n**Files:**\n- Modify: `app/src/lib/schedule/dateNoteSeed.ts` (buildChecklistBlocks 중복 제거, buildDateNoteScheduleSeed 통합)\n- Modify: `app/tests/unit/schedule/dateNoteSeed.test.ts` (중복 제거 케이스 추가)\n- Modify: `app/tests/unit/schedule/dateNoteScheduleSeed.test.ts` (통합 시나리오 추가)\n\n**Acceptance Criteria:**\n- buildChecklistBlocks: 중복 제거 (trim 비교, schedule label == carryover top text 시 통째 스킵).\n- buildChecklistBlocks: carryover attrs.checked 를 false 로 강제.\n- buildDateNoteScheduleSeed: schedule + carryover 합쳐 호출, 둘 다 비면 [].\n- Integration: carryover-only / schedule+carryover 합치기 (schedule 먼저) / 중복 라벨 한 번만 / 둘 다 빈 → [].\n- 전체 테스트 회귀 없음.\n\n**Verify:** `cd app && npm run test && npm run check`\n\n**Steps:** plan 문서 Task 3 참조.\n\n```json:metadata\n{\"files\": [\"app/src/lib/schedule/dateNoteSeed.ts\", \"app/tests/unit/schedule/dateNoteSeed.test.ts\", \"app/tests/unit/schedule/dateNoteScheduleSeed.test.ts\"], \"verifyCommand\": \"cd app && npm run test && npm run check\", \"acceptanceCriteria\": [\"buildChecklistBlocks 중복 제거\", \"carryover attrs.checked=false 강제\", \"buildDateNoteScheduleSeed 가 schedule + carryover 합쳐 호출\", \"carryover-only 시드 동작\", \"schedule+carryover 합치기 (schedule 먼저)\", \"전체 테스트 회귀 없음\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: 수동 검증 (개발 서버)",
+      "status": "pending",
+      "blockedBy": [3],
+      "description": "**Goal:** 실제 앱에서 일일노트 두 개 만들어 시드 동작 확인. 자동 테스트로 잡히지 않는 ProseMirror 렌더링 / IDB / 시리얼라이즈 통합 동작 검증.\n\n**Files:** 없음.\n\n**Acceptance Criteria:**\n- 어제 일일노트 + 어제 일정으로 시드 생성 확인.\n- 어제 일부 체크/미체크 셋업.\n- 오늘 노트 생성 시 schedule 먼저 + 어제 미체크 다음으로 시드.\n- 체크박스 클릭 + 새로고침 후 체크 상태 유지 (XML 라운드트립).\n- 어제 노트 없을 때 carryover 0개.\n\n**Verify:** 사용자가 dev 서버에서 직접 확인.\n\n**Steps:** plan 문서 Task 4 참조.\n\n```json:metadata\n{\"files\": [], \"verifyCommand\": \"\", \"acceptanceCriteria\": [\"어제 노트 + schedule 일정 시드\", \"어제 일부 체크/미체크\", \"오늘 노트 schedule + 어제 미체크 시드\", \"체크박스 라운드트립\", \"어제 노트 없을 때 carryover 0개\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-24T18:55:00+09:00"
+}
