@@ -1073,7 +1073,7 @@
 		>
 			<div class="send-title">활성 패널로 전송</div>
 			{#if stickyMods.ctrl || stickyMods.alt || stickyMods.shift}
-				<div class="send-sticky-badge" aria-live="polite">
+				<div class="send-sticky-badge" role="status">
 					{#if stickyMods.ctrl}<span class="badge-tag">Ctrl+</span>{/if}
 					{#if stickyMods.alt}<span class="badge-tag">Alt+</span>{/if}
 					{#if stickyMods.shift}<span class="badge-tag">Shift+</span>{/if}
@@ -1517,7 +1517,6 @@
 		background: rgba(102, 204, 255, 0.12);
 		border: 1px solid rgba(102, 204, 255, 0.35);
 		border-radius: 6px;
-		margin-bottom: 8px;
 		color: #cde;
 	}
 	.send-sticky-badge .badge-tag {
