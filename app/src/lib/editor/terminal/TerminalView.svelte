@@ -33,7 +33,7 @@
 	import { getNote } from '$lib/storage/noteStore.js';
 	import { deserializeContent } from '$lib/core/noteContentArchiver.js';
 	import { parseTerminalNote } from './parseTerminalNote.js';
-	import { type StickyMods } from './stickyMods.js';
+	import { type StickyMods, computeStickyKeySequence } from './stickyMods.js';
 	import HistoryPanel from './HistoryPanel.svelte';
 	import {
 		extractImageFile,
@@ -445,6 +445,23 @@
 		if (!isSpectator || isMobile || !client || !pageEl) return;
 		const active = document.activeElement;
 		if (active && active !== document.body && !pageEl.contains(active)) return;
+
+		// sticky 분기 — pane-nav 단축키 검사 이전. armed 상태일 때 대응
+		// 키면 변환 바이트 전송 + 모든 mod 해제 + 이벤트 차단. 비대응 키면
+		// preventDefault/stopPropagation 없이 return — capture 단계 끝나고
+		// target 단계에서 xterm이 정상 처리 (sticky는 유지).
+		if (stickyMods.ctrl || stickyMods.alt || stickyMods.shift) {
+			const seq = computeStickyKeySequence(e, stickyMods);
+			if (seq !== null) {
+				client.send(seq);
+				resetStickyMods();
+				e.preventDefault();
+				e.stopPropagation();
+			}
+			return;
+		}
+
+		// 기존 pane-nav 단축키 (변경 없음)
 		if (!e.ctrlKey || e.altKey || e.metaKey) return;
 		const k = e.key.toLowerCase();
 		if (k !== 'h' && k !== 'l') return;
@@ -745,6 +762,7 @@
 		// 이전 연결에서 in-flight 였던 이미지 업로드는 image-ok/error를 못 받았으므로
 		// 카운터가 stuck 상태일 수 있다 — 재연결 시 리셋해서 "업로드 중…" 버튼을 푼다.
 		imageUploadCount = 0;
+		resetStickyMods(); // 재연결 시 sticky 상태 잔존 방지
 		client?.close();
 		term?.reset();
 		scrollState = INITIAL_SCROLL_STATE;
