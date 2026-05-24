@@ -468,11 +468,19 @@
 		const active = document.activeElement;
 		if (active && active !== document.body && !pageEl.contains(active)) return;
 
+		// 칩 자체에 키보드 포커스가 있으면 sticky 분기를 건너뛴다 — 그렇지
+		// 않으면 Alt-armed + Enter로 칩을 토글하려는 동작이 sticky-Alt+Enter
+		// 매칭에 가로채여 \x1b\r 가 셸로 가버리고 칩 토글이 안 된다.
+		// pane-nav 단축키는 칩 포커스와 무관하게 그대로 동작해야 하므로
+		// 전체 return 이 아니라 sticky 분기만 스킵.
+		const focusOnStickyChip =
+			active instanceof HTMLElement && !!active.closest('.sticky-mods');
+
 		// sticky 분기 — pane-nav 단축키 검사 이전. armed 상태일 때 대응
 		// 키면 변환 바이트 전송 + 모든 mod 해제 + 이벤트 차단. 비대응 키면
 		// preventDefault/stopPropagation 없이 return — capture 단계 끝나고
 		// target 단계에서 xterm이 정상 처리 (sticky는 유지).
-		if (stickyMods.ctrl || stickyMods.alt || stickyMods.shift) {
+		if (!focusOnStickyChip && (stickyMods.ctrl || stickyMods.alt || stickyMods.shift)) {
 			const seq = computeStickyKeySequence(e, stickyMods);
 			if (seq !== null) {
 				client.send(seq);
