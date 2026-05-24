@@ -664,6 +664,11 @@
 							}
 							return true;
 						}
+						if (event.key === "j" || event.key === "J") {
+							event.preventDefault();
+							ed.chain().focus().insertFootnote().run();
+							return true;
+						}
 					}
 
 					return false;
