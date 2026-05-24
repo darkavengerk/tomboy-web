@@ -47,4 +47,15 @@ describe('Toolbar modifier tray order', () => {
 		const { container } = render(Toolbar, { editor: null });
 		expect(trayLayout(container)).toEqual(['tog:Alt', 'row:Alt 단축키']);
 	});
+
+	it('Alt 잠금 — Alt-row 안에 ← ↑ ↓ → J 5개 버튼이 순서대로', () => {
+		modKeys.toggleAltLock();
+		const { container } = render(Toolbar, { editor: null });
+		const row = container.querySelector('.key-row[aria-label="Alt 단축키"]');
+		expect(row).not.toBeNull();
+		const labels = Array.from(row!.querySelectorAll('button')).map(
+			(b) => b.textContent?.trim() ?? ''
+		);
+		expect(labels).toEqual(['←', '↑', '↓', '→', 'J']);
+	});
 });
