@@ -840,10 +840,13 @@ function getPlainText(node: JSONContent): string {
 // 체크리스트 항목 마커: [ ] 미체크 / [X] 체크 (소문자 x 도 체크로 인정).
 const CHECKLIST_MARKER_RE = /^\[([ xX])\] /;
 
-// 주의: 체크리스트 영역 감지(헤더 + 연속 bulletList)는 세 곳에서 각각
-// 구현된다 — 이 함수(JSON 파싱), serializeContent 의 inChecklistRegion
-// 추적(직렬화), editor/checklist/regions.ts 의 findChecklistRegions(라이브
-// 문서). 규칙을 바꾸면 세 곳을 함께 고쳐야 한다.
+// 주의: 체크리스트 영역 그룹핑(헤더 + 그 직후 연속 bulletList)은 네 곳
+// 에서 각각 구현된다 — editor/checklist/regions.ts 의 findChecklistRegions
+// (라이브 PM 노드), 아래 applyChecklistMarkersOnParse(역직렬화 후 처리)와
+// serializeContent 의 inChecklistRegion 추적(직렬화), 그리고
+// schedule/dateNoteSeed.ts 의 extractUncheckedFromDoc(시드 빌드 시 JSON).
+// 그룹핑 규칙을 바꾸면 네 곳을 함께 고쳐야 한다. (헤더 텍스트 자체는
+// regions.ts 의 isChecklistHeaderText 가 single source.)
 /**
  * parseBlocks 결과를 후처리해 체크리스트 영역 항목의 마커를 떼고
  * `attrs.checked` 를 설정한다. 헤더 다음의 연속 리스트가 영역이다.
