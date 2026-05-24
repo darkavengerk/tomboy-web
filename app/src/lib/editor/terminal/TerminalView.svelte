@@ -33,6 +33,7 @@
 	import { getNote } from '$lib/storage/noteStore.js';
 	import { deserializeContent } from '$lib/core/noteContentArchiver.js';
 	import { parseTerminalNote } from './parseTerminalNote.js';
+	import { type StickyMods } from './stickyMods.js';
 	import HistoryPanel from './HistoryPanel.svelte';
 	import {
 		extractImageFile,
@@ -85,6 +86,20 @@
 	let sendPopupOpen = $state(false);
 	let sendPopupText = $state('');
 	let sendPopupInput: HTMLInputElement | undefined = $state();
+
+	// Sticky modifier chips (관전 모드 전용) — buttons in the footer arm
+	// modifier(s) that apply to the next key press (desktop keydown
+	// branch) or the first byte of the next popup text submit (mobile).
+	// See ./stickyMods.ts for the key→byte mapping.
+	let stickyMods = $state<StickyMods>({ ctrl: false, alt: false, shift: false });
+
+	function toggleStickyMod(mod: keyof StickyMods): void {
+		stickyMods = { ...stickyMods, [mod]: !stickyMods[mod] };
+	}
+
+	function resetStickyMods(): void {
+		stickyMods = { ctrl: false, alt: false, shift: false };
+	}
 
 	// 이미지 붙여넣기 (셸·관전 모드 모두). imageUploadCount > 0 → "업로드 중" 표시.
 	let imageUploadCount = $state(0);
@@ -905,13 +920,47 @@
 
 	{#if isSpectator}
 		<div class="spec-footer" role="toolbar" aria-label="관전 도구">
-			<div class="spec-windowbar" aria-live="polite">
-				{#if spectatorWindowIndex || spectatorWindowName}
-					<span class="win-idx">{spectatorWindowIndex}</span>
-					<span class="win-name">{spectatorWindowName || '(이름 없음)'}</span>
-				{:else}
-					<span class="win-placeholder">윈도우 정보 대기 중…</span>
-				{/if}
+			<div class="spec-windowbar">
+				<div class="win-label" aria-live="polite">
+					{#if spectatorWindowIndex || spectatorWindowName}
+						<span class="win-idx">{spectatorWindowIndex}</span>
+						<span class="win-name">{spectatorWindowName || '(이름 없음)'}</span>
+					{:else}
+						<span class="win-placeholder">윈도우 정보 대기 중…</span>
+					{/if}
+				</div>
+				<div class="sticky-mods" role="group" aria-label="고정 modifier 키">
+					<button
+						type="button"
+						class="sticky-chip"
+						class:armed={stickyMods.ctrl}
+						aria-pressed={stickyMods.ctrl}
+						aria-label="Ctrl 키 고정"
+						title="다음 키에 Ctrl 적용"
+						onclick={() => toggleStickyMod('ctrl')}
+						disabled={status !== 'open'}
+					>Ctrl</button>
+					<button
+						type="button"
+						class="sticky-chip"
+						class:armed={stickyMods.alt}
+						aria-pressed={stickyMods.alt}
+						aria-label="Alt 키 고정"
+						title="다음 키에 Alt 적용"
+						onclick={() => toggleStickyMod('alt')}
+						disabled={status !== 'open'}
+					>Alt</button>
+					<button
+						type="button"
+						class="sticky-chip"
+						class:armed={stickyMods.shift}
+						aria-pressed={stickyMods.shift}
+						aria-label="Shift 키 고정"
+						title="다음 키에 Shift 적용"
+						onclick={() => toggleStickyMod('shift')}
+						disabled={status !== 'open'}
+					>Shift</button>
+				</div>
 			</div>
 			<div class="spec-controls">
 				<div class="spec-group">
@@ -1128,13 +1177,23 @@
 	}
 	.spec-windowbar {
 		display: flex;
-		align-items: baseline;
+		align-items: center;
+		justify-content: space-between;
 		gap: 6px;
+		flex-wrap: wrap;
 		font-size: 0.75rem;
 		line-height: 1.2;
 		color: #aac;
 		min-height: 1em;
 		min-width: 0;
+	}
+	.spec-windowbar .win-label {
+		display: flex;
+		align-items: baseline;
+		gap: 6px;
+		flex: 1 1 auto;
+		min-width: 0;
+		overflow: hidden;
 	}
 	.spec-windowbar .win-idx {
 		color: #6cf;
@@ -1152,6 +1211,42 @@
 		min-width: 0;
 	}
 	.spec-windowbar .win-placeholder { color: #667; font-style: italic; }
+	.sticky-mods {
+		display: flex;
+		gap: 4px;
+		flex-wrap: wrap;
+		flex-shrink: 0;
+	}
+	.spec-windowbar .sticky-chip {
+		font-size: 0.7rem;
+		padding: 2px 8px;
+		border: 1px solid #557;
+		background: transparent;
+		color: #aac;
+		border-radius: 999px;
+		cursor: pointer;
+		line-height: 1.2;
+		min-height: 1.4em;
+		font-family: ui-monospace, Menlo, Consolas, monospace;
+	}
+	.spec-windowbar .sticky-chip:hover:not(:disabled) {
+		border-color: #779;
+		color: #ccd;
+	}
+	.spec-windowbar .sticky-chip:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+	.spec-windowbar .sticky-chip.armed {
+		background: #6cf;
+		color: #1e1e1e;
+		border-color: #6cf;
+		font-weight: 600;
+	}
+	.spec-windowbar .sticky-chip:focus-visible {
+		outline: 2px solid #6cf;
+		outline-offset: 1px;
+	}
 	.spec-controls {
 		display: flex;
 		align-items: center;
