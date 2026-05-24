@@ -24,10 +24,10 @@ export type InsertFootnoteResult =
 
 const NEW_GROUP_KEY = '__NEW__';
 
+type Op = { from: number; to: number; text: string };
+
 function isInTitle(state: EditorState): boolean {
-	const $from = state.selection.$from;
-	if ($from.depth === 0) return false;
-	return $from.index(0) === 0;
+	return state.selection.$from.index(0) === 0;
 }
 
 export function buildInsertFootnoteTransaction(state: EditorState): InsertFootnoteResult {
@@ -54,12 +54,10 @@ export function buildInsertFootnoteTransaction(state: EditorState): InsertFootno
 	// 커서가 기존 각주 그룹 사이에 삽입될 때 (cursor > 첫 그룹 위치) __NEW__ 가
 	// 동일-위치 그룹보다 앞서 번호를 가져간다. 커서가 첫 그룹 위치와 같으면
 	// 기존 그룹이 이미 그 위치를 "소유"하므로 stable 순서(기존 먼저)를 유지한다.
-	const minNumericPos = Math.min(
-		...([...groupFirstPos.entries()]
-			.filter(([k]) => k !== NEW_GROUP_KEY)
-			.map(([, v]) => v)
-			.concat([Infinity]))
-	);
+	let minNumericPos = Infinity;
+	for (const [key, pos] of groupFirstPos) {
+		if (key !== NEW_GROUP_KEY && pos < minNumericPos) minNumericPos = pos;
+	}
 	const newWinsTie = selFrom > minNumericPos;
 	const ordered = [...groupFirstPos.entries()].sort((a, b) => {
 		if (a[1] !== b[1]) return a[1] - b[1];
@@ -72,7 +70,6 @@ export function buildInsertFootnoteTransaction(state: EditorState): InsertFootno
 	ordered.forEach(([key], i) => oldToNew.set(key, String(i + 1)));
 	const newLabel = oldToNew.get(NEW_GROUP_KEY)!;
 
-	type Op = { from: number; to: number; text: string };
 	const ops: Op[] = numericMatches.map((m) => ({
 		from: m.from,
 		to: m.to,
@@ -85,6 +82,9 @@ export function buildInsertFootnoteTransaction(state: EditorState): InsertFootno
 	const tr = state.tr;
 	for (const op of ops) tr.insertText(op.text, op.from, op.to);
 
+	// `matches` (모든 라벨) 사용. 비숫자 정의 마커 (`[^abc] ...`) 도 정의로
+	// 인정해서 새 `---` 자동 삽입을 억제한다 — 숫자 리넘버 대상과 정의-존재
+	// 판정의 비대칭성은 의도된 것.
 	const hasExistingDef = matches.some((m) => m.isDefinitionMarker);
 	const paragraphType = state.schema.nodes.paragraph;
 	const defPara = paragraphType.create(null, state.schema.text(`[^${newLabel}] `));

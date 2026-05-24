@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { TextSelection } from '@tiptap/pm/state';
@@ -8,8 +8,15 @@ import { TomboyListItem } from '$lib/editor/extensions/TomboyListItem.js';
 import { TomboyFootnote } from '$lib/editor/footnote/index.js';
 import { buildInsertFootnoteTransaction } from '$lib/editor/footnote/insertCommand.js';
 
+let currentEditor: Editor | null = null;
+
+afterEach(() => {
+	currentEditor?.destroy();
+	currentEditor = null;
+});
+
 function makeEditor(d: JSONContent): Editor {
-	return new Editor({
+	const editor = new Editor({
 		extensions: [
 			StarterKit.configure({
 				code: false,
@@ -23,6 +30,8 @@ function makeEditor(d: JSONContent): Editor {
 		],
 		content: d
 	});
+	currentEditor = editor;
+	return editor;
 }
 
 function p(text: string): JSONContent {
@@ -68,7 +77,6 @@ describe('buildInsertFootnoteTransaction', () => {
 		editor.view.dispatch(result.tr);
 
 		expect(paragraphTexts(editor)).toEqual(['제목', '[^1]', '---', '[^1] ']);
-		editor.destroy();
 	});
 
 	it('기존 각주 있으면 --- 안 만들고 정의 단락만 append', () => {
@@ -89,7 +97,6 @@ describe('buildInsertFootnoteTransaction', () => {
 			'[^1] 기존 설명',
 			'[^2] '
 		]);
-		editor.destroy();
 	});
 
 	it('중간 삽입 — 라벨 시퀀스 재계산 ([^1] [^2] 사이에 새 참조 → 새는 [^2], 기존 [^2]는 [^3])', () => {
@@ -118,7 +125,6 @@ describe('buildInsertFootnoteTransaction', () => {
 			'[^3] 이',
 			'[^2] '
 		]);
-		editor.destroy();
 	});
 
 	it('같은 라벨 다중 참조 — 한 그룹으로 묶여 함께 리넘버', () => {
@@ -143,7 +149,6 @@ describe('buildInsertFootnoteTransaction', () => {
 			'[^2] 이',
 			'[^3] '
 		]);
-		editor.destroy();
 	});
 
 	it('비숫자 라벨 보존 — [^abc] 는 건드리지 않고 숫자만 리넘버', () => {
@@ -167,7 +172,6 @@ describe('buildInsertFootnoteTransaction', () => {
 			'[^foo] f',
 			'[^2] '
 		]);
-		editor.destroy();
 	});
 
 	it('커서가 제목(0번 단락) 안 → abort with reason "in-title"', () => {
@@ -178,7 +182,6 @@ describe('buildInsertFootnoteTransaction', () => {
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('in-title');
-		editor.destroy();
 	});
 
 	it('커서가 기존 [^N] 안 (strictly inside) → abort with reason "inside-existing-marker"', () => {
@@ -190,7 +193,6 @@ describe('buildInsertFootnoteTransaction', () => {
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.reason).toBe('inside-existing-marker');
-		editor.destroy();
 	});
 
 	it('마커 경계 (pos === from) 는 허용 — 마커 바로 앞에 새 참조 삽입', () => {
@@ -203,16 +205,7 @@ describe('buildInsertFootnoteTransaction', () => {
 		if (!result.ok) return;
 		editor.view.dispatch(result.tr);
 
-		// 새 그룹의 첫 등장 = pos at '['; '1' 그룹 첫 등장 = same pos.
-		// Map 등록 순서: numeric '1' 먼저, __NEW__ 나중.
-		// stable sort 결과: '1' 먼저 → new '1' = 1, __NEW__ = 2
-		// ops sort by from desc: from=커서(같은) → tiebreaker by to desc → 기존 [^1] 의 to (>2) 가 먼저 적용
-		// 적용 순서: 기존 [^1] replace → 새 ref insert at 커서 (앞)
-		// 결과: 'a [^2][^1] b' 또는 'a [^1][^2] b' 중 어느 쪽?
-		// `tr.insertText('[^2]', from, to=from)` 가 cursor 에 zero-width 삽입.
-		// 기존 매치 op 가 먼저 처리되면 그 위치의 텍스트가 새 라벨로 갱신.
-		// 그 뒤 cursor=2 에 새 ref 삽입 → 갱신된 텍스트 앞에 새 ref 들어감.
-		// 즉 'a ' + '[^2]' + '[^1] b'
+		// 커서가 '[' 경계 = 첫 (유일한) 그룹 위치 → 기존이 라벨 1, 새 ref 가 라벨 2.
 		expect(paragraphTexts(editor)).toEqual([
 			'제목',
 			'a [^2][^1] b',
@@ -220,7 +213,30 @@ describe('buildInsertFootnoteTransaction', () => {
 			'[^1] 일',
 			'[^2] '
 		]);
-		editor.destroy();
+	});
+
+	it('마커 경계 (pos === from) — 첫 그룹이 아닌 마커 위치면 새 ref 가 그 슬롯을 차지', () => {
+		// 본문에 [^1], [^2] 두 그룹. 커서를 [^2] 의 '[' 위치에 두면 새 ref 가
+		// 그 슬롯에 끼어들어 라벨 2 를 가져가고, 기존 [^2] 는 [^3] 로 밀린다
+		// (ordered-list 시맨틱 — 삽입 후 doc 순서: [^1], NEW, 기존[^2]).
+		const editor = makeEditor(
+			doc(p('제목'), p('[^1] 와 [^2] 사이'), p('---'), p('[^1] 일'), p('[^2] 이'))
+		);
+		setCursor(editor, 1, '[^1] 와 '.length); // = '[^2]' 의 '[' 위치
+
+		const result = buildInsertFootnoteTransaction(editor.state);
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		editor.view.dispatch(result.tr);
+
+		expect(paragraphTexts(editor)).toEqual([
+			'제목',
+			'[^1] 와 [^2][^3] 사이',
+			'---',
+			'[^1] 일',
+			'[^3] 이',
+			'[^2] '
+		]);
 	});
 
 	it('셀렉션 영역 (from !== to) → 셀렉션을 새 참조로 대체', () => {
@@ -242,7 +258,6 @@ describe('buildInsertFootnoteTransaction', () => {
 		editor.view.dispatch(result.tr);
 
 		expect(paragraphTexts(editor)).toEqual(['제목', '[^1] world', '---', '[^1] ']);
-		editor.destroy();
 	});
 
 	it('커서가 새 정의 단락 끝 ([^N] 의 공백 뒤) 로 이동', () => {
@@ -260,6 +275,5 @@ describe('buildInsertFootnoteTransaction', () => {
 		expect(sel.from).toBe(lastParaTextEnd);
 		expect(sel.$from.parent).toBe(lastPara);
 		expect(lastPara.textContent).toBe('[^1] ');
-		editor.destroy();
 	});
 });
