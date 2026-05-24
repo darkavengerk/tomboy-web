@@ -569,6 +569,9 @@
 		if (e.shiftKey) {
 			tmuxNav(k === 'h' ? 'prev-window' : 'next-window');
 		} else {
+			// Pin 활성 중에는 pane shift도 footer 1~5처럼 비활성.
+			// 이벤트는 이미 preventDefault 했으므로 ^H/^L이 셸로 가지는 않음.
+			if (pinnedOrdinal !== null) return;
 			tmuxNav(k === 'h' ? 'prev-pane' : 'next-pane');
 		}
 	}
