@@ -39,6 +39,16 @@ export interface TerminalNoteSpec {
 	 * Pinned items always render above history in the panel.
 	 */
 	pinneds: Map<string, string[]>;
+	/**
+	 * Pinned spectator pane ordinal (1..5), encoded in the note as
+	 * `spectate: <session>:<N>`. When set, the spectator view sticks to the
+	 * N-th pane (1-based, matching the footer button ordinals) instead of
+	 * following the desktop's active pane. Out-of-range or non-integer
+	 * suffixes are silently dropped (the session name keeps its colon-prefix
+	 * portion as-is); non-numeric suffixes leave the colon attached to the
+	 * session name.
+	 */
+	pinnedPane?: number;
 }
 
 const SSH_RE = /^ssh:\/\/(?:([^@\s/]+)@)?([^:\s/]+)(?::(\d{1,5}))?\/?\s*$/;
@@ -89,6 +99,7 @@ export function parseTerminalNote(doc: JSONContent | null | undefined): Terminal
 	// most once. Any other content makes the note fall back to a regular note.
 	let bridge: string | undefined;
 	let spectate: string | undefined;
+	let pinnedPane: number | undefined;
 	for (let k = 1; k < meta.length; k++) {
 		const text = paragraphText(meta[k]);
 		if (text === null) return null;
@@ -101,7 +112,20 @@ export function parseTerminalNote(doc: JSONContent | null | undefined): Terminal
 		const spectateMatch = SPECTATE_RE.exec(text);
 		if (spectateMatch) {
 			if (spectate !== undefined) return null;
-			spectate = spectateMatch[1];
+			const raw = spectateMatch[1];
+			const pinMatch = /^(.+):(\d+)$/.exec(raw);
+			if (pinMatch) {
+				const n = Number(pinMatch[2]);
+				if (Number.isInteger(n) && n >= 1 && n <= 5) {
+					spectate = pinMatch[1];
+					pinnedPane = n;
+				} else {
+					spectate = pinMatch[1];
+					// pinnedPane stays undefined.
+				}
+			} else {
+				spectate = raw;
+			}
 			continue;
 		}
 		return null;
@@ -188,7 +212,8 @@ export function parseTerminalNote(doc: JSONContent | null | undefined): Terminal
 		histories,
 		history,
 		connect: connect ?? [],
-		pinneds
+		pinneds,
+		pinnedPane
 	};
 }
 
