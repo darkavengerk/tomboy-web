@@ -33,7 +33,7 @@
 	import { getNote } from '$lib/storage/noteStore.js';
 	import { deserializeContent } from '$lib/core/noteContentArchiver.js';
 	import { parseTerminalNote } from './parseTerminalNote.js';
-	import { type StickyMods, computeStickyKeySequence } from './stickyMods.js';
+	import { type StickyMods, computeStickyKeySequence, applyStickyToText } from './stickyMods.js';
 	import HistoryPanel from './HistoryPanel.svelte';
 	import {
 		extractImageFile,
@@ -202,6 +202,28 @@
 			closeSendPopup();
 			return;
 		}
+
+		const anyArmed = stickyMods.ctrl || stickyMods.alt || stickyMods.shift;
+
+		if (text.length > 0 && anyArmed) {
+			const transformed = applyStickyToText(text, stickyMods);
+			if (transformed !== null) {
+				client?.send(autoExecute ? transformed + '\r' : transformed);
+				resetStickyMods();
+				closeSendPopup();
+				return;
+			}
+			// 첫 글자 비대응 → 원본 전송, sticky 유지 (아래 default path로)
+		}
+
+		// 빈 텍스트 + autoExecute + Alt만 armed → \x1b\r
+		if (!text && autoExecute && stickyMods.alt && !stickyMods.ctrl && !stickyMods.shift) {
+			client?.send('\x1b\r');
+			resetStickyMods();
+			closeSendPopup();
+			return;
+		}
+
 		client?.sendCommand(text, autoExecute);
 		closeSendPopup();
 	}
@@ -1050,6 +1072,14 @@
 			onkeydown={(e) => e.stopPropagation()}
 		>
 			<div class="send-title">활성 패널로 전송</div>
+			{#if stickyMods.ctrl || stickyMods.alt || stickyMods.shift}
+				<div class="send-sticky-badge" aria-live="polite">
+					{#if stickyMods.ctrl}<span class="badge-tag">Ctrl+</span>{/if}
+					{#if stickyMods.alt}<span class="badge-tag">Alt+</span>{/if}
+					{#if stickyMods.shift}<span class="badge-tag">Shift+</span>{/if}
+					<span class="badge-desc">다음 키에 적용됩니다</span>
+				</div>
+			{/if}
 			<input
 				type="text"
 				class="send-input"
@@ -1476,6 +1506,27 @@
 	.send-title {
 		font-size: 0.85rem;
 		color: #cfe;
+	}
+	.send-sticky-badge {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		flex-wrap: wrap;
+		font-size: 0.85rem;
+		padding: 6px 10px;
+		background: rgba(102, 204, 255, 0.12);
+		border: 1px solid rgba(102, 204, 255, 0.35);
+		border-radius: 6px;
+		margin-bottom: 8px;
+		color: #cde;
+	}
+	.send-sticky-badge .badge-tag {
+		font-family: ui-monospace, Menlo, Consolas, monospace;
+		font-weight: 600;
+		color: #6cf;
+	}
+	.send-sticky-badge .badge-desc {
+		opacity: 0.85;
 	}
 	.send-input {
 		background: #1e1e1e;
