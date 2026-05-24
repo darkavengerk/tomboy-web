@@ -9,9 +9,6 @@ import type { JSONContent } from '@tiptap/core';
 function p(text: string): JSONContent {
 	return { type: 'paragraph', content: [{ type: 'text', text }] };
 }
-function li(text: string): JSONContent {
-	return { type: 'listItem', content: [p(text)] };
-}
 function liChecked(text: string, checked: boolean): JSONContent {
 	return { type: 'listItem', attrs: { checked }, content: [p(text)] };
 }
