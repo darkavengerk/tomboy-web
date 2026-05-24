@@ -96,11 +96,11 @@
 	function runAlt(key: 'left' | 'right' | 'up' | 'down' | 'footnote') {
 		const ed = editor;
 		if (!ed) return;
-		if (key === 'footnote') {
-			ed.chain().focus().insertFootnote().run();
-			return;
-		}
 		try {
+			if (key === 'footnote') {
+				ed.chain().focus().insertFootnote().run();
+				return;
+			}
 			if (key === 'right') {
 				const sunk = sinkListItemOnly(ed);
 				if (!sunk && !isInList(ed)) ed.chain().focus().toggleBulletList().run();
