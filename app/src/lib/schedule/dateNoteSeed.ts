@@ -1,7 +1,7 @@
 import type { JSONContent } from '@tiptap/core';
 import { parseScheduleNote, type ParsedScheduleEntry } from './parseSchedule.js';
 import { getScheduleNoteGuid } from '$lib/core/schedule.js';
-import { getNote } from '$lib/storage/noteStore.js';
+import { getNote, findNoteByTitle } from '$lib/storage/noteStore.js';
 import { deserializeContent } from '$lib/core/noteContentArchiver.js';
 import { isChecklistHeaderText } from '$lib/editor/checklist/regions.js';
 
@@ -148,6 +148,64 @@ export function extractUncheckedFromDoc(doc: JSONContent): JSONContent[] {
 		i = j;
 	}
 	return out;
+}
+
+/** `yyyy-mm-dd` 포맷터 (생성된 `Date` 의 로컬 필드 기준). */
+function formatDateTitle(d: Date): string {
+	const pad = (n: number) => String(n).padStart(2, '0');
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/**
+ * listItem attrs 를 `checked` 만 남기도록 정규화 — IDB 라운드트립으로
+ * 붙은 부가 attrs(예: `tomboyTrailingNewline`)를 제거한다. 캐리오버
+ * 항목은 새 노트로 들어가는데, 원본 노트의 직렬화 힌트가 따라오면
+ * 새 노트의 XML 에 의미 없는 round-trip 잔여가 새겨지므로.
+ */
+function normalizeListItem(li: JSONContent): JSONContent {
+	return {
+		...li,
+		attrs: { checked: li.attrs?.checked === true },
+		content: (li.content ?? []).map((child) => {
+			if (child.type === 'bulletList') {
+				return {
+					...child,
+					content: (child.content ?? []).map(normalizeListItem)
+				};
+			}
+			return child;
+		})
+	};
+}
+
+/**
+ * 오늘 (year, month, day) 기준 캘린더상 정확히 1일 전 노트에서
+ * 미체크 항목을 추출한다.
+ *
+ * 실패 모드 (모두 [] 반환):
+ *  - 어제 제목의 노트가 IDB 에 없거나 soft-delete 됨 (findNoteByTitle
+ *    이 `!n.deleted` 필터링을 이미 한다)
+ *  - 그 노트에 체크리스트 영역이 없거나 다 체크됨
+ *  - deserialize 실패 (xmlContent 손상 등)
+ *
+ * 어떤 경우에도 throw 하지 않는다 — 일일노트 생성을 막아서는 안 된다.
+ */
+export async function extractUncheckedFromYesterdayNote(
+	year: number,
+	month: number,
+	day: number
+): Promise<JSONContent[]> {
+	try {
+		const yesterday = new Date(year, month - 1, day - 1);
+		const title = formatDateTitle(yesterday);
+		const note = await findNoteByTitle(title);
+		if (!note) return [];
+		const doc = deserializeContent(note.xmlContent);
+		return extractUncheckedFromDoc(doc).map(normalizeListItem);
+	} catch (err) {
+		console.warn('[dateNoteSeed] yesterday carryover failed', err);
+		return [];
+	}
 }
 
 /**
