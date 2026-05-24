@@ -30,9 +30,10 @@
 	} from '$lib/storage/appSettings.js';
 	import { createBellRinger } from './terminalBell.js';
 	import { subscribeNoteReload } from '$lib/core/noteReloadBus.js';
-	import { getNote } from '$lib/storage/noteStore.js';
+	import { getNote, putNote } from '$lib/storage/noteStore.js';
 	import { deserializeContent } from '$lib/core/noteContentArchiver.js';
-	import { parseTerminalNote } from './parseTerminalNote.js';
+	import { formatTomboyDate } from '$lib/core/note.js';
+	import { parseTerminalNote, rewriteSpectateLine } from './parseTerminalNote.js';
 	import HistoryPanel from './HistoryPanel.svelte';
 	import {
 		extractImageFile,
@@ -446,19 +447,19 @@
 	 *  - 그 외 → 일반 select-pane(n).
 	 *
 	 * pin 활성 + 다른 번호 클릭은 footer가 disabled로 막아 여기까지 안 옴.
-	 * 노트 영속 저장은 Task 5에서 persistPinToNote() 호출 추가 예정.
+	 * 토글 시 persistPinToNote()로 노트의 spectate: 라인을 즉시 갱신한다.
 	 */
-	function onPaneNumClick(n: number): void {
+	async function onPaneNumClick(n: number): Promise<void> {
 		if (pinnedOrdinal === n) {
 			pinnedOrdinal = null;
 			pinDetached = false;
-			// TODO(task-5): persistPinToNote(null)
+			await persistPinToNote(null);
 			return;
 		}
 		if (pinnedOrdinal === null && n === spectatorPaneOrdinal) {
 			pinnedOrdinal = n;
 			pinDetached = false;
-			// TODO(task-5): persistPinToNote(n)
+			await persistPinToNote(n);
 			return;
 		}
 		client?.selectPane(n);
@@ -478,6 +479,35 @@
 		if (pinnedOrdinal !== null && pinDetached) {
 			client?.selectPane(pinnedOrdinal);
 		}
+	}
+
+	/**
+	 * Persist the current pin state to the note by rewriting its `spectate:`
+	 * line. Called on every lock-icon toggle. `putNote` marks the note dirty
+	 * so Dropbox/Firebase sync propagates the change. changeDate +
+	 * metadataChangeDate bumps are required so firebase sees it as a real edit.
+	 *
+	 * If the note no longer has a spectate: line (user removed it manually),
+	 * rewriteSpectateLine returns the input unchanged — we surface a toast and
+	 * keep in-memory pin so the user isn't silently betrayed.
+	 */
+	async function persistPinToNote(n: number | null): Promise<void> {
+		const sessionName = spec.spectate;
+		if (!sessionName) return; // shouldn't happen — pin is spectator-only
+		const note = await getNote(guid);
+		if (!note) return;
+		const updated = rewriteSpectateLine(note.xmlContent, sessionName, n);
+		if (updated === note.xmlContent) {
+			pushToast('고정을 저장할 수 없습니다 (노트 형식이 바뀌었습니다)', { kind: 'error' });
+			return;
+		}
+		const now = formatTomboyDate(new Date());
+		await putNote({
+			...note,
+			xmlContent: updated,
+			changeDate: now,
+			metadataChangeDate: now
+		});
 	}
 
 	/**
