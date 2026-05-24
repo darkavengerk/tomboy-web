@@ -95,12 +95,12 @@ describe('createNote — date-titled seeding', () => {
 		expect(content[1]).toEqual(p('2026년'));
 		expect(content[2]?.type).toBe('paragraph');
 
-		// Then the seed: paragraph "TODO:" and a bulletList.
+		// Then the seed: paragraph "체크리스트:" and a bulletList.
 		const todoIdx = content.findIndex(
 			(b) =>
 				b.type === 'paragraph' &&
 				b.content?.[0]?.type === 'text' &&
-				b.content?.[0]?.text === 'TODO:'
+				b.content?.[0]?.text === '체크리스트:'
 		);
 		expect(todoIdx).toBeGreaterThan(-1);
 		const bulletList = content[todoIdx + 1];
@@ -111,7 +111,7 @@ describe('createNote — date-titled seeding', () => {
 		expect(labels).toEqual(['독서', '독서모임 7시']);
 	});
 
-	it('date title with schedule entries on a different day: default seed (no TODO)', async () => {
+	it('date title with schedule entries on a different day: default seed (no checklist)', async () => {
 		await setScheduleNote('sched-guid');
 		await putNote(
 			makeNote('sched-guid', noteDoc(['16(목) 빨래']))
@@ -123,7 +123,7 @@ describe('createNote — date-titled seeding', () => {
 		);
 	});
 
-	it('preserves note.title when seeded with TODO blocks', async () => {
+	it('preserves note.title when seeded with checklist blocks', async () => {
 		await setScheduleNote('sched-guid');
 		await putNote(
 			makeNote('sched-guid', noteDoc(['15(수) 독서모임 7시']))

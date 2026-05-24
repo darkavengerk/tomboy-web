@@ -31,16 +31,32 @@ export function extractScheduleLabelsForDate(
  * 시드 체크리스트 블록을 만든다. 일정 라벨이 먼저, 캐리오버 항목이 그
  * 다음에 배치된다. 둘 다 비면 [] (시드 자체 생략).
  *
- * 헤더 텍스트는 `체크리스트:` — 이건 editor/checklist/regions.ts 의
- * isChecklistHeaderText 가 인식하는 토큰이고, ProseMirror 플러그인이
- * 영역 안 listItem 을 체크박스로 렌더링하는 트리거다. 동일 규칙이
- * noteContentArchiver.ts 의 applyChecklistMarkersOnParse 에도 있다.
+ * 중복 제거: carryover 의 최상위 listItem 의 첫 paragraph 텍스트(trim)
+ * 가 어떤 schedule label 과 정확히 일치하면 그 listItem 통째(자식 포함)
+ * 스킵. 사용자가 schedule 에서 이미 보고 있는 라벨을 두 번 보이게 하지
+ * 않기 위함. 필요없는 carryover 는 수동 삭제 정책이라 더 정교한 중복
+ * 휴리스틱은 두지 않는다.
+ *
+ * 헤더 텍스트는 `체크리스트:` — editor/checklist/regions.ts 와
+ * noteContentArchiver.ts:applyChecklistMarkersOnParse 에 동일 규칙.
  */
 export function buildChecklistBlocks(
 	scheduleLabels: string[],
 	carryoverItems: JSONContent[]
 ): JSONContent[] {
-	if (scheduleLabels.length === 0 && carryoverItems.length === 0) return [];
+	const scheduleSet = new Set(scheduleLabels.map((s) => s.trim()));
+	const filteredCarryover: JSONContent[] = [];
+	for (const item of carryoverItems) {
+		const topText = firstParagraphText(item).trim();
+		if (scheduleSet.has(topText)) continue;
+		filteredCarryover.push({
+			...item,
+			attrs: { ...(item.attrs ?? {}), checked: false }
+		});
+	}
+
+	if (scheduleLabels.length === 0 && filteredCarryover.length === 0) return [];
+
 	const scheduleItems: JSONContent[] = scheduleLabels.map((label) => ({
 		type: 'listItem',
 		attrs: { checked: false },
@@ -50,9 +66,18 @@ export function buildChecklistBlocks(
 		{ type: 'paragraph', content: [{ type: 'text', text: '체크리스트:' }] },
 		{
 			type: 'bulletList',
-			content: [...scheduleItems, ...carryoverItems]
+			content: [...scheduleItems, ...filteredCarryover]
 		}
 	];
+}
+
+/** listItem 의 첫 paragraph 안의 모든 text 노드를 이어붙여 반환. */
+function firstParagraphText(li: JSONContent): string {
+	const para = (li.content ?? []).find((c) => c.type === 'paragraph');
+	if (!para) return '';
+	return (para.content ?? [])
+		.map((n) => (n.type === 'text' && typeof n.text === 'string' ? n.text : ''))
+		.join('');
 }
 
 // 주의: 체크리스트 영역 그룹핑(헤더 + 그 직후 연속 bulletList)은 네 곳
@@ -211,11 +236,12 @@ export async function extractUncheckedFromYesterdayNote(
 /**
  * Look up the configured schedule note, parse it, and return the TipTap
  * JSON blocks to seed into a new date note for the given (year, month, day).
+ * Also incorporates unchecked carryover items from yesterday's date note.
  *
  * Returns [] when:
- *  - no schedule note is configured
- *  - the schedule note doesn't exist (deleted)
- *  - the schedule note has no entries for that date
+ *  - no schedule note is configured AND no yesterday carryover
+ *  - the schedule note doesn't exist (deleted) AND no yesterday carryover
+ *  - the schedule note has no entries for that date AND no yesterday carryover
  *
  * The function is best-effort: parser/IDB errors are swallowed and produce
  * []. The caller treats [] as "no seeding needed".
@@ -226,15 +252,21 @@ export async function buildDateNoteScheduleSeed(
 	day: number
 ): Promise<JSONContent[]> {
 	try {
+		const carryover = await extractUncheckedFromYesterdayNote(year, month, day);
+
+		let labels: string[] = [];
 		const guid = await getScheduleNoteGuid();
-		if (!guid) return [];
-		const note = await getNote(guid);
-		if (!note || note.deleted) return [];
-		const doc = deserializeContent(note.xmlContent);
-		const now = new Date(year, month - 1, day);
-		const entries = parseScheduleNote(doc, now);
-		const labels = extractScheduleLabelsForDate(entries, year, month, day);
-		return buildChecklistBlocks(labels, []);
+		if (guid) {
+			const note = await getNote(guid);
+			if (note && !note.deleted) {
+				const doc = deserializeContent(note.xmlContent);
+				const now = new Date(year, month - 1, day);
+				const entries = parseScheduleNote(doc, now);
+				labels = extractScheduleLabelsForDate(entries, year, month, day);
+			}
+		}
+
+		return buildChecklistBlocks(labels, carryover);
 	} catch (err) {
 		console.warn('[dateNoteSeed] failed', err);
 		return [];

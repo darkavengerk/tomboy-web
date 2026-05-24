@@ -135,6 +135,78 @@ describe('buildChecklistBlocks', () => {
 			)
 		]);
 	});
+
+	it('carryover only → header + carryover items (checked forced false)', () => {
+		const carryover: JSONContent[] = [
+			{ type: 'listItem', attrs: { checked: false }, content: [p('어제 미완')] }
+		];
+		expect(buildChecklistBlocks([], carryover)).toEqual([
+			p('체크리스트:'),
+			ul(liChecked('어제 미완', false))
+		]);
+	});
+
+	it('schedule + carryover → schedule first, carryover after', () => {
+		const carryover: JSONContent[] = [
+			{ type: 'listItem', attrs: { checked: false }, content: [p('어제 미완')] }
+		];
+		expect(buildChecklistBlocks(['오늘 일정'], carryover)).toEqual([
+			p('체크리스트:'),
+			ul(liChecked('오늘 일정', false), liChecked('어제 미완', false))
+		]);
+	});
+
+	it('dedup: carryover top-level text equals schedule label → carryover skipped', () => {
+		const carryover: JSONContent[] = [
+			{ type: 'listItem', attrs: { checked: false }, content: [p('회의')] }
+		];
+		expect(buildChecklistBlocks(['회의'], carryover)).toEqual([
+			p('체크리스트:'),
+			ul(liChecked('회의', false))
+		]);
+	});
+
+	it('dedup compares trimmed text only', () => {
+		const carryover: JSONContent[] = [
+			{ type: 'listItem', attrs: { checked: false }, content: [p('  회의  ')] }
+		];
+		expect(buildChecklistBlocks(['회의'], carryover)).toEqual([
+			p('체크리스트:'),
+			ul(liChecked('회의', false))
+		]);
+	});
+
+	it('dedup skips carryover with nested children too (entire subtree dropped)', () => {
+		const carryover: JSONContent[] = [
+			{
+				type: 'listItem',
+				attrs: { checked: false },
+				content: [
+					p('회의'),
+					{
+						type: 'bulletList',
+						content: [
+							{ type: 'listItem', attrs: { checked: false }, content: [p('자식 미완')] }
+						]
+					}
+				]
+			}
+		];
+		expect(buildChecklistBlocks(['회의'], carryover)).toEqual([
+			p('체크리스트:'),
+			ul(liChecked('회의', false))
+		]);
+	});
+
+	it('carryover with checked:true at top level still gets forced to false', () => {
+		const carryover: JSONContent[] = [
+			{ type: 'listItem', attrs: { checked: true }, content: [p('항목')] }
+		];
+		expect(buildChecklistBlocks([], carryover)).toEqual([
+			p('체크리스트:'),
+			ul(liChecked('항목', false))
+		]);
+	});
 });
 
 describe('extractUncheckedFromDoc', () => {
