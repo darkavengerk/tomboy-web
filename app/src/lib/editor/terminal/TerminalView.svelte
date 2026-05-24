@@ -484,8 +484,11 @@
 	/**
 	 * Persist the current pin state to the note by rewriting its `spectate:`
 	 * line. Called on every lock-icon toggle. `putNote` marks the note dirty
-	 * so Dropbox/Firebase sync propagates the change. changeDate +
-	 * metadataChangeDate bumps are required so firebase sees it as a real edit.
+	 * so Dropbox sync uploads on next manual sync; Firebase realtime sync
+	 * isn't triggered (no `notifyNoteSaved(guid)` call — that's only from
+	 * `noteManager.updateNoteFromEditor`), so cross-device pin propagation
+	 * waits for either a Dropbox round-trip or the other device opening
+	 * the note. Acceptable since pin is a per-device viewer pref.
 	 *
 	 * If the note no longer has a spectate: line (user removed it manually),
 	 * rewriteSpectateLine returns the input unchanged — we surface a toast and
@@ -1124,7 +1127,7 @@
 								: `패널 ${n}`}
 							onclick={() => onPaneNumClick(n)}
 							disabled={status !== 'open'
-								|| (spectatorPaneCount > 0 && n > spectatorPaneCount)
+								|| (n !== pinnedOrdinal && spectatorPaneCount > 0 && n > spectatorPaneCount)
 								|| (pinnedOrdinal !== null && n !== pinnedOrdinal)}
 						>{#if n === pinnedOrdinal}🔒{/if}{n}</button>
 					{/each}
