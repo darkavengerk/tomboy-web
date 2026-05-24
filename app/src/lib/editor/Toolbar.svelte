@@ -221,15 +221,6 @@
 				</div>
 			{/if}
 
-			{#if altLocked}
-				<div class="key-row" aria-label="Alt 단축키">
-					<button class="key-btn" onclick={() => runAlt('left')} title="내어쓰기 (Alt+←)">←</button>
-					<button class="key-btn" onclick={() => runAlt('up')} title="위로 이동 (Alt+↑)">↑</button>
-					<button class="key-btn" onclick={() => runAlt('down')} title="아래로 이동 (Alt+↓)">↓</button>
-					<button class="key-btn" onclick={() => runAlt('right')} title="들여쓰기 (Alt+→)">→</button>
-				</div>
-			{/if}
-
 			{#if !ctrlLocked}
 				<button
 					class="mod-toggle"
@@ -241,6 +232,15 @@
 					<span class="mod-label">Alt</span>
 					<span class="mod-dot" aria-hidden="true"></span>
 				</button>
+			{/if}
+
+			{#if altLocked}
+				<div class="key-row" aria-label="Alt 단축키">
+					<button class="key-btn" onclick={() => runAlt('left')} title="내어쓰기 (Alt+←)">←</button>
+					<button class="key-btn" onclick={() => runAlt('up')} title="위로 이동 (Alt+↑)">↑</button>
+					<button class="key-btn" onclick={() => runAlt('down')} title="아래로 이동 (Alt+↓)">↓</button>
+					<button class="key-btn" onclick={() => runAlt('right')} title="들여쓰기 (Alt+→)">→</button>
+				</div>
 			{/if}
 		</div>
 
