@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deserializeContent } from '$lib/core/noteContentArchiver.js';
+import { deserializeContent, serializeContent } from '$lib/core/noteContentArchiver.js';
 
 function inlines(doc: ReturnType<typeof deserializeContent>, paraIdx: number) {
 	return doc.content?.[paraIdx]?.content ?? [];
@@ -76,5 +76,41 @@ describe('archiver 읽기 — footnote 노드 split', () => {
 		);
 		const ins = inlines(doc, 1);
 		expect(ins).toEqual([{ type: 'text', text: '[^] 와 [^ x]' }]);
+	});
+});
+
+describe('archiver 쓰기 — footnoteMarker 노드 → [^N] 텍스트', () => {
+	function roundTrip(xml: string): string {
+		return serializeContent(deserializeContent(xml));
+	}
+
+	it('본문 중간 마커 round-trip', () => {
+		const xml = `<note-content version="0.1">제목\n본문 [^1] 끝</note-content>`;
+		expect(roundTrip(xml)).toBe(xml);
+	});
+
+	it('정의 단락 round-trip', () => {
+		const xml = `<note-content version="0.1">제목\n[^1] 정의 본문</note-content>`;
+		expect(roundTrip(xml)).toBe(xml);
+	});
+
+	it('여러 마커 round-trip', () => {
+		const xml = `<note-content version="0.1">제목\n[^1] 와 [^2]</note-content>`;
+		expect(roundTrip(xml)).toBe(xml);
+	});
+
+	it('한글 라벨 round-trip', () => {
+		const xml = `<note-content version="0.1">제목\n[^참고1] 본문</note-content>`;
+		expect(roundTrip(xml)).toBe(xml);
+	});
+
+	it('마크 가로지름 — split 결과 (의도)', () => {
+		const xml = `<note-content version="0.1">제목\n<bold>x [^1] y</bold></note-content>`;
+		const out = roundTrip(xml);
+		expect(out).toBe(
+			`<note-content version="0.1">제목\n<bold>x </bold>[^1]<bold> y</bold></note-content>`
+		);
+		// idempotent: 한 번 더 돌려도 동일.
+		expect(roundTrip(out)).toBe(out);
 	});
 });

@@ -161,6 +161,7 @@ export function serializeContent(doc: JSONContent): string {
 				for (const inline of b.content ?? []) {
 					if (inline.type === 'text') return inline.marks ?? [];
 					if (inline.type === 'hardBreak') return [];
+					if (inline.type === 'footnoteMarker') return [];
 				}
 				// Empty paragraph — keep scanning subsequent blocks.
 				continue;
@@ -231,6 +232,10 @@ export function serializeContent(doc: JSONContent): string {
 				} else if (inline.type === 'hardBreak') {
 					closeAll();
 					result += '\n';
+				} else if (inline.type === 'footnoteMarker') {
+					// 모든 mark 닫고 [^N] emit. 다음 text 노드가 mark 를 다시 연다.
+					closeAll();
+					result += `[^${escapeXmlContent((inline.attrs?.label as string | undefined) ?? '')}]`;
 				}
 			}
 			// 헤더 문단이면 영역 시작, 그 외 문단/헤딩이면 영역 종료.
@@ -722,6 +727,10 @@ function serializeInlineContent(content: JSONContent[]): string {
 		} else if (node.type === 'hardBreak') {
 			closeAll();
 			result += '\n';
+		} else if (node.type === 'footnoteMarker') {
+			// 모든 mark 닫고 [^N] emit. 다음 text 노드가 mark 를 다시 연다.
+			closeAll();
+			result += `[^${escapeXmlContent((node.attrs?.label as string | undefined) ?? '')}]`;
 		}
 	}
 
