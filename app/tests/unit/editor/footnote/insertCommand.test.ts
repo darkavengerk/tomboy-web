@@ -26,7 +26,7 @@ function makeEditor(d: JSONContent): Editor {
 			}),
 			TomboyParagraph,
 			TomboyListItem,
-			TomboyFootnote
+			...TomboyFootnote
 		],
 		content: d
 	});

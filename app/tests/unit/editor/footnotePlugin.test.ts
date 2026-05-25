@@ -4,7 +4,8 @@ import StarterKit from '@tiptap/starter-kit';
 import type { JSONContent } from '@tiptap/core';
 
 import {
-	TomboyFootnote,
+	FootnoteMarker,
+	TomboyFootnoteExtension,
 	footnotePluginKey
 } from '$lib/editor/footnote/index.js';
 
@@ -26,7 +27,7 @@ const P = (text: string): JSONContent => ({
 
 function makeEditor(blocks: JSONContent[], onMissing = () => {}): Editor {
 	currentEditor = new Editor({
-		extensions: [StarterKit, TomboyFootnote.configure({ onMissing })],
+		extensions: [StarterKit, FootnoteMarker, TomboyFootnoteExtension.configure({ onMissing })],
 		content: { type: 'doc', content: blocks }
 	});
 	return currentEditor;

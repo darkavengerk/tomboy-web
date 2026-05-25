@@ -82,7 +82,7 @@
 		toggleCheckboxAt,
 		insertChecklistBlock,
 	} from "./checklist/index.js";
-	import { TomboyFootnote } from "./footnote/index.js";
+	import { FootnoteMarker, TomboyFootnoteExtension } from "./footnote/index.js";
 	import { TomboyBlockquote } from "./blockquote/index.js";
 	import { createFindPlugin, findPluginKey } from "./find/findPlugin.js";
 	import FindBar from "./find/FindBar.svelte";
@@ -485,7 +485,8 @@
 						toggleCheckboxAt(ed, liPos);
 					},
 				}),
-				TomboyFootnote.configure({
+				FootnoteMarker,
+				TomboyFootnoteExtension.configure({
 					onMissing: (label, kind) => {
 						pushToast(
 							kind === "reference"
