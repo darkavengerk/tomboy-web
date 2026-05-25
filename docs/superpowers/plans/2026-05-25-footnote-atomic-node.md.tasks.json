@@ -4,65 +4,65 @@
     {
       "id": 12,
       "subject": "Task 1: footnoteMarker 노드 스키마 + 기본 NodeView",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** atomic inline 노드 타입을 정의하고 TipTap 확장으로 등록한다 (위치 기반 ref/def 분기 없는 stub NodeView 포함).\n\n**Files:**\n- Create: `app/src/lib/editor/footnote/node.ts`\n- Create: `app/tests/unit/editor/footnote/node.test.ts`\n- Modify: `app/src/lib/editor/footnote/index.ts`\n- Modify: TomboyFootnote 호출지들\n\n**Acceptance Criteria:**\n- [ ] footnoteMarker schema atom=true inline=true selectable=true\n- [ ] label attr default ''\n- [ ] toDOM returns span.tomboy-fn-marker\n- [ ] NodeView stub renders sup.tomboy-fn-ref\n- [ ] node.test.ts 5/5 pass\n- [ ] npm run check 0 errors\n\n**Verify:** `cd app && npm run test -- footnote/node && npm run check` → 5/5 PASS, 0 errors.\n\n**Steps:** 1) 실패 테스트 작성 2) node.ts 구현 3) index.ts 배열화 4) 호출지 spread 5) 테스트 PASS 6) 커밋\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/footnote/node.ts\", \"app/src/lib/editor/footnote/index.ts\", \"app/tests/unit/editor/footnote/node.test.ts\", \"app/src/lib/editor/TomboyEditor.svelte\"], \"verifyCommand\": \"cd app && npm run test -- footnote/node && npm run check\", \"acceptanceCriteria\": [\"footnoteMarker schema registered with atom=true inline=true\", \"label attr with default ''\", \"toDOM returns span.tomboy-fn-marker\", \"NodeView renders sup.tomboy-fn-ref stub\", \"node.test.ts 5/5 pass\", \"npm run check 0 errors\"]}\n```"
     },
     {
       "id": 13,
       "subject": "Task 2: Archiver 읽기 — [^N] 텍스트를 노드로 split",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [12],
       "description": "**Goal:** deserializeContent 가 본문 텍스트의 [^N] 을 자동으로 footnoteMarker 노드로 split.\n\n**Files:**\n- Modify: `app/src/lib/core/noteContentArchiver.ts`\n- Create: `app/tests/unit/core/archiverFootnote.test.ts`\n\n**Acceptance Criteria:**\n- [ ] 본문 중간 [^1] → text+node+text\n- [ ] 정의 단락 [^1] body → node+text\n- [ ] bold 가 마커 가로지름 → 좌우 text 에만 마크\n- [ ] 여러 마커 / 비숫자 / 한글 라벨\n- [ ] malformed 평문 보존\n- [ ] 회귀 0건\n\n**Verify:** `cd app && npm run test -- archiverFootnote && npm run test -- noteContentArchiver` → all PASS.\n\n```json:metadata\n{\"files\": [\"app/src/lib/core/noteContentArchiver.ts\", \"app/tests/unit/core/archiverFootnote.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- archiverFootnote && npm run test -- noteContentArchiver\", \"acceptanceCriteria\": [\"mid-paragraph [^1] splits into text+node+text\", \"definition paragraph [^1] body splits correctly\", \"bold mark crosses marker - mark on text pieces only\", \"multiple markers in one paragraph\", \"non-numeric/korean labels work\", \"malformed [^]/[^ x] stays as text\", \"existing archiver tests still pass\"]}\n```"
     },
     {
       "id": 14,
       "subject": "Task 3: Archiver 쓰기 — 노드를 [^N] 텍스트로 직렬화",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [13],
       "description": "**Goal:** serializeContent 가 footnoteMarker 노드를 [^N] 텍스트로 직렬화. 마크 가로지름은 자연 split.\n\n**Files:**\n- Modify: `app/src/lib/core/noteContentArchiver.ts`\n- Modify: `app/tests/unit/core/archiverFootnote.test.ts`\n\n**Acceptance Criteria:**\n- [ ] serialize(deserialize(xml)) === xml (footnote 케이스 5종)\n- [ ] bold 가로지름 → 2개 bold run\n- [ ] idempotent\n- [ ] nextTextNodeMarks 가 marker 만나면 mark close\n- [ ] 회귀 0건\n\n**Verify:** `cd app && npm run test -- archiverFootnote && npm run test -- noteContentArchiver` → all PASS.\n\n```json:metadata\n{\"files\": [\"app/src/lib/core/noteContentArchiver.ts\", \"app/tests/unit/core/archiverFootnote.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- archiverFootnote && npm run test -- noteContentArchiver\", \"acceptanceCriteria\": [\"serialize(deserialize(xml)) === xml for footnote-bearing inputs\", \"bold-crossing marker splits into 2 bold runs\", \"round-trip idempotent\", \"nextTextNodeMarks handles footnoteMarker\", \"no regression in existing archiver tests\"]}\n```"
     },
     {
       "id": 15,
       "subject": "Task 4: NodeView 위치 기반 ref/def 분기",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [14],
       "description": "**Goal:** NodeView 가 getPos() 로 위치 검사 → top-level paragraph 첫 비공백 inline 이면 span.tomboy-fn-def, 아니면 sup.tomboy-fn-ref. update 콜백에서도 재검사.\n\n**Files:**\n- Modify: `app/src/lib/editor/footnote/node.ts`\n- Modify: `app/tests/unit/editor/footnote/node.test.ts`\n\n**Acceptance Criteria:**\n- [ ] def-class on first-inline of top paragraph\n- [ ] ref-class otherwise\n- [ ] list items 항상 ref\n- [ ] title 항상 ref\n- [ ] 선행 공백만 있으면 def 인정\n- [ ] update 가 def→ref 전환\n\n**Verify:** `cd app && npm run test -- footnote/node` → 11/11 PASS.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/footnote/node.ts\", \"app/tests/unit/editor/footnote/node.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- footnote/node\", \"acceptanceCriteria\": [\"def-class on first-inline of top paragraph\", \"ref-class otherwise\", \"list items always ref\", \"title block always ref\", \"leading whitespace before marker still counts as def\", \"update on text-insert switches def to ref\"]}\n```"
     },
     {
       "id": 16,
       "subject": "Task 5: footnotes.ts 노드 walk 재작성",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [15],
       "description": "**Goal:** findFootnoteMatches/At/Partner API 보존, 내부 구현 정규식 → 노드 walk.\n\n**Files:**\n- Modify: `app/src/lib/editor/footnote/footnotes.ts`\n- Create: `app/tests/unit/editor/footnote/footnotes.test.ts`\n\n**Acceptance Criteria:**\n- [ ] FootnoteMatch type 변경 없음\n- [ ] footnoteMarker 노드만 수집\n- [ ] to-from === 1\n- [ ] isDefinitionMarker positional 보존\n- [ ] list items not def\n- [ ] findFootnoteAt: pos===from 매치\n- [ ] partner ref/def linking 보존\n\n**Verify:** `cd app && npm run test -- footnote/footnotes && npm run check`.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/footnote/footnotes.ts\", \"app/tests/unit/editor/footnote/footnotes.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- footnote/footnotes && npm run check\", \"acceptanceCriteria\": [\"FootnoteMatch type unchanged\", \"findFootnoteMatches walks footnoteMarker nodes\", \"to-from === 1\", \"isDefinitionMarker positional rule preserved\", \"list items not def\", \"findFootnoteAt matches at pos===from\", \"findFootnotePartner ref/def linking preserved\"]}\n```"
     },
     {
       "id": 17,
       "subject": "Task 6: insertCommand.ts 노드 op 재작성",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [16],
       "description": "**Goal:** Alt+J insertCommand 알고리즘 (group renumber + def 정렬) 보존, 텍스트 op → 노드 op.\n\n**Files:**\n- Modify: `app/src/lib/editor/footnote/insertCommand.ts`\n- Modify: `app/tests/unit/editor/footnote/insertCommand.test.ts`\n\n**Acceptance Criteria:**\n- [ ] 13 existing tests pass\n- [ ] 마커 삽입 replaceWith with node\n- [ ] def paragraph composed of marker node + space text\n- [ ] group renumber + sorting 보존\n- [ ] DEF_PARA_RE 제거, defLabelOf helper 대체\n\n**Verify:** `cd app && npm run test -- footnote/insertCommand && npm run check`.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/footnote/insertCommand.ts\", \"app/tests/unit/editor/footnote/insertCommand.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- footnote/insertCommand && npm run check\", \"acceptanceCriteria\": [\"13 existing insertCommand tests pass\", \"marker insertions use replaceWith with footnoteMarker node\", \"definition paragraph composed of marker node + space text\", \"group renumber preserved\", \"def paragraph sorting preserved\", \"DEF_PARA_RE replaced with defLabelOf helper\"]}\n```"
     },
     {
       "id": 18,
       "subject": "Task 7: Input rule + Paste transform",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [12],
       "description": "**Goal:** 본문 [^N] 타이핑 → 노드 변환. Plain text paste 동일. 제목에서는 차단.\n\n**Files:**\n- Modify: `app/src/lib/editor/footnote/node.ts`\n- Modify: `app/tests/unit/editor/footnote/node.test.ts`\n\n**Acceptance Criteria:**\n- [ ] body 에서 [^N] 타이핑 → 노드\n- [ ] title 에서는 텍스트로 남음\n- [ ] paste plain text → text+node+text\n- [ ] nested fragment 재귀 처리\n\n**Verify:** `cd app && npm run test -- footnote/node && npm run check`.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/footnote/node.ts\", \"app/tests/unit/editor/footnote/node.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- footnote/node && npm run check\", \"acceptanceCriteria\": [\"input rule converts typed [^N] to node in body\", \"input rule skipped in title paragraph\", \"paste transform splits text containing [^N] into text+node+text\", \"paste handles nested fragments recursively\"]}\n```"
     },
     {
       "id": 19,
       "subject": "Task 8: Plugin 정리 + cleanupPlugin 삭제",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [16, 17, 18],
       "description": "**Goal:** plugin.ts 데코레이션 제거, mousedown 핸들러만 유지. cleanupPlugin 통째 삭제.\n\n**Files:**\n- Modify: `app/src/lib/editor/footnote/plugin.ts`\n- Delete: `app/src/lib/editor/footnote/cleanupPlugin.ts`\n- Delete: `app/tests/unit/editor/footnote/cleanupPlugin.test.ts`\n- Modify: `app/src/lib/editor/footnote/index.ts`\n\n**Acceptance Criteria:**\n- [ ] no Decoration imports\n- [ ] buildDecorations removed\n- [ ] state 는 matches 만\n- [ ] mousedown handler 유지\n- [ ] cleanupPlugin 파일 없음\n- [ ] index.ts cleanupPlugin 참조 없음\n\n**Verify:** `cd app && npm run test -- footnote/ && npm run check` → all green.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/footnote/plugin.ts\", \"app/src/lib/editor/footnote/cleanupPlugin.ts\", \"app/tests/unit/editor/footnote/cleanupPlugin.test.ts\", \"app/src/lib/editor/footnote/index.ts\"], \"verifyCommand\": \"cd app && npm run test -- footnote/ && npm run check\", \"acceptanceCriteria\": [\"plugin.ts has no Decoration imports\", \"buildDecorations removed\", \"state contains only matches\", \"mousedown handler preserved with NodeView selectors\", \"cleanupPlugin files deleted\", \"index.ts no cleanupPlugin references\"]}\n```"
     },
     {
       "id": 20,
       "subject": "Task 9: 하위 소비자 업데이트 + CSS 정리",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [19],
       "description": "**Goal:** copyFormatted 4 serializer, parseSchedule.linearizeDoc, archiver.getPlainText, TomboyEditor CSS 정리.\n\n**Files:**\n- Modify: `app/src/lib/core/noteContentArchiver.ts`\n- Modify: `app/src/lib/editor/copyFormatted.ts`\n- Modify: `app/src/lib/schedule/parseSchedule.ts`\n- Modify: `app/src/lib/editor/TomboyEditor.svelte`\n- Modify: `app/tests/unit/editor/copyFormatted.test.ts`\n\n**Acceptance Criteria:**\n- [ ] getPlainText handles footnoteMarker\n- [ ] copyFormatted 4 serializer 처리 (html→<sup>, 나머지→[^N])\n- [ ] parseSchedule.linearizeDoc 처리\n- [ ] .tomboy-fn-bracket CSS 삭제, 나머지 유지\n- [ ] 전체 npm run test 통과\n- [ ] npm run check 0 errors\n\n**Verify:** `cd app && npm run test && npm run check` → all green.\n\n```json:metadata\n{\"files\": [\"app/src/lib/core/noteContentArchiver.ts\", \"app/src/lib/editor/copyFormatted.ts\", \"app/src/lib/schedule/parseSchedule.ts\", \"app/src/lib/editor/TomboyEditor.svelte\", \"app/tests/unit/editor/copyFormatted.test.ts\"], \"verifyCommand\": \"cd app && npm run test && npm run check\", \"acceptanceCriteria\": [\"getPlainText handles footnoteMarker\", \"copyFormatted 4 serializers handle footnoteMarker\", \"parseSchedule linearizeDoc handles footnoteMarker\", \"tomboy-fn-bracket CSS rule removed\", \"tomboy-fn-ref/def/flash CSS preserved\", \"full test suite passes\", \"npm run check 0 errors\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-25T02:07:02Z"
+  "lastUpdated": "2026-05-25T07:09:27Z"
 }
