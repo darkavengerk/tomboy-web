@@ -1,0 +1,61 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-25-inline-checkbox-node.md",
+  "tasks": [
+    {
+      "id": "21",
+      "subject": "Task 1: InlineCheckbox 노드 스켈레톤 + 기본 NodeView",
+      "status": "pending",
+      "description": "**Goal:** atomic inline 노드 `inlineCheckbox` 정의 + 정적 NodeView. 토글/input/paste 는 후속 태스크.\n\n**Files:**\n- Create: `app/src/lib/editor/inlineCheckbox/node.ts`\n- Create: `app/src/lib/editor/inlineCheckbox/index.ts`\n- Create: `app/tests/unit/editor/inlineCheckbox/node.test.ts`\n\n**Acceptance Criteria:**\n- Node.create with name='inlineCheckbox', atom=true, inline=true, selectable=true, marks=''\n- attrs { checked: {default: false} }\n- parseHTML / renderHTML for span.tomboy-inline-checkbox\n- NodeView with data-checked + contentEditable=false + update() refresh\n- TomboyInlineCheckbox = [InlineCheckbox] exported\n- schema + NodeView tests PASS\n\n**Verify:** `cd app && npm run test -- tests/unit/editor/inlineCheckbox/node.test.ts`\n\n```json:metadata\n{\"files\":[\"app/src/lib/editor/inlineCheckbox/node.ts\",\"app/src/lib/editor/inlineCheckbox/index.ts\",\"app/tests/unit/editor/inlineCheckbox/node.test.ts\"],\"verifyCommand\":\"cd app && npm run test -- tests/unit/editor/inlineCheckbox/node.test.ts\",\"acceptanceCriteria\":[\"Node.create with name='inlineCheckbox', atom=true, inline=true, selectable=true, marks=''\",\"attrs { checked: {default:false} }\",\"parseHTML matches span.tomboy-inline-checkbox via data-checked\",\"renderHTML emits span with class + data-checked\",\"NodeView creates span dom with data-checked, contentEditable=false, update() refreshes data-checked\",\"TomboyInlineCheckbox = [InlineCheckbox] exported\",\"schema + NodeView unit tests PASS\"]}\n```"
+    },
+    {
+      "id": "22",
+      "subject": "Task 2: Archiver 읽기 — [ ]/[x] 텍스트 → 노드 split",
+      "status": "pending",
+      "blockedBy": ["21"],
+      "description": "**Goal:** `noteContentArchiver.ts` 의 `appendInlineNodes` 가 텍스트 안의 `\\[([ xX])\\]` 패턴을 `inlineCheckbox` 노드로 split. 좌우 텍스트 mark 보존, 노드는 mark 받지 않음.\n\n**Files:**\n- Modify: `app/src/lib/core/noteContentArchiver.ts` (정규식 + splitter L52-92, appendInlineNodes L377-405, scanForNextRunMarks L160-165)\n- Create: `app/tests/unit/core/archiverInlineCheckbox.test.ts`\n\n**Acceptance Criteria:**\n- INLINE_CHECKBOX_SPLIT_RE = /\\[([ xX])\\]/g\n- splitInlineCheckboxesInText helper mirrors footnote splitter\n- appendInlineNodes chains footnote + checkbox splits\n- scanForNextRunMarks closes marks when encountering inlineCheckbox\n- [x]/[X] → checked:true, [ ] → checked:false\n- mark-crossing test, consecutive test, coexists with footnote\n\n**Verify:** `cd app && npm run test -- tests/unit/core/archiverInlineCheckbox.test.ts`\n\n```json:metadata\n{\"files\":[\"app/src/lib/core/noteContentArchiver.ts\",\"app/tests/unit/core/archiverInlineCheckbox.test.ts\"],\"verifyCommand\":\"cd app && npm run test -- tests/unit/core/archiverInlineCheckbox.test.ts\",\"acceptanceCriteria\":[\"INLINE_CHECKBOX_SPLIT_RE = /\\\\[([ xX])\\\\]/g constant\",\"splitInlineCheckboxesInText helper mirrors splitFootnotesInText pattern\",\"appendInlineNodes chains footnote split + checkbox split\",\"scanForNextRunMarks returns [] when encountering inlineCheckbox\",\"[x]/[X] → checked:true, [ ] → checked:false\",\"mark-crossing splits surrounding text but node receives no marks\",\"consecutive [ ][x] produces two nodes\",\"coexists with footnote markers\"]}\n```"
+    },
+    {
+      "id": "23",
+      "subject": "Task 3: Archiver 쓰기 — 노드 → [ ]/[x] 텍스트",
+      "status": "pending",
+      "blockedBy": ["22"],
+      "description": "**Goal:** 직렬화 시 inlineCheckbox 노드를 [ ]/[x] 텍스트로 출력. getPlainText 도 동일.\n\n**Files:**\n- Modify: app/src/lib/core/noteContentArchiver.ts (top-level serialize L228-240, serializeInlineContent L720-734, getPlainText L916-922)\n- Modify: app/tests/unit/core/archiverInlineCheckbox.test.ts\n\n**Acceptance Criteria:**\n- Both serialize loops emit [ ]/[x] after closeAll() for inlineCheckbox\n- getPlainText returns [ ]/[x]\n- Round-trip simple [ ] preserved\n- Round-trip mark-crossing splits one bold into two\n- Nullable attrs.checked serializes as [ ]\n\n**Verify:** `cd app && npm run test -- tests/unit/core/archiverInlineCheckbox.test.ts`\n\n```json:metadata\n{\"files\":[\"app/src/lib/core/noteContentArchiver.ts\",\"app/tests/unit/core/archiverInlineCheckbox.test.ts\"],\"verifyCommand\":\"cd app && npm run test -- tests/unit/core/archiverInlineCheckbox.test.ts\",\"acceptanceCriteria\":[\"serializeContent top-level loop emits [ ]/[x] after closeAll() for inlineCheckbox\",\"serializeInlineContent writeTextNode emits [ ]/[x] after closeAll()\",\"getPlainText returns [ ]/[x] for inlineCheckbox\",\"XML [ ] round-trips through JSON back to XML [ ]\",\"mark-crossing round-trip splits one bold into two bold spans around the checkbox\",\"null/undefined attrs.checked serializes as [ ]\"]}\n```"
+    },
+    {
+      "id": "24",
+      "subject": "Task 4: Input rule — [ ]/[x] 타이핑 → 노드",
+      "status": "pending",
+      "blockedBy": ["21"],
+      "description": "**Goal:** [ ]/[x]/[X] 본문 타이핑 → 즉시 노드 변환. 제목 라인 차단.\n\n**Files:**\n- Modify: app/src/lib/editor/inlineCheckbox/node.ts (InputRule import + addInputRules)\n- Modify: app/tests/unit/editor/inlineCheckbox/node.test.ts\n\n**Acceptance Criteria:**\n- InputRule find /\\[([ xX])\\]$/\n- [x]/[X] → checked:true; [ ] → checked:false\n- Title line idx(0)===0 → return null\n- Body conversion + title-no-op tests\n\n**Verify:** `cd app && npm run test -- tests/unit/editor/inlineCheckbox/node.test.ts`\n\n```json:metadata\n{\"files\":[\"app/src/lib/editor/inlineCheckbox/node.ts\",\"app/tests/unit/editor/inlineCheckbox/node.test.ts\"],\"verifyCommand\":\"cd app && npm run test -- tests/unit/editor/inlineCheckbox/node.test.ts\",\"acceptanceCriteria\":[\"InputRule with find: /\\\\[([ xX])\\\\]$/\",\"[x] / [X] → checked:true; [ ] → checked:false\",\"Title line (idx(0)===0) returns null (no conversion)\",\"Body paragraph [ ] typing → single inlineCheckbox node\",\"Body paragraph [x] typing → checked node\",\"Title line [ ] remains as text\"]}\n```"
+    },
+    {
+      "id": "25",
+      "subject": "Task 5: Paste transform — fragment 안 텍스트 split",
+      "status": "pending",
+      "blockedBy": ["24"],
+      "description": "**Goal:** Paste slice 안의 [ ]/[x] 텍스트를 노드로 split. 제목 destination skip. 중첩 fragment 재귀.\n\n**Files:**\n- Modify: app/src/lib/editor/inlineCheckbox/node.ts (Plugin/Slice/Fragment imports + addProseMirrorPlugins + 헬퍼)\n- Modify: app/tests/unit/editor/inlineCheckbox/node.test.ts\n\n**Acceptance Criteria:**\n- addProseMirrorPlugins registers paste plugin\n- transformPasted skips when destination is title line\n- Fragment text split, surrounding text retains marks\n- Recurses into nested fragments\n- 3 test cases\n\n**Verify:** `cd app && npm run test -- tests/unit/editor/inlineCheckbox/node.test.ts`\n\n```json:metadata\n{\"files\":[\"app/src/lib/editor/inlineCheckbox/node.ts\",\"app/tests/unit/editor/inlineCheckbox/node.test.ts\"],\"verifyCommand\":\"cd app && npm run test -- tests/unit/editor/inlineCheckbox/node.test.ts\",\"acceptanceCriteria\":[\"addProseMirrorPlugins registers paste plugin\",\"transformPasted returns slice unchanged when destination is title line\",\"Fragment text split by /\\\\[([ xX])\\\\]/g — inlineCheckbox nodes inserted\",\"Surrounding text retains original marks; nodes carry no marks\",\"Recurses into nested fragments (bulletList → listItem → paragraph)\",\"Test: body paste transforms; title-line paste skips; nested list paste transforms\"]}\n```"
+    },
+    {
+      "id": "26",
+      "subject": "Task 6: 클릭 토글 — NodeView mousedown → setNodeAttribute",
+      "status": "pending",
+      "blockedBy": ["21"],
+      "description": "**Goal:** NodeView 클릭 시 checked 토글. setNodeAttribute 로 undo 가능. mousedown preventDefault.\n\n**Files:**\n- Modify: app/src/lib/editor/inlineCheckbox/node.ts (addNodeView mousedown)\n- Modify: app/tests/unit/editor/inlineCheckbox/node.test.ts\n\n**Acceptance Criteria:**\n- mousedown listener with preventDefault\n- setNodeAttribute dispatched via view.dispatch\n- update() reflects new state\n- undo restores\n- 2 test cases\n\n**Verify:** `cd app && npm run test -- tests/unit/editor/inlineCheckbox/node.test.ts`\n\n```json:metadata\n{\"files\":[\"app/src/lib/editor/inlineCheckbox/node.ts\",\"app/tests/unit/editor/inlineCheckbox/node.test.ts\"],\"verifyCommand\":\"cd app && npm run test -- tests/unit/editor/inlineCheckbox/node.test.ts\",\"acceptanceCriteria\":[\"dom mousedown listener calls preventDefault\",\"handler reads current attrs.checked from view.state.doc.nodeAt(pos)\",\"handler dispatches tr.setNodeAttribute(pos, 'checked', next)\",\"update() reflects new attrs.checked via data-checked DOM attr\",\"editor.commands.undo() restores prior state\",\"PM doc reflects new attrs\"]}\n```"
+    },
+    {
+      "id": "27",
+      "subject": "Task 7: 하위 소비자 — copyFormatted + parseSchedule",
+      "status": "pending",
+      "blockedBy": ["23", "26"],
+      "description": "**Goal:** copyFormatted 4 serializer + parseSchedule inlineText 가 inlineCheckbox 처리.\n\n**Files:**\n- Modify: app/src/lib/editor/copyFormatted.ts (getTextNodes L23, htmlNode L171, mdNode L241)\n- Modify: app/src/lib/schedule/parseSchedule.ts (inlineText L67-74)\n- Modify: app/tests/unit/editor/copyFormatted.test.ts\n\n**Acceptance Criteria:**\n- getTextNodes returns [ ]/[x]\n- htmlNode emits <input type=\"checkbox\" disabled [checked]>\n- mdNode emits [ ]/[x]\n- parseSchedule.inlineText emits [ ]/[x]\n- 6 new test cases + regression\n\n**Verify:** `cd app && npm run test -- tests/unit/editor/copyFormatted.test.ts tests/unit/schedule/`\n\n```json:metadata\n{\"files\":[\"app/src/lib/editor/copyFormatted.ts\",\"app/src/lib/schedule/parseSchedule.ts\",\"app/tests/unit/editor/copyFormatted.test.ts\"],\"verifyCommand\":\"cd app && npm run test -- tests/unit/editor/copyFormatted.test.ts tests/unit/schedule/\",\"acceptanceCriteria\":[\"getTextNodes returns [ ] / [x] for inlineCheckbox (covers plain + structured)\",\"htmlNode emits <input type=\\\"checkbox\\\" disabled> or disabled checked\",\"mdNode emits [ ] / [x]\",\"parseSchedule.inlineText returns [ ] / [x]\",\"6 new copyFormatted test cases (plain, structured, markdown, html × 2 states)\",\"regression: existing copyFormatted/schedule tests still PASS\"]}\n```"
+    },
+    {
+      "id": "28",
+      "subject": "Task 8: TomboyEditor 통합 + CSS + 전체 회귀",
+      "status": "pending",
+      "blockedBy": ["25", "27"],
+      "description": "**Goal:** TomboyEditor.svelte 에 extension 등록 + CSS. 전체 회귀 통과.\n\n**Files:**\n- Modify: app/src/lib/editor/TomboyEditor.svelte (import + extensions + <style>)\n\n**Acceptance Criteria:**\n- TomboyInlineCheckbox imported + spread into extensions\n- CSS .tomboy-inline-checkbox (14px, border, vertical-align)\n- [data-checked='true'] selector with check SVG bg\n- ::before pseudo for mobile hit-area (24×24)\n- npm run check: no new errors\n- npm run test: all PASS\n\n**Verify:** `cd app && npm run check && npm run test`\n\n```json:metadata\n{\"files\":[\"app/src/lib/editor/TomboyEditor.svelte\"],\"verifyCommand\":\"cd app && npm run check && npm run test\",\"acceptanceCriteria\":[\"TomboyInlineCheckbox imported and ...spread into extensions array\",\"CSS .tomboy-inline-checkbox sized 14px, border 1px, vertical-align baseline\",\"[data-checked='true'] selector applies filled background + white ✓ SVG\",\"::before pseudo extends touch area to 24×24 px for mobile\",\"npm run check passes with no new errors\",\"npm run test passes all tests\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-25T00:00:00Z"
+}
