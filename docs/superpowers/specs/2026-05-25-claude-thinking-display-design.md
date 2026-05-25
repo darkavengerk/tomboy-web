@@ -193,7 +193,7 @@ const r = await sendClaude({
   - 빈 doc → step 무시
   - body 빈 step → 라벨만 렌더 (DOM 검증)
 
-**Integration (node:test, `claude-service/tests/`)**:
+**Integration (vitest, `claude-service/tests/`)**:
 - runner.ts: 가짜 stream-json 입력 → emit된 SSE 라인 시퀀스 검증
   - thinking 블록 → `{step}` (kind=thinking, body 누적) 다수
   - tool_use → `{step}` (kind=tool_use)
