@@ -28,6 +28,18 @@ export interface ClaudeChatBody {
   allowedTools?: string[];
 }
 
+export type ThinkingStepKind =
+  | 'thinking'
+  | 'tool_use'
+  | 'tool_result'
+  | 'response_start';
+
+export interface ThinkingStep {
+  kind: ThinkingStepKind;
+  label: string;
+  body: string;
+}
+
 export interface SendClaudeResult {
   reason: 'done' | 'abort';
 }
@@ -37,6 +49,7 @@ export interface SendClaudeOpts {
   token: string;
   body: ClaudeChatBody;
   onToken: (delta: string) => void;
+  onStep?: (step: ThinkingStep) => void;
   signal?: AbortSignal;
 }
 
@@ -98,7 +111,13 @@ export async function sendClaude(opts: SendClaudeOpts): Promise<SendClaudeResult
         if (!event.startsWith('data:')) continue;
         const json = event.slice(5).trim();
         if (!json) continue;
-        let parsed: { delta?: string; done?: boolean; reason?: string; error?: string };
+        let parsed: {
+          delta?: string;
+          step?: ThinkingStep;
+          done?: boolean;
+          reason?: string;
+          error?: string;
+        };
         try {
           parsed = JSON.parse(json);
         } catch {
@@ -110,6 +129,9 @@ export async function sendClaude(opts: SendClaudeOpts): Promise<SendClaudeResult
         }
         if (parsed.delta !== undefined) {
           opts.onToken(parsed.delta);
+        }
+        if (parsed.step !== undefined && opts.onStep) {
+          opts.onStep(parsed.step);
         }
         if (parsed.done) {
           sawDone = true;
