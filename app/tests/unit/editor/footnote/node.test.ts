@@ -1,6 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Editor, type Content } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
+import { TextSelection } from '@tiptap/pm/state';
+import { Slice, Fragment } from '@tiptap/pm/model';
 import { TomboyParagraph } from '$lib/editor/extensions/TomboyParagraph.js';
 import { TomboyListItem } from '$lib/editor/extensions/TomboyListItem.js';
 import { TomboyFootnote } from '$lib/editor/footnote/index.js';
@@ -217,5 +219,132 @@ describe('footnoteMarker NodeView — ref/def 위치 기반', () => {
 		e.view.dispatch(e.state.tr.insertText('앞쪽 ', para1Start + 1));
 		expect(html(e)).toContain('tomboy-fn-ref');
 		expect(html(e)).not.toContain('tomboy-fn-def');
+	});
+});
+
+describe('input rule — 타이핑한 [^N] 을 노드로', () => {
+	// 입력 룰은 PM 의 `handleTextInput` 프롭으로 발화 — 테스트에서는
+	// `view.someProp('handleTextInput')` 로 직접 호출해 DOM 텍스트 입력을
+	// 시뮬레이션한다. `state.tr.insertText` 직접 dispatch 는 우회하지 않음.
+	function typeText(e: Editor, text: string) {
+		for (const ch of text) {
+			const { from, to } = e.state.selection;
+			const handler = e.view.someProp('handleTextInput') as
+				| ((view: any, from: number, to: number, text: string) => boolean)
+				| undefined;
+			const handled = handler ? handler(e.view, from, to, ch) : false;
+			if (!handled) {
+				e.view.dispatch(e.state.tr.insertText(ch, from, to));
+			}
+		}
+	}
+
+	it('본문 단락에서 매치', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{ type: 'paragraph' }
+			]
+		});
+		// 두 번째 단락 안쪽으로 커서.
+		const para1Start = e.state.doc.resolve(0).nodeAfter!.nodeSize + 1;
+		e.view.dispatch(
+			e.state.tr.setSelection(TextSelection.near(e.state.doc.resolve(para1Start + 1)))
+		);
+		typeText(e, '[^7]');
+		const para1 = e.state.doc.child(1);
+		expect(para1.firstChild?.type.name).toBe('footnoteMarker');
+		expect(para1.firstChild?.attrs.label).toBe('7');
+	});
+
+	it('제목 단락에서는 변환 안 됨', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [{ type: 'paragraph', content: [{ type: 'text', text: '제목 ' }] }]
+		});
+		// 제목 끝으로 커서.
+		e.view.dispatch(
+			e.state.tr.setSelection(TextSelection.near(e.state.doc.resolve(4)))
+		);
+		typeText(e, '[^7]');
+		const para0 = e.state.doc.child(0);
+		expect(para0.textContent).toBe('제목 [^7]');
+		// footnoteMarker 노드 없음.
+		let hasNode = false;
+		para0.descendants((n) => {
+			if (n.type.name === 'footnoteMarker') hasNode = true;
+		});
+		expect(hasNode).toBe(false);
+	});
+});
+
+describe('paste transform — plain text 의 [^N] 을 노드로', () => {
+	it('plain text 페이스트 — text + 노드 + text', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{ type: 'paragraph' }
+			]
+		});
+
+		// transformPasted 를 직접 호출 (paste 이벤트 시뮬레이션 어려움).
+		const slice = new Slice(
+			Fragment.from(e.state.schema.text('hello [^9] world')),
+			0,
+			0
+		);
+		const transformPasted = e.view.someProp('transformPasted') as
+			| ((slice: Slice) => Slice)
+			| undefined;
+		expect(transformPasted).toBeDefined();
+		const transformed = transformPasted!(slice);
+		expect(transformed.content.childCount).toBe(3);
+		const first = transformed.content.child(0);
+		const second = transformed.content.child(1);
+		const third = transformed.content.child(2);
+		expect(first.type.name).toBe('text');
+		expect(first.text).toBe('hello ');
+		expect(second.type.name).toBe('footnoteMarker');
+		expect(second.attrs.label).toBe('9');
+		expect(third.type.name).toBe('text');
+		expect(third.text).toBe(' world');
+	});
+
+	it('paste 중첩 fragment 도 재귀 처리', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{ type: 'paragraph' }
+			]
+		});
+		// 두 단락이 포함된 slice — 각각의 텍스트가 변환 대상.
+		const para1 = e.state.schema.nodes.paragraph.create(
+			null,
+			e.state.schema.text('first [^1]')
+		);
+		const para2 = e.state.schema.nodes.paragraph.create(
+			null,
+			e.state.schema.text('and [^2] more')
+		);
+		const slice = new Slice(Fragment.fromArray([para1, para2]), 0, 0);
+
+		const transformPasted = e.view.someProp('transformPasted') as
+			| ((slice: Slice) => Slice)
+			| undefined;
+		const transformed = transformPasted!(slice);
+		expect(transformed.content.childCount).toBe(2);
+		const p1 = transformed.content.child(0);
+		const p2 = transformed.content.child(1);
+		// p1: 'first ' + marker(1)
+		expect(p1.childCount).toBe(2);
+		expect(p1.child(1).type.name).toBe('footnoteMarker');
+		expect(p1.child(1).attrs.label).toBe('1');
+		// p2: 'and ' + marker(2) + ' more'
+		expect(p2.childCount).toBe(3);
+		expect(p2.child(1).type.name).toBe('footnoteMarker');
+		expect(p2.child(1).attrs.label).toBe('2');
 	});
 });

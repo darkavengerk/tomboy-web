@@ -15,10 +15,10 @@
  * 바뀌면 PM 이 `update` 를 호출 → NodeView 가 def/ref 전환을 감지하고
  * `return false` 로 재생성을 유도한다.
  */
-import { Node } from '@tiptap/core';
+import { InputRule, Node } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
-import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
+import { Fragment, Slice, type Node as PMNode, type NodeType, type ResolvedPos } from '@tiptap/pm/model';
 
 /**
  * 정의 마커 판정 — top-level paragraph (제목 idx=0 제외) 의 첫 비공백 inline 자식.
@@ -106,7 +106,24 @@ export const FootnoteMarker = Node.create({
 		];
 	},
 
+	addInputRules() {
+		const type = this.type;
+		return [
+			new InputRule({
+				find: /\[\^([^\]\s]+)\]$/,
+				handler: ({ state, range, match }) => {
+					const $from = state.doc.resolve(range.from);
+					// 제목 (top-level idx 0) 에서는 차단.
+					if ($from.index(0) === 0) return null;
+					const node = type.create({ label: match[1] });
+					state.tr.replaceWith(range.from, range.to, node);
+				}
+			})
+		];
+	},
+
 	addProseMirrorPlugins() {
+		const type = this.type;
 		return [
 			new Plugin({
 				key: footnoteKindPluginKey,
@@ -119,7 +136,8 @@ export const FootnoteMarker = Node.create({
 						return this.getState(state);
 					}
 				}
-			})
+			}),
+			createPasteTransformPlugin(type)
 		];
 	},
 
@@ -150,3 +168,65 @@ export const FootnoteMarker = Node.create({
 		};
 	}
 });
+
+const FN_PASTE_RE = /\[\^([^\]\s]+)\]/g;
+
+/**
+ * Paste fragment 안의 text 노드를 [^N] 패턴으로 split → footnoteMarker 노드 삽입.
+ * 마크는 좌우 텍스트에만 전달 (atomic 노드는 마크 못 받음).
+ */
+function transformPastedSlice(slice: Slice, fnType: NodeType): Slice {
+	const newContent = transformFragment(slice.content, fnType);
+	if (newContent === slice.content) return slice;
+	return new Slice(newContent, slice.openStart, slice.openEnd);
+}
+
+function transformFragment(frag: Fragment, fnType: NodeType): Fragment {
+	const out: PMNode[] = [];
+	let changed = false;
+	frag.forEach((child) => {
+		if (child.isText && typeof child.text === 'string') {
+			FN_PASTE_RE.lastIndex = 0;
+			const text = child.text;
+			let last = 0;
+			let m: RegExpExecArray | null;
+			let split = false;
+			const pieces: PMNode[] = [];
+			while ((m = FN_PASTE_RE.exec(text)) !== null) {
+				split = true;
+				if (m.index > last) {
+					pieces.push(child.cut(last, m.index));
+				}
+				pieces.push(fnType.create({ label: m[1] }));
+				last = m.index + m[0].length;
+			}
+			if (split) {
+				if (last < text.length) pieces.push(child.cut(last));
+				out.push(...pieces);
+				changed = true;
+			} else {
+				out.push(child);
+			}
+		} else if (child.content.size > 0) {
+			const inner = transformFragment(child.content, fnType);
+			if (inner !== child.content) {
+				out.push(child.copy(inner));
+				changed = true;
+			} else {
+				out.push(child);
+			}
+		} else {
+			out.push(child);
+		}
+	});
+	if (!changed) return frag;
+	return Fragment.fromArray(out);
+}
+
+function createPasteTransformPlugin(fnType: NodeType): Plugin {
+	return new Plugin({
+		props: {
+			transformPasted: (slice) => transformPastedSlice(slice, fnType)
+		}
+	});
+}
