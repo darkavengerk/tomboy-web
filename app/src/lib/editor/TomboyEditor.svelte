@@ -1826,13 +1826,10 @@
 		background-size: contain;
 	}
 
-	/* 각주 [^N] — footnote 플러그인이 [^ 와 ] 를 .tomboy-fn-bracket 로
-	   폭 0 처리한다. 참조 라벨은 <sup class="tomboy-fn-ref"> 작은 위첨자,
-	   설명 마커 라벨은 <span class="tomboy-fn-def"> 일반 크기로 표시한다.
-	   마커는 .note XML 본문에 [^N] 텍스트로 그대로 남는다. */
-	.tomboy-editor :global(.tomboy-fn-bracket) {
-		font-size: 0;
-	}
+	/* 각주 [^N] — footnoteMarker atomic 노드의 NodeView (footnote/node.ts) 가
+	   참조는 <sup class="tomboy-fn-ref"> 작은 위첨자, 설명 마커는
+	   <span class="tomboy-fn-def"> 일반 크기로 렌더한다. 마커는 .note XML
+	   본문에 [^N] 텍스트로 그대로 직렬화된다. */
 	.tomboy-editor :global(.tomboy-fn-ref) {
 		font-size: 0.75em;
 		vertical-align: super;

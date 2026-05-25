@@ -915,6 +915,9 @@ function escapeXmlContent(text: string): string {
  */
 function getPlainText(node: JSONContent): string {
 	if (node.text) return node.text;
+	if (node.type === 'footnoteMarker') {
+		return `[^${(node.attrs?.label as string | undefined) ?? ''}]`;
+	}
 	if (!node.content) return '';
 	return node.content.map(getPlainText).join('');
 }
