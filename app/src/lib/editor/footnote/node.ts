@@ -5,9 +5,6 @@
  * 수 없고(atom) 부분 삭제도 불가. 라운드트립은 archiver
  * (noteContentArchiver.ts) 에서 [^N] 텍스트 ↔ 노드로 변환.
  *
- * 이 파일은 Task 1 에서 스키마만, Task 4 에서 NodeView 의 ref/def 위치
- * 기반 분기, Task 7 에서 input rule + paste transform 을 차례로 채운다.
- *
  * NodeView 의 ref/def 분기는 위치 의존적이라 노드 JSON 만 보면 알 수
  * 없다. PM 의 `matchesNode` 는 노드 + 데코레이션이 동일하면 `update` 를
  * 아예 호출하지 않으므로, 같은 파일 안에 작은 데코레이션 플러그인을
