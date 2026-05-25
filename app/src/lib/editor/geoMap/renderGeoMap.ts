@@ -74,9 +74,7 @@ export async function mountGeoMap(
 	const map = L.map(container, {
 		center: [coords.lat, coords.lon],
 		zoom: 15,
-		zoomControl: true,
-		// Leaflet's `tap` mode handles single-finger pan vs. tap on mobile.
-		tap: true
+		zoomControl: true
 	});
 	L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
 		maxZoom: 19,
