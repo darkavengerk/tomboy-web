@@ -91,6 +91,46 @@ function splitFootnotesInText(
 	return out;
 }
 
+// Inline-checkbox 패턴. `[ ]` (공백 1 개) 또는 `[x]` / `[X]`.
+// 좌우 텍스트는 mark 를 유지하고, 매치 자리에 atomic 노드를 삽입.
+const INLINE_CHECKBOX_SPLIT_RE = /\[([ xX])\]/g;
+
+/**
+ * 텍스트 안의 [ ]/[x] 패턴을 inlineCheckbox 노드로 split.
+ * splitFootnotesInText 와 동일 구조 — atomic 노드는 mark 안 받음,
+ * 좌우 텍스트만 원본 mark 유지.
+ */
+function splitInlineCheckboxesInText(
+	text: string,
+	marks: InlineMark[] | undefined
+): JSONContent[] {
+	INLINE_CHECKBOX_SPLIT_RE.lastIndex = 0;
+	const out: JSONContent[] = [];
+	let last = 0;
+	let m: RegExpExecArray | null;
+	while ((m = INLINE_CHECKBOX_SPLIT_RE.exec(text)) !== null) {
+		if (m.index > last) {
+			const piece: JSONContent = { type: 'text', text: text.slice(last, m.index) };
+			if (marks) piece.marks = marks;
+			out.push(piece);
+		}
+		const checked = m[1] === 'x' || m[1] === 'X';
+		out.push({ type: 'inlineCheckbox', attrs: { checked } });
+		last = m.index + m[0].length;
+	}
+	if (last === 0) {
+		const piece: JSONContent = { type: 'text', text };
+		if (marks) piece.marks = marks;
+		return [piece];
+	}
+	if (last < text.length) {
+		const piece: JSONContent = { type: 'text', text: text.slice(last) };
+		if (marks) piece.marks = marks;
+		out.push(piece);
+	}
+	return out;
+}
+
 // --- XML → ProseMirror JSON ---
 
 /**
@@ -162,6 +202,7 @@ export function serializeContent(doc: JSONContent): string {
 					if (inline.type === 'text') return inline.marks ?? [];
 					if (inline.type === 'hardBreak') return [];
 					if (inline.type === 'footnoteMarker') return [];
+					if (inline.type === 'inlineCheckbox') return [];
 				}
 				// Empty paragraph — keep scanning subsequent blocks.
 				continue;
@@ -378,11 +419,17 @@ function parseBlocks(container: Element): JSONContent[] {
 		for (const n of nodes) {
 			if (n.type === 'text' && typeof n.text === 'string') {
 				if (n.text.length === 0) continue;
-				// First split off any [^N] footnote markers — they become
-				// atomic nodes with no marks, while the surrounding text
-				// keeps the original marks. Then each text piece flows
-				// through the standard '\n' → paragraph-boundary handler.
-				const split = splitFootnotesInText(n.text, n.marks);
+				// 1) 각주 split (footnoteMarker) → 2) 인라인 체크박스 split.
+				// 각주가 분리한 텍스트 조각 각각에 대해 체크박스 패턴을 다시 split.
+				const fnSplit = splitFootnotesInText(n.text, n.marks);
+				const split: JSONContent[] = [];
+				for (const piece of fnSplit) {
+					if (piece.type === 'text' && typeof piece.text === 'string') {
+						split.push(...splitInlineCheckboxesInText(piece.text, piece.marks));
+					} else {
+						split.push(piece);
+					}
+				}
 				if (split.length === 1 && split[0].type === 'text') {
 					appendTextWithNewlines(split[0]);
 				} else {
