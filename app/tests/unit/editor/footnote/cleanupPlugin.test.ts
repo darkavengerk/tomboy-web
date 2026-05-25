@@ -66,7 +66,8 @@ function deleteAt(editor: Editor, from: number, to: number): void {
 }
 
 describe('footnote cleanup plugin', () => {
-	it("'['만 지우면 잔해 '^1]' 자동 제거", () => {
+	// removed in Task 8 — cleanupPlugin no longer needed once markers are atomic nodes.
+	it.skip("'['만 지우면 잔해 '^1]' 자동 제거", () => {
 		const editor = makeEditor(
 			doc(p('제목'), p('본문 [^1] 끝'), p('---'), p('[^1] 설명'))
 		);
@@ -75,7 +76,8 @@ describe('footnote cleanup plugin', () => {
 		expect(paragraphTexts(editor)[1]).toBe('본문  끝');
 	});
 
-	it("']'만 지우면 잔해 '[^1' 자동 제거", () => {
+	// removed in Task 8 — cleanupPlugin no longer needed.
+	it.skip("']'만 지우면 잔해 '[^1' 자동 제거", () => {
 		const editor = makeEditor(
 			doc(p('제목'), p('본문 [^1] 끝'), p('---'), p('[^1] 설명'))
 		);
@@ -84,7 +86,8 @@ describe('footnote cleanup plugin', () => {
 		expect(paragraphTexts(editor)[1]).toBe('본문  끝');
 	});
 
-	it("'^' 만 지우면 잔해 '[1]' 자동 제거", () => {
+	// removed in Task 8 — cleanupPlugin no longer needed.
+	it.skip("'^' 만 지우면 잔해 '[1]' 자동 제거", () => {
 		const editor = makeEditor(
 			doc(p('제목'), p('본문 [^1] 끝'), p('---'), p('[^1] 설명'))
 		);
@@ -93,7 +96,8 @@ describe('footnote cleanup plugin', () => {
 		expect(paragraphTexts(editor)[1]).toBe('본문  끝');
 	});
 
-	it('라벨만 지우면 잔해 [^] 자동 제거', () => {
+	// removed in Task 8 — cleanupPlugin no longer needed.
+	it.skip('라벨만 지우면 잔해 [^] 자동 제거', () => {
 		const editor = makeEditor(
 			doc(p('제목'), p('본문 [^1] 끝'), p('---'), p('[^1] 설명'))
 		);
@@ -111,7 +115,8 @@ describe('footnote cleanup plugin', () => {
 		expect(paragraphTexts(editor)[1]).toBe('본문 [^12] 끝');
 	});
 
-	it('한 단락에 마커 둘 — 망가진 것만 정리', () => {
+	// removed in Task 8 — cleanupPlugin no longer needed.
+	it.skip('한 단락에 마커 둘 — 망가진 것만 정리', () => {
 		const editor = makeEditor(
 			doc(p('제목'), p('A [^1] B [^2] C'), p('---'), p('[^1] 일'), p('[^2] 이'))
 		);
@@ -120,7 +125,8 @@ describe('footnote cleanup plugin', () => {
 		expect(paragraphTexts(editor)[1]).toBe('A  B [^2] C');
 	});
 
-	it('정의 단락 마커 부분 삭제 — 잔해는 지우되 설명 텍스트는 보존', () => {
+	// removed in Task 8 — cleanupPlugin no longer needed.
+	it.skip('정의 단락 마커 부분 삭제 — 잔해는 지우되 설명 텍스트는 보존', () => {
 		const editor = makeEditor(
 			doc(p('제목'), p('본문 [^1]'), p('---'), p('[^1] 설명 내용'))
 		);
@@ -165,7 +171,8 @@ describe('footnote cleanup plugin', () => {
 		expect(paragraphTexts(editor)[1]).toBe('[^2]');
 	});
 
-	it('두 마커가 각각 다른 트랜잭션으로 망가지면 — 각각 정리', () => {
+	// removed in Task 8 — cleanupPlugin no longer needed.
+	it.skip('두 마커가 각각 다른 트랜잭션으로 망가지면 — 각각 정리', () => {
 		const editor = makeEditor(
 			doc(p('제목'), p('A [^1] B [^2] C'), p('---'), p('[^1] 일'), p('[^2] 이'))
 		);

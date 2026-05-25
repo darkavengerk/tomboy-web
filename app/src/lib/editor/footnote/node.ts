@@ -18,20 +18,17 @@
 import { Node } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
-import type { Node as PMNode } from '@tiptap/pm/model';
+import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
 
 /**
- * 현재 노드 위치를 보고 정의 마커인지 판정.
- * 정의 마커 조건: top-level paragraph (제목 idx=0 제외) 의 첫 비공백 inline 자식.
+ * 정의 마커 판정 — top-level paragraph (제목 idx=0 제외) 의 첫 비공백 inline 자식.
  * 리스트 등 깊은 컨테이너 안의 마커는 항상 ref.
+ *
+ * NodeView (`isDefinitionPosition`), 데코레이션 (`isDefinitionAt`), 그리고
+ * `footnotes.ts` 의 매치 수집 — 세 호출지가 같은 규칙을 쓰도록 ResolvedPos
+ * 단일 입력으로 통일한다.
  */
-function isDefinitionPosition(
-	getPos: () => number | undefined,
-	view: EditorView
-): boolean {
-	const pos = getPos();
-	if (pos == null) return false;
-	const $pos = view.state.doc.resolve(pos);
+export function isDefinitionResolved($pos: ResolvedPos): boolean {
 	if ($pos.depth !== 1) return false;
 	if ($pos.parent.type.name !== 'paragraph') return false;
 	if ($pos.index(0) === 0) return false;
@@ -48,26 +45,17 @@ function isDefinitionPosition(
 	return !sawContent;
 }
 
-/**
- * 절대 위치 기반 def 판정 (데코레이션 빌드용). NodeView 헬퍼와 같은
- * 규칙을 다른 입력 (절대 pos + doc) 으로 풀어쓴다.
- */
+function isDefinitionPosition(
+	getPos: () => number | undefined,
+	view: EditorView
+): boolean {
+	const pos = getPos();
+	if (pos == null) return false;
+	return isDefinitionResolved(view.state.doc.resolve(pos));
+}
+
 function isDefinitionAt(doc: PMNode, pos: number): boolean {
-	const $pos = doc.resolve(pos);
-	if ($pos.depth !== 1) return false;
-	if ($pos.parent.type.name !== 'paragraph') return false;
-	if ($pos.index(0) === 0) return false;
-	const myIndex = $pos.index();
-	let sawContent = false;
-	$pos.parent.forEach((child, _offset, idx) => {
-		if (idx >= myIndex || sawContent) return;
-		if (child.isText) {
-			if (/\S/.test(child.text ?? '')) sawContent = true;
-		} else {
-			sawContent = true;
-		}
-	});
-	return !sawContent;
+	return isDefinitionResolved(doc.resolve(pos));
 }
 
 const footnoteKindPluginKey = new PluginKey('footnoteKindDecorations');

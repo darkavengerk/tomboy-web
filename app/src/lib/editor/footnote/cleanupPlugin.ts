@@ -42,7 +42,11 @@ export function createFootnoteCleanupPlugin(
 			const editor = getEditor();
 			if (editor?.view?.composing) return null;
 
-			const oldMatches = findFootnoteMatches(oldState.doc);
+			// atomic 노드 마커 (Task 5 도입) 는 부분 삭제 불가능 — debris 가 생길 수 없으므로
+			// 제외. Task 8 에서 이 플러그인 자체를 삭제하면 이 분기도 사라진다.
+			const oldMatches = findFootnoteMatches(oldState.doc).filter(
+				(m) => m.to - m.from > 1
+			);
 			if (oldMatches.length === 0) return null;
 
 			const mapping = new Mapping();
