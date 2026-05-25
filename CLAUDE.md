@@ -331,6 +331,31 @@ per-column DOM wrappers** — they're incompatible with PM's mutation
 observer and produced the editor-corruption bugs in commit `20d6d88`
 (reverted).
 
+## 지도 임베드 (geo: URL → 인라인 Leaflet 카드)
+
+See the **`tomboy-geomap`** skill. Notes containing a `geo:lat,lon` URL get
+an inline **square Leaflet map card** rendered below the URL — no modal, no
+separate viewer. The Toolbar 📍 버튼 reads `navigator.geolocation` and
+inserts the URL as `tomboyUrlLink`-marked text. Detection is mark-agnostic
+(plain-text `geo:` URLs also render). Lives in `app/src/lib/editor/geoMap/`;
+CSS + plugin wiring in `TomboyEditor.svelte`; button in `Toolbar.svelte`.
+
+Pattern mirrors `imagePreviewPlugin` (widget decoration at `r.to`,
+`side: 1`, stable key incl. href) but **the URL text stays visible** —
+coordinates are meaningful info to users. Leaflet is loaded via a
+module-level singleton dynamic import; OSM tiles direct, no API key.
+The marker-icon Vite path is fixed via `L.Icon.Default.mergeOptions`
+from static PNG imports (the `delete _getIconUrl` line is non-optional).
+
+The feature adds **no new mark, no schema change, no serialization
+path** — the `geo:` URL stores as text exactly like any URL, so Dropbox
+sync, Firebase sync, .note round-trip with Tomboy desktop all work
+unchanged. The map card is a runtime visualisation only.
+
+**Do not reintroduce a modal**, do not add reverse geocoding (would
+need an API key), and do not strip `tomboyUrlLink` from the inserted
+URL (Tomboy desktop needs it to render the URL as clickable).
+
 ## Slip-notes (슬립노트)
 
 See the **`tomboy-sleepnote`** skill. Notes in the `[0] Slip-Box` notebook form

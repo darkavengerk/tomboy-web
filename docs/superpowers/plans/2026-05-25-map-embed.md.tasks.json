@@ -31,31 +31,31 @@
     {
       "id": 14,
       "subject": "Task 4: insertCurrentLocation 헬퍼 + 테스트",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [10],
       "description": "**Goal:** navigator.geolocation → tomboyUrlLink mark 텍스트 삽입.\n\n**Files:**\n- Create: `app/src/lib/editor/geoMap/insertCurrentLocation.ts`\n- Test: `app/tests/unit/editor/insertCurrentLocation.test.ts`\n\n**Verify:** `cd app && npx vitest run tests/unit/editor/insertCurrentLocation.test.ts`\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/geoMap/insertCurrentLocation.ts\", \"app/tests/unit/editor/insertCurrentLocation.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/insertCurrentLocation.test.ts\", \"acceptanceCriteria\": [\"6-decimal precision\", \"tomboyUrlLink mark applied\", \"PERMISSION_DENIED toast\", \"POSITION_UNAVAILABLE toast\", \"TIMEOUT toast\", \"enableHighAccuracy + 10s timeout opts\", \"all tests pass\"]}\n```"
     },
     {
       "id": 15,
       "subject": "Task 5: TomboyEditor에 플러그인 등록 + CSS",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [13],
       "description": "**Goal:** geoMapPlugin extensions 등록 + .tomboy-geo-map CSS (aspect-ratio 1/1).\n\n**Files:**\n- Modify: `app/src/lib/editor/TomboyEditor.svelte`\n\n**Verify:** `cd app && npm run check && npm run build && npx vitest run`\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/TomboyEditor.svelte\"], \"verifyCommand\": \"cd app && npm run check && npm run build && npx vitest run\", \"acceptanceCriteria\": [\"createGeoMapPlugin imported\", \"Extension registered after imagePreview\", \"aspect-ratio 1/1 + 100% width CSS\", \"placeholder styling\", \".leaflet-container fills box\", \"no regressions in check/build/tests\"]}\n```"
     },
     {
       "id": 16,
       "subject": "Task 6: Toolbar 📍 버튼",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [14, 15],
       "description": "**Goal:** Toolbar 드로어에 📍 현재 위치 삽입 버튼 추가.\n\n**Files:**\n- Modify: `app/src/lib/editor/Toolbar.svelte`\n\n**Verify:** `cd app && npm run check` + 데스크탑 수동 스모크\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/Toolbar.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"insertCurrentLocation imported\", \"handleGeoClick handler\", \"📍 button in drawer next to image upload\", \"npm run check passes\", \"desktop smoke: button → permission → insert + map renders\"]}\n```"
     },
     {
       "id": 17,
       "subject": "Task 7: 수동 통합 검증",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [16],
       "description": "**Goal:** 단위 테스트로 잡지 못하는 통합 동작(Leaflet 실제 렌더, 모바일, sync) 수동 확인.\n\n**Files:** None (수동)\n\n**Verify:** 체크리스트 통과 보고\n\n```json:metadata\n{\"files\": [], \"verifyCommand\": \"manual: see Task 7 checklist\", \"acceptanceCriteria\": [\"desktop insert+render+interact\", \"invalid coords ignored\", \"multi-map\", \"atomic backspace\", \"permission denied toast\", \"mobile pan + page scroll\", \"round-trip via reload\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-25T04:37:13Z"
+  "lastUpdated": "2026-05-25T07:30:00Z"
 }
