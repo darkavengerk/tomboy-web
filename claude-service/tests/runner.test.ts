@@ -177,7 +177,7 @@ describe('runClaude', () => {
     expect(fake.lastCall!.child.killed).toBe(true);
   });
 
-  it('ignores tool_use input_json_delta and structural events (MVP)', async () => {
+  it('still forwards text_delta within a tool_use → text sequence (text delta regression guard)', async () => {
     const fake = makeFakeSpawn();
     const stream = runClaude(
       { messages: [] },
@@ -201,9 +201,141 @@ describe('runClaude', () => {
     fake.lastCall!.child.emitStdout('{"type":"result","subtype":"success"}\n');
     fake.lastCall!.child.exit(0);
     const out = await consume(stream);
-    expect(out).not.toContain('tool_use');
-    expect(out).not.toContain('input_json_delta');
-    expect(out).not.toContain('content_block_start');
     expect(out).toContain('"delta":"after tool"');
+  });
+});
+
+describe('runClaude — step events', () => {
+  // Helper: parse all "data: {...}\n\n" frames from SSE bytes
+  function frames(s: string): unknown[] {
+    return s
+      .split('\n\n')
+      .filter((f) => f.startsWith('data:'))
+      .map((f) => JSON.parse(f.slice(5).trim()));
+  }
+
+  it('emits step on thinking content_block_start and accumulates on thinking_delta', async () => {
+    const fake = makeFakeSpawn();
+    const stream = runClaude(
+      { messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }] },
+      new AbortController().signal,
+      { spawn: fake.spawn },
+    );
+    fake.lastCall!.child.emitStdout(
+      '{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}}\n' +
+      '{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"먼저 X를 "}}}\n' +
+      '{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"확인해야겠다"}}}\n' +
+      '{"type":"result","subtype":"success"}\n',
+    );
+    fake.lastCall!.child.exit(0);
+    const out = await consume(stream);
+    const evs = frames(out);
+    const steps = evs.filter((e: any) => e.step);
+    expect(steps).toEqual([
+      { step: { kind: 'thinking', label: '생각 중', body: '' } },
+      { step: { kind: 'thinking', label: '생각 중', body: '먼저 X를 ' } },
+      { step: { kind: 'thinking', label: '생각 중', body: '먼저 X를 확인해야겠다' } },
+    ]);
+  });
+
+  it('emits step on tool_use content_block_start with tool name in label', async () => {
+    const fake = makeFakeSpawn();
+    const stream = runClaude(
+      { messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }] },
+      new AbortController().signal,
+      { spawn: fake.spawn },
+    );
+    fake.lastCall!.child.emitStdout(
+      '{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"tu_01","name":"Bash","input":{}}}}\n' +
+      '{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"cmd\\":\\"ls\\"}"}}}\n' +
+      '{"type":"result","subtype":"success"}\n',
+    );
+    fake.lastCall!.child.exit(0);
+    const out = await consume(stream);
+    const steps = frames(out).filter((e: any) => e.step);
+    expect(steps[0]).toEqual({ step: { kind: 'tool_use', label: 'Bash 실행 중', body: '' } });
+    expect(steps[1]).toEqual({ step: { kind: 'tool_use', label: 'Bash 실행 중', body: '{"cmd":"ls"}' } });
+  });
+
+  it('emits step on tool_result user message with tool name resolved from prior tool_use', async () => {
+    const fake = makeFakeSpawn();
+    const stream = runClaude(
+      { messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }] },
+      new AbortController().signal,
+      { spawn: fake.spawn },
+    );
+    fake.lastCall!.child.emitStdout(
+      '{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"tu_01","name":"Bash","input":{}}}}\n' +
+      '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu_01","content":"hello world"}]}}\n' +
+      '{"type":"result","subtype":"success"}\n',
+    );
+    fake.lastCall!.child.exit(0);
+    const out = await consume(stream);
+    const steps = frames(out).filter((e: any) => e.step);
+    const last = steps[steps.length - 1] as { step: { kind: string; label: string; body: string } };
+    expect(last.step.kind).toBe('tool_result');
+    expect(last.step.label).toBe('Bash 결과');
+    expect(last.step.body).toBe('hello world');
+  });
+
+  it('truncates tool_result body to 500 chars', async () => {
+    const fake = makeFakeSpawn();
+    const stream = runClaude(
+      { messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }] },
+      new AbortController().signal,
+      { spawn: fake.spawn },
+    );
+    const long = 'x'.repeat(800);
+    fake.lastCall!.child.emitStdout(
+      '{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"tu_01","name":"Read","input":{}}}}\n' +
+      `{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu_01","content":${JSON.stringify(long)}}]}}\n` +
+      '{"type":"result","subtype":"success"}\n',
+    );
+    fake.lastCall!.child.exit(0);
+    const out = await consume(stream);
+    const steps = frames(out).filter((e: any) => e.step);
+    const last = steps[steps.length - 1] as { step: { body: string } };
+    expect(last.step.body.length).toBe(500);
+    expect(last.step.body).toBe('x'.repeat(500));
+  });
+
+  it('emits step response_start on text content_block_start; subsequent text_delta still emits {delta} only', async () => {
+    const fake = makeFakeSpawn();
+    const stream = runClaude(
+      { messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }] },
+      new AbortController().signal,
+      { spawn: fake.spawn },
+    );
+    fake.lastCall!.child.emitStdout(
+      '{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}\n' +
+      '{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"answer"}}}\n' +
+      '{"type":"result","subtype":"success"}\n',
+    );
+    fake.lastCall!.child.exit(0);
+    const out = await consume(stream);
+    const evs = frames(out);
+    const steps = evs.filter((e: any) => e.step);
+    const deltas = evs.filter((e: any) => e.delta);
+    expect(steps).toEqual([
+      { step: { kind: 'response_start', label: '응답 작성 중', body: '' } },
+    ]);
+    expect(deltas).toEqual([{ delta: 'answer' }]);
+  });
+
+  it('falls back to "도구 결과" label when tool_use_id unknown', async () => {
+    const fake = makeFakeSpawn();
+    const stream = runClaude(
+      { messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }] },
+      new AbortController().signal,
+      { spawn: fake.spawn },
+    );
+    fake.lastCall!.child.emitStdout(
+      '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu_unknown","content":"x"}]}}\n' +
+      '{"type":"result","subtype":"success"}\n',
+    );
+    fake.lastCall!.child.exit(0);
+    const out = await consume(stream);
+    const steps = frames(out).filter((e: any) => e.step);
+    expect((steps[0] as any).step.label).toBe('도구 결과');
   });
 });

@@ -45,6 +45,7 @@
 		autoWeekdayPluginKey,
 	} from "./autoWeekday/autoWeekdayPlugin.js";
 	import { createChatNotePlugin } from "./chatNote/chatNotePlugin.js";
+	import { createThinkingDisplayPlugin } from "./chatNote/thinkingDisplayPlugin.js";
 	import {
 		createTableBlockPlugin,
 		setCtrlHeld as setTableBlockCtrlHeld,
@@ -438,6 +439,12 @@
 					name: "tomboyLlmNote",
 					addProseMirrorPlugins() {
 						return [createChatNotePlugin()];
+					},
+				}),
+				Extension.create({
+					name: "tomboyThinkingDisplay",
+					addProseMirrorPlugins() {
+						return [createThinkingDisplayPlugin()];
 					},
 				}),
 				Extension.create({
@@ -2136,5 +2143,48 @@
 	.tomboy-editor :global(.tomboy-table-block-add-col:hover),
 	.tomboy-editor :global(.tomboy-table-block-add-row:hover) {
 		background: #1b5e20;
+	}
+
+	/* Transient thinking display (PM widget decoration, Task 3/4).
+	   Widget DOM is created by the plugin outside Svelte's scoped CSS
+	   reach, so every selector below MUST be :global(...). The widget is
+	   removed by clearStep before the next Q: paragraph is appended, so
+	   it never persists in xmlContent — it's purely a streaming UI hint. */
+	:global(.thinking-display) {
+		margin: 0.5rem 0;
+		padding: 0.4rem 0.6rem 0.4rem 0.8rem;
+		border-left: 3px solid var(--border-color, #cbd5e1);
+		background: var(--bg-subtle, rgba(127, 127, 127, 0.06));
+		border-radius: 0 0.25rem 0.25rem 0;
+		font-size: clamp(0.8rem, 1.5vw, 0.95rem);
+		opacity: 0.78;
+		user-select: none;
+	}
+	:global(.thinking-display[data-kind="tool_use"]) {
+		border-left-color: #6b7c93;
+	}
+	:global(.thinking-display[data-kind="tool_result"]) {
+		border-left-color: #4ade80;
+	}
+	:global(.thinking-display[data-kind="response_start"]) {
+		border-left-color: #60a5fa;
+	}
+	:global(.thinking-display-label) {
+		display: block;
+		font-weight: 600;
+		font-size: 0.85em;
+		margin-bottom: 0.2rem;
+		color: var(--text-muted, #64748b);
+	}
+	:global(.thinking-display-body) {
+		margin: 0;
+		padding: 0;
+		border: none;
+		white-space: pre-wrap;
+		max-height: 12em;
+		overflow: hidden;
+		-webkit-mask-image: linear-gradient(to bottom, black 65%, transparent 100%);
+		mask-image: linear-gradient(to bottom, black 65%, transparent 100%);
+		font-family: inherit;
 	}
 </style>

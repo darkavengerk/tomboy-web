@@ -1,0 +1,37 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-25-claude-thinking-display.md",
+  "tasks": [
+    {
+      "id": 0,
+      "subject": "Task 1: claude-service runner.ts — {step} SSE 이벤트 emit",
+      "status": "completed",
+      "description": "**Goal:** `runner.ts`가 stream-json의 thinking/tool/text 이벤트를 신규 `{step}` SSE 이벤트로 변환해 송신. 기존 `{delta}` 동작은 보존.\n\n**Files:**\n- Modify: `claude-service/src/runner.ts:102-124` (handleEvent, 새 상태 변수)\n- Modify: `claude-service/tests/runner.test.ts` (테스트 6 케이스 추가)\n\n**Acceptance Criteria:**\n- [ ] `content_block_start` (type='thinking') → `{step:{kind:'thinking',label:'생각 중',body:''}}` emit\n- [ ] 후속 `thinking_delta` → 누적된 body로 step 재emit\n- [ ] `content_block_start` (type='tool_use', name='Bash') → `{step:{kind:'tool_use',label:'Bash 실행 중',body:''}}` emit\n- [ ] 후속 `input_json_delta` → 누적 args JSON body로 step 재emit\n- [ ] `type:'user'` (tool_result, 알려진 tool_use_id) → `{step:{kind:'tool_result',label:'Bash 결과',body:'<앞 500자>'}}` emit\n- [ ] `content_block_start` (type='text') → `{step:{kind:'response_start',label:'응답 작성 중',body:''}}` emit, 후속 text_delta는 step 안 갱신\n- [ ] 기존 `text_delta` → `{delta}` 동작 회귀 없음\n- [ ] tool_use_id 모름 → label='도구 결과' fallback\n\n**Verify:** `cd claude-service && npm test -- runner` → 전 케이스 PASS\n\n**Steps:** TDD red→green: 6 신규 테스트 → handleEvent 교체 (currentStep/toolNameById 상태 + thinking/tool_use/text content_block_start/delta 처리, type:'user' tool_result 처리, type:'result' done) → 회귀 확인 → 커밋.\n\n```json:metadata\n{\"files\": [\"claude-service/src/runner.ts\", \"claude-service/tests/runner.test.ts\"], \"verifyCommand\": \"cd claude-service && npm test -- runner\", \"acceptanceCriteria\": [\"thinking content_block_start emit\", \"thinking_delta 누적 body\", \"tool_use start with name label\", \"input_json_delta 누적\", \"tool_result with tool_use_id name\", \"tool_result body 500자 truncate\", \"text content_block_start emit response_start\", \"text_delta {delta} 회귀 없음\", \"unknown tool_use_id fallback label\"]}\n```"
+    },
+    {
+      "id": 1,
+      "subject": "Task 2: backends/claude.ts — onStep 옵션 + SSE 파서 분기",
+      "status": "completed",
+      "blockedBy": [
+        0
+      ],
+      "description": "**Goal:** 브라우저 측 `sendClaude` 가 `{step}` SSE 프레임을 받으면 `onStep` 콜백으로 전달. `onStep` 미제공이면 silently 무시.\n\n**Files:**\n- Modify: `app/src/lib/chatNote/backends/claude.ts:31-131` (타입 추가, opts 확장, 파서 분기)\n- Modify: `app/tests/unit/chatNote/sendClaude.test.ts` (테스트 2 케이스 추가)\n\n**Acceptance Criteria:**\n- [ ] `ThinkingStep` / `ThinkingStepKind` 타입 export\n- [ ] `SendClaudeOpts.onStep?: (step: ThinkingStep) => void` 추가\n- [ ] SSE 파서가 `{step:...}` 프레임을 받으면 `onStep` (있을 때만) 호출\n- [ ] 모르는 필드는 silently 무시\n- [ ] 기존 `{delta}` `{done}` `{error}` 처리 회귀 없음\n\n**Verify:** `cd app && npm test -- sendClaude && npm run check`\n\n**Steps:** TDD red→green: 2 신규 케이스 (onStep forwards, onStep undefined silently ignores) → ThinkingStep export + onStep optional + parser 분기 → 타입 체크 → 커밋.\n\n```json:metadata\n{\"files\": [\"app/src/lib/chatNote/backends/claude.ts\", \"app/tests/unit/chatNote/sendClaude.test.ts\"], \"verifyCommand\": \"cd app && npm test -- sendClaude && npm run check\", \"acceptanceCriteria\": [\"ThinkingStep type export\", \"onStep option in opts\", \"parser forwards {step} to onStep\", \"onStep undefined silently ignored\", \"기존 delta/done/error 회귀 없음\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 3: thinkingDisplayPlugin — PM 플러그인 + widget decoration",
+      "status": "completed",
+      "description": "**Goal:** 새 PM 플러그인이 transient한 thinking blockquote DOM을 widget decoration으로 렌더. setStep/clearStep 헬퍼로 외부에서 제어. doc 미오염.\n\n**Files:**\n- Create: `app/src/lib/editor/chatNote/thinkingDisplayPlugin.ts`\n- Create: `app/tests/unit/editor/chatNote/thinkingDisplayPlugin.test.ts`\n\n**Acceptance Criteria:**\n- [ ] `createThinkingDisplayPlugin()` export\n- [ ] `setStep(view, step)` / `clearStep(view)` 헬퍼 export\n- [ ] state.step=null → 빈 DecorationSet\n- [ ] state.step 있음 → 마지막 단락 시작 위치에 widget decoration 1개\n- [ ] widget DOM: `<aside class=\"thinking-display\" data-kind=\"<kind>\"><header class=\"thinking-display-label\">…</header><blockquote class=\"thinking-display-body\">…</blockquote></aside>`\n- [ ] step.body 빈 문자열 → `<blockquote>` 생략 (label-only)\n- [ ] 연속 setStep → DecorationSet 여전히 widget 1개 (교체)\n- [ ] 빈 doc(childCount=0) → step 무시 (decoration 0개)\n\n**Verify:** `cd app && npm test -- thinkingDisplayPlugin && npm run check`\n\n**Steps:** TDD red→green: 7 케이스 테스트 → ThinkingStepKind/ThinkingStep/PluginState 타입, thinkingDisplayKey, buildWidgetDom, lastParagraphStart, createThinkingDisplayPlugin, setStep, clearStep 구현 → 타입 체크 → 커밋.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/chatNote/thinkingDisplayPlugin.ts\", \"app/tests/unit/editor/chatNote/thinkingDisplayPlugin.test.ts\"], \"verifyCommand\": \"cd app && npm test -- thinkingDisplayPlugin && npm run check\", \"acceptanceCriteria\": [\"createThinkingDisplayPlugin export\", \"setStep/clearStep 헬퍼\", \"step=null → empty DecorationSet\", \"step 있음 → widget 1개\", \"widget DOM 구조 정확\", \"body 빈 → blockquote 생략\", \"연속 setStep 교체\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 4: ChatSendBar + TomboyEditor 와이어링 + CSS + manual smoke",
+      "status": "completed",
+      "blockedBy": [
+        1,
+        2
+      ],
+      "description": "**Goal:** `ChatSendBar.svelte`가 `onStep` 콜백으로 `setStep` dispatch하고, `send`의 `finally`에서 `clearStep`. `TomboyEditor.svelte`가 chat note일 때 플러그인을 등록하고 `.thinking-display` 스타일 정의. 데스크탑 claude-service 재배포 후 manual smoke로 종단 검증.\n\n**Files:**\n- Modify: `app/src/lib/editor/chatNote/ChatSendBar.svelte:207-262`\n- Modify: `app/src/lib/editor/TomboyEditor.svelte:46` 근처 (import + 등록 + `<style>`)\n\n**Acceptance Criteria:**\n- [ ] `runClaude`가 `sendClaude`에 `onStep: (step) => setStep(editor.view, step)` 전달\n- [ ] `send`의 `finally`에서 `clearStep(editor.view)`\n- [ ] `TomboyEditor.svelte`가 `createThinkingDisplayPlugin()` 등록 (chatNotePlugin과 같은 게이트)\n- [ ] `<style>`에 `:global(.thinking-display)` + label/body + data-kind 색상 톤 + max-height fade mask\n- [ ] svelte-check / build / 전 unit test 회귀 없음\n- [ ] **Manual smoke**: 데스크탑 claude-service 재배포 → `claude://opus` + `cwd: /tmp` 노트에서 도구 유발 질문 → step blockquote가 갈아끼우며 표시 → done과 동시 사라짐 → A: 누적/다음 Q: 정상 → 새로고침 후 본문에 thinking 흔적 없음\n\n**Verify:** `cd app && npm run check && npm run build && npm test` + manual smoke.\n\n**Steps:** ChatSendBar import/wire onStep + finally clearStep → TomboyEditor import/등록 + `:global(.thinking-display)` 스타일 → 회귀 확인 → claude-service 재배포 → manual smoke → 커밋 → `graphify update .`\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/chatNote/ChatSendBar.svelte\", \"app/src/lib/editor/TomboyEditor.svelte\"], \"verifyCommand\": \"cd app && npm run check && npm run build && npm test\", \"acceptanceCriteria\": [\"onStep wired to setStep\", \"clearStep in send finally\", \"plugin registered\", \"thinking-display styles with data-kind tones + fade mask\", \"svelte-check + build + test 회귀 없음\", \"manual smoke: step blockquote 갈아끼움 + done 즉시 사라짐 + 본문 미오염\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-25T13:05:50Z"
+}

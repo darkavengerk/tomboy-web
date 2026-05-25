@@ -18,6 +18,10 @@
 		ClaudeChatError,
 		type ClaudeChatBody
 	} from '$lib/chatNote/backends/claude.js';
+	import {
+		setStep,
+		clearStep
+	} from '$lib/editor/chatNote/thinkingDisplayPlugin.js';
 	import { pushToast } from '$lib/stores/toast.js';
 
 	type Props = {
@@ -240,8 +244,16 @@
 					appendToLastParagraph(delta);
 					tokenCount++;
 				},
+				onStep: (step) => {
+					setStep(editor.view, step);
+				},
 				signal: ctrl.signal
 			});
+			// Remove the transient thinking widget BEFORE appending the
+			// follow-up Q: paragraph, so the plugin's lastParagraphStart
+			// re-computation doesn't briefly relocate the widget above the
+			// newly inserted Q: line. clearStep is idempotent.
+			clearStep(editor.view);
 			if (r.reason === 'done') {
 				appendParagraph('');
 				appendParagraph('Q: ');
@@ -250,6 +262,9 @@
 			}
 			// abort → partial A: preserved, no new Q:
 		} catch (err) {
+			// Drop the thinking widget on every error path too so partial
+			// state doesn't linger past the abort/exception.
+			clearStep(editor.view);
 			if (err instanceof ClaudeChatError) {
 				const line = formatClaudeError(err);
 				appendToLastParagraph(line);
@@ -294,6 +309,10 @@
 		} finally {
 			abortController = null;
 			editor.setEditable(true);
+			// Safety net: if any unhandled error bypassed the runner-level
+			// clearStep calls (e.g. non-ClaudeChatError rethrow), drop the
+			// widget here. Idempotent — no-op when already cleared.
+			clearStep(editor.view);
 		}
 	}
 
