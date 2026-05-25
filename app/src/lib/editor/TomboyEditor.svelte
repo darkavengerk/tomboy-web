@@ -34,6 +34,7 @@
 		extractTitleText,
 	} from "./titleUniqueGuard.js";
 	import { createImagePreviewPlugin } from "./imagePreview/imagePreviewPlugin.js";
+	import { createGeoMapPlugin } from "./geoMap/geoMapPlugin.js";
 	import {
 		createSendListItemPlugin,
 		sendListItemPluginKey,
@@ -400,6 +401,12 @@
 					name: "tomboyImagePreview",
 					addProseMirrorPlugins() {
 						return [createImagePreviewPlugin()];
+					},
+				}),
+				Extension.create({
+					name: "tomboyGeoMap",
+					addProseMirrorPlugins() {
+						return [createGeoMapPlugin()];
 					},
 				}),
 				Extension.create({
@@ -1274,6 +1281,26 @@
 	   removes the whole URL, arrow keys skip across it. */
 	.tomboy-editor :global(.tomboy-image-url-hidden) {
 		display: none;
+	}
+
+	.tomboy-editor :global(.tomboy-geo-map) {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 100%;
+		aspect-ratio: 1 / 1;
+		margin: 8px 0;
+		background: #f0f0f0;
+		border-radius: 4px;
+		overflow: hidden;
+		color: #888;
+		font-size: 0.85rem;
+	}
+	/* Once Leaflet mounts, its container fills the box. The flex centering
+	   above only affects the placeholder text while loading. */
+	.tomboy-editor :global(.tomboy-geo-map .leaflet-container) {
+		width: 100%;
+		height: 100%;
 	}
 
 	/* Highlight */

@@ -3,6 +3,7 @@
 	import type { SizeLevel } from './extensions/TomboySize.js';
 	import { modKeys } from '$lib/desktop/modKeys.svelte.js';
 	import { insertTodayDate } from './insertDate.js';
+	import { insertCurrentLocation } from './geoMap/insertCurrentLocation.js';
 	import { deleteCurrentLine } from './deleteLine.js';
 	import { ctrlEnterSplit } from './ctrlEnterSplit.js';
 	import { insertTodoBlock } from './todoRegion/index.js';
@@ -27,6 +28,11 @@
 
 	function handleImageClick() {
 		fileInput?.click();
+	}
+
+	function handleGeoClick() {
+		if (!editor) return;
+		void insertCurrentLocation(editor);
 	}
 
 	function handleFileSelected(e: Event) {
@@ -185,6 +191,10 @@
 				onchange={handleFileSelected}
 			/>
 		{/if}
+
+		<button class="icon-btn" onclick={handleGeoClick} title="현재 위치 삽입">
+			📍
+		</button>
 
 		{#if onextractnote}
 			<button class="icon-btn" onclick={() => onextractnote?.()} title="선택 영역을 새 노트로">
