@@ -212,6 +212,9 @@ export class SpectatorHub {
 		});
 		this.tmux.on('layoutChange', (winId: string) => {
 			if (winId === this.windowId) {
+				// Layout changes (split, resize, close) make cached cols/rows/cursor stale.
+				// Clear the entire cache; next ensurePaneState re-fetches fresh geometry.
+				this.paneStates.clear();
 				for (const fn of this.layoutChangeListeners) fn(winId);
 				void this.refreshPaneOrder();
 			}

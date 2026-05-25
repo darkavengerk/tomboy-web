@@ -1716,3 +1716,21 @@ test('sub.controlPath: returns undefined when hub has no controlPath', () => {
 	assert.equal(sub.controlPath, undefined);
 	sub.close();
 });
+
+// ---------------------------------------------------------------------------
+// Spec compliance fix: %layout-change invalidates paneStates cache
+// ---------------------------------------------------------------------------
+
+test('SpectatorHub: %layout-change invalidates paneStates cache', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = async (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return [];
+		if (cmd.startsWith('display-message') && cmd.includes('-t work')) return ['$1|@1|%2|80|24|0|0|0|0|main'];
+		if (cmd.startsWith('list-panes')) return ['%2'];
+		return [];
+	};
+	await hub.bootstrap('work');
+	assert.equal(hub.paneStates.size, 1, 'paneStates populated after bootstrap');
+	tmux.emit('layoutChange', '@1');
+	assert.equal(hub.paneStates.size, 0, 'paneStates cleared on layoutChange');
+});
