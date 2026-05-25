@@ -91,3 +91,131 @@ describe('footnoteMarker schema', () => {
 		expect(html).toMatch(/>2<\/sup>|>2<\/span>/);
 	});
 });
+
+describe('footnoteMarker NodeView — ref/def 위치 기반', () => {
+	function html(e: Editor): string {
+		return e.view.dom.innerHTML;
+	}
+
+	it('단락 첫 inline 이면 tomboy-fn-def', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{
+					type: 'paragraph',
+					content: [
+						{ type: 'footnoteMarker', attrs: { label: '1' } },
+						{ type: 'text', text: ' 정의' }
+					]
+				}
+			]
+		});
+		expect(html(e)).toContain('tomboy-fn-def');
+		expect(html(e)).not.toContain('tomboy-fn-ref');
+	});
+
+	it('단락 중간이면 tomboy-fn-ref', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{
+					type: 'paragraph',
+					content: [
+						{ type: 'text', text: '본문 ' },
+						{ type: 'footnoteMarker', attrs: { label: '1' } }
+					]
+				}
+			]
+		});
+		expect(html(e)).toContain('tomboy-fn-ref');
+		expect(html(e)).not.toContain('tomboy-fn-def');
+	});
+
+	it('리스트 항목 안의 첫 inline 이어도 항상 ref', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{
+					type: 'bulletList',
+					content: [
+						{
+							type: 'listItem',
+							content: [
+								{
+									type: 'paragraph',
+									content: [
+										{ type: 'footnoteMarker', attrs: { label: '1' } }
+									]
+								}
+							]
+						}
+					]
+				}
+			]
+		});
+		expect(html(e)).toContain('tomboy-fn-ref');
+		expect(html(e)).not.toContain('tomboy-fn-def');
+	});
+
+	it('제목 단락의 마커는 ref', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				{
+					type: 'paragraph',
+					content: [
+						{ type: 'footnoteMarker', attrs: { label: '1' } },
+						{ type: 'text', text: ' 제목' }
+					]
+				}
+			]
+		});
+		expect(html(e)).toContain('tomboy-fn-ref');
+	});
+
+	it('선행 공백만 있으면 def 인정', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{
+					type: 'paragraph',
+					content: [
+						{ type: 'text', text: '   ' },
+						{ type: 'footnoteMarker', attrs: { label: '1' } },
+						{ type: 'text', text: ' 정의' }
+					]
+				}
+			]
+		});
+		expect(html(e)).toContain('tomboy-fn-def');
+	});
+
+	it('앞에 텍스트 삽입 시 def → ref 갱신', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{
+					type: 'paragraph',
+					content: [
+						{ type: 'footnoteMarker', attrs: { label: '1' } },
+						{ type: 'text', text: ' 정의' }
+					]
+				}
+			]
+		});
+		expect(html(e)).toContain('tomboy-fn-def');
+		// 두 번째 단락의 맨 앞에 텍스트 삽입.
+		let para1Start = 0;
+		e.state.doc.forEach((_n, offset, idx) => {
+			if (idx === 1) para1Start = offset;
+		});
+		e.view.dispatch(e.state.tr.insertText('앞쪽 ', para1Start + 1));
+		expect(html(e)).toContain('tomboy-fn-ref');
+		expect(html(e)).not.toContain('tomboy-fn-def');
+	});
+});

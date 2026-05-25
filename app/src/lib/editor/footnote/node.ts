@@ -7,8 +7,84 @@
  *
  * 이 파일은 Task 1 에서 스키마만, Task 4 에서 NodeView 의 ref/def 위치
  * 기반 분기, Task 7 에서 input rule + paste transform 을 차례로 채운다.
+ *
+ * NodeView 의 ref/def 분기는 위치 의존적이라 노드 JSON 만 보면 알 수
+ * 없다. PM 의 `matchesNode` 는 노드 + 데코레이션이 동일하면 `update` 를
+ * 아예 호출하지 않으므로, 같은 파일 안에 작은 데코레이션 플러그인을
+ * 둬서 def 위치의 마커에 `data-fn-kind=def` 를 달아준다. 데코레이션이
+ * 바뀌면 PM 이 `update` 를 호출 → NodeView 가 def/ref 전환을 감지하고
+ * `return false` 로 재생성을 유도한다.
  */
 import { Node } from '@tiptap/core';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
+import type { Node as PMNode } from '@tiptap/pm/model';
+
+/**
+ * 현재 노드 위치를 보고 정의 마커인지 판정.
+ * 정의 마커 조건: top-level paragraph (제목 idx=0 제외) 의 첫 비공백 inline 자식.
+ * 리스트 등 깊은 컨테이너 안의 마커는 항상 ref.
+ */
+function isDefinitionPosition(
+	getPos: () => number | undefined,
+	view: EditorView
+): boolean {
+	const pos = getPos();
+	if (pos == null) return false;
+	const $pos = view.state.doc.resolve(pos);
+	if ($pos.depth !== 1) return false;
+	if ($pos.parent.type.name !== 'paragraph') return false;
+	if ($pos.index(0) === 0) return false;
+	const myIndex = $pos.index();
+	let sawContent = false;
+	$pos.parent.forEach((child, _offset, idx) => {
+		if (idx >= myIndex || sawContent) return;
+		if (child.isText) {
+			if (/\S/.test(child.text ?? '')) sawContent = true;
+		} else {
+			sawContent = true;
+		}
+	});
+	return !sawContent;
+}
+
+/**
+ * 절대 위치 기반 def 판정 (데코레이션 빌드용). NodeView 헬퍼와 같은
+ * 규칙을 다른 입력 (절대 pos + doc) 으로 풀어쓴다.
+ */
+function isDefinitionAt(doc: PMNode, pos: number): boolean {
+	const $pos = doc.resolve(pos);
+	if ($pos.depth !== 1) return false;
+	if ($pos.parent.type.name !== 'paragraph') return false;
+	if ($pos.index(0) === 0) return false;
+	const myIndex = $pos.index();
+	let sawContent = false;
+	$pos.parent.forEach((child, _offset, idx) => {
+		if (idx >= myIndex || sawContent) return;
+		if (child.isText) {
+			if (/\S/.test(child.text ?? '')) sawContent = true;
+		} else {
+			sawContent = true;
+		}
+	});
+	return !sawContent;
+}
+
+const footnoteKindPluginKey = new PluginKey('footnoteKindDecorations');
+
+function buildKindDecorations(doc: PMNode): DecorationSet {
+	const decos: Decoration[] = [];
+	doc.descendants((node, pos) => {
+		if (node.type.name !== 'footnoteMarker') return;
+		const def = isDefinitionAt(doc, pos);
+		decos.push(
+			Decoration.node(pos, pos + node.nodeSize, {
+				'data-fn-kind': def ? 'def' : 'ref'
+			})
+		);
+	});
+	return DecorationSet.create(doc, decos);
+}
 
 export const FootnoteMarker = Node.create({
 	name: 'footnoteMarker',
@@ -42,19 +118,44 @@ export const FootnoteMarker = Node.create({
 		];
 	},
 
+	addProseMirrorPlugins() {
+		return [
+			new Plugin({
+				key: footnoteKindPluginKey,
+				state: {
+					init: (_config, state) => buildKindDecorations(state.doc),
+					apply: (tr, old) => (tr.docChanged ? buildKindDecorations(tr.doc) : old)
+				},
+				props: {
+					decorations(state) {
+						return this.getState(state);
+					}
+				}
+			})
+		];
+	},
+
 	addNodeView() {
-		return ({ node }) => {
-			// Task 4 에서 위치 기반 ref/def 분기로 교체. 지금은 항상 ref.
-			const dom = document.createElement('sup');
-			dom.className = 'tomboy-fn-ref';
+		return ({ node, getPos, editor }) => {
+			const view = editor.view;
+			const getPosFn = getPos as () => number | undefined;
+			let isDef = isDefinitionPosition(getPosFn, view);
+			const dom = document.createElement(isDef ? 'span' : 'sup');
+			dom.className = isDef ? 'tomboy-fn-def' : 'tomboy-fn-ref';
 			dom.textContent = node.attrs.label;
 			return {
 				dom,
 				update(updatedNode) {
 					if (updatedNode.type.name !== 'footnoteMarker') return false;
+					const newIsDef = isDefinitionPosition(getPosFn, view);
+					if (newIsDef !== isDef) {
+						// 태그가 바뀌어야 하므로 PM 이 NodeView 재생성하도록.
+						return false;
+					}
 					if (updatedNode.attrs.label !== dom.textContent) {
 						dom.textContent = updatedNode.attrs.label;
 					}
+					isDef = newIsDef;
 					return true;
 				}
 			};
