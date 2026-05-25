@@ -85,6 +85,7 @@
 		insertChecklistBlock,
 	} from "./checklist/index.js";
 	import { FootnoteMarker, TomboyFootnoteExtension } from "./footnote/index.js";
+	import { TomboyInlineCheckbox } from './inlineCheckbox';
 	import { TomboyBlockquote } from "./blockquote/index.js";
 	import { createFindPlugin, findPluginKey } from "./find/findPlugin.js";
 	import FindBar from "./find/FindBar.svelte";
@@ -510,6 +511,7 @@
 						);
 					},
 				}),
+				...TomboyInlineCheckbox,
 				TomboyBlockquote,
 				Extension.create({
 					name: "tomboyFind",
@@ -1888,6 +1890,48 @@
 		to {
 			background-color: transparent;
 		}
+	}
+
+	/* 인라인 체크박스 — TomboyInlineCheckbox 노드의 NodeView 가
+	   .tomboy-inline-checkbox span 을 렌더한다. 14px 정사각형,
+	   모바일 hit-area 는 ::before 가 24×24 px 확보. */
+	.tomboy-editor :global(.tomboy-inline-checkbox) {
+		display: inline-block;
+		width: 14px;
+		height: 14px;
+		border: 1px solid var(--text-muted, #888);
+		border-radius: 2px;
+		vertical-align: -2px;
+		margin: 0 2px;
+		cursor: pointer;
+		background: transparent;
+		user-select: none;
+		position: relative;
+		box-sizing: border-box;
+		transition: background-color 0.12s ease, border-color 0.12s ease;
+	}
+
+	/* 모바일 hit-area — 보이지 않는 ::before 가 24x24 영역 확보. */
+	.tomboy-editor :global(.tomboy-inline-checkbox::before) {
+		content: '';
+		position: absolute;
+		top: -5px;
+		left: -5px;
+		right: -5px;
+		bottom: -5px;
+	}
+
+	.tomboy-editor :global(.tomboy-inline-checkbox[data-checked='true']) {
+		background-color: var(--accent, #4a76d4);
+		border-color: var(--accent, #4a76d4);
+		background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='3 8 7 12 13 4'/></svg>");
+		background-size: 12px 12px;
+		background-position: center;
+		background-repeat: no-repeat;
+	}
+
+	.tomboy-editor :global(.tomboy-inline-checkbox:hover) {
+		border-color: var(--accent, #4a76d4);
 	}
 
 	/* 인용 단락 — blockquote 플러그인이 '> ' 로 시작하는 최상위 단락에

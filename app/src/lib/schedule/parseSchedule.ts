@@ -69,6 +69,9 @@ function inlineText(node: JSONContent): string {
 	if (node.type === 'footnoteMarker') {
 		return `[^${(node.attrs?.label as string | undefined) ?? ''}]`;
 	}
+	if (node.type === 'inlineCheckbox') {
+		return node.attrs?.checked ? '[x]' : '[ ]';
+	}
 	if (!node.content) return '';
 	return node.content.map(inlineText).join('');
 }
