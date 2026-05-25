@@ -26,7 +26,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { TmuxControlClient } from './tmuxControlClient.js';
-import { buildSpectatorSshArgs, type SpectatorCallbacks } from './spectatorSession.js';
+import { buildSpectatorSshArgs, type SpectatorCallbacks, type SpectatorNavAction } from './spectatorSession.js';
 import type { SshTarget } from './pty.js';
 
 // ---------------------------------------------------------------------------
@@ -362,6 +362,69 @@ export class SpectatorHub {
 		}
 	}
 
+	// ── Desktop-mutating commands ─────────────────────────────────────────────
+
+	/**
+	 * Jump the session's active pane to the Nth pane (1-based). Resolves
+	 * ordinal via `list-panes -t <sessionName>` so it is correct regardless of
+	 * the target's pane-base-index. Fewer panes than ordinal → silent no-op.
+	 */
+	async selectPane(ordinal: number): Promise<void> {
+		if (this.destroyed) return;
+		if (!Number.isInteger(ordinal) || ordinal < 1) return;
+		const s = this.sessionName;
+		try {
+			const lines = await this.tmux.command(`list-panes -t ${s} -F '#{pane_id}'`);
+			if (this.destroyed) return;
+			const paneId = (lines[ordinal - 1] ?? '').trim();
+			if (!paneId) return;
+			await this.tmux.command(`select-pane -t ${paneId}`);
+		} catch (err) {
+			console.error('[spectator-hub] selectPane failed:', (err as Error).message);
+		}
+	}
+
+	/**
+	 * Relative pane / window navigation. Issues a tmux command on the control
+	 * channel; the resulting `%window-pane-changed` or `%session-window-changed`
+	 * notification flows through the existing hub event path.
+	 */
+	async tmuxNav(action: SpectatorNavAction): Promise<void> {
+		if (this.destroyed) return;
+		const s = this.sessionName;
+		let cmd: string;
+		switch (action) {
+			case 'next-pane':    cmd = `select-pane -t ${s}:.+`;    break;
+			case 'prev-pane':    cmd = `select-pane -t ${s}:.-`;    break;
+			case 'next-window':  cmd = `select-window -t ${s}:+`;   break;
+			case 'prev-window':  cmd = `select-window -t ${s}:-`;   break;
+			default: return;
+		}
+		try {
+			await this.tmux.command(cmd);
+		} catch (err) {
+			console.error('[spectator-hub] tmuxNav failed:', (err as Error).message);
+		}
+	}
+
+	/**
+	 * Send keystrokes to the currently active pane via `send-keys -H <hex>`.
+	 * Binary-safe (tmux 3.0+). Guards: destroyed, no activePaneId, empty text.
+	 */
+	async sendInput(text: string): Promise<void> {
+		if (this.destroyed || !this.activePaneId || !text) return;
+		const bytes = Buffer.from(text, 'utf8');
+		if (bytes.length === 0) return;
+		const hex: string[] = [];
+		for (const b of bytes) hex.push(b.toString(16).padStart(2, '0'));
+		const cmd = `send-keys -t ${this.activePaneId} -H ${hex.join(' ')}`;
+		try {
+			await this.tmux.command(cmd);
+		} catch (err) {
+			console.error('[spectator-hub] sendInput failed:', (err as Error).message);
+		}
+	}
+
 	// ── SSH exit handling ─────────────────────────────────────────────────────
 
 	private handleSshExit(code: number | null, signal: string | null): void {
@@ -522,6 +585,33 @@ export class SpectatorSubscription {
 		} else {
 			this.subscribedPaneId = null;
 		}
+	}
+
+	// ── Desktop-mutating delegation (hub pass-through) ───────────────────────
+
+	/** Delegates to hub.selectPane. Fire-and-forget (errors logged by hub). */
+	selectPane(ordinal: number): void {
+		void this.hub.selectPane(ordinal);
+	}
+
+	/** Delegates to hub.tmuxNav. Fire-and-forget (errors logged by hub). */
+	tmuxNav(action: SpectatorNavAction): void {
+		void this.hub.tmuxNav(action);
+	}
+
+	/** Delegates to hub.sendInput. Fire-and-forget (errors logged by hub). */
+	sendInput(text: string): void {
+		void this.hub.sendInput(text);
+	}
+
+	/** True when the hub has a known active pane and this subscription is open. */
+	hasActivePane(): boolean {
+		return this.hub.activePaneId != null && !this.closed;
+	}
+
+	/** ControlMaster socket path from the hub (may be undefined). */
+	get controlPath(): string | undefined {
+		return this.hub.controlPath;
 	}
 
 	/**

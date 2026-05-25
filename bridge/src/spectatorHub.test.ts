@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { SpectatorHub, SpectatorSubscription, SpectatorHubRegistry, HubRegistry, hubKey, resolveOrdinal } from './spectatorHub.js';
-import type { SpectatorCallbacks } from './spectatorSession.js';
+import type { SpectatorCallbacks, SpectatorNavAction } from './spectatorSession.js';
 
 // ---------------------------------------------------------------------------
 // Mock helpers
@@ -1486,5 +1486,233 @@ test('SpectatorSubscription.unpin when hub has no activePaneId → mode=follow-a
 	assert.equal(sub.subscribedPaneId, null, 'subscribedPaneId cleared to null when activePaneId is null');
 	assert.equal(cb.events.length, 0, `no callbacks should fire; events: ${cb.events.join(', ')}`);
 
+	sub.close();
+});
+
+// ---------------------------------------------------------------------------
+// Task 5: SpectatorHub desktop-mutating methods
+// ---------------------------------------------------------------------------
+
+test('hub.selectPane: list-panes → select-pane for the correct ordinal', async () => {
+	const { hub, tmux } = makeHub();
+	const issued: string[] = [];
+	tmux.command = async (cmd: string) => {
+		issued.push(cmd);
+		if (cmd.startsWith('list-panes')) return ['%5', '%6', '%7'];
+		return [];
+	};
+	await hub.selectPane(2);
+	assert.ok(issued.some((c) => c === 'select-pane -t %6'),
+		`expected select-pane -t %6 in: ${issued.join(', ')}`);
+});
+
+test('hub.selectPane: ordinal exceeds list → no select-pane issued', async () => {
+	const { hub, tmux } = makeHub();
+	const issued: string[] = [];
+	tmux.command = async (cmd: string) => {
+		issued.push(cmd);
+		if (cmd.startsWith('list-panes')) return ['%5', '%6'];
+		return [];
+	};
+	await hub.selectPane(5);
+	assert.ok(!issued.some((c) => c.startsWith('select-pane')),
+		`no select-pane expected when ordinal out of range; commands: ${issued.join(', ')}`);
+});
+
+test('hub.selectPane: ordinal < 1 → no commands issued', async () => {
+	const { hub, tmux } = makeHub();
+	const cmdsBefore = tmux.commands.length;
+	await hub.selectPane(0);
+	assert.equal(tmux.commands.length, cmdsBefore, 'no commands for ordinal=0');
+});
+
+test('hub.selectPane: non-integer ordinal → no commands issued', async () => {
+	const { hub, tmux } = makeHub();
+	const cmdsBefore = tmux.commands.length;
+	await hub.selectPane(1.5);
+	assert.equal(tmux.commands.length, cmdsBefore, 'no commands for non-integer ordinal');
+});
+
+test('hub.selectPane: destroyed hub → no commands issued', async () => {
+	const { hub, tmux } = makeHub();
+	const sub = new SpectatorSubscription(hub, makeCallbacks());
+	sub.close(); // triggers destroy (last sub)
+	const cmdsBefore = tmux.commands.length;
+	await hub.selectPane(1);
+	assert.equal(tmux.commands.length, cmdsBefore, 'destroyed hub issues no commands');
+});
+
+test('hub.tmuxNav: next-pane emits correct select-pane command', async () => {
+	const { hub, tmux } = makeHub();
+	await hub.tmuxNav('next-pane');
+	assert.ok(tmux.commands.some((c) => c === 'select-pane -t s:.+'),
+		`expected select-pane -t s:.+ in: ${tmux.commands.join(', ')}`);
+});
+
+test('hub.tmuxNav: prev-pane emits correct select-pane command', async () => {
+	const { hub, tmux } = makeHub();
+	await hub.tmuxNav('prev-pane');
+	assert.ok(tmux.commands.some((c) => c === 'select-pane -t s:.-'),
+		`expected select-pane -t s:.- in: ${tmux.commands.join(', ')}`);
+});
+
+test('hub.tmuxNav: next-window emits correct select-window command', async () => {
+	const { hub, tmux } = makeHub();
+	await hub.tmuxNav('next-window');
+	assert.ok(tmux.commands.some((c) => c === 'select-window -t s:+'),
+		`expected select-window -t s:+ in: ${tmux.commands.join(', ')}`);
+});
+
+test('hub.tmuxNav: prev-window emits correct select-window command', async () => {
+	const { hub, tmux } = makeHub();
+	await hub.tmuxNav('prev-window');
+	assert.ok(tmux.commands.some((c) => c === 'select-window -t s:-'),
+		`expected select-window -t s:- in: ${tmux.commands.join(', ')}`);
+});
+
+test('hub.tmuxNav: destroyed hub → no commands issued', async () => {
+	const { hub, tmux } = makeHub();
+	const sub = new SpectatorSubscription(hub, makeCallbacks());
+	sub.close();
+	const cmdsBefore = tmux.commands.length;
+	await hub.tmuxNav('next-pane');
+	assert.equal(tmux.commands.length, cmdsBefore, 'destroyed hub issues no commands');
+});
+
+test('hub.sendInput: hex-encodes UTF-8 bytes and issues send-keys to activePaneId', async () => {
+	const { hub, tmux } = makeHub();
+	hub.activePaneId = '%3';
+	await hub.sendInput('y');
+	// 'y' = 0x79
+	assert.ok(tmux.commands.some((c) => c === 'send-keys -t %3 -H 79'),
+		`expected send-keys -t %3 -H 79 in: ${tmux.commands.join(', ')}`);
+});
+
+test('hub.sendInput: multi-byte UTF-8 → space-separated hex tokens', async () => {
+	const { hub, tmux } = makeHub();
+	hub.activePaneId = '%3';
+	// 'ab' → 61 62
+	await hub.sendInput('ab');
+	assert.ok(tmux.commands.some((c) => c === 'send-keys -t %3 -H 61 62'),
+		`expected send-keys -t %3 -H 61 62 in: ${tmux.commands.join(', ')}`);
+});
+
+test('hub.sendInput: empty text → no command issued', async () => {
+	const { hub, tmux } = makeHub();
+	hub.activePaneId = '%3';
+	const cmdsBefore = tmux.commands.length;
+	await hub.sendInput('');
+	assert.equal(tmux.commands.length, cmdsBefore, 'empty text → no send-keys');
+});
+
+test('hub.sendInput: no activePaneId → no command issued', async () => {
+	const { hub, tmux } = makeHub();
+	// activePaneId is null by default
+	const cmdsBefore = tmux.commands.length;
+	await hub.sendInput('hello');
+	assert.equal(tmux.commands.length, cmdsBefore, 'null activePaneId → no send-keys');
+});
+
+test('hub.sendInput: destroyed hub → no command issued', async () => {
+	const { hub, tmux } = makeHub();
+	hub.activePaneId = '%3';
+	const sub = new SpectatorSubscription(hub, makeCallbacks());
+	sub.close();
+	const cmdsBefore = tmux.commands.length;
+	await hub.sendInput('y');
+	assert.equal(tmux.commands.length, cmdsBefore, 'destroyed hub → no send-keys');
+});
+
+// ---------------------------------------------------------------------------
+// Task 5: SpectatorSubscription delegation
+// ---------------------------------------------------------------------------
+
+test('sub.selectPane delegates to hub.selectPane', async () => {
+	const { hub, tmux } = makeHub();
+	hub.activePaneId = '%2';
+	const issued: string[] = [];
+	tmux.command = async (cmd: string) => {
+		issued.push(cmd);
+		if (cmd.startsWith('list-panes')) return ['%2', '%3'];
+		return [];
+	};
+	const sub = new SpectatorSubscription(hub, makeCallbacks());
+	sub.selectPane(2);
+	// Give the fire-and-forget a tick to settle
+	await new Promise((r) => setImmediate(r));
+	assert.ok(issued.some((c) => c === 'select-pane -t %3'),
+		`expected select-pane -t %3; commands: ${issued.join(', ')}`);
+	sub.close();
+});
+
+test('sub.tmuxNav delegates to hub.tmuxNav', async () => {
+	const { hub, tmux } = makeHub();
+	const sub = new SpectatorSubscription(hub, makeCallbacks());
+	sub.tmuxNav('prev-window');
+	await new Promise((r) => setImmediate(r));
+	assert.ok(tmux.commands.some((c) => c === 'select-window -t s:-'),
+		`expected select-window -t s:-; commands: ${tmux.commands.join(', ')}`);
+	sub.close();
+});
+
+test('sub.sendInput delegates to hub.sendInput', async () => {
+	const { hub, tmux } = makeHub();
+	hub.activePaneId = '%5';
+	const sub = new SpectatorSubscription(hub, makeCallbacks());
+	sub.sendInput('n');
+	// 'n' = 0x6e
+	await new Promise((r) => setImmediate(r));
+	assert.ok(tmux.commands.some((c) => c === 'send-keys -t %5 -H 6e'),
+		`expected send-keys -t %5 -H 6e; commands: ${tmux.commands.join(', ')}`);
+	sub.close();
+});
+
+test('sub.hasActivePane: true when hub.activePaneId set and sub is open', () => {
+	const { hub } = makeHub();
+	hub.activePaneId = '%2';
+	const sub = new SpectatorSubscription(hub, makeCallbacks());
+	assert.equal(sub.hasActivePane(), true);
+	sub.close();
+});
+
+test('sub.hasActivePane: false when hub.activePaneId is null', () => {
+	const { hub } = makeHub();
+	// activePaneId default null
+	const sub = new SpectatorSubscription(hub, makeCallbacks());
+	assert.equal(sub.hasActivePane(), false);
+	sub.close();
+});
+
+test('sub.hasActivePane: false after sub.close()', () => {
+	const { hub } = makeHub();
+	hub.activePaneId = '%2';
+	// keepAlive prevents hub auto-destroy
+	const keepAlive = new SpectatorSubscription(hub, makeCallbacks());
+	const sub = new SpectatorSubscription(hub, makeCallbacks());
+	sub.close();
+	assert.equal(sub.hasActivePane(), false, 'false after close');
+	keepAlive.close();
+});
+
+test('sub.controlPath: returns hub.controlPath', () => {
+	const ssh = new MockSsh();
+	const tmux = new MockTmux();
+	const hub = new SpectatorHub({
+		ssh: ssh as any,
+		tmux: tmux as any,
+		hubKey: 'u@h:22|s',
+		sessionName: 's',
+		controlPath: '/tmp/test.sock',
+		onDestroy: () => {}
+	});
+	const sub = new SpectatorSubscription(hub, makeCallbacks());
+	assert.equal(sub.controlPath, '/tmp/test.sock');
+	sub.close();
+});
+
+test('sub.controlPath: returns undefined when hub has no controlPath', () => {
+	const { hub } = makeHub();
+	const sub = new SpectatorSubscription(hub, makeCallbacks());
+	assert.equal(sub.controlPath, undefined);
 	sub.close();
 });
