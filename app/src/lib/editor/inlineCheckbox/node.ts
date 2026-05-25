@@ -5,7 +5,7 @@
  * 불가. mark 도 받지 않는다. 라운드트립은 archiver
  * (noteContentArchiver.ts) 에서 [ ] / [x] 텍스트 ↔ 노드로 변환.
  */
-import { Node } from '@tiptap/core';
+import { InputRule, Node } from '@tiptap/core';
 
 export const InlineCheckbox = Node.create({
 	name: 'inlineCheckbox',
@@ -39,6 +39,23 @@ export const InlineCheckbox = Node.create({
 				class: 'tomboy-inline-checkbox',
 				'data-checked': node.attrs.checked ? 'true' : 'false'
 			}
+		];
+	},
+
+	addInputRules() {
+		const type = this.type;
+		return [
+			new InputRule({
+				find: /\[([ xX])\]$/,
+				handler: ({ state, range, match }) => {
+					const $from = state.doc.resolve(range.from);
+					// 제목 (top-level idx 0) 차단 — 각주와 동일.
+					if ($from.index(0) === 0) return null;
+					const checked = match[1] === 'x' || match[1] === 'X';
+					const node = type.create({ checked });
+					state.tr.replaceWith(range.from, range.to, node);
+				}
+			})
 		];
 	},
 

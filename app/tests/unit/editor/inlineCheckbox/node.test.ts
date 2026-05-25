@@ -80,3 +80,84 @@ describe('inlineCheckbox NodeView', () => {
 		editor.destroy();
 	});
 });
+
+function typeText(editor: Editor, text: string) {
+	// PM input rules fire via `handleTextInput` prop — call it directly
+	// per-character, same pattern as footnote/node.test.ts.
+	for (const ch of text) {
+		const { from, to } = editor.state.selection;
+		const handler = editor.view.someProp('handleTextInput') as
+			| ((view: any, from: number, to: number, text: string) => boolean)
+			| undefined;
+		const handled = handler ? handler(editor.view, from, to, ch) : false;
+		if (!handled) {
+			editor.view.dispatch(editor.state.tr.insertText(ch, from, to));
+		}
+	}
+}
+
+describe('inlineCheckbox input rule', () => {
+	it('converts [ ] typed in body to unchecked node', () => {
+		const editor = makeEditor({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{ type: 'paragraph' }
+			]
+		});
+		editor.commands.setTextSelection(editor.state.doc.content.size);
+		typeText(editor, '[ ]');
+		const para = editor.state.doc.lastChild!;
+		expect(para.childCount).toBe(1);
+		expect(para.firstChild!.type.name).toBe('inlineCheckbox');
+		expect(para.firstChild!.attrs.checked).toBe(false);
+		editor.destroy();
+	});
+
+	it('converts [x] typed in body to checked node', () => {
+		const editor = makeEditor({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{ type: 'paragraph' }
+			]
+		});
+		editor.commands.setTextSelection(editor.state.doc.content.size);
+		typeText(editor, '[x]');
+		const para = editor.state.doc.lastChild!;
+		expect(para.firstChild!.attrs.checked).toBe(true);
+		editor.destroy();
+	});
+
+	it('converts [X] (uppercase) to checked node', () => {
+		const editor = makeEditor({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{ type: 'paragraph' }
+			]
+		});
+		editor.commands.setTextSelection(editor.state.doc.content.size);
+		typeText(editor, '[X]');
+		const para = editor.state.doc.lastChild!;
+		expect(para.firstChild!.attrs.checked).toBe(true);
+		editor.destroy();
+	});
+
+	it('does NOT convert in the title line (idx=0)', () => {
+		const editor = makeEditor({
+			type: 'doc',
+			content: [{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] }]
+		});
+		editor.commands.setTextSelection(editor.state.doc.content.size);
+		typeText(editor, ' [ ]');
+		const para = editor.state.doc.firstChild!;
+		expect(para.textContent).toContain('[ ]');
+		let hasCheckbox = false;
+		para.descendants((n) => {
+			if (n.type.name === 'inlineCheckbox') hasCheckbox = true;
+		});
+		expect(hasCheckbox).toBe(false);
+		editor.destroy();
+	});
+});
