@@ -161,3 +161,96 @@ describe('inlineCheckbox input rule', () => {
 		editor.destroy();
 	});
 });
+
+import { Slice, Fragment } from '@tiptap/pm/model';
+
+function makeSlice(editor: Editor, paragraphText: string): Slice {
+	const schema = editor.schema;
+	const paragraph = schema.nodes.paragraph.create(
+		null,
+		schema.text(paragraphText)
+	);
+	return new Slice(Fragment.from(paragraph), 1, 1);
+}
+
+describe('inlineCheckbox paste transform', () => {
+	it('splits [ ] / [x] in pasted slice into nodes', () => {
+		const editor = makeEditor({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{ type: 'paragraph' }
+			]
+		});
+		editor.commands.setTextSelection(editor.state.doc.content.size);
+
+		const slice = makeSlice(editor, '할 일 [ ] 라면 [x] 끓이기');
+		const transformed = editor.view.someProp(
+			'transformPasted',
+			(fn: any) => fn(slice, editor.view)
+		) as Slice;
+		const para = transformed.content.firstChild!;
+		const types: { type: string; attrs: any }[] = [];
+		para.forEach((n) => types.push({ type: n.type.name, attrs: n.attrs }));
+		const typeNames = types.map((t) => t.type);
+		expect(typeNames).toEqual([
+			'text',
+			'inlineCheckbox',
+			'text',
+			'inlineCheckbox',
+			'text'
+		]);
+		expect(types[1].attrs.checked).toBe(false);
+		expect(types[3].attrs.checked).toBe(true);
+		editor.destroy();
+	});
+
+	it('does NOT transform when destination is the title line', () => {
+		const editor = makeEditor({
+			type: 'doc',
+			content: [{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] }]
+		});
+		editor.commands.setTextSelection(3);
+		const slice = makeSlice(editor, ' [ ]');
+		const transformed = editor.view.someProp(
+			'transformPasted',
+			(fn: any) => fn(slice, editor.view)
+		) as Slice;
+		let hasCheckbox = false;
+		transformed.content.descendants((n) => {
+			if (n.type.name === 'inlineCheckbox') hasCheckbox = true;
+		});
+		expect(hasCheckbox).toBe(false);
+		editor.destroy();
+	});
+
+	it('recurses into nested list fragments', () => {
+		const editor = makeEditor({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{ type: 'paragraph' }
+			]
+		});
+		editor.commands.setTextSelection(editor.state.doc.content.size);
+
+		const schema = editor.schema;
+		const li = schema.nodes.listItem.create(
+			null,
+			schema.nodes.paragraph.create(null, schema.text('[ ] 첫 항목'))
+		);
+		const list = schema.nodes.bulletList.create(null, li);
+		const slice = new Slice(Fragment.from(list), 2, 2);
+
+		const transformed = editor.view.someProp(
+			'transformPasted',
+			(fn: any) => fn(slice, editor.view)
+		) as Slice;
+		let hasCheckbox = false;
+		transformed.content.descendants((n) => {
+			if (n.type.name === 'inlineCheckbox') hasCheckbox = true;
+		});
+		expect(hasCheckbox).toBe(true);
+		editor.destroy();
+	});
+});
