@@ -93,25 +93,29 @@
 		}
 	}
 
-	function runAlt(arrow: 'left' | 'right' | 'up' | 'down') {
+	function runAlt(key: 'left' | 'right' | 'up' | 'down' | 'footnote') {
 		const ed = editor;
 		if (!ed) return;
 		try {
-			if (arrow === 'right') {
+			if (key === 'footnote') {
+				ed.chain().focus().insertFootnote().run();
+				return;
+			}
+			if (key === 'right') {
 				const sunk = sinkListItemOnly(ed);
 				if (!sunk && !isInList(ed)) ed.chain().focus().toggleBulletList().run();
 				return;
 			}
-			if (arrow === 'left') {
+			if (key === 'left') {
 				const lifted = liftListItemOnly(ed);
 				if (!lifted && isInList(ed)) ed.commands.liftListItem('listItem');
 				return;
 			}
-			if (arrow === 'up') {
+			if (key === 'up') {
 				moveListItemUp(ed);
 				return;
 			}
-			if (arrow === 'down') {
+			if (key === 'down') {
 				moveListItemDown(ed);
 				return;
 			}
@@ -221,15 +225,6 @@
 				</div>
 			{/if}
 
-			{#if altLocked}
-				<div class="key-row" aria-label="Alt 단축키">
-					<button class="key-btn" onclick={() => runAlt('left')} title="내어쓰기 (Alt+←)">←</button>
-					<button class="key-btn" onclick={() => runAlt('up')} title="위로 이동 (Alt+↑)">↑</button>
-					<button class="key-btn" onclick={() => runAlt('down')} title="아래로 이동 (Alt+↓)">↓</button>
-					<button class="key-btn" onclick={() => runAlt('right')} title="들여쓰기 (Alt+→)">→</button>
-				</div>
-			{/if}
-
 			{#if !ctrlLocked}
 				<button
 					class="mod-toggle"
@@ -241,6 +236,16 @@
 					<span class="mod-label">Alt</span>
 					<span class="mod-dot" aria-hidden="true"></span>
 				</button>
+			{/if}
+
+			{#if altLocked}
+				<div class="key-row" aria-label="Alt 단축키">
+					<button class="key-btn" onclick={() => runAlt('left')} title="내어쓰기 (Alt+←)">←</button>
+					<button class="key-btn" onclick={() => runAlt('up')} title="위로 이동 (Alt+↑)">↑</button>
+					<button class="key-btn" onclick={() => runAlt('down')} title="아래로 이동 (Alt+↓)">↓</button>
+					<button class="key-btn" onclick={() => runAlt('right')} title="들여쓰기 (Alt+→)">→</button>
+					<button class="key-btn" onclick={() => runAlt('footnote')} title="각주 (Alt+J)">J</button>
+				</div>
 			{/if}
 		</div>
 

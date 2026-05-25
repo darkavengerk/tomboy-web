@@ -664,6 +664,13 @@
 							}
 							return true;
 						}
+						// 'j' || 'J' — CapsLock 이 켜져 있으면 shift 없이도 event.key 가
+						// 대문자로 들어옴. 위 가드의 !event.shiftKey 는 CapsLock 을 차단하지 않음.
+						if (event.key === "j" || event.key === "J") {
+							event.preventDefault();
+							ed.chain().focus().insertFootnote().run();
+							return true;
+						}
 					}
 
 					return false;
