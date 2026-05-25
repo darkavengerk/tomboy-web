@@ -468,33 +468,26 @@ free paragraph or unrecognized block falls back to a regular note — that's
 how the user opts out.
 
 Spectator (mobile-side observer of the desktop's currently-focused tmux
-pane): add `spectate: <session>` next to `ssh://`. Bridge attaches via
-`ssh -tt ... 'stty cols 500 rows 200 2>/dev/null; stty raw -echo; exec tmux -CC attach -t <s>'`
-and forwards only the active pane; switching panes on the desktop
-re-seeds via `capture-pane -epJ`. The `stty cols/rows` + a follow-up
-`refresh-client -C 500x200` together claim a virtual 500x200 client
-size — combined with target-side `window-size smallest`, this prevents
-the spectator from shrinking the desktop user's window. Input wiring
-is **viewport-conditional**: on desktop (`min-width: 768px`)
-`term.onData` is wired straight to `client.send`, so typing into the
-focused xterm feels like a real terminal; on mobile the wiring is
-skipped (the closure early-returns) so the on-screen keyboard stays
-inert and explicit input flows only through the **보내기 popup**.
-Both paths land on the same bridge call → `send-keys -t <activePane>
--H <hex>` for binary-safe injection (tmux 3.0+).
+pane): add `spectate: <session>` next to `ssh://`. **여러 노트가 같은
+세션을 동시에 관전할 때 각 노트는 독립적인 패널을 라이브로 받을 수
+있다** — 브릿지는 (target, session)당 단일 ssh + tmux -CC 클라이언트를
+공유 hub로 유지하고, 각 노트(WS)는 자기가 보고 싶은 패널만 필터링하는
+subscription을 갖는다. tmux -CC가 이미 모든 패널의 %output을 emit하므로
+새 데이터 채널 없이 fan-out으로 처리. 핀이 활성이면 desktop active와
+무관하게 라이브 스트림이 계속 흐른다. 마지막 구독이 닫히면 hub가
+즉시 ssh + tmux -CC를 정리한다 (grace timer 없음).
 
-**관전 패널 고정 (pin)**: spectator footer의 1~5 버튼 중 현재 활성 번호를
-한 번 더 누르면 그 패널을 고정 관전. 자물쇠(🔒) 표시. 다시 누르면 해제.
-영속 형식은 `spectate: <session>:<N>` (예: `spectate: main:3`) — 자물쇠
-토글 시 노트 자동 저장(`rewriteSpectateLine` + `putNote`). 동작은 전부
-**클라이언트(`TerminalView.svelte`) 전담** — bridge / WS 프로토콜 변경
-없음. Pin 활성 + 데스크탑 active≠N → `pinDetached=true`로 `onData`를
-무시해 마지막 본 화면이 정지 + 안내 배너 표시. 노트 화면 클릭 또는 키
-입력 시 자동으로 `selectPane(N)`을 호출해 데스크탑 active를 끌어옴
-(고정은 유지). pin 활성 중에는 footer 1~5 다른 번호와 `Ctrl+H/L`
-단축키가 disabled — `Ctrl+Shift+H/L`과 `« »` 윈도우 이동은 그대로 동작.
-같은 세션을 여러 노트에서 동시에 관전해도 각 노트가 독립
-SpectatorSession이라 충돌 없음.
+핀 동작 (자물쇠 🔒): spectator footer의 1~5 버튼 중 현재 활성 번호를
+한 번 더 누르면 그 ordinal을 고정 구독. 노트 본문의
+`spectate: <session>:<N>`에 영속화 (예: `spectate: main:3`). **ordinal
+기반** — 윈도우 이동 시 새 윈도우의 N번 패널로 자동 재해석되고, 패널
+수가 부족하면 "패널 N번 없음" 노란 배너 표시 후 다시 N개 이상 되면
+자동 재구독. 핀 중 다른 footer 번호 버튼과 `Ctrl+H/L` 단축키는 disabled
+— `Ctrl+Shift+H/L` 윈도우 이동은 그대로. 노트 클릭/타이핑 시 자동으로
+`selectPane(N)`이 호출되어 데스크탑 active가 N번으로 끌려옴 (구독은
+유지). 클라이언트(`TerminalView.svelte`)가 `subscribePane(ordinal)` WS
+프레임을 보내고, 브릿지는 ordinal 무효 시 `pane-unavailable` 프레임을
+응답.
 
 Mobile UI: width-fit via `transform: scale` on a three-layer
 `.xterm-host > .xterm-stage > .xterm-mount` DOM (NOT CSS `zoom` — breaks
@@ -543,7 +536,7 @@ Quick map:
   `parseTerminalNote(editorContent)` at load and after every IDB reload.
 - `routes/settings/+page.svelte` (config tab → "터미널 브릿지") — default
   bridge URL + login form.
-- `bridge/` — `src/{server,auth,pty,hosts,wol,tmuxControlClient,spectatorSession,imageTransfer}.ts`,
+- `bridge/` — `src/{server,auth,pty,hosts,wol,tmuxControlClient,spectatorHub,spectatorSession,imageTransfer}.ts`,
   `Containerfile`, `deploy/term-bridge.container` (Quadlet),
   `deploy/Caddyfile`, `deploy/tomboy-spectator.tmux`.
 
@@ -580,12 +573,17 @@ Cross-cutting invariants worth caching (full set lives in the skill):
   %<paneId>` switches all change the session's active pane/window, so
   the desktop user's view also moves. Intentional — mobile is acting
   as the user, not running a private viewport.
+- **Spectator hub is shared per (target, session).** 같은 세션을 여러
+  노트에서 관전 시 ssh + tmux -CC 클라이언트는 1개. 각 노트는 자기
+  subscription을 통해 hub의 `%output` fan-out을 필터링해 자기 paneId만
+  받음. ControlMaster socket도 hub당 1개 (image transfer가 공유). 마지막
+  subscription 종료 시 hub 즉시 destroy.
 - **이미지 붙여넣기는 ControlMaster 멀티플렉싱으로 재인증 없이 전송 —
   브릿지는 여전히 자격증명을 중개하지 않는다.** 셸 모드는 PTY SSH 연결이,
-  관전 모드는 spectator SSH 연결이 각각 ControlMaster 마스터 소켓을 생성하고,
+  관전 모드는 SpectatorHub의 SSH 연결이 각각 ControlMaster 마스터 소켓을 생성하고,
   이미지 전송은 그 소켓을 재사용해
   `ssh -o ControlPath=... -o BatchMode=yes`로 파일을 기록한다.
-  경로 주입은 셸은 `pty.write`, 관전은 `SpectatorSession.sendInput` →
+  경로 주입은 셸은 `pty.write`, 관전은 `hub.sendInput` →
   `tmux send-keys -H`. 노트 포맷에 경로·패스워드 힌트 필드를 추가하지 말 것.
 
 ## 리마커블 일기 OCR 파이프라인 (pipeline/)
