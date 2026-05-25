@@ -483,6 +483,19 @@ inert and explicit input flows only through the **보내기 popup**.
 Both paths land on the same bridge call → `send-keys -t <activePane>
 -H <hex>` for binary-safe injection (tmux 3.0+).
 
+**관전 패널 고정 (pin)**: spectator footer의 1~5 버튼 중 현재 활성 번호를
+한 번 더 누르면 그 패널을 고정 관전. 자물쇠(🔒) 표시. 다시 누르면 해제.
+영속 형식은 `spectate: <session>:<N>` (예: `spectate: main:3`) — 자물쇠
+토글 시 노트 자동 저장(`rewriteSpectateLine` + `putNote`). 동작은 전부
+**클라이언트(`TerminalView.svelte`) 전담** — bridge / WS 프로토콜 변경
+없음. Pin 활성 + 데스크탑 active≠N → `pinDetached=true`로 `onData`를
+무시해 마지막 본 화면이 정지 + 안내 배너 표시. 노트 화면 클릭 또는 키
+입력 시 자동으로 `selectPane(N)`을 호출해 데스크탑 active를 끌어옴
+(고정은 유지). pin 활성 중에는 footer 1~5 다른 번호와 `Ctrl+H/L`
+단축키가 disabled — `Ctrl+Shift+H/L`과 `« »` 윈도우 이동은 그대로 동작.
+같은 세션을 여러 노트에서 동시에 관전해도 각 노트가 독립
+SpectatorSession이라 충돌 없음.
+
 Mobile UI: width-fit via `transform: scale` on a three-layer
 `.xterm-host > .xterm-stage > .xterm-mount` DOM (NOT CSS `zoom` — breaks
 xterm cell positioning on mobile); native `overflow-y: auto` +

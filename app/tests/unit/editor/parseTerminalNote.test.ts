@@ -773,4 +773,34 @@ describe('parseTerminalNote — spectate', () => {
 		const r = parseTerminalNote(doc('Title', 'ssh://localhost'));
 		expect(r?.spectate).toBeUndefined();
 	});
+
+	it('parses spectate: <session>:<N> as session + pinnedPane', () => {
+		const r = parseTerminalNote(doc('Title', 'ssh://you@desktop', 'spectate: main:3'));
+		expect(r).toMatchObject({ spectate: 'main', pinnedPane: 3 });
+	});
+
+	it('treats spectate: <session>:0 as pinnedPane undefined (out of range)', () => {
+		const r = parseTerminalNote(doc('Title', 'ssh://you@desktop', 'spectate: main:0'));
+		expect(r).toMatchObject({ spectate: 'main', pinnedPane: undefined });
+	});
+
+	it('treats spectate: <session>:99 as pinnedPane undefined (out of range)', () => {
+		const r = parseTerminalNote(doc('Title', 'ssh://you@desktop', 'spectate: main:99'));
+		expect(r).toMatchObject({ spectate: 'main', pinnedPane: undefined });
+	});
+
+	it('treats non-numeric suffix as part of session name', () => {
+		const r = parseTerminalNote(doc('Title', 'ssh://you@desktop', 'spectate: main:foo'));
+		expect(r).toMatchObject({ spectate: 'main:foo', pinnedPane: undefined });
+	});
+
+	it('preserves colon in session name when pin trails (grp:web:2)', () => {
+		const r = parseTerminalNote(doc('Title', 'ssh://you@desktop', 'spectate: grp:web:2'));
+		expect(r).toMatchObject({ spectate: 'grp:web', pinnedPane: 2 });
+	});
+
+	it('regular spectate: line still leaves pinnedPane undefined', () => {
+		const r = parseTerminalNote(doc('Title', 'ssh://you@desktop', 'spectate: main'));
+		expect(r).toMatchObject({ spectate: 'main', pinnedPane: undefined });
+	});
 });
