@@ -68,11 +68,23 @@ export const InlineCheckbox = Node.create({
 	},
 
 	addNodeView() {
-		return ({ node }) => {
+		return ({ node, getPos, editor }) => {
+			const view = editor.view;
+			const getPosFn = getPos as () => number | undefined;
 			const dom = document.createElement('span');
 			dom.className = 'tomboy-inline-checkbox';
 			dom.setAttribute('data-checked', node.attrs.checked ? 'true' : 'false');
 			dom.contentEditable = 'false';
+			dom.addEventListener('mousedown', (e) => {
+				e.preventDefault();
+				e.stopPropagation();
+				const pos = getPosFn();
+				if (pos == null) return;
+				const current = view.state.doc.nodeAt(pos);
+				if (!current || current.type.name !== 'inlineCheckbox') return;
+				const next = !current.attrs.checked;
+				view.dispatch(view.state.tr.setNodeAttribute(pos, 'checked', next));
+			});
 			return {
 				dom,
 				update(updatedNode) {

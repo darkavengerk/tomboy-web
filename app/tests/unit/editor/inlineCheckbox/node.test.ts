@@ -254,3 +254,48 @@ describe('inlineCheckbox paste transform', () => {
 		editor.destroy();
 	});
 });
+
+describe('inlineCheckbox click toggle', () => {
+	it('toggles checked on mousedown', () => {
+		const editor = makeEditor({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{
+					type: 'paragraph',
+					content: [{ type: 'inlineCheckbox', attrs: { checked: false } }]
+				}
+			]
+		});
+		const dom = editor.view.dom.querySelector(
+			'.tomboy-inline-checkbox'
+		) as HTMLElement;
+		expect(dom.getAttribute('data-checked')).toBe('false');
+		dom.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+		expect(dom.getAttribute('data-checked')).toBe('true');
+		const node = editor.state.doc.lastChild!.firstChild!;
+		expect(node.attrs.checked).toBe(true);
+		editor.destroy();
+	});
+
+	it('undo restores prior checked state', () => {
+		const editor = makeEditor({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{
+					type: 'paragraph',
+					content: [{ type: 'inlineCheckbox', attrs: { checked: false } }]
+				}
+			]
+		});
+		const dom = editor.view.dom.querySelector(
+			'.tomboy-inline-checkbox'
+		) as HTMLElement;
+		dom.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+		expect(editor.state.doc.lastChild!.firstChild!.attrs.checked).toBe(true);
+		editor.commands.undo();
+		expect(editor.state.doc.lastChild!.firstChild!.attrs.checked).toBe(false);
+		editor.destroy();
+	});
+});
