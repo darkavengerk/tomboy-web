@@ -88,21 +88,20 @@
 	let spectatorPaneOrdinal = $state(0);
 	let spectatorPaneCount = $state(0);
 	/**
-	 * Pinned pane ordinal (1..5). When non-null, the spectator view stays locked
-	 * to this pane: pane-switch frames for other panes flip `pinDetached=true`
-	 * which suppresses incoming `data` and shows the detach banner. Initial
-	 * value comes from `spec.pinnedPane` (parsed from `spectate: <s>:<N>`);
-	 * subsequent updates are user-driven via the footer toggle, so capturing
-	 * only the initial spec value here is intentional.
+	 * Pinned pane ordinal (1..5). When non-null, the spectator subscribes
+	 * directly to this pane's output stream (bridge handles independent
+	 * live streams per-subscription). Initial value comes from
+	 * `spec.pinnedPane` (parsed from `spectate: <s>:<N>`); subsequent
+	 * updates are user-driven via the footer toggle, so capturing only
+	 * the initial spec value here is intentional.
 	 */
 	// svelte-ignore state_referenced_locally
 	let pinnedOrdinal: number | null = $state(spec.pinnedPane ?? null);
 	/**
-	 * True when pin is active AND the desktop's active pane is not our pinned
-	 * ordinal (or the ordinal is past the window's pane count). While detached,
-	 * incoming `data` is dropped and the last-seen frame stays frozen on screen.
+	 * Non-null when the bridge reports that the pinned ordinal exceeds the
+	 * current window's pane count (pane-unavailable frame).
 	 */
-	let pinDetached = $state(false);
+	let pinUnavailableInfo = $state<{ pinnedOrdinal: number; paneCount: number } | null>(null);
 	// Spectator "보내기" popup — explicit keystroke injection into the
 	// active pane. Useful for quick claude-code confirmations (y/n/Enter)
 	// from mobile without breaking the read-only-by-default invariant.
@@ -225,7 +224,7 @@
 			closeSendPopup();
 			return;
 		}
-		reattachIfPinned();
+		if (pinnedOrdinal !== null) client?.selectPane(pinnedOrdinal);
 
 		const anyArmed = stickyMods.ctrl || stickyMods.alt || stickyMods.shift;
 
@@ -253,13 +252,13 @@
 	}
 	/** One-tap injection of a literal key/sequence, bypassing the text field. */
 	function sendQuickKey(bytes: string): void {
-		reattachIfPinned();
+		if (pinnedOrdinal !== null) client?.selectPane(pinnedOrdinal);
 		client?.send(bytes);
 	}
 
 	/** 이미지 File 하나를 검증 후 브릿지로 전송. */
 	async function sendImageFile(file: File): Promise<void> {
-		reattachIfPinned();
+		if (pinnedOrdinal !== null) client?.selectPane(pinnedOrdinal);
 		const v = validateImageFile(file);
 		if (!v.ok) {
 			pushToast(v.error ?? '이미지를 보낼 수 없습니다.', { kind: 'error' });
@@ -488,34 +487,20 @@
 	 */
 	async function onPaneNumClick(n: number): Promise<void> {
 		if (pinnedOrdinal === n) {
+			// Unpin: subscribe back to active pane (ordinal 0 = follow-active)
 			pinnedOrdinal = null;
-			pinDetached = false;
+			client?.subscribePane(0);
 			await persistPinToNote(null);
 			return;
 		}
 		if (pinnedOrdinal === null && n === spectatorPaneOrdinal) {
+			// Pin to this pane
 			pinnedOrdinal = n;
-			pinDetached = false;
+			client?.subscribePane(n);
 			await persistPinToNote(n);
 			return;
 		}
 		client?.selectPane(n);
-	}
-
-	/**
-	 * If pin is active AND we're currently detached, send select-pane(N) to
-	 * pull the active pane back to our pinned ordinal. The resulting
-	 * pane-switch frame flips pinDetached=false naturally.
-	 *
-	 * Wired into every user-input path: page click, desktop keyboard,
-	 * mobile send popup, image send. The bridge silently no-ops if the
-	 * ordinal is past list-panes count — pinDetached stays true and the
-	 * banner keeps showing.
-	 */
-	function reattachIfPinned(): void {
-		if (pinnedOrdinal !== null && pinDetached) {
-			client?.selectPane(pinnedOrdinal);
-		}
 	}
 
 	/**
@@ -572,7 +557,7 @@
 	 * instead of a now-focused button.
 	 */
 	function handlePageClick(): void {
-		reattachIfPinned();
+		if (pinnedOrdinal !== null) client?.selectPane(pinnedOrdinal);
 		refocusTerminal();
 	}
 
@@ -787,7 +772,6 @@
 			rows: term.rows,
 			spectate: spec.spectate,
 			onData: (chunk) => {
-				if (pinDetached) return;
 				if (term) {
 					term.write(chunk, () => {
 						if (isSpectator) recomputeScroll();
@@ -805,47 +789,23 @@
 					connectFired = true;
 					void runConnectScript(spec.connect, (line) => client?.send(line));
 				}
-				// 관전 모드 + pin 활성 → 자동 attach. Bridge first reports the
-				// desktop's actual active pane via pane-switch; we then nudge it
-				// to our pinned ordinal. The first pane-switch may briefly
-				// show pinDetached=true before the second arrives — minor flicker.
+				// 관전 모드 + pin 활성 → 구독 전환. Bridge handles independent
+				// live stream for the pinned pane — no selectPane needed.
 				if (isSpectator && s === 'open' && pinnedOrdinal !== null) {
-					client?.selectPane(pinnedOrdinal);
+					client?.subscribePane(pinnedOrdinal);
 				}
 			},
 			onPaneSwitch: (info) => {
-				if (pinnedOrdinal === null) {
-					applyPaneSwitch(info);
-					try { term?.resize(info.cols, info.rows); } catch { /* ignore */ }
-					requestAnimationFrame(() => applySpectatorFit());
-					return;
-				}
-				// Pin mode — header/footer info always reflects the desktop's
-				// current active pane so the user can see what's happening over there.
-				spectatorPaneOrdinal = info.paneOrdinal;
-				spectatorPaneCount = info.paneCount;
-				spectatorWindowIndex = info.windowIndex;
-				spectatorWindowName = info.windowName;
-				// Older bridges (or unknown) report 0 — can't decide attach state.
-				// Keep last-known pinDetached, skip resize.
-				if (info.paneOrdinal === 0) return;
-				if (info.paneOrdinal === pinnedOrdinal) {
-					spectatorPaneId = info.paneId;
-					spectatorCols = info.cols;
-					spectatorRows = info.rows;
-					pinDetached = false;
-					try { term?.resize(info.cols, info.rows); } catch { /* ignore */ }
-					requestAnimationFrame(() => applySpectatorFit());
-				} else {
-					// Active moved elsewhere. Set detach synchronously so the
-					// follow-up `data` frames (the new pane's seed) are dropped
-					// by onData. Old spectatorPaneId/Cols/Rows stay so the header
-					// still shows "we're stuck on pane X".
-					pinDetached = true;
-				}
+				// Auto-clear unavailable banner when pane subscription re-resolves.
+				pinUnavailableInfo = null;
+				applyPaneSwitch(info);
+				try { term?.resize(info.cols, info.rows); } catch { /* ignore */ }
+				requestAnimationFrame(() => applySpectatorFit());
+			},
+			onPaneUnavailable: (info) => {
+				pinUnavailableInfo = info;
 			},
 			onPaneResize: ({ cols, rows }) => {
-				if (pinDetached) return;
 				spectatorCols = cols;
 				spectatorRows = rows;
 				try { term?.resize(cols, rows); } catch { /* ignore */ }
@@ -896,7 +856,7 @@
 		// re-wiring the handler.
 		term.onData((data) => {
 			if (isSpectator && isMobile) return;
-			reattachIfPinned();
+			if (pinnedOrdinal !== null) client?.selectPane(pinnedOrdinal);
 			client?.send(data);
 		});
 
@@ -956,7 +916,7 @@
 	function reconnect() {
 		if (!resolvedBridge || !resolvedToken) return;
 		resetSpectatorState(); // clear stale pane info so buttons reflect the new session
-		pinDetached = false; // 재연결 직후엔 detach 결정 보류 (마운트 시와 동일)
+		pinUnavailableInfo = null; // clear unavailable banner on reconnect
 		connectFired = false; // allow connect: script to re-run on next 'open'
 		// 이전 연결에서 in-flight 였던 이미지 업로드는 image-ok/error를 못 받았으므로
 		// 카운터가 stuck 상태일 수 있다 — 재연결 시 리셋해서 "업로드 중…" 버튼을 푼다.
@@ -975,7 +935,6 @@
 			rows: term?.rows ?? 24,
 			spectate: spec.spectate,
 			onData: (chunk) => {
-				if (pinDetached) return;
 				if (term) {
 					term.write(chunk, () => {
 						if (isSpectator) recomputeScroll();
@@ -992,32 +951,19 @@
 					void runConnectScript(spec.connect, (line) => client?.send(line));
 				}
 				if (isSpectator && s === 'open' && pinnedOrdinal !== null) {
-					client?.selectPane(pinnedOrdinal);
+					client?.subscribePane(pinnedOrdinal);
 				}
 			},
 			onPaneSwitch: (info) => {
-				if (pinnedOrdinal === null) {
-					applyPaneSwitch(info);
-					try { term?.resize(info.cols, info.rows); } catch { /* ignore */ }
-					return;
-				}
-				spectatorPaneOrdinal = info.paneOrdinal;
-				spectatorPaneCount = info.paneCount;
-				spectatorWindowIndex = info.windowIndex;
-				spectatorWindowName = info.windowName;
-				if (info.paneOrdinal === 0) return;
-				if (info.paneOrdinal === pinnedOrdinal) {
-					spectatorPaneId = info.paneId;
-					spectatorCols = info.cols;
-					spectatorRows = info.rows;
-					pinDetached = false;
-					try { term?.resize(info.cols, info.rows); } catch { /* ignore */ }
-				} else {
-					pinDetached = true;
-				}
+				// Auto-clear unavailable banner when pane subscription re-resolves.
+				pinUnavailableInfo = null;
+				applyPaneSwitch(info);
+				try { term?.resize(info.cols, info.rows); } catch { /* ignore */ }
+			},
+			onPaneUnavailable: (info) => {
+				pinUnavailableInfo = info;
 			},
 			onPaneResize: ({ cols, rows }) => {
-				if (pinDetached) return;
 				spectatorCols = cols;
 				spectatorRows = rows;
 				try { term?.resize(cols, rows); } catch { /* ignore */ }
@@ -1093,9 +1039,9 @@
 		<div class="banner" class:banner-error={status === 'error' || bridgeMissing}>{statusMessage}</div>
 	{/if}
 
-	{#if pinDetached}
-		<div class="banner banner-pin-detached">
-			패널 {pinnedOrdinal}번 고정 — 현재 비활성. 화면을 클릭하면 다시 부착됩니다.
+	{#if pinUnavailableInfo}
+		<div class="banner banner-pin-unavailable">
+			패널 {pinUnavailableInfo.pinnedOrdinal}번 없음 (현재 윈도우 패널 {pinUnavailableInfo.paneCount}개)
 		</div>
 	{/if}
 
@@ -1218,7 +1164,7 @@
 							class="icon pane-num"
 							class:active={n === spectatorPaneOrdinal && pinnedOrdinal === null}
 							class:pinned={n === pinnedOrdinal}
-							class:detached={n === pinnedOrdinal && pinDetached}
+							class:unavailable={n === pinnedOrdinal && pinUnavailableInfo !== null}
 							title={n === pinnedOrdinal
 								? `패널 ${n} 고정 (해제하려면 다시 누르세요)`
 								: `패널 ${n}`}
@@ -1542,9 +1488,9 @@
 		border-color: #5b8def;
 		color: #fff;
 	}
-	.spec-footer button.pane-num.pinned.detached {
-		border-color: #f87171;
-		box-shadow: inset 0 0 0 1px #f87171;
+	.spec-footer button.pane-num.pinned.unavailable {
+		border-color: #f0c000;
+		box-shadow: inset 0 0 0 1px #f0c000;
 	}
 	.spec-footer button:active {
 		background: #4a4a4a;
@@ -1604,10 +1550,12 @@
 		gap: 6px;
 	}
 	.banner-hint a { color: #9bf; }
-	.banner-pin-detached {
-		background: #3a3a4a;
-		color: #cfe;
-		font-size: 0.78rem;
+	.banner-pin-unavailable {
+		background: #fff8e1;
+		color: #6b5b00;
+		border-left: 3px solid #f0c000;
+		padding: 6px 10px;
+		font-size: 0.85em;
 	}
 	.banner-close {
 		margin-left: auto;
