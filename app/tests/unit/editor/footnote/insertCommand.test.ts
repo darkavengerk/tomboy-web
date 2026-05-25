@@ -26,7 +26,7 @@ function makeEditor(d: JSONContent): Editor {
 			}),
 			TomboyParagraph,
 			TomboyListItem,
-			TomboyFootnote
+			...TomboyFootnote
 		],
 		content: d
 	});
@@ -34,8 +34,33 @@ function makeEditor(d: JSONContent): Editor {
 	return editor;
 }
 
+/**
+ * 텍스트 안의 `[^N]` 토큰을 footnoteMarker 노드로 변환해서 paragraph content
+ * 를 빌드한다. Task 6 부터 마커는 atomic 노드라 input rule 없이 JSONContent
+ * 단계에서 직접 노드를 박아야 한다. (Task 7 에서 input rule + paste transform
+ * 도입 후에는 텍스트만 줘도 되지만, 이 테스트는 그 전 단계의 단위 테스트.)
+ */
+const FOOTNOTE_TOKEN_RE = /\[\^([^\]\s]+)\]/g;
 function p(text: string): JSONContent {
-	return { type: 'paragraph', content: text ? [{ type: 'text', text }] : [] };
+	if (!text) return { type: 'paragraph', content: [] };
+	const content: JSONContent[] = [];
+	let last = 0;
+	FOOTNOTE_TOKEN_RE.lastIndex = 0;
+	let m: RegExpExecArray | null;
+	while ((m = FOOTNOTE_TOKEN_RE.exec(text)) !== null) {
+		if (m.index > last) {
+			content.push({ type: 'text', text: text.slice(last, m.index) });
+		}
+		content.push({ type: 'footnoteMarker', attrs: { label: m[1] } });
+		last = m.index + m[0].length;
+	}
+	if (content.length === 0) {
+		return { type: 'paragraph', content: [{ type: 'text', text }] };
+	}
+	if (last < text.length) {
+		content.push({ type: 'text', text: text.slice(last) });
+	}
+	return { type: 'paragraph', content };
 }
 
 function doc(...children: JSONContent[]): JSONContent {
@@ -44,7 +69,8 @@ function doc(...children: JSONContent[]): JSONContent {
 
 /**
  * Place the cursor at character offset `charOffset` within the textblock
- * at top-level index `paraIndex`.
+ * at top-level index `paraIndex`. Counts atomic footnoteMarker nodes as
+ * 1 "char" (matches PM's position math) so test offsets stay readable.
  */
 function setCursor(editor: Editor, paraIndex: number, charOffset: number): number {
 	let absStart = 0;
@@ -58,10 +84,27 @@ function setCursor(editor: Editor, paraIndex: number, charOffset: number): numbe
 	return pos;
 }
 
+/**
+ * footnoteMarker 노드를 `[^N]` 로 렌더링해 paragraph 텍스트를 만든다.
+ * 노드 시대에는 `textContent` 가 label 만 뱉어서 (`'1'`) 가독성이 떨어지므로
+ * 테스트 비교용 텍스트로 풀어 쓴다.
+ */
+function nodeToPlain(node: import('@tiptap/pm/model').Node): string {
+	if (node.isText) return node.text ?? '';
+	if (node.type.name === 'footnoteMarker') {
+		return `[^${node.attrs.label ?? ''}]`;
+	}
+	let out = '';
+	node.forEach((child) => {
+		out += nodeToPlain(child);
+	});
+	return out;
+}
+
 function paragraphTexts(editor: Editor): string[] {
 	const out: string[] = [];
 	editor.state.doc.forEach((node) => {
-		out.push(node.textContent);
+		out.push(nodeToPlain(node));
 	});
 	return out;
 }
@@ -83,7 +126,9 @@ describe('buildInsertFootnoteTransaction', () => {
 		const editor = makeEditor(
 			doc(p('제목'), p('본문 [^1] 이어서'), p('---'), p('[^1] 기존 설명'))
 		);
-		setCursor(editor, 1, '본문 [^1] 이어서'.length);
+		// '본문 [^1] 이어서' 텍스트에서 [^1] 은 atomic 노드 = 1 char.
+		// 길이: '본문 ' (3) + [^1] (1) + ' 이어서' (4) = 8
+		setCursor(editor, 1, 8);
 
 		const result = buildInsertFootnoteTransaction(editor.state);
 		expect(result.ok).toBe(true);
@@ -109,17 +154,21 @@ describe('buildInsertFootnoteTransaction', () => {
 				p('[^2] 이')
 			)
 		);
-		// 커서를 '[^1] 와 ' 다음 (char offset = '[^1] 와 '.length)
-		setCursor(editor, 1, '[^1] 와 '.length);
+		// [^1](1) + space(1) + 와(1) = 3 — 'wa' 바로 뒤, [^2] 위치(start+5)
+		// 바로 앞은 [^2].from 이라 inside-marker 가드에 잡힌다. atomic 마커는
+		// "사이" 가 단일 점이라 다른 점 — 와 뒤로 — 에 커서를 둔다.
+		setCursor(editor, 1, 3);
 
 		const result = buildInsertFootnoteTransaction(editor.state);
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
 		editor.view.dispatch(result.tr);
 
+		// NEW 가 '와' 뒤, 기존 [^2] 앞에 끼어들어 라벨 2 를 가져간다.
+		// 기존 [^2] 는 라벨 3 으로 밀린다.
 		expect(paragraphTexts(editor)).toEqual([
 			'제목',
-			'[^1] 와 [^2][^3] 사이',
+			'[^1] 와[^2] [^3] 사이',
 			'---',
 			'[^1] 일',
 			'[^2] ',
@@ -131,7 +180,8 @@ describe('buildInsertFootnoteTransaction', () => {
 		const editor = makeEditor(
 			doc(p('제목'), p('[^1] 본문 [^2] 또 [^1]'), p('---'), p('[^1] 일'), p('[^2] 이'))
 		);
-		setCursor(editor, 1, '[^1] 본문 [^2] 또 [^1]'.length);
+		// '[^1] 본문 [^2] 또 [^1]' = 1+4+1+3+1 = 10
+		setCursor(editor, 1, 10);
 
 		const result = buildInsertFootnoteTransaction(editor.state);
 		expect(result.ok).toBe(true);
@@ -155,7 +205,8 @@ describe('buildInsertFootnoteTransaction', () => {
 		const editor = makeEditor(
 			doc(p('제목'), p('[^abc] 와 [^1] 와 [^foo]'), p('---'), p('[^abc] a'), p('[^1] 일'), p('[^foo] f'))
 		);
-		setCursor(editor, 1, '[^abc] 와 [^1] 와 [^foo]'.length);
+		// '[^abc] 와 [^1] 와 [^foo]' = 1+3+1+3+1 = 9
+		setCursor(editor, 1, 9);
 
 		const result = buildInsertFootnoteTransaction(editor.state);
 		expect(result.ok).toBe(true);
@@ -185,10 +236,11 @@ describe('buildInsertFootnoteTransaction', () => {
 		expect(result.reason).toBe('in-title');
 	});
 
-	it('커서가 기존 [^N] 안 (strictly inside) → abort with reason "inside-existing-marker"', () => {
+	it('커서가 기존 [^N] 노드 위치 (pos === marker.from) → abort with reason "inside-existing-marker"', () => {
 		const editor = makeEditor(doc(p('제목'), p('a [^1] b'), p('---'), p('[^1] 일')));
-		// "[^1]" 의 '1' 앞 — char offset 4
-		setCursor(editor, 1, 4);
+		// 'a ' (2) + 마커 자리 — pos === marker.from. atomic 노드라 "안" 이
+		// 곧 그 자리 한 점.
+		setCursor(editor, 1, 2);
 
 		const result = buildInsertFootnoteTransaction(editor.state);
 		expect(result.ok).toBe(false);
@@ -196,34 +248,35 @@ describe('buildInsertFootnoteTransaction', () => {
 		expect(result.reason).toBe('inside-existing-marker');
 	});
 
-	it('마커 경계 (pos === from) 는 허용 — 마커 바로 앞에 새 참조 삽입', () => {
+	it('마커 직후 (pos === marker.to) 는 허용 — 마커 바로 뒤에 새 참조 삽입', () => {
 		const editor = makeEditor(doc(p('제목'), p('a [^1] b'), p('---'), p('[^1] 일')));
-		// "[^1]" 의 '[' 앞 — char offset 2
-		setCursor(editor, 1, 2);
+		// 'a ' (2) + [^1] (1) = 3 → 마커 바로 뒤.
+		setCursor(editor, 1, 3);
 
 		const result = buildInsertFootnoteTransaction(editor.state);
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
 		editor.view.dispatch(result.tr);
 
-		// 커서가 '[' 경계 = 첫 (유일한) 그룹 위치 → 기존이 라벨 1, 새 ref 가 라벨 2.
+		// 커서가 기존 마커 뒤 → 새 참조가 기존 뒤에 와서 라벨 2.
 		expect(paragraphTexts(editor)).toEqual([
 			'제목',
-			'a [^2][^1] b',
+			'a [^1][^2] b',
 			'---',
 			'[^1] 일',
 			'[^2] '
 		]);
 	});
 
-	it('마커 경계 (pos === from) — 첫 그룹이 아닌 마커 위치면 새 ref 가 그 슬롯을 차지', () => {
-		// 본문에 [^1], [^2] 두 그룹. 커서를 [^2] 의 '[' 위치에 두면 새 ref 가
-		// 그 슬롯에 끼어들어 라벨 2 를 가져가고, 기존 [^2] 는 [^3] 로 밀린다
-		// (ordered-list 시맨틱 — 삽입 후 doc 순서: [^1], NEW, 기존[^2]).
+	it('마커 경계 (pos === marker.to) — 첫 그룹이 아닌 마커 위치면 새 ref 가 그 슬롯을 차지', () => {
+		// 본문에 [^1], [^2] 두 그룹. 커서를 [^2] 직후에 두면 새 ref 가
+		// 그 슬롯 다음에 들어가고 라벨 3 을 가져간다 — 정렬 후 doc 순서:
+		// 기존[^1], 기존[^2], NEW.
 		const editor = makeEditor(
 			doc(p('제목'), p('[^1] 와 [^2] 사이'), p('---'), p('[^1] 일'), p('[^2] 이'))
 		);
-		setCursor(editor, 1, '[^1] 와 '.length); // = '[^2]' 의 '[' 위치
+		// '[^1] 와 [^2]' = 1+3+1 = 5
+		setCursor(editor, 1, 5);
 
 		const result = buildInsertFootnoteTransaction(editor.state);
 		expect(result.ok).toBe(true);
@@ -235,8 +288,8 @@ describe('buildInsertFootnoteTransaction', () => {
 			'[^1] 와 [^2][^3] 사이',
 			'---',
 			'[^1] 일',
-			'[^2] ',
-			'[^3] 이'
+			'[^2] 이',
+			'[^3] '
 		]);
 	});
 
@@ -255,7 +308,8 @@ describe('buildInsertFootnoteTransaction', () => {
 				p('[^1] 마지막에 만들어짐')
 			)
 		);
-		setCursor(editor, 1, '본문 [^1] 그리고 [^2] 그리고 [^3]'.length);
+		// '본문 [^1] 그리고 [^2] 그리고 [^3]' = 본+문+space+[^1]+space+그+리+고+space+[^2]+space+그+리+고+space+[^3] = 16
+		setCursor(editor, 1, 16);
 
 		const result = buildInsertFootnoteTransaction(editor.state);
 		expect(result.ok).toBe(true);
@@ -305,8 +359,14 @@ describe('buildInsertFootnoteTransaction', () => {
 
 		// 커서는 새 정의 [^1]  (= 마지막이 아닌, def-섹션의 첫 자리) 끝에 있어야 함.
 		const sel = editor.state.selection;
-		expect(sel.$from.parent.textContent).toBe('[^1] ');
-		expect(sel.from).toBe(sel.$from.start() + 5);
+		// 새 정의 단락 내용 = [footnoteMarker(atom, no text children), text(' ')]
+		// → textContent 는 atomic 노드를 건너뛰고 ' ' 만 뽑는다.
+		expect(sel.$from.parent.textContent).toBe(' ');
+		// 첫 inline 자식이 footnoteMarker(label='1') 이고, 뒤에 공백 텍스트.
+		expect(sel.$from.parent.firstChild?.type.name).toBe('footnoteMarker');
+		expect(sel.$from.parent.firstChild?.attrs.label).toBe('1');
+		// 단락 시작(start)부터 [^1](1) + ' '(1) = 2.
+		expect(sel.from).toBe(sel.$from.start() + 2);
 	});
 
 	it('셀렉션 영역 (from !== to) → 셀렉션을 새 참조로 대체', () => {
@@ -344,6 +404,11 @@ describe('buildInsertFootnoteTransaction', () => {
 		const lastParaTextEnd = editor.state.doc.content.size - 1;
 		expect(sel.from).toBe(lastParaTextEnd);
 		expect(sel.$from.parent).toBe(lastPara);
-		expect(lastPara.textContent).toBe('[^1] ');
+		// 마지막 단락 = [footnoteMarker(atom, no text children), text(' ')]
+		// → textContent 는 atomic 노드를 건너뛰고 ' ' 만 뽑는다.
+		expect(lastPara.textContent).toBe(' ');
+		// 첫 inline 자식이 footnoteMarker 이고, 라벨은 '1'.
+		expect(lastPara.firstChild?.type.name).toBe('footnoteMarker');
+		expect(lastPara.firstChild?.attrs.label).toBe('1');
 	});
 });

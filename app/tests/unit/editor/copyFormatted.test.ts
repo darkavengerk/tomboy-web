@@ -271,3 +271,33 @@ describe('tiptapToMarkdown', () => {
 		expect(tiptapToMarkdown(doc(p('5 * 3 = 15')))).toContain('5 \\* 3 = 15');
 	});
 });
+
+describe('copyFormatted — footnoteMarker', () => {
+	const docWithFn: JSONContent = doc(
+		p('제목'),
+		{
+			type: 'paragraph',
+			content: [
+				{ type: 'text', text: '본문 ' },
+				{ type: 'footnoteMarker', attrs: { label: '1' } },
+				{ type: 'text', text: ' 끝' }
+			]
+		}
+	);
+
+	it('plain → [^N]', () => {
+		expect(tiptapToPlainText(docWithFn)).toContain('본문 [^1] 끝');
+	});
+
+	it('structured → [^N]', () => {
+		expect(tiptapToStructuredText(docWithFn)).toContain('본문 [^1] 끝');
+	});
+
+	it('html → <sup>N</sup>', () => {
+		expect(tiptapToHtml(docWithFn)).toContain('<sup>1</sup>');
+	});
+
+	it('markdown → [^N]', () => {
+		expect(tiptapToMarkdown(docWithFn)).toContain('본문 [^1] 끝');
+	});
+});

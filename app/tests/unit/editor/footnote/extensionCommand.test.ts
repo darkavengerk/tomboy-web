@@ -20,8 +20,32 @@ afterEach(() => {
 	currentEditor = null;
 });
 
+/**
+ * 텍스트 안의 `[^N]` 토큰을 footnoteMarker 노드로 변환해서 paragraph content
+ * 를 빌드한다. Task 6 부터 마커는 atomic 노드 — input rule (Task 7) 도입
+ * 전까지는 JSONContent 단계에서 직접 노드를 박는다.
+ */
+const FOOTNOTE_TOKEN_RE = /\[\^([^\]\s]+)\]/g;
 function p(text: string): JSONContent {
-	return { type: 'paragraph', content: text ? [{ type: 'text', text }] : [] };
+	if (!text) return { type: 'paragraph', content: [] };
+	const content: JSONContent[] = [];
+	let last = 0;
+	FOOTNOTE_TOKEN_RE.lastIndex = 0;
+	let m: RegExpExecArray | null;
+	while ((m = FOOTNOTE_TOKEN_RE.exec(text)) !== null) {
+		if (m.index > last) {
+			content.push({ type: 'text', text: text.slice(last, m.index) });
+		}
+		content.push({ type: 'footnoteMarker', attrs: { label: m[1] } });
+		last = m.index + m[0].length;
+	}
+	if (content.length === 0) {
+		return { type: 'paragraph', content: [{ type: 'text', text }] };
+	}
+	if (last < text.length) {
+		content.push({ type: 'text', text: text.slice(last) });
+	}
+	return { type: 'paragraph', content };
 }
 function doc(...children: JSONContent[]): JSONContent {
 	return { type: 'doc', content: children };
@@ -38,7 +62,7 @@ function makeEditor(d: JSONContent): Editor {
 			}),
 			TomboyParagraph,
 			TomboyListItem,
-			TomboyFootnote
+			...TomboyFootnote
 		],
 		content: d
 	});
@@ -67,8 +91,17 @@ describe('TomboyFootnote.commands.insertFootnote', () => {
 		const result = editor.commands.insertFootnote();
 		expect(result).toBe(true);
 
+		// footnoteMarker 노드의 textContent 는 label 만 ('1') 뱉으므로
+		// `[^N]` 으로 풀어 비교한다.
 		const paragraphs: string[] = [];
-		editor.state.doc.forEach((n) => paragraphs.push(n.textContent));
+		editor.state.doc.forEach((n) => {
+			let s = '';
+			n.descendants((child) => {
+				if (child.isText) s += child.text ?? '';
+				else if (child.type.name === 'footnoteMarker') s += `[^${child.attrs.label}]`;
+			});
+			paragraphs.push(s);
+		});
 		expect(paragraphs).toEqual(['제목', '본[^1]문', '---', '[^1] ']);
 	});
 
@@ -86,8 +119,9 @@ describe('TomboyFootnote.commands.insertFootnote', () => {
 
 	it('inside-existing-marker — false 반환 + 토스트', () => {
 		const editor = makeEditor(doc(p('제목'), p('a [^1] b'), p('---'), p('[^1] 일')));
-		// "[^1]" 안 — char offset 4 ('1' 앞)
-		setCursorAt(editor, 1, 4);
+		// atomic 노드 시대: "마커 안" = pos === marker.from. 'a ' (2) 뒤가
+		// 마커 자리. char offset 2.
+		setCursorAt(editor, 1, 2);
 
 		const result = editor.commands.insertFootnote();
 		expect(result).toBe(false);
