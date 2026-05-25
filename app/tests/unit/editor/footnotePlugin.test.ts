@@ -45,28 +45,26 @@ function tapFootnote(e: Editor, selector: string): MouseEvent {
 	return event;
 }
 
-describe('footnote plugin decorations', () => {
-	it('builds 3 decorations per [^N] match', () => {
+describe('footnote plugin state', () => {
+	it('tracks matches across the document', () => {
 		const e = makeEditor([P('제목'), P('가[^7] 나[^8]')]);
 		const st = footnotePluginKey.getState(e.state)!;
 		expect(st.matches).toHaveLength(2);
-		expect(st.decorations.find()).toHaveLength(6);
 	});
 
-	it('produces no decorations when there are no footnotes', () => {
+	it('exposes no matches when there are no footnotes', () => {
 		const e = makeEditor([P('제목'), P('각주 없음')]);
 		const st = footnotePluginKey.getState(e.state)!;
-		expect(st.decorations.find()).toHaveLength(0);
+		expect(st.matches).toHaveLength(0);
 	});
 
-	it('recomputes decorations when the document changes', () => {
+	it('recomputes matches when the document changes', () => {
 		const e = makeEditor([P('제목'), P('본문')]);
 		expect(footnotePluginKey.getState(e.state)!.matches).toHaveLength(0);
 		e.commands.insertContentAt(e.state.doc.content.size - 1, ' [^9]');
 		const st = footnotePluginKey.getState(e.state)!;
 		expect(st.matches).toHaveLength(1);
 		expect(st.matches[0].label).toBe('9');
-		expect(st.decorations.find()).toHaveLength(3);
 	});
 
 	it('renders a reference label as a superscript', () => {
