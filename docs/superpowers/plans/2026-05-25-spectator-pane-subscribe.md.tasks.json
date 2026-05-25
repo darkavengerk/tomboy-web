@@ -4,64 +4,64 @@
     {
       "id": 23,
       "subject": "Task 1: Hub skeleton + Registry + lifecycle",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** SpectatorHub 클래스 + 모듈 레벨 SpectatorHubRegistry Map. ssh+tmux 소유, refcount, ssh.exit 시 destroy.\n\n**Files:**\n- Create: bridge/src/spectatorHub.ts\n- Create: bridge/src/spectatorHub.test.ts\n- Modify: bridge/src/spectatorSession.ts (SpectatorCallbacks에 paneUnavailable 추가)\n\n**Acceptance Criteria:**\n- SpectatorHub class constructor injection\n- Registry.subscribe first call spawns ssh, second reuses hub\n- last close → destroy + ssh kill + controlPath unlink (no grace timer)\n- ssh exit → all subs get exit callback\n- SpectatorCallbacks.paneUnavailable added\n\n**Verify:** cd bridge && npm test\n\n```json:metadata\n{\"files\": [\"bridge/src/spectatorHub.ts\", \"bridge/src/spectatorHub.test.ts\", \"bridge/src/spectatorSession.ts\"], \"verifyCommand\": \"cd bridge && npm test\", \"acceptanceCriteria\": [\"SpectatorHub class with constructor injection\", \"Registry.subscribe spawns ssh on first call\", \"second subscribe reuses hub\", \"last close → destroy + ssh kill + controlPath unlink\", \"ssh exit → all subs get exit callback + hub removed\", \"SpectatorCallbacks.paneUnavailable added\"]}\n```"
     },
     {
       "id": 24,
       "subject": "Task 2: Hub state caching",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [23],
       "description": "**Goal:** Hub bootstrap + tmux 이벤트 핸들러로 상태 캐시 + Subscription fan-out 채널.\n\n**Files:**\n- Modify: bridge/src/spectatorHub.ts\n- Modify: bridge/src/spectatorHub.test.ts\n\n**Acceptance Criteria:**\n- hub.bootstrap populates sessionId/windowId/activePaneId/paneStates\n- currentWindowPaneOrder populated\n- %window-pane-changed (debounce 100ms) → activePaneId + listener\n- %session-window-changed → windowId + refresh order + listener\n- %layout-change → refresh order\n- %output → fan-out to listeners\n- captureSeed + ensurePaneState methods\n\n**Verify:** cd bridge && npm test\n\n```json:metadata\n{\"files\": [\"bridge/src/spectatorHub.ts\", \"bridge/src/spectatorHub.test.ts\"], \"verifyCommand\": \"cd bridge && npm test\", \"acceptanceCriteria\": [\"bootstrap populates state\", \"currentWindowPaneOrder populated\", \"%window-pane-changed (debounced) updates + fires listener\", \"%session-window-changed updates + refreshes + fires\", \"%layout-change refreshes order\", \"%output fans to listeners\", \"captureSeed + ensurePaneState exposed\"]}\n```"
     },
     {
       "id": 25,
       "subject": "Task 3: SpectatorSubscription (follow-active)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [24],
       "description": "**Goal:** Subscription이 hub 이벤트 listen + 자기 paneId 필터링. follow-active 디폴트. seed-during-output 큐잉.\n\n**Files:**\n- Modify: bridge/src/spectatorHub.ts\n- Modify: bridge/src/spectatorHub.test.ts\n\n**Acceptance Criteria:**\n- default mode = follow-active\n- subscribedPaneId tracks hub.activePaneId\n- onPaneOutput filtered\n- paneSwitch payload from hub state\n- seed via captureSeed + reset+alt+content+cursor\n- bytes during seed buffered + flushed in order\n- subscription-level seeding (doesn't block other subs)\n- attach() async\n\n**Verify:** cd bridge && npm test\n\n```json:metadata\n{\"files\": [\"bridge/src/spectatorHub.ts\", \"bridge/src/spectatorHub.test.ts\"], \"verifyCommand\": \"cd bridge && npm test\", \"acceptanceCriteria\": [\"Subscription default = follow-active\", \"subscribedPaneId tracks hub.activePaneId\", \"onPaneOutput filtered\", \"paneSwitch payload populated\", \"seed sent as data after paneSwitch\", \"bytes during seed buffered + flushed\", \"other subs unaffected\"]}\n```"
     },
     {
       "id": 26,
       "subject": "Task 4: SpectatorSubscription pin/unpin",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [25],
       "description": "**Goal:** pinOrdinal(n) / unpin(). ordinal → paneId. window change 시 재해석. 무효면 paneUnavailable.\n\n**Files:**\n- Modify: bridge/src/spectatorHub.ts\n- Modify: bridge/src/spectatorHub.test.ts\n\n**Acceptance Criteria:**\n- resolveOrdinal pure helper exported\n- pinOrdinal valid → paneSwitch + seed\n- pinOrdinal invalid → paneUnavailable\n- unpin → follow-active + activePaneId seed\n- pinned ignores onActivePaneChanged\n- pinned re-resolves on onWindowPaneOrderChanged\n- refreshPaneOrder change-detection before firing listeners\n\n**Verify:** cd bridge && npm test\n\n```json:metadata\n{\"files\": [\"bridge/src/spectatorHub.ts\", \"bridge/src/spectatorHub.test.ts\"], \"verifyCommand\": \"cd bridge && npm test\", \"acceptanceCriteria\": [\"resolveOrdinal pure helper\", \"pinOrdinal valid → paneSwitch + seed\", \"pinOrdinal invalid → paneUnavailable\", \"unpin → follow-active\", \"pinned ignores active change\", \"pinned re-resolves on window change\", \"insufficient panes → paneUnavailable\"]}\n```"
     },
     {
       "id": 27,
       "subject": "Task 5: Hub desktop-mut methods",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [26],
       "description": "**Goal:** hub.selectPane/tmuxNav/sendInput + Subscription 위임.\n\n**Files:**\n- Modify: bridge/src/spectatorHub.ts\n- Modify: bridge/src/spectatorHub.test.ts\n\n**Acceptance Criteria:**\n- hub.sessionName field\n- hub.selectPane resolves + select-pane\n- hub.selectPane out-of-range → no-op\n- hub.tmuxNav correct command per action\n- hub.sendInput hex-encoded send-keys on activePaneId\n- Subscription delegates + hasActivePane + controlPath getter\n\n**Verify:** cd bridge && npm test\n\n```json:metadata\n{\"files\": [\"bridge/src/spectatorHub.ts\", \"bridge/src/spectatorHub.test.ts\"], \"verifyCommand\": \"cd bridge && npm test\", \"acceptanceCriteria\": [\"hub.selectPane via list-panes\", \"hub.tmuxNav correct command\", \"hub.sendInput hex send-keys\", \"Subscription delegation\", \"sub.controlPath getter\"]}\n```"
     },
     {
       "id": 28,
       "subject": "Task 6: server.ts integration",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [27],
       "description": "**Goal:** handleWs → SpectatorHubRegistry, subscribe-pane 라우팅, imageTransfer controlPath via hub.\n\n**Files:**\n- Modify: bridge/src/server.ts\n\n**Acceptance Criteria:**\n- type change to SpectatorSubscription\n- connect spectate → Registry.subscribe + attach()\n- subscribe-pane frame routes (0 unpin, ≥1 pin)\n- data → sendInput, tmux-nav → tmuxNav/selectPane\n- WS close → subscription.close()\n- handleImageMessage uses hub.controlPath\n- paneUnavailable → WS frame\n- npm run build passes\n\n**Verify:** cd bridge && npm test && npm run build\n\n```json:metadata\n{\"files\": [\"bridge/src/server.ts\", \"bridge/src/spectatorHub.ts\"], \"verifyCommand\": \"cd bridge && npm test && npm run build\", \"acceptanceCriteria\": [\"handleWs uses SpectatorSubscription\", \"subscribe-pane → pin/unpin\", \"controlPath from hub\", \"paneUnavailable emits frame\", \"data/tmux-nav routed\", \"build succeeds\"]}\n```"
     },
     {
       "id": 29,
       "subject": "Task 7: Client wsClient subscribePane + pane-unavailable",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** wsClient.subscribePane(n) + pane-unavailable 메시지 핸들러 + onPaneUnavailable 콜백.\n\n**Files:**\n- Modify: app/src/lib/editor/terminal/wsClient.ts\n- Create: app/tests/unit/editor/wsClientSubscribePane.test.ts\n\n**Acceptance Criteria:**\n- ClientOptions.onPaneUnavailable\n- ServerMsg includes pane-unavailable + fields\n- subscribePane(n) sends correct frame\n- pane-unavailable dispatches with type check\n- 4 vitest tests pass + npm check\n\n**Verify:** cd app && npx vitest run tests/unit/editor/wsClientSubscribePane.test.ts && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/wsClient.ts\", \"app/tests/unit/editor/wsClientSubscribePane.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/wsClientSubscribePane.test.ts && npm run check\", \"acceptanceCriteria\": [\"onPaneUnavailable callback option\", \"ServerMsg includes pane-unavailable\", \"subscribePane frame correct\", \"pane-unavailable dispatches with type check\"]}\n```"
     },
     {
       "id": 30,
       "subject": "Task 8: Client TerminalView cleanup + pinUnavailable banner",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [29],
       "description": "**Goal:** pinDetached/reattachIfPinned 흔적 모두 제거 + pinUnavailable + 노란 배너 + subscribePane 호출.\n\n**Files:**\n- Modify: app/src/lib/editor/terminal/TerminalView.svelte\n\n**Acceptance Criteria:**\n- pinDetached + red banner + .banner-pin-detached removed\n- reattachIfPinned + call sites removed\n- WS open uses subscribePane\n- pinUnavailable state + yellow banner\n- onPaneUnavailable wired\n- onPaneSwitch clears pinUnavailable\n- onPaneNumClick uses subscribePane(N or 0)\n- click/type calls selectPane directly\n- 0 typecheck errors\n\n**Verify:** cd app && npm run check && npm test\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/TerminalView.svelte\"], \"verifyCommand\": \"cd app && npm run check && npm test\", \"acceptanceCriteria\": [\"pinDetached + red banner removed\", \"reattachIfPinned + call sites removed\", \"WS open → subscribePane\", \"pinUnavailable + yellow banner\", \"onPaneUnavailable wired\", \"onPaneSwitch clears unavail\", \"onPaneNumClick uses subscribePane\", \"selectPane called directly\"]}\n```"
     },
     {
       "id": 31,
       "subject": "Task 9: Delete old SpectatorSession + CLAUDE.md + regression",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [28, 30],
       "description": "**Goal:** SpectatorSession 클래스 삭제 + CLAUDE.md tomboy-terminal 갱신 + 전체 테스트 + 수동 회귀.\n\n**Files:**\n- Modify: bridge/src/spectatorSession.ts\n- Modify: CLAUDE.md\n\n**Acceptance Criteria:**\n- SpectatorSession class + SpectatorOptions removed\n- pure helpers + Callbacks preserved\n- grep: 0 SpectatorSession references\n- CLAUDE.md tomboy-terminal updated (multi-subscribe + pin live + ordinal-based + paneUnavailable)\n- bridge file map adds spectatorHub.ts\n- bridge tests pass\n- app tests pass + 0 typecheck\n- manual scenarios 1-8 pass\n\n**Verify:** cd bridge && npm test && cd ../app && npm test && npm run check\n\n```json:metadata\n{\"files\": [\"bridge/src/spectatorSession.ts\", \"CLAUDE.md\"], \"verifyCommand\": \"cd bridge && npm test && cd ../app && npm test && npm run check\", \"acceptanceCriteria\": [\"SpectatorSession removed\", \"helpers preserved\", \"no refs remain\", \"CLAUDE.md updated\", \"bridge tests pass\", \"app tests pass + 0 check\", \"manual scenarios 1-8 pass\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-25T00:00:00Z"
+  "lastUpdated": "2026-05-25T01:00:00Z"
 }
