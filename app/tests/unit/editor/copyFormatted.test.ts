@@ -301,3 +301,49 @@ describe('copyFormatted — footnoteMarker', () => {
 		expect(tiptapToMarkdown(docWithFn)).toContain('본문 [^1] 끝');
 	});
 });
+
+describe('inlineCheckbox serializers', () => {
+	const docOf = (checked: boolean) => ({
+		type: 'doc',
+		content: [
+			{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+			{
+				type: 'paragraph',
+				content: [
+					{ type: 'text', text: '할 일 ' },
+					{ type: 'inlineCheckbox', attrs: { checked } },
+					{ type: 'text', text: ' 우유' }
+				]
+			}
+		]
+	});
+
+	it('plain text emits [ ] for unchecked', () => {
+		expect(tiptapToPlainText(docOf(false))).toContain('[ ]');
+	});
+
+	it('plain text emits [x] for checked', () => {
+		expect(tiptapToPlainText(docOf(true))).toContain('[x]');
+	});
+
+	it('structured text emits [ ] / [x]', () => {
+		expect(tiptapToStructuredText(docOf(false))).toContain('[ ]');
+		expect(tiptapToStructuredText(docOf(true))).toContain('[x]');
+	});
+
+	it('markdown emits [ ] / [x] (GFM task list)', () => {
+		expect(tiptapToMarkdown(docOf(false))).toContain('[ ]');
+		expect(tiptapToMarkdown(docOf(true))).toContain('[x]');
+	});
+
+	it('html emits <input type="checkbox" disabled> for unchecked', () => {
+		const html = tiptapToHtml(docOf(false));
+		expect(html).toContain('<input type="checkbox" disabled>');
+		expect(html).not.toContain('checked');
+	});
+
+	it('html emits <input type="checkbox" disabled checked> for checked', () => {
+		const html = tiptapToHtml(docOf(true));
+		expect(html).toContain('<input type="checkbox" disabled checked>');
+	});
+});
