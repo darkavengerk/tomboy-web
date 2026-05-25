@@ -277,6 +277,10 @@ export function serializeContent(doc: JSONContent): string {
 					// 모든 mark 닫고 [^N] emit. 다음 text 노드가 mark 를 다시 연다.
 					closeAll();
 					result += `[^${escapeXmlContent((inline.attrs?.label as string | undefined) ?? '')}]`;
+				} else if (inline.type === 'inlineCheckbox') {
+					// 모든 mark 닫고 [ ]/[x] emit. 다음 text 노드가 mark 를 다시 연다.
+					closeAll();
+					result += inline.attrs?.checked ? '[x]' : '[ ]';
 				}
 			}
 			// 헤더 문단이면 영역 시작, 그 외 문단/헤딩이면 영역 종료.
@@ -778,6 +782,10 @@ function serializeInlineContent(content: JSONContent[]): string {
 			// 모든 mark 닫고 [^N] emit. 다음 text 노드가 mark 를 다시 연다.
 			closeAll();
 			result += `[^${escapeXmlContent((node.attrs?.label as string | undefined) ?? '')}]`;
+		} else if (node.type === 'inlineCheckbox') {
+			// 모든 mark 닫고 [ ]/[x] emit. 다음 text 노드가 mark 를 다시 연다.
+			closeAll();
+			result += node.attrs?.checked ? '[x]' : '[ ]';
 		}
 	}
 
@@ -964,6 +972,9 @@ function getPlainText(node: JSONContent): string {
 	if (node.text) return node.text;
 	if (node.type === 'footnoteMarker') {
 		return `[^${(node.attrs?.label as string | undefined) ?? ''}]`;
+	}
+	if (node.type === 'inlineCheckbox') {
+		return node.attrs?.checked ? '[x]' : '[ ]';
 	}
 	if (!node.content) return '';
 	return node.content.map(getPlainText).join('');

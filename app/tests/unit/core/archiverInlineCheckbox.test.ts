@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deserializeContent } from '../../../src/lib/core/noteContentArchiver';
+import { deserializeContent, serializeContent } from '../../../src/lib/core/noteContentArchiver';
 
 function paragraphInlines(doc: any, idx = 1) {
 	return doc.content[idx].content;
@@ -69,5 +69,55 @@ describe('archiver: [ ]/[x] text → inlineCheckbox node', () => {
 		const types = inlines.map((n: any) => n.type);
 		expect(types).toContain('inlineCheckbox');
 		expect(types).toContain('footnoteMarker');
+	});
+});
+
+describe('archiver: inlineCheckbox node → [ ]/[x] text', () => {
+	it('serializes unchecked node to [ ]', () => {
+		const doc = {
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{
+					type: 'paragraph',
+					content: [
+						{ type: 'inlineCheckbox', attrs: { checked: false } },
+						{ type: 'text', text: ' 우유' }
+					]
+				}
+			]
+		};
+		const xml = serializeContent(doc);
+		expect(xml).toContain('[ ] 우유');
+	});
+
+	it('serializes checked node to [x]', () => {
+		const doc = {
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{
+					type: 'paragraph',
+					content: [{ type: 'inlineCheckbox', attrs: { checked: true } }]
+				}
+			]
+		};
+		const xml = serializeContent(doc);
+		expect(xml).toContain('[x]');
+	});
+
+	it('round-trips simple [ ]', () => {
+		const xml = `<note-content version="0.1">제목\n[ ] 우유</note-content>`;
+		const doc = deserializeContent(xml);
+		const back = serializeContent(doc);
+		expect(back).toContain('[ ] 우유');
+	});
+
+	it('round-trips with mark crossing — bold splits around checkbox', () => {
+		const xml = `<note-content version="0.1">제목\n<bold>중요 [x] 작업</bold></note-content>`;
+		const doc = deserializeContent(xml);
+		const back = serializeContent(doc);
+		// One bold span becomes two on serialize (intentional split):
+		expect(back).toMatch(/<bold>중요 <\/bold>\[x\]<bold> 작업<\/bold>/);
 	});
 });
