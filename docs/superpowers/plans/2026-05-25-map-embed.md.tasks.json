@@ -4,27 +4,27 @@
     {
       "id": 10,
       "subject": "Task 0: Leaflet 의존성 추가",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** `leaflet@^1.9` + `@types/leaflet` 추가, 빌드/타입체크 무사 통과.\n\n**Files:**\n- Modify: `app/package.json`\n- Modify: `app/package-lock.json`\n\n**Acceptance Criteria:**\n- leaflet in dependencies, @types/leaflet in devDependencies\n- npm install succeeds\n- npm run check baseline-equivalent\n\n**Verify:** `cd app && npm run check`\n\n```json:metadata\n{\"files\": [\"app/package.json\", \"app/package-lock.json\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"leaflet in dependencies\", \"@types/leaflet in devDependencies\", \"npm install succeeds\", \"npm run check baseline-equivalent\"]}\n```"
     },
     {
       "id": 11,
       "subject": "Task 1: parseGeoUrl 파서 + 테스트",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [10],
       "description": "**Goal:** geo:lat,lon[;...] 문자열 파서.\n\n**Files:**\n- Create: `app/src/lib/editor/geoMap/parseGeoUrl.ts`\n- Test: `app/tests/unit/editor/parseGeoUrl.test.ts`\n\n**Verify:** `cd app && npx vitest run tests/unit/editor/parseGeoUrl.test.ts`\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/geoMap/parseGeoUrl.ts\", \"app/tests/unit/editor/parseGeoUrl.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/parseGeoUrl.test.ts\", \"acceptanceCriteria\": [\"valid coords parsed\", \"negative/integer/optional-params handled\", \"out-of-range returns null\", \"malformed returns null\", \"all tests pass\"]}\n```"
     },
     {
       "id": 12,
       "subject": "Task 2: renderGeoMap — Leaflet 동적 로더 + mount/destroy",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [10],
       "description": "**Goal:** Leaflet 지연 로더 + OSM 타일 mount/destroy.\n\n**Files:**\n- Create: `app/src/lib/editor/geoMap/renderGeoMap.ts`\n\n**Verify:** `cd app && npm run build && find build -name 'marker-*.png' | head`\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/geoMap/renderGeoMap.ts\"], \"verifyCommand\": \"cd app && npm run build && find build -name 'marker-*.png' | head\", \"acceptanceCriteria\": [\"singleton promise\", \"CSS injected once\", \"marker icon path workaround\", \"mountGeoMap with destroy\", \"build succeeds with marker PNGs\"]}\n```"
     },
     {
       "id": 13,
       "subject": "Task 3: geoMapPlugin — 스캔 + 데코 + atomic 키",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [11, 12],
       "description": "**Goal:** ProseMirror plugin — geo URL 스캔 + widget 데코 + atomic 키.\n\n**Files:**\n- Create: `app/src/lib/editor/geoMap/geoMapPlugin.ts`\n- Test: `app/tests/unit/editor/geoMapPlugin.test.ts`\n\n**Verify:** `cd app && npx vitest run tests/unit/editor/geoMapPlugin.test.ts`\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/geoMap/geoMapPlugin.ts\", \"app/tests/unit/editor/geoMapPlugin.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/geoMapPlugin.test.ts\", \"acceptanceCriteria\": [\"findGeoUrlRanges scans all text nodes\", \"mark-agnostic detection\", \"invalid coords filtered\", \"widget deco with stable key\", \"atomic Backspace/Delete/Arrow keys\", \"all tests pass\"]}\n```"
     },
@@ -57,5 +57,5 @@
       "description": "**Goal:** 단위 테스트로 잡지 못하는 통합 동작(Leaflet 실제 렌더, 모바일, sync) 수동 확인.\n\n**Files:** None (수동)\n\n**Verify:** 체크리스트 통과 보고\n\n```json:metadata\n{\"files\": [], \"verifyCommand\": \"manual: see Task 7 checklist\", \"acceptanceCriteria\": [\"desktop insert+render+interact\", \"invalid coords ignored\", \"multi-map\", \"atomic backspace\", \"permission denied toast\", \"mobile pan + page scroll\", \"round-trip via reload\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-25T04:24:45Z"
+  "lastUpdated": "2026-05-25T04:37:13Z"
 }
