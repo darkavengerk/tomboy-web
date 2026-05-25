@@ -5,6 +5,10 @@ import {
 	footnotePluginKey,
 	type FootnotePluginOptions
 } from './plugin.js';
+import {
+	createFootnoteCleanupPlugin,
+	footnoteCleanupPluginKey
+} from './cleanupPlugin.js';
 import { buildInsertFootnoteTransaction } from './insertCommand.js';
 import { pushToast } from '$lib/stores/toast.js';
 
@@ -14,7 +18,7 @@ export {
 	findFootnotePartner
 } from './footnotes.js';
 export type { FootnoteMatch } from './footnotes.js';
-export { footnotePluginKey };
+export { footnotePluginKey, footnoteCleanupPluginKey };
 export type { FootnotePluginOptions, FootnotePluginState } from './plugin.js';
 export { buildInsertFootnoteTransaction } from './insertCommand.js';
 export type { InsertFootnoteResult } from './insertCommand.js';
@@ -41,7 +45,11 @@ export const TomboyFootnote = Extension.create<FootnotePluginOptions>({
 		};
 	},
 	addProseMirrorPlugins() {
-		return [createFootnotePlugin(this.options)];
+		const getEditor = () => this.editor;
+		return [
+			createFootnotePlugin(this.options),
+			createFootnoteCleanupPlugin(getEditor)
+		];
 	},
 	addCommands() {
 		return {
