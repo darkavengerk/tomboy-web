@@ -1829,8 +1829,15 @@
 	   폭 0 처리한다. 참조 라벨은 <sup class="tomboy-fn-ref"> 작은 위첨자,
 	   설명 마커 라벨은 <span class="tomboy-fn-def"> 일반 크기로 표시한다.
 	   마커는 .note XML 본문에 [^N] 텍스트로 그대로 남는다. */
+	/* 폭 0 으로 접되 font-size 는 유지 — font-size:0 으로 접으면 그 자리에
+	   그려져야 할 캐럿의 세로 박스도 사라져, 마커 부근에서 커서가 숨겨지는
+	   현상이 생긴다. inline-block + width:0 + overflow:hidden 으로 텍스트는
+	   안 보이게 잘라내면서 라인 높이는 보존. */
 	.tomboy-editor :global(.tomboy-fn-bracket) {
-		font-size: 0;
+		display: inline-block;
+		width: 0;
+		overflow: hidden;
+		vertical-align: top;
 	}
 	.tomboy-editor :global(.tomboy-fn-ref) {
 		font-size: 0.75em;
