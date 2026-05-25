@@ -400,23 +400,171 @@ export class SpectatorHub {
 }
 
 // ---------------------------------------------------------------------------
-// SpectatorSubscription — per-WS handle (skeleton; filled in T3/T4)
+// SpectatorSubscription — per-WS handle (T3: follow-active; T4: pinned)
 // ---------------------------------------------------------------------------
+
+const SCROLLBACK_SEED_LINES = 1000;
+
+export type SubscriptionMode =
+	| { kind: 'follow-active' }
+	| { kind: 'pinned'; ordinal: number };
 
 export class SpectatorSubscription {
 	readonly callbacks: SpectatorCallbacks;
 	private hub: SpectatorHub;
+
+	mode: SubscriptionMode = { kind: 'follow-active' };
+	subscribedPaneId: string | null = null;
+
+	private seeding = false;
+	private pendingOutput: Buffer[] = [];
+	private decoder = new TextDecoder('utf-8', { fatal: false });
 	private closed = false;
+	private attached = false;
+
+	// Concurrent switchTo coalescing: only one switchTo in flight at a time;
+	// the latest requested paneId wins after the current one completes.
+	private switchInflight: Promise<void> | null = null;
+	private pendingSwitchPaneId: string | null = null;
+
+	// Bound listener references — must be stored so remove*Listener actually
+	// removes the same function reference that was added.
+	private readonly boundPaneOutput = (paneId: string, bytes: Buffer) =>
+		this.onHubPaneOutput(paneId, bytes);
+	private readonly boundActiveChanged = (paneId: string) =>
+		void this.onHubActivePaneChanged(paneId);
+	private readonly boundWindowOrderChanged = (order: string[]) =>
+		void this.onHubWindowPaneOrderChanged(order);
 
 	constructor(hub: SpectatorHub, callbacks: SpectatorCallbacks) {
 		this.hub = hub;
 		this.callbacks = callbacks;
 		hub.addSubscription(this);
+		hub.addOutputListener(this.boundPaneOutput);
+		hub.addActivePaneListener(this.boundActiveChanged);
+		hub.addWindowOrderListener(this.boundWindowOrderChanged);
+	}
+
+	/** Await bootstrap, then fire initial paneSwitch + seed for the active pane. */
+	async attach(): Promise<void> {
+		if (this.closed) return;
+		if (this.attached) return;
+		this.attached = true;
+		if (this.hub.bootPromise) await this.hub.bootPromise;
+		if (this.closed) return;  // re-check after async gap
+		if (this.mode.kind === 'follow-active' && this.hub.activePaneId) {
+			await this.processSwitchQueue(this.hub.activePaneId);
+		}
+	}
+
+	private onHubPaneOutput(paneId: string, bytes: Buffer): void {
+		if (this.closed) return;
+		if (paneId !== this.subscribedPaneId) return;
+		if (this.seeding) {
+			this.pendingOutput.push(bytes);
+			return;
+		}
+		this.emitBytes(bytes);
+	}
+
+	private async onHubActivePaneChanged(paneId: string): Promise<void> {
+		if (this.closed) return;
+		if (this.mode.kind !== 'follow-active') return;
+		await this.processSwitchQueue(paneId);
+	}
+
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	private async onHubWindowPaneOrderChanged(_order: string[]): Promise<void> {
+		// T4 fills this in for pinned mode. follow-active ignores window order
+		// changes directly — it reacts via activePaneListeners instead.
+	}
+
+	/**
+	 * Coalescing switch queue: if a switchTo is already in flight, record the
+	 * latest desired paneId and let the current flight pick it up on completion.
+	 * This prevents two concurrent switchTo calls from racing and corrupting
+	 * seeding/pendingOutput state.
+	 */
+	private async processSwitchQueue(paneId: string): Promise<void> {
+		this.pendingSwitchPaneId = paneId;
+		if (this.switchInflight) return;  // in-flight call will loop and pick up pendingSwitchPaneId
+		while (this.pendingSwitchPaneId) {
+			const next = this.pendingSwitchPaneId;
+			this.pendingSwitchPaneId = null;
+			this.switchInflight = this.switchTo(next);
+			await this.switchInflight;
+			this.switchInflight = null;
+		}
+	}
+
+	private async switchTo(paneId: string): Promise<void> {
+		// Look up cached pane state BEFORE mutating any subscription state.
+		// If the pane is unknown we leave subscribedPaneId unchanged so the
+		// client keeps receiving output for whatever it was watching before.
+		const state = this.hub.paneStates.get(paneId);
+		if (!state) {
+			this.seeding = false;
+			return;
+		}
+
+		this.seeding = true;
+		this.pendingOutput = [];
+		this.subscribedPaneId = paneId;
+		// Fresh UTF-8 streaming decoder so we don't carry state from prior pane.
+		this.decoder = new TextDecoder('utf-8', { fatal: false });
+
+		const ordinal = this.hub.currentWindowPaneOrder.indexOf(paneId) + 1;
+		const count = this.hub.currentWindowPaneOrder.length;
+
+		this.callbacks.paneSwitch({
+			paneId,
+			cols: state.cols,
+			rows: state.rows,
+			altScreen: state.altScreen,
+			windowIndex: state.windowIndex,
+			windowName: state.windowName,
+			paneOrdinal: ordinal,
+			paneCount: count,
+		});
+
+		const captured = await this.hub.captureSeed(paneId, SCROLLBACK_SEED_LINES);
+
+		// Build seed string:
+		//   1. Always exit alt-screen + full reset (client starts clean)
+		//   2. Re-enter alt-screen if the pane was in it
+		//   3. Captured content lines joined by CRLF
+		//   4. Restore cursor position if known
+		let seed = '\x1b[?1049l\x1bc';
+		if (state.altScreen) seed += '\x1b[?1049h';
+		seed += captured.join('\r\n');
+		if (Number.isFinite(state.cursorY) && Number.isFinite(state.cursorX)) {
+			// CSI row;colH — both are 1-based
+			seed += `\x1b[${state.cursorY + 1};${state.cursorX + 1}H`;
+		}
+
+		this.callbacks.data(seed);
+
+		// Flush bytes that arrived during the async capture
+		const queued = this.pendingOutput;
+		this.pendingOutput = [];
+		this.seeding = false;
+		for (const buf of queued) {
+			this.emitBytes(buf);
+		}
+	}
+
+	/** Decode buf via streaming UTF-8 decoder and forward to callbacks.data. */
+	private emitBytes(bytes: Buffer): void {
+		const text = this.decoder.decode(bytes, { stream: true });
+		if (text) this.callbacks.data(text);
 	}
 
 	close(): void {
 		if (this.closed) return;
 		this.closed = true;
+		this.hub.removeOutputListener(this.boundPaneOutput);
+		this.hub.removeActivePaneListener(this.boundActiveChanged);
+		this.hub.removeWindowOrderListener(this.boundWindowOrderChanged);
 		this.hub.removeSubscription(this);
 	}
 }

@@ -763,3 +763,450 @@ function buildMockSshFactoryCapture(instances: MockSsh[]): (...args: any[]) => a
 		return ssh;
 	};
 }
+
+// ---------------------------------------------------------------------------
+// Task 3: SpectatorSubscription (follow-active mode)
+// ---------------------------------------------------------------------------
+
+test('SpectatorSubscription: default mode is follow-active, subscribedPaneId starts null', () => {
+	const { hub } = makeHub();
+	const sub = new SpectatorSubscription(hub, makeCallbacks());
+	assert.equal(sub.mode.kind, 'follow-active');
+	assert.equal(sub.subscribedPaneId, null);
+	sub.close();
+});
+
+test('SpectatorSubscription: follow-active default + receives output for active pane only', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) {
+			return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		}
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2', '%3']);
+		if (cmd.startsWith('capture-pane')) return Promise.resolve(['line1', 'line2']);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+	const cb = makeCallbacks();
+	const sub = new SpectatorSubscription(hub, cb);
+	await sub.attach(); // fires paneSwitch + seed for %2
+
+	tmux.emit('output', '%2', Buffer.from('to-active'));
+	tmux.emit('output', '%3', Buffer.from('to-other'));
+
+	// %2 (subscribedPaneId) only
+	const dataEvents = cb.events.filter((e) => e.startsWith('data:'));
+	// at least: seed data + 'to-active' (9 bytes)
+	assert.ok(dataEvents.length >= 2, `expected ≥ 2 data events, got: ${dataEvents.join(', ')}`);
+	// 'to-active' = 9 bytes — exactly one such event (not from %3)
+	const nineByteData = dataEvents.filter((e) => e === 'data:9');
+	assert.equal(nineByteData.length, 1, `%3 bytes should be ignored; events: ${cb.events.join(', ')}`);
+	sub.close();
+});
+
+test('SpectatorSubscription: attach fires paneSwitch with correct paneOrdinal/paneCount', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2', '%3', '%4']);
+		if (cmd.startsWith('capture-pane')) return Promise.resolve([]);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+	const paneSwitchEvents: any[] = [];
+	const cb = makeCallbacks();
+	cb.paneSwitch = (info) => paneSwitchEvents.push(info);
+	const sub = new SpectatorSubscription(hub, cb);
+	await sub.attach();
+
+	assert.equal(paneSwitchEvents.length, 1, 'one paneSwitch on attach');
+	assert.equal(paneSwitchEvents[0].paneId, '%2');
+	assert.equal(paneSwitchEvents[0].cols, 80);
+	assert.equal(paneSwitchEvents[0].rows, 24);
+	assert.equal(paneSwitchEvents[0].paneOrdinal, 1);
+	assert.equal(paneSwitchEvents[0].paneCount, 3);
+	sub.close();
+});
+
+test('SpectatorSubscription: seed = reset + captured content + cursor position', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) return Promise.resolve(['$1|@1|%2|80|24|0|5|3|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2']);
+		if (cmd.startsWith('capture-pane')) return Promise.resolve(['lineA', 'lineB']);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+	const dataPayloads: string[] = [];
+	const cb = makeCallbacks();
+	cb.data = (text) => dataPayloads.push(text);
+	const sub = new SpectatorSubscription(hub, cb);
+	await sub.attach();
+
+	assert.equal(dataPayloads.length, 1, 'one data call for seed');
+	const seed = dataPayloads[0];
+	assert.ok(seed.startsWith('\x1b[?1049l\x1bc'), 'seed starts with reset+exit-alt');
+	assert.ok(seed.includes('lineA\r\nlineB'), 'seed contains captured lines joined by CRLF');
+	// cursor at x=5, y=3 → CSI 4;6H (1-based)
+	assert.ok(seed.includes('\x1b[4;6H'), `seed should include cursor position, got: ${JSON.stringify(seed)}`);
+	sub.close();
+});
+
+test('SpectatorSubscription: altScreen pane → seed includes \\x1b[?1049h', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) return Promise.resolve(['$1|@1|%2|80|24|1|0|0|0|main']); // altScreen=1
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2']);
+		if (cmd.startsWith('capture-pane')) return Promise.resolve(['alt-content']);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+	const dataPayloads: string[] = [];
+	const cb = makeCallbacks();
+	cb.data = (text) => dataPayloads.push(text);
+	const sub = new SpectatorSubscription(hub, cb);
+	await sub.attach();
+
+	const seed = dataPayloads[0];
+	assert.ok(seed.includes('\x1b[?1049h'), 'alt-screen seed includes enter-alt-screen escape');
+	sub.close();
+});
+
+test('SpectatorSubscription: onActivePaneChanged → paneSwitch + new seed', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message') && cmd.includes('-t work')) {
+			return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		}
+		if (cmd.startsWith('display-message') && cmd.includes('-t %3')) {
+			return Promise.resolve(['100|30|0|0|0|0|main']);
+		}
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2', '%3']);
+		if (cmd.startsWith('capture-pane')) return Promise.resolve(['seed']);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+	const cb = makeCallbacks();
+	const sub = new SpectatorSubscription(hub, cb);
+	await sub.attach();
+	cb.events.length = 0; // clear initial seed events
+
+	tmux.emit('windowPaneChanged', '@1', '%3');
+	await new Promise((r) => setTimeout(r, 150)); // wait for debounce + async
+
+	assert.ok(cb.events.some((e) => e === 'paneSwitch:%3'), `expected paneSwitch:%3 in: ${cb.events.join(', ')}`);
+	assert.equal(sub.subscribedPaneId, '%3', 'subscribedPaneId updated to %3');
+	sub.close();
+});
+
+test('SpectatorSubscription: follow-active ignores windowOrderListener (no switchTo)', async () => {
+	const { hub, tmux } = makeHub();
+	let listPanesCount = 0;
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message') && cmd.includes('-t work')) {
+			return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		}
+		// scheduleWindowChange queries the new window for its active pane ID
+		if (cmd.startsWith('display-message') && cmd.includes('-t @2')) {
+			return Promise.resolve(['%5']);
+		}
+		// ensurePaneState('%5') — needed so switchTo('%5') doesn't bail early
+		if (cmd.startsWith('display-message') && cmd.includes('-t %5')) {
+			return Promise.resolve(['100|30|0|0|0|0|main']);
+		}
+		if (cmd.startsWith('list-panes')) {
+			listPanesCount++;
+			return cmd.includes('@2')
+				? Promise.resolve(['%5', '%6'])
+				: Promise.resolve(['%2', '%3']);
+		}
+		if (cmd.startsWith('capture-pane')) return Promise.resolve(['seed']);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+	const cb = makeCallbacks();
+	const sub = new SpectatorSubscription(hub, cb);
+	await sub.attach();
+	cb.events.length = 0;
+
+	// window switch triggers windowOrderListeners
+	tmux.emit('sessionWindowChanged', '$1', '@2');
+	await new Promise((r) => setTimeout(r, 200));
+
+	// follow-active sub reacts to the activePaneListener (%5), not windowOrderListener
+	// Either way it should have switched to %5 (via activePaneListener)
+	assert.ok(cb.events.some((e) => e === 'paneSwitch:%5'), `follow-active should switch to new window active pane: ${cb.events.join(', ')}`);
+	sub.close();
+});
+
+test('SpectatorSubscription: bytes during seed are queued + flushed in order', async () => {
+	const { hub, tmux } = makeHub();
+	let captureResolve: ((lines: string[]) => void) | null = null;
+	const capturePromise = new Promise<string[]>((r) => {
+		captureResolve = r;
+	});
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2']);
+		if (cmd.startsWith('capture-pane')) return capturePromise;
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+	const cb = makeCallbacks();
+	const dataPayloads: string[] = [];
+	cb.data = (text) => dataPayloads.push(text);
+	const sub = new SpectatorSubscription(hub, cb);
+	const attachPromise = sub.attach();
+
+	// Yield to microtasks so switchTo() runs past 'await bootPromise' and
+	// sets subscribedPaneId + seeding=true before the output arrives.
+	await new Promise((r) => setImmediate(r));
+
+	// attach is in-flight (capture not resolved yet) — emit output
+	tmux.emit('output', '%2', Buffer.from('during-seed'));
+
+	// resolve capture → seed completes → queue flushed
+	captureResolve!(['seed-content']);
+	await attachPromise;
+
+	// Must have: seed payload then 'during-seed'
+	assert.ok(dataPayloads.length >= 2, `expected ≥ 2 data payloads, got: ${dataPayloads.join(', ')}`);
+	// seed comes first (contains seed-content), queued output comes after
+	assert.ok(dataPayloads[0].includes('seed-content'), `first payload should be seed, got: ${JSON.stringify(dataPayloads[0])}`);
+	assert.equal(dataPayloads[dataPayloads.length - 1], 'during-seed', 'last payload is the queued bytes');
+	sub.close();
+});
+
+test('SpectatorSubscription: two subs on same hub, seeding one does not delay the other', async () => {
+	const { hub, tmux } = makeHub();
+	let captureResolve1: ((lines: string[]) => void) | null = null;
+	const capturePromise1 = new Promise<string[]>((r) => { captureResolve1 = r; });
+	let captureCall = 0;
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2']);
+		if (cmd.startsWith('capture-pane')) {
+			captureCall++;
+			// First capture (for sub1) hangs; second (sub2) resolves immediately
+			return captureCall === 1 ? capturePromise1 : Promise.resolve(['sub2-seed']);
+		}
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+
+	const data1: string[] = [];
+	const data2: string[] = [];
+	const cb1 = makeCallbacks(); cb1.data = (t) => data1.push(t);
+	const cb2 = makeCallbacks(); cb2.data = (t) => data2.push(t);
+
+	const sub1 = new SpectatorSubscription(hub, cb1);
+	const sub2 = new SpectatorSubscription(hub, cb2);
+	const attach1 = sub1.attach();
+	await sub2.attach(); // sub2 resolves immediately
+
+	// sub2 has its seed already; sub1 is still seeding
+	assert.ok(data2.length > 0, 'sub2 got seed immediately');
+	assert.equal(data1.length, 0, 'sub1 still seeding (capture not resolved)');
+
+	// emit output for %2 — sub2 should get it immediately, sub1 queues it
+	tmux.emit('output', '%2', Buffer.from('live-bytes'));
+	assert.ok(data2.some((t) => t === 'live-bytes'), 'sub2 receives live bytes while sub1 still seeding');
+	assert.equal(data1.length, 0, 'sub1 still blocked on seed');
+
+	// resolve sub1's capture
+	captureResolve1!(['sub1-seed']);
+	await attach1;
+	assert.ok(data1[0]?.includes('sub1-seed'), 'sub1 received seed first');
+	assert.equal(data1[data1.length - 1], 'live-bytes', 'sub1 received queued bytes after seed');
+
+	sub1.close();
+	sub2.close();
+});
+
+test('SpectatorSubscription: close removes all listeners from hub', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2']);
+		if (cmd.startsWith('capture-pane')) return Promise.resolve([]);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+
+	// We need a second sub to prevent hub auto-destroy on close
+	const keepAlive = new SpectatorSubscription(hub, makeCallbacks());
+
+	const cb = makeCallbacks();
+	const sub = new SpectatorSubscription(hub, cb);
+	await sub.attach();
+	const eventsBefore = cb.events.length;
+
+	sub.close();
+
+	// After close, output should not reach cb
+	tmux.emit('output', '%2', Buffer.from('after-close'));
+	tmux.emit('windowPaneChanged', '@1', '%2');
+	await new Promise((r) => setTimeout(r, 150));
+
+	assert.equal(cb.events.length, eventsBefore, 'no new events after close');
+	keepAlive.close();
+});
+
+// ---------------------------------------------------------------------------
+// Fix 1: switchTo — subscribedPaneId unchanged when paneState missing
+// ---------------------------------------------------------------------------
+
+test('SpectatorSubscription.switchTo: unknown paneId leaves subscribedPaneId unchanged', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		// Only bootstrap display-message succeeds; any other pane returns malformed (< 7 parts)
+		if (cmd.startsWith('display-message') && cmd.includes('-t work')) {
+			return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		}
+		if (cmd.startsWith('display-message')) return Promise.resolve([]); // unknown pane → null state
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2']);
+		if (cmd.startsWith('capture-pane')) return Promise.resolve(['seed']);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+
+	// We need a second sub to keep the hub alive
+	const keepAlive = new SpectatorSubscription(hub, makeCallbacks());
+
+	const cb = makeCallbacks();
+	const sub = new SpectatorSubscription(hub, cb);
+	await sub.attach(); // subscribedPaneId = '%2'
+
+	const paneSwitchsBefore = cb.events.filter((e) => e.startsWith('paneSwitch:')).length;
+	const prevPaneId = sub.subscribedPaneId;
+
+	// Manually trigger a switch to a pane not in paneStates
+	tmux.emit('windowPaneChanged', '@1', '%notInCache');
+	await new Promise((r) => setTimeout(r, 200)); // wait past debounce
+
+	// subscribedPaneId must remain the PREVIOUS value, not '%notInCache'
+	assert.equal(sub.subscribedPaneId, prevPaneId, 'subscribedPaneId unchanged when paneState missing');
+	// No new paneSwitch event should have fired
+	const paneSwitchsAfter = cb.events.filter((e) => e.startsWith('paneSwitch:')).length;
+	assert.equal(paneSwitchsAfter, paneSwitchsBefore, 'no paneSwitch fired for unknown pane');
+
+	sub.close();
+	keepAlive.close();
+});
+
+// ---------------------------------------------------------------------------
+// Fix 2: attach() lifecycle guards
+// ---------------------------------------------------------------------------
+
+test('SpectatorSubscription.attach: called twice → second is no-op (one paneSwitch fires)', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2']);
+		if (cmd.startsWith('capture-pane')) return Promise.resolve(['seed']);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+
+	const cb = makeCallbacks();
+	const sub = new SpectatorSubscription(hub, cb);
+
+	// Call attach twice concurrently
+	await Promise.all([sub.attach(), sub.attach()]);
+
+	const paneSwitchEvents = cb.events.filter((e) => e.startsWith('paneSwitch:'));
+	assert.equal(paneSwitchEvents.length, 1, 'exactly one paneSwitch fires even when attach() called twice');
+
+	sub.close();
+});
+
+test('SpectatorSubscription.attach: called after close() → no callbacks fire', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2']);
+		if (cmd.startsWith('capture-pane')) return Promise.resolve(['seed']);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+
+	// We need a second sub to keep the hub alive after close
+	const keepAlive = new SpectatorSubscription(hub, makeCallbacks());
+
+	const cb = makeCallbacks();
+	const sub = new SpectatorSubscription(hub, cb);
+	sub.close(); // close BEFORE attach
+
+	await sub.attach(); // should be a no-op
+
+	assert.equal(cb.events.length, 0, 'no callbacks fire when attach() called after close()');
+	keepAlive.close();
+});
+
+// ---------------------------------------------------------------------------
+// Fix 3: concurrent onHubActivePaneChanged — last paneId wins, no overlap
+// ---------------------------------------------------------------------------
+
+test('SpectatorSubscription: rapid pane switches — only final paneId subscribed', async () => {
+	const { hub, tmux } = makeHub();
+	// Populate pane states for %2, %3, %4 so none triggers the "paneState missing" bail
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message') && cmd.includes('-t work')) {
+			return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		}
+		if (cmd.startsWith('display-message') && cmd.includes('-t %3')) {
+			return Promise.resolve(['80|24|0|0|0|0|main']);
+		}
+		if (cmd.startsWith('display-message') && cmd.includes('-t %4')) {
+			return Promise.resolve(['80|24|0|0|0|0|main']);
+		}
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2', '%3', '%4']);
+		if (cmd.startsWith('capture-pane')) return Promise.resolve(['seed']);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+
+	// Pre-populate pane states for %3 and %4 so switchTo won't bail on missing state
+	await hub.ensurePaneState('%3');
+	await hub.ensurePaneState('%4');
+
+	const cb = makeCallbacks();
+	const sub = new SpectatorSubscription(hub, cb);
+	await sub.attach(); // subscribedPaneId = '%2'
+	cb.events.length = 0;
+
+	// Emit two rapid windowPaneChanged events — before any debounce fires
+	tmux.emit('windowPaneChanged', '@1', '%3');
+	tmux.emit('windowPaneChanged', '@1', '%4');
+
+	// Wait for debounces + all async work to settle
+	await new Promise((r) => setTimeout(r, 300));
+
+	// The final state: subscribedPaneId must be the LAST pane that was switched to
+	assert.equal(sub.subscribedPaneId, '%4', 'subscribedPaneId is the last rapid-switch target');
+
+	// paneSwitch events: the hub debounce coalesces the two events into one
+	// activePaneListener call with '%4', so exactly one paneSwitch:%4 fires
+	const paneSwitchEvents = cb.events.filter((e) => e.startsWith('paneSwitch:'));
+	assert.ok(paneSwitchEvents.length >= 1, 'at least one paneSwitch fired');
+	assert.equal(
+		paneSwitchEvents[paneSwitchEvents.length - 1],
+		'paneSwitch:%4',
+		'last paneSwitch is for the final pane'
+	);
+
+	sub.close();
+});
