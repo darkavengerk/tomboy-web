@@ -383,6 +383,7 @@ function handleWs(ws: WebSocket): void {
 					paneSwitch: (info) => send({ type: 'pane-switch', ...info }),
 					data: (d) => send({ type: 'data', d }),
 					paneResize: (info) => send({ type: 'pane-resize', ...info }),
+					paneUnavailable: (info) => send({ type: 'pane-unavailable', ...info }),
 					error: (message) => send({ type: 'error', message }),
 					exit: (reason) => {
 						send({ type: 'exit', code: 0, reason });

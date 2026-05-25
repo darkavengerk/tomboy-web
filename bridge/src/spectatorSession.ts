@@ -42,6 +42,8 @@ export interface SpectatorCallbacks {
 	/** UTF-8 text to write into the client's xterm. */
 	data(text: string): void;
 	paneResize(info: { cols: number; rows: number }): void;
+	/** Pinned ordinal exceeds the current window's pane count. */
+	paneUnavailable(info: { pinnedOrdinal: number; paneCount: number }): void;
 	error(message: string): void;
 	exit(reason?: string): void;
 }
