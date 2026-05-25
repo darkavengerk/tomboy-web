@@ -95,25 +95,86 @@ export function runClaude(
     // type:'stream_event' carries Anthropic Messages API streaming events.
     event?: {
       type?: string;
-      delta?: { type?: string; text?: string };
+      index?: number;
+      content_block?: { type?: string; id?: string; name?: string };
+      delta?: { type?: string; text?: string; thinking?: string; partial_json?: string };
+    };
+    // type:'user' carries an Anthropic message echo with tool_result blocks.
+    message?: {
+      role?: string;
+      content?: Array<{ type?: string; tool_use_id?: string; content?: unknown }>;
     };
   }
+
+  // 진행 중인 step의 누적 body와 tool 이름 매핑
+  type StepKind = 'thinking' | 'tool_use' | 'tool_result' | 'response_start';
+  interface StepState { kind: StepKind; label: string; body: string }
+  let currentStep: StepState | null = null;
+  const toolNameById = new Map<string, string>();
+
+  const emitStep = (s: StepState): void => {
+    writeEvent({ step: { kind: s.kind, label: s.label, body: s.body } });
+  };
 
   const handleEvent = (evt: ClaudeStdoutEvent): void => {
     if (evt.type === 'stream_event' && evt.event) {
       const e = evt.event;
-      // Only forward text_delta. Skip thinking_delta (extended thinking is
-      // internal), signature_delta, input_json_delta (tool args), and
-      // structural events (message_start/stop, content_block_start/stop,
-      // message_delta).
-      if (
-        e.type === 'content_block_delta' &&
-        e.delta?.type === 'text_delta' &&
-        typeof e.delta.text === 'string'
-      ) {
-        writeEvent({ delta: e.delta.text });
+
+      if (e.type === 'content_block_start' && e.content_block) {
+        const cb = e.content_block;
+        if (cb.type === 'thinking') {
+          currentStep = { kind: 'thinking', label: '생각 중', body: '' };
+          emitStep(currentStep);
+        } else if (cb.type === 'tool_use') {
+          const name = cb.name ?? '도구';
+          if (cb.id) toolNameById.set(cb.id, name);
+          currentStep = { kind: 'tool_use', label: `${name} 실행 중`, body: '' };
+          emitStep(currentStep);
+        } else if (cb.type === 'text') {
+          currentStep = { kind: 'response_start', label: '응답 작성 중', body: '' };
+          emitStep(currentStep);
+        }
+        return;
       }
-    } else if (evt.type === 'result') {
+
+      if (e.type === 'content_block_delta' && e.delta) {
+        const d = e.delta;
+        if (d.type === 'thinking_delta' && typeof d.thinking === 'string' && currentStep?.kind === 'thinking') {
+          currentStep.body += d.thinking;
+          emitStep(currentStep);
+          return;
+        }
+        if (d.type === 'input_json_delta' && typeof d.partial_json === 'string' && currentStep?.kind === 'tool_use') {
+          currentStep.body += d.partial_json;
+          emitStep(currentStep);
+          return;
+        }
+        if (d.type === 'text_delta' && typeof d.text === 'string') {
+          writeEvent({ delta: d.text });
+          return;
+        }
+      }
+      return;
+    }
+
+    if (evt.type === 'user' && evt.message?.content) {
+      for (const block of evt.message.content) {
+        if (block.type === 'tool_result') {
+          const name = (block.tool_use_id && toolNameById.get(block.tool_use_id)) ?? undefined;
+          const label = name ? `${name} 결과` : '도구 결과';
+          const raw =
+            typeof block.content === 'string'
+              ? block.content
+              : JSON.stringify(block.content ?? '');
+          const body = raw.slice(0, 500);
+          currentStep = { kind: 'tool_result', label, body };
+          emitStep(currentStep);
+        }
+      }
+      return;
+    }
+
+    if (evt.type === 'result') {
       writeEvent({ done: true, reason: evt.subtype ?? 'unknown' });
       done = true;
     }
