@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { SpectatorHub, SpectatorSubscription, SpectatorHubRegistry, HubRegistry, hubKey } from './spectatorHub.js';
+import { SpectatorHub, SpectatorSubscription, SpectatorHubRegistry, HubRegistry, hubKey, resolveOrdinal } from './spectatorHub.js';
 import type { SpectatorCallbacks } from './spectatorSession.js';
 
 // ---------------------------------------------------------------------------
@@ -1207,6 +1207,284 @@ test('SpectatorSubscription: rapid pane switches — only final paneId subscribe
 		'paneSwitch:%4',
 		'last paneSwitch is for the final pane'
 	);
+
+	sub.close();
+});
+
+// ---------------------------------------------------------------------------
+// Task 4: resolveOrdinal pure helper
+// ---------------------------------------------------------------------------
+
+test('resolveOrdinal: valid ordinal → paneId', () => {
+	assert.equal(resolveOrdinal(['%1', '%2', '%3'], 1), '%1');
+	assert.equal(resolveOrdinal(['%1', '%2', '%3'], 2), '%2');
+	assert.equal(resolveOrdinal(['%1', '%2', '%3'], 3), '%3');
+});
+
+test('resolveOrdinal: out-of-range (<1, >length, 0) → null', () => {
+	assert.equal(resolveOrdinal(['%1', '%2'], 0), null);
+	assert.equal(resolveOrdinal(['%1', '%2'], 3), null);
+	assert.equal(resolveOrdinal(['%1', '%2'], -1), null);
+});
+
+test('resolveOrdinal: empty array → null', () => {
+	assert.equal(resolveOrdinal([], 1), null);
+	assert.equal(resolveOrdinal([], 0), null);
+});
+
+test('resolveOrdinal: non-integer ordinal → null', () => {
+	assert.equal(resolveOrdinal(['%1', '%2'], 1.5), null);
+	assert.equal(resolveOrdinal(['%1', '%2'], NaN), null);
+});
+
+// ---------------------------------------------------------------------------
+// Task 4: SpectatorSubscription.pinOrdinal / unpin
+// ---------------------------------------------------------------------------
+
+test('SpectatorSubscription.pinOrdinal: valid → subscribedPaneId updated + paneSwitch + seed', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message') && cmd.includes('-t work')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('display-message') && cmd.includes('-t %3')) return Promise.resolve(['100|30|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2', '%3', '%4']);
+		if (cmd.startsWith('capture-pane')) return Promise.resolve(['seed']);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+	const cb = makeCallbacks();
+	const sub = new SpectatorSubscription(hub, cb);
+	await sub.attach();
+	cb.events.length = 0;
+
+	await sub.pinOrdinal(2); // ordinal 2 → %3
+
+	assert.equal(sub.subscribedPaneId, '%3', 'subscribedPaneId = %3');
+	assert.ok(cb.events.includes('paneSwitch:%3'), `expected paneSwitch:%3 in: ${cb.events.join(', ')}`);
+	assert.equal(sub.mode.kind, 'pinned');
+	assert.equal((sub.mode as any).ordinal, 2);
+	sub.close();
+});
+
+test('SpectatorSubscription.pinOrdinal: invalid ordinal → paneUnavailable callback + subscribedPaneId = null', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2']);
+		if (cmd.startsWith('capture-pane')) return Promise.resolve([]);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+	const cb = makeCallbacks();
+	const sub = new SpectatorSubscription(hub, cb);
+	await sub.attach();
+	cb.events.length = 0;
+
+	await sub.pinOrdinal(5); // only 1 pane, ordinal 5 invalid
+
+	assert.ok(cb.events.includes('unavail:5/1'), `expected unavail:5/1 in: ${cb.events.join(', ')}`);
+	assert.equal(sub.subscribedPaneId, null);
+	sub.close();
+});
+
+test('pinned subscription ignores onHubActivePaneChanged', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message') && cmd.includes('-t work')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('display-message') && cmd.includes('-t %3')) return Promise.resolve(['100|30|0|0|0|0|main']);
+		if (cmd.startsWith('display-message') && cmd.includes('-t %4')) return Promise.resolve(['80|24|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2', '%3', '%4']);
+		if (cmd.startsWith('capture-pane')) return Promise.resolve([]);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+	const cb = makeCallbacks();
+	const sub = new SpectatorSubscription(hub, cb);
+	await sub.attach();
+	await sub.pinOrdinal(2); // pin to %3
+	cb.events.length = 0;
+
+	// Desktop switches active pane — pinned should ignore
+	tmux.emit('windowPaneChanged', '@1', '%4');
+	await new Promise((r) => setTimeout(r, 150)); // wait for debounce
+
+	assert.equal(sub.subscribedPaneId, '%3', 'still pinned to %3');
+	assert.equal(cb.events.filter((e) => e.startsWith('paneSwitch:')).length, 0,
+		`no paneSwitch should have fired; events: ${cb.events.join(', ')}`);
+	sub.close();
+});
+
+test('pinned subscription: window switch re-resolves ordinal in new window', async () => {
+	const { hub, tmux } = makeHub();
+	let listPanesCallCount = 0;
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message') && cmd.includes('-t work')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('display-message') && cmd.includes('-t %3')) return Promise.resolve(['100|30|0|0|0|0|main']);
+		if (cmd.startsWith('display-message') && cmd.includes('-t %8')) return Promise.resolve(['80|24|0|0|0|0|other']);
+		if (cmd.startsWith('display-message') && cmd.includes('-t @2')) return Promise.resolve(['%7']);
+		if (cmd.startsWith('list-panes')) {
+			listPanesCallCount++;
+			if (listPanesCallCount === 1) return Promise.resolve(['%2', '%3', '%4']);
+			return Promise.resolve(['%7', '%8']); // new window
+		}
+		if (cmd.startsWith('capture-pane')) return Promise.resolve([]);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+	const cb = makeCallbacks();
+	const sub = new SpectatorSubscription(hub, cb);
+	await sub.attach();
+	await sub.pinOrdinal(2); // pin to ordinal 2 (= %3 in original window)
+	cb.events.length = 0;
+
+	// Switch to a new window where panes are ['%7', '%8']
+	tmux.emit('sessionWindowChanged', '$1', '@2');
+	await new Promise((r) => setTimeout(r, 200)); // wait for debounce + async
+
+	// ordinal 2 in new window = %8
+	assert.equal(sub.subscribedPaneId, '%8', `expected %8, got: ${sub.subscribedPaneId}`);
+	assert.ok(cb.events.includes('paneSwitch:%8'), `expected paneSwitch:%8 in: ${cb.events.join(', ')}`);
+	sub.close();
+});
+
+test('pinned subscription: window switch with insufficient panes → paneUnavailable + subscribedPaneId = null', async () => {
+	const { hub, tmux } = makeHub();
+	let listPanesCallCount = 0;
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message') && cmd.includes('-t work')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('display-message') && cmd.includes('-t %3')) return Promise.resolve(['100|30|0|0|0|0|main']);
+		if (cmd.startsWith('display-message') && cmd.includes('-t @2')) return Promise.resolve(['%7']);
+		if (cmd.startsWith('list-panes')) {
+			listPanesCallCount++;
+			if (listPanesCallCount === 1) return Promise.resolve(['%2', '%3', '%4']);
+			return Promise.resolve(['%7']); // new window has only 1 pane
+		}
+		if (cmd.startsWith('capture-pane')) return Promise.resolve([]);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+	const cb = makeCallbacks();
+	const sub = new SpectatorSubscription(hub, cb);
+	await sub.attach();
+	await sub.pinOrdinal(2); // pin to ordinal 2 (= %3 in original window)
+	cb.events.length = 0;
+
+	// Switch to new window with only 1 pane — ordinal 2 invalid
+	tmux.emit('sessionWindowChanged', '$1', '@2');
+	await new Promise((r) => setTimeout(r, 200));
+
+	assert.ok(cb.events.includes('unavail:2/1'), `expected unavail:2/1 in: ${cb.events.join(', ')}`);
+	assert.equal(sub.subscribedPaneId, null);
+	sub.close();
+});
+
+// ---------------------------------------------------------------------------
+// Fix: pinOrdinal / unpin closed guard
+// ---------------------------------------------------------------------------
+
+test('SpectatorSubscription.pinOrdinal after close → no-op (no paneSwitch, no paneUnavailable)', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message') && cmd.includes('-t work')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('display-message') && cmd.includes('-t %3')) return Promise.resolve(['100|30|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2', '%3']);
+		if (cmd.startsWith('capture-pane')) return Promise.resolve([]);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+
+	// keepAlive prevents hub destruction when sub closes
+	const keepAlive = new SpectatorSubscription(hub, makeCallbacks());
+
+	const cb = makeCallbacks();
+	const sub = new SpectatorSubscription(hub, cb);
+	await sub.attach();
+	sub.close(); // subscription is now closed
+	cb.events.length = 0;
+
+	// pinOrdinal after close must be a no-op
+	await sub.pinOrdinal(2);
+
+	assert.equal(cb.events.filter((e) => e.startsWith('paneSwitch:')).length, 0,
+		`no paneSwitch after close; events: ${cb.events.join(', ')}`);
+	assert.equal(cb.events.filter((e) => e.startsWith('unavail:')).length, 0,
+		`no paneUnavailable after close; events: ${cb.events.join(', ')}`);
+
+	keepAlive.close();
+});
+
+test('SpectatorSubscription.unpin after close → no-op (no callbacks)', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message') && cmd.includes('-t work')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('display-message') && cmd.includes('-t %3')) return Promise.resolve(['100|30|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2', '%3']);
+		if (cmd.startsWith('capture-pane')) return Promise.resolve([]);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+
+	// keepAlive prevents hub destruction when sub closes
+	const keepAlive = new SpectatorSubscription(hub, makeCallbacks());
+
+	const cb = makeCallbacks();
+	const sub = new SpectatorSubscription(hub, cb);
+	await sub.attach();
+	await sub.pinOrdinal(2); // pin to %3
+	sub.close(); // subscription is now closed
+	cb.events.length = 0;
+
+	// unpin after close must be a no-op
+	await sub.unpin();
+
+	assert.equal(cb.events.length, 0, `no callbacks after close; events: ${cb.events.join(', ')}`);
+
+	keepAlive.close();
+});
+
+// ---------------------------------------------------------------------------
+// Fix: unpin when hub.activePaneId is null → mode=follow-active, subscribedPaneId=null
+// ---------------------------------------------------------------------------
+
+test('SpectatorSubscription.unpin when hub has no activePaneId → mode=follow-active, subscribedPaneId=null, no callbacks', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message') && cmd.includes('-t work')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('display-message') && cmd.includes('-t %3')) return Promise.resolve(['100|30|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2', '%3']);
+		if (cmd.startsWith('capture-pane')) return Promise.resolve([]);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+
+	const cb = makeCallbacks();
+	const sub = new SpectatorSubscription(hub, cb);
+	await sub.attach();
+
+	// Pin sub to ordinal 2 (%3) by setting state directly (bypass attach flow)
+	// so subscribedPaneId is set to a known value
+	hub.paneStates.set('%3', { cols: 100, rows: 30, altScreen: false, cursorX: 0, cursorY: 0, windowIndex: '0', windowName: 'main' });
+	hub.currentWindowPaneOrder = ['%2', '%3'];
+	await sub.pinOrdinal(2); // pins to %3
+	assert.equal(sub.subscribedPaneId, '%3', 'pre-condition: pinned to %3');
+
+	// Now null out hub.activePaneId to simulate "no active pane"
+	hub.activePaneId = null;
+	cb.events.length = 0;
+
+	// unpin — hub.activePaneId is null, so subscribedPaneId should be cleared
+	await sub.unpin();
+
+	assert.equal(sub.mode.kind, 'follow-active', 'mode is follow-active after unpin');
+	assert.equal(sub.subscribedPaneId, null, 'subscribedPaneId cleared to null when activePaneId is null');
+	assert.equal(cb.events.length, 0, `no callbacks should fire; events: ${cb.events.join(', ')}`);
 
 	sub.close();
 });

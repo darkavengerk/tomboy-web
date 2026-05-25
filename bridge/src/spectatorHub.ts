@@ -400,6 +400,19 @@ export class SpectatorHub {
 }
 
 // ---------------------------------------------------------------------------
+// resolveOrdinal — pure helper (T4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Maps a 1-based ordinal to the paneId at that position in the order array.
+ * Returns null if ordinal is out of range, not an integer, or order is empty.
+ */
+export function resolveOrdinal(order: string[], ordinal: number): string | null {
+	if (!Number.isInteger(ordinal) || ordinal < 1 || ordinal > order.length) return null;
+	return order[ordinal - 1] ?? null;
+}
+
+// ---------------------------------------------------------------------------
 // SpectatorSubscription — per-WS handle (T3: follow-active; T4: pinned)
 // ---------------------------------------------------------------------------
 
@@ -473,10 +486,62 @@ export class SpectatorSubscription {
 		await this.processSwitchQueue(paneId);
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	private async onHubWindowPaneOrderChanged(_order: string[]): Promise<void> {
-		// T4 fills this in for pinned mode. follow-active ignores window order
-		// changes directly — it reacts via activePaneListeners instead.
+		if (this.closed) return;
+		if (this.mode.kind === 'pinned') {
+			await this.resolveAndApply();
+		}
+		// follow-active ignores window order changes directly —
+		// it reacts via activePaneListeners instead.
+	}
+
+	// ── Pin / unpin (T4) ─────────────────────────────────────────────────────
+
+	/**
+	 * Pin to a fixed ordinal. mode becomes { kind: 'pinned', ordinal: n }.
+	 * Resolves immediately against currentWindowPaneOrder and fires either
+	 * paneSwitch+seed (valid) or paneUnavailable (invalid).
+	 */
+	async pinOrdinal(n: number): Promise<void> {
+		if (this.closed) return;
+		this.mode = { kind: 'pinned', ordinal: n };
+		await this.resolveAndApply();
+	}
+
+	/**
+	 * Switch back to follow-active mode. If hub.activePaneId is known, routes
+	 * through the switch queue so the caller can await the seed completing.
+	 * If hub.activePaneId is null, clears subscribedPaneId so the output filter
+	 * stops forwarding bytes from the previously-pinned pane.
+	 */
+	async unpin(): Promise<void> {
+		if (this.closed) return;
+		this.mode = { kind: 'follow-active' };
+		if (this.hub.activePaneId) {
+			await this.processSwitchQueue(this.hub.activePaneId);
+		} else {
+			this.subscribedPaneId = null;
+		}
+	}
+
+	/**
+	 * Only acts when mode is pinned. Resolves the ordinal against the current
+	 * window pane order and either routes through the switch queue or fires
+	 * paneUnavailable.
+	 */
+	private async resolveAndApply(): Promise<void> {
+		if (this.mode.kind !== 'pinned') return;
+		const { ordinal } = this.mode;
+		const order = this.hub.currentWindowPaneOrder;
+		const resolved = resolveOrdinal(order, ordinal);
+		if (resolved === null) {
+			this.subscribedPaneId = null;
+			this.callbacks.paneUnavailable({ pinnedOrdinal: ordinal, paneCount: order.length });
+			return;
+		}
+		if (resolved === this.subscribedPaneId) return; // no change
+		await this.hub.ensurePaneState(resolved);
+		await this.processSwitchQueue(resolved);
 	}
 
 	/**
