@@ -240,6 +240,507 @@ test('SpectatorHubRegistry: ssh exit → hub removed from registry', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Task 2: Hub state caching + tmux event fan-out tests
+// ---------------------------------------------------------------------------
+
+test('SpectatorHub.bootstrap: populates sessionId/windowId/activePaneId/paneStates/order', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) return Promise.resolve(['$1|@1|%2|80|24|0|5|3|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2', '%3', '%4']);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+	assert.equal(hub.sessionId, '$1');
+	assert.equal(hub.windowId, '@1');
+	assert.equal(hub.activePaneId, '%2');
+	assert.deepEqual(hub.currentWindowPaneOrder, ['%2', '%3', '%4']);
+	const state = hub.paneStates.get('%2');
+	assert.ok(state, 'paneState for active pane populated');
+	assert.equal(state?.cols, 80);
+	assert.equal(state?.rows, 24);
+	assert.equal(state?.altScreen, false);
+	assert.equal(state?.cursorX, 5);
+	assert.equal(state?.cursorY, 3);
+	assert.equal(state?.windowIndex, '0');
+	assert.equal(state?.windowName, 'main');
+});
+
+test('SpectatorHub.bootstrap: concurrent callers share same bootPromise', async () => {
+	const { hub, tmux } = makeHub();
+	let callCount = 0;
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) { callCount++; return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']); }
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2']);
+		return Promise.resolve([]);
+	};
+	const p1 = hub.bootstrap('work');
+	const p2 = hub.bootstrap('work');
+	assert.equal(p1, p2, 'same Promise reference');
+	await p1;
+	assert.equal(callCount, 1, 'display-message called once despite two bootstrap() calls');
+});
+
+test('SpectatorHub: %window-pane-changed → debounced activePaneId update + listener fire', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2', '%3']);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+
+	const fired: string[] = [];
+	hub.addActivePaneListener((id) => fired.push(id));
+
+	tmux.emit('windowPaneChanged', '@1', '%3');
+	// Before debounce fires
+	assert.equal(hub.activePaneId, '%2', 'activePaneId not yet changed before debounce');
+	assert.equal(fired.length, 0, 'listener not yet called before debounce');
+
+	await new Promise((r) => setTimeout(r, 150));
+	assert.equal(hub.activePaneId, '%3', 'activePaneId updated after debounce');
+	assert.deepEqual(fired, ['%3'], 'listener called with new paneId');
+});
+
+test('SpectatorHub: %window-pane-changed for wrong window is ignored', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2']);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+
+	const fired: string[] = [];
+	hub.addActivePaneListener((id) => fired.push(id));
+
+	// Emit event for a DIFFERENT window
+	tmux.emit('windowPaneChanged', '@99', '%9');
+	await new Promise((r) => setTimeout(r, 150));
+	assert.equal(hub.activePaneId, '%2', 'activePaneId unchanged for wrong window');
+	assert.equal(fired.length, 0, 'listener not called for wrong window');
+});
+
+test('SpectatorHub: %session-window-changed → windowId update + pane order refresh + listeners', async () => {
+	const { hub, tmux } = makeHub();
+	let listPaneTarget = '@1';
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message') && cmd.includes('-t work')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('display-message') && cmd.includes('-t @2')) return Promise.resolve(['%5']);
+		if (cmd.startsWith('list-panes')) {
+			listPaneTarget = cmd.includes('@2') ? '@2' : '@1';
+			return listPaneTarget === '@2'
+				? Promise.resolve(['%5', '%6'])
+				: Promise.resolve(['%2', '%3']);
+		}
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+
+	const orderFired: string[][] = [];
+	const activeFired: string[] = [];
+	hub.addWindowOrderListener((order) => orderFired.push([...order]));
+	hub.addActivePaneListener((id) => activeFired.push(id));
+
+	tmux.emit('sessionWindowChanged', '$1', '@2');
+	await new Promise((r) => setTimeout(r, 150));
+
+	assert.equal(hub.windowId, '@2');
+	assert.deepEqual(hub.currentWindowPaneOrder, ['%5', '%6']);
+	assert.equal(hub.activePaneId, '%5');
+	// windowOrderListeners fired
+	assert.ok(orderFired.length > 0, 'windowOrderListeners fired');
+	assert.deepEqual(orderFired[orderFired.length - 1], ['%5', '%6']);
+	// activePaneListeners fired for new window's active pane
+	assert.ok(activeFired.includes('%5'), 'activePaneListener fired for new active pane');
+});
+
+test('SpectatorHub: %session-window-changed for wrong session is ignored', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2']);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+
+	const orderFired: string[][] = [];
+	hub.addWindowOrderListener((order) => orderFired.push(order));
+
+	tmux.emit('sessionWindowChanged', '$99', '@9');
+	await new Promise((r) => setTimeout(r, 150));
+	assert.equal(hub.windowId, '@1', 'windowId unchanged for wrong session');
+	assert.equal(orderFired.length, 0, 'windowOrderListeners not called for wrong session');
+});
+
+test('SpectatorHub: %output fans out to all addOutputListener registrations', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2']);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+	const r1: Array<[string, string]> = [];
+	const r2: Array<[string, string]> = [];
+	hub.addOutputListener((paneId, bytes) => r1.push([paneId, bytes.toString()]));
+	hub.addOutputListener((paneId, bytes) => r2.push([paneId, bytes.toString()]));
+	tmux.emit('output', '%2', Buffer.from('hello'));
+	tmux.emit('output', '%3', Buffer.from('world'));
+	assert.deepEqual(r1, [['%2', 'hello'], ['%3', 'world']]);
+	assert.deepEqual(r2, [['%2', 'hello'], ['%3', 'world']]);
+});
+
+test('SpectatorHub: %output fans out after bootstrap (separate, clean test)', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2', '%3']);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+
+	const received: Array<[string, string]> = [];
+	hub.addOutputListener((paneId, bytes) => received.push([paneId, bytes.toString()]));
+
+	tmux.emit('output', '%2', Buffer.from('hello'));
+	tmux.emit('output', '%3', Buffer.from('world'));
+	assert.deepEqual(received, [['%2', 'hello'], ['%3', 'world']]);
+});
+
+test('SpectatorHub: %layout-change fires layoutChangeListeners + refreshes order', async () => {
+	const { hub, tmux } = makeHub();
+	let listPanesCallCount = 0;
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) {
+			listPanesCallCount++;
+			// After first (bootstrap), subsequent layout-change adds a pane
+			return listPanesCallCount === 1
+				? Promise.resolve(['%2'])
+				: Promise.resolve(['%2', '%9']);
+		}
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+	assert.deepEqual(hub.currentWindowPaneOrder, ['%2']);
+
+	const layoutFired: string[] = [];
+	const orderFired: string[][] = [];
+	hub.addLayoutChangeListener((wid) => layoutFired.push(wid));
+	hub.addWindowOrderListener((order) => orderFired.push([...order]));
+
+	tmux.emit('layoutChange', '@1');
+	// refreshPaneOrder is async — give it a tick
+	await new Promise((r) => setImmediate(r));
+	await new Promise((r) => setImmediate(r));
+
+	assert.deepEqual(hub.currentWindowPaneOrder, ['%2', '%9'], 'pane order refreshed after layout change');
+	assert.deepEqual(layoutFired, ['@1'], 'layoutChangeListener fired');
+	// windowOrderListeners should also fire since order changed
+	assert.ok(orderFired.length > 0, 'windowOrderListeners fired after order change');
+});
+
+test('SpectatorHub: %layout-change for wrong window is ignored', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2']);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+
+	const layoutFired: string[] = [];
+	hub.addLayoutChangeListener((wid) => layoutFired.push(wid));
+
+	tmux.emit('layoutChange', '@99');
+	await new Promise((r) => setImmediate(r));
+	assert.equal(layoutFired.length, 0, 'layoutChangeListener not called for wrong window');
+});
+
+test('SpectatorHub: removeOutputListener stops fan-out', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2']);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+
+	const received: string[] = [];
+	const listener = (paneId: string) => received.push(paneId);
+	hub.addOutputListener(listener);
+	tmux.emit('output', '%2', Buffer.from('before'));
+	hub.removeOutputListener(listener);
+	tmux.emit('output', '%2', Buffer.from('after'));
+	assert.deepEqual(received, ['%2'], 'listener only received before removal');
+});
+
+test('SpectatorHub: refreshPaneOrder only fires listeners when order changes', async () => {
+	const { hub, tmux } = makeHub();
+	let listCount = 0;
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) {
+			listCount++;
+			// Always return same order
+			return Promise.resolve(['%2', '%3']);
+		}
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+	// Order is ['%2', '%3'] after bootstrap
+
+	const orderFired: number[] = [];
+	hub.addWindowOrderListener(() => orderFired.push(orderFired.length));
+
+	// layout-change with same panes → no listener fire
+	tmux.emit('layoutChange', '@1');
+	await new Promise((r) => setImmediate(r));
+	await new Promise((r) => setImmediate(r));
+
+	assert.equal(orderFired.length, 0, 'windowOrderListeners NOT fired when order unchanged');
+});
+
+test('SpectatorHub.ensurePaneState: returns cached state without querying tmux', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2']);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+
+	const queriesBefore = tmux.commands.length;
+	const state = await hub.ensurePaneState('%2');
+	assert.ok(state, 'state returned');
+	assert.equal(state?.cols, 80);
+	assert.equal(tmux.commands.length, queriesBefore, 'no extra tmux command for cached pane');
+});
+
+test('SpectatorHub.ensurePaneState: queries tmux for unknown paneId and caches result', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message') && cmd.includes('-t work')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('display-message') && cmd.includes('-t %9')) return Promise.resolve(['100|30|1|5|10|1|bash']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2']);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+
+	const state = await hub.ensurePaneState('%9');
+	assert.ok(state, 'state queried and returned');
+	assert.equal(state?.cols, 100);
+	assert.equal(state?.rows, 30);
+	assert.equal(state?.altScreen, true);
+
+	// Second call should use cache
+	const queriesBefore = tmux.commands.length;
+	const state2 = await hub.ensurePaneState('%9');
+	assert.equal(state2?.cols, 100);
+	assert.equal(tmux.commands.length, queriesBefore, 'second call uses cache');
+});
+
+test('SpectatorHub.captureSeed: returns lines from capture-pane', async () => {
+	const { hub, tmux } = makeHub();
+	const capturedCmds: string[] = [];
+	tmux.command = (cmd: string) => {
+		capturedCmds.push(cmd);
+		if (cmd.startsWith('capture-pane')) return Promise.resolve(['line1', 'line2', 'line3']);
+		return Promise.resolve([]);
+	};
+	const lines = await hub.captureSeed('%2', 1000);
+	assert.deepEqual(lines, ['line1', 'line2', 'line3']);
+	assert.ok(
+		capturedCmds.some((c) => c.includes('capture-pane') && c.includes('%2') && c.includes('1000')),
+		`expected capture-pane command with %2 and 1000, got: ${capturedCmds.join(', ')}`
+	);
+});
+
+test('SpectatorHub.captureSeed: returns empty array on error', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('capture-pane')) return Promise.reject(new Error('pane gone'));
+		return Promise.resolve([]);
+	};
+	const lines = await hub.captureSeed('%9', 500);
+	assert.deepEqual(lines, []);
+});
+
+test('SpectatorHub.destroy: clears pending debounce timer', async () => {
+	const { hub, tmux, destroyed } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2', '%3']);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+
+	const sub = new SpectatorSubscription(hub, makeCallbacks());
+	// Trigger a debounce
+	tmux.emit('windowPaneChanged', '@1', '%3');
+	// Close before debounce fires
+	sub.close(); // triggers destroy (last sub)
+	assert.equal(destroyed.length, 1, 'hub destroyed');
+	// Wait longer than debounce — should not throw or fire listeners
+	await new Promise((r) => setTimeout(r, 200));
+	// If the timer was not cleared, this would fire and potentially throw — test just verifies no crash
+	assert.equal(hub.activePaneId, '%2', 'activePaneId unchanged (timer was cleared on destroy)');
+});
+
+test('HubRegistry.subscribe: calls bootstrap after creating hub', () => {
+	const reg = buildIsolatedRegistry();
+	const hubs: SpectatorHub[] = [];
+	const mockSsh = buildMockSshFactory([]);
+	// We can't easily intercept bootstrap, but we verify bootPromise is set
+	const sub = reg.subscribe({ host: 'h', user: 'u' }, 'main', makeCallbacks(), { spawnFn: mockSsh });
+	const hub = reg.get(hubKey({ host: 'h', user: 'u' }, 'main'));
+	assert.ok(hub, 'hub in registry');
+	assert.ok(hub?.bootPromise !== null, 'bootPromise set (bootstrap was called)');
+	void hubs; // unused
+	sub.close();
+});
+
+// ---------------------------------------------------------------------------
+// Critical 1: separate pane-change + window-change timers
+// ---------------------------------------------------------------------------
+
+test('SpectatorHub: interleaved paneChange + windowChange both fire (separate timers)', async () => {
+	const { hub, tmux } = makeHub();
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message') && cmd.includes('-t work')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('display-message') && cmd.includes('-t @2')) return Promise.resolve(['%5']);
+		if (cmd.startsWith('list-panes')) {
+			return cmd.includes('@2')
+				? Promise.resolve(['%5', '%6'])
+				: Promise.resolve(['%2', '%3']);
+		}
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+
+	const activeFired: string[] = [];
+	const orderFired: string[][] = [];
+	hub.addActivePaneListener((id) => activeFired.push(id));
+	hub.addWindowOrderListener((order) => orderFired.push([...order]));
+
+	// Emit both events within 50ms of each other (well inside 100ms debounce)
+	tmux.emit('windowPaneChanged', '@1', '%3');
+	await new Promise((r) => setTimeout(r, 50));
+	tmux.emit('sessionWindowChanged', '$1', '@2');
+
+	// Wait for both debounces to fire
+	await new Promise((r) => setTimeout(r, 200));
+
+	assert.ok(activeFired.includes('%3'), 'pane-change listener fired for %3');
+	assert.ok(activeFired.includes('%5'), 'window-change listener fired for %5 (new window active pane)');
+	assert.ok(orderFired.some((o) => o.includes('%5')), 'windowOrderListeners fired for new window');
+});
+
+// ---------------------------------------------------------------------------
+// Critical 2: failed bootstrap removes hub from registry
+// ---------------------------------------------------------------------------
+
+test('SpectatorHub: bootstrap failure fires error callbacks and self-removes from registry', async () => {
+	// Wire a hub directly to a registry so onDestroy removes it from the registry map.
+	const hubs: Map<string, SpectatorHub> = new Map();
+	const key = 'u3@h3:22|fail';
+
+	const ssh = new MockSsh();
+	const tmux = new MockTmux();
+	const hub = new SpectatorHub({
+		ssh: ssh as any,
+		tmux: tmux as any,
+		hubKey: key,
+		sessionName: 'fail',
+		onDestroy: () => hubs.delete(key)
+	});
+	hubs.set(key, hub);
+
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		// Return malformed line (< 10 parts) → bootstrap throws
+		if (cmd.startsWith('display-message')) return Promise.resolve(['bad-line']);
+		return Promise.resolve([]);
+	};
+
+	const errors: string[] = [];
+	const cb1 = makeCallbacks();
+	cb1.error = (msg) => errors.push(msg);
+	new SpectatorSubscription(hub, cb1);
+
+	assert.equal(hubs.size, 1, 'hub in map before bootstrap');
+
+	// Bootstrap — will fail, hub should self-remove
+	try { await hub.bootstrap('fail'); } catch { /* expected */ }
+	await new Promise((r) => setImmediate(r));
+
+	assert.ok(errors.length > 0, 'error callback fired on bootstrap failure');
+	assert.equal(hubs.size, 0, 'dead hub removed from map after bootstrap failure');
+
+	// Verify a second hub with the same key can be inserted (registry would create a fresh one)
+	const { hub: hub2, tmux: tmux2 } = makeHub(key);
+	tmux2.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2']);
+		return Promise.resolve([]);
+	};
+	hubs.set(key, hub2);
+	assert.equal(hubs.size, 1, 'fresh hub can be registered under same key');
+	assert.notEqual(hub, hub2, 'second hub is a different instance');
+});
+
+// ---------------------------------------------------------------------------
+// Important 3: ensurePaneState concurrent inflight deduplication
+// ---------------------------------------------------------------------------
+
+test('SpectatorHub.ensurePaneState: concurrent calls for same unknown pane issue only one tmux command', async () => {
+	const { hub, tmux } = makeHub();
+	const pane9Calls: string[] = [];
+	tmux.command = (cmd: string) => {
+		if (cmd.startsWith('refresh-client')) return Promise.resolve([]);
+		if (cmd.startsWith('display-message') && cmd.includes('-t work')) return Promise.resolve(['$1|@1|%2|80|24|0|0|0|0|main']);
+		if (cmd.startsWith('display-message') && cmd.includes('-t %9')) {
+			pane9Calls.push(cmd);
+			return Promise.resolve(['100|30|0|0|0|1|bash']);
+		}
+		if (cmd.startsWith('list-panes')) return Promise.resolve(['%2']);
+		return Promise.resolve([]);
+	};
+	await hub.bootstrap('work');
+
+	// Launch two concurrent ensurePaneState calls for the same unknown pane
+	const [s1, s2] = await Promise.all([
+		hub.ensurePaneState('%9'),
+		hub.ensurePaneState('%9')
+	]);
+
+	assert.equal(pane9Calls.length, 1, 'only one tmux command for concurrent ensurePaneState');
+	assert.ok(s1, 'first caller got state');
+	assert.ok(s2, 'second caller got state');
+	assert.equal(s1?.cols, 100);
+	assert.equal(s2?.cols, 100);
+});
+
+// ---------------------------------------------------------------------------
 // Test helpers for isolated registry instances
 // ---------------------------------------------------------------------------
 
