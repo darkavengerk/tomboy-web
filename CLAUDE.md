@@ -456,7 +456,9 @@ SELinux + user-namespace constraints, OSC 133 capture, tmux-window-scoped
 history buckets, `connect:` auto-run gating, the **`tmux -CC` spectator
 mode** (active-pane follow + opt-in mobile input via 보내기 popup),
 **이미지 붙여넣기** (ControlMaster 멀티플렉싱 + 원격 경로 주입; 셸은 PTY로, 관전은 `tmux send-keys -H`로 활성 패널에 — 모바일 보내기 팝업의 두 버튼 + 데스크탑 동일 트리거),
-and **터미널 벨** (xterm `onBell` → Web Audio 비프 + 진동, 셸 모드 전용).
+**터미널 벨** (xterm `onBell` → Web Audio 비프 + 진동, 셸 모드 전용),
+and **sticky modifier 칩** (관전 모드 전용 — Ctrl/Alt/Shift 토글 칩으로
+다음 키 한 번에 modifier 적용; 데스크탑의 `Ctrl+L` pane-nav 충돌 우회).
 
 A note matched as terminal-note when body = **1–3 metadata paragraphs (ssh
 URL + optional `bridge:` + optional `spectate:`, any order) + optional
@@ -521,7 +523,8 @@ Quick map:
 - `app/src/lib/editor/terminal/` — `parseTerminalNote.ts`, `wsClient.ts`,
   `TerminalView.svelte`, `bridgeSettings.ts`, `historyStore.ts`,
   `connectAutoRun.ts`, `oscCapture.ts`, `HistoryPanel.svelte`,
-  `terminalBell.ts`, `imagePasteClient.ts`, `clipboardImage.ts`.
+  `terminalBell.ts`, `imagePasteClient.ts`, `clipboardImage.ts`,
+  `stickyMods.ts`.
 - `routes/note/[id]/+page.svelte` and `lib/desktop/NoteWindow.svelte` —
   branch between `TerminalView` and `TomboyEditor` based on
   `parseTerminalNote(editorContent)` at load and after every IDB reload.

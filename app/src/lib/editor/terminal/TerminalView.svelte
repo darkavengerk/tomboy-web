@@ -33,6 +33,7 @@
 	import { getNote } from '$lib/storage/noteStore.js';
 	import { deserializeContent } from '$lib/core/noteContentArchiver.js';
 	import { parseTerminalNote } from './parseTerminalNote.js';
+	import { type StickyMods, computeStickyKeySequence, applyStickyToText } from './stickyMods.js';
 	import HistoryPanel from './HistoryPanel.svelte';
 	import {
 		extractImageFile,
@@ -91,6 +92,20 @@
 	let sendPopupOpen = $state(false);
 	let sendPopupText = $state('');
 	let sendPopupInput: HTMLInputElement | undefined = $state();
+
+	// Sticky modifier chips (관전 모드 전용) — buttons in the footer arm
+	// modifier(s) that apply to the next key press (desktop keydown
+	// branch) or the first byte of the next popup text submit (mobile).
+	// See ./stickyMods.ts for the key→byte mapping.
+	let stickyMods = $state<StickyMods>({ ctrl: false, alt: false, shift: false });
+
+	function toggleStickyMod(mod: keyof StickyMods): void {
+		stickyMods = { ...stickyMods, [mod]: !stickyMods[mod] };
+	}
+
+	function resetStickyMods(): void {
+		stickyMods = { ctrl: false, alt: false, shift: false };
+	}
 
 	// 이미지 붙여넣기 (셸·관전 모드 모두). imageUploadCount > 0 → "업로드 중" 표시.
 	let imageUploadCount = $state(0);
@@ -193,6 +208,28 @@
 			closeSendPopup();
 			return;
 		}
+
+		const anyArmed = stickyMods.ctrl || stickyMods.alt || stickyMods.shift;
+
+		if (text.length > 0 && anyArmed) {
+			const transformed = applyStickyToText(text, stickyMods);
+			if (transformed !== null) {
+				client?.send(autoExecute ? transformed + '\r' : transformed);
+				resetStickyMods();
+				closeSendPopup();
+				return;
+			}
+			// 첫 글자 비대응 → 원본 전송, sticky 유지 (아래 default path로)
+		}
+
+		// 빈 텍스트 + autoExecute + Alt만 armed → \x1b\r
+		if (!text && autoExecute && stickyMods.alt && !stickyMods.ctrl && !stickyMods.shift) {
+			client?.send('\x1b\r');
+			resetStickyMods();
+			closeSendPopup();
+			return;
+		}
+
 		client?.sendCommand(text, autoExecute);
 		closeSendPopup();
 	}
@@ -470,6 +507,31 @@
 		if (!isSpectator || isMobile || !client || !pageEl) return;
 		const active = document.activeElement;
 		if (active && active !== document.body && !pageEl.contains(active)) return;
+
+		// 칩 자체에 키보드 포커스가 있으면 sticky 분기를 건너뛴다 — 그렇지
+		// 않으면 Alt-armed + Enter로 칩을 토글하려는 동작이 sticky-Alt+Enter
+		// 매칭에 가로채여 \x1b\r 가 셸로 가버리고 칩 토글이 안 된다.
+		// pane-nav 단축키는 칩 포커스와 무관하게 그대로 동작해야 하므로
+		// 전체 return 이 아니라 sticky 분기만 스킵.
+		const focusOnStickyChip =
+			active instanceof HTMLElement && !!active.closest('.sticky-mods');
+
+		// sticky 분기 — pane-nav 단축키 검사 이전. armed 상태일 때 대응
+		// 키면 변환 바이트 전송 + 모든 mod 해제 + 이벤트 차단. 비대응 키면
+		// preventDefault/stopPropagation 없이 return — capture 단계 끝나고
+		// target 단계에서 xterm이 정상 처리 (sticky는 유지).
+		if (!focusOnStickyChip && (stickyMods.ctrl || stickyMods.alt || stickyMods.shift)) {
+			const seq = computeStickyKeySequence(e, stickyMods);
+			if (seq !== null) {
+				client.send(seq);
+				resetStickyMods();
+				e.preventDefault();
+				e.stopPropagation();
+			}
+			return;
+		}
+
+		// 기존 pane-nav 단축키 (변경 없음)
 		if (!e.ctrlKey || e.altKey || e.metaKey) return;
 		const k = e.key.toLowerCase();
 		if (k !== 'h' && k !== 'l') return;
@@ -767,6 +829,7 @@
 		// 이전 연결에서 in-flight 였던 이미지 업로드는 image-ok/error를 못 받았으므로
 		// 카운터가 stuck 상태일 수 있다 — 재연결 시 리셋해서 "업로드 중…" 버튼을 푼다.
 		imageUploadCount = 0;
+		resetStickyMods(); // 재연결 시 sticky 상태 잔존 방지
 		client?.close();
 		term?.reset();
 		scrollState = INITIAL_SCROLL_STATE;
@@ -938,13 +1001,47 @@
 
 	{#if isSpectator}
 		<div class="spec-footer" role="toolbar" aria-label="관전 도구">
-			<div class="spec-windowbar" aria-live="polite">
-				{#if spectatorWindowIndex || spectatorWindowName}
-					<span class="win-idx">{spectatorWindowIndex}</span>
-					<span class="win-name">{spectatorWindowName || '(이름 없음)'}</span>
-				{:else}
-					<span class="win-placeholder">윈도우 정보 대기 중…</span>
-				{/if}
+			<div class="spec-windowbar">
+				<div class="win-label" aria-live="polite">
+					{#if spectatorWindowIndex || spectatorWindowName}
+						<span class="win-idx">{spectatorWindowIndex}</span>
+						<span class="win-name">{spectatorWindowName || '(이름 없음)'}</span>
+					{:else}
+						<span class="win-placeholder">윈도우 정보 대기 중…</span>
+					{/if}
+				</div>
+				<div class="sticky-mods" role="group" aria-label="고정 modifier 키">
+					<button
+						type="button"
+						class="sticky-chip"
+						class:armed={stickyMods.ctrl}
+						aria-pressed={stickyMods.ctrl}
+						aria-label="Ctrl 키 고정"
+						title="다음 키에 Ctrl 적용"
+						onclick={() => toggleStickyMod('ctrl')}
+						disabled={status !== 'open'}
+					>Ctrl</button>
+					<button
+						type="button"
+						class="sticky-chip"
+						class:armed={stickyMods.alt}
+						aria-pressed={stickyMods.alt}
+						aria-label="Alt 키 고정"
+						title="다음 키에 Alt 적용"
+						onclick={() => toggleStickyMod('alt')}
+						disabled={status !== 'open'}
+					>Alt</button>
+					<button
+						type="button"
+						class="sticky-chip"
+						class:armed={stickyMods.shift}
+						aria-pressed={stickyMods.shift}
+						aria-label="Shift 키 고정"
+						title="다음 키에 Shift 적용"
+						onclick={() => toggleStickyMod('shift')}
+						disabled={status !== 'open'}
+					>Shift</button>
+				</div>
 			</div>
 			<div class="spec-controls">
 				<div class="spec-group">
@@ -1012,6 +1109,14 @@
 			onkeydown={(e) => e.stopPropagation()}
 		>
 			<div class="send-title">활성 패널로 전송</div>
+			{#if stickyMods.ctrl || stickyMods.alt || stickyMods.shift}
+				<div class="send-sticky-badge" role="status">
+					{#if stickyMods.ctrl}<span class="badge-tag">Ctrl+</span>{/if}
+					{#if stickyMods.alt}<span class="badge-tag">Alt+</span>{/if}
+					{#if stickyMods.shift}<span class="badge-tag">Shift+</span>{/if}
+					<span class="badge-desc">다음 키에 적용됩니다</span>
+				</div>
+			{/if}
 			<input
 				type="text"
 				class="send-input"
@@ -1157,13 +1262,23 @@
 	}
 	.spec-windowbar {
 		display: flex;
-		align-items: baseline;
+		align-items: center;
+		justify-content: space-between;
 		gap: 6px;
+		flex-wrap: wrap;
 		font-size: 0.75rem;
 		line-height: 1.2;
 		color: #aac;
 		min-height: 1em;
 		min-width: 0;
+	}
+	.spec-windowbar .win-label {
+		display: flex;
+		align-items: baseline;
+		gap: 6px;
+		flex: 1 1 auto;
+		min-width: 0;
+		overflow: hidden;
 	}
 	.spec-windowbar .win-idx {
 		color: #6cf;
@@ -1181,6 +1296,42 @@
 		min-width: 0;
 	}
 	.spec-windowbar .win-placeholder { color: #667; font-style: italic; }
+	.sticky-mods {
+		display: flex;
+		gap: 4px;
+		flex-wrap: wrap;
+		flex-shrink: 0;
+	}
+	.spec-windowbar .sticky-chip {
+		font-size: 0.7rem;
+		padding: 2px 8px;
+		border: 1px solid #557;
+		background: transparent;
+		color: #aac;
+		border-radius: 999px;
+		cursor: pointer;
+		line-height: 1.2;
+		min-height: 1.4em;
+		font-family: ui-monospace, Menlo, Consolas, monospace;
+	}
+	.spec-windowbar .sticky-chip:hover:not(:disabled) {
+		border-color: #779;
+		color: #ccd;
+	}
+	.spec-windowbar .sticky-chip:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+	.spec-windowbar .sticky-chip.armed {
+		background: #6cf;
+		color: #1e1e1e;
+		border-color: #6cf;
+		font-weight: 600;
+	}
+	.spec-windowbar .sticky-chip:focus-visible {
+		outline: 2px solid #6cf;
+		outline-offset: 1px;
+	}
 	.spec-controls {
 		display: flex;
 		align-items: center;
@@ -1413,6 +1564,26 @@
 	.send-title {
 		font-size: 0.85rem;
 		color: #cfe;
+	}
+	.send-sticky-badge {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		flex-wrap: wrap;
+		font-size: 0.85rem;
+		padding: 6px 10px;
+		background: rgba(102, 204, 255, 0.12);
+		border: 1px solid rgba(102, 204, 255, 0.35);
+		border-radius: 6px;
+		color: #cde;
+	}
+	.send-sticky-badge .badge-tag {
+		font-family: ui-monospace, Menlo, Consolas, monospace;
+		font-weight: 600;
+		color: #6cf;
+	}
+	.send-sticky-badge .badge-desc {
+		opacity: 0.85;
 	}
 	.send-input {
 		background: #1e1e1e;

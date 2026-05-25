@@ -62,6 +62,7 @@ const BRIDGE_RE = /^bridge:\s*(wss?:\/\/\S+)\s*$/;
 | `lib/editor/terminal/oscCapture.ts` | Pure OSC 133 parser / command-extraction helpers. |
 | `lib/editor/terminal/HistoryPanel.svelte` | Desktop side panel + mobile bottom sheet UI for captured history + pinned commands. |
 | `lib/editor/terminal/terminalBell.ts` | 벨 링어 — Web Audio API로 단음 비프음 합성 + `navigator.vibrate(200)`. ~300ms 스로틀. |
+| `lib/editor/terminal/stickyMods.ts` | 순수 키→바이트 매핑 — `computeStickyKeySequence(event, mods)`, `applyStickyToText(text, mods)`, `StickyMods` 타입. 관전 모드 sticky modifier 칩 (Ctrl/Alt/Shift)에서만 사용. |
 | `lib/editor/terminal/imagePasteClient.ts` | 클라이언트 이미지 헬퍼 — `validateImageFile`, `imageFilesFromList`, `fileToImagePayload`, `extractImageFile` re-export. |
 | `lib/editor/terminal/clipboardImage.ts` | `extractImageFromClipboardItems(items: ClipboardItem[]): Promise<File \| null>` — `navigator.clipboard.read()` 결과에서 첫 `image/*` 항목을 `File`로 추출. 보내기 팝업의 "📋 이미지 붙여넣기" 버튼이 사용. |
 | `bridge/src/imageTransfer.ts` | 브릿지 이미지 전송 — `mimeToExt`, `safeImageName`, `bracketedPaste`, `buildRemoteCatArgs`, `transferImage`. |
@@ -564,6 +565,48 @@ actions are whitelisted on the server (`TMUX_NAV_ACTIONS` set in
   input flows through `client.send(text)` → bridge `sendInput` → tmux
   `send-keys -H`.
 
+### Sticky modifier 칩 (Ctrl / Alt / Shift)
+
+데스크탑 관전 모드의 페이지-레벨 keydown 리스너가 `Ctrl+L`을 next-pane으로
+가로채므로 셸의 "화면 클리어" 단축키를 직접 보낼 수 없다. Sticky modifier
+칩은 이 충돌을 우회하는 명시적 opt-in 경로다.
+
+**UI**: `.spec-windowbar` 안에 윈도우 라벨 오른쪽으로 [Ctrl] [Alt] [Shift]
+토글 칩 3개. 클릭하면 해당 mod가 armed 상태 (#6cf 채워진 배경). 한 번 더
+클릭하면 해제. 여러 mod 동시 armed 가능 (Ctrl+Alt+x 등). `{#if isSpectator}`
+가드 안이라 셸 모드에서는 노출되지 않는다. `disabled={status !== 'open'}`로
+연결 안 됐을 때 비활성. CSS는 `.spec-windowbar` 컨테이너로 한정 (`.spec-footer
+button` 광역 규칙을 이기기 위해).
+
+**키 매핑** (`stickyMods.ts:computeStickyKeySequence`):
+
+| 키 종류 | Ctrl | Alt | Ctrl+Alt | Shift | Ctrl+Shift |
+|---|---|---|---|---|---|
+| letter (a-z) | `c & 0x1F` | `\x1b + c` | `\x1b + (c&0x1F)` | upper(c) | (c&0x1F) |
+| printable (숫자/기호) | null | `\x1b + c` | null | c 그대로 | null |
+| Enter/BS/ESC/Tab | null | `\x1b + seq` | null | null | null |
+| 그 외 (화살표/F-키) | null | null | null | null | null |
+
+null 반환 시 sticky **유지** + 원본 키 정상 전송.
+
+**데스크탑 통합**: `handleWindowKeydown` capture-phase 리스너에서 기존
+pane-nav 분기 **이전**에 sticky 검사. armed + 대응 키 → `computeStickyKeySequence`
+결과를 `client.send`, `resetStickyMods()`, `preventDefault + stopPropagation`.
+비대응 키 → `preventDefault` 없이 함수만 종료 → 이벤트가 target 단계로 흘러
+xterm이 정상 처리, sticky는 유지. sticky 분기는 무조건 return — pane-nav로
+떨어지지 않음. 재연결 (`reconnect()`) 시 자동 reset.
+
+**모바일 통합**: 보내기 팝업 헤더에 `[Ctrl+][Alt+][Shift+] 다음 키에 적용됩니다`
+armed 뱃지 (role="status"). "타이핑만"/"엔터로 실행" 양쪽이 `applyStickyToText`로
+**텍스트 첫 글자**를 변환. 첫 글자 대응 → 변환된 텍스트 + (autoExecute면 `\r`)
+전송 + reset. 첫 글자 비대응 → 원본 텍스트 전송, sticky 유지. 빈 텍스트 +
+autoExecute + Alt만 armed → `\x1b\r` + reset. 퀵키 버튼 (`y`, `n`, `^C`,
+`PgUp` 등)은 `sendQuickKey`를 거치므로 sticky 무관하게 그대로 동작 +
+armed 상태 유지. 팝업 취소도 sticky 유지.
+
+**기존 Ctrl+H/L pane-nav 단축키는 그대로 유지.** Sticky는 추가 메커니즘.
+실제 키보드 `Ctrl+L` → next-pane; sticky-Ctrl + 키보드 `L` → 셸로 `\x0c`.
+
 ### Target-side tmux configuration
 
 To prevent the desktop's working window from shrinking when a small
@@ -650,6 +693,12 @@ to add the three lines inline than to source the plugin file.
   This is intentional (mobile is acting AS the user). If you ever want
   spectator-private navigation, you'd need per-client `switch-client`
   semantics, which tmux's control mode doesn't cleanly support.
+- **Sticky modifier 칩은 관전 모드 전용 + 휘발성.** `stickyMods.ts`는 순수
+  함수, `TerminalView.svelte`의 `$state`로만 보관. 노트 포맷 / 브릿지 /
+  WS 프로토콜 변경 없음. 셸 모드에서는 칩이 렌더되지 않는다 — 셸 모드는
+  `term.onData` 직결이라 키 가로채기가 없어 충돌이 없기 때문. 재연결 시
+  `resetStickyMods()`로 자동 초기화. 비대응 키 조합(예: Ctrl + Tab)은
+  sticky를 소비하지 않고 유지 — 사용자가 다음 글자 키를 칠 때 적용.
 
 ## 이미지 붙여넣기
 
