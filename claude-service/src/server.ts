@@ -2,16 +2,18 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { existsSync, statSync } from 'node:fs';
 import { runClaude, type ClaudeRunnerSpawn, type RunRequest } from './runner.js';
 import { extractBearer, verifyToken } from './auth.js';
+import { inlineImageUrls, ImageFetchError, type FetchFn } from './imageInline.js';
 
 const MAX_BYTES = Number(process.env.CLAUDE_MAX_REQUEST_BYTES ?? 2 * 1024 * 1024);
 
 export interface BuildServerOpts {
   sharedToken: string;
   spawn?: ClaudeRunnerSpawn;        // for tests
+  fetchImage?: FetchFn;             // for tests (inlineImageUrls)
 }
 
 export function buildServer(opts: BuildServerOpts): FastifyInstance {
-  const app = Fastify({ logger: false, bodyLimit: MAX_BYTES });
+  const app = Fastify({ logger: true, bodyLimit: MAX_BYTES });
 
   app.setErrorHandler((err, _req, reply) => {
     if (err.statusCode === 413) {
@@ -37,6 +39,32 @@ export function buildServer(opts: BuildServerOpts): FastifyInstance {
       }
     }
 
+    // Diagnostic line: messages × content block types per turn, so silent
+    // image-fail / oversized-payload cases are visible in journalctl.
+    const shape = body.messages
+      .map((m) => `${m.role}[${m.content.map((c) => c.type).join(',')}]`)
+      .join(' ');
+    req.log.info(
+      { messages: body.messages.length, shape, model: body.model, cwd: body.cwd ?? null },
+      'chat request',
+    );
+
+    // Inline image-url blocks as base64 BEFORE spawning claude.
+    // Anthropic's url-source fetcher honors robots.txt, which blocks
+    // Dropbox `/scl/...` paths; sending base64 bypasses that. Token cost
+    // is unchanged (Anthropic prices images by dimensions, not bytes).
+    let runMessages: RunRequest['messages'];
+    try {
+      runMessages = await inlineImageUrls(body.messages, { fetchFn: opts.fetchImage });
+    } catch (err) {
+      if (err instanceof ImageFetchError) {
+        return reply
+          .code(502)
+          .send({ error: 'image_fetch_failed', detail: err.message });
+      }
+      throw err;
+    }
+
     const ctrl = new AbortController();
     // Watch the RESPONSE socket for disconnect, not req.raw.
     // req.raw 'close' fires as soon as the request body is fully read —
@@ -59,7 +87,11 @@ export function buildServer(opts: BuildServerOpts): FastifyInstance {
       'Cache-Control': 'no-cache',
     });
 
-    const stream = runClaude(body as RunRequest, ctrl.signal, { spawn: opts.spawn });
+    const stream = runClaude(
+      { ...(body as RunRequest), messages: runMessages },
+      ctrl.signal,
+      { spawn: opts.spawn },
+    );
     stream.pipe(reply.raw);
     // No `return reply` — after hijack, Fastify ignores the handler's
     // return value.

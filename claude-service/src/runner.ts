@@ -11,7 +11,12 @@ export interface AnthropicMessage {
   role: 'user' | 'assistant';
   content: Array<
     | { type: 'text'; text: string }
-    | { type: 'image'; source: { type: 'url'; url: string } }
+    | {
+        type: 'image';
+        source:
+          | { type: 'url'; url: string }
+          | { type: 'base64'; media_type: string; data: string };
+      }
   >;
 }
 
@@ -92,6 +97,11 @@ export function runClaude(
     type?: string;
     // type:'result' subtype: 'success' | 'error_max_turns' | etc.
     subtype?: string;
+    // type:'result' may carry is_error=true alongside subtype='success'
+    // when the API call failed (e.g. image URL blocked by robots.txt).
+    // In that case `result` holds the user-visible error message.
+    is_error?: boolean;
+    result?: unknown;
     // type:'stream_event' carries Anthropic Messages API streaming events.
     event?: {
       type?: string;
@@ -175,7 +185,21 @@ export function runClaude(
     }
 
     if (evt.type === 'result') {
-      writeEvent({ done: true, reason: evt.subtype ?? 'unknown' });
+      const reason = evt.subtype ?? 'unknown';
+      // API call failed but stream-json wrapped it as a successful result
+      // (e.g. image URL blocked by robots.txt). Surface as an explicit
+      // error frame so the UI shows it instead of silently appending an
+      // empty A: turn. Done frame still follows so the client cleanly
+      // ends the request.
+      if (evt.is_error) {
+        const msg =
+          typeof evt.result === 'string' ? evt.result : 'API error';
+        process.stderr.write(`[runner] result is_error: ${msg}\n`);
+        writeEvent({ error: msg });
+      } else if (reason !== 'success') {
+        process.stderr.write(`[runner] result subtype=${reason}\n`);
+      }
+      writeEvent({ done: true, reason });
       done = true;
     }
     // type:'assistant' (cumulative message recap — partial mode emits this
@@ -199,8 +223,10 @@ export function runClaude(
   });
 
   child.stderr!.on('data', (chunk: Buffer) => {
-    stderrBuf += chunk.toString('utf8');
+    const s = chunk.toString('utf8');
+    stderrBuf += s;
     if (stderrBuf.length > 4096) stderrBuf = stderrBuf.slice(-4096);
+    process.stderr.write(`[claude stderr] ${s}`);
   });
 
   // Use 'close' (not 'exit'): 'close' fires after all stdio streams have
@@ -219,6 +245,7 @@ export function runClaude(
         } catch { /* ignore non-JSON trailing line */ }
       }
     }
+    process.stderr.write(`[runner] close code=${exitCode} done=${done} stderr_bytes=${stderrBuf.length}\n`);
     if (!done && (exitCode ?? 0) !== 0) {
       writeEvent({ error: `claude exit ${exitCode}: ${stderrBuf.trim().slice(-200)}` });
     } else if (!done) {
@@ -228,6 +255,7 @@ export function runClaude(
   });
 
   child.on('error', (err: Error) => {
+    process.stderr.write(`[runner] spawn error: ${err.message}\n`);
     writeEvent({ error: `spawn error: ${err.message}` });
     finish();
   });

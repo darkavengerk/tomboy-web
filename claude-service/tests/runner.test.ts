@@ -165,6 +165,23 @@ describe('runClaude', () => {
     expect(out).toContain('command not found');
   });
 
+  it('emits error event when result is_error=true (e.g. robots.txt block)', async () => {
+    const fake = makeFakeSpawn();
+    const stream = runClaude(
+      { messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }] },
+      new AbortController().signal,
+      { spawn: fake.spawn },
+    );
+    fake.lastCall!.child.emitStdout(
+      '{"type":"result","subtype":"success","is_error":true,"result":"API Error: 400 This URL is disallowed by the website\'s robots.txt file."}\n',
+    );
+    fake.lastCall!.child.exit(1);
+    const out = await consume(stream);
+    expect(out).toContain('data: {"error":"API Error: 400');
+    // done frame still emitted so the client cleanly closes the request
+    expect(out).toContain('"done":true');
+  });
+
   it('kills child on AbortSignal', () => {
     const fake = makeFakeSpawn();
     const ctrl = new AbortController();
