@@ -160,4 +160,32 @@ describe('imageCache', () => {
 		const s = await getStats();
 		expect(s.quotaBytes).toBe(2_000_000);
 	});
+
+	it('prime overwrite: old size subtracted, new size added, old ObjectURL revoked', async () => {
+		const url = 'https://a/overwrite.png';
+		const blobA = fakeBlob(200);
+		const blobB = fakeBlob(100);
+
+		await prime(url, blobA, 'image/png');
+		await prime(url, blobB, 'image/png');
+
+		const s = await getStats();
+		expect(s.count).toBe(1);
+		expect(s.totalBytes).toBe(100);
+
+		// getBlob should return the new record (not null)
+		const stored = await getBlob(url);
+		expect(stored).not.toBeNull();
+
+		// The new ObjectURL (registered in pool from blobB, size=100) should be
+		// surfaced by lookupOrFetch. Our URL.createObjectURL mock encodes the blob
+		// size as `blob:<size>-<random>`, so a src starting with "blob:100" means
+		// blobB is in the pool — not the old blobA (200-byte).
+		const r = await lookupOrFetch(url);
+		expect(r.fromCache).toBe(true);
+		expect(r.src).toMatch(/^blob:100-/);
+
+		// The old ObjectURL for blobA must have been revoked during the overwrite
+		expect(URL.revokeObjectURL).toHaveBeenCalled();
+	});
 });
