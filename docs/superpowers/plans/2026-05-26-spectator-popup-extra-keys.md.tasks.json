@@ -1,0 +1,12 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-26-spectator-popup-extra-keys.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: 보내기 팝업 빠른 키 라인에 단독 특수키 6개 추가",
+      "status": "completed",
+      "description": "**Goal:** `Tab / ⌫ / ← / ↓ / ↑ / →` 6개 버튼이 빠른 키 라인 끝에 자연 wrap 으로 추가되어, 모바일 보내기 팝업에서 각 키의 표준 시퀀스를 활성 pane 으로 전송한다.\n\n**Files:**\n- Modify: `app/src/lib/editor/terminal/TerminalView.svelte:1125`\n\n**Acceptance Criteria:**\n- 6 buttons (Tab, ⌫, ←, ↓, ↑, →) visible in send popup quick-key row\n- Each button sends correct sequence: Tab=\\t, ⌫=\\x7f, ←=\\x1b[D, ↓=\\x1b[B, ↑=\\x1b[A, →=\\x1b[C\n- Buttons wrap naturally at narrow widths via existing flex-wrap\n- Sticky chip armed → new buttons still send raw sequence (no Alt prefix synthesis)\n- svelte-check passes with no new errors\n\n**Verify:** `cd app && npm run check`\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/TerminalView.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"6 buttons visible\", \"Each sends correct sequence\", \"Wrap at narrow widths\", \"Sticky chip no synthesis\", \"svelte-check passes\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-26T00:00:00Z"
+}
