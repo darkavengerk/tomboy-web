@@ -4,7 +4,7 @@
     {
       "id": 6,
       "subject": "Task 1: IDB schema + imageCacheStore",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** IndexedDB에 `imageCache` store + `by_lastAccess` 인덱스를 추가하고, store 레벨 CRUD + LRU cursor 헬퍼를 제공한다.\n\n**Files:**\n- Modify: `app/src/lib/storage/db.ts`\n- Create: `app/src/lib/imageCache/imageCacheStore.ts`\n- Create: `app/tests/unit/imageCache/imageCacheStore.test.ts`\n\n**Verify:** `cd app && npm run test -- imageCacheStore`\n\n```json:metadata\n{\"files\": [\"app/src/lib/storage/db.ts\", \"app/src/lib/imageCache/imageCacheStore.ts\", \"app/tests/unit/imageCache/imageCacheStore.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- imageCacheStore && npm run check\", \"acceptanceCriteria\": [\"DB 마이그레이션이 imageCache store + by_lastAccess 인덱스 생성\", \"get/put/delete/evictLRU/cursorSumSize/countRecords 동작\", \"evictLRU는 by_lastAccess 오름차순으로 회수\", \"단일 트랜잭션 race-free\", \"기존 IDB 코드 영향 없음\"]}\n```"
     },
     {
@@ -49,5 +49,5 @@
       "description": "**Goal:** 관리자 도구 페이지에 이미지 캐시 비우기 액션.\n\n**Files:**\n- Modify: `app/src/routes/admin/tools/+page.svelte`\n\n**Verify:** `cd app && npm run check` + 수동\n\n```json:metadata\n{\"files\": [\"app/src/routes/admin/tools/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"액션 표시 + 동작\", \"사용량 함께 표시\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-26T01:34:23Z"
+  "lastUpdated": "2026-05-26T02:05:12Z"
 }
