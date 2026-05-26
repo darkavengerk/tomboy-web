@@ -55,7 +55,7 @@ interface TomboyDB extends DBSchema {
 			insertedAt: number;
 		};
 		indexes: {
-			by_lastAccess: number;
+			'by-lastAccess': number;
 		};
 	};
 }
@@ -129,7 +129,7 @@ export function getDB(): Promise<IDBPDatabase<TomboyDB>> {
 
 				if (oldVersion < 4) {
 					const imageCacheStore = db.createObjectStore('imageCache', { keyPath: 'url' });
-					imageCacheStore.createIndex('by_lastAccess', 'lastAccess');
+					imageCacheStore.createIndex('by-lastAccess', 'lastAccess');
 				}
 			}
 		});

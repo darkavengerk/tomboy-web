@@ -10,7 +10,7 @@ export interface ImageCacheRecord {
 }
 
 const STORE = 'imageCache' as const;
-const INDEX_LAST_ACCESS = 'by_lastAccess' as const;
+const INDEX_LAST_ACCESS = 'by-lastAccess' as const;
 
 export async function getImageRecord(url: string): Promise<ImageCacheRecord | undefined> {
 	const db = await getDB();
