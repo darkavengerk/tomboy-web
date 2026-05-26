@@ -1,0 +1,53 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-26-image-cache.md",
+  "tasks": [
+    {
+      "id": 6,
+      "subject": "Task 1: IDB schema + imageCacheStore",
+      "status": "pending",
+      "description": "**Goal:** IndexedDB에 `imageCache` store + `by_lastAccess` 인덱스를 추가하고, store 레벨 CRUD + LRU cursor 헬퍼를 제공한다.\n\n**Files:**\n- Modify: `app/src/lib/storage/db.ts`\n- Create: `app/src/lib/imageCache/imageCacheStore.ts`\n- Create: `app/tests/unit/imageCache/imageCacheStore.test.ts`\n\n**Verify:** `cd app && npm run test -- imageCacheStore`\n\n```json:metadata\n{\"files\": [\"app/src/lib/storage/db.ts\", \"app/src/lib/imageCache/imageCacheStore.ts\", \"app/tests/unit/imageCache/imageCacheStore.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- imageCacheStore && npm run check\", \"acceptanceCriteria\": [\"DB 마이그레이션이 imageCache store + by_lastAccess 인덱스 생성\", \"get/put/delete/evictLRU/cursorSumSize/countRecords 동작\", \"evictLRU는 by_lastAccess 오름차순으로 회수\", \"단일 트랜잭션 race-free\", \"기존 IDB 코드 영향 없음\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 2: ObjectURL pool",
+      "status": "pending",
+      "description": "**Goal:** 같은 URL → 같은 ObjectURL 재사용 모듈-레벨 풀.\n\n**Files:**\n- Create: `app/src/lib/imageCache/objectUrlPool.ts`\n- Create: `app/tests/unit/imageCache/objectUrlPool.test.ts`\n\n**Verify:** `cd app && npm run test -- objectUrlPool`\n\n```json:metadata\n{\"files\": [\"app/src/lib/imageCache/objectUrlPool.ts\", \"app/tests/unit/imageCache/objectUrlPool.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- objectUrlPool && npm run check\", \"acceptanceCriteria\": [\"peek/getOrCreate/revoke/revokeAll 동작\", \"같은 url 재호출 시 createObjectURL 1회만\", \"revoke는 missing url 안전\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 3: imageCache 공개 API + LRU + inflight dedup",
+      "status": "pending",
+      "blockedBy": [6, 7],
+      "description": "**Goal:** Store + Pool 위에 공개 API. quota/totalBytes는 appSettings.\n\n**Files:**\n- Modify: `app/src/lib/storage/appSettings.ts`\n- Create: `app/src/lib/imageCache/imageCache.ts`\n- Create: `app/tests/unit/imageCache/imageCache.test.ts`\n\n**Verify:** `cd app && npm run test -- imageCache.test && npm run check`\n\n```json:metadata\n{\"files\": [\"app/src/lib/imageCache/imageCache.ts\", \"app/src/lib/imageCache/imageCacheStore.ts\", \"app/src/lib/storage/appSettings.ts\", \"app/tests/unit/imageCache/imageCache.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- imageCache.test && npm run check\", \"acceptanceCriteria\": [\"prime/lookupOrFetch/getBlob/clearAll/getStats/setQuota 동작\", \"동시 호출 dedup\", \"LRU evict 트리거\", \"단일 이미지 quota 초과 silent skip\", \"setQuota shrink 즉시 evict\", \"lastAccess 60s 디바운스\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 4: 업로드 prime + OCR cache wrap",
+      "status": "pending",
+      "blockedBy": [8],
+      "description": "**Goal:** uploadImageToDropbox 업로드 직후 prime + downloadImageFromDropboxUrl 캐시 lookup wrap.\n\n**Files:**\n- Modify: `app/src/lib/sync/imageUpload.ts`\n\n**Verify:** `cd app && npm run check && npm run test`\n\n```json:metadata\n{\"files\": [\"app/src/lib/sync/imageUpload.ts\"], \"verifyCommand\": \"cd app && npm run check && npm run test\", \"acceptanceCriteria\": [\"uploadImageToDropbox 후 prime 호출\", \"downloadImageFromDropboxUrl 캐시 lookup + 미스 시 prime\", \"캐시 실패는 swallow\", \"기존 호출자 시그니처 무변경\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 5: imagePreviewPlugin 통합",
+      "status": "pending",
+      "blockedBy": [7, 8],
+      "description": "**Goal:** widget render 시 sync pool peek + miss면 원본 URL fallback + 비동기 lookup.\n\n**Files:**\n- Modify: `app/src/lib/editor/imagePreview/imagePreviewPlugin.ts`\n- Create: `app/tests/unit/editor/imagePreviewPluginCache.test.ts`\n\n**Verify:** `cd app && npm run test -- imagePreviewPluginCache && npm run check && npm run test`\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/imagePreview/imagePreviewPlugin.ts\", \"app/tests/unit/editor/imagePreviewPluginCache.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- imagePreviewPluginCache && npm run check && npm run test\", \"acceptanceCriteria\": [\"sync pool hit 즉시 ObjectURL\", \"miss → 원본 URL fallback + 비동기 lookup\", \"lookup resolve 시 src 교체\", \"fetch 실패 시 원본 URL 유지\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 6: 설정 페이지 UI",
+      "status": "pending",
+      "blockedBy": [8],
+      "description": "**Goal:** 설정 페이지에 이미지 캐시 사용량/한도/비우기 UI.\n\n**Files:**\n- Modify: `app/src/routes/settings/+page.svelte`\n\n**Verify:** `cd app && npm run check` + 수동\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"사용량/한도 표시\", \"한도 변경 → setQuota + 즉시 evict 반영\", \"캐시 비우기 → clearAll + 통계 새로고침\", \"Korean UI\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 7: /admin/tools 캐시 비우기 액션",
+      "status": "pending",
+      "blockedBy": [8],
+      "description": "**Goal:** 관리자 도구 페이지에 이미지 캐시 비우기 액션.\n\n**Files:**\n- Modify: `app/src/routes/admin/tools/+page.svelte`\n\n**Verify:** `cd app && npm run check` + 수동\n\n```json:metadata\n{\"files\": [\"app/src/routes/admin/tools/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"액션 표시 + 동작\", \"사용량 함께 표시\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-26T01:34:23Z"
+}
