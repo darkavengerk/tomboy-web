@@ -37,17 +37,17 @@
     {
       "id": 11,
       "subject": "Task 6: 설정 페이지 UI",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [8],
       "description": "**Goal:** 설정 페이지에 이미지 캐시 사용량/한도/비우기 UI.\n\n**Files:**\n- Modify: `app/src/routes/settings/+page.svelte`\n\n**Verify:** `cd app && npm run check` + 수동\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"사용량/한도 표시\", \"한도 변경 → setQuota + 즉시 evict 반영\", \"캐시 비우기 → clearAll + 통계 새로고침\", \"Korean UI\"]}\n```"
     },
     {
       "id": 12,
       "subject": "Task 7: /admin/tools 캐시 비우기 액션",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [8],
       "description": "**Goal:** 관리자 도구 페이지에 이미지 캐시 비우기 액션.\n\n**Files:**\n- Modify: `app/src/routes/admin/tools/+page.svelte`\n\n**Verify:** `cd app && npm run check` + 수동\n\n```json:metadata\n{\"files\": [\"app/src/routes/admin/tools/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"액션 표시 + 동작\", \"사용량 함께 표시\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-26T02:35:07Z"
+  "lastUpdated": "2026-05-26T02:45:40Z"
 }
