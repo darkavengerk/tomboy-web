@@ -83,6 +83,7 @@
 	import { setNotebookPublic } from '$lib/sync/firebase/publishNotebook.js';
 	import { readPublicConfigForHost } from '$lib/sync/firebase/publicConfig.js';
 	import { ensureSignedIn } from '$lib/firebase/app.js';
+	import { getStats as getImageCacheStats, setQuota as setImageCacheQuota, clearAll as clearImageCache } from '$lib/imageCache/imageCache.js';
 
 	type Tab = 'sync' | 'config' | 'share' | 'terminal' | 'notify' | 'guide' | 'shortcuts' | 'advanced';
 	let activeTab = $state<Tab>('sync');
@@ -319,6 +320,38 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 			console.warn('clipboard write failed', err);
 		}
 	}
+
+	// ── 이미지 캐시 ──────────────────────────────────────────────────────
+	let imageCacheStats = $state<{ count: number; totalBytes: number; quotaBytes: number } | null>(null);
+	let imageCacheQuotaMb = $state(500);
+
+	async function refreshImageCacheStats(): Promise<void> {
+		imageCacheStats = await getImageCacheStats();
+		imageCacheQuotaMb = Math.round(imageCacheStats.quotaBytes / (1024 * 1024));
+	}
+
+	function formatMb(bytes: number): string {
+		return (bytes / (1024 * 1024)).toFixed(1);
+	}
+
+	async function handleImageCacheQuotaChange(): Promise<void> {
+		const clamped = Math.max(100, Math.min(5000, Math.floor(imageCacheQuotaMb)));
+		imageCacheQuotaMb = clamped;
+		await setImageCacheQuota(clamped * 1024 * 1024);
+		await refreshImageCacheStats();
+		pushToast(`이미지 캐시 한도 ${clamped}MB로 변경되었습니다.`);
+	}
+
+	async function handleImageCacheClear(): Promise<void> {
+		if (!confirm('이미지 캐시를 모두 비우시겠습니까?')) return;
+		await clearImageCache();
+		await refreshImageCacheStats();
+		pushToast('이미지 캐시를 비웠습니다.');
+	}
+
+	$effect(() => {
+		void refreshImageCacheStats();
+	});
 
 	// ── 파이어베이스 실시간 노트 동기화 ──────────────────────────────────
 	let firebaseNotesEnabled = $state(false);
@@ -988,6 +1021,39 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 						{imagesPathSaved ? '저장됨' : '저장'}
 					</button>
 				</div>
+			</section>
+
+			<section class="section">
+				<h2>이미지 캐시</h2>
+				<p class="info-text">
+					노트에 붙여넣은 이미지를 이 기기에 저장해서 다시 열 때 네트워크 요청 없이 즉시
+					표시합니다. 한도를 초과하면 오래된 이미지부터 자동으로 지워집니다.
+				</p>
+				{#if imageCacheStats}
+					<p class="info-text">
+						사용 중:
+						<strong>{formatMb(imageCacheStats.totalBytes)}MB</strong>
+						/ {formatMb(imageCacheStats.quotaBytes)}MB ({imageCacheStats.count}개)
+					</p>
+					<div class="path-row image-cache-quota-row">
+						<label class="image-cache-quota-label" for="image-cache-quota-input">한도 (MB)</label>
+						<input
+							id="image-cache-quota-input"
+							class="path-input image-cache-quota-input"
+							type="number"
+							min="100"
+							max="5000"
+							step="50"
+							bind:value={imageCacheQuotaMb}
+							onchange={handleImageCacheQuotaChange}
+						/>
+					</div>
+					<button type="button" class="btn btn-secondary" onclick={handleImageCacheClear}>
+						캐시 비우기
+					</button>
+				{:else}
+					<p class="info-text">불러오는 중…</p>
+				{/if}
 			</section>
 
 			{#if authenticated}
@@ -2195,5 +2261,23 @@ https://www.dropbox.com/…/starting.png</pre>
 
 	.share-progress progress {
 		width: 100%;
+	}
+
+	/* ── 이미지 캐시 ─────────────────────────────────────────────────────── */
+
+	.image-cache-quota-row {
+		align-items: center;
+		margin-bottom: 12px;
+	}
+
+	.image-cache-quota-label {
+		flex-shrink: 0;
+		font-size: clamp(0.85rem, 2.5vw, 0.95rem);
+		color: var(--color-text-secondary);
+	}
+
+	.image-cache-quota-input {
+		max-width: 120px;
+		flex: 0 0 auto;
 	}
 </style>
