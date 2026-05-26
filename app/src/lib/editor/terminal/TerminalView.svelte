@@ -1121,8 +1121,14 @@
 				<button type="button" onclick={() => sendQuickKey('\r')}>↵</button>
 				<button type="button" onclick={() => sendQuickKey('\x1b')}>Esc</button>
 				<button type="button" onclick={() => sendQuickKey('\x03')}>^C</button>
+				<button type="button" title="Tab (자동완성)" onclick={() => sendQuickKey('\t')}>Tab</button>
+				<button type="button" title="Backspace" onclick={() => sendQuickKey('\x7f')}>⌫</button>
 				<button type="button" title="Page Up (TUI 내부 스크롤)" onclick={() => sendQuickKey('\x1b[5~')}>PgUp</button>
 				<button type="button" title="Page Down (TUI 내부 스크롤)" onclick={() => sendQuickKey('\x1b[6~')}>PgDn</button>
+				<button type="button" title="왼쪽 화살표" onclick={() => sendQuickKey('\x1b[D')}>←</button>
+				<button type="button" title="아래 화살표" onclick={() => sendQuickKey('\x1b[B')}>↓</button>
+				<button type="button" title="위 화살표" onclick={() => sendQuickKey('\x1b[A')}>↑</button>
+				<button type="button" title="오른쪽 화살표" onclick={() => sendQuickKey('\x1b[C')}>→</button>
 			</div>
 			<div class="send-image-row">
 				<button
