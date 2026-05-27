@@ -5,7 +5,7 @@ Notes live in the browser (IndexedDB); Dropbox is used as a sync/backup backend.
 
 ## Tech stack
 
-- **SvelteKit** with `@sveltejs/adapter-static` — deploys as a pure static SPA
+- **SvelteKit** with `@sveltejs/adapter-vercel` — `/api/temp-image/*`만 함수, 나머지는 prerender + ssr=false (SPA 동작)
 - **Svelte 5 runes**: `$state`, `$derived`, `$props`, `$effect`
 - **TipTap 3** for rich-text editing (with custom Tomboy extensions)
 - **IndexedDB** via `idb` for local note storage
@@ -221,9 +221,13 @@ so it works outside the desktop workspace too.
 
 ## Deployment
 
-- Target: Vercel (static). `adapter-static` produces `app/build/`.
-- No server-side storage needed or wanted — the app is client-only.
-- Dropbox app key is read from `PUBLIC_DROPBOX_APP_KEY` (Vite public env).
+- Target: Vercel. `adapter-vercel` produces `.vercel/output/` with `static/`
+  (SPA assets) + `functions/api/temp-image/` (Vercel Blob 임시 이미지 함수).
+- 노트 데이터 / sync 상태는 클라이언트 IndexedDB. 서버는 임시 이미지 저장소 한 가지 용도.
+- Dropbox app key는 `PUBLIC_DROPBOX_APP_KEY` (Vite public env)에서 읽음.
+- Vercel 측 환경변수: `BLOB_READ_WRITE_TOKEN` (Blob integration 자동 주입) +
+  `IMAGE_STORAGE_TOKEN` (수동 설정 — 앱 설정 페이지 토큰과 byte-identical).
+  자세한 건 `app/README.md` 환경 변수 섹션 참조.
 
 ## Testing
 
