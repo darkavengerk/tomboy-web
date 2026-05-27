@@ -1509,6 +1509,49 @@ https://www.dropbox.com/…/starting.png</pre>
 			</section>
 
 			<section class="section">
+				<h2>에디터 본문 블록</h2>
+				<p class="info-text">
+					아래는 노트의 일부 영역에만 적용되는 인라인 블록 형식입니다. 한 노트 안에 여러 개를 섞을
+					수 있고, 형식이 어긋나면 그 블록만 일반 문단으로 보입니다.
+				</p>
+
+				<details class="guide-card" open>
+					<summary>표 (CSV / TSV) — 본문 안의 펜스 블록</summary>
+					<p class="info-text">
+						GitHub 마크다운과 같은 <strong>코드 펜스</strong>로 표를 그립니다. 본문 위에 떠 있는
+						별도 형식이 아니라, 일반 문단들 위에 렌더링 레이어로 표가 얹히는 방식입니다.
+						원본 텍스트는 그대로 보존되어 Tomboy XML로 라운드트립됩니다.
+					</p>
+					<pre class="snippet">```csv
+헤더1, 헤더2, 헤더3
+가, 나, 다
+라, 마, 바
+```</pre>
+					<ul class="guide-list">
+						<li>여는 펜스: <code>```csv</code> 또는 <code>```tsv</code>. 언어 태그는 대소문자 무관이며,
+							태그 뒤에 다른 글자가 붙으면 펜스로 인식되지 않습니다(<code>```csv extra</code> ✗).</li>
+						<li>닫는 펜스: 빈 <code>```</code> 한 줄. 닫기 전에 또 다른 여는 펜스가 나오면 첫 표는
+							미완료로 간주되어 표 렌더가 적용되지 않습니다.</li>
+						<li><strong>CSV</strong>: 쉼표(<code>,</code>)로 셀을 나누고 각 셀 양끝 공백을 트림합니다.</li>
+						<li><strong>TSV</strong>: 탭(<code>\t</code>)으로 나누고 공백을 보존합니다. 탭만 있는 빈 행도
+							데이터로 인정(예: <code>\t\t</code>는 빈 세 셀).</li>
+						<li><strong>첫 행이 헤더</strong>입니다. 행마다 셀 개수가 달라도 그대로 렌더링됩니다(자동
+							패딩 없음).</li>
+						<li>셀 안의 <strong>굵게 · 기울임 · 내부/외부 링크 · 폰트 크기</strong> 등 마크는 보존됩니다.</li>
+						<li>같은 노트에 여러 표를 둘 수 있고, 표와 일반 문단을 자유롭게 섞을 수 있습니다.</li>
+					</ul>
+					<p class="info-text">조작:</p>
+					<ul class="guide-list">
+						<li>표 좌측 상단의 체크박스 — 켜면 표로 렌더, 끄면 원본 펜스 문단으로 펼쳐 직접 편집.</li>
+						<li><kbd>Ctrl</kbd>(또는 <kbd>Cmd</kbd>)을 누르고 있으면 표 외곽에 <strong>행 추가</strong> /
+							<strong>열 추가</strong> + 버튼과 행·열 삭제 X 버튼이 나타납니다.</li>
+						<li>셀을 더블 클릭하면 해당 셀만 인라인 편집됩니다. 한 셀을 고쳐도 같은 행 다른 셀의
+							마크는 그대로 살아남습니다.</li>
+					</ul>
+				</details>
+			</section>
+
+			<section class="section">
 				<h2>환경 / 호환성 요구사항</h2>
 				<p class="info-text">이게 안 맞으면 해당 기능이 동작하지 않거나 깨져 보입니다.</p>
 
