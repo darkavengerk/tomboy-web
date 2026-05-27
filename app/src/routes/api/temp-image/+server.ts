@@ -1,31 +1,12 @@
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
 import { del } from '@vercel/blob';
-import { env } from '$env/dynamic/private';
 import type { RequestEvent } from './$types.js';
-import { requireBearer, BearerError } from './_lib/auth.js';
+import { requireBearerOrResponse } from './_lib/auth.js';
 
 export const prerender = false;
 
 const ALLOWED_CONTENT_TYPES = ['image/*'];
 const TOKEN_SCOPE = 'temp-image';
-
-/**
- * Run the standard `Authorization: Bearer ...` check. Returns a Response
- * to send back if auth fails, or `null` if the request is authorised.
- * Non-BearerError surprises (e.g. env var unset) propagate to SvelteKit's
- * error handler.
- */
-function requireBearerOrResponse(request: Request): Response | null {
-  try {
-    requireBearer(request, env.IMAGE_STORAGE_TOKEN ?? '');
-    return null;
-  } catch (err) {
-    if (err instanceof BearerError) {
-      return new Response(err.message, { status: err.status });
-    }
-    throw err;
-  }
-}
 
 /**
  * Mint a single-use client upload token. The browser calls this with our

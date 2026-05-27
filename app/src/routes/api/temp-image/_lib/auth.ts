@@ -1,3 +1,5 @@
+import { env } from '$env/dynamic/private';
+
 /**
  * Verify `Authorization: Bearer <token>` matches the expected token.
  *
@@ -27,5 +29,24 @@ export function requireBearer(request: Request, expected: string): void {
   const token = header.slice('Bearer '.length).trim();
   if (token !== expected) {
     throw new BearerError(401, 'Unauthorized');
+  }
+}
+
+/**
+ * Run the standard `Authorization: Bearer ...` check using
+ * `IMAGE_STORAGE_TOKEN` as the expected value. Returns a Response to send
+ * back if auth fails, or `null` if the request is authorised.
+ * Non-BearerError surprises (e.g. env var unset) propagate to SvelteKit's
+ * error handler.
+ */
+export function requireBearerOrResponse(request: Request): Response | null {
+  try {
+    requireBearer(request, env.IMAGE_STORAGE_TOKEN ?? '');
+    return null;
+  } catch (err) {
+    if (err instanceof BearerError) {
+      return new Response(err.message, { status: err.status });
+    }
+    throw err;
   }
 }
