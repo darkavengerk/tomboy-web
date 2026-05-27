@@ -165,6 +165,41 @@ export async function downloadImageFromDropboxUrl(url: string): Promise<Blob> {
 }
 
 /**
+ * Fetch image bytes by URL, dispatching by host:
+ *   - dropbox.com / dropboxusercontent.com → routed through the Dropbox
+ *     SDK so the cross-origin CORS limitation is bypassed (see
+ *     `downloadImageFromDropboxUrl` for context).
+ *   - everything else (Vercel Blob, plain http(s)) → direct `fetch()`,
+ *     which works because those origins serve CORS-open responses.
+ *
+ * Use this anywhere code needs the bytes behind an image URL that may
+ * have come from either storage channel.
+ */
+export async function downloadImageFromUrl(url: string): Promise<Blob> {
+	let parsed: URL;
+	try {
+		parsed = new URL(url);
+	} catch {
+		throw new Error(`잘못된 이미지 URL: ${url}`);
+	}
+	const host = parsed.hostname;
+	const isDropbox =
+		host === 'dropbox.com' ||
+		host.endsWith('.dropbox.com') ||
+		host.endsWith('.dropboxusercontent.com');
+
+	if (isDropbox) {
+		return downloadImageFromDropboxUrl(url);
+	}
+
+	const res = await fetch(url);
+	if (!res.ok) {
+		throw new Error(`이미지 다운로드 실패 (${res.status})`);
+	}
+	return res.blob();
+}
+
+/**
  * Upload an image file to the configured Dropbox image folder and return
  * a direct URL that can be used as `<img src>` or embedded in a note.
  */
