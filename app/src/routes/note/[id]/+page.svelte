@@ -278,7 +278,10 @@
 	});
 
 	function scrollEditorToBottom() {
-		const el = editorAreaEl;
+		// 실제 스크롤 컨테이너는 .editor-area(overflow:hidden)가 아니라
+		// TomboyEditor 안의 .tomboy-editor (= editor.view.dom.parentElement).
+		const ed = getEditor();
+		const el = ed?.view.dom.parentElement as HTMLElement | undefined;
 		if (!el) return;
 		el.scrollTop = el.scrollHeight;
 	}
