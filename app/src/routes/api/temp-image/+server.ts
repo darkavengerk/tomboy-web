@@ -1,5 +1,6 @@
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
 import { del } from '@vercel/blob';
+import { env } from '$env/dynamic/private';
 import type { RequestEvent } from './$types.js';
 import { requireBearerOrResponse } from './_lib/auth.js';
 
@@ -10,20 +11,37 @@ const TOKEN_SCOPE = 'temp-image';
 
 /**
  * Mint a single-use client upload token. The browser calls this with our
- * Bearer token, gets back a Vercel Blob client token, and then PUTs the
- * file directly to Vercel storage — bytes never transit through this
- * function.
+ * token in `clientPayload` (not Authorization header — the
+ * `@vercel/blob/client.upload()` helper doesn't let callers customise
+ * headers), gets back a Vercel Blob client token, and then PUTs the file
+ * directly to Vercel storage — bytes never transit through this function.
  *
- * Note: Task 5 will revise this handler to verify the token from
- * `clientPayload` (since `@vercel/blob/client.upload()` doesn't let the
- * caller customise the Authorization header). For now this uses the
- * header — DELETE will continue to use the header path.
+ * DELETE continues to use the standard Authorization: Bearer header path.
  */
 export async function POST({ request }: RequestEvent): Promise<Response> {
-  const authError = requireBearerOrResponse(request);
-  if (authError) return authError;
+  const body = (await request.json()) as HandleUploadBody & { clientPayload?: string };
 
-  const body = (await request.json()) as HandleUploadBody;
+  // The @vercel/blob/client.upload() helper can't customise the
+  // Authorization header, so the token travels in body.clientPayload
+  // instead. DELETE/list (header-based) still use requireBearerOrResponse.
+  const expected = env.IMAGE_STORAGE_TOKEN ?? '';
+  if (!expected) {
+    return new Response('IMAGE_STORAGE_TOKEN not configured (500)', { status: 500 });
+  }
+  const cp = body.clientPayload;
+  if (!cp) {
+    return new Response('Missing clientPayload (401)', { status: 401 });
+  }
+  let token: string;
+  try {
+    token = (JSON.parse(cp) as { token?: string }).token ?? '';
+  } catch {
+    return new Response('Malformed clientPayload (401)', { status: 401 });
+  }
+  if (token !== expected) {
+    return new Response('Unauthorized (401)', { status: 401 });
+  }
+
   try {
     const jsonResponse = await handleUpload({
       body,

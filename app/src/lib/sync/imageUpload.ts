@@ -17,6 +17,7 @@
  */
 
 import { getClient, getImagesPath } from './dropboxClient.js';
+import { fileExtension } from '$lib/utils/fileExtension.js';
 
 /**
  * Convert a Dropbox shared link to a direct, raw-bytes URL suitable for
@@ -42,18 +43,6 @@ export function toDirectImageUrl(sharedUrl: string): string {
 	u.searchParams.delete('dl');
 	u.searchParams.set('raw', '1');
 	return u.toString();
-}
-
-function fileExtension(file: File): string {
-	const nameMatch = /\.([A-Za-z0-9]+)$/.exec(file.name);
-	if (nameMatch) return nameMatch[1].toLowerCase();
-	if (file.type.startsWith('image/')) {
-		const sub = file.type.slice('image/'.length).toLowerCase();
-		// MIME sometimes uses `jpeg` while filenames prefer `jpg`. Either
-		// works with Dropbox Content-Type resolution.
-		return sub === 'svg+xml' ? 'svg' : sub;
-	}
-	return 'bin';
 }
 
 function buildUploadPath(imagesPath: string, file: File): string {

@@ -4,6 +4,7 @@ import { requireBearerOrResponse } from '../_lib/auth.js';
 
 export const prerender = false;
 
+// Must match the pathname prefix used by lib/sync/tempImageUpload.ts.
 const PREFIX = 'temp-images/';
 const LIMIT = 1000;
 
