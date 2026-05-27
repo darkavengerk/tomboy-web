@@ -60,7 +60,7 @@
 		saveColumnWidths,
 	} from "./hrSplit/hrSplitStore.js";
 	import { extractImageFile } from "./imagePreview/extractImageFile.js";
-	import { uploadImageToDropbox } from "$lib/sync/imageUpload.js";
+	import { uploadTempImage } from "$lib/sync/tempImageUpload.js";
 	import { pushToast, dismissToast } from "$lib/stores/toast.js";
 	import { Extension } from "@tiptap/core";
 	import { insertTodayDate } from "./insertDate.js";
@@ -1073,11 +1073,12 @@
 	}
 
 	/**
-	 * Upload an image file to Dropbox and insert the resulting direct URL
-	 * at the current cursor position, wrapped in a tomboyUrlLink mark so
-	 * the note's XML round-trip treats it as a `<link:url>` anchor. The
-	 * image-preview plugin then renders the actual image in place of the
-	 * URL text — see imagePreviewPlugin.ts.
+	 * Upload an image file to Vercel Blob (임시 저장소) and insert the
+	 * resulting direct URL at the current cursor position, wrapped in a
+	 * tomboyUrlLink mark so the note's XML round-trip treats it as a
+	 * `<link:url>` anchor. The image-preview plugin then renders the actual
+	 * image in place of the URL text — see imagePreviewPlugin.ts.
+	 * (Permanent promotion to Dropbox is handled separately by imagePromotion.)
 	 */
 	export async function uploadAndInsertImage(file: File): Promise<void> {
 		const ed = editor;
@@ -1085,7 +1086,7 @@
 
 		const toastId = pushToast("이미지 업로드 중…", { timeoutMs: 0 });
 		try {
-			const url = await uploadImageToDropbox(file);
+			const url = await uploadTempImage(file);
 			dismissToast(toastId);
 			// Save the selection at the moment we insert. If the user moved
 			// the cursor while the upload was in flight, insert at the
