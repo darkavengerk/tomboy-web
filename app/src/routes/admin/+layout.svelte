@@ -10,6 +10,7 @@
 		{ href: "/admin/sleepnote", label: "슬립노트" },
 		{ href: "/admin/remarkable", label: "리마커블" },
 		{ href: "/admin/gpu", label: "GPU" },
+		{ href: "/admin/images", label: "이미지" },
 		{ href: "/admin/tools", label: "도구" },
 	];
 
