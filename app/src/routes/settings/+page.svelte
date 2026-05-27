@@ -76,7 +76,9 @@
 		setTerminalHistoryBlocklist,
 		TERMINAL_HISTORY_BLOCKLIST_DEFAULT,
 		getTerminalBellEnabled,
-		setTerminalBellEnabled
+		setTerminalBellEnabled,
+		getImageStorageToken,
+		setImageStorageToken
 	} from '$lib/storage/appSettings.js';
 	import { listNotebooks, getNotebook } from '$lib/core/notebooks.js';
 	import { getAllNotes } from '$lib/storage/noteStore.js';
@@ -121,6 +123,10 @@
 	let terminalBridgeAuthed = $state<boolean | null>(null); // null = unknown
 	let terminalBridgeBusy = $state(false);
 	let terminalBridgeMessage = $state('');
+
+	// ── 이미지 서버 토큰 ──────────────────────────────────────────────
+	let imageStorageToken = $state('');
+	let imageStorageTokenSaved = $state(false);
 
 	// ── 터미널 히스토리 설정 ──────────────────────────────────────────
 	let termHistOpenDesktop = $state(true);
@@ -290,6 +296,12 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 	async function resetTermHistBlocklist(): Promise<void> {
 		termHistBlocklistText = TERMINAL_HISTORY_BLOCKLIST_DEFAULT.join(', ');
 		await setTerminalHistoryBlocklist([...TERMINAL_HISTORY_BLOCKLIST_DEFAULT]);
+	}
+
+	async function saveImageStorageToken(): Promise<void> {
+		await setImageStorageToken(imageStorageToken.trim());
+		imageStorageTokenSaved = true;
+		setTimeout(() => (imageStorageTokenSaved = false), 1500);
 	}
 
 	async function copySnippet(): Promise<void> {
@@ -582,6 +594,7 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 		imagesPath = getImagesPath();
 		void loadTerminalBridgeState();
 		void loadTerminalHistorySettings();
+		void getImageStorageToken().then((v) => (imageStorageToken = v));
 
 		(async () => {
 			// Check if we're returning from OAuth callback
@@ -1247,6 +1260,26 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 					<li>명령어 히스토리는 노트 본문에 평문으로 저장되어 Dropbox/Firestore와 동기화됩니다. <strong>비밀번호를 명령 인자로 입력하지 마세요</strong>.</li>
 					<li>공백 또는 탭으로 시작하는 명령은 캡처되지 않습니다 (<code>HISTCONTROL=ignorespace</code> 관행). 일회성으로 민감한 명령을 숨기고 싶다면 명령 앞에 공백을 한 칸 두고 입력하세요.</li>
 				</ul>
+			</section>
+
+			<section class="section">
+				<h2>이미지 서버 토큰</h2>
+				<p class="info-text">
+					Vercel Blob에 이미지를 업로드할 때 사용되는 Bearer 토큰입니다.
+					서버의 <code>IMAGE_STORAGE_TOKEN</code> 환경변수와 동일하게 설정하세요.
+				</p>
+				<div class="path-row">
+					<input
+						class="path-input"
+						type="password"
+						bind:value={imageStorageToken}
+						placeholder="••••••••"
+						onkeydown={(e) => e.key === 'Enter' && saveImageStorageToken()}
+					/>
+					<button class="btn-save" onclick={saveImageStorageToken}>
+						{imageStorageTokenSaved ? '저장됨' : '저장'}
+					</button>
+				</div>
 			</section>
 		{:else if activeTab === 'notify'}
 			<!-- ── 알림 탭 ─────────────────────────────────────────────────── -->
