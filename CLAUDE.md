@@ -12,7 +12,9 @@ Notes live in the browser (IndexedDB); Dropbox is used as a sync/backup backend.
 - **Dropbox SDK** with OAuth PKCE (no client secret) for sync
 - **TypeScript** everywhere; `svelte-check` for type checking; vitest for unit tests
 
-No server runtime. Deploys to Vercel / any static host. All state is client-side.
+서버 함수는 단일 예외 `/api/temp-image/*` (Vercel Blob 임시 이미지 저장소)만 존재.
+그 외 모든 라우트는 static (prerender + ssr=false). 노트 데이터·sync 상태는
+모두 클라이언트 IndexedDB.
 
 ## Working directory
 
@@ -693,3 +695,48 @@ Cross-cutting invariants worth caching:
   to Ubuntu 24.04 + Python 3.12 (gets `sys.get_int_max_str_digits` →
   unlocks torch 2.5+ → unlocks transformers 4.50+ with MoE).
 
+## 이미지 임시 저장소 (Vercel Blob)
+
+See the **spec** at `docs/superpowers/specs/2026-05-27-temp-image-storage-design.md`
+for the full design. 두-채널 저장 모델: 모든 신규 paste는 Vercel Blob(임시
+채널)로 가고, admin "이미지" 탭에서 "Dropbox로 저장"으로 명시적 승격.
+
+Hook: `lib/editor/TomboyEditor.svelte:uploadAndInsertImage`가
+`uploadTempImage()`를 호출 (기존 `uploadImageToDropbox()`는 승격 시에만 사용).
+
+Quick map:
+
+- `app/src/lib/sync/tempImageUpload.ts` — `/api/temp-image/*` 클라이언트 래퍼
+- `app/src/lib/sync/imageInventory.ts` — 노트 스캔 + Vercel list 합집합
+- `app/src/lib/sync/imagePromotion.ts` — fetch→Dropbox→URL rewrite→Vercel del
+- `app/src/lib/sync/imageUpload.ts` — Dropbox 업로드 + `downloadImageFromUrl` host 분기 헬퍼
+- `app/src/lib/utils/fileExtension.ts` — 업로드 모듈 공유 헬퍼
+- `app/src/routes/api/temp-image/` — POST(token mint via clientPayload) / DELETE / list GET
+- `app/src/routes/api/temp-image/_lib/auth.ts` — Bearer 검증 + `requireBearerOrResponse`
+- `app/src/routes/admin/images/+page.svelte` — 인벤토리 UI
+- `app/src/lib/storage/appSettings.ts` — `imageStorageToken` 키
+
+Cross-cutting invariants worth caching:
+
+- **기존 Dropbox 이미지는 그대로 둠.** 마이그레이션 없음. 변경은 신규 paste에만.
+- **`IMAGE_STORAGE_TOKEN` env var ↔ `appSettings.imageStorageToken`은
+  byte-identical.** 터미널 브릿지의 Bearer 토큰 패턴과 동일. Vercel 측에
+  서버 env로 설정 + 앱 설정 페이지의 "이미지 서버 토큰"에도 같은 값.
+- **POST는 토큰을 `clientPayload` JSON으로 보냄, DELETE/list는 `Authorization`
+  헤더 사용.** `@vercel/blob/client.upload()`가 헤더 커스터마이즈를 허용하지
+  않아 생긴 비대칭. 두 경로 모두 서버는 같은 `IMAGE_STORAGE_TOKEN`으로 검증.
+- **`temp-images/` pathname prefix는 클라이언트(`tempImageUpload.ts`)와
+  서버 list endpoint(`list/+server.ts:PREFIX`)에서 같이 유지.** 한 쪽이
+  drift하면 list가 비어 보이고 업로드는 성공하는 silent bug.
+- **승격 = 이동, 복사 아님.** URL 교체 + 원본 Vercel 삭제. 단계별 실패에도
+  노트의 URL은 항상 살아있는 곳을 가리킴 (blob 삭제는 모든 노트 재작성
+  성공 시에만 — `imagePromotion.ts`의 step 6 가드).
+- **터미널 노트 paste / 일기 파이프라인 / OCR 노트는 영향 없음.** 각자
+  자기 경로 유지 (SSH ControlMaster / 데스크탑 파이프라인 / GOT-OCR).
+- **OCR cross-device retry는 `downloadImageFromUrl`로 host 분기됨** —
+  Dropbox는 SDK 경로 (CORS 우회), Vercel은 plain fetch (Vercel Blob은
+  CORS open).
+- **빌드는 `@sveltejs/adapter-vercel`로 전환됨** (`adapter-static`은 제거).
+  `/api/*`만 함수로 빌드, 나머지는 `prerender + ssr=false`로 SPA 동작 유지.
+- **자동 만료 정책 없음.** admin에서 사용자가 명시적으로 정리/승격해야 함.
+  의도된 디자인 — 사용자가 모르는 사이에 노트의 이미지가 사라지지 않도록.
