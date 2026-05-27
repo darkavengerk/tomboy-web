@@ -902,6 +902,11 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
+		/* 안에 absolute로 떠 있는 ChatSendBar / RemarkableActionBar 가
+		   이 영역 바닥(=툴바 위)에 붙도록 컨테이닝 블록을 잡아둔다.
+		   relative 없이는 .editor-page 기준이 되어 보내기 버튼이
+		   하단 툴바를 덮음. */
+		position: relative;
 	}
 
 	/* Visual cue that this note is a terminal note in edit mode — the
