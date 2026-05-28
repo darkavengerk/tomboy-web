@@ -921,10 +921,13 @@
 		position: fixed;
 		left: 0;
 		right: 0;
-		/* 키보드 가 떴을 때 바로 위에 정렬. OS 가 layout viewport 를
-		   keyboard 위로 줄이지 않는 환경(iOS Safari)에서만 inset 이
-		   nonzero. */
-		bottom: var(--keyboard-inset, 0px);
+		/* bottom: 0 만으로 충분. iOS Safari 는 키보드 뜨면 fixed 를
+		   visual viewport 기준으로 자동으로 옮겨주고, Android Chrome
+		   은 interactive-widget=resizes-content 로 layout viewport
+		   자체가 키보드 위까지로 줄어듦. 둘 다 bottom:0 이 키보드
+		   바로 위가 되므로 추가 inset 보정은 이중 적용이 되어 toolbar
+		   가 화면 위로 점프함. */
+		bottom: 0;
 		z-index: 10;
 		background: #f8f9fa;
 	}
