@@ -279,12 +279,8 @@
 	});
 
 	function scrollEditorToBottom() {
-		// 실제 스크롤 컨테이너는 .editor-area(overflow:hidden)가 아니라
-		// TomboyEditor 안의 .tomboy-editor (= editor.view.dom.parentElement).
-		const ed = getEditor();
-		const el = ed?.view.dom.parentElement as HTMLElement | undefined;
-		if (!el) return;
-		el.scrollTop = el.scrollHeight;
+		// 모바일 route 는 body 가 scrollable — window 전체 끝으로.
+		window.scrollTo(0, document.documentElement.scrollHeight);
 	}
 
 	// Tap on whitespace anywhere in the editor area → focus at end of doc.
@@ -816,7 +812,8 @@
 	.editor-page {
 		display: flex;
 		flex-direction: column;
-		height: 100%;
+		flex: 1;
+		min-height: 0;
 		position: relative;
 	}
 
@@ -906,12 +903,13 @@
 		min-height: 0;
 		display: flex;
 		flex-direction: column;
-		overflow: hidden;
 		/* 안에 absolute로 떠 있는 ChatSendBar / RemarkableActionBar 가
-		   이 영역 바닥(=툴바 위)에 붙도록 컨테이닝 블록을 잡아둔다.
-		   relative 없이는 .editor-page 기준이 되어 보내기 버튼이
-		   하단 툴바를 덮음. */
+		   이 영역 바닥(=툴바 위)에 붙도록 컨테이닝 블록을 잡아둔다. */
 		position: relative;
+		/* .toolbar-area 가 fixed 로 빠져서 자리를 차지하지 않으므로
+		   여기서 padding-bottom 으로 가리지 않게 자리 확보. Toolbar 한
+		   row 높이 (~52px) + 약간의 여유. */
+		padding-bottom: 56px;
 	}
 
 	/* Visual cue that this note is a terminal note in edit mode — the
@@ -922,7 +920,17 @@
 	}
 
 	.toolbar-area {
-		flex-shrink: 0;
+		position: fixed;
+		left: 0;
+		right: 0;
+		/* bottom: 0 만으로 충분. iOS Safari 는 키보드 뜨면 fixed 를
+		   visual viewport 기준으로 자동으로 옮겨주고, Android Chrome
+		   은 interactive-widget=resizes-content 로 layout viewport
+		   자체가 키보드 위까지로 줄어듦. 둘 다 bottom:0 이 키보드
+		   바로 위가 되므로 추가 inset 보정은 이중 적용이 되어 toolbar
+		   가 화면 위로 점프함. */
+		bottom: 0;
+		z-index: 10;
 		background: #f8f9fa;
 	}
 

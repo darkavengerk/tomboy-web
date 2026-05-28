@@ -34,6 +34,14 @@
 	import { deserializeContent } from '$lib/core/noteContentArchiver.js';
 	import { parseTerminalNote, rewriteSpectateLine } from './parseTerminalNote.js';
 	import { type StickyMods, computeStickyKeySequence, applyStickyToText } from './stickyMods.js';
+	import {
+		INITIAL_DOUBLE_TAP_STATE,
+		modKeyFromEventKey,
+		onModKeydown as onStickyModKeydown,
+		onModKeyup as onStickyModKeyup,
+		onNonModKeydown as onStickyNonModKeydown,
+		type DoubleTapState
+	} from './stickyDoubleTap.js';
 	import { formatTomboyDate } from '$lib/core/note.js';
 	import HistoryPanel from './HistoryPanel.svelte';
 	import {
@@ -122,6 +130,11 @@
 	function resetStickyMods(): void {
 		stickyMods = { ctrl: false, alt: false, shift: false };
 	}
+
+	// 더블탭으로 sticky 칩을 토글하는 단축키 상태머신. Ctrl/Alt/Shift 중
+	// 하나를 단독으로 두 번 연속 누르면 해당 칩이 토글된다. 클릭과 동일한
+	// 효과 — armed 상태에서 다시 더블탭하면 해제. See ./stickyDoubleTap.ts.
+	let doubleTapState: DoubleTapState = INITIAL_DOUBLE_TAP_STATE;
 
 	// 이미지 붙여넣기 (셸·관전 모드 모두). imageUploadCount > 0 → "업로드 중" 표시.
 	let imageUploadCount = $state(0);
@@ -587,6 +600,29 @@
 		const active = document.activeElement;
 		if (active && active !== document.body && !pageEl.contains(active)) return;
 
+		// 더블탭 분기 — Ctrl/Alt/Shift 단독 키. 두 번째 탭이 윈도우 안이면
+		// 토글, 아니면 첫 탭 등록. 단독 modifier keydown 자체는 어차피 셸로
+		// 의미 있는 바이트를 보내지 않으므로 항상 여기서 return.
+		const modName = modKeyFromEventKey(e.key);
+		if (modName) {
+			const decision = onStickyModKeydown(
+				doubleTapState,
+				modName,
+				e.repeat,
+				performance.now()
+			);
+			doubleTapState = decision.state;
+			if (decision.toggle) {
+				toggleStickyMod(decision.toggle);
+				e.preventDefault();
+				e.stopPropagation();
+			}
+			return;
+		}
+		// 비-modifier 키는 priming 무효화 (Ctrl+L 같은 chord 이후 단독 Ctrl 탭이
+		// "두 번째 탭"으로 오해되지 않도록).
+		doubleTapState = onStickyNonModKeydown(doubleTapState);
+
 		// 칩 자체에 키보드 포커스가 있으면 sticky 분기를 건너뛴다 — 그렇지
 		// 않으면 Alt-armed + Enter로 칩을 토글하려는 동작이 sticky-Alt+Enter
 		// 매칭에 가로채여 \x1b\r 가 셸로 가버리고 칩 토글이 안 된다.
@@ -624,6 +660,24 @@
 			if (pinnedOrdinal !== null) return;
 			tmuxNav(k === 'h' ? 'prev-pane' : 'next-pane');
 		}
+	}
+
+	/**
+	 * Companion to `handleWindowKeydown` — observes bare Ctrl/Alt/Shift
+	 * key-up events so the double-tap detector can prime its window. Only
+	 * a clean keyup (no other modifier still held + matched against a
+	 * pending keydown of the same mod) primes; combos like Ctrl+L don't.
+	 */
+	function handleWindowKeyup(e: KeyboardEvent): void {
+		if (!isSpectator || isMobile) return;
+		const modName = modKeyFromEventKey(e.key);
+		if (!modName) return;
+		doubleTapState = onStickyModKeyup(
+			doubleTapState,
+			modName,
+			{ ctrlKey: e.ctrlKey, altKey: e.altKey, shiftKey: e.shiftKey },
+			performance.now()
+		);
 	}
 
 	onMount(async () => {
@@ -870,6 +924,7 @@
 		// textarea keydown handler, so we register on `window` with
 		// `capture: true`.
 		window.addEventListener('keydown', handleWindowKeydown, true);
+		window.addEventListener('keyup', handleWindowKeyup, true);
 		// 이미지 붙여넣기/드롭 — pageEl에 capture-phase로 등록해 xterm의 자체
 		// textarea 핸들러보다 먼저 가로챈다. 셸·관전 양 모드에서 모두 활성화된다.
 		if (pageEl) {
@@ -882,6 +937,7 @@
 	onDestroy(() => {
 		unmounted = true;
 		window.removeEventListener('keydown', handleWindowKeydown, true);
+		window.removeEventListener('keyup', handleWindowKeyup, true);
 		if (pageEl) {
 			pageEl.removeEventListener('paste', handleImagePaste, true);
 			pageEl.removeEventListener('dragover', handleImageDragOver, true);
@@ -922,6 +978,7 @@
 		// 카운터가 stuck 상태일 수 있다 — 재연결 시 리셋해서 "업로드 중…" 버튼을 푼다.
 		imageUploadCount = 0;
 		resetStickyMods(); // 재연결 시 sticky 상태 잔존 방지
+		doubleTapState = INITIAL_DOUBLE_TAP_STATE; // 더블탭 priming 도 같이 초기화
 		client?.close();
 		term?.reset();
 		scrollState = INITIAL_SCROLL_STATE;
@@ -1122,8 +1179,8 @@
 						class="sticky-chip"
 						class:armed={stickyMods.ctrl}
 						aria-pressed={stickyMods.ctrl}
-						aria-label="Ctrl 키 고정"
-						title="다음 키에 Ctrl 적용"
+						aria-label="Ctrl 키 고정 (Ctrl 두 번 눌러 토글)"
+						title="다음 키에 Ctrl 적용 — Ctrl 두 번 눌러도 토글"
 						onclick={() => toggleStickyMod('ctrl')}
 						disabled={status !== 'open'}
 					>Ctrl</button>
@@ -1132,8 +1189,8 @@
 						class="sticky-chip"
 						class:armed={stickyMods.alt}
 						aria-pressed={stickyMods.alt}
-						aria-label="Alt 키 고정"
-						title="다음 키에 Alt 적용"
+						aria-label="Alt 키 고정 (Alt 두 번 눌러 토글)"
+						title="다음 키에 Alt 적용 — Alt 두 번 눌러도 토글"
 						onclick={() => toggleStickyMod('alt')}
 						disabled={status !== 'open'}
 					>Alt</button>
@@ -1142,8 +1199,8 @@
 						class="sticky-chip"
 						class:armed={stickyMods.shift}
 						aria-pressed={stickyMods.shift}
-						aria-label="Shift 키 고정"
-						title="다음 키에 Shift 적용"
+						aria-label="Shift 키 고정 (Shift 두 번 눌러 토글)"
+						title="다음 키에 Shift 적용 — Shift 두 번 눌러도 토글"
 						onclick={() => toggleStickyMod('shift')}
 						disabled={status !== 'open'}
 					>Shift</button>

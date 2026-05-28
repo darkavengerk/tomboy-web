@@ -226,6 +226,12 @@
 		color: white;
 		flex-shrink: 0;
 		transition: background 0.25s ease;
+		/* body 가 scrollable 이라 페이지가 위로 밀려도 nav 가 viewport 상단에
+		   고정되게 sticky. desktop 은 .chromeless 안이라서 sticky 의 scroll
+		   기준 컨테이너가 없으므로 영향 없음 (그냥 일반 block 처럼 동작). */
+		position: sticky;
+		top: 0;
+		z-index: 20;
 	}
 
 	/* 모드별 테마 색상 */

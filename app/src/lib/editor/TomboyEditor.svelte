@@ -62,7 +62,7 @@
 		saveColumnWidths,
 	} from "./hrSplit/hrSplitStore.js";
 	import { extractImageFile } from "./imagePreview/extractImageFile.js";
-	import { uploadImageToDropbox } from "$lib/sync/imageUpload.js";
+	import { uploadTempImage } from "$lib/sync/tempImageUpload.js";
 	import { pushToast, dismissToast } from "$lib/stores/toast.js";
 	import { Extension } from "@tiptap/core";
 	import { insertTodayDate } from "./insertDate.js";
@@ -89,6 +89,7 @@
 	import { TomboyBlockquote } from "./blockquote/index.js";
 	import { createFindPlugin, findPluginKey } from "./find/findPlugin.js";
 	import FindBar from "./find/FindBar.svelte";
+	import { unfocusedCaretPlugin } from "./unfocusedCaret/unfocusedCaretPlugin.js";
 	import type { JSONContent } from "@tiptap/core";
 	import EditorContextMenu from "./EditorContextMenu.svelte";
 	import {
@@ -403,6 +404,12 @@
 					name: "tomboyImagePreview",
 					addProseMirrorPlugins() {
 						return [createImagePreviewPlugin()];
+					},
+				}),
+				Extension.create({
+					name: "tomboyUnfocusedCaret",
+					addProseMirrorPlugins() {
+						return [unfocusedCaretPlugin()];
 					},
 				}),
 				Extension.create({
@@ -1098,11 +1105,12 @@
 	}
 
 	/**
-	 * Upload an image file to Dropbox and insert the resulting direct URL
-	 * at the current cursor position, wrapped in a tomboyUrlLink mark so
-	 * the note's XML round-trip treats it as a `<link:url>` anchor. The
-	 * image-preview plugin then renders the actual image in place of the
-	 * URL text — see imagePreviewPlugin.ts.
+	 * Upload an image file to Vercel Blob (임시 저장소) and insert the
+	 * resulting direct URL at the current cursor position, wrapped in a
+	 * tomboyUrlLink mark so the note's XML round-trip treats it as a
+	 * `<link:url>` anchor. The image-preview plugin then renders the actual
+	 * image in place of the URL text — see imagePreviewPlugin.ts.
+	 * (Permanent promotion to Dropbox is handled separately by imagePromotion.)
 	 */
 	export async function uploadAndInsertImage(file: File): Promise<void> {
 		const ed = editor;
@@ -1110,7 +1118,7 @@
 
 		const toastId = pushToast("이미지 업로드 중…", { timeoutMs: 0 });
 		try {
-			const url = await uploadImageToDropbox(file);
+			const url = await uploadTempImage(file);
 			dismissToast(toastId);
 			// Save the selection at the moment we insert. If the user moved
 			// the cursor while the upload was in flight, insert at the
@@ -1188,11 +1196,37 @@
 	.tomboy-editor {
 		flex: 1;
 		min-height: 0;
-		overflow-y: auto;
-		-webkit-overflow-scrolling: touch;
+		/* body 가 scrollable 이라 내부 스크롤 없이 컨텐츠 만큼 늘어남.
+		   overflow-y:auto / -webkit-overflow-scrolling 제거. */
 		padding: 0.5rem;
 		font-size: 16px;
 		line-height: 1.4;
+	}
+
+	/* blur 상태에서도 caret / selection 위치를 시각적으로 유지. 모바일
+	   에서 키보드 dismiss 후 "어디를 편집/선택 중이었는지" 잃지 않도록.
+	   native caret blink 주기 (~1.06s) 모방. */
+	.tomboy-editor :global(.unfocused-caret) {
+		display: inline-block;
+		width: 1px;
+		height: 1.1em;
+		background: currentColor;
+		vertical-align: text-bottom;
+		margin-bottom: -0.05em;
+		pointer-events: none;
+		opacity: 0.7;
+		animation: tomboy-caret-blink 1.06s steps(2, jump-none) infinite;
+	}
+
+	/* 가짜 selection — iOS Safari 의 native selection 색에 가까운 옅은
+	   파랑. blink 없이 안정적으로 표시. */
+	.tomboy-editor :global(.unfocused-selection) {
+		background-color: rgba(100, 150, 255, 0.35);
+	}
+
+	@keyframes tomboy-caret-blink {
+		0%, 49% { opacity: 0.7; }
+		50%, 100% { opacity: 0; }
 	}
 
 	.tomboy-editor :global(.tiptap) {

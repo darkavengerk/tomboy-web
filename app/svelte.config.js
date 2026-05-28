@@ -1,4 +1,4 @@
-import adapter from '@sveltejs/adapter-static';
+import adapter from '@sveltejs/adapter-vercel';
 
 /** @type {import('@sveltejs/kit').Config} */
 const config = {
@@ -7,8 +7,17 @@ const config = {
 	},
 	kit: {
 		adapter: adapter({
-			fallback: '404.html'
-		})
+			// Node 20 LTS. Bump when Vercel drops 20.x support.
+			runtime: 'nodejs20.x'
+		}),
+		prerender: {
+			// Dead links in prerendered pages warn but don't fail the build.
+			handleHttpError: 'warn',
+			// Dynamic routes (/note/[id], /admin/notes/[guid], etc.) aren't
+			// statically crawlable — let the SPA handle them at runtime instead
+			// of aborting the build.
+			handleUnseenRoutes: 'ignore'
+		}
 	}
 };
 

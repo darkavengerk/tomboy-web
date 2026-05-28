@@ -49,15 +49,15 @@
 		return editor.isActive(name, attrs);
 	}
 
-	function toggleBold() { editor?.chain().focus().toggleBold().run(); }
-	function toggleItalic() { editor?.chain().focus().toggleItalic().run(); }
-	function toggleUnderline() { editor?.chain().focus().toggleUnderline().run(); }
-	function toggleStrike() { editor?.chain().focus().toggleStrike().run(); }
-	function toggleHighlight() { editor?.chain().focus().toggleHighlight().run(); }
-	function toggleMonospace() { editor?.chain().focus().toggleTomboyMonospace().run(); }
-	function toggleBulletList() { editor?.chain().focus().toggleBulletList().run(); }
+	function toggleBold() { editor?.chain().toggleBold().run(); }
+	function toggleItalic() { editor?.chain().toggleItalic().run(); }
+	function toggleUnderline() { editor?.chain().toggleUnderline().run(); }
+	function toggleStrike() { editor?.chain().toggleStrike().run(); }
+	function toggleHighlight() { editor?.chain().toggleHighlight().run(); }
+	function toggleMonospace() { editor?.chain().toggleTomboyMonospace().run(); }
+	function toggleBulletList() { editor?.chain().toggleBulletList().run(); }
 	function toggleSize(level: SizeLevel) {
-		editor?.chain().focus().toggleTomboySize(level).run();
+		editor?.chain().toggleTomboySize(level).run();
 		showSizeMenu = false;
 	}
 
@@ -82,13 +82,13 @@
 				insertTodayDate(ed);
 				return;
 			case 's':
-				ed.chain().focus().toggleStrike().run();
+				ed.chain().toggleStrike().run();
 				return;
 			case 'h':
-				ed.chain().focus().toggleHighlight().run();
+				ed.chain().toggleHighlight().run();
 				return;
 			case 'm':
-				ed.chain().focus().toggleTomboyMonospace().run();
+				ed.chain().toggleTomboyMonospace().run();
 				return;
 			case 'o':
 				insertTodoBlock(ed);
@@ -104,12 +104,12 @@
 		if (!ed) return;
 		try {
 			if (key === 'footnote') {
-				ed.chain().focus().insertFootnote().run();
+				ed.chain().insertFootnote().run();
 				return;
 			}
 			if (key === 'right') {
 				const sunk = sinkListItemOnly(ed);
-				if (!sunk && !isInList(ed)) ed.chain().focus().toggleBulletList().run();
+				if (!sunk && !isInList(ed)) ed.chain().toggleBulletList().run();
 				return;
 			}
 			if (key === 'left') {

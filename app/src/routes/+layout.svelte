@@ -1,7 +1,6 @@
 <script lang="ts">
 	import '../app.css';
 	import { onMount } from 'svelte';
-	import { version } from '$app/environment';
 	import { afterNavigate, goto } from '$app/navigation';
 	import Toast from '$lib/components/Toast.svelte';
 	import ImageViewerModal from '$lib/components/ImageViewerModal.svelte';
@@ -18,6 +17,7 @@
 	import { subscribeForegroundMessages } from '$lib/schedule/notification.js';
 	import { installRealNoteSync } from '$lib/sync/firebase/install.js';
 	import { installBacklinkIndex } from '$lib/core/backlinkIndex.js';
+	import { installImageFetchers } from '$lib/imageCache/fetchers/install.js';
 	import { pushToast } from '$lib/stores/toast.js';
 	import { getAllNotes } from '$lib/storage/noteStore.js';
 	import { favoriteStore } from '$lib/storage/favoriteStore.svelte.js';
@@ -38,9 +38,6 @@
 	let showInstallBanner = $state(false);
 	let canGoBack = $state(false);
 	let canGoForward = $state(false);
-
-	// 임시 디버그 오버레이 — 모바일 키보드 공백 버그 진단용. 다음 commit 에서 제거 예정.
-	let dv = $state({ iH: 0, vvH: 0, vvT: 0, inset: '0', shellH: 0, docH: 0 });
 
 	interface BeforeInstallPromptEvent extends Event {
 		prompt(): Promise<void>;
@@ -138,25 +135,16 @@
 
 		const unbindViewport = bindViewportHeight();
 
-		// 디버그 오버레이 폴링 (500ms) — 키보드 떴을 때의 측정값 확인용.
-		const updateDv = () => {
-			const root = document.documentElement;
-			const vv = window.visualViewport;
-			const shell = document.querySelector('.app-shell, .chromeless') as HTMLElement | null;
-			dv = {
-				iH: window.innerHeight,
-				vvH: Math.round(vv?.height ?? -1),
-				vvT: Math.round(vv?.offsetTop ?? -1),
-				inset: root.style.getPropertyValue('--keyboard-inset') || '0',
-				shellH: shell?.clientHeight ?? 0,
-				docH: document.documentElement.clientHeight
-			};
-		};
-		updateDv();
-		const dvTimer = setInterval(updateDv, 500);
-
 		// 즐겨찾기 — 로컬 전용 set 을 appSettings 에서 복원.
 		void favoriteStore.load();
+
+		// 이미지 캐시 fetcher 등록 — Dropbox SDK 우회로 등이 lookupOrFetch
+		// 미스 경로에서 활성화됨. idempotent.
+		installImageFetchers();
+
+		// 백링크 인덱스 빌드 — IDB read만 하므로 auth 와 무관. 가능한 한 빨리
+		// 시작해서 첫 번째 rename sweep 전까지 따뜻하게 유지.
+		installBacklinkIndex();
 
 		// 일정 알림: 온라인 복귀 시 미발신 diff 자동 flush + 시작 시 한 번 시도.
 		installOnlineFlushListener();
@@ -175,7 +163,6 @@
 			}
 			// 파이어베이스 노트 실시간 동기화: 저장된 토글 값을 읽어 활성화 상태로 복원.
 			// 토글이 OFF면 push/subscribe 모두 no-op 으로 비용 없음.
-			installBacklinkIndex();
 			void installRealNoteSync();
 		});
 
@@ -206,7 +193,6 @@
 			window.removeEventListener('keydown', swallowAlt);
 			window.removeEventListener('keyup', swallowAlt);
 			unbindViewport();
-			clearInterval(dvTimer);
 			unsubFcm?.();
 		};
 	});
@@ -268,43 +254,26 @@
 	<ImageViewerModal />
 {/if}
 
-<!-- 임시 디버그 오버레이 — 모바일 키보드 공백 진단용. 다음 commit 에서 제거. -->
-<div class="dv-overlay">
-	<div>v:{version.slice(0, 12)}</div>
-	<div>iH:{dv.iH} docH:{dv.docH}</div>
-	<div>vvH:{dv.vvH} vvT:{dv.vvT}</div>
-	<div>inset:{dv.inset} shell:{dv.shellH}</div>
-</div>
-
 <style>
 	.app-shell {
-		/* Track the visual viewport directly via `top`/`bottom`:
-		     top    = vv.offsetTop          (follow iOS's pan)
-		     bottom = inset − vv.offsetTop  (so height = layout − inset)
-		   Pinning `height: 100dvh` instead leaked dvh-staleness on iOS
-		   and left strips of body background below the toolbar when
-		   iOS panned the visual viewport. See lib/viewport/viewportHeight.ts
-		   for why we now chase `offsetTop` even though an earlier note
-		   there warned against it. */
-		position: fixed;
-		top: var(--vv-offset, 0px);
-		left: 0;
-		right: 0;
-		bottom: calc(var(--keyboard-inset, 0px) - var(--vv-offset, 0px));
+		/* 모바일 route 는 body 가 scrollable. shell 은 일반 flex column,
+		   viewport 를 최소로 채우게 min-height. TopNav 는 sticky top,
+		   하단 toolbar 는 fixed bottom (키보드 inset 적용). 키보드가
+		   뜨면 OS 가 body 를 scroll 해서 cursor 를 visible 영역으로
+		   올려줌 — 우리가 vv panning 을 추적할 필요 없음. */
 		display: flex;
 		flex-direction: column;
-		overflow: hidden;
+		min-height: 100dvh;
 	}
 
-	/* When embedded (in an iframe) or on the desktop route, the settings page
-	   still needs a flex column container so its inner layout (which uses
-	   height:100%) sizes correctly. */
+	/* desktop route (multi-window) 와 embedded 모드는 페이지 scroll 이
+	   의미 없으므로 fixed 유지. 키보드 inset 만 적용. */
 	.chromeless {
 		position: fixed;
-		top: var(--vv-offset, 0px);
+		top: 0;
 		left: 0;
 		right: 0;
-		bottom: calc(var(--keyboard-inset, 0px) - var(--vv-offset, 0px));
+		bottom: var(--keyboard-inset, 0px);
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
@@ -317,7 +286,6 @@
 
 	.content {
 		flex: 1;
-		overflow: hidden;
 		display: flex;
 		flex-direction: column;
 		min-height: 0;
@@ -376,20 +344,5 @@
 		font-size: 1rem;
 		padding: 4px;
 		opacity: 0.8;
-	}
-
-	/* 임시 — 모바일 키보드 공백 진단용. 다음 commit 에서 제거. */
-	.dv-overlay {
-		position: fixed;
-		top: var(--safe-area-top);
-		left: 0;
-		z-index: 99999;
-		background: rgba(0, 0, 0, 0.75);
-		color: #5f5;
-		font: 10px/1.25 ui-monospace, monospace;
-		padding: 4px 6px;
-		pointer-events: none;
-		border-radius: 0 0 4px 0;
-		white-space: nowrap;
 	}
 </style>

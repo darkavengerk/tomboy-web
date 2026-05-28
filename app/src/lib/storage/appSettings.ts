@@ -133,6 +133,22 @@ export async function setDiaryTriggerToken(value: string): Promise<void> {
 	await setSetting(DIARY_TRIGGER_TOKEN, value);
 }
 
+// ── Image storage (Vercel Blob) settings ─────────────────────────────
+//
+// Bearer token shared with the `/api/temp-image/*` SvelteKit endpoints.
+// Must byte-match `IMAGE_STORAGE_TOKEN` env var on the server side.
+
+const IMAGE_STORAGE_TOKEN = 'imageStorageToken';
+
+export async function getImageStorageToken(): Promise<string> {
+	const v = await getSetting<string>(IMAGE_STORAGE_TOKEN);
+	return typeof v === 'string' ? v : '';
+}
+
+export async function setImageStorageToken(value: string): Promise<void> {
+	await setSetting(IMAGE_STORAGE_TOKEN, value);
+}
+
 // ── Image cache settings ──────────────────────────────────────────────
 
 const KEY_IMAGE_CACHE_TOTAL_BYTES = 'imageCacheTotalBytes';

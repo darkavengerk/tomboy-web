@@ -17,7 +17,9 @@
  */
 
 import { getClient, getImagesPath } from './dropboxClient.js';
+import { fileExtension } from '$lib/utils/fileExtension.js';
 import { prime as cachePrime, getBlob as cacheGetBlob } from '../imageCache/imageCache.js';
+import { dropboxFetcher } from '../imageCache/fetchers/dropboxFetcher.js';
 
 /**
  * Convert a Dropbox shared link to a direct, raw-bytes URL suitable for
@@ -43,18 +45,6 @@ export function toDirectImageUrl(sharedUrl: string): string {
 	u.searchParams.delete('dl');
 	u.searchParams.set('raw', '1');
 	return u.toString();
-}
-
-function fileExtension(file: File): string {
-	const nameMatch = /\.([A-Za-z0-9]+)$/.exec(file.name);
-	if (nameMatch) return nameMatch[1].toLowerCase();
-	if (file.type.startsWith('image/')) {
-		const sub = file.type.slice('image/'.length).toLowerCase();
-		// MIME sometimes uses `jpeg` while filenames prefer `jpg`. Either
-		// works with Dropbox Content-Type resolution.
-		return sub === 'svg+xml' ? 'svg' : sub;
-	}
-	return 'bin';
 }
 
 function buildUploadPath(imagesPath: string, file: File): string {
@@ -167,17 +157,51 @@ export async function downloadImageFromDropboxUrl(url: string): Promise<Blob> {
 	const cached = await cacheGetBlob(url);
 	if (cached) return cached;
 
-	const dbx = getClient() as DropboxSdkClient | null;
-	if (!dbx) {
-		throw new Error('Dropbox에 연결되지 않았습니다');
-	}
-	const res = await dbx.sharingGetSharedLinkFile({ url });
-	const blob = res.result.fileBlob;
-	if (!blob) {
-		throw new Error('Dropbox 이미지 응답이 비어 있습니다');
-	}
+	const blob = await dropboxFetcher.fetch(url);
 	cachePrime(url, blob, blob.type || 'application/octet-stream').catch((e) => {
 		console.warn('[imageCache] downloadImageFromDropboxUrl prime 실패:', e);
+	});
+	return blob;
+}
+
+/**
+ * Fetch image bytes by URL, dispatching by host:
+ *   - dropbox.com / dropboxusercontent.com → routed through the Dropbox
+ *     SDK so the cross-origin CORS limitation is bypassed (see
+ *     `downloadImageFromDropboxUrl` for context).
+ *   - everything else (Vercel Blob, plain http(s)) → direct `fetch()`,
+ *     which works because those origins serve CORS-open responses.
+ *
+ * Use this anywhere code needs the bytes behind an image URL that may
+ * have come from either storage channel.
+ */
+export async function downloadImageFromUrl(url: string): Promise<Blob> {
+	let parsed: URL;
+	try {
+		parsed = new URL(url);
+	} catch {
+		throw new Error(`잘못된 이미지 URL: ${url}`);
+	}
+	const host = parsed.hostname;
+	const isDropbox =
+		host === 'dropbox.com' ||
+		host.endsWith('.dropbox.com') ||
+		host.endsWith('.dropboxusercontent.com');
+
+	if (isDropbox) {
+		return downloadImageFromDropboxUrl(url);
+	}
+
+	const cached = await cacheGetBlob(url);
+	if (cached) return cached;
+
+	const res = await fetch(url);
+	if (!res.ok) {
+		throw new Error(`이미지 다운로드 실패 (${res.status})`);
+	}
+	const blob = await res.blob();
+	cachePrime(url, blob, blob.type || 'application/octet-stream').catch((e) => {
+		console.warn('[imageCache] downloadImageFromUrl prime 실패:', e);
 	});
 	return blob;
 }
