@@ -25,7 +25,7 @@
 		parseTerminalNote,
 		type TerminalNoteSpec
 	} from '$lib/editor/terminal/parseTerminalNote.js';
-	import LlmSendBar from '$lib/editor/llmNote/LlmSendBar.svelte';
+	import ChatSendBar from '$lib/editor/chatNote/ChatSendBar.svelte';
 	import RemarkableActionBar from '$lib/editor/remarkable/RemarkableActionBar.svelte';
 	import { parseOcrNote } from '$lib/ocrNote/parseOcrNote.js';
 	import { runOcrInEditor } from '$lib/ocrNote/runOcrInEditor.js';
@@ -87,7 +87,7 @@
 	let terminalConnectMode = $state(false);
 	const showTerminal = $derived(!!terminalSpec && terminalConnectMode);
 
-	// Bridge settings for LlmSendBar — loaded once on mount from appSettings.
+	// Bridge settings for ChatSendBar — loaded once on mount from appSettings.
 	let llmBridgeUrl = $state('');
 	let llmBridgeToken = $state('');
 
@@ -278,9 +278,8 @@
 	});
 
 	function scrollEditorToBottom() {
-		const el = editorAreaEl;
-		if (!el) return;
-		el.scrollTop = el.scrollHeight;
+		// 모바일 route 는 body 가 scrollable — window 전체 끝으로.
+		window.scrollTo(0, document.documentElement.scrollHeight);
 	}
 
 	// Tap on whitespace anywhere in the editor area → focus at end of doc.
@@ -298,7 +297,7 @@
 	}
 
 	onMount(() => {
-		// Load bridge URL and token for LlmSendBar.
+		// Load bridge URL and token for ChatSendBar.
 		void Promise.all([
 			getDefaultTerminalBridge(),
 			getTerminalBridgeToken()
@@ -570,9 +569,8 @@
 		}
 
 		if (kind === 'toggleFavorite') {
-			const updated = await toggleFavorite(note!.guid);
-			if (updated) note = updated;
-			pushToast(isFavorite(note!) ? '즐겨찾기에 추가되었습니다.' : '즐겨찾기에서 제거되었습니다.');
+			const nowFav = toggleFavorite(note!.guid);
+			pushToast(nowFav ? '즐겨찾기에 추가되었습니다.' : '즐겨찾기에서 제거되었습니다.');
 			return;
 		}
 
@@ -738,7 +736,7 @@
 					onimageinserted={handleImageInserted}
 				/>
 				{#if editorComponent?.getEditor() && llmBridgeUrl && llmBridgeToken}
-					<LlmSendBar
+					<ChatSendBar
 						editor={editorComponent.getEditor()!}
 						bridgeUrl={llmBridgeUrl}
 						bridgeToken={llmBridgeToken}
@@ -812,7 +810,8 @@
 	.editor-page {
 		display: flex;
 		flex-direction: column;
-		height: 100%;
+		flex: 1;
+		min-height: 0;
 		position: relative;
 	}
 
@@ -902,7 +901,13 @@
 		min-height: 0;
 		display: flex;
 		flex-direction: column;
-		overflow: hidden;
+		/* 안에 absolute로 떠 있는 ChatSendBar / RemarkableActionBar 가
+		   이 영역 바닥(=툴바 위)에 붙도록 컨테이닝 블록을 잡아둔다. */
+		position: relative;
+		/* .toolbar-area 가 fixed 로 빠져서 자리를 차지하지 않으므로
+		   여기서 padding-bottom 으로 가리지 않게 자리 확보. Toolbar 한
+		   row 높이 (~52px) + 약간의 여유. */
+		padding-bottom: 56px;
 	}
 
 	/* Visual cue that this note is a terminal note in edit mode — the
@@ -913,7 +918,17 @@
 	}
 
 	.toolbar-area {
-		flex-shrink: 0;
+		position: fixed;
+		left: 0;
+		right: 0;
+		/* bottom: 0 만으로 충분. iOS Safari 는 키보드 뜨면 fixed 를
+		   visual viewport 기준으로 자동으로 옮겨주고, Android Chrome
+		   은 interactive-widget=resizes-content 로 layout viewport
+		   자체가 키보드 위까지로 줄어듦. 둘 다 bottom:0 이 키보드
+		   바로 위가 되므로 추가 inset 보정은 이중 적용이 되어 toolbar
+		   가 화면 위로 점프함. */
+		bottom: 0;
+		z-index: 10;
 		background: #f8f9fa;
 	}
 

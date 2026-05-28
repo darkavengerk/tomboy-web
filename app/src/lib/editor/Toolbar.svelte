@@ -49,15 +49,15 @@
 		return editor.isActive(name, attrs);
 	}
 
-	function toggleBold() { editor?.chain().focus().toggleBold().run(); }
-	function toggleItalic() { editor?.chain().focus().toggleItalic().run(); }
-	function toggleUnderline() { editor?.chain().focus().toggleUnderline().run(); }
-	function toggleStrike() { editor?.chain().focus().toggleStrike().run(); }
-	function toggleHighlight() { editor?.chain().focus().toggleHighlight().run(); }
-	function toggleMonospace() { editor?.chain().focus().toggleTomboyMonospace().run(); }
-	function toggleBulletList() { editor?.chain().focus().toggleBulletList().run(); }
+	function toggleBold() { editor?.chain().toggleBold().run(); }
+	function toggleItalic() { editor?.chain().toggleItalic().run(); }
+	function toggleUnderline() { editor?.chain().toggleUnderline().run(); }
+	function toggleStrike() { editor?.chain().toggleStrike().run(); }
+	function toggleHighlight() { editor?.chain().toggleHighlight().run(); }
+	function toggleMonospace() { editor?.chain().toggleTomboyMonospace().run(); }
+	function toggleBulletList() { editor?.chain().toggleBulletList().run(); }
 	function toggleSize(level: SizeLevel) {
-		editor?.chain().focus().toggleTomboySize(level).run();
+		editor?.chain().toggleTomboySize(level).run();
 		showSizeMenu = false;
 	}
 
@@ -82,13 +82,13 @@
 				insertTodayDate(ed);
 				return;
 			case 's':
-				ed.chain().focus().toggleStrike().run();
+				ed.chain().toggleStrike().run();
 				return;
 			case 'h':
-				ed.chain().focus().toggleHighlight().run();
+				ed.chain().toggleHighlight().run();
 				return;
 			case 'm':
-				ed.chain().focus().toggleTomboyMonospace().run();
+				ed.chain().toggleTomboyMonospace().run();
 				return;
 			case 'o':
 				insertTodoBlock(ed);
@@ -99,25 +99,29 @@
 		}
 	}
 
-	function runAlt(arrow: 'left' | 'right' | 'up' | 'down') {
+	function runAlt(key: 'left' | 'right' | 'up' | 'down' | 'footnote') {
 		const ed = editor;
 		if (!ed) return;
 		try {
-			if (arrow === 'right') {
-				const sunk = sinkListItemOnly(ed);
-				if (!sunk && !isInList(ed)) ed.chain().focus().toggleBulletList().run();
+			if (key === 'footnote') {
+				ed.chain().insertFootnote().run();
 				return;
 			}
-			if (arrow === 'left') {
+			if (key === 'right') {
+				const sunk = sinkListItemOnly(ed);
+				if (!sunk && !isInList(ed)) ed.chain().toggleBulletList().run();
+				return;
+			}
+			if (key === 'left') {
 				const lifted = liftListItemOnly(ed);
 				if (!lifted && isInList(ed)) ed.commands.liftListItem('listItem');
 				return;
 			}
-			if (arrow === 'up') {
+			if (key === 'up') {
 				moveListItemUp(ed);
 				return;
 			}
-			if (arrow === 'down') {
+			if (key === 'down') {
 				moveListItemDown(ed);
 				return;
 			}
@@ -231,15 +235,6 @@
 				</div>
 			{/if}
 
-			{#if altLocked}
-				<div class="key-row" aria-label="Alt 단축키">
-					<button class="key-btn" onclick={() => runAlt('left')} title="내어쓰기 (Alt+←)">←</button>
-					<button class="key-btn" onclick={() => runAlt('up')} title="위로 이동 (Alt+↑)">↑</button>
-					<button class="key-btn" onclick={() => runAlt('down')} title="아래로 이동 (Alt+↓)">↓</button>
-					<button class="key-btn" onclick={() => runAlt('right')} title="들여쓰기 (Alt+→)">→</button>
-				</div>
-			{/if}
-
 			{#if !ctrlLocked}
 				<button
 					class="mod-toggle"
@@ -251,6 +246,16 @@
 					<span class="mod-label">Alt</span>
 					<span class="mod-dot" aria-hidden="true"></span>
 				</button>
+			{/if}
+
+			{#if altLocked}
+				<div class="key-row" aria-label="Alt 단축키">
+					<button class="key-btn" onclick={() => runAlt('left')} title="내어쓰기 (Alt+←)">←</button>
+					<button class="key-btn" onclick={() => runAlt('up')} title="위로 이동 (Alt+↑)">↑</button>
+					<button class="key-btn" onclick={() => runAlt('down')} title="아래로 이동 (Alt+↓)">↓</button>
+					<button class="key-btn" onclick={() => runAlt('right')} title="들여쓰기 (Alt+→)">→</button>
+					<button class="key-btn" onclick={() => runAlt('footnote')} title="각주 (Alt+J)">J</button>
+				</div>
 			{/if}
 		</div>
 

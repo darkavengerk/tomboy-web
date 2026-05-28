@@ -1063,10 +1063,6 @@
     "mtime": 1777272377.0678465,
     "hash": "a14fbf603c077a205309736a8d16d940"
   },
-  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/Toolbar.svelte": {
-    "mtime": 1778316924.6246393,
-    "hash": "951d6361b9c57e1b3323d3750874cd65"
-  },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/NoteXmlViewer.svelte": {
     "mtime": 1778497513.0601053,
     "hash": "d188b249e4162cda6c19f83e2eba78eb"
@@ -1079,9 +1075,13 @@
     "mtime": 1778497536.8373988,
     "hash": "b377dcb91a793f55a1114b925c677f57"
   },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/Toolbar.svelte": {
+    "mtime": 1779366166.9849672,
+    "hash": "4f226d31354cbafd5fce06cad67705f7"
+  },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/TomboyEditor.svelte": {
-    "mtime": 1779251773.2779481,
-    "hash": "6d5d63e89f9e92f1dafad760ffb64d58"
+    "mtime": 1779433589.1974335,
+    "hash": "0efa00365cc052e54b3ddb33acccdd7e"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/extensions/TomboySize.ts": {
     "mtime": 1775979894.4442964,
@@ -1239,13 +1239,17 @@
     "mtime": 1778574323.8291154,
     "hash": "5b712af98b01359d6759f40b782f707e"
   },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/terminal/spectatorScroll.ts": {
+    "mtime": 1779425194.5421128,
+    "hash": "0cc770de331247451d0f26358d3dffa1"
+  },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/terminal/wsClient.ts": {
-    "mtime": 1778642005.2750177,
-    "hash": "e5599f4a1996b443171aea07cb6e847e"
+    "mtime": 1779430058.0941079,
+    "hash": "7d2a7a66251ecd65c9bb04d09b915123"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/terminal/TerminalView.svelte": {
-    "mtime": 1778821862.3383982,
-    "hash": "79551a3d3faf22345478ceff3489be98"
+    "mtime": 1779446817.8077693,
+    "hash": "99018932a8f3f28db682fdec3500c0c9"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/hrSplit/assignColumns.ts": {
     "mtime": 1778860438.1676173,
@@ -1282,6 +1286,54 @@
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/checklist/regions.ts": {
     "mtime": 1779251773.2782266,
     "hash": "9a64ab23192cf1c6854f7362cb5a974c"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/blockquote/blockquote.ts": {
+    "mtime": 1779261557.5362487,
+    "hash": "dd235f389d9378bf9711bc3edc04fe1a"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/blockquote/index.ts": {
+    "mtime": 1779261557.5363605,
+    "hash": "c40fad67e625c21d6abcf55476fba457"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/blockquote/plugin.ts": {
+    "mtime": 1779261557.5363605,
+    "hash": "9693aa9e58111625167c1b6cc7b2fbce"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/footnote/footnotes.ts": {
+    "mtime": 1779261557.5363605,
+    "hash": "5a984f0313c6b7a9dbe5782f37350389"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/footnote/index.ts": {
+    "mtime": 1779261557.5365384,
+    "hash": "2b7421554e48dca4d04e116e7af041ea"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/footnote/plugin.ts": {
+    "mtime": 1779327838.7629645,
+    "hash": "c1d301c37aec05f0089b62a8f74b5dfd"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/find/FindBar.svelte": {
+    "mtime": 1779366166.9850755,
+    "hash": "89e0d7273caa14d008df1fb37c312d50"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/find/findMatches.ts": {
+    "mtime": 1779366166.9852116,
+    "hash": "8fd3a16e32ff7298256f7b80b4c4f40c"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/find/findPlugin.ts": {
+    "mtime": 1779366166.9852116,
+    "hash": "c62371be5c9adf92ba07e8ddf31fb6f2"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/remarkable/RemarkableActionBar.svelte": {
+    "mtime": 1779366439.2582028,
+    "hash": "949ee6c5ee3c22c65517db8605eea352"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/labeledDivider/labeledDividerPlugin.ts": {
+    "mtime": 1779431927.267089,
+    "hash": "f944fb41f4254ff2fc2374c126696414"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/editor/labeledDivider/parseLabeledDivider.ts": {
+    "mtime": 1779431927.2672482,
+    "hash": "ec72084d1de0b1b4fc71db3bceac44ee"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/nav/history.ts": {
     "mtime": 1775979894.4442964,
@@ -1376,8 +1428,8 @@
     "hash": "f935f6ea587b3f11d89f6c5bf53cde8e"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/NoteWindow.svelte": {
-    "mtime": 1778855361.8573086,
-    "hash": "e5fe43fa324ef96ac238ae029e81d4c0"
+    "mtime": 1779366439.2582028,
+    "hash": "65d25c2f385b9330ebe05bf2d1be0250"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/desktop/components/CodeNodePanel.svelte": {
     "mtime": 1777868808.8150718,
@@ -1659,6 +1711,18 @@
     "mtime": 1778835796.1833506,
     "hash": "ac40e06cc342bb1f422a1e0badab7e9d"
   },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/remarkable/applyWallpaper.ts": {
+    "mtime": 1779366439.2582028,
+    "hash": "f6362918bd3dee26c2cd10a753b5c930"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/remarkable/slots.ts": {
+    "mtime": 1779366439.2589195,
+    "hash": "83427d82fbc58ee7bfc307fa0f2afbbf"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/src/lib/remarkable/parseRemarkableNote.ts": {
+    "mtime": 1779429145.8068914,
+    "hash": "58bd8be9e4b9b8fdfb15d90b9fd0f024"
+  },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/+layout.ts": {
     "mtime": 1775979894.4447505,
     "hash": "d519d19c7b253b50a6c56a3cf1f6462b"
@@ -1680,8 +1744,8 @@
     "hash": "e7b0e83eacc1321b3a006a975acafa45"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/note/[id]/+page.svelte": {
-    "mtime": 1778909540.3725312,
-    "hash": "40825518860b5af89ba15adfcaf7f290"
+    "mtime": 1779366439.258997,
+    "hash": "fd78b599c4ac5a4dc20573f255138b84"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/note/[id]/compare/+page.svelte": {
     "mtime": 1776493723.9485273,
@@ -1696,8 +1760,8 @@
     "hash": "e7b0e83eacc1321b3a006a975acafa45"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/settings/+page.svelte": {
-    "mtime": 1778909540.373039,
-    "hash": "b002fc7953d643f0df5fdcf024a823bb"
+    "mtime": 1779429145.8078802,
+    "hash": "2d39a0b8ccad34bea385cb019b70666c"
   },
   "/var/home/umayloveme/workspace/tomboy-web/app/src/routes/sleepnote/+page.svelte": {
     "mtime": 1776229771.6812596,
@@ -2111,6 +2175,42 @@
     "mtime": 1779251773.2786274,
     "hash": "2154c9477dc04bc4ca769966beccf699"
   },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/editor/blockquote.test.ts": {
+    "mtime": 1779261557.5365384,
+    "hash": "6e74956dfb7e0afe0ef8620aea21043b"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/editor/blockquotePlugin.test.ts": {
+    "mtime": 1779261557.5367332,
+    "hash": "55b646b5e1ab452007eae00c527e6994"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/editor/footnotes.test.ts": {
+    "mtime": 1779261557.5368624,
+    "hash": "5ceae06875a080279a8088b8843cf165"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/editor/footnotePlugin.test.ts": {
+    "mtime": 1779327952.807262,
+    "hash": "aac1ce56f29f4309558d945181d9b732"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/editor/findMatches.test.ts": {
+    "mtime": 1779366166.9853854,
+    "hash": "5ed7c345248f3826f6213b402de4ff93"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/editor/findPlugin.test.ts": {
+    "mtime": 1779366166.985625,
+    "hash": "3951b2a4f71afc1fe5f445c57618cb30"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/editor/spectatorScroll.test.ts": {
+    "mtime": 1779425194.5421128,
+    "hash": "1f6fad7f63cb46ac0b1ebde51d84e149"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/editor/labeledDividerPlugin.test.ts": {
+    "mtime": 1779431927.2672482,
+    "hash": "e6c0dc04aa2d7d7ff7223e4c802aa5de"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/editor/parseLabeledDivider.test.ts": {
+    "mtime": 1779431927.2674406,
+    "hash": "c801b639db2f169a52d844f70983bc2f"
+  },
   "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/graph/extractInternalLinks.test.ts": {
     "mtime": 1776229771.681479,
     "hash": "59cd58e5169bedef9b62b38d78cb85c7"
@@ -2363,6 +2463,22 @@
     "mtime": 1779188767.584223,
     "hash": "eca019268d89c8a98d5f36213d93537f"
   },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/remarkable/applyWallpaper.test.ts": {
+    "mtime": 1779366439.2591338,
+    "hash": "e12cc54798f32d3b1fdf561c6a51bb94"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/remarkable/slots.test.ts": {
+    "mtime": 1779366439.2591338,
+    "hash": "e1009990d146e9c48f919d0a648ce027"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/remarkable/RemarkableActionBar.test.ts": {
+    "mtime": 1779429145.8079188,
+    "hash": "06d409e467d17523ea3687fe92396c7b"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/app/tests/unit/remarkable/parseRemarkableNote.test.ts": {
+    "mtime": 1779429145.80796,
+    "hash": "fe327c6e403dfcffc4e35bf2eec57659"
+  },
   "/var/home/umayloveme/workspace/tomboy-web/app/scripts/sync-codegraph.mjs": {
     "mtime": 1777868808.8130717,
     "hash": "fcbec752edb80bf2a1cc44d621a6cb59"
@@ -2403,10 +2519,6 @@
     "mtime": 1778573354.2725089,
     "hash": "5e3a954014d8e8b0b481a62a5e390aca"
   },
-  "/var/home/umayloveme/workspace/tomboy-web/bridge/src/spectatorSession.ts": {
-    "mtime": 1778651956.1521547,
-    "hash": "77eee8d1db60a4f4a16a23c820d43917"
-  },
   "/var/home/umayloveme/workspace/tomboy-web/bridge/src/rag.ts": {
     "mtime": 1778658099.8571265,
     "hash": "647d1e675ff44c16ebd9219c38d89d9f"
@@ -2435,9 +2547,29 @@
     "mtime": 1778835796.1833506,
     "hash": "0a0041cf4775f5385b01214e3c696e7f"
   },
+  "/var/home/umayloveme/workspace/tomboy-web/bridge/src/remarkable.test.ts": {
+    "mtime": 1779366439.2591338,
+    "hash": "610cf72dfc7bd16d68936a5ac61c2060"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/bridge/src/remarkable.ts": {
+    "mtime": 1779366439.2591338,
+    "hash": "0be80a3fee525acc1fc99fbeb6c9bb5c"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/bridge/src/remarkableHosts.test.ts": {
+    "mtime": 1779366439.2591338,
+    "hash": "9ec86197ed28e6e446bae887d83f083c"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/bridge/src/remarkableHosts.ts": {
+    "mtime": 1779366439.2591338,
+    "hash": "62201b3feae4f393b360641a323c5bfb"
+  },
   "/var/home/umayloveme/workspace/tomboy-web/bridge/src/server.ts": {
-    "mtime": 1778835796.1833506,
-    "hash": "4f9db6f1daeaeb6254b748c5f423b7c6"
+    "mtime": 1779430058.0945268,
+    "hash": "32b3217d9d6bd62d82150fe75eeb54c5"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/bridge/src/spectatorSession.ts": {
+    "mtime": 1779430058.0948272,
+    "hash": "82336e8886a0cdada9b084950ebb8875"
   },
   "/var/home/umayloveme/workspace/tomboy-web/bridge/scripts/deploy.mjs": {
     "mtime": 1778832308.6806078,
@@ -2764,8 +2896,8 @@
     "hash": "b68992fd367360c9110166896c330452"
   },
   "/var/home/umayloveme/workspace/tomboy-web/CLAUDE.md": {
-    "mtime": 1778909540.371747,
-    "hash": "f533d9aabe5474feb6989c4c5330603b"
+    "mtime": 1779507642.0144281,
+    "hash": "1cf2f932f3271bf988bab0b6225803b5"
   },
   "/var/home/umayloveme/workspace/tomboy-web/ref/README.md": {
     "mtime": 1775785097.776391,
@@ -2798,6 +2930,18 @@
   "/var/home/umayloveme/workspace/tomboy-web/docs/tmux-note-integration.md": {
     "mtime": 1778315552.681198,
     "hash": "a0151089031843d17568c4ddf640383f"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/tmux-spectator-scroll-analysis.md": {
+    "mtime": 1779363898.85482,
+    "hash": "d1c6192a981d21db053f764195acd03c"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/tmux-spectator-scroll-follow-feasibility.md": {
+    "mtime": 1779367266.7376726,
+    "hash": "434208bb1c38e2579d31b6a4087b57b4"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/tmux-spectator-scrollback-client-feasibility.md": {
+    "mtime": 1779417525.0035682,
+    "hash": "09512d7daaeb34fefa1bcde9994a034e"
   },
   "/var/home/umayloveme/workspace/tomboy-web/docs/impl/01-empty-stub-fix.md": {
     "mtime": 1775979894.4458482,
@@ -2887,6 +3031,34 @@
     "mtime": 1779251773.2789726,
     "hash": "992b48865d30b1e1a893aaf7ef432504"
   },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/specs/2026-05-20-footnote-blockquote-design.md": {
+    "mtime": 1779328008.3893833,
+    "hash": "c2983d8008e3a5477211f2dfeea6f2df"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/specs/2026-05-21-find-in-note-design.md": {
+    "mtime": 1779356547.1481717,
+    "hash": "1f8fe806684c8fdbc490acc4d7ee9e13"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/specs/2026-05-20-remarkable-wallpaper-design.md": {
+    "mtime": 1779366439.2592027,
+    "hash": "e17b3db787d451ed2be8f0d737a28f57"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/specs/2026-05-21-spectator-scrollback-seed-design.md": {
+    "mtime": 1779367266.737502,
+    "hash": "c7ca24fb5af0398c4eff8138eaa53a2a"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/specs/2026-05-21-spectator-scrollback-client-design.md": {
+    "mtime": 1779417525.0035682,
+    "hash": "7ae88d90f2cf9154b58afb20201a7bae"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/specs/2026-05-22-labeled-divider-design.md": {
+    "mtime": 1779431927.2674406,
+    "hash": "4c27669841335b2ad6300580e014ff49"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/specs/2026-05-22-spectator-bottom-anchor-design.md": {
+    "mtime": 1779446817.8077693,
+    "hash": "d14dbf6c7fd0d93774c3cd6518c0cdb6"
+  },
   "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/plans/2026-05-02-codegraph-plan.md": {
     "mtime": 1777693062.781212,
     "hash": "3ac6458555ee66ca49705a42ce281502"
@@ -2923,9 +3095,37 @@
     "mtime": 1779251773.278825,
     "hash": "4c00bc6c1290cbf8e87b901b8ff8a963"
   },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/plans/2026-05-20-footnote-blockquote.md": {
+    "mtime": 1779261557.5368624,
+    "hash": "3a7252b5bfdb1f768aaca0afa65bd614"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/plans/2026-05-21-find-in-note.md": {
+    "mtime": 1779356547.1479275,
+    "hash": "ff49e65ea6576fbea6c3eba86ba709df"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/plans/2026-05-20-remarkable-wallpaper.md": {
+    "mtime": 1779366439.2592027,
+    "hash": "7fe1a859aea7a99303475d436abb6fb6"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/plans/2026-05-21-spectator-scrollback-seed.md": {
+    "mtime": 1779367345.232657,
+    "hash": "797d5e20bfeda34a1bfe46d6c6695aa1"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/plans/2026-05-21-spectator-scrollback-client.md": {
+    "mtime": 1779417567.5421045,
+    "hash": "5e3875b72d9e1ac51abc0548b7bef573"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/plans/2026-05-22-labeled-divider.md": {
+    "mtime": 1779431927.2674406,
+    "hash": "42c644e45811b527c2b397bf18383dc8"
+  },
+  "/var/home/umayloveme/workspace/tomboy-web/docs/superpowers/plans/2026-05-22-spectator-bottom-anchor.md": {
+    "mtime": 1779446817.8077693,
+    "hash": "558ed2967dcbe65d08cccec5dfa0fbdd"
+  },
   "/var/home/umayloveme/workspace/tomboy-web/bridge/README.md": {
-    "mtime": 1778574584.2321978,
-    "hash": "0e631fc13718d29f4c2ee80409780e5d"
+    "mtime": 1779366439.2591338,
+    "hash": "92f3b17d9afa87467bd2d2ab87adb3c7"
   },
   "/var/home/umayloveme/workspace/tomboy-web/pipeline/FIRST_RUN.md": {
     "mtime": 1778478492.5175672,

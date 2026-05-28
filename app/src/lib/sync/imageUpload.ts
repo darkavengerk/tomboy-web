@@ -18,6 +18,8 @@
 
 import { getClient, getImagesPath } from './dropboxClient.js';
 import { fileExtension } from '$lib/utils/fileExtension.js';
+import { prime as cachePrime, getBlob as cacheGetBlob } from '../imageCache/imageCache.js';
+import { dropboxFetcher } from '../imageCache/fetchers/dropboxFetcher.js';
 
 /**
  * Convert a Dropbox shared link to a direct, raw-bytes URL suitable for
@@ -152,15 +154,13 @@ async function resolveSharedUrl(
  * the same account that owns the link.
  */
 export async function downloadImageFromDropboxUrl(url: string): Promise<Blob> {
-	const dbx = getClient() as DropboxSdkClient | null;
-	if (!dbx) {
-		throw new Error('Dropbox에 연결되지 않았습니다');
-	}
-	const res = await dbx.sharingGetSharedLinkFile({ url });
-	const blob = res.result.fileBlob;
-	if (!blob) {
-		throw new Error('Dropbox 이미지 응답이 비어 있습니다');
-	}
+	const cached = await cacheGetBlob(url);
+	if (cached) return cached;
+
+	const blob = await dropboxFetcher.fetch(url);
+	cachePrime(url, blob, blob.type || 'application/octet-stream').catch((e) => {
+		console.warn('[imageCache] downloadImageFromDropboxUrl prime 실패:', e);
+	});
 	return blob;
 }
 
@@ -192,11 +192,18 @@ export async function downloadImageFromUrl(url: string): Promise<Blob> {
 		return downloadImageFromDropboxUrl(url);
 	}
 
+	const cached = await cacheGetBlob(url);
+	if (cached) return cached;
+
 	const res = await fetch(url);
 	if (!res.ok) {
 		throw new Error(`이미지 다운로드 실패 (${res.status})`);
 	}
-	return res.blob();
+	const blob = await res.blob();
+	cachePrime(url, blob, blob.type || 'application/octet-stream').catch((e) => {
+		console.warn('[imageCache] downloadImageFromUrl prime 실패:', e);
+	});
+	return blob;
 }
 
 /**
@@ -221,5 +228,9 @@ export async function uploadImageToDropbox(file: File): Promise<string> {
 	});
 
 	const sharedUrl = await resolveSharedUrl(dbx, path);
-	return toDirectImageUrl(sharedUrl);
+	const finalUrl = toDirectImageUrl(sharedUrl);
+	cachePrime(finalUrl, file, file.type).catch((e) => {
+		console.warn('[imageCache] uploadImageToDropbox prime 실패:', e);
+	});
+	return finalUrl;
 }

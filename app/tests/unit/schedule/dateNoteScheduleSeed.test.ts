@@ -1,7 +1,10 @@
 import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { describe, it, expect, beforeEach } from 'vitest';
-import { buildDateNoteScheduleSeed } from '$lib/schedule/dateNoteSeed.js';
+import {
+	buildDateNoteScheduleSeed,
+	extractUncheckedFromYesterdayNote
+} from '$lib/schedule/dateNoteSeed.js';
 import {
 	setScheduleNote,
 	_resetScheduleCacheForTest
@@ -23,6 +26,9 @@ function p(text: string): JSONContent {
 }
 function li(text: string): JSONContent {
 	return { type: 'listItem', content: [p(text)] };
+}
+function liChecked(text: string, checked: boolean): JSONContent {
+	return { type: 'listItem', attrs: { checked }, content: [p(text)] };
 }
 function ul(...items: JSONContent[]): JSONContent {
 	return { type: 'bulletList', content: items };
@@ -54,10 +60,17 @@ function makeNote(
 	};
 }
 
-const noteDoc = (lines: string[]) => {
+const noteDoc = (lines: string[], monthLabel = '4월') => {
 	const items = lines.map((l) => li(l));
-	return { type: 'doc', content: [p('일정'), p('4월'), ul(...items)] } as JSONContent;
+	return { type: 'doc', content: [p('일정'), p(monthLabel), ul(...items)] } as JSONContent;
 };
+
+function checklistDoc(title: string, ...items: JSONContent[]): JSONContent {
+	return {
+		type: 'doc',
+		content: [p(title), p('체크리스트:'), { type: 'bulletList', content: items }]
+	};
+}
 
 describe('buildDateNoteScheduleSeed', () => {
 	it('returns [] when no schedule note is configured', async () => {
@@ -82,7 +95,7 @@ describe('buildDateNoteScheduleSeed', () => {
 		expect(result).toEqual([]);
 	});
 
-	it('returns TODO blocks for matching entries (single match)', async () => {
+	it('returns checklist blocks for matching entries (single match)', async () => {
 		await setScheduleNote('sched-guid');
 		const note = makeNote(
 			'sched-guid',
@@ -91,12 +104,12 @@ describe('buildDateNoteScheduleSeed', () => {
 		await putNote(note);
 		const result = await buildDateNoteScheduleSeed(2026, 4, 15);
 		expect(result).toEqual([
-			p('TODO:'),
-			ul(li('독서모임 7시'))
+			p('체크리스트:'),
+			ul(liChecked('독서모임 7시', false))
 		]);
 	});
 
-	it('returns TODO blocks for multiple matches in input order, day-prefix stripped', async () => {
+	it('returns checklist blocks for multiple matches in input order, day-prefix stripped', async () => {
 		await setScheduleNote('sched-guid');
 		const note = makeNote(
 			'sched-guid',
@@ -110,8 +123,12 @@ describe('buildDateNoteScheduleSeed', () => {
 		await putNote(note);
 		const result = await buildDateNoteScheduleSeed(2026, 4, 15);
 		expect(result).toEqual([
-			p('TODO:'),
-			ul(li('독서'), li('독서모임 7시'), li('산책 8시'))
+			p('체크리스트:'),
+			ul(
+				liChecked('독서', false),
+				liChecked('독서모임 7시', false),
+				liChecked('산책 8시', false)
+			)
 		]);
 	});
 
@@ -135,6 +152,167 @@ describe('buildDateNoteScheduleSeed', () => {
 		);
 		await putNote(note);
 		const result = await buildDateNoteScheduleSeed(2026, 4, 15);
+		expect(result).toEqual([]);
+	});
+
+	it('returns carryover-only seed when no schedule note but yesterday has unchecked', async () => {
+		const y = makeNote(
+			'y-guid',
+			checklistDoc('2026-05-23', liChecked('어제 미완', false)),
+			{ title: '2026-05-23' }
+		);
+		await putNote(y);
+		const result = await buildDateNoteScheduleSeed(2026, 5, 24);
+		expect(result).toEqual([
+			p('체크리스트:'),
+			ul(liChecked('어제 미완', false))
+		]);
+	});
+
+	it('merges schedule labels (first) and yesterday carryover (after)', async () => {
+		await setScheduleNote('sched-guid');
+		const sched = makeNote(
+			'sched-guid',
+			noteDoc(['24(일) 회의 10시'], '5월')
+		);
+		await putNote(sched);
+		const y = makeNote(
+			'y-guid',
+			checklistDoc('2026-05-23', liChecked('어제 미완', false)),
+			{ title: '2026-05-23' }
+		);
+		await putNote(y);
+		const result = await buildDateNoteScheduleSeed(2026, 5, 24);
+		expect(result).toEqual([
+			p('체크리스트:'),
+			ul(liChecked('회의 10시', false), liChecked('어제 미완', false))
+		]);
+	});
+
+	it('deduplicates: schedule label == carryover top text → carryover skipped', async () => {
+		await setScheduleNote('sched-guid');
+		const sched = makeNote(
+			'sched-guid',
+			noteDoc(['24(일) 회의'], '5월')
+		);
+		await putNote(sched);
+		const y = makeNote(
+			'y-guid',
+			checklistDoc('2026-05-23', liChecked('회의', false), liChecked('병원', false)),
+			{ title: '2026-05-23' }
+		);
+		await putNote(y);
+		const result = await buildDateNoteScheduleSeed(2026, 5, 24);
+		expect(result).toEqual([
+			p('체크리스트:'),
+			ul(liChecked('회의', false), liChecked('병원', false))
+		]);
+	});
+
+	it('returns [] when neither schedule note nor yesterday note has anything', async () => {
+		const result = await buildDateNoteScheduleSeed(2026, 5, 24);
+		expect(result).toEqual([]);
+	});
+
+	it('returns schedule-only when yesterday note is fully checked', async () => {
+		await setScheduleNote('sched-guid');
+		const sched = makeNote(
+			'sched-guid',
+			noteDoc(['24(일) 회의'], '5월')
+		);
+		await putNote(sched);
+		const y = makeNote(
+			'y-guid',
+			checklistDoc('2026-05-23', liChecked('어제 완료', true)),
+			{ title: '2026-05-23' }
+		);
+		await putNote(y);
+		const result = await buildDateNoteScheduleSeed(2026, 5, 24);
+		expect(result).toEqual([
+			p('체크리스트:'),
+			ul(liChecked('회의', false))
+		]);
+	});
+});
+
+describe('extractUncheckedFromYesterdayNote', () => {
+	it('returns [] when yesterday note does not exist', async () => {
+		const result = await extractUncheckedFromYesterdayNote(2026, 5, 24);
+		expect(result).toEqual([]);
+	});
+
+	it('returns [] when yesterday note is soft-deleted', async () => {
+		const note = makeNote(
+			'y-guid',
+			checklistDoc('2026-05-23', liChecked('할 일', false)),
+			{ title: '2026-05-23', deleted: true }
+		);
+		await putNote(note);
+		const result = await extractUncheckedFromYesterdayNote(2026, 5, 24);
+		expect(result).toEqual([]);
+	});
+
+	it('returns [] when yesterday note has no checklist region', async () => {
+		const note = makeNote(
+			'y-guid',
+			{ type: 'doc', content: [p('2026-05-23'), p('그냥 메모')] },
+			{ title: '2026-05-23' }
+		);
+		await putNote(note);
+		const result = await extractUncheckedFromYesterdayNote(2026, 5, 24);
+		expect(result).toEqual([]);
+	});
+
+	it('extracts unchecked items from yesterday note', async () => {
+		const note = makeNote(
+			'y-guid',
+			checklistDoc(
+				'2026-05-23',
+				liChecked('완료된 일', true),
+				liChecked('남은 일 1', false),
+				liChecked('남은 일 2', false)
+			),
+			{ title: '2026-05-23' }
+		);
+		await putNote(note);
+		const result = await extractUncheckedFromYesterdayNote(2026, 5, 24);
+		expect(result).toEqual([
+			liChecked('남은 일 1', false),
+			liChecked('남은 일 2', false)
+		]);
+	});
+
+	it('month boundary: 2026-05-01 → looks up 2026-04-30', async () => {
+		const note = makeNote(
+			'y-guid',
+			checklistDoc('2026-04-30', liChecked('월말 미완', false)),
+			{ title: '2026-04-30' }
+		);
+		await putNote(note);
+		const result = await extractUncheckedFromYesterdayNote(2026, 5, 1);
+		expect(result).toEqual([liChecked('월말 미완', false)]);
+	});
+
+	it('year boundary: 2026-01-01 → looks up 2025-12-31', async () => {
+		const note = makeNote(
+			'y-guid',
+			checklistDoc('2025-12-31', liChecked('연말 미완', false)),
+			{ title: '2025-12-31' }
+		);
+		await putNote(note);
+		const result = await extractUncheckedFromYesterdayNote(2026, 1, 1);
+		expect(result).toEqual([liChecked('연말 미완', false)]);
+	});
+
+	it('returns [] (does not throw) when yesterday note xmlContent is corrupt', async () => {
+		const note = makeNote(
+			'y-guid',
+			checklistDoc('2026-05-23', liChecked('할 일', false)),
+			{ title: '2026-05-23' }
+		);
+		note.xmlContent = '<note-content version="0.1"><<broken<<';
+		await putNote(note);
+		const result = await extractUncheckedFromYesterdayNote(2026, 5, 24);
 		expect(result).toEqual([]);
 	});
 });

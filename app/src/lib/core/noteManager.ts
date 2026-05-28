@@ -1,4 +1,5 @@
 import { createEmptyNote, formatTomboyDate, type NoteData } from './note.js';
+import { favoriteStore } from '$lib/storage/favoriteStore.svelte.js';
 import { serializeContent, extractTitleFromDoc, deserializeContent } from './noteContentArchiver.js';
 import { parseNote, serializeNote } from './noteArchiver.js';
 import {
@@ -258,35 +259,17 @@ export function exportNoteXml(note: NoteData): string {
 	return serializeNote(note);
 }
 
-/** Toggle the system:pinned tag on a note */
-export async function toggleFavorite(guid: string): Promise<NoteData | undefined> {
-	const n = await noteStore.getNote(guid);
-	if (!n) return undefined;
-	const i = n.tags.indexOf('system:pinned');
-	if (i >= 0) {
-		n.tags.splice(i, 1);
-	} else {
-		n.tags.push('system:pinned');
-	}
-	const now = formatTomboyDate(new Date());
-	n.metadataChangeDate = now;
-	await noteStore.putNote(n);
-	notifyNoteSaved(guid);
-	invalidateCache();
-	return n;
+/** Toggle local-only favorite for this note. Returns the new state. */
+export function toggleFavorite(guid: string): boolean {
+	return favoriteStore.toggle(guid);
 }
 
-/** Check if a note is favorited (has system:pinned tag) */
+/** Check if a note is favorited on THIS device (local-only). */
 export function isFavorite(n: NoteData): boolean {
-	return n.tags.includes('system:pinned');
+	return favoriteStore.has(n.guid);
 }
 
-/** Sort notes: pinned first, then by the given date field descending */
+/** Sort notes by the given date field descending. No favorite priority. */
 export function sortForList(notes: NoteData[], by: 'changeDate' | 'createDate'): NoteData[] {
-	return [...notes].sort((a, b) => {
-		const pa = isFavorite(a) ? 1 : 0;
-		const pb = isFavorite(b) ? 1 : 0;
-		if (pa !== pb) return pb - pa;
-		return (b[by] ?? '').localeCompare(a[by] ?? '');
-	});
+	return [...notes].sort((a, b) => (b[by] ?? '').localeCompare(a[by] ?? ''));
 }

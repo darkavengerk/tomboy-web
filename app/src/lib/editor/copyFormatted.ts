@@ -22,6 +22,12 @@ function escapeMd(s: string): string {
 
 function getTextNodes(node: JSONContent): string {
 	if (node.type === 'text') return node.text ?? '';
+	if (node.type === 'footnoteMarker') {
+		return `[^${(node.attrs?.label as string | undefined) ?? ''}]`;
+	}
+	if (node.type === 'inlineCheckbox') {
+		return node.attrs?.checked ? '[x]' : '[ ]';
+	}
 	return (node.content ?? []).map(getTextNodes).join('');
 }
 
@@ -165,6 +171,14 @@ function htmlNode(node: JSONContent): string {
 			const marks = node.marks ?? [];
 			return marks.length ? htmlMark(safe, marks) : safe;
 		}
+		case 'footnoteMarker': {
+			const label = escapeHtml(String(node.attrs?.label ?? ''));
+			return `<sup>${label}</sup>`;
+		}
+		case 'inlineCheckbox': {
+			const checked = node.attrs?.checked ? ' checked' : '';
+			return `<input type="checkbox" disabled${checked}>`;
+		}
 		case 'paragraph':
 			return `<p>${(node.content ?? []).map(htmlNode).join('')}</p>`;
 		case 'hardBreak':
@@ -230,6 +244,14 @@ function mdNode(node: JSONContent, indent: number, insideList: boolean): string 
 			);
 			const text = hasWrapper ? raw : escapeMd(raw);
 			return mdMarks(text, marks);
+		}
+		case 'footnoteMarker': {
+			// Pandoc-style footnote reference syntax; no escaping (the `[` and `]`
+			// are part of the syntax itself).
+			return `[^${(node.attrs?.label as string | undefined) ?? ''}]`;
+		}
+		case 'inlineCheckbox': {
+			return node.attrs?.checked ? '[x]' : '[ ]';
 		}
 		case 'paragraph': {
 			return (node.content ?? []).map((c) => mdNode(c, indent, insideList)).join('');

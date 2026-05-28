@@ -11,6 +11,11 @@ export default defineConfig({
 		environment: 'jsdom',
 		globals: true,
 		setupFiles: ['./tests/setup.ts'],
+		fakeTimers: {
+			// Exclude setImmediate from fake timers so that fake-indexeddb can
+			// schedule IDB callbacks correctly even when vi.useFakeTimers() is active.
+			toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval']
+		},
 		server: {
 			deps: {
 				// Svelte 5 컴포넌트 테스트를 위해 browser 조건으로 해석

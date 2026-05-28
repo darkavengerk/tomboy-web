@@ -1,0 +1,60 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-24-spectator-pin-pane.md",
+  "tasks": [
+    {
+      "id": 9,
+      "subject": "Task 1: Parser — spectate: <session>:<N> 파싱",
+      "status": "pending",
+      "description": "**Goal:** `parseTerminalNote`가 `spectate: main:3`을 `spectate=\"main\"` + `pinnedPane=3`으로 파싱하도록 한다. 1~5 범위 밖은 무시.\n\n**Files:**\n- Modify: `app/src/lib/editor/terminal/parseTerminalNote.ts`\n- Modify: `app/tests/unit/editor/parseTerminalNote.test.ts`\n\n**Acceptance Criteria:**\n- `TerminalNoteSpec`에 `pinnedPane?: number` 추가\n- `spectate: main:3` → pinnedPane=3, spectate=\"main\"\n- `spectate: main:0` / `:99` → pinnedPane=undefined\n- `spectate: main:foo` → spectate=\"main:foo\", pin=undefined\n- `spectate: grp:web:2` → spectate=\"grp:web\", pinnedPane=2\n- 기존 spectate 테스트 모두 통과\n\n**Verify:** `cd app && npx vitest run tests/unit/editor/parseTerminalNote.test.ts`\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/parseTerminalNote.ts\", \"app/tests/unit/editor/parseTerminalNote.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/parseTerminalNote.test.ts\", \"acceptanceCriteria\": [\"TerminalNoteSpec has pinnedPane?: number\", \"spectate: main:3 → pinnedPane=3\", \"spectate: main:0/99 → pinnedPane=undefined\", \"spectate: main:foo → spectate=main:foo, pin=undefined\", \"spectate: grp:web:2 → spectate=grp:web, pin=2\", \"existing spectate tests pass\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 2: rewriteSpectateLine 헬퍼",
+      "status": "pending",
+      "blockedBy": [9],
+      "description": "**Goal:** 자물쇠 토글 시 노트 본문 `spectate:` 라인을 in-place 치환하는 헬퍼. ProseMirror JSON round-trip 없이 raw XML 텍스트만 치환.\n\n**Files:**\n- Modify: `app/src/lib/editor/terminal/parseTerminalNote.ts`\n- Create: `app/tests/unit/editor/rewriteSpectateLine.test.ts`\n\n**Acceptance Criteria:**\n- `rewriteSpectateLine(xml, session, n: number|null)` 시그니처\n- n=null → `:N` 제거\n- n=3 → `:3` 추가/교체\n- 라인 없으면 no-op\n- 콜론 포함 세션 이름 보존\n- 첫 번째 인스턴스만 치환\n- ssh://, bridge: 안 건드림\n\n**Verify:** `cd app && npx vitest run tests/unit/editor/rewriteSpectateLine.test.ts`\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/parseTerminalNote.ts\", \"app/tests/unit/editor/rewriteSpectateLine.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/rewriteSpectateLine.test.ts tests/unit/editor/parseTerminalNote.test.ts\", \"acceptanceCriteria\": [\"signature rewriteSpectateLine(xml, session, n: number|null)\", \"n=null removes :N\", \"n=3 adds/replaces :3\", \"no spectate line → no-op\", \"colon in session preserved\", \"first instance only\", \"ssh:// and bridge: untouched\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 3: TerminalView pin state + footer 토글 UI",
+      "status": "pending",
+      "blockedBy": [9],
+      "description": "**Goal:** `pinnedOrdinal` / `pinDetached` state + footer 자물쇠 토글 + disabled 정책. 노트 저장은 Task 5.\n\n**Files:**\n- Modify: `app/src/lib/editor/terminal/TerminalView.svelte`\n\n**Acceptance Criteria:**\n- `pinnedOrdinal: number|null` state init from `spec.pinnedPane ?? null`\n- `pinDetached: boolean` init false\n- `onPaneNumClick` handler — unpin / pin / fallthrough\n- Footer 1~5 buttons: active/pinned/detached classes\n- 🔒 icon\n- pin 중 다른 번호 disabled\n- CSS\n\n**Verify:** `cd app && npm run check` → 0 errors\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/TerminalView.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"pinnedOrdinal state init from spec.pinnedPane\", \"pinDetached state init false\", \"onPaneNumClick handler with 3 branches\", \"lock icon shown when n === pinnedOrdinal\", \"other buttons disabled while pinned\", \"CSS classes pinned + detached added\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 4: onPaneSwitch/onData 분기 + auto re-attach + detach 배너",
+      "status": "pending",
+      "blockedBy": [11],
+      "description": "**Goal:** Pin 활성 시 pane-switch 감시 → detach 결정 → onData 무시. 마운트/재연결/클릭/타이핑 시 자동 selectPane(N). Detach 배너.\n\n**Files:**\n- Modify: `app/src/lib/editor/terminal/TerminalView.svelte`\n\n**Acceptance Criteria:**\n- Pin + active≠N → pinDetached=true, xterm에 새 데이터 안 들어감\n- Pin + active=N → pinDetached=false 정상\n- paneOrdinal=0 → detach 결정 보류\n- 클릭/데스크탑 키 → reattachIfPinned\n- 모바일 popup submit/quickkey/이미지 → reattachIfPinned\n- WS open 시 pin이면 selectPane 자동 (마운트+reconnect)\n- Detach 배너\n\n**Verify:** 수동 — 데스크탑에서 패널 옮기면 정지+배너, 클릭하면 re-attach\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/TerminalView.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"pinDetached set on active≠N\", \"pinDetached cleared on active=N\", \"paneOrdinal=0 keeps last pinDetached\", \"onData suppressed when pinDetached\", \"reattachIfPinned wired to all input paths\", \"auto selectPane on WS open both mount and reconnect\", \"detach banner shown\"]}\n```"
+    },
+    {
+      "id": 13,
+      "subject": "Task 5: persistPinToNote — 자물쇠 토글 → 노트 자동 저장",
+      "status": "pending",
+      "blockedBy": [10, 11],
+      "description": "**Goal:** 자물쇠 토글 시 rewriteSpectateLine으로 본문 갱신 + putNote + formatTomboyDate. 다음에 노트 열어도 pin 유지.\n\n**Files:**\n- Modify: `app/src/lib/editor/terminal/TerminalView.svelte`\n\n**Acceptance Criteria:**\n- 자물쇠 토글 → IDB 저장 (xmlContent + changeDate + metadataChangeDate)\n- 노트 재열기 → pin 복원\n- spectate 라인 없을 시 에러 토스트 + in-memory pin 유지\n- putNote 사용 (localDirty=true)\n\n**Verify:** 수동 — /admin/browse에서 `spectate: main:3` 확인\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/TerminalView.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"persistPinToNote calls putNote with updated xmlContent + bumped dates\", \"pin state restored across note reload\", \"missing spectate line → error toast + in-memory pin kept\", \"putNote used (not putNoteSynced)\"]}\n```"
+    },
+    {
+      "id": 14,
+      "subject": "Task 6: 데스크탑 단축키 Ctrl+H/L 가드",
+      "status": "pending",
+      "blockedBy": [11],
+      "description": "**Goal:** Pin 활성 중 Ctrl+H/L (prev/next-pane) 무효화. Ctrl+Shift+H/L (윈도우 이동)은 그대로.\n\n**Files:**\n- Modify: `app/src/lib/editor/terminal/TerminalView.svelte`\n\n**Acceptance Criteria:**\n- Pin + Ctrl+H/L → 무효\n- Pin + Ctrl+Shift+H/L → 그대로 동작\n- Pin 없음 → 기존 동작\n- ^H/^L leak 없음\n\n**Verify:** 수동\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/TerminalView.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"pin + Ctrl+H/L no-op\", \"pin + Ctrl+Shift+H/L still works\", \"no pin → unchanged\", \"no leak to shell\"]}\n```"
+    },
+    {
+      "id": 15,
+      "subject": "Task 7: CLAUDE.md 갱신",
+      "status": "pending",
+      "description": "**Goal:** tomboy-terminal 섹션에 spectator pin 1~2단락 추가.\n\n**Files:**\n- Modify: `CLAUDE.md`\n\n**Acceptance Criteria:**\n- pin 동작 + 노트 포맷 (spectate: main:3) 명시\n- 클라이언트 전담 명시\n- 다중 노트 관전 분리 명시\n\n**Verify:** `git diff CLAUDE.md`\n\n```json:metadata\n{\"files\": [\"CLAUDE.md\"], \"verifyCommand\": \"git diff CLAUDE.md | head -50\", \"acceptanceCriteria\": [\"pin behavior documented\", \"spectate: <s>:<N> format documented\", \"client-side architecture noted\", \"multi-note isolation noted\"]}\n```"
+    },
+    {
+      "id": 16,
+      "subject": "Task 8: 통합 회귀 + 최종 검증",
+      "status": "pending",
+      "blockedBy": [9, 10, 11, 12, 13, 14, 15],
+      "description": "**Goal:** 전체 테스트 + 타입 체크 + 수동 엣지 케이스 7개 통과.\n\n**Files:** 검증 전용\n\n**Acceptance Criteria:**\n- npm run test 전부 통과\n- npm run check 0 errors\n- 수동 시나리오 7개 통과\n\n**Verify:** `cd app && npm run test && npm run check`\n\n```json:metadata\n{\"files\": [], \"verifyCommand\": \"cd app && npm run test && npm run check\", \"acceptanceCriteria\": [\"npm test passes\", \"npm check 0 errors\", \"basic flow scenario\", \"window nav scenario\", \"other buttons disabled scenario\", \"reload preserves pin scenario\", \"unpin scenario\", \"format broken fallback scenario\", \"concurrent notes isolation scenario\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-24T00:00:00Z"
+}

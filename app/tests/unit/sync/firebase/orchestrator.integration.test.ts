@@ -164,20 +164,19 @@ describe('updateNoteFromEditor → Firebase sync hook', () => {
 		expect(pushed.changeDate).toBe(after.changeDate);
 	});
 
-	it('pushes when toggling favorite (metadata change)', async () => {
+	it('does NOT push when toggling favorite (favorites are local-only)', async () => {
 		const push = vi.fn().mockResolvedValue(undefined);
 		const getNote = vi.fn(async (g: string) => noteStore.getNote(g));
 		configureNoteSync({ push, getNote, debounceMs: 50 });
 		setNoteSyncEnabled(true);
 
 		const n = await createNote('Liked');
+		await flushAllNoteSync(); // drain the createNote push before clearing
 		push.mockClear();
 
-		await toggleFavorite(n.guid);
+		toggleFavorite(n.guid);
 		await flushAllNoteSync();
 
-		expect(push).toHaveBeenCalledTimes(1);
-		const pushed = push.mock.calls[0][0] as NoteData;
-		expect(pushed.tags).toContain('system:pinned');
+		expect(push).not.toHaveBeenCalled();
 	});
 });

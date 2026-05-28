@@ -381,93 +381,121 @@ Quick map: routes in `app/src/routes/admin/`, shared cache in
 `lib/sync/{adminClient,dropboxClient}.ts`. Mobile-first / `clamp(...)` sizing
 invariant does **not** apply on these pages.
 
-## 파이어베이스 실시간 노트 동기화
+## 이미지 캐시 (IDB + LRU + fetcher chain)
 
-See the **`tomboy-notesync`** skill for the full design. A second sync channel
-alongside Dropbox with three flows: (1) per-IDB-write debounced **push** to
-`users/{uid}/notes/{guid}`, (2) doc-level **attach** while a note is open,
-(3) collection-level **incremental sync** via `serverUpdatedAt >
-lastFirebaseSyncAt` for catch-up + realtime fan-in from other devices.
+See the **`tomboy-imagecache`** skill. Persistent IndexedDB cache of image
+blobs so just-uploaded images never re-download, opened notes survive
+reloads, and OCR re-runs hit cache. Lives in `app/src/lib/imageCache/`
+(store + pool + public API + fetchers/).
 
-Default **OFF** — enabled in 설정 → 동기화 설정. Dropbox stays untouched
-as the backup channel and the authority for the never-opened-anywhere backlog.
-
-Quick map:
-
-- `app/src/lib/sync/firebase/` — `notePayload`, `conflictResolver`,
-  `pushQueue`, `openNoteRegistry`, `incrementalSync`, orchestrator,
-  `noteSyncClient.firestore.ts`.
-- `app/src/lib/firebase/app.ts` — shared singletons + `ensureSignedIn`
-  (used by schedule + diary too).
-- `noteManager.ts` — calls `notifyNoteSaved(guid)` after every IDB write
-  (including `createNote`, so brand-new notes are addressable cross-device).
-- `routes/note/[id]/+page.svelte`, `lib/desktop/NoteWindow.svelte` — call
-  `attachOpenNote` / `detachOpenNote`.
-- `routes/+layout.svelte` — `installRealNoteSync()` at app start.
-- `appSettings.firebaseNotesLastSyncAt` — incremental sync watermark.
+Quick map: public API `lookupOrFetch` / `prime` / `getBlob` / `clearAll` /
+`getStats` / `setQuota` (default quota 500MB). Integration points:
+`imageUpload.ts` (upload-prime + OCR download wrap),
+`imagePreviewPlugin.ts` (sync pool peek + async lookup),
+`/settings` + `/admin/tools` UI. DB v3→v4 (new `imageCache` store +
+`by-lastAccess` index).
 
 Cross-cutting invariants worth caching:
 
-- **Same uid as schedule** — `dbx-{sanitized account_id}`. Both features
-  (and the diary pipeline) share `users/{uid}/...` under existing rules.
-- **Last-write-wins on `changeDate`** (tiebreak: `metadataChangeDate`,
-  then prefer-local). Equivalent payload → `noop` — this also suppresses
-  echo of our own write, no separate tracker.
-- **Incremental cursor uses `serverUpdatedAt`, not `changeDate`.** The
-  latter is a wall-clock ISO string, unsafe for range queries across
-  timezone offsets. Conflict resolution still uses `changeDate`.
-- **Soft-delete only.** Tombstones bump `changeDate`/`metadataChangeDate`
-  alongside `deleted=true` so they win the conflict-resolver ladder.
-- **Dropbox-pulled notes don't auto-push to Firestore.**
-  `applyIncomingRemoteNote` writes via `putNoteSynced` and bypasses
-  `notifyNoteSaved`. The pull is propagated on next open (attach-side
-  reconcile pushes; incremental cursor on every other device picks it up).
-- **900 KB payload ceiling** (Firestore's 1 MiB hard limit, with slack).
-  Oversized notes throw and are skipped by the queue.
+- **`www.dropbox.com` blocks `fetch()`** (no CORS headers) but works as
+  `<img src>`. The **`ImageFetcher` registry** lets each source plug a
+  custom fetch strategy — `dropboxFetcher` routes via SDK
+  `sharingGetSharedLinkFile` (CORS-friendly). Plain `fetch()` is the
+  fallback for any URL that no registered fetcher matches.
+- **Cache key = exact post-`toDirectImageUrl` URL** (`?raw=1` byte-identical
+  through upload → note body → regex capture → lookup). **Don't normalize
+  the key anywhere downstream** — even query param reordering silently
+  breaks cache.
+- **`prime` is fire-and-forget with `.catch`** — cache failure never
+  blocks upload or download.
+- **Cross-device prefetch is intentionally NOT implemented**. New images
+  fill lazily on first render. Don't add background fill loops without
+  spec discussion.
+- **Single image > quota → silent skip**, no throw.
+- **DB-pulled notes don't auto-`prime`** — only direct user paste does.
+  Sync'd notes' images fill on first open via `lookupOrFetch` miss.
 
-**Don't** add an echo tracker, **don't** reintroduce Dropbox auto-sync to
-"fix" the closed-note Firestore gap, and **don't** reach into
-`firebase/firestore` outside `noteSyncClient.firestore.ts` — every other
-module consumes the `FirestorePrimitives` interface so it stays unit-testable.
+Add a new source (e.g. Vercel Blob) by creating `fetchers/<name>Fetcher.ts`
+and registering it in `fetchers/install.ts`. `installImageFetchers()` is
+called once in `+layout.svelte` `onMount`; idempotent.
+
+**Don't** reintroduce plain `fetch()` for Dropbox URLs ("CORS might be
+fixed someday"), **don't** add Service Worker fetch intercept (rejected
+during design — SW reserved for push/PWA), **don't** add HEAD request to
+verify stale URLs (negates cache value).
+
+## 파이어베이스 실시간 노트 동기화
+
+See the **`tomboy-notesync`** skill. Second sync channel alongside
+Dropbox: (1) per-IDB-write debounced push to `users/{uid}/notes/{guid}`,
+(2) doc-level attach while a note is open, (3) collection-level
+incremental sync via `serverUpdatedAt > lastFirebaseSyncAt`. Default
+**OFF** (설정 → 동기화 설정). Dropbox stays as backup + authority for
+the never-opened-anywhere backlog.
+
+Quick map: `app/src/lib/sync/firebase/` (orchestrator, `notePayload`,
+`conflictResolver`, `pushQueue`, `openNoteRegistry`, `incrementalSync`,
+`noteSyncClient.firestore.ts`), `app/src/lib/firebase/app.ts` (shared
+singletons + `ensureSignedIn`, used by schedule + diary too).
+`noteManager.notifyNoteSaved(guid)` after every IDB write;
+`attachOpenNote`/`detachOpenNote` in note routes;
+`installRealNoteSync()` in root `+layout.svelte`. Watermark:
+`appSettings.firebaseNotesLastSyncAt`.
+
+Cross-cutting invariants worth caching:
+
+- **Same uid as schedule + diary** — `dbx-{sanitized account_id}`.
+  Shared `users/{uid}/...` namespace.
+- **Last-write-wins on `changeDate`** (tiebreak: `metadataChangeDate`,
+  then prefer-local). Equivalent payload → `noop`, which also suppresses
+  echo of our own write (no separate tracker).
+- **Incremental cursor uses `serverUpdatedAt`, NOT `changeDate`.**
+  `changeDate` is wall-clock ISO, unsafe across TZ offsets. Conflict
+  resolution still uses `changeDate`.
+- **Soft-delete only.** Tombstones bump `changeDate` /
+  `metadataChangeDate` alongside `deleted=true`.
+- **Dropbox-pulled notes don't auto-push to Firestore.**
+  `applyIncomingRemoteNote` uses `putNoteSynced` + bypasses
+  `notifyNoteSaved`. Pull propagates on next open (attach-side reconcile)
+  or via other devices' incremental cursor.
+- **900 KB payload ceiling** (Firestore 1 MiB with slack). Oversized
+  notes throw + are skipped.
+
+**Don't** add an echo tracker, **don't** reintroduce Dropbox auto-sync
+to fix the closed-note gap, and **don't** reach into `firebase/firestore`
+outside `noteSyncClient.firestore.ts` — every other module consumes
+`FirestorePrimitives`.
 
 ## 일정 알림 (schedule-note push notifications)
 
-See the **`tomboy-schedule`** skill for the parser format, fire-time
-rules (07:00 day-of + T-1h + T-0 for time-bearing entries, weekly/monthly
-summaries), the `fnv1a64`-based item-id model, the Dropbox-bridged custom-token
-auth flow, PWA install requirements, the auto-weekday plugin, the focus-scoped
-"보내기" gate, and operational gotchas.
+See the **`tomboy-schedule`** skill. Parser format (Korean date/time list
+items under `N월`), fire-time rules (07:00 day-of for every entry; +T-1h
++ T-0 for time-bearing entries; weekly Mon 07:00 / monthly 1st 07:00
+KST), `fnv1a64` item-id, Dropbox-bridged custom-token auth, PWA install,
+auto-weekday plugin, focus-scoped 보내기 gate.
 
-Hook: `noteManager.updateNoteFromEditor` calls `syncScheduleFromNote` after
-saving; if the saved guid is the schedule note, the diff lands in a pending
-slot and `flushIfEnabled()` drains it to Firestore. Notes received via
-Dropbox sync do NOT trigger this hook.
+Hook: `noteManager.updateNoteFromEditor` → `syncScheduleFromNote` after
+saving; if the saved guid is the schedule note, the diff lands in pending
++ `flushIfEnabled()` drains to Firestore. Notes received via Dropbox
+sync do NOT trigger this.
 
-Quick map:
-
-- `app/src/lib/schedule/` — parser, diff, Firestore adapter, snapshot/pending
-  stores, orchestrator, `autoWeekday.ts` (pure logic). Tests in
-  `app/tests/unit/schedule/`.
-- `app/src/lib/editor/autoWeekday/autoWeekdayPlugin.ts` — ProseMirror plugin.
-- `app/src/lib/editor/sendListItem/sendActiveGate.ts` — `shouldSendListBeActive`.
-- `app/src/lib/core/schedule.ts` — `getScheduleNoteGuid` / `setScheduleNote`.
-- `app/src/service-worker.ts` — Firebase init, iOS-branched `onBackgroundMessage`.
-- `functions/src/index.ts` — `fireSchedules`, `sendTestPush`, `dropboxAuthExchange`.
-- `firestore.rules`, `firestore.indexes.json` — uid-scoped security + collectionGroup
-  index for `(notified, fireAt)`.
-- `app/src/app.html`, `app/static/manifest.webmanifest`,
-  `app/static/icons/icon-{180,192,512}.png` — PWA install metadata (PNGs required for iOS).
+Quick map: `app/src/lib/schedule/`, `lib/editor/autoWeekday/`,
+`lib/editor/sendListItem/`, `lib/core/schedule.ts`,
+`app/src/service-worker.ts` (Firebase init, iOS-branched
+`onBackgroundMessage`), `functions/src/index.ts` (`fireSchedules`,
+`sendTestPush`, `dropboxAuthExchange`), `firestore.rules` +
+`firestore.indexes.json`, PWA infra (`app.html`,
+`static/manifest.webmanifest`, `static/icons/icon-{180,192,512}.png`).
 
 Cross-cutting invariants worth caching:
 
-- **Auth uid = `dbx-{sanitized account_id}`** via custom token from
-  `dropboxAuthExchange`. NOT anonymous. Every device on the same Dropbox
-  account = same uid = shared Firestore namespace (with note sync + diary).
-- **Multi-device coverage requires notifications enabled on every participating
-  device** — Dropbox sync doesn't propagate the schedule update.
-- **iOS auto-displays FCM `notification` payloads** — SW must be log-only on
-  iOS to avoid duplicates. PWA install metadata (PNG `apple-touch-icon`) is
-  load-bearing for push subscription persistence.
+- **Auth uid = `dbx-{sanitized account_id}`** via `dropboxAuthExchange`
+  custom token (NOT anonymous). Shared with note sync + diary.
+- **Multi-device coverage requires notifications enabled on every
+  device** — Dropbox sync doesn't propagate schedule updates.
+- **iOS auto-displays FCM `notification` payloads** — SW must be log-only
+  on iOS to avoid duplicates. PWA install metadata (PNG `apple-touch-icon`)
+  is load-bearing for push subscription persistence.
 
 ## graphify
 
@@ -481,69 +509,18 @@ Rules:
 
 ## 터미널 노트 (SSH terminal in a note)
 
-See the **`tomboy-terminal`** skill for the WS protocol, Bearer-token auth,
-SSH spawn modes, WOL host map, the rootless Podman + Quadlet deployment,
-SELinux + user-namespace constraints, OSC 133 capture, tmux-window-scoped
-history buckets, `connect:` auto-run gating, the **`tmux -CC` spectator
-mode** (active-pane follow + opt-in mobile input via 보내기 popup),
-**이미지 붙여넣기** (ControlMaster 멀티플렉싱 + 원격 경로 주입; 셸은 PTY로, 관전은 `tmux send-keys -H`로 활성 패널에 — 모바일 보내기 팝업의 두 버튼 + 데스크탑 동일 트리거),
-**터미널 벨** (xterm `onBell` → Web Audio 비프 + 진동, 셸 모드 전용),
-and **sticky modifier 칩** (관전 모드 전용 — Ctrl/Alt/Shift 토글 칩으로
-다음 키 한 번에 modifier 적용; 데스크탑의 `Ctrl+L` pane-nav 충돌 우회).
+See the **`tomboy-terminal`** skill. Note body = ssh URL + optional
+`bridge:` + optional `spectate:` (1–3 metadata paragraphs, any order) +
+optional `connect:` / `pinned:` / `history:` sections.
 
-A note matched as terminal-note when body = **1–3 metadata paragraphs (ssh
-URL + optional `bridge:` + optional `spectate:`, any order) + optional
-`connect:` / `pinned:` / `history:` sections** (with optional
-`pinned:tmux:@<id>:` / `history:tmux:@<id>:` per-window variants). Any 4th
-free paragraph or unrecognized block falls back to a regular note — that's
-how the user opts out.
-
-Spectator (mobile-side observer of the desktop's currently-focused tmux
-pane): add `spectate: <session>` next to `ssh://`. Bridge attaches via
-`ssh -tt ... 'stty cols 500 rows 200 2>/dev/null; stty raw -echo; exec tmux -CC attach -t <s>'`
-and forwards only the active pane; switching panes on the desktop
-re-seeds via `capture-pane -epJ`. The `stty cols/rows` + a follow-up
-`refresh-client -C 500x200` together claim a virtual 500x200 client
-size — combined with target-side `window-size smallest`, this prevents
-the spectator from shrinking the desktop user's window. Input wiring
-is **viewport-conditional**: on desktop (`min-width: 768px`)
-`term.onData` is wired straight to `client.send`, so typing into the
-focused xterm feels like a real terminal; on mobile the wiring is
-skipped (the closure early-returns) so the on-screen keyboard stays
-inert and explicit input flows only through the **보내기 popup**.
-Both paths land on the same bridge call → `send-keys -t <activePane>
--H <hex>` for binary-safe injection (tmux 3.0+).
-
-Mobile UI: width-fit via `transform: scale` on a three-layer
-`.xterm-host > .xterm-stage > .xterm-mount` DOM (NOT CSS `zoom` — breaks
-xterm cell positioning on mobile); native `overflow-y: auto` +
-`-webkit-overflow-scrolling: touch` for vertical drag (no scroll
-buttons); bottom footer with two rows — top is current window label
-`[<idx>] <name>`, bottom is pane/window nav buttons `« ‹ › »` (issue
-`select-pane -t <s>:.+/-` / `select-window -t <s>:+/-` via WS
-`tmux-nav` frame; affects desktop view too since they're SESSION-level
-targets) + 보내기 button (mobile-only — gated `{#if isMobile}`; desktop
-uses direct keyboard input instead). Popup quick-keys for
-`y/n/1/Enter/Esc/^C/PgUp/PgDn`. IME composition guarded with
-`!e.isComposing` on Enter/Escape.
-
-Desktop spectator keyboard shortcuts (window-level keydown CAPTURE
-listener so they beat xterm's textarea handler before `^H`/`^L` reach
-the shell): `Ctrl+H`/`Ctrl+L` → prev/next-pane (`‹` `›`),
-`Ctrl+Shift+H`/`Ctrl+Shift+L` → prev/next-window (`«` `»`). The
-listener is scoped to the focused note via `pageEl.contains(document.activeElement)`
-so concurrent terminal windows don't fight each other. Focus is held
-on xterm by auto-focusing in `onMount` + a bubble-phase `onclick` on
-`.terminal-page` that refocuses xterm after any descendant button
-click — so the user can type the whole time their cursor is "on the
-note", not just when xterm specifically has focus.
-
-Target tmux config: `window-size smallest` + `focus-events on` +
-`aggressive-resize on` (plugin at `bridge/deploy/tomboy-spectator.tmux`
-or add inline). **`window-size latest` is wrong** — the spectator's
-initial attach counts as "most recent activity" when the desktop client
-is idle (monitor off), shrinking the window. `smallest` + our 500x200
-claim is the iTerm2 trick that's actually correct.
+Spectator mode runs on a **1:N SpectatorHub model**: one shared ssh +
+tmux -CC client per `(target, session)`, with per-WS
+`SpectatorSubscription`s filtering `%output` to their own pane (either
+follow-active or pinned to an ordinal). Pin is persisted as
+`spectate: <session>:<N>`, ordinal-based (window switch → re-resolves).
+WS frames `subscribe-pane` (client → bridge) and `pane-unavailable`
+(bridge → client) wire the pin protocol. Last subscription close
+destroys the hub immediately (no grace timer).
 
 Quick map:
 
@@ -552,152 +529,146 @@ Quick map:
   `connectAutoRun.ts`, `oscCapture.ts`, `HistoryPanel.svelte`,
   `terminalBell.ts`, `imagePasteClient.ts`, `clipboardImage.ts`,
   `stickyMods.ts`.
-- `routes/note/[id]/+page.svelte` and `lib/desktop/NoteWindow.svelte` —
-  branch between `TerminalView` and `TomboyEditor` based on
-  `parseTerminalNote(editorContent)` at load and after every IDB reload.
-- `routes/settings/+page.svelte` (config tab → "터미널 브릿지") — default
-  bridge URL + login form.
-- `bridge/` — `src/{server,auth,pty,hosts,wol,tmuxControlClient,spectatorSession,imageTransfer}.ts`,
-  `Containerfile`, `deploy/term-bridge.container` (Quadlet),
-  `deploy/Caddyfile`, `deploy/tomboy-spectator.tmux`.
+- `routes/note/[id]/+page.svelte`, `lib/desktop/NoteWindow.svelte` —
+  branch between `TerminalView` and `TomboyEditor` on
+  `parseTerminalNote(editorContent)` at load + after every IDB reload.
+- `bridge/src/` — `server.ts`, `auth.ts`, `pty.ts`, `hosts.ts`, `wol.ts`,
+  `tmuxControlClient.ts`, `spectatorHub.ts` (Hub + Subscription +
+  Registry), `spectatorSession.ts` (pure helpers only — no class),
+  `imageTransfer.ts`. Deployment: `Containerfile`,
+  `deploy/term-bridge.container` (Quadlet), `deploy/Caddyfile`,
+  `deploy/tomboy-spectator.tmux`.
 
 Cross-cutting invariants worth caching (full set lives in the skill):
 
-- **Bridge ≠ model host.** The Pi-side bridge has no GPU. Ollama,
-  ocr-service, and any other model runtime live on a separate desktop
-  (RTX 3080). Bridge points to them via `OLLAMA_BASE_URL` /
-  `OCR_SERVICE_URL` / `RAG_SEARCH_URL`. Same-machine assumption has
-  bitten past work (OCR split, RAG intro both nearly went down this
-  path) — don't.
-- **Default view is the editor.** Terminal notes open in `<TomboyEditor>`
-  with a banner; clicking 접속 sets `terminalConnectMode = true` and
-  starts the WS session. No separate "terminal edit mode" flag.
-- **No credentials in the note.** Auth flows through the PTY directly.
-  Bearer tokens live in `appSettings.terminalBridgeToken`. Don't add a
-  `password:` field to the note format.
-- **Terminal output is ephemeral** — never written back to `xmlContent`.
-- **WOL config lives in `BRIDGE_HOSTS_FILE` (`hosts.json`), never in the
-  note.** Note format stays `ssh://[user@]host[:port]` + optional `bridge:`
-  + optional `spectate:`.
-- **`ssh://localhost` ≠ `ssh://user@localhost`** — the former is the
-  in-container login-shell path, the latter forces ssh through host sshd.
-  The containerized deployment relies on the latter.
-- **Spectator mode is auth-equivalent to shell mode** — same Bearer + same
-  ssh credentials. No share-token / discovery channel was added. A
-  spectator note is just a regular note synced via Dropbox/Firebase.
-- **Spectator MUST NOT constrain tmux window size.** Bridge must claim
+- **Bridge ≠ model host.** Pi bridge has no GPU. Ollama / ocr-service /
+  claude-service live on a separate desktop (RTX 3080), reached via
+  `OLLAMA_BASE_URL` / `OCR_SERVICE_URL` / `RAG_SEARCH_URL`. Same-machine
+  assumption has bitten past work — don't.
+- **No credentials in the note.** Auth flows through the PTY directly;
+  Bearer tokens live in `appSettings.terminalBridgeToken`. Terminal
+  output is ephemeral (never written to `xmlContent`).
+- **`ssh://localhost` ≠ `ssh://user@localhost`** — former drops into
+  the container's own shell; latter forces ssh through host sshd. The
+  containerized deployment relies on the latter.
+- **WOL config lives in `BRIDGE_HOSTS_FILE` (`hosts.json`), never in
+  the note.** Note format stays `ssh://[user@]host[:port]` + optional
+  `bridge:` + optional `spectate:`.
+- **Spectator hub is shared per `(target, session)`** — one ssh + tmux
+  -CC + ControlMaster socket; subscriptions filter `%output` fan-out by
+  paneId. Last close → immediate `hub.destroy()`. Image transfer reuses
+  the hub's ControlMaster socket.
+- **Spectator MUST NOT constrain tmux window size.** Bridge claims
   500x200 via stty + refresh-client; target must set `window-size
-  smallest`. Both halves required — neither alone fixes the
-  desktop-window-shrinks-on-attach symptom.
-- **Nav buttons (`« ‹ › »`) act on the SESSION, not just our client.**
-  `:.+/-` / `:+/-` targets change the session's active pane/window, so
-  the desktop user's view also moves. Intentional — mobile is acting
-  as the user, not running a private viewport.
-- **이미지 붙여넣기는 ControlMaster 멀티플렉싱으로 재인증 없이 전송 —
-  브릿지는 여전히 자격증명을 중개하지 않는다.** 셸 모드는 PTY SSH 연결이,
-  관전 모드는 spectator SSH 연결이 각각 ControlMaster 마스터 소켓을 생성하고,
-  이미지 전송은 그 소켓을 재사용해
-  `ssh -o ControlPath=... -o BatchMode=yes`로 파일을 기록한다.
-  경로 주입은 셸은 `pty.write`, 관전은 `SpectatorSession.sendInput` →
-  `tmux send-keys -H`. 노트 포맷에 경로·패스워드 힌트 필드를 추가하지 말 것.
+  smallest`. Both halves required.
+- **Nav buttons (`« 1 2 3 4 »`) act on the SESSION** — they move the
+  desktop user's view too (intentional; mobile acts AS the user).
+- **Pin is ordinal-based, not paneId-based.** `spectate: <s>:<N>`
+  persists the ordinal. Don't introduce a pin-by-paneId variant.
+- **이미지 붙여넣기는 ControlMaster 멀티플렉싱으로 재인증 없이 전송.**
+  셸은 `pty.write(bracketedPaste(path))`, 관전은
+  `subscription.sendInput` → `hub.sendInput` → `tmux send-keys -H`.
+  노트 포맷에 경로·패스워드 힌트 필드를 추가하지 말 것.
 
 ## 리마커블 일기 OCR 파이프라인 (pipeline/)
 
-See the **`tomboy-diary`** skill for the end-to-end workflow (rM 태블릿 →
-라즈베리파이 인박스 → 데스크탑 OCR → Firestore), the rM-side / Pi-side /
-desktop-side stage details, the rmscene-based renderer, the 4-bit
-Qwen2.5-VL VRAM tuning for RTX 3080, the `<link:url>` mark wrapping
-contract, and the operational invariants from M1–M3 bring-up (uid-sanitize
-parity, busybox+dropbear rM quirks, scp `-P` vs ssh `-p`, etc).
+See the **`tomboy-diary`** skill. End-to-end: rM 태블릿 → 라즈베리파이
+인박스 → 데스크탑 OCR (Qwen2.5-VL-7B, 4-bit nf4 on RTX 3080) → Firestore.
+Setup: `pipeline/pi/README.md`. Design docs:
+`docs/superpowers/{specs,plans}/2026-05-10-remarkable-diary-pipeline*.md`.
 
-Setup recipes (one-liner commands): `pipeline/pi/README.md`.
-Design + plan docs: `docs/superpowers/{specs,plans}/2026-05-10-remarkable-diary-pipeline*.md`.
-
-Quick map:
-
-- `pipeline/desktop/stages/{s1_fetch, s2_prepare, s3_ocr, s4_write}.py` — 4-stage flow.
-- `pipeline/desktop/lib/{config, state, log, tomboy_payload, firestore_client, dropbox_uploader}.py`.
-- `pipeline/desktop/ocr_backends/{base, local_vlm}.py` — Qwen2.5-VL-7B backend (registered via `__init__.py` side-effect import).
-- `pipeline/desktop/bootstrap.py` — generates `pipeline/config/pipeline.yaml` (gitignored).
-- `pipeline/pi/inbox_watcher.py` + `pipeline/pi/deploy/`.
-- `app/src/lib/editor/NoteXmlViewer.svelte` — debug modal for raw xmlContent (메뉴 → "원본 XML 보기").
+Quick map: `pipeline/desktop/stages/{s1_fetch,s2_prepare,s3_ocr,s4_write}.py`
+(4-stage flow), `pipeline/desktop/lib/`, `pipeline/desktop/ocr_backends/`,
+`pipeline/desktop/bootstrap.py` (generates `pipeline/config/pipeline.yaml`),
+`pipeline/pi/inbox_watcher.py` + `deploy/`,
+`app/src/lib/editor/NoteXmlViewer.svelte` (디버그 모달, "원본 XML 보기").
 
 Cross-cutting invariants worth caching:
 
-- **노트 제목 안의 `[<rm-page-uuid>]` 마커가 매핑 키 + 보호 신호.** 사용자가
-  교정 후 제목에서 uuid를 제거하면 같은 페이지를 다시 OCR해도 그 노트는
-  덮어쓰이지 않고 새 노트가 생김. 다른 보호 메커니즘 없음.
-- **`sanitize_account_id` (in `pipeline/desktop/bootstrap.py`) MUST be
-  byte-identical to `functions/src/index.ts:280-281`** — uid 미스매치 시
-  앱이 파이프라인이 쓴 노트를 못 봄. 두 파일을 같이 수정하지 않으면 안 됨.
+- **노트 제목 안의 `[<rm-page-uuid>]` 마커 = 매핑 키 + 보호 신호.** 교정 후
+  uuid를 제목에서 지우면 같은 페이지를 다시 OCR해도 그 노트는 덮어쓰이지
+  않고 새 노트가 생김. 다른 보호 메커니즘 없음.
+- **`sanitize_account_id` (`pipeline/desktop/bootstrap.py`) MUST be
+  byte-identical to `functions/src/index.ts:280-281`** — uid 미스매치
+  시 앱이 파이프라인 노트를 못 봄. 두 파일을 같이 수정해야 함.
 - **Firestore 네임스페이스는 앱과 공유** (`users/{uid}/notes/{guid}`,
-  `uid = dbx-{sanitized account_id}`). 노트북 멤버십은
-  `system:notebook:일기` 태그.
+  `uid = dbx-{sanitized account_id}`). 노트북 멤버십 = `system:notebook:일기`.
 - **Dropbox는 이미지 호스팅 전용**
   (`/Apps/Tomboy/diary-images/{YYYY}/{MM}/{DD}/{rm-page-uuid}/page.png`);
-  노트 본문은 `<link:url>` 마크로 공유 링크를 감싸야 클릭 가능.
+  노트 본문은 `<link:url>` 마크로 공유 링크 wrapping 필수.
 
-⚠️ 노트가 앱에 안 보이면 **설정 → 동기화 설정 → "파이어베이스 실시간 노트
-동기화"** 가 켜져 있는지 먼저 확인 (default OFF).
+⚠️ 노트가 앱에 안 보이면 **설정 → 동기화 설정 → "파이어베이스 실시간
+노트 동기화"** 가 켜져 있는지 먼저 확인 (default OFF).
 
 ## OCR 노트 + GPU 모니터
 
-See the **`tomboy-ocr-note`** skill for the full design. Notes whose
-first content line is `ocr://<model>` are OCR-trigger notes: pasting an
-image runs a two-stage flow (GOT-OCR-2.0-hf for OCR on the desktop's
-ocr-service, then an Ollama model for English→Korean translation) and
-streams `[원문]` / `[번역]` blocks into the note. A companion
-`/admin/gpu` page shows VRAM usage + per-model unload buttons.
+See the **`tomboy-ocr-note`** skill. Notes whose first line is
+`ocr://<model>` are OCR-trigger notes: pasting an image runs a two-stage
+flow (GOT-OCR-2.0-hf on desktop ocr-service → Ollama translation
+English→Korean) and streams `[원문]` / `[번역]` into the note.
+`/admin/gpu` shows VRAM + per-model unload. Distinct from the diary
+pipeline (different stack + trigger + output).
 
-Distinct from the **diary pipeline** above — different stack
-(transformers-native HF model vs. local Qwen2.5-VL pipeline), different
-trigger (paste-in-note vs. tablet-pushed batch), different output
-(synchronous in-editor vs. Firestore write).
-
-Quick map:
-
-- `app/src/lib/ocrNote/` — `parseOcrNote` (spec + legacy flag),
-  `sendOcr` (POST /ocr helper), `runOcrInEditor` (two-stage flow with
-  legacy fallback), `defaults.ts` (translation system prompt +
-  `OCR_DEFAULT_TRANSLATE_MODEL`).
-- `app/src/lib/gpuMonitor/{types,client}.ts` — `/gpu/status` typing +
-  fetch helpers.
-- `app/src/routes/admin/gpu/+page.svelte` — VRAM bar + model list +
-  unload buttons, 5s polling while visible.
-- `bridge/src/ocr.ts` — `POST /ocr` proxy to desktop ocr-service.
-- `bridge/src/gpu.ts` — `GET /gpu/status` fan-out (ocr-service +
-  Ollama `/api/ps`) + `POST /gpu/unload` backend routing.
-- `ocr-service/` — Python FastAPI service. `GotOcr2Runner`
-  (transformers-native), idle auto-unload, `/gpu/raw` nvidia-smi
-  parse, Containerfile + Quadlet for desktop deploy. Tests use
-  `FakeRunner` so no GPU needed locally.
+Quick map: `app/src/lib/ocrNote/`, `app/src/lib/gpuMonitor/`,
+`app/src/routes/admin/gpu/+page.svelte`, `bridge/src/{ocr,gpu}.ts`,
+`ocr-service/` (Python FastAPI, transformers-native, Containerfile +
+Quadlet).
 
 Cross-cutting invariants worth caching:
 
-- **`stepfun-ai/GOT-OCR-2.0-hf` (HF native), NOT `stepfun-ai/GOT-OCR2_0`
-  (legacy custom code).** The legacy variant chains compatibility
-  breakages with every transformers/torch update; the `-hf` variant is
-  maintained alongside transformers itself.
-- **`spec.legacy` is the flow switch.** Absence of `translate:` header
-  → `legacy=true` → single-call combined-prompt flow (preserved for old
-  notes). Presence → two-stage flow.
-- **`target_lang:` header is dropped silently** for backward compat.
-  Don't reintroduce — the post-split flow is fixed English → Korean.
-- **OCR is single-shot, translation streams.** `[원문]` block appears
-  at once after the HTTP round-trip; `[번역]` block streams tokens.
-- **VRAM coexists with Ollama.** ocr-service + Ollama share the same
-  GPU pool but neither sees the other's allocation. ocr-service idle
-  auto-unloads after `OCR_IDLE_UNLOAD_S` (default 300s).
-- **`BRIDGE_SECRET` (Pi) == `BRIDGE_SHARED_TOKEN` (Desktop ocr-service)**
-  byte-identical. Bridge forwards its own SECRET as Bearer to
-  ocr-service.
-- **`OCR_SERVICE_URL` has no default.** Bridge boot refuses if missing
-  to prevent the same-machine-host assumption.
+- **Model: `stepfun-ai/GOT-OCR-2.0-hf` (HF native), NOT the legacy
+  `GOT-OCR2_0` custom-code variant** — legacy chains compatibility breaks
+  with every transformers/torch update.
+- **`spec.legacy` is the flow switch.** Absence of `translate:` →
+  `legacy=true` → single-call combined-prompt flow (preserved for old
+  notes). Presence → two-stage flow. `target_lang:` is dropped silently
+  (don't reintroduce — flow is fixed English→Korean).
+- **OCR single-shot, translation streams.** ocr-service idle
+  auto-unloads after `OCR_IDLE_UNLOAD_S` (default 300s); coexists with
+  Ollama on the same GPU pool, neither sees the other's allocation.
+- **`BRIDGE_SECRET` (Pi) == `BRIDGE_SHARED_TOKEN` (ocr-service)**
+  byte-identical. `OCR_SERVICE_URL` has no default — bridge refuses to
+  boot without it (prevents same-machine assumption).
 - **Bridge tests use `node:test` + `mintToken(SECRET)`**, NOT vitest.
 - **Dependency cage**: `torch>=2.4,<2.5` / `transformers>=4.49,<4.50` /
-  `accelerate<1.0`. Lift the cage by moving the container base image
-  to Ubuntu 24.04 + Python 3.12 (gets `sys.get_int_max_str_digits` →
-  unlocks torch 2.5+ → unlocks transformers 4.50+ with MoE).
+  `accelerate<1.0`. Lift via Ubuntu 24.04 + Python 3.12 base.
+
+## 채팅 노트 (`llm://` + `claude://`)
+
+두 백엔드 채팅 노트. 시그니처: `llm://<model>` (Ollama, 데스크탑 서비스)
+또는 `claude://[<model>]` (Claude Code CLI subprocess, 구독 OAuth).
+공통: Q:/A: 턴 구조, 보내기 버튼, 스트리밍, abort, 한국어 에러. 헤더 —
+Ollama: `temperature`/`num_ctx`/`top_p`/`seed`/`num_predict`/`rag`;
+Claude: `cwd` (있으면 도구 활성, 없으면 chat-only)/`allowedTools`/`model`;
+공통: `system`. `parseChatNote`가 두 시그니처 모두 인식,
+cross-backend 헤더는 silently ignored.
+
+Quick map: `app/src/lib/chatNote/` (`parseChatNote`, `defaults`,
+`backends/{ollama,claude}.ts`, `buildClaudeMessages.ts`),
+`app/src/lib/editor/chatNote/ChatSendBar.svelte` (spec.backend 분기),
+`bridge/src/claude.ts` (POST /claude/chat 프록시),
+`claude-service/` (데스크탑 Fastify, `claude -p` stream-json → SSE).
+
+Cross-cutting invariants worth caching:
+
+- **Claude 백엔드는 구독 OAuth 강제.** `claude-service/src/runner.ts`가
+  spawn 시 `ANTHROPIC_API_KEY=''`를 명시적으로 빈 문자열 — host 환경의
+  API 키 leak 차단.
+- **claude-service는 데스크탑에만** (ocr-service와 같은 머신). Pi
+  브릿지에는 절대 깔지 않음 (CPU only, OAuth 자격증명은 host의
+  `~/.claude`).
+- **도구 활성 게이트 = `cwd:` 헤더 존재 여부.** 없으면 spawn args에
+  `--disallowedTools '*'` 강제. 있으면 디폴트 도구셋 또는 `allowedTools:`.
+- **이미지는 Dropbox URL 패스스루.** `tomboyUrlLink` 마크 + 이미지
+  확장자 → Anthropic `image/url` content block 직통, base64 변환 없음.
+- **세션 resume 안 함.** 노트가 single source of truth, 매 전송마다
+  transcript 전체를 messages 배열로 재직렬화. 사용자가 Q:/A: 히스토리
+  편집 시 다음 보내기에 그대로 반영.
+- **이중 백엔드 호환성**: `llm://` 노트 zero behavior change.
+  `LlmNoteSpec` / `LLM_*` 상수는 `chatNote/` 안 alias로 살아있음.
+
+⚠️ Claude 백엔드 사용 전: 데스크탑에서 `claude login` 1회 실행 필수.
+셋업: `claude-service/deploy/README.md`.
 
 ## 이미지 임시 저장소 (Vercel Blob)
 
@@ -740,6 +711,11 @@ Cross-cutting invariants worth caching:
 - **OCR cross-device retry는 `downloadImageFromUrl`로 host 분기됨** —
   Dropbox는 SDK 경로 (CORS 우회), Vercel은 plain fetch (Vercel Blob은
   CORS open).
+- **이미지 캐시 통합**: `uploadTempImage` 끝에 `cachePrime`, `downloadImageFromUrl`
+  의 Vercel 경로에도 `cacheGetBlob`/`cachePrime` wrap (Dropbox 경로는
+  `downloadImageFromDropboxUrl`이 이미 wrap). 별도 `vercelBlobFetcher`는
+  만들지 않음 — Vercel Blob은 CORS open이라 `lookupOrFetch`의 plain
+  `fetch()` fallback이 그대로 동작.
 - **빌드는 `@sveltejs/adapter-vercel`로 전환됨** (`adapter-static`은 제거).
   `/api/*`만 함수로 빌드, 나머지는 `prerender + ssr=false`로 SPA 동작 유지.
 - **자동 만료 정책 없음.** admin에서 사용자가 명시적으로 정리/승격해야 함.

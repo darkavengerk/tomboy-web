@@ -18,6 +18,7 @@
 import { upload } from '@vercel/blob/client';
 import { getImageStorageToken } from '$lib/storage/appSettings.js';
 import { fileExtension } from '$lib/utils/fileExtension.js';
+import { prime as cachePrime } from '$lib/imageCache/imageCache.js';
 
 export interface TempImageListItem {
   url: string;
@@ -64,6 +65,10 @@ export async function uploadTempImage(file: File): Promise<string> {
     // way to customise the Authorization header (it uses fetch internally),
     // so we route the token through the body instead.
     clientPayload: JSON.stringify({ token })
+  });
+
+  cachePrime(result.url, file, file.type).catch((e) => {
+    console.warn('[imageCache] uploadTempImage prime 실패:', e);
   });
 
   return result.url;

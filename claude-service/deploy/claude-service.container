@@ -1,0 +1,54 @@
+# claude-service/deploy/claude-service.container
+#
+# Podman Quadlet unit for tomboy-web claude-service.
+#
+# Install (on the DESKTOP — never on the Pi):
+#   1. Build the image:
+#        cd claude-service && podman build -t localhost/claude-service:latest .
+#   2. One-time: log into Claude on the host so OAuth credentials exist:
+#        claude login
+#        # this writes ~/.claude/credentials.json (or similar)
+#   3. Drop this file at ~/.config/containers/systemd/claude-service.container
+#   4. Create ~/.config/claude-service.env with:
+#        BRIDGE_SHARED_TOKEN=<same value as bridge BRIDGE_SECRET>
+#        CLAUDE_SERVICE_PORT=7842
+#        CLAUDE_MAX_REQUEST_BYTES=2097152
+#   5. systemctl --user daemon-reload
+#      systemctl --user enable --now claude-service.service
+#   6. Linger so it survives logout:
+#        loginctl enable-linger $USER
+#
+# Network: listens on 0.0.0.0:7842 INSIDE THE LAN ONLY. Do NOT expose
+# 7842 to the public internet — Bearer auth is the only protection.
+# The Pi bridge calls this via LAN.
+
+[Unit]
+Description=tomboy-web claude-service
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=localhost/claude-service:latest
+ContainerName=claude-service
+# Host networking — rootless Pasta+PublishPort breaks chunked SSE
+# (first byte gets buffered/lost on streaming responses, even though
+# request/response work fine for non-streaming endpoints). Same Pi-bridge
+# Bearer is the only auth, and the service is meant for LAN only, so the
+# loss of net namespace isolation is acceptable.
+Network=host
+EnvironmentFile=%h/.config/claude-service.env
+
+# OAuth credentials — claude CLI reads BOTH ~/.claude/ (directory) and
+# ~/.claude.json (settings file at $HOME root). The .json sits next to
+# the directory, so it requires its own mount; mounting only the
+# directory leaves the container regenerating an empty .claude.json on
+# every start, which the CLI rejects.
+Volume=%h/.claude:/data/.claude:Z
+Volume=%h/.claude.json:/data/.claude.json:Z
+
+[Service]
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

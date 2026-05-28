@@ -22,11 +22,26 @@
 	import type { SyncManifest } from '$lib/sync/manifest.js';
 	import { invalidateCache } from '$lib/stores/noteListCache.js';
 	import { pushToast } from '$lib/stores/toast.js';
+	import { getStats as getImageCacheStats, clearAll as clearImageCache } from '$lib/imageCache/imageCache.js';
 	import JSZip from 'jszip';
 
 	let authed = $state(false);
 	let running = $state(false);
 	let progress = $state('');
+
+	// ── 이미지 캐시 ───────────────────────────────────────────────────────
+	let imageCacheStats = $state<{ count: number; totalBytes: number; quotaBytes: number } | null>(null);
+
+	$effect(() => {
+		getImageCacheStats().then((s) => (imageCacheStats = s));
+	});
+
+	async function handleClearImageCache(): Promise<void> {
+		if (!confirm('이미지 캐시를 모두 비우시겠습니까?\n캐시된 이미지가 삭제되며 다음 표시 시 다시 내려받습니다.')) return;
+		await clearImageCache();
+		imageCacheStats = await getImageCacheStats();
+		pushToast('이미지 캐시를 비웠습니다.');
+	}
 
 	onMount(() => {
 		authed = isAuthenticated();
@@ -422,6 +437,19 @@
 		</button>
 	</section>
 {/if}
+
+<section class="tool">
+	<h3>이미지 캐시</h3>
+	<p class="info">
+		노트 이미지를 이 기기의 IndexedDB에 캐시합니다. 한도와 상세 설정은 사용자 설정 페이지에서 변경할 수 있습니다.
+	</p>
+	{#if imageCacheStats !== null}
+		<p class="info">
+			현재 {(imageCacheStats.totalBytes / 1024 / 1024).toFixed(1)}MB ({imageCacheStats.count}개)
+		</p>
+	{/if}
+	<button class="btn" onclick={handleClearImageCache}>이미지 캐시 비우기</button>
+</section>
 
 {#if progress}
 	<div class="progress">{progress}</div>

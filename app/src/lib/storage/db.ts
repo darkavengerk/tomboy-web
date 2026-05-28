@@ -44,11 +44,25 @@ interface TomboyDB extends DBSchema {
 		key: string;
 		value: { id: string; value: unknown };
 	};
+	imageCache: {
+		key: string;
+		value: {
+			url: string;
+			blob: Blob;
+			contentType: string;
+			size: number;
+			lastAccess: number;
+			insertedAt: number;
+		};
+		indexes: {
+			'by-lastAccess': number;
+		};
+	};
 }
 
 const HOST_DB_NAME = 'tomboy-web';
 const GUEST_DB_NAME = 'tomboy-web-guest';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 type DbMode = 'host' | 'guest';
 
@@ -111,6 +125,11 @@ export function getDB(): Promise<IDBPDatabase<TomboyDB>> {
 
 				if (oldVersion < 3) {
 					db.createObjectStore('appSettings', { keyPath: 'id' });
+				}
+
+				if (oldVersion < 4) {
+					const imageCacheStore = db.createObjectStore('imageCache', { keyPath: 'url' });
+					imageCacheStore.createIndex('by-lastAccess', 'lastAccess');
 				}
 			}
 		});

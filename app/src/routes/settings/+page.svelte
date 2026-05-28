@@ -85,6 +85,7 @@
 	import { setNotebookPublic } from '$lib/sync/firebase/publishNotebook.js';
 	import { readPublicConfigForHost } from '$lib/sync/firebase/publicConfig.js';
 	import { ensureSignedIn } from '$lib/firebase/app.js';
+	import { getStats as getImageCacheStats, setQuota as setImageCacheQuota, clearAll as clearImageCache } from '$lib/imageCache/imageCache.js';
 
 	type Tab = 'sync' | 'config' | 'share' | 'terminal' | 'notify' | 'guide' | 'shortcuts' | 'advanced';
 	let activeTab = $state<Tab>('sync');
@@ -331,6 +332,38 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 			console.warn('clipboard write failed', err);
 		}
 	}
+
+	// ── 이미지 캐시 ──────────────────────────────────────────────────────
+	let imageCacheStats = $state<{ count: number; totalBytes: number; quotaBytes: number } | null>(null);
+	let imageCacheQuotaMb = $state(500);
+
+	async function refreshImageCacheStats(): Promise<void> {
+		imageCacheStats = await getImageCacheStats();
+		imageCacheQuotaMb = Math.round(imageCacheStats.quotaBytes / (1024 * 1024));
+	}
+
+	function formatMb(bytes: number): string {
+		return (bytes / (1024 * 1024)).toFixed(1);
+	}
+
+	async function handleImageCacheQuotaChange(): Promise<void> {
+		const clamped = Math.max(100, Math.min(5000, Math.floor(imageCacheQuotaMb)));
+		imageCacheQuotaMb = clamped;
+		await setImageCacheQuota(clamped * 1024 * 1024);
+		await refreshImageCacheStats();
+		pushToast(`이미지 캐시 한도 ${clamped}MB로 변경되었습니다.`);
+	}
+
+	async function handleImageCacheClear(): Promise<void> {
+		if (!confirm('이미지 캐시를 모두 비우시겠습니까?')) return;
+		await clearImageCache();
+		await refreshImageCacheStats();
+		pushToast('이미지 캐시를 비웠습니다.');
+	}
+
+	$effect(() => {
+		void refreshImageCacheStats();
+	});
 
 	// ── 파이어베이스 실시간 노트 동기화 ──────────────────────────────────
 	let firebaseNotesEnabled = $state(false);
@@ -1003,6 +1036,39 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 				</div>
 			</section>
 
+			<section class="section">
+				<h2>이미지 캐시</h2>
+				<p class="info-text">
+					노트에 붙여넣은 이미지를 이 기기에 저장해서 다시 열 때 네트워크 요청 없이 즉시
+					표시합니다. 한도를 초과하면 오래된 이미지부터 자동으로 지워집니다.
+				</p>
+				{#if imageCacheStats}
+					<p class="info-text">
+						사용 중:
+						<strong>{formatMb(imageCacheStats.totalBytes)}MB</strong>
+						/ {formatMb(imageCacheStats.quotaBytes)}MB ({imageCacheStats.count}개)
+					</p>
+					<div class="path-row image-cache-quota-row">
+						<label class="image-cache-quota-label" for="image-cache-quota-input">한도 (MB)</label>
+						<input
+							id="image-cache-quota-input"
+							class="path-input image-cache-quota-input"
+							type="number"
+							min="100"
+							max="5000"
+							step="50"
+							bind:value={imageCacheQuotaMb}
+							onchange={handleImageCacheQuotaChange}
+						/>
+					</div>
+					<button type="button" class="btn btn-secondary" onclick={handleImageCacheClear}>
+						캐시 비우기
+					</button>
+				{:else}
+					<p class="info-text">불러오는 중…</p>
+				{/if}
+			</section>
+
 			{#if authenticated}
 				<section class="section">
 					<h2>설정 동기화</h2>
@@ -1537,6 +1603,49 @@ https://www.dropbox.com/…/starting.png</pre>
 						<li>브릿지에 reMarkable 호스트 설정(<code>remarkable.json</code>)이 있어야 하며,
 							<code>&lt;별칭&gt;</code>은 그 설정의 키와 일치해야 합니다. 설정이 없으면
 							<strong>"브릿지에 리마커블 설정이 없습니다"</strong>(503) 오류가 납니다.</li>
+					</ul>
+				</details>
+			</section>
+
+			<section class="section">
+				<h2>에디터 본문 블록</h2>
+				<p class="info-text">
+					아래는 노트의 일부 영역에만 적용되는 인라인 블록 형식입니다. 한 노트 안에 여러 개를 섞을
+					수 있고, 형식이 어긋나면 그 블록만 일반 문단으로 보입니다.
+				</p>
+
+				<details class="guide-card" open>
+					<summary>표 (CSV / TSV) — 본문 안의 펜스 블록</summary>
+					<p class="info-text">
+						GitHub 마크다운과 같은 <strong>코드 펜스</strong>로 표를 그립니다. 본문 위에 떠 있는
+						별도 형식이 아니라, 일반 문단들 위에 렌더링 레이어로 표가 얹히는 방식입니다.
+						원본 텍스트는 그대로 보존되어 Tomboy XML로 라운드트립됩니다.
+					</p>
+					<pre class="snippet">```csv
+헤더1, 헤더2, 헤더3
+가, 나, 다
+라, 마, 바
+```</pre>
+					<ul class="guide-list">
+						<li>여는 펜스: <code>```csv</code> 또는 <code>```tsv</code>. 언어 태그는 대소문자 무관이며,
+							태그 뒤에 다른 글자가 붙으면 펜스로 인식되지 않습니다(<code>```csv extra</code> ✗).</li>
+						<li>닫는 펜스: 빈 <code>```</code> 한 줄. 닫기 전에 또 다른 여는 펜스가 나오면 첫 표는
+							미완료로 간주되어 표 렌더가 적용되지 않습니다.</li>
+						<li><strong>CSV</strong>: 쉼표(<code>,</code>)로 셀을 나누고 각 셀 양끝 공백을 트림합니다.</li>
+						<li><strong>TSV</strong>: 탭(<code>\t</code>)으로 나누고 공백을 보존합니다. 탭만 있는 빈 행도
+							데이터로 인정(예: <code>\t\t</code>는 빈 세 셀).</li>
+						<li><strong>첫 행이 헤더</strong>입니다. 행마다 셀 개수가 달라도 그대로 렌더링됩니다(자동
+							패딩 없음).</li>
+						<li>셀 안의 <strong>굵게 · 기울임 · 내부/외부 링크 · 폰트 크기</strong> 등 마크는 보존됩니다.</li>
+						<li>같은 노트에 여러 표를 둘 수 있고, 표와 일반 문단을 자유롭게 섞을 수 있습니다.</li>
+					</ul>
+					<p class="info-text">조작:</p>
+					<ul class="guide-list">
+						<li>표 좌측 상단의 체크박스 — 켜면 표로 렌더, 끄면 원본 펜스 문단으로 펼쳐 직접 편집.</li>
+						<li><kbd>Ctrl</kbd>(또는 <kbd>Cmd</kbd>)을 누르고 있으면 표 외곽에 <strong>행 추가</strong> /
+							<strong>열 추가</strong> + 버튼과 행·열 삭제 X 버튼이 나타납니다.</li>
+						<li>셀을 더블 클릭하면 해당 셀만 인라인 편집됩니다. 한 셀을 고쳐도 같은 행 다른 셀의
+							마크는 그대로 살아남습니다.</li>
 					</ul>
 				</details>
 			</section>
@@ -2228,5 +2337,23 @@ https://www.dropbox.com/…/starting.png</pre>
 
 	.share-progress progress {
 		width: 100%;
+	}
+
+	/* ── 이미지 캐시 ─────────────────────────────────────────────────────── */
+
+	.image-cache-quota-row {
+		align-items: center;
+		margin-bottom: 12px;
+	}
+
+	.image-cache-quota-label {
+		flex-shrink: 0;
+		font-size: clamp(0.85rem, 2.5vw, 0.95rem);
+		color: var(--color-text-secondary);
+	}
+
+	.image-cache-quota-input {
+		max-width: 120px;
+		flex: 0 0 auto;
 	}
 </style>

@@ -18,7 +18,7 @@
 		parseTerminalNote,
 		type TerminalNoteSpec
 	} from '$lib/editor/terminal/parseTerminalNote.js';
-	import LlmSendBar from '$lib/editor/llmNote/LlmSendBar.svelte';
+	import ChatSendBar from '$lib/editor/chatNote/ChatSendBar.svelte';
 	import RemarkableActionBar from '$lib/editor/remarkable/RemarkableActionBar.svelte';
 	import { parseOcrNote } from '$lib/ocrNote/parseOcrNote.js';
 	import { runOcrInEditor } from '$lib/ocrNote/runOcrInEditor.js';
@@ -128,7 +128,7 @@
 	let terminalConnectMode = $state(false);
 	const showTerminal = $derived(!!terminalSpec && terminalConnectMode);
 
-	// Bridge settings for LlmSendBar — loaded once on mount from appSettings.
+	// Bridge settings for ChatSendBar — loaded once on mount from appSettings.
 	let llmBridgeUrl = $state('');
 	let llmBridgeToken = $state('');
 
@@ -203,7 +203,7 @@
 	}
 
 	onMount(() => {
-		// Load bridge URL and token for LlmSendBar.
+		// Load bridge URL and token for ChatSendBar.
 		void Promise.all([
 			getDefaultTerminalBridge(),
 			getTerminalBridgeToken()
@@ -721,11 +721,8 @@
 		}
 
 		if (kind === 'toggleFavorite') {
-			const updated = await toggleFavorite(note.guid);
-			if (updated) note = updated;
-			pushToast(
-				isFavorite(note!) ? '즐겨찾기에 추가되었습니다.' : '즐겨찾기에서 제거되었습니다.'
-			);
+			const nowFav = toggleFavorite(note.guid);
+			pushToast(nowFav ? '즐겨찾기에 추가되었습니다.' : '즐겨찾기에서 제거되었습니다.');
 			return;
 		}
 
@@ -891,7 +888,7 @@
 					onimageinserted={handleImageInserted}
 				/>
 				{#if editorComponent?.getEditor() && llmBridgeUrl && llmBridgeToken}
-					<LlmSendBar
+					<ChatSendBar
 						editor={editorComponent.getEditor()!}
 						bridgeUrl={llmBridgeUrl}
 						bridgeToken={llmBridgeToken}
@@ -1161,6 +1158,14 @@
 	.body :global(.tomboy-editor-shell) {
 		flex: 1;
 		min-height: 0;
+	}
+
+	/* desktop window 는 body scroll 이 없고 (chromeless) 윈도우 박스 안에서
+	   자체 scroll 해야 함. TomboyEditor 컴포넌트 자체는 모바일 body-scroll
+	   모델로 동작하므로 desktop 안에서만 inner scroll 을 복구. */
+	.body :global(.tomboy-editor) {
+		overflow-y: auto;
+		-webkit-overflow-scrolling: touch;
 	}
 
 	/* Bottom margin lives INSIDE the editor's scrollable content (on the

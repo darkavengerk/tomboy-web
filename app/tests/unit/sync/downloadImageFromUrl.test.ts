@@ -1,4 +1,9 @@
+import 'fake-indexeddb/auto';
+import { IDBFactory } from 'fake-indexeddb';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { _resetDBForTest } from '$lib/storage/db.js';
+import { __resetForTest as resetCache } from '$lib/imageCache/imageCache.js';
+import { __resetForTest as resetPool } from '$lib/imageCache/objectUrlPool.js';
 
 const sharingGetSharedLinkFileMock = vi.fn();
 vi.mock('$lib/sync/dropboxClient.js', () => ({
@@ -14,10 +19,19 @@ const origFetch = globalThis.fetch;
 
 describe('downloadImageFromUrl', () => {
 	beforeEach(() => {
+		globalThis.indexedDB = new IDBFactory();
+		_resetDBForTest();
+		resetCache();
+		resetPool();
+		vi.spyOn(URL, 'createObjectURL').mockImplementation(
+			(b) => `blob:${(b as Blob).size}-${Math.random()}`
+		);
+		vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
 		sharingGetSharedLinkFileMock.mockReset();
 	});
 	afterEach(() => {
 		globalThis.fetch = origFetch;
+		vi.restoreAllMocks();
 	});
 
 	it('routes www.dropbox.com via Dropbox SDK (sharingGetSharedLinkFile)', async () => {

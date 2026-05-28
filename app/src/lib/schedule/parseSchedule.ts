@@ -66,6 +66,12 @@ type LinearBlock = { kind: 'paragraph' | 'listItem'; text: string };
 
 function inlineText(node: JSONContent): string {
 	if (typeof node.text === 'string') return node.text;
+	if (node.type === 'footnoteMarker') {
+		return `[^${(node.attrs?.label as string | undefined) ?? ''}]`;
+	}
+	if (node.type === 'inlineCheckbox') {
+		return node.attrs?.checked ? '[x]' : '[ ]';
+	}
 	if (!node.content) return '';
 	return node.content.map(inlineText).join('');
 }

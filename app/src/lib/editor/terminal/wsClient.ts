@@ -7,6 +7,10 @@ export interface PaneSwitchInfo {
 	altScreen: boolean;
 	windowIndex: string;
 	windowName: string;
+	/** Active pane's 1-based footer-button ordinal; 0 when unknown. */
+	paneOrdinal: number;
+	/** Total panes in the spectated window; 0 when unknown. */
+	paneCount: number;
 }
 
 interface ClientOptions {
@@ -29,6 +33,11 @@ interface ClientOptions {
 	onPaneResize?: (info: { cols: number; rows: number }) => void;
 	/** Called when the bridge reports an image transfer result. */
 	onImageResult?: (ok: boolean, info: { path?: string; message?: string }) => void;
+	/**
+	 * Called when a pinned pane ordinal exceeds the current window's pane
+	 * count. The UI should surface a "pane unavailable" banner.
+	 */
+	onPaneUnavailable?: (info: { pinnedOrdinal: number; paneCount: number }) => void;
 }
 
 interface ServerMsg {
@@ -39,6 +48,7 @@ interface ServerMsg {
 		| 'ready'
 		| 'pane-switch'
 		| 'pane-resize'
+		| 'pane-unavailable'
 		| 'image-ok'
 		| 'image-error';
 	d?: string;
@@ -50,6 +60,9 @@ interface ServerMsg {
 	altScreen?: boolean;
 	windowIndex?: string;
 	windowName?: string;
+	paneOrdinal?: number;
+	paneCount?: number;
+	pinnedOrdinal?: number;
 	path?: string;
 }
 
@@ -153,7 +166,9 @@ export class TerminalWsClient {
 						rows: msg.rows,
 						altScreen: !!msg.altScreen,
 						windowIndex: typeof msg.windowIndex === 'string' ? msg.windowIndex : '',
-						windowName: typeof msg.windowName === 'string' ? msg.windowName : ''
+						windowName: typeof msg.windowName === 'string' ? msg.windowName : '',
+						paneOrdinal: typeof msg.paneOrdinal === 'number' ? msg.paneOrdinal : 0,
+						paneCount: typeof msg.paneCount === 'number' ? msg.paneCount : 0
 					});
 				}
 			} else if (msg.type === 'pane-resize') {
@@ -163,6 +178,17 @@ export class TerminalWsClient {
 					typeof msg.rows === 'number'
 				) {
 					this.opts.onPaneResize({ cols: msg.cols, rows: msg.rows });
+				}
+			} else if (msg.type === 'pane-unavailable') {
+				if (
+					this.opts.onPaneUnavailable &&
+					typeof msg.pinnedOrdinal === 'number' &&
+					typeof msg.paneCount === 'number'
+				) {
+					this.opts.onPaneUnavailable({
+						pinnedOrdinal: msg.pinnedOrdinal,
+						paneCount: msg.paneCount
+					});
 				}
 			} else if (msg.type === 'image-ok') {
 				this.opts.onImageResult?.(true, { path: msg.path });
@@ -244,6 +270,29 @@ export class TerminalWsClient {
 		}
 	}
 
+	/**
+	 * Spectator-only: jump the active pane to the Nth pane (1-based) of the
+	 * current tmux window. The switch is observed via the existing
+	 * `pane-switch` frame, so no extra ack is needed.
+	 */
+	selectPane(index: number): void {
+		if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+			this.ws.send(JSON.stringify({ type: 'tmux-nav', action: 'select-pane', index }));
+		}
+	}
+
+	/**
+	 * Spectator-only: subscribe to a specific pane by 1-based ordinal.
+	 * ordinal >= 1 → pin to that pane in the current window.
+	 * ordinal === 0 → unpin (back to follow-active mode).
+	 * The bridge replies with `pane-unavailable` if the ordinal exceeds the
+	 * current window's pane count, or with `pane-switch` when the pin succeeds.
+	 */
+	subscribePane(ordinal: number): void {
+		if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+			this.ws.send(JSON.stringify({ type: 'subscribe-pane', ordinal }));
+		}
+	}
 
 	close(): void {
 		this.closed = true;

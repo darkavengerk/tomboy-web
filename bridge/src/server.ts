@@ -15,10 +15,11 @@ import { probePort, sendMagicPacket, waitForPort } from './wol.js';
 import { handleLlmChat } from './llm.js';
 import { handleRagSearch } from './rag.js';
 import { handleOcrProxy } from './ocr.js';
+import { handleClaudeChat } from './claude.js';
 import { handleGpuStatus, handleGpuUnload } from './gpu.js';
 import { handleRemarkableWallpaper } from './remarkable.js';
 import { loadRemarkableHosts } from './remarkableHosts.js';
-import { SpectatorSession } from './spectatorSession.js';
+import { SpectatorHubRegistry, type SpectatorSubscription } from './spectatorHub.js';
 import { transferImage, bracketedPaste } from './imageTransfer.js';
 
 const PORT = Number(process.env.BRIDGE_PORT || 3000);
@@ -26,6 +27,8 @@ const PASSWORD = requireEnv('BRIDGE_PASSWORD');
 const SECRET = requireEnv('BRIDGE_SECRET');
 const ALLOWED_ORIGIN = requireEnv('BRIDGE_ALLOWED_ORIGIN');
 const OCR_SERVICE_URL = requireEnv('OCR_SERVICE_URL');
+// CLAUDE_SERVICE_URL is optional — bridge boots without it and returns 503.
+const CLAUDE_SERVICE_URL = process.env.CLAUDE_SERVICE_URL ?? '';
 // Ollama runs on the desktop alongside ocr-service. The bridge reads this
 // from env so deployments without an Ollama on `localhost:11434` (i.e.
 // remote-LAN Ollama) can override it. `llm.ts` reads the same env var
@@ -125,6 +128,11 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 		return;
 	}
 
+	if (url === '/claude/chat' && req.method === 'POST') {
+		await handleClaudeChat(req, res, SECRET, CLAUDE_SERVICE_URL);
+		return;
+	}
+
 	if (url === '/gpu/status' && req.method === 'GET') {
 		await handleGpuStatus(req, res, SECRET, OCR_SERVICE_URL, OLLAMA_URL);
 		return;
@@ -182,7 +190,7 @@ function sleep(ms: number): Promise<void> {
 // --- WebSocket session ---
 
 interface ClientMsg {
-	type: 'connect' | 'data' | 'resize' | 'tmux-nav' | 'image';
+	type: 'connect' | 'data' | 'resize' | 'tmux-nav' | 'image' | 'subscribe-pane';
 	target?: string;
 	token?: string;
 	cols?: number;
@@ -190,7 +198,9 @@ interface ClientMsg {
 	d?: string;
 	mode?: 'shell' | 'spectate';
 	session?: string;
-	action?: 'next-pane' | 'prev-pane' | 'next-window' | 'prev-window';
+	action?: 'next-pane' | 'prev-pane' | 'next-window' | 'prev-window' | 'select-pane';
+	index?: number;
+	ordinal?: number;
 	mime?: string;
 	data?: string;
 }
@@ -204,7 +214,7 @@ const TMUX_NAV_ACTIONS = new Set([
 
 function handleWs(ws: WebSocket): void {
 	let pty: ReturnType<typeof spawnForTarget> | null = null;
-	let spectator: SpectatorSession | null = null;
+	let subscription: SpectatorSubscription | null = null;
 	let connected = false;
 	let controlPath: string | null = null;
 	let sessionTarget: SshTarget | null = null;
@@ -287,15 +297,32 @@ function handleWs(ws: WebSocket): void {
 		// on the desktop's pane grid which the mobile has no access to,
 		// and disturbing the desktop view for our scroll is worse than not
 		// scrolling at all.
-		if (spectator) {
+		if (subscription) {
 			if (msg.type === 'data' && typeof msg.d === 'string') {
-				spectator.sendInput(msg.d);
-			} else if (
-				msg.type === 'tmux-nav' &&
-				typeof msg.action === 'string' &&
-				TMUX_NAV_ACTIONS.has(msg.action)
-			) {
-				spectator.tmuxNav(msg.action as Parameters<SpectatorSession['tmuxNav']>[0]);
+				subscription.sendInput(msg.d);
+			} else if (msg.type === 'tmux-nav' && typeof msg.action === 'string') {
+				if (msg.action === 'select-pane') {
+					// Absolute jump to the Nth pane (1-based) of the current
+					// window — backs the mobile footer's 1/2/3/4 buttons.
+					if (
+						typeof msg.index === 'number' &&
+						Number.isInteger(msg.index) &&
+						msg.index >= 1
+					) {
+						subscription.selectPane(msg.index);
+					}
+				} else if (TMUX_NAV_ACTIONS.has(msg.action)) {
+					subscription.tmuxNav(msg.action as Parameters<SpectatorSubscription['tmuxNav']>[0]);
+				}
+			} else if (msg.type === 'subscribe-pane') {
+				if (typeof msg.ordinal === 'number' && Number.isInteger(msg.ordinal)) {
+					if (msg.ordinal === 0) {
+						void subscription.unpin();
+					} else if (msg.ordinal >= 1) {
+						void subscription.pinOrdinal(msg.ordinal);
+					}
+					// else ignore (negative integers)
+				}
 			}
 			return;
 		}
@@ -325,9 +352,9 @@ function handleWs(ws: WebSocket): void {
 			try { pty.kill(); } catch { /* ignore */ }
 			pty = null;
 		}
-		if (spectator) {
-			try { spectator.close(); } catch { /* ignore */ }
-			spectator = null;
+		if (subscription) {
+			try { subscription.close(); } catch { /* ignore */ }
+			subscription = null;
 		}
 		if (controlPath) {
 			// ssh 마스터가 죽으면 소켓도 사라지지만 best-effort로 정리.
@@ -338,10 +365,6 @@ function handleWs(ws: WebSocket): void {
 
 	async function startSpectator(target: SshTarget, session: string): Promise<void> {
 		sessionTarget = target;
-		// 원격 타깃만 ControlMaster — 로컬 셸 타깃은 ssh 자체가 없다.
-		if (!isLocalTarget(target)) {
-			controlPath = `${CTRL_DIR}/${randomUUID().slice(0, 8)}.sock`;
-		}
 		const wol = lookupWolTarget(target.host);
 		console.log(
 			`[term-bridge] spectate target=${target.user ?? ''}@${target.host}:${target.port ?? 22} session=${session}`
@@ -357,30 +380,28 @@ function handleWs(ws: WebSocket): void {
 			}
 		}
 		if (abortCtrl.signal.aborted) return;
-		try {
-			spectator = new SpectatorSession({
-				target,
-				session,
-				controlPath: controlPath ?? undefined,
-				callbacks: {
-					paneSwitch: (info) => send({ type: 'pane-switch', ...info }),
-					data: (d) => send({ type: 'data', d }),
-					paneResize: (info) => send({ type: 'pane-resize', ...info }),
-					error: (message) => send({ type: 'error', message }),
-					exit: (reason) => {
-						send({ type: 'exit', code: 0, reason });
-						try { ws.close(1000, reason ?? 'spectator exit'); } catch { /* ignore */ }
-					}
-				}
-			});
-		} catch (err) {
-			send({ type: 'error', message: `spectator spawn failed: ${(err as Error).message}` });
-			try { ws.close(1011, 'spectator spawn failed'); } catch { /* ignore */ }
+		subscription = SpectatorHubRegistry.subscribe(target, session, {
+			paneSwitch: (info) => send({ type: 'pane-switch', ...info }),
+			data: (d) => send({ type: 'data', d }),
+			paneResize: (info) => send({ type: 'pane-resize', ...info }),
+			paneUnavailable: (info) => send({ type: 'pane-unavailable', ...info }),
+			error: (message) => send({ type: 'error', message }),
+			exit: (reason) => {
+				send({ type: 'exit', code: 0, reason });
+				try { ws.close(1000, reason ?? 'spectator exit'); } catch { /* ignore */ }
+			}
+		}, { ctrlDir: CTRL_DIR });
+		// hub-owned socket — server.ts does NOT take ownership of controlPath.
+		if (abortCtrl.signal.aborted) {
+			subscription.close();
+			subscription = null;
 			return;
 		}
+		// Await bootstrap — swallow error, bootstrap failure already fires error callback.
+		await subscription.attach().catch(() => { /* bootstrap failure fires error callback */ });
 		if (abortCtrl.signal.aborted) {
-			spectator.close();
-			spectator = null;
+			subscription.close();
+			subscription = null;
 			return;
 		}
 		// PTY-ready signal — clients gate their UI on this. For spectator mode
@@ -436,7 +457,7 @@ function handleWs(ws: WebSocket): void {
 	 * spectator 활성 패널에 경로를 bracketed-paste로 주입.
 	 *
 	 * - 셸 모드: pty.write(bracketedPaste(path) + ' ').
-	 * - 관전 모드: spectator.sendInput(bracketedPaste(path) + ' ') → tmux send-keys -H.
+	 * - 관전 모드: subscription.sendInput(bracketedPaste(path) + ' ') → tmux send-keys -H.
 	 * - 어느 쪽도 준비 안 된 race 상황: image-error 회신.
 	 *
 	 * 경로 뒤 공백 한 칸은 이미지를 연달아 붙여넣을 때 경로가 서로 붙지 않게 한다.
@@ -459,7 +480,7 @@ function handleWs(ws: WebSocket): void {
 		try {
 			const { remotePath } = await transferImage({
 				target: sessionTarget,
-				controlPath,
+				controlPath: controlPath ?? subscription?.controlPath ?? null,
 				mime,
 				bytes
 			});
@@ -468,8 +489,8 @@ function handleWs(ws: WebSocket): void {
 			if (pty) {
 				pty.write(paste);
 				sink = 'pty';
-			} else if (spectator?.hasActivePane()) {
-				spectator.sendInput(paste);
+			} else if (subscription?.hasActivePane()) {
+				subscription.sendInput(paste);
 				sink = 'spectator';
 			} else {
 				console.log(`[image] reject ${mime}: no active sink at inject time`);

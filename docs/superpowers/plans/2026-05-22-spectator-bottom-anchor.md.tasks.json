@@ -1,0 +1,12 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-22-spectator-bottom-anchor.md",
+  "tasks": [
+    {
+      "id": 23,
+      "subject": "Task 1: 관전 패널을 CSS 플렉스로 하단 정렬",
+      "status": "completed",
+      "description": "**Goal:** 관전 모드 `.xterm-host`를 하단 정렬 플렉스 컨테이너로 만들고 `.xterm-stage`가 축소되지 않게 고정한다. (낮은 노트에서 프롬프트·커서가 잘리지 않게)\n\n**Files:**\n- Modify: `app/src/lib/editor/terminal/TerminalView.svelte` (`<style>` 블록 — `.terminal-page.spectator .xterm-host` ≈ L1124, `.terminal-page.spectator .xterm-stage` ≈ L1135)\n\n**Acceptance Criteria:**\n- [ ] `.terminal-page.spectator .xterm-host`가 `display: flex; flex-direction: column; justify-content: flex-end` (`overflow-x/y: hidden` 유지)\n- [ ] `.terminal-page.spectator .xterm-stage`가 `flex-shrink: 0` (`position: relative` 유지)\n- [ ] 베이스 `.xterm-host` 및 비관전 셀렉터 변경 없음\n- [ ] 낮은 노트: 패널 바닥 정렬, 상단 잘림, 프롬프트·커서 보임\n- [ ] 높은 노트: 패널 바닥 정렬, 위쪽 여백\n- [ ] `applySpectatorFit()`·DOM 구조·WS 프로토콜 미변경\n- [ ] `npm run check` 신규 오류 없음\n\n**Verify:** `cd app && npm run check` → 신규 svelte-check 오류 0건. 이후 dev 서버에서 수동 검증.\n\n**Steps:**\n- Step 1: `.terminal-page.spectator .xterm-host`에 `display: flex; flex-direction: column; justify-content: flex-end` 추가 (overflow 규칙 유지).\n- Step 2: `.terminal-page.spectator .xterm-stage`에 `flex-shrink: 0` 추가 (position: relative 유지).\n- Step 3: `cd app && npm run check` — 신규 오류 0건.\n- Step 4: dev 서버 수동 검증 — 데스크탑 NoteWindow + 모바일 /note/[id] 양쪽.\n- Step 5: 커밋.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/TerminalView.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"host is flex column justify-content flex-end, overflow hidden kept\", \"stage has flex-shrink 0, position relative kept\", \"base and non-spectator selectors unchanged\", \"short note bottom-anchored top-clipped prompt visible\", \"tall note bottom-anchored space above\", \"applySpectatorFit/DOM/WS unchanged\", \"npm run check no new errors\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-22T19:45:00+09:00"
+}

@@ -44,7 +44,8 @@
 		createAutoWeekdayPlugin,
 		autoWeekdayPluginKey,
 	} from "./autoWeekday/autoWeekdayPlugin.js";
-	import { createLlmNotePlugin } from "./llmNote/llmNotePlugin.js";
+	import { createChatNotePlugin } from "./chatNote/chatNotePlugin.js";
+	import { createThinkingDisplayPlugin } from "./chatNote/thinkingDisplayPlugin.js";
 	import {
 		createTableBlockPlugin,
 		setCtrlHeld as setTableBlockCtrlHeld,
@@ -53,6 +54,7 @@
 		createHrSplitPlugin,
 		hrSplitPluginKey,
 	} from "./hrSplit/hrSplitPlugin.js";
+	import { createLabeledDividerPlugin } from "./labeledDivider/labeledDividerPlugin.js";
 	import {
 		loadActiveOrdinals,
 		saveActiveOrdinals,
@@ -82,10 +84,12 @@
 		toggleCheckboxAt,
 		insertChecklistBlock,
 	} from "./checklist/index.js";
-	import { TomboyFootnote } from "./footnote/index.js";
+	import { FootnoteMarker, TomboyFootnoteExtension } from "./footnote/index.js";
+	import { TomboyInlineCheckbox } from './inlineCheckbox';
 	import { TomboyBlockquote } from "./blockquote/index.js";
 	import { createFindPlugin, findPluginKey } from "./find/findPlugin.js";
 	import FindBar from "./find/FindBar.svelte";
+	import { unfocusedCaretPlugin } from "./unfocusedCaret/unfocusedCaretPlugin.js";
 	import type { JSONContent } from "@tiptap/core";
 	import EditorContextMenu from "./EditorContextMenu.svelte";
 	import {
@@ -219,8 +223,9 @@
 	// closures so prop changes take effect without re-creating extensions.
 	// Seeded to safe defaults; the $effect below syncs from the props.
 	let hrSplitEnabledFlag = true;
-	let hrSplitChangeFn: ((newCount: number, prevCount: number) => void) | undefined =
-		undefined;
+	let hrSplitChangeFn:
+		| ((newCount: number, prevCount: number) => void)
+		| undefined = undefined;
 
 	let editorElement: HTMLDivElement;
 	let editor: Editor | null = $state(null);
@@ -402,6 +407,12 @@
 					},
 				}),
 				Extension.create({
+					name: "tomboyUnfocusedCaret",
+					addProseMirrorPlugins() {
+						return [unfocusedCaretPlugin()];
+					},
+				}),
+				Extension.create({
 					name: "tomboyGeoMap",
 					addProseMirrorPlugins() {
 						return [createGeoMapPlugin()];
@@ -435,7 +446,13 @@
 				Extension.create({
 					name: "tomboyLlmNote",
 					addProseMirrorPlugins() {
-						return [createLlmNotePlugin()];
+						return [createChatNotePlugin()];
+					},
+				}),
+				Extension.create({
+					name: "tomboyThinkingDisplay",
+					addProseMirrorPlugins() {
+						return [createThinkingDisplayPlugin()];
 					},
 				}),
 				Extension.create({
@@ -455,20 +472,23 @@
 									// to the editor. Closure-read via the
 									// `lastAppliedGuid` tracker so re-keying on
 									// note swap is automatic.
-									saveActiveOrdinals(
-										lastAppliedGuid,
-										active,
-									);
-									saveColumnWidths(
-										lastAppliedGuid,
-										widths,
-									);
+									saveActiveOrdinals(lastAppliedGuid, active);
+									saveColumnWidths(lastAppliedGuid, widths);
 									if (active.size !== prev.size) {
-										hrSplitChangeFn?.(active.size, prev.size);
+										hrSplitChangeFn?.(
+											active.size,
+											prev.size,
+										);
 									}
 								},
 							}),
 						];
+					},
+				}),
+				Extension.create({
+					name: "tomboyLabeledDivider",
+					addProseMirrorPlugins() {
+						return [createLabeledDividerPlugin()];
 					},
 				}),
 				SlipNoteArrows,
@@ -487,7 +507,8 @@
 						toggleCheckboxAt(ed, liPos);
 					},
 				}),
-				TomboyFootnote.configure({
+				FootnoteMarker,
+				TomboyFootnoteExtension.configure({
 					onMissing: (label, kind) => {
 						pushToast(
 							kind === "reference"
@@ -497,6 +518,7 @@
 						);
 					},
 				}),
+				...TomboyInlineCheckbox,
 				TomboyBlockquote,
 				Extension.create({
 					name: "tomboyFind",
@@ -664,6 +686,13 @@
 									err,
 								);
 							}
+							return true;
+						}
+						// 'j' || 'J' — CapsLock 이 켜져 있으면 shift 없이도 event.key 가
+						// 대문자로 들어옴. 위 가드의 !event.shiftKey 는 CapsLock 을 차단하지 않음.
+						if (event.key === "j" || event.key === "J") {
+							event.preventDefault();
+							ed.chain().focus().insertFootnote().run();
 							return true;
 						}
 					}
@@ -1036,7 +1065,10 @@
 		if (!empty) {
 			const resolvedFrom = ed.state.doc.resolve(from);
 			const resolvedTo = ed.state.doc.resolve(to);
-			if (resolvedFrom.sameParent(resolvedTo) && resolvedFrom.parent.isTextblock) {
+			if (
+				resolvedFrom.sameParent(resolvedTo) &&
+				resolvedFrom.parent.isTextblock
+			) {
 				prefill = ed.state.doc.textBetween(from, to);
 			}
 		}
@@ -1164,11 +1196,37 @@
 	.tomboy-editor {
 		flex: 1;
 		min-height: 0;
-		overflow-y: auto;
-		-webkit-overflow-scrolling: touch;
+		/* body 가 scrollable 이라 내부 스크롤 없이 컨텐츠 만큼 늘어남.
+		   overflow-y:auto / -webkit-overflow-scrolling 제거. */
 		padding: 0.5rem;
 		font-size: 16px;
 		line-height: 1.4;
+	}
+
+	/* blur 상태에서도 caret / selection 위치를 시각적으로 유지. 모바일
+	   에서 키보드 dismiss 후 "어디를 편집/선택 중이었는지" 잃지 않도록.
+	   native caret blink 주기 (~1.06s) 모방. */
+	.tomboy-editor :global(.unfocused-caret) {
+		display: inline-block;
+		width: 1px;
+		height: 1.1em;
+		background: currentColor;
+		vertical-align: text-bottom;
+		margin-bottom: -0.05em;
+		pointer-events: none;
+		opacity: 0.7;
+		animation: tomboy-caret-blink 1.06s steps(2, jump-none) infinite;
+	}
+
+	/* 가짜 selection — iOS Safari 의 native selection 색에 가까운 옅은
+	   파랑. blink 없이 안정적으로 표시. */
+	.tomboy-editor :global(.unfocused-selection) {
+		background-color: rgba(100, 150, 255, 0.35);
+	}
+
+	@keyframes tomboy-caret-blink {
+		0%, 49% { opacity: 0.7; }
+		50%, 100% { opacity: 0; }
 	}
 
 	.tomboy-editor :global(.tiptap) {
@@ -1346,7 +1404,7 @@
 	}
 	.tomboy-editor :global(.tomboy-hr-marker::before) {
 		/* Default state: thin grey horizontal line centered in the row. */
-		content: '';
+		content: "";
 		position: absolute;
 		inset: 0;
 		background: linear-gradient(
@@ -1367,6 +1425,63 @@
 			#888 calc(50% + 1px),
 			transparent calc(50% + 1px)
 		);
+	}
+
+	/* Labeled divider — a divider line with embedded text. The literal
+	   markup (`-- label --` / `label ---`) lives in a plain paragraph;
+	   labeledDividerPlugin hides the dash runs and styles the label.
+	   `::before` paints the line (same gradient/colour as the hr-marker);
+	   the label sits above it with an opaque background that punches a
+	   gap through the line. */
+	.tomboy-editor :global(.tomboy-labeled-divider) {
+		position: relative;
+		/* Create a stacking context so the ::before line (z-index:0) and
+		   the label span (z-index:1) layer reliably within this paragraph. */
+		isolation: isolate;
+		/* Generous vertical margin — neighbouring paragraphs have margin:0,
+		   so this is the whole gap. Wider than the hr-marker's 0.6em so the
+		   divider breathes without the user adding blank lines by hand. */
+		margin: 1.5em 0;
+		min-height: 1.2em;
+		padding: 0.5em 0;
+	}
+	.tomboy-editor :global(.tomboy-labeled-divider--center) {
+		text-align: center;
+	}
+	.tomboy-editor :global(.tomboy-labeled-divider--left) {
+		text-align: left;
+		/* Left padding leaves a short stub of line before the label. */
+		padding-left: 1.6em;
+	}
+	.tomboy-editor :global(.tomboy-labeled-divider::before) {
+		content: "";
+		position: absolute;
+		inset: 0;
+		z-index: 0;
+		background: linear-gradient(
+			to bottom,
+			transparent calc(50% - 0.5px),
+			#b0b0b0 calc(50% - 0.5px),
+			#b0b0b0 calc(50% + 0.5px),
+			transparent calc(50% + 0.5px)
+		);
+		pointer-events: none;
+	}
+	/* Dash runs: collapsed to zero width so a long trailing run never
+	   shifts layout. Still caret-steppable. */
+	.tomboy-editor :global(.tomboy-labeled-divider-mark) {
+		font-size: 0;
+	}
+	/* The visible label. The opaque background must match the editor
+	   surface (white) so the label cuts a clean gap through the line
+	   drawn behind it. */
+	.tomboy-editor :global(.tomboy-labeled-divider-label) {
+		position: relative;
+		z-index: 1;
+		background: #fff;
+		padding: 0 0.5em;
+		color: #666;
+		font-size: 0.85em;
 	}
 
 	.tomboy-editor :global(.tiptap.tomboy-hr-split-active) {
@@ -1423,7 +1538,9 @@
 		user-select: none;
 	}
 	.tomboy-editor
-		:global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider::before) {
+		:global(
+			.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider::before
+		) {
 		background: linear-gradient(
 			to right,
 			transparent calc(50% - 0.5px),
@@ -1433,7 +1550,10 @@
 		);
 	}
 	.tomboy-editor.tomboy-todo-ctrl-hold
-		:global(.tiptap.tomboy-hr-split-active > .tomboy-hr-split-divider:hover::before) {
+		:global(
+			.tiptap.tomboy-hr-split-active
+				> .tomboy-hr-split-divider:hover::before
+		) {
 		background: linear-gradient(
 			to right,
 			transparent calc(50% - 1px),
@@ -1776,13 +1896,10 @@
 		background-size: contain;
 	}
 
-	/* 각주 [^N] — footnote 플러그인이 [^ 와 ] 를 .tomboy-fn-bracket 로
-	   폭 0 처리한다. 참조 라벨은 <sup class="tomboy-fn-ref"> 작은 위첨자,
-	   설명 마커 라벨은 <span class="tomboy-fn-def"> 일반 크기로 표시한다.
-	   마커는 .note XML 본문에 [^N] 텍스트로 그대로 남는다. */
-	.tomboy-editor :global(.tomboy-fn-bracket) {
-		font-size: 0;
-	}
+	/* 각주 [^N] — footnoteMarker atomic 노드의 NodeView (footnote/node.ts) 가
+	   참조는 <sup class="tomboy-fn-ref"> 작은 위첨자, 설명 마커는
+	   <span class="tomboy-fn-def"> 일반 크기로 렌더한다. 마커는 .note XML
+	   본문에 [^N] 텍스트로 그대로 직렬화된다. */
 	.tomboy-editor :global(.tomboy-fn-ref) {
 		font-size: 0.75em;
 		vertical-align: super;
@@ -1807,6 +1924,48 @@
 		to {
 			background-color: transparent;
 		}
+	}
+
+	/* 인라인 체크박스 — TomboyInlineCheckbox 노드의 NodeView 가
+	   .tomboy-inline-checkbox span 을 렌더한다. 14px 정사각형,
+	   모바일 hit-area 는 ::before 가 24×24 px 확보. */
+	.tomboy-editor :global(.tomboy-inline-checkbox) {
+		display: inline-block;
+		width: 14px;
+		height: 14px;
+		border: 1px solid var(--text-muted, #888);
+		border-radius: 2px;
+		vertical-align: -2px;
+		margin: 0 2px;
+		cursor: pointer;
+		background: transparent;
+		user-select: none;
+		position: relative;
+		box-sizing: border-box;
+		transition: background-color 0.12s ease, border-color 0.12s ease;
+	}
+
+	/* 모바일 hit-area — 보이지 않는 ::before 가 24x24 영역 확보. */
+	.tomboy-editor :global(.tomboy-inline-checkbox::before) {
+		content: '';
+		position: absolute;
+		top: -5px;
+		left: -5px;
+		right: -5px;
+		bottom: -5px;
+	}
+
+	.tomboy-editor :global(.tomboy-inline-checkbox[data-checked='true']) {
+		background-color: var(--accent, #4a76d4);
+		border-color: var(--accent, #4a76d4);
+		background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='3 8 7 12 13 4'/></svg>");
+		background-size: 12px 12px;
+		background-position: center;
+		background-repeat: no-repeat;
+	}
+
+	.tomboy-editor :global(.tomboy-inline-checkbox:hover) {
+		border-color: var(--accent, #4a76d4);
 	}
 
 	/* 인용 단락 — blockquote 플러그인이 '> ' 로 시작하는 최상위 단락에
@@ -1862,7 +2021,8 @@
 		cursor: pointer;
 		z-index: 1;
 	}
-	.tomboy-editor :global(.tomboy-table-block-widget:hover .tomboy-table-block-toggle) {
+	.tomboy-editor
+		:global(.tomboy-table-block-widget:hover .tomboy-table-block-toggle) {
 		opacity: 1;
 	}
 	.tomboy-editor :global(.tomboy-table-block-toggle input) {
@@ -1925,8 +2085,10 @@
 	/* While a cell is being edited, suppress the hover-only chrome (toggle
 	   checkbox) so it doesn't flicker over the cell the user is editing. */
 	.tomboy-editor
-		:global(.tomboy-table-block-widget.tomboy-table-block-editing
-			.tomboy-table-block-toggle) {
+		:global(
+			.tomboy-table-block-widget.tomboy-table-block-editing
+				.tomboy-table-block-toggle
+		) {
 		display: none;
 	}
 
@@ -1940,8 +2102,10 @@
 	   The toggle checkbox (hover-only in non-ctrl) is suppressed in
 	   favor of the structural-edit buttons. */
 	.tomboy-editor
-		:global(.tomboy-table-block-widget.tomboy-table-block-ctrl
-			.tomboy-table-block-toggle) {
+		:global(
+			.tomboy-table-block-widget.tomboy-table-block-ctrl
+				.tomboy-table-block-toggle
+		) {
 		display: none;
 	}
 	.tomboy-editor :global(.tomboy-table-block-widget.tomboy-table-block-ctrl) {
@@ -1953,20 +2117,26 @@
 		max-width: 100%;
 	}
 	.tomboy-editor
-		:global(.tomboy-table-block-widget.tomboy-table-block-ctrl
-			> .tomboy-table-block-table) {
+		:global(
+			.tomboy-table-block-widget.tomboy-table-block-ctrl
+				> .tomboy-table-block-table
+		) {
 		grid-column: 1;
 		grid-row: 1;
 	}
 	.tomboy-editor
-		:global(.tomboy-table-block-widget.tomboy-table-block-ctrl
-			> .tomboy-table-block-add-col) {
+		:global(
+			.tomboy-table-block-widget.tomboy-table-block-ctrl
+				> .tomboy-table-block-add-col
+		) {
 		grid-column: 2;
 		grid-row: 1;
 	}
 	.tomboy-editor
-		:global(.tomboy-table-block-widget.tomboy-table-block-ctrl
-			> .tomboy-table-block-add-row) {
+		:global(
+			.tomboy-table-block-widget.tomboy-table-block-ctrl
+				> .tomboy-table-block-add-row
+		) {
 		grid-column: 1;
 		grid-row: 2;
 	}
@@ -2051,5 +2221,48 @@
 	.tomboy-editor :global(.tomboy-table-block-add-col:hover),
 	.tomboy-editor :global(.tomboy-table-block-add-row:hover) {
 		background: #1b5e20;
+	}
+
+	/* Transient thinking display (PM widget decoration, Task 3/4).
+	   Widget DOM is created by the plugin outside Svelte's scoped CSS
+	   reach, so every selector below MUST be :global(...). The widget is
+	   removed by clearStep before the next Q: paragraph is appended, so
+	   it never persists in xmlContent — it's purely a streaming UI hint. */
+	:global(.thinking-display) {
+		margin: 0.5rem 0;
+		padding: 0.4rem 0.6rem 0.4rem 0.8rem;
+		border-left: 3px solid var(--border-color, #cbd5e1);
+		background: var(--bg-subtle, rgba(127, 127, 127, 0.06));
+		border-radius: 0 0.25rem 0.25rem 0;
+		font-size: clamp(0.8rem, 1.5vw, 0.95rem);
+		opacity: 0.78;
+		user-select: none;
+	}
+	:global(.thinking-display[data-kind="tool_use"]) {
+		border-left-color: #6b7c93;
+	}
+	:global(.thinking-display[data-kind="tool_result"]) {
+		border-left-color: #4ade80;
+	}
+	:global(.thinking-display[data-kind="response_start"]) {
+		border-left-color: #60a5fa;
+	}
+	:global(.thinking-display-label) {
+		display: block;
+		font-weight: 600;
+		font-size: 0.85em;
+		margin-bottom: 0.2rem;
+		color: var(--text-muted, #64748b);
+	}
+	:global(.thinking-display-body) {
+		margin: 0;
+		padding: 0;
+		border: none;
+		white-space: pre-wrap;
+		max-height: 12em;
+		overflow: hidden;
+		-webkit-mask-image: linear-gradient(to bottom, black 65%, transparent 100%);
+		mask-image: linear-gradient(to bottom, black 65%, transparent 100%);
+		font-family: inherit;
 	}
 </style>
