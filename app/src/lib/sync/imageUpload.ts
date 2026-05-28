@@ -18,6 +18,7 @@
 
 import { getClient, getImagesPath } from './dropboxClient.js';
 import { prime as cachePrime, getBlob as cacheGetBlob } from '../imageCache/imageCache.js';
+import { dropboxFetcher } from '../imageCache/fetchers/dropboxFetcher.js';
 
 /**
  * Convert a Dropbox shared link to a direct, raw-bytes URL suitable for
@@ -167,15 +168,7 @@ export async function downloadImageFromDropboxUrl(url: string): Promise<Blob> {
 	const cached = await cacheGetBlob(url);
 	if (cached) return cached;
 
-	const dbx = getClient() as DropboxSdkClient | null;
-	if (!dbx) {
-		throw new Error('Dropbox에 연결되지 않았습니다');
-	}
-	const res = await dbx.sharingGetSharedLinkFile({ url });
-	const blob = res.result.fileBlob;
-	if (!blob) {
-		throw new Error('Dropbox 이미지 응답이 비어 있습니다');
-	}
+	const blob = await dropboxFetcher.fetch(url);
 	cachePrime(url, blob, blob.type || 'application/octet-stream').catch((e) => {
 		console.warn('[imageCache] downloadImageFromDropboxUrl prime 실패:', e);
 	});

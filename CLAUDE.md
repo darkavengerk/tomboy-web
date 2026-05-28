@@ -375,6 +375,49 @@ Quick map: routes in `app/src/routes/admin/`, shared cache in
 `lib/sync/{adminClient,dropboxClient}.ts`. Mobile-first / `clamp(...)` sizing
 invariant does **not** apply on these pages.
 
+## 이미지 캐시 (IDB + LRU + fetcher chain)
+
+See the **`tomboy-imagecache`** skill. Persistent IndexedDB cache of image
+blobs so just-uploaded images never re-download, opened notes survive
+reloads, and OCR re-runs hit cache. Lives in `app/src/lib/imageCache/`
+(store + pool + public API + fetchers/).
+
+Quick map: public API `lookupOrFetch` / `prime` / `getBlob` / `clearAll` /
+`getStats` / `setQuota` (default quota 500MB). Integration points:
+`imageUpload.ts` (upload-prime + OCR download wrap),
+`imagePreviewPlugin.ts` (sync pool peek + async lookup),
+`/settings` + `/admin/tools` UI. DB v3→v4 (new `imageCache` store +
+`by-lastAccess` index).
+
+Cross-cutting invariants worth caching:
+
+- **`www.dropbox.com` blocks `fetch()`** (no CORS headers) but works as
+  `<img src>`. The **`ImageFetcher` registry** lets each source plug a
+  custom fetch strategy — `dropboxFetcher` routes via SDK
+  `sharingGetSharedLinkFile` (CORS-friendly). Plain `fetch()` is the
+  fallback for any URL that no registered fetcher matches.
+- **Cache key = exact post-`toDirectImageUrl` URL** (`?raw=1` byte-identical
+  through upload → note body → regex capture → lookup). **Don't normalize
+  the key anywhere downstream** — even query param reordering silently
+  breaks cache.
+- **`prime` is fire-and-forget with `.catch`** — cache failure never
+  blocks upload or download.
+- **Cross-device prefetch is intentionally NOT implemented**. New images
+  fill lazily on first render. Don't add background fill loops without
+  spec discussion.
+- **Single image > quota → silent skip**, no throw.
+- **DB-pulled notes don't auto-`prime`** — only direct user paste does.
+  Sync'd notes' images fill on first open via `lookupOrFetch` miss.
+
+Add a new source (e.g. Vercel Blob) by creating `fetchers/<name>Fetcher.ts`
+and registering it in `fetchers/install.ts`. `installImageFetchers()` is
+called once in `+layout.svelte` `onMount`; idempotent.
+
+**Don't** reintroduce plain `fetch()` for Dropbox URLs ("CORS might be
+fixed someday"), **don't** add Service Worker fetch intercept (rejected
+during design — SW reserved for push/PWA), **don't** add HEAD request to
+verify stale URLs (negates cache value).
+
 ## 파이어베이스 실시간 노트 동기화
 
 See the **`tomboy-notesync`** skill. Second sync channel alongside
