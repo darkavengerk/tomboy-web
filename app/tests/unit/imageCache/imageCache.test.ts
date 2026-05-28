@@ -12,6 +12,10 @@ import {
 	__resetForTest as resetCache
 } from '$lib/imageCache/imageCache.js';
 import { __resetForTest as resetPool } from '$lib/imageCache/objectUrlPool.js';
+import {
+	registerFetcher,
+	__resetForTest as resetFetchers
+} from '$lib/imageCache/fetchers/registry.js';
 
 function fakeBlob(bytes: number, type = 'image/png'): Blob {
 	return new Blob([new Uint8Array(bytes)], { type });
@@ -24,6 +28,7 @@ beforeEach(async () => {
 	_resetDBForTest();
 	resetCache();
 	resetPool();
+	resetFetchers();
 	vi.spyOn(URL, 'createObjectURL').mockImplementation(
 		(b: Blob | MediaSource) => `blob:${(b as Blob).size}-${Math.random()}`
 	);
@@ -187,5 +192,60 @@ describe('imageCache', () => {
 
 		// The old ObjectURL for blobA must have been revoked during the overwrite
 		expect(URL.revokeObjectURL).toHaveBeenCalled();
+	});
+
+	it('lookupOrFetch miss → registered fetcher used over plain fetch', async () => {
+		const blob = fakeBlob(123, 'image/jpeg');
+		const fetcherFetch = vi.fn(async () => blob);
+		registerFetcher({
+			name: 'test-host',
+			matches: (u) => u.startsWith('https://cdn.test/'),
+			fetch: fetcherFetch
+		});
+
+		const r = await lookupOrFetch('https://cdn.test/a.jpg');
+		expect(r.fromCache).toBe(false);
+		expect(r.src.startsWith('blob:')).toBe(true);
+		expect(fetcherFetch).toHaveBeenCalledWith('https://cdn.test/a.jpg');
+		expect(fetchMock).not.toHaveBeenCalled();
+
+		// Second call hits cache
+		const r2 = await lookupOrFetch('https://cdn.test/a.jpg');
+		expect(r2.fromCache).toBe(true);
+		expect(fetcherFetch).toHaveBeenCalledTimes(1);
+	});
+
+	it('fetcher throws → fallback to original URL, no cache entry', async () => {
+		registerFetcher({
+			name: 'failing',
+			matches: () => true,
+			fetch: async () => {
+				throw new Error('cors blocked');
+			}
+		});
+
+		const r = await lookupOrFetch('https://x/y.png');
+		expect(r.fromCache).toBe(false);
+		expect(r.src).toBe('https://x/y.png');
+		expect(await getBlob('https://x/y.png')).toBeNull();
+	});
+
+	it('no matching fetcher → plain fetch used as fallback', async () => {
+		registerFetcher({
+			name: 'narrow',
+			matches: (u) => u.includes('dropbox.com'),
+			fetch: async () => fakeBlob(50)
+		});
+		const blob = fakeBlob(80);
+		fetchMock.mockResolvedValueOnce({
+			ok: true,
+			blob: () => Promise.resolve(blob),
+			headers: new Map([['content-type', 'image/png']])
+		});
+
+		const r = await lookupOrFetch('https://cdn.example.com/x.png');
+		expect(r.fromCache).toBe(false);
+		expect(r.src.startsWith('blob:')).toBe(true);
+		expect(fetchMock).toHaveBeenCalledOnce();
 	});
 });

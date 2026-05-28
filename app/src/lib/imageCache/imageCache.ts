@@ -15,6 +15,7 @@ import {
 	type ImageCacheRecord
 } from './imageCacheStore.js';
 import * as pool from './objectUrlPool.js';
+import { findFetcher } from './fetchers/registry.js';
 import {
 	getImageCacheTotalBytes,
 	setImageCacheTotalBytes,
@@ -169,15 +170,23 @@ export async function lookupOrFetch(url: string): Promise<LookupResult> {
 			return { src: pool.getOrCreate(url, rec.blob), fromCache: true };
 		}
 
-		// Cache miss — fetch from network
+		// Cache miss — try a registered fetcher first (Dropbox SDK route etc.),
+		// fall back to plain fetch for hosts that allow CORS.
 		try {
-			const res = await fetch(url);
-			if (!res.ok) return { src: url, fromCache: false };
-			const blob = await res.blob();
-			const contentType =
-				res.headers.get('content-type') ?? blob.type ?? 'application/octet-stream';
+			const fetcher = findFetcher(url);
+			let blob: Blob;
+			let contentType: string;
+			if (fetcher) {
+				blob = await fetcher.fetch(url);
+				contentType = blob.type || 'application/octet-stream';
+			} else {
+				const res = await fetch(url);
+				if (!res.ok) return { src: url, fromCache: false };
+				blob = await res.blob();
+				contentType =
+					res.headers.get('content-type') ?? blob.type ?? 'application/octet-stream';
+			}
 			await prime(url, blob, contentType).catch(() => {});
-			// After prime, the pool has a registered ObjectURL; use it if available.
 			const objUrl = pool.peek(url);
 			return { src: objUrl ?? pool.getOrCreate(url, blob), fromCache: false };
 		} catch {
