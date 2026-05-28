@@ -1037,6 +1037,27 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 			</section>
 
 			<section class="section">
+				<h2>이미지 서버 토큰</h2>
+				<p class="info-text">
+					이미지 붙여넣기 시 Vercel Blob에 업로드할 때 사용되는 Bearer 토큰입니다.
+					서버의 <code>IMAGE_STORAGE_TOKEN</code> 환경변수와 동일하게 설정하세요.
+					기기마다 한 번씩 입력이 필요합니다.
+				</p>
+				<div class="path-row">
+					<input
+						class="path-input"
+						type="password"
+						bind:value={imageStorageToken}
+						placeholder="••••••••"
+						onkeydown={(e) => e.key === 'Enter' && saveImageStorageToken()}
+					/>
+					<button class="btn-save" onclick={saveImageStorageToken}>
+						{imageStorageTokenSaved ? '저장됨' : '저장'}
+					</button>
+				</div>
+			</section>
+
+			<section class="section">
 				<h2>이미지 캐시</h2>
 				<p class="info-text">
 					노트에 붙여넣은 이미지를 이 기기에 저장해서 다시 열 때 네트워크 요청 없이 즉시
@@ -1328,25 +1349,6 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 				</ul>
 			</section>
 
-			<section class="section">
-				<h2>이미지 서버 토큰</h2>
-				<p class="info-text">
-					Vercel Blob에 이미지를 업로드할 때 사용되는 Bearer 토큰입니다.
-					서버의 <code>IMAGE_STORAGE_TOKEN</code> 환경변수와 동일하게 설정하세요.
-				</p>
-				<div class="path-row">
-					<input
-						class="path-input"
-						type="password"
-						bind:value={imageStorageToken}
-						placeholder="••••••••"
-						onkeydown={(e) => e.key === 'Enter' && saveImageStorageToken()}
-					/>
-					<button class="btn-save" onclick={saveImageStorageToken}>
-						{imageStorageTokenSaved ? '저장됨' : '저장'}
-					</button>
-				</div>
-			</section>
 		{:else if activeTab === 'notify'}
 			<!-- ── 알림 탭 ─────────────────────────────────────────────────── -->
 			<section class="section">

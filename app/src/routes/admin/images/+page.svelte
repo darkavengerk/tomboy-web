@@ -7,11 +7,34 @@
   } from '$lib/sync/imageInventory.js';
   import { promoteImageToDropbox } from '$lib/sync/imagePromotion.js';
   import { deleteTempImage } from '$lib/sync/tempImageUpload.js';
+  import { lookupOrFetch } from '$lib/imageCache/imageCache.js';
   import { pushToast, dismissToast } from '$lib/stores/toast.js';
 
   let inventory = $state<ImageInventory | null>(null);
   let loading = $state(false);
   let busyUrl = $state<string | null>(null);
+
+  // url → resolved src (ObjectURL on cache hit/successful fetch, else original
+  // URL fallback). Dropbox URLs need this because plain `<img src>` can fail
+  // on some referrer/redirect combinations; lookupOrFetch routes through the
+  // Dropbox SDK fetcher (CORS-safe) like the editor's imagePreviewPlugin.
+  let thumbs = $state<Record<string, string>>({});
+
+  async function resolveThumb(url: string): Promise<void> {
+    if (thumbs[url]) return;
+    try {
+      const { src } = await lookupOrFetch(url);
+      thumbs[url] = src;
+    } catch {
+      thumbs[url] = url;
+    }
+  }
+
+  $effect(() => {
+    for (const item of inventory?.items ?? []) {
+      void resolveThumb(item.url);
+    }
+  });
 
   async function refresh() {
     loading = true;
@@ -105,8 +128,8 @@
     {#each inventory?.items ?? [] as item (item.url)}
       <article class="card" class:busy={busyUrl === item.url}>
         <div class="thumb">
-          <!-- decorative thumbnail -->
-          <img src={item.url} alt="" loading="lazy" />
+          <!-- decorative thumbnail; src resolved via image cache (Dropbox SDK route etc.) -->
+          <img src={thumbs[item.url] ?? item.url} alt="" loading="lazy" />
         </div>
         <div class="meta">
           <div class="badges">
