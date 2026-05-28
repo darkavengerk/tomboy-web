@@ -15,8 +15,6 @@
 const forwardLinks = new Map<string, Set<string>>();
 const backwardLinks = new Map<string, Set<string>>();
 
-const EMPTY: ReadonlySet<string> = new Set();
-
 const LINK_RE = /<link:(?:internal|broken)>([^<]*)<\/link:(?:internal|broken)>/g;
 
 function xmlUnescape(s: string): string {
@@ -32,25 +30,27 @@ export function extractLinkTargets(xml: string): Set<string> {
 }
 
 export function updateNote(guid: string, xml: string, deleted: boolean): void {
-  const oldTargets = forwardLinks.get(guid) ?? EMPTY;
-  const newTargets = deleted ? EMPTY : extractLinkTargets(xml);
+	const oldTargets = forwardLinks.get(guid);
+	const newTargets = deleted ? new Set<string>() : extractLinkTargets(xml);
 
-  for (const t of oldTargets) {
-    if (newTargets.has(t)) continue;
-    const set = backwardLinks.get(t);
-    if (!set) continue;
-    set.delete(guid);
-    if (set.size === 0) backwardLinks.delete(t);
-  }
-  for (const t of newTargets) {
-    if (oldTargets.has(t)) continue;
-    let set = backwardLinks.get(t);
-    if (!set) backwardLinks.set(t, (set = new Set()));
-    set.add(guid);
-  }
+	if (oldTargets) {
+		for (const t of oldTargets) {
+			if (newTargets.has(t)) continue;
+			const set = backwardLinks.get(t);
+			if (!set) continue;
+			set.delete(guid);
+			if (set.size === 0) backwardLinks.delete(t);
+		}
+	}
+	for (const t of newTargets) {
+		if (oldTargets?.has(t)) continue;
+		let set = backwardLinks.get(t);
+		if (!set) backwardLinks.set(t, (set = new Set()));
+		set.add(guid);
+	}
 
-  if (newTargets.size === 0) forwardLinks.delete(guid);
-  else forwardLinks.set(guid, newTargets as Set<string>);
+	if (newTargets.size === 0) forwardLinks.delete(guid);
+	else forwardLinks.set(guid, newTargets);
 }
 
 export function getSourcesFor(title: string): ReadonlySet<string> | undefined {
