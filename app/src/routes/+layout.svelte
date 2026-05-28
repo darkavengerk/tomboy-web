@@ -16,6 +16,7 @@
 	} from '$lib/schedule/flushScheduler.js';
 	import { subscribeForegroundMessages } from '$lib/schedule/notification.js';
 	import { installRealNoteSync } from '$lib/sync/firebase/install.js';
+	import { installImageFetchers } from '$lib/imageCache/fetchers/install.js';
 	import { pushToast } from '$lib/stores/toast.js';
 	import { getAllNotes } from '$lib/storage/noteStore.js';
 	import { favoriteStore } from '$lib/storage/favoriteStore.svelte.js';
@@ -135,6 +136,10 @@
 
 		// 즐겨찾기 — 로컬 전용 set 을 appSettings 에서 복원.
 		void favoriteStore.load();
+
+		// 이미지 캐시 fetcher 등록 — Dropbox SDK 우회로 등이 lookupOrFetch
+		// 미스 경로에서 활성화됨. idempotent.
+		installImageFetchers();
 
 		// 일정 알림: 온라인 복귀 시 미발신 diff 자동 flush + 시작 시 한 번 시도.
 		installOnlineFlushListener();
