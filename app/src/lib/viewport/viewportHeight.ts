@@ -1,30 +1,29 @@
-// Expose the on-screen keyboard height as `--keyboard-inset` on <html>, so
-// the app shell's `bottom` rises by that amount and the toolbar always sits
-// right above the keyboard.
+// Expose two CSS variables on <html> so the app shell stays aligned with
+// the visible (visual) viewport while the on-screen keyboard is up:
 //
-// Sizing model: the shell uses `position: fixed; top: 0; bottom:
-// var(--keyboard-inset)` instead of `height: 100dvh`. dvh has been
-// observed to stay stale on iOS Safari while the keyboard is up, which
-// left a gap below the toolbar even when the inset was computed
-// correctly. `top`/`bottom` against the layout viewport sidesteps the
-// dvh code path entirely.
+//   --keyboard-inset : keyboard height (innerHeight − vv.height)
+//   --vv-offset      : how far iOS has panned the visual viewport down
+//                      inside the layout viewport (vv.offsetTop)
 //
-//   - iOS Safari ignores `interactive-widget=resizes-content` and
-//     overlays the keyboard: `innerHeight` (layout viewport) stays full,
-//     `visualViewport.height` shrinks to the area above the keyboard.
-//     The difference is the keyboard height; the shell's `bottom` rises
-//     by that much.
-//   - Browsers that honor the meta resize the layout viewport themselves:
-//     `innerHeight` and `vv.height` shrink together, the difference
-//     stays near 0, and `bottom: 0` already lines up with the new
-//     layout-viewport bottom.
+// The shell uses `top: var(--vv-offset)` and
+// `bottom: calc(var(--keyboard-inset) - var(--vv-offset))` so its box
+// tracks the visual viewport exactly. Without `--vv-offset`, iOS's
+// automatic scroll-to-focus moved the visual viewport but the shell
+// stayed pinned to the layout viewport, leaving a strip of body
+// background visible below the toolbar (= the original bug).
 //
-// Why not pin the shell to `visualViewport.height` directly: it left a
-// blank strip whenever the Safari URL bar was visible and fought iOS's
-// scroll-to-focus (jitter inside an active editor, because every
-// `visualViewport.scroll` event repositioned the shell). Sizing against
-// the layout viewport with `top`/`bottom` avoids both — the layout
-// viewport doesn't move when iOS pans the visual viewport.
+//   - iOS Safari ignores `interactive-widget=resizes-content`, overlays
+//     the keyboard, and pans the visual viewport. Both variables are
+//     non-zero here.
+//   - Browsers that honor the meta resize the layout viewport and don't
+//     pan the visual viewport. Both variables stay at 0.
+//
+// Why we now listen to `scroll` even though an earlier note here warned
+// against it: the earlier attempt pinned the shell's `height` to
+// `vv.height` AND chased `vv.offsetTop` simultaneously, which moved the
+// cursor out of the visual viewport and made iOS pan again, looping.
+// Here only `top` chases `offsetTop`; height is derived from inset, so
+// the cursor stays inside the shell and iOS settles after one pan.
 
 export function bindViewportHeight(): () => void {
 	if (typeof window === 'undefined') return () => {};
@@ -44,16 +43,17 @@ export function bindViewportHeight(): () => void {
 		// virtual keyboard is always well above ~120px. Filter the noise
 		// so the shell doesn't twitch while the browser chrome settles.
 		root.style.setProperty('--keyboard-inset', inset > 80 ? `${inset}px` : '0px');
+		root.style.setProperty('--vv-offset', `${vv.offsetTop}px`);
 	};
 
 	update();
-	// Only `resize` — `scroll` fires continuously while iOS pans the visual
-	// viewport to keep the focused input visible, and reacting to it made
-	// the shell fight that adjustment (visible as rapid jitter).
 	vv.addEventListener('resize', update);
+	vv.addEventListener('scroll', update);
 
 	return () => {
 		vv.removeEventListener('resize', update);
+		vv.removeEventListener('scroll', update);
 		root.style.removeProperty('--keyboard-inset');
+		root.style.removeProperty('--vv-offset');
 	};
 }

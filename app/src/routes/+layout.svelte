@@ -276,20 +276,19 @@
 
 <style>
 	.app-shell {
-		/* `top: 0; bottom: var(--keyboard-inset)` instead of
-		   `height: 100dvh + padding-bottom`. dvh stays stale on iOS
-		   Safari while the keyboard is up, which left a gap below the
-		   toolbar even when the JS inset was correct. Sizing against
-		   the layout viewport via top/bottom sidesteps dvh entirely;
-		   the keyboard inset lifts the bottom edge so the toolbar lands
-		   right above the keyboard. See lib/viewport/viewportHeight.ts
-		   for the rationale — pinning to `visualViewport.height` instead
-		   fought iOS's scroll-to-focus (jitter). */
+		/* Track the visual viewport directly via `top`/`bottom`:
+		     top    = vv.offsetTop          (follow iOS's pan)
+		     bottom = inset − vv.offsetTop  (so height = layout − inset)
+		   Pinning `height: 100dvh` instead leaked dvh-staleness on iOS
+		   and left strips of body background below the toolbar when
+		   iOS panned the visual viewport. See lib/viewport/viewportHeight.ts
+		   for why we now chase `offsetTop` even though an earlier note
+		   there warned against it. */
 		position: fixed;
-		top: 0;
+		top: var(--vv-offset, 0px);
 		left: 0;
 		right: 0;
-		bottom: var(--keyboard-inset, 0px);
+		bottom: calc(var(--keyboard-inset, 0px) - var(--vv-offset, 0px));
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
@@ -300,10 +299,10 @@
 	   height:100%) sizes correctly. */
 	.chromeless {
 		position: fixed;
-		top: 0;
+		top: var(--vv-offset, 0px);
 		left: 0;
 		right: 0;
-		bottom: var(--keyboard-inset, 0px);
+		bottom: calc(var(--keyboard-inset, 0px) - var(--vv-offset, 0px));
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
