@@ -35,6 +35,7 @@ Most subsystems have dedicated skills — invoke via the `Skill` tool when worki
 |---|---|---|
 | `tomboy-admin` | `/admin` Dropbox sync operator UI | `app/src/routes/admin/`, `lib/sync/adminClient.ts` |
 | `tomboy-autolink` | Auto internal-link detection in editor | `lib/editor/autoLink/` |
+| `tomboy-backlinkindex` | In-memory backlink index + rename sweep + flushSave race fix | `lib/core/backlinkIndex.ts`, `lib/core/noteManager.ts` |
 | `tomboy-graph` | `/desktop/graph` 3D note graph | `lib/graph/`, `routes/desktop/graph/` |
 | `tomboy-sleepnote` | Slip-note linked-list + validator | `lib/sleepnote/validator.ts`, `/admin/sleepnote` |
 | `tomboy-schedule` | Schedule-note push notifications | `lib/schedule/`, `lib/editor/autoWeekday/`, `functions/src/` |
@@ -116,7 +117,7 @@ The trimmed title is the link identity. Every data-entry point funnels through o
 Rename cascade (when editor save changes a title):
 
 1. Persist renamed note.
-2. `rewriteBacklinksForRename` literal-replaces `<link:internal|broken>OLD</link:…>` across every non-deleted note. Each rewritten note becomes `localDirty=true`.
+2. `rewriteBacklinksForRename` looks up affected notes via the in-memory backlink index (O(M)) and rewrites `<link:internal|broken>OLD</link:…>` → `<link:…>NEW</link:…>` in parallel via `Promise.allSettled`. Each rewritten note becomes `localDirty=true`. See `tomboy-backlinkindex` skill.
 3. `noteReloadBus.emitNoteReload(affected)` — open editors subscribed via `subscribeNoteReload` drop pending debounced doc and reload from IDB. Without this, the stale in-memory doc would clobber the rewrite on its next save.
 
 All title→guid lookups (autolink index, `buildGraph`, `findNoteByTitle`, `mustGetByTitle`) are exact-case trimmed. **Exception:** `lib/sleepnote/validator.ts` is deliberately case-insensitive (reporting tool, not a mutation path).
