@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import { onMount } from 'svelte';
+	import { version } from '$app/environment';
 	import { afterNavigate, goto } from '$app/navigation';
 	import Toast from '$lib/components/Toast.svelte';
 	import ImageViewerModal from '$lib/components/ImageViewerModal.svelte';
@@ -36,6 +37,9 @@
 	let showInstallBanner = $state(false);
 	let canGoBack = $state(false);
 	let canGoForward = $state(false);
+
+	// 임시 디버그 오버레이 — 모바일 키보드 공백 버그 진단용. 다음 commit 에서 제거 예정.
+	let dv = $state({ iH: 0, vvH: 0, vvT: 0, inset: '0', shellH: 0, docH: 0 });
 
 	interface BeforeInstallPromptEvent extends Event {
 		prompt(): Promise<void>;
@@ -133,6 +137,23 @@
 
 		const unbindViewport = bindViewportHeight();
 
+		// 디버그 오버레이 폴링 (500ms) — 키보드 떴을 때의 측정값 확인용.
+		const updateDv = () => {
+			const root = document.documentElement;
+			const vv = window.visualViewport;
+			const shell = document.querySelector('.app-shell, .chromeless') as HTMLElement | null;
+			dv = {
+				iH: window.innerHeight,
+				vvH: Math.round(vv?.height ?? -1),
+				vvT: Math.round(vv?.offsetTop ?? -1),
+				inset: root.style.getPropertyValue('--keyboard-inset') || '0',
+				shellH: shell?.clientHeight ?? 0,
+				docH: document.documentElement.clientHeight
+			};
+		};
+		updateDv();
+		const dvTimer = setInterval(updateDv, 500);
+
 		// 즐겨찾기 — 로컬 전용 set 을 appSettings 에서 복원.
 		void favoriteStore.load();
 
@@ -183,6 +204,7 @@
 			window.removeEventListener('keydown', swallowAlt);
 			window.removeEventListener('keyup', swallowAlt);
 			unbindViewport();
+			clearInterval(dvTimer);
 			unsubFcm?.();
 		};
 	});
@@ -243,6 +265,14 @@
 	<Toast />
 	<ImageViewerModal />
 {/if}
+
+<!-- 임시 디버그 오버레이 — 모바일 키보드 공백 진단용. 다음 commit 에서 제거. -->
+<div class="dv-overlay">
+	<div>v:{version.slice(0, 12)}</div>
+	<div>iH:{dv.iH} docH:{dv.docH}</div>
+	<div>vvH:{dv.vvH} vvT:{dv.vvT}</div>
+	<div>inset:{dv.inset} shell:{dv.shellH}</div>
+</div>
 
 <style>
 	.app-shell {
@@ -345,5 +375,20 @@
 		font-size: 1rem;
 		padding: 4px;
 		opacity: 0.8;
+	}
+
+	/* 임시 — 모바일 키보드 공백 진단용. 다음 commit 에서 제거. */
+	.dv-overlay {
+		position: fixed;
+		top: var(--safe-area-top);
+		left: 0;
+		z-index: 99999;
+		background: rgba(0, 0, 0, 0.75);
+		color: #5f5;
+		font: 10px/1.25 ui-monospace, monospace;
+		padding: 4px 6px;
+		pointer-events: none;
+		border-radius: 0 0 4px 0;
+		white-space: nowrap;
 	}
 </style>
