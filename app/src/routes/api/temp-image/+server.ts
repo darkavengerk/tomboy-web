@@ -18,39 +18,47 @@ const TOKEN_SCOPE = 'temp-image';
  *
  * DELETE continues to use the standard Authorization: Bearer header path.
  */
-export async function POST({ request }: RequestEvent): Promise<Response> {
-  const body = (await request.json()) as HandleUploadBody & { clientPayload?: string };
+class AuthError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AuthError';
+  }
+}
 
-  // The @vercel/blob/client.upload() helper can't customise the
-  // Authorization header, so the token travels in body.clientPayload
-  // instead. DELETE/list (header-based) still use requireBearerOrResponse.
+export async function POST({ request }: RequestEvent): Promise<Response> {
   const expected = env.IMAGE_STORAGE_TOKEN ?? '';
   if (!expected) {
     return new Response('IMAGE_STORAGE_TOKEN not configured (500)', { status: 500 });
   }
-  const cp = body.clientPayload;
-  if (!cp) {
-    return new Response('Missing clientPayload (401)', { status: 401 });
-  }
-  let token: string;
-  try {
-    token = (JSON.parse(cp) as { token?: string }).token ?? '';
-  } catch {
-    return new Response('Malformed clientPayload (401)', { status: 401 });
-  }
-  if (token !== expected) {
-    return new Response('Unauthorized (401)', { status: 401 });
-  }
+
+  const body = (await request.json()) as HandleUploadBody;
 
   try {
     const jsonResponse = await handleUpload({
       body,
       request,
-      onBeforeGenerateToken: async () => ({
-        allowedContentTypes: ALLOWED_CONTENT_TYPES,
-        addRandomSuffix: false,
-        tokenPayload: JSON.stringify({ scope: TOKEN_SCOPE })
-      }),
+      // The SDK passes our `clientPayload` (from `client.upload()`) to this
+      // callback as the second arg. Top-level `body.clientPayload` is empty
+      // — the SDK nests it under `body.payload.clientPayload`. handleUpload
+      // routes here only for `blob.generate-client-token`; the signed
+      // `blob.upload-completed` callback path verifies via BLOB_READ_WRITE_TOKEN
+      // inside the SDK and doesn't need our bearer.
+      onBeforeGenerateToken: async (_pathname, clientPayload) => {
+        let token = '';
+        try {
+          token = (JSON.parse(clientPayload ?? '') as { token?: string }).token ?? '';
+        } catch {
+          throw new AuthError('Malformed clientPayload');
+        }
+        if (token !== expected) {
+          throw new AuthError('Unauthorized');
+        }
+        return {
+          allowedContentTypes: ALLOWED_CONTENT_TYPES,
+          addRandomSuffix: false,
+          tokenPayload: JSON.stringify({ scope: TOKEN_SCOPE })
+        };
+      },
       onUploadCompleted: async () => {
         // No side-effect — note already holds the URL by the time upload completes.
       }
@@ -60,6 +68,9 @@ export async function POST({ request }: RequestEvent): Promise<Response> {
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (err) {
+    if (err instanceof AuthError) {
+      return new Response(`${err.message} (401)`, { status: 401 });
+    }
     const msg = err instanceof Error ? err.message : String(err);
     return new Response(`Blob token mint failed: ${msg}`, { status: 502 });
   }
