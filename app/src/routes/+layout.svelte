@@ -246,21 +246,20 @@
 
 <style>
 	.app-shell {
-		/* Fill the dynamic viewport; when the on-screen keyboard is open,
-		   `--keyboard-inset` (set by bindViewportHeight) shrinks the
-		   content area from the bottom so the toolbar lands right above
-		   the keyboard. See lib/viewport/viewportHeight.ts for the
-		   rationale — pinning to `visualViewport.height` instead caused
-		   blank space when the Safari URL bar was visible and visibly
-		   fought iOS's scroll-to-focus. */
+		/* `top: 0; bottom: var(--keyboard-inset)` instead of
+		   `height: 100dvh + padding-bottom`. dvh stays stale on iOS
+		   Safari while the keyboard is up, which left a gap below the
+		   toolbar even when the JS inset was correct. Sizing against
+		   the layout viewport via top/bottom sidesteps dvh entirely;
+		   the keyboard inset lifts the bottom edge so the toolbar lands
+		   right above the keyboard. See lib/viewport/viewportHeight.ts
+		   for the rationale — pinning to `visualViewport.height` instead
+		   fought iOS's scroll-to-focus (jitter). */
 		position: fixed;
 		top: 0;
 		left: 0;
 		right: 0;
-		height: 100vh;
-		height: 100dvh;
-		padding-bottom: var(--keyboard-inset, 0px);
-		box-sizing: border-box;
+		bottom: var(--keyboard-inset, 0px);
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
@@ -274,10 +273,7 @@
 		top: 0;
 		left: 0;
 		right: 0;
-		height: 100vh;
-		height: 100dvh;
-		padding-bottom: var(--keyboard-inset, 0px);
-		box-sizing: border-box;
+		bottom: var(--keyboard-inset, 0px);
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;

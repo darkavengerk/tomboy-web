@@ -1,26 +1,30 @@
 // Expose the on-screen keyboard height as `--keyboard-inset` on <html>, so
-// the app shell can pad its bottom by that amount and the toolbar always
-// sits right above the keyboard.
+// the app shell's `bottom` rises by that amount and the toolbar always sits
+// right above the keyboard.
 //
-// Two-mode design: app.html ships `interactive-widget=resizes-content`.
+// Sizing model: the shell uses `position: fixed; top: 0; bottom:
+// var(--keyboard-inset)` instead of `height: 100dvh`. dvh has been
+// observed to stay stale on iOS Safari while the keyboard is up, which
+// left a gap below the toolbar even when the inset was computed
+// correctly. `top`/`bottom` against the layout viewport sidesteps the
+// dvh code path entirely.
 //
-//   - Browsers that honor the meta shrink `100dvh` with the keyboard
-//     themselves. The shell is already sized to the visible area —
-//     adding a JS inset on top would double-count the keyboard and
-//     leave dead whitespace below the toolbar.
-//   - iOS Safari ignores the meta and treats the keyboard as a pure
-//     overlay. There `100dvh` stays at the full layout viewport and we
-//     have to measure the overlap (`innerHeight - vv.height`) ourselves.
-//
-// A hidden probe element with `height: 100dvh` tells us which mode the
-// UA is currently in: when its measured height already matches the
-// visual viewport, the browser is doing the work and we hold inset at 0.
+//   - iOS Safari ignores `interactive-widget=resizes-content` and
+//     overlays the keyboard: `innerHeight` (layout viewport) stays full,
+//     `visualViewport.height` shrinks to the area above the keyboard.
+//     The difference is the keyboard height; the shell's `bottom` rises
+//     by that much.
+//   - Browsers that honor the meta resize the layout viewport themselves:
+//     `innerHeight` and `vv.height` shrink together, the difference
+//     stays near 0, and `bottom: 0` already lines up with the new
+//     layout-viewport bottom.
 //
 // Why not pin the shell to `visualViewport.height` directly: it left a
-// blank strip below the toolbar whenever the Safari URL bar was visible
-// and fought iOS's scroll-to-focus (jitter while scrolling inside an
-// active editor, since every `visualViewport.scroll` event repositioned
-// the shell).
+// blank strip whenever the Safari URL bar was visible and fought iOS's
+// scroll-to-focus (jitter inside an active editor, because every
+// `visualViewport.scroll` event repositioned the shell). Sizing against
+// the layout viewport with `top`/`bottom` avoids both — the layout
+// viewport doesn't move when iOS pans the visual viewport.
 
 export function bindViewportHeight(): () => void {
 	if (typeof window === 'undefined') return () => {};
@@ -29,28 +33,16 @@ export function bindViewportHeight(): () => void {
 
 	const root = document.documentElement;
 
-	// Hidden probe — reads how the UA currently resolves `100dvh`.
-	const probe = document.createElement('div');
-	probe.style.cssText =
-		'position:fixed; top:0; left:0; width:1px; height:100dvh; ' +
-		'visibility:hidden; pointer-events:none; z-index:-1;';
-	document.body.appendChild(probe);
-
 	const update = () => {
-		const dvhPx = probe.getBoundingClientRect().height;
-		const vvH = vv.height;
-		// dvh already shrank to the visible-above-keyboard area? Then the
-		// shell is correctly sized — applying inset would double-subtract.
-		// Tolerance covers fractional rounding + the few-px gap UAs leave
-		// between dvh and the visual viewport.
-		if (dvhPx <= vvH + 40) {
-			root.style.setProperty('--keyboard-inset', '0px');
-			return;
-		}
-		// Overlay mode: UA leaves dvh at the full layout viewport. Compute
-		// the keyboard overlap ourselves; small diffs are URL-bar / tap-
-		// highlight noise, real keyboards are well above 80px.
-		const inset = Math.max(0, window.innerHeight - vvH);
+		// `innerHeight` tracks the layout viewport (shrinks with browser
+		// chrome on iOS Safari, shrinks with the keyboard on Android when
+		// `interactive-widget=resizes-content`). `vv.height` shrinks with
+		// the keyboard in addition to all of that. Their difference is the
+		// keyboard height on browsers that overlay the keyboard.
+		const inset = Math.max(0, window.innerHeight - vv.height);
+		// Small diffs come from URL-bar / tap-highlight transitions; the
+		// virtual keyboard is always well above ~120px. Filter the noise
+		// so the shell doesn't twitch while the browser chrome settles.
 		root.style.setProperty('--keyboard-inset', inset > 80 ? `${inset}px` : '0px');
 	};
 
@@ -63,6 +55,5 @@ export function bindViewportHeight(): () => void {
 	return () => {
 		vv.removeEventListener('resize', update);
 		root.style.removeProperty('--keyboard-inset');
-		probe.remove();
 	};
 }
