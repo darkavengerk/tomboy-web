@@ -132,3 +132,27 @@ export async function getDiaryTriggerToken(): Promise<string> {
 export async function setDiaryTriggerToken(value: string): Promise<void> {
 	await setSetting(DIARY_TRIGGER_TOKEN, value);
 }
+
+// ── Image cache settings ──────────────────────────────────────────────
+
+const KEY_IMAGE_CACHE_TOTAL_BYTES = 'imageCacheTotalBytes';
+const KEY_IMAGE_CACHE_QUOTA_BYTES = 'imageCacheQuotaBytes';
+const DEFAULT_IMAGE_CACHE_QUOTA = 500 * 1024 * 1024; // 500 MB
+
+export async function getImageCacheTotalBytes(): Promise<number> {
+	const v = await getSetting<number>(KEY_IMAGE_CACHE_TOTAL_BYTES);
+	return typeof v === 'number' ? v : 0;
+}
+
+export async function setImageCacheTotalBytes(bytes: number): Promise<void> {
+	await setSetting(KEY_IMAGE_CACHE_TOTAL_BYTES, Math.max(0, bytes));
+}
+
+export async function getImageCacheQuotaBytes(): Promise<number> {
+	const v = await getSetting<number>(KEY_IMAGE_CACHE_QUOTA_BYTES);
+	return typeof v === 'number' && v > 0 ? v : DEFAULT_IMAGE_CACHE_QUOTA;
+}
+
+export async function setImageCacheQuotaBytes(bytes: number): Promise<void> {
+	await setSetting(KEY_IMAGE_CACHE_QUOTA_BYTES, Math.max(0, bytes));
+}
