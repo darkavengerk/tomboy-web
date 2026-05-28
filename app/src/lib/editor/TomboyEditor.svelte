@@ -1188,8 +1188,8 @@
 	.tomboy-editor {
 		flex: 1;
 		min-height: 0;
-		overflow-y: auto;
-		-webkit-overflow-scrolling: touch;
+		/* body 가 scrollable 이라 내부 스크롤 없이 컨텐츠 만큼 늘어남.
+		   overflow-y:auto / -webkit-overflow-scrolling 제거. */
 		padding: 0.5rem;
 		font-size: 16px;
 		line-height: 1.4;

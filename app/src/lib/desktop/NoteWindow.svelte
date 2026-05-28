@@ -1160,6 +1160,14 @@
 		min-height: 0;
 	}
 
+	/* desktop window 는 body scroll 이 없고 (chromeless) 윈도우 박스 안에서
+	   자체 scroll 해야 함. TomboyEditor 컴포넌트 자체는 모바일 body-scroll
+	   모델로 동작하므로 desktop 안에서만 inner scroll 을 복구. */
+	.body :global(.tomboy-editor) {
+		overflow-y: auto;
+		-webkit-overflow-scrolling: touch;
+	}
+
 	/* Bottom margin lives INSIDE the editor's scrollable content (on the
 	   ProseMirror root), so scrolling to the bottom reveals empty space
 	   under the last line — the floating toolbar overlays that space

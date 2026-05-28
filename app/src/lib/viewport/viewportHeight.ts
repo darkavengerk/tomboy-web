@@ -1,29 +1,20 @@
-// Expose two CSS variables on <html> so the app shell stays aligned with
-// the visible (visual) viewport while the on-screen keyboard is up:
+// Expose the on-screen keyboard height as `--keyboard-inset` on <html>, so
+// the fixed bottom toolbar can rise by that amount and stays right above
+// the keyboard on browsers that overlay the keyboard (iOS Safari).
 //
-//   --keyboard-inset : keyboard height (innerHeight − vv.height)
-//   --vv-offset      : how far iOS has panned the visual viewport down
-//                      inside the layout viewport (vv.offsetTop)
+// Sizing model: mobile routes use body-level scroll (no `position: fixed`
+// shell). The OS handles scroll-to-focus by scrolling the document up;
+// we don't track `visualViewport.offsetTop` anymore. Only the toolbar's
+// bottom anchor needs the keyboard inset.
 //
-// The shell uses `top: var(--vv-offset)` and
-// `bottom: calc(var(--keyboard-inset) - var(--vv-offset))` so its box
-// tracks the visual viewport exactly. Without `--vv-offset`, iOS's
-// automatic scroll-to-focus moved the visual viewport but the shell
-// stayed pinned to the layout viewport, leaving a strip of body
-// background visible below the toolbar (= the original bug).
-//
-//   - iOS Safari ignores `interactive-widget=resizes-content`, overlays
-//     the keyboard, and pans the visual viewport. Both variables are
-//     non-zero here.
-//   - Browsers that honor the meta resize the layout viewport and don't
-//     pan the visual viewport. Both variables stay at 0.
-//
-// Why we now listen to `scroll` even though an earlier note here warned
-// against it: the earlier attempt pinned the shell's `height` to
-// `vv.height` AND chased `vv.offsetTop` simultaneously, which moved the
-// cursor out of the visual viewport and made iOS pan again, looping.
-// Here only `top` chases `offsetTop`; height is derived from inset, so
-// the cursor stays inside the shell and iOS settles after one pan.
+//   - iOS Safari ignores `interactive-widget=resizes-content` and
+//     overlays the keyboard: `innerHeight` (layout viewport) stays full,
+//     `visualViewport.height` shrinks to the area above the keyboard.
+//     Their difference is the keyboard height.
+//   - Browsers that honor the meta resize the layout viewport themselves:
+//     `innerHeight` and `vv.height` shrink together, the difference
+//     stays near 0, and `bottom: 0` already lines up with the new
+//     layout-viewport bottom.
 
 export function bindViewportHeight(): () => void {
 	if (typeof window === 'undefined') return () => {};
@@ -33,27 +24,17 @@ export function bindViewportHeight(): () => void {
 	const root = document.documentElement;
 
 	const update = () => {
-		// `innerHeight` tracks the layout viewport (shrinks with browser
-		// chrome on iOS Safari, shrinks with the keyboard on Android when
-		// `interactive-widget=resizes-content`). `vv.height` shrinks with
-		// the keyboard in addition to all of that. Their difference is the
-		// keyboard height on browsers that overlay the keyboard.
 		const inset = Math.max(0, window.innerHeight - vv.height);
 		// Small diffs come from URL-bar / tap-highlight transitions; the
-		// virtual keyboard is always well above ~120px. Filter the noise
-		// so the shell doesn't twitch while the browser chrome settles.
+		// virtual keyboard is always well above ~120px. Filter the noise.
 		root.style.setProperty('--keyboard-inset', inset > 80 ? `${inset}px` : '0px');
-		root.style.setProperty('--vv-offset', `${vv.offsetTop}px`);
 	};
 
 	update();
 	vv.addEventListener('resize', update);
-	vv.addEventListener('scroll', update);
 
 	return () => {
 		vv.removeEventListener('resize', update);
-		vv.removeEventListener('scroll', update);
 		root.style.removeProperty('--keyboard-inset');
-		root.style.removeProperty('--vv-offset');
 	};
 }

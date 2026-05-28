@@ -276,29 +276,21 @@
 
 <style>
 	.app-shell {
-		/* Track the visual viewport directly via `top`/`bottom`:
-		     top    = vv.offsetTop  (follow iOS's scroll-to-focus pan)
-		     bottom = keyboard      (sits right above the on-screen kbd)
-		   Auto height = layout − top − bottom = vv.height, so the shell
-		   box matches the visual viewport exactly. Earlier dvh-based
-		   sizing left strips of body background below the toolbar
-		   whenever iOS panned. See lib/viewport/viewportHeight.ts. */
-		position: fixed;
-		top: var(--vv-offset, 0px);
-		left: 0;
-		right: 0;
-		bottom: var(--keyboard-inset, 0px);
+		/* 모바일 route 는 body 가 scrollable. shell 은 일반 flex column,
+		   viewport 를 최소로 채우게 min-height. TopNav 는 sticky top,
+		   하단 toolbar 는 fixed bottom (키보드 inset 적용). 키보드가
+		   뜨면 OS 가 body 를 scroll 해서 cursor 를 visible 영역으로
+		   올려줌 — 우리가 vv panning 을 추적할 필요 없음. */
 		display: flex;
 		flex-direction: column;
-		overflow: hidden;
+		min-height: 100dvh;
 	}
 
-	/* When embedded (in an iframe) or on the desktop route, the settings page
-	   still needs a flex column container so its inner layout (which uses
-	   height:100%) sizes correctly. */
+	/* desktop route (multi-window) 와 embedded 모드는 페이지 scroll 이
+	   의미 없으므로 fixed 유지. 키보드 inset 만 적용. */
 	.chromeless {
 		position: fixed;
-		top: var(--vv-offset, 0px);
+		top: 0;
 		left: 0;
 		right: 0;
 		bottom: var(--keyboard-inset, 0px);
@@ -314,7 +306,6 @@
 
 	.content {
 		flex: 1;
-		overflow: hidden;
 		display: flex;
 		flex-direction: column;
 		min-height: 0;
