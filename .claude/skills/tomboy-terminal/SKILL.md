@@ -64,6 +64,7 @@ const BRIDGE_RE = /^bridge:\s*(wss?:\/\/\S+)\s*$/;
 | `lib/editor/terminal/HistoryPanel.svelte` | Desktop side panel + mobile bottom sheet UI for captured history + pinned commands. |
 | `lib/editor/terminal/terminalBell.ts` | 벨 링어 — Web Audio API로 단음 비프음 합성 + `navigator.vibrate(200)`. ~300ms 스로틀. |
 | `lib/editor/terminal/stickyMods.ts` | 순수 키→바이트 매핑 — `computeStickyKeySequence(event, mods)`, `applyStickyToText(text, mods)`, `StickyMods` 타입. 관전 모드 sticky modifier 칩 (Ctrl/Alt/Shift)에서만 사용. |
+| `lib/editor/terminal/stickyDoubleTap.ts` | sticky 칩 토글 더블탭 단축키 순수 상태머신 — `onModKeydown` / `onModKeyup` / `onNonModKeydown`, `modKeyFromEventKey`, `DoubleTapState`. 400 ms 윈도우. 데스크탑 관전 모드에서만 사용. |
 | `lib/editor/terminal/imagePasteClient.ts` | 클라이언트 이미지 헬퍼 — `validateImageFile`, `imageFilesFromList`, `fileToImagePayload`, `extractImageFile` re-export. |
 | `lib/editor/terminal/clipboardImage.ts` | `extractImageFromClipboardItems(items: ClipboardItem[]): Promise<File \| null>` — `navigator.clipboard.read()` 결과에서 첫 `image/*` 항목을 `File`로 추출. 보내기 팝업의 "📋 이미지 붙여넣기" 버튼이 사용. |
 | `bridge/src/imageTransfer.ts` | 브릿지 이미지 전송 — `mimeToExt`, `safeImageName`, `bracketedPaste`, `buildRemoteCatArgs`, `transferImage`. |
@@ -689,6 +690,18 @@ armed 상태 유지. 팝업 취소도 sticky 유지.
 **기존 Ctrl+H/L pane-nav 단축키는 그대로 유지.** Sticky는 추가 메커니즘.
 실제 키보드 `Ctrl+L` → next-pane; sticky-Ctrl + 키보드 `L` → 셸로 `\x0c`.
 
+**더블탭 단축키 (`stickyDoubleTap.ts`)**: Ctrl/Alt/Shift 중 하나를 단독으로
+두 번 연속 (400 ms 이내) 누르면 해당 칩이 토글된다 — 클릭과 동일한 효과,
+armed/해제 양방향. 데스크탑 관전 모드 전용 (`handleWindowKeydown` +
+`handleWindowKeyup` 가 같은 가드 — `isSpectator && !isMobile`). 순수 상태머신
+3개 (`onModKeydown` / `onModKeyup` / `onNonModKeydown`) + `DoubleTapState`
+{`primingMod`, `primingTime`, `pendingMod`}. **Clean keydown → keyup → keydown**
+패턴만 인식: 사이에 다른 키 (modifier 포함) 가 끼이거나 keyup 시 다른 modifier
+가 여전히 held 상태면 priming 취소. 즉 `Ctrl+L` 콤보는 Ctrl 더블탭으로 오인되지
+않음. `e.repeat` keydown 은 ignore (홀딩으로 인한 오토리피트 무시). `reconnect()`
+시 `INITIAL_DOUBLE_TAP_STATE` 로 리셋. 키 시퀀스 변환 (`computeStickyKeySequence`)
+와 독립적인 별도 모듈 — 두 머신을 한 함수에 합치지 말 것.
+
 ### Target-side tmux configuration
 
 To prevent the desktop's working window from shrinking when a small
@@ -791,6 +804,12 @@ to add the three lines inline than to source the plugin file.
   `term.onData` 직결이라 키 가로채기가 없어 충돌이 없기 때문. 재연결 시
   `resetStickyMods()`로 자동 초기화. 비대응 키 조합(예: Ctrl + Tab)은
   sticky를 소비하지 않고 유지 — 사용자가 다음 글자 키를 칠 때 적용.
+- **더블탭 토글은 데스크탑 관전 모드 한정.** Ctrl/Alt/Shift 단독 두 번 (400 ms)
+  → 칩 토글. 별도 `keyup` 리스너를 같이 등록해야 priming 이 일어나므로 단축키
+  도입 시 keyup 등록을 빠뜨리지 말 것. 콤보 (`Ctrl+L`) 가 더블탭으로 오인되지
+  않도록 `pendingMod` 가 매개 — 비-modifier keydown 또는 keyup-while-other-held
+  는 즉시 상태 클리어. 모바일에서는 keydown listener 자체가 `isMobile` 가드로
+  early-return 이므로 화면 키보드 영향 없음.
 
 ## 이미지 붙여넣기
 
