@@ -1,5 +1,6 @@
 import { getDB } from './db.js';
 import { formatTomboyDate, type NoteData } from '$lib/core/note.js';
+import * as backlinkIndex from '$lib/core/backlinkIndex.js';
 
 /** Get all non-deleted notes excluding templates, sorted by changeDate descending */
 export async function getAllNotes(): Promise<NoteData[]> {
@@ -41,6 +42,11 @@ export async function putNote(note: NoteData): Promise<void> {
 		localDirty: true,
 		syncedXmlContent: existing?.syncedXmlContent ?? note.syncedXmlContent
 	});
+	try {
+		backlinkIndex.updateNote(note.guid, note.xmlContent, note.deleted);
+	} catch (err) {
+		console.error('[backlinkIndex] updateNote failed for', note.guid, err);
+	}
 }
 
 /**
@@ -51,6 +57,11 @@ export async function putNote(note: NoteData): Promise<void> {
 export async function putNoteSynced(note: NoteData): Promise<void> {
 	const db = await getDB();
 	await db.put('notes', { ...note, syncedXmlContent: note.xmlContent });
+	try {
+		backlinkIndex.updateNote(note.guid, note.xmlContent, note.deleted);
+	} catch (err) {
+		console.error('[backlinkIndex] updateNote failed for', note.guid, err);
+	}
 }
 
 /** Soft-delete a note (tombstone for sync). Bumps changeDate /
@@ -70,6 +81,11 @@ export async function deleteNote(guid: string): Promise<void> {
 		note.changeDate = now;
 		note.metadataChangeDate = now;
 		await db.put('notes', note);
+		try {
+			backlinkIndex.updateNote(guid, note.xmlContent, true);
+		} catch (err) {
+			console.error('[backlinkIndex] updateNote failed for', guid, err);
+		}
 	}
 }
 
