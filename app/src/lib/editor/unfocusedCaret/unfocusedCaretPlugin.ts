@@ -1,9 +1,10 @@
 // Mobile contenteditable 은 키보드를 dismiss 하면 자동으로 blur 되고
-// browser 의 native caret 도 사라진다. 사용자가 "이 노트의 어디를 마지막
-// 으로 편집했는지" 시각적으로 잃어버리는 게 불편해서, blur 상태에서도
-// ProseMirror 의 state.selection (collapsed = caret) 위치에 빈 widget
-// decoration 을 그려서 가짜 caret 을 표시한다. focus 가 돌아오면 즉시
-// widget 을 떼고 native caret 에 양보.
+// browser 의 native caret / selection 이 모두 사라진다. 사용자가 "어디를
+// 편집/선택 중이었는지" 시각적으로 잃어버리는 게 불편해서, blur 상태
+// 에서 ProseMirror state.selection 을 그대로 그려준다:
+//   - collapsed (caret): selection.head 위치에 빈 widget span (blink)
+//   - range: from..to 범위에 inline decoration (native selection 색 모방)
+// focus 가 돌아오면 즉시 떼어내 native 처리에 양보.
 //
 // state.selection 은 native DOM selection 과 독립적으로 유지되므로 iOS
 // 가 native selection 을 clear 해도 plugin 입장에선 항상 정확한 위치를
@@ -29,20 +30,26 @@ export function unfocusedCaretPlugin(): Plugin {
 				const s = key.getState(state);
 				if (!s || s.focused) return null;
 				const { selection } = state;
-				// caret 만 표시; range selection 은 일반적으로 blur 시 사라져도
-				// 사용자가 신경 쓰지 않으므로 skip.
-				if (!selection.empty) return null;
-				const widget = Decoration.widget(
-					selection.head,
-					() => {
-						const el = document.createElement('span');
-						el.className = 'unfocused-caret';
-						el.setAttribute('aria-hidden', 'true');
-						return el;
-					},
-					{ side: -1, key: 'unfocused-caret' }
+				if (selection.empty) {
+					const widget = Decoration.widget(
+						selection.head,
+						() => {
+							const el = document.createElement('span');
+							el.className = 'unfocused-caret';
+							el.setAttribute('aria-hidden', 'true');
+							return el;
+						},
+						{ side: -1, key: 'unfocused-caret' }
+					);
+					return DecorationSet.create(state.doc, [widget]);
+				}
+				const range = Decoration.inline(
+					selection.from,
+					selection.to,
+					{ class: 'unfocused-selection' },
+					{ inclusiveStart: false, inclusiveEnd: false }
 				);
-				return DecorationSet.create(state.doc, [widget]);
+				return DecorationSet.create(state.doc, [range]);
 			},
 			handleDOMEvents: {
 				focus(view) {
