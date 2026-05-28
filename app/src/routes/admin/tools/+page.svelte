@@ -12,9 +12,11 @@
 	} from '$lib/sync/dropboxClient.js';
 	import {
 		getAllNotesIncludingDeleted,
+		getAllNotesIncludingTemplates,
 		purgeAllLocal,
 		putNoteSynced
 	} from '$lib/storage/noteStore.js';
+	import { clear as clearBacklinkIndex, updateNote as updateBacklinkIndex } from '$lib/core/backlinkIndex.js';
 	import { serializeNote, parseNoteFromFile } from '$lib/core/noteArchiver.js';
 	import { createEmptyNote } from '$lib/core/note.js';
 	import type { NoteData } from '$lib/core/note.js';
@@ -28,6 +30,7 @@
 	let authed = $state(false);
 	let running = $state(false);
 	let progress = $state('');
+	let indexRebuilding = $state(false);
 
 	// ── 이미지 캐시 ───────────────────────────────────────────────────────
 	let imageCacheStats = $state<{ count: number; totalBytes: number; quotaBytes: number } | null>(null);
@@ -35,6 +38,22 @@
 	$effect(() => {
 		getImageCacheStats().then((s) => (imageCacheStats = s));
 	});
+
+	async function handleRebuildBacklinkIndex(): Promise<void> {
+		if (indexRebuilding) return;
+		indexRebuilding = true;
+		try {
+			clearBacklinkIndex();
+			const all = await getAllNotesIncludingTemplates();
+			for (const note of all) {
+				if (note.deleted) continue;
+				updateBacklinkIndex(note.guid, note.xmlContent, false);
+			}
+			pushToast(`백링크 인덱스를 다시 구성했습니다 (${all.length}개 노트 스캔).`);
+		} finally {
+			indexRebuilding = false;
+		}
+	}
 
 	async function handleClearImageCache(): Promise<void> {
 		if (!confirm('이미지 캐시를 모두 비우시겠습니까?\n캐시된 이미지가 삭제되며 다음 표시 시 다시 내려받습니다.')) return;
@@ -449,6 +468,16 @@
 		</p>
 	{/if}
 	<button class="btn" onclick={handleClearImageCache}>이미지 캐시 비우기</button>
+</section>
+
+<section class="tool">
+	<h3>백링크 인덱스</h3>
+	<p class="info">
+		노트 제목 변경 시 백링크 인덱스에 불일치가 의심되면 다시 구성하세요. 노트 내용은 수정되지 않습니다.
+	</p>
+	<button class="btn" onclick={handleRebuildBacklinkIndex} disabled={indexRebuilding}>
+		{indexRebuilding ? '재구성 중...' : '백링크 인덱스 재구성'}
+	</button>
 </section>
 
 {#if progress}
