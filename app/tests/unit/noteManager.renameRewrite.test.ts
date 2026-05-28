@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NoteData } from '$lib/core/note.js';
+import {
+	updateNote as indexUpdateNote,
+	clear as clearIndex
+} from '$lib/core/backlinkIndex.js';
 
 // In-memory fake noteStore.
 const store = new Map<string, NoteData>();
@@ -10,6 +14,10 @@ vi.mock('$lib/storage/noteStore.js', () => ({
 	putNote: vi.fn(async (note: NoteData) => {
 		putSpy(note);
 		store.set(note.guid, { ...note, localDirty: true });
+		// Keep the in-memory backlinkIndex in sync with the mocked store so
+		// rewriteBacklinksForRename (which now reads the index) sees the same
+		// state as the real implementation would.
+		indexUpdateNote(note.guid, note.xmlContent, note.deleted ?? false);
 	}),
 	putNoteSynced: vi.fn(async (note: NoteData) => {
 		store.set(note.guid, { ...note });
@@ -49,6 +57,12 @@ vi.mock('$lib/core/noteReloadBus.js', () => ({
 import { updateNoteFromEditor } from '$lib/core/noteManager.js';
 import { deserializeContent } from '$lib/core/noteContentArchiver.js';
 
+/** Seed the fake store AND the in-memory backlinkIndex from a note. */
+function seedStore(note: NoteData): void {
+	store.set(note.guid, { ...note });
+	indexUpdateNote(note.guid, note.xmlContent, note.deleted ?? false);
+}
+
 function makeNote(overrides: Partial<NoteData> = {}): NoteData {
 	return {
 		uri: 'note://tomboy/abc',
@@ -73,6 +87,7 @@ function makeNote(overrides: Partial<NoteData> = {}): NoteData {
 }
 
 beforeEach(() => {
+	clearIndex();
 	store.clear();
 	putSpy.mockReset();
 	invalidateCacheSpy.mockReset();
@@ -101,9 +116,9 @@ describe('updateNoteFromEditor — rename rewrite of backlinks', () => {
 			xmlContent:
 				'<note-content version="0.1">C-note\n<link:internal>Foo</link:internal></note-content>'
 		});
-		store.set(A.guid, { ...A });
-		store.set(B.guid, { ...B });
-		store.set(C.guid, { ...C });
+		seedStore(A);
+		seedStore(B);
+		seedStore(C);
 
 		lookupGuidByTitleMock.mockReturnValue(null);
 
@@ -165,8 +180,8 @@ describe('updateNoteFromEditor — rename rewrite of backlinks', () => {
 			xmlContent:
 				'<note-content version="0.1">D-note\n<link:broken>Foo</link:broken></note-content>'
 		});
-		store.set(A.guid, { ...A });
-		store.set(D.guid, { ...D });
+		seedStore(A);
+		seedStore(D);
 
 		lookupGuidByTitleMock.mockReturnValue(null);
 
@@ -196,8 +211,8 @@ describe('updateNoteFromEditor — rename rewrite of backlinks', () => {
 			title: 'E-note',
 			xmlContent: '<note-content version="0.1">E-note\nplain body</note-content>'
 		});
-		store.set(A.guid, { ...A });
-		store.set(E.guid, { ...E });
+		seedStore(A);
+		seedStore(E);
 
 		lookupGuidByTitleMock.mockReturnValue(null);
 
@@ -226,8 +241,8 @@ describe('updateNoteFromEditor — rename rewrite of backlinks', () => {
 			xmlContent:
 				'<note-content version="0.1">B\n<link:internal>Foo</link:internal></note-content>'
 		});
-		store.set(A.guid, { ...A });
-		store.set(B.guid, { ...B });
+		seedStore(A);
+		seedStore(B);
 
 		lookupGuidByTitleMock.mockReturnValue(null);
 
@@ -253,8 +268,8 @@ describe('updateNoteFromEditor — rename rewrite of backlinks', () => {
 			xmlContent:
 				'<note-content version="0.1">B\n<link:internal>Foo</link:internal></note-content>'
 		});
-		store.set(A.guid, { ...A });
-		store.set(B.guid, { ...B });
+		seedStore(A);
+		seedStore(B);
 
 		// Conflict: "Bar" is owned by someone else.
 		lookupGuidByTitleMock.mockImplementation((t: string) =>
@@ -283,7 +298,7 @@ describe('updateNoteFromEditor — rename rewrite of backlinks', () => {
 			title: 'Foo',
 			xmlContent: '<note-content version="0.1">Foo\n\nbody</note-content>'
 		});
-		store.set(A.guid, { ...A });
+		seedStore(A);
 
 		lookupGuidByTitleMock.mockReturnValue(null);
 
@@ -319,9 +334,10 @@ describe('updateNoteFromEditor — rename rewrite of backlinks', () => {
 				'<note-content version="0.1">F\n<link:internal>Foo</link:internal></note-content>',
 			deleted: true
 		});
-		store.set(A.guid, { ...A });
+		seedStore(A);
 		// Bypass the mock's deleted filter by adding directly.
-		store.set(F.guid, { ...F });
+		// seedStore also calls indexUpdateNote with deleted=true → not indexed.
+		seedStore(F);
 
 		lookupGuidByTitleMock.mockReturnValue(null);
 
