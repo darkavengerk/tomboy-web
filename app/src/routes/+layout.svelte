@@ -277,18 +277,17 @@
 <style>
 	.app-shell {
 		/* Track the visual viewport directly via `top`/`bottom`:
-		     top    = vv.offsetTop          (follow iOS's pan)
-		     bottom = inset − vv.offsetTop  (so height = layout − inset)
-		   Pinning `height: 100dvh` instead leaked dvh-staleness on iOS
-		   and left strips of body background below the toolbar when
-		   iOS panned the visual viewport. See lib/viewport/viewportHeight.ts
-		   for why we now chase `offsetTop` even though an earlier note
-		   there warned against it. */
+		     top    = vv.offsetTop  (follow iOS's scroll-to-focus pan)
+		     bottom = keyboard      (sits right above the on-screen kbd)
+		   Auto height = layout − top − bottom = vv.height, so the shell
+		   box matches the visual viewport exactly. Earlier dvh-based
+		   sizing left strips of body background below the toolbar
+		   whenever iOS panned. See lib/viewport/viewportHeight.ts. */
 		position: fixed;
 		top: var(--vv-offset, 0px);
 		left: 0;
 		right: 0;
-		bottom: calc(var(--keyboard-inset, 0px) - var(--vv-offset, 0px));
+		bottom: var(--keyboard-inset, 0px);
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
@@ -302,7 +301,7 @@
 		top: var(--vv-offset, 0px);
 		left: 0;
 		right: 0;
-		bottom: calc(var(--keyboard-inset, 0px) - var(--vv-offset, 0px));
+		bottom: var(--keyboard-inset, 0px);
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
