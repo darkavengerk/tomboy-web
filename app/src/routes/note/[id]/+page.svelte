@@ -99,6 +99,7 @@
 	// same value — this catches the type-and-undo case without paying for
 	// an IDB read + serializeContent() XML pass on every save timer tick.
 	let lastSavedDocFingerprint: string | null = null;
+	let flushChain: Promise<void> = Promise.resolve();
 
 	const noteId = $derived(page.params.id);
 	const isFromHome = $derived(page.url.searchParams.get('from') === 'home');
@@ -346,24 +347,25 @@
 		saveTimer = setTimeout(() => { flushSave(); }, 1500);
 	}
 
-	async function flushSave() {
-		if (!pendingDoc || !note) return;
-		// Cheap no-op gate: if the doc matches what we last persisted, skip
-		// the whole save path (IDB read + XML serialize + compare). Missing
-		// a real change here is a correctness bug, so the fingerprint must
-		// be a proper content hash; native JSON.stringify is fast enough
-		// and runs at most once per 1.5s save debounce.
-		const fingerprint = JSON.stringify(pendingDoc);
-		if (fingerprint === lastSavedDocFingerprint) {
+	function flushSave(): Promise<void> {
+		flushChain = flushChain.then(async () => {
+			if (!pendingDoc || !note) return;
+			const fingerprint = JSON.stringify(pendingDoc);
+			if (fingerprint === lastSavedDocFingerprint) {
+				pendingDoc = null;
+				return;
+			}
+			saving = true;
+			const updated = await updateNoteFromEditor(note.guid, pendingDoc);
+			if (updated) note = updated;
+			lastSavedDocFingerprint = fingerprint;
 			pendingDoc = null;
-			return;
-		}
-		saving = true;
-		const updated = await updateNoteFromEditor(note.guid, pendingDoc);
-		if (updated) note = updated;
-		lastSavedDocFingerprint = fingerprint;
-		pendingDoc = null;
-		saving = false;
+			saving = false;
+		}).catch((err) => {
+			console.error('[flushSave]', err);
+			saving = false;
+		});
+		return flushChain;
 	}
 
 	async function handleInternalLink(target: string) {

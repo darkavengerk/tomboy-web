@@ -138,6 +138,7 @@
 	// the whole save pipeline (IDB read + XML serialize) when the incoming
 	// doc stringifies identically — catches the type-and-undo case cheaply.
 	let lastSavedDocFingerprint: string | null = null;
+	let flushChain: Promise<void> = Promise.resolve();
 
 	const isFavoriteState = $derived(note ? isFavorite(note) : false);
 	const currentNotebook = $derived(note ? getNotebook(note) : null);
@@ -378,19 +379,25 @@
 		desktopSession.updateGeometry(guid, { x, y, width: newWidth, height });
 	}
 
-	async function flushSave(): Promise<void> {
-		if (!pendingDoc || !note) return;
-		const fingerprint = JSON.stringify(pendingDoc);
-		if (fingerprint === lastSavedDocFingerprint) {
+	function flushSave(): Promise<void> {
+		flushChain = flushChain.then(async () => {
+			if (!pendingDoc || !note) return;
+			const fingerprint = JSON.stringify(pendingDoc);
+			if (fingerprint === lastSavedDocFingerprint) {
+				pendingDoc = null;
+				return;
+			}
+			saving = true;
+			const updated = await updateNoteFromEditor(note.guid, pendingDoc);
+			if (updated) note = updated;
+			lastSavedDocFingerprint = fingerprint;
 			pendingDoc = null;
-			return;
-		}
-		saving = true;
-		const updated = await updateNoteFromEditor(note.guid, pendingDoc);
-		if (updated) note = updated;
-		lastSavedDocFingerprint = fingerprint;
-		pendingDoc = null;
-		saving = false;
+			saving = false;
+		}).catch((err) => {
+			console.error('[flushSave]', err);
+			saving = false;
+		});
+		return flushChain;
 	}
 
 	async function handleInternalLink(target: string) {
