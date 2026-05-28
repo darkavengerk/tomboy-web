@@ -89,6 +89,7 @@
 	import { TomboyBlockquote } from "./blockquote/index.js";
 	import { createFindPlugin, findPluginKey } from "./find/findPlugin.js";
 	import FindBar from "./find/FindBar.svelte";
+	import { unfocusedCaretPlugin } from "./unfocusedCaret/unfocusedCaretPlugin.js";
 	import type { JSONContent } from "@tiptap/core";
 	import EditorContextMenu from "./EditorContextMenu.svelte";
 	import {
@@ -403,6 +404,12 @@
 					name: "tomboyImagePreview",
 					addProseMirrorPlugins() {
 						return [createImagePreviewPlugin()];
+					},
+				}),
+				Extension.create({
+					name: "tomboyUnfocusedCaret",
+					addProseMirrorPlugins() {
+						return [unfocusedCaretPlugin()];
 					},
 				}),
 				Extension.create({
@@ -1193,6 +1200,26 @@
 		padding: 0.5rem;
 		font-size: 16px;
 		line-height: 1.4;
+	}
+
+	/* blur 상태에서도 caret 위치를 시각적으로 유지. 모바일에서 키보드
+	   dismiss 후 "어디를 편집 중이었는지" 잃지 않도록. native caret 의
+	   blink 주기에 맞춰 1초 step animation. */
+	.tomboy-editor :global(.unfocused-caret) {
+		display: inline-block;
+		width: 1px;
+		height: 1.1em;
+		background: currentColor;
+		vertical-align: text-bottom;
+		margin-bottom: -0.05em;
+		pointer-events: none;
+		opacity: 0.7;
+		animation: tomboy-caret-blink 1.06s steps(2, jump-none) infinite;
+	}
+
+	@keyframes tomboy-caret-blink {
+		0%, 49% { opacity: 0.7; }
+		50%, 100% { opacity: 0; }
 	}
 
 	.tomboy-editor :global(.tiptap) {
