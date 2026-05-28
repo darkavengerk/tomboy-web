@@ -17,6 +17,7 @@
 	} from '$lib/schedule/flushScheduler.js';
 	import { subscribeForegroundMessages } from '$lib/schedule/notification.js';
 	import { installRealNoteSync } from '$lib/sync/firebase/install.js';
+	import { installBacklinkIndex } from '$lib/core/backlinkIndex.js';
 	import { pushToast } from '$lib/stores/toast.js';
 	import { getAllNotes } from '$lib/storage/noteStore.js';
 	import { favoriteStore } from '$lib/storage/favoriteStore.svelte.js';
@@ -174,6 +175,7 @@
 			}
 			// 파이어베이스 노트 실시간 동기화: 저장된 토글 값을 읽어 활성화 상태로 복원.
 			// 토글이 OFF면 push/subscribe 모두 no-op 으로 비용 없음.
+			installBacklinkIndex();
 			void installRealNoteSync();
 		});
 

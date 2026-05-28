@@ -125,3 +125,55 @@ describe('clear', () => {
     expect(getSourcesFor('A')).toBeUndefined();
   });
 });
+
+import {
+  installBacklinkIndex,
+  ensureBacklinkIndexReady
+} from '$lib/core/backlinkIndex.js';
+import * as noteStore from '$lib/storage/noteStore.js';
+import { vi } from 'vitest';
+
+describe('install / ensureReady', () => {
+  beforeEach(() => {
+    clear();
+    vi.restoreAllMocks();
+  });
+
+  it('initFromAllNotes scans IDB once, skipping deleted', async () => {
+    const notes = [
+      { guid: 'g1', xmlContent: noteContent('A'), deleted: false },
+      { guid: 'g2', xmlContent: noteContent('A', 'B'), deleted: false },
+      { guid: 'g3', xmlContent: noteContent('Z'), deleted: true }
+    ];
+    vi.spyOn(noteStore, 'getAllNotesIncludingTemplates').mockResolvedValue(
+      notes as never
+    );
+    installBacklinkIndex();
+    await ensureBacklinkIndexReady();
+    expect(getSourcesFor('A')).toEqual(new Set(['g1', 'g2']));
+    expect(getSourcesFor('B')).toEqual(new Set(['g2']));
+    expect(getSourcesFor('Z')).toBeUndefined();
+  });
+
+  it('ensureBacklinkIndexReady before install returns resolved promise', async () => {
+    await expect(ensureBacklinkIndexReady()).resolves.toBeUndefined();
+  });
+
+  it('install after explicit clear rebuilds from fresh IDB state', async () => {
+    vi.spyOn(noteStore, 'getAllNotesIncludingTemplates').mockResolvedValueOnce(
+      [{ guid: 'g1', xmlContent: noteContent('A'), deleted: false }] as never
+    );
+    installBacklinkIndex();
+    await ensureBacklinkIndexReady();
+    expect(getSourcesFor('A')).toEqual(new Set(['g1']));
+
+    vi.spyOn(noteStore, 'getAllNotesIncludingTemplates').mockResolvedValueOnce(
+      [{ guid: 'g2', xmlContent: noteContent('B'), deleted: false }] as never
+    );
+    clear();
+    installBacklinkIndex();
+    await ensureBacklinkIndexReady();
+    expect(getSourcesFor('A')).toBeUndefined();
+    expect(getSourcesFor('B')).toEqual(new Set(['g2']));
+  });
+});

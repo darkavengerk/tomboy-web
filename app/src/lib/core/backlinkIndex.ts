@@ -12,6 +12,8 @@
  * `docs/superpowers/specs/2026-05-28-backlink-index-design.md`.
  */
 
+import * as noteStore from '$lib/storage/noteStore.js';
+
 const forwardLinks = new Map<string, Set<string>>();
 const backwardLinks = new Map<string, Set<string>>();
 
@@ -67,4 +69,35 @@ export function __test__getForward(): ReadonlyMap<string, ReadonlySet<string>> {
 }
 export function __test__getBackward(): ReadonlyMap<string, ReadonlySet<string>> {
   return backwardLinks;
+}
+
+let initPromise: Promise<void> | null = null;
+
+/**
+ * Kick off a one-shot async rebuild of the index from IDB. Safe to call
+ * multiple times — the latest call wins (the previous in-flight promise
+ * is replaced). Non-blocking; consumers should await
+ * `ensureBacklinkIndexReady()` before any operation that depends on the
+ * index being populated.
+ */
+export function installBacklinkIndex(): void {
+	initPromise = (async () => {
+		const all = await noteStore.getAllNotesIncludingTemplates();
+		for (const note of all) {
+			if (note.deleted) continue;
+			updateNote(note.guid, note.xmlContent, false);
+		}
+	})().catch((err) => {
+		console.error('[backlinkIndex] init failed', err);
+	});
+}
+
+/**
+ * Resolves once the most recent `installBacklinkIndex()` has finished
+ * scanning IDB. If install has never been called (e.g. unit tests), this
+ * resolves immediately — callers that need a guaranteed snapshot should
+ * call install first.
+ */
+export function ensureBacklinkIndexReady(): Promise<void> {
+	return initPromise ?? Promise.resolve();
 }
