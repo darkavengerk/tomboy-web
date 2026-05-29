@@ -37,5 +37,15 @@ export function createFileBadgeElement(url: string): HTMLAnchorElement {
 	a.addEventListener('mousedown', (e) => {
 		e.preventDefault();
 	});
+	// Explicit navigation: inside PM's editable contenteditable the
+	// browser's default `<a target=_blank>` action doesn't fire reliably
+	// (especially on mobile Safari/Chrome where the tap registers but the
+	// new tab never opens). Force the open ourselves the same way
+	// imagePreviewPlugin opens its viewer.
+	a.addEventListener('click', (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		window.open(url, '_blank', 'noopener,noreferrer');
+	});
 	return a;
 }

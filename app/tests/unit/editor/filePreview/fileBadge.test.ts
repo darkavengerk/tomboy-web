@@ -31,4 +31,25 @@ describe('createFileBadgeElement', () => {
 		expect(a.textContent).toContain('doc.pdf');
 		expect(a.textContent).toContain('📎');
 	});
+
+	it('click opens the URL via window.open and suppresses default', () => {
+		const a = createFileBadgeElement('https://b.test/files/u/doc.pdf');
+		const calls: Array<[string, string, string]> = [];
+		const originalOpen = window.open;
+		// @ts-expect-error — stub for spy
+		window.open = (url: string, target: string, features: string) => {
+			calls.push([url, target, features]);
+			return null;
+		};
+		try {
+			const evt = new MouseEvent('click', { bubbles: true, cancelable: true });
+			const dispatched = a.dispatchEvent(evt);
+			expect(dispatched).toBe(false); // preventDefault was called
+			expect(calls).toEqual([
+				['https://b.test/files/u/doc.pdf', '_blank', 'noopener,noreferrer']
+			]);
+		} finally {
+			window.open = originalOpen;
+		}
+	});
 });
