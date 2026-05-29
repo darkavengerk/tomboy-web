@@ -12,7 +12,7 @@
 
 import type { JSONContent } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { transformDayPrefixLine } from '$lib/schedule/autoWeekday.js';
+import { transformDayPrefixLine, getWeekdayChar } from '$lib/schedule/autoWeekday.js';
 
 export const RECURRING_MARKER = '*';
 
@@ -213,6 +213,36 @@ export function buildNextMonthLiJson(
 		if (firstChild?.type === 'text' && typeof firstChild.text === 'string') {
 			const { output } = transformDayPrefixLine(firstChild.text, year, nextMonth);
 			firstChild.text = output;
+		}
+	}
+	return cloned;
+}
+
+/**
+ * `liJson`을 복제하고 첫 문단 prefix를 `target` 날짜로 다시 쓴다.
+ * 일 번호와 요일을 `target`으로 갱신하되, 마커(`*`/`^N`)는 원위치 그대로 보존한다.
+ * day prefix가 없으면 텍스트를 건드리지 않는다. 목표 날짜가 무효면(예: 30일 달의
+ * 31일) 요일 재계산을 생략하고 기존 요일 글자를 유지한다.
+ */
+export function buildRecurredLiJson(
+	liJson: JSONContent,
+	target: { year: number; month: number; day: number }
+): JSONContent {
+	const cloned = JSON.parse(JSON.stringify(liJson)) as JSONContent;
+	const firstPara = cloned.content?.[0];
+	if (firstPara?.type === 'paragraph') {
+		const firstChild = firstPara.content?.[0];
+		if (firstChild?.type === 'text' && typeof firstChild.text === 'string') {
+			const p = parsePrefix(firstChild.text);
+			if (p) {
+				let weekday = p.weekday;
+				try {
+					weekday = getWeekdayChar(target.year, target.month, target.day);
+				} catch {
+					// 무효한 목표 날짜 — 기존 요일 글자 유지
+				}
+				firstChild.text = `${p.leadingWs}${target.day}${p.monthMark}(${weekday})${p.weekMark}${p.rest}`;
+			}
 		}
 	}
 	return cloned;

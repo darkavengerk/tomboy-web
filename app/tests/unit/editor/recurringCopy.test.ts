@@ -6,6 +6,7 @@ import { TomboyParagraph } from '$lib/editor/extensions/TomboyParagraph.js';
 import type { JSONContent } from '@tiptap/core';
 import {
 	buildNextMonthLiJson,
+	buildRecurredLiJson,
 	containsRecurringMarker,
 	findContainingMonth,
 	nextMonthOf,
@@ -297,5 +298,38 @@ describe('computeTargetDate', () => {
 	it('계산된 날짜의 요일은 Date와 일치(스모크)', () => {
 		const t = computeTargetDate(2026, 5, 25, { kind: 'weekly' });
 		expect(wd(t.year, t.month, t.day)).toBe(wd(2026, 6, 1));
+	});
+});
+
+function firstText(j: JSONContent): string | undefined {
+	return (j.content?.[0]?.content?.[0] as { text?: string } | undefined)?.text;
+}
+
+describe('buildRecurredLiJson', () => {
+	it('monthly: 날짜 옆 `*` 유지, 요일 재계산', () => {
+		const out = buildRecurredLiJson(li('25*(수) 가스점검'), { year: 2026, month: 6, day: 25 });
+		expect(firstText(out)).toBe(`25*(${wd(2026, 6, 25)}) 가스점검`);
+	});
+
+	it('weekly: 요일 옆 `*` 유지, 일 번호+요일 재계산', () => {
+		const out = buildRecurredLiJson(li('25(수)* 화분 물주기'), { year: 2026, month: 6, day: 1 });
+		expect(firstText(out)).toBe(`1(${wd(2026, 6, 1)})* 화분 물주기`);
+	});
+
+	it('everyNWeeks: `^2` 유지', () => {
+		const out = buildRecurredLiJson(li('25(수)^2 책반납'), { year: 2026, month: 6, day: 8 });
+		expect(firstText(out)).toBe(`8(${wd(2026, 6, 8)})^2 책반납`);
+	});
+
+	it('day prefix 없으면 그대로', () => {
+		const out = buildRecurredLiJson(li('카드값 확인 *'), { year: 2026, month: 6, day: 1 });
+		expect(firstText(out)).toBe('카드값 확인 *');
+	});
+
+	it('입력을 변형하지 않는다', () => {
+		const src = li('25(수)* 화분 물주기');
+		const before = JSON.stringify(src);
+		buildRecurredLiJson(src, { year: 2026, month: 6, day: 1 });
+		expect(JSON.stringify(src)).toBe(before);
 	});
 });
