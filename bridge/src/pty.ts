@@ -56,6 +56,28 @@ export function buildSshArgs(t: SshTarget, controlPath?: string): string[] {
 }
 
 /**
+ * 일회성 원격 명령 실행용 ssh argv. PTY가 아니라 `child_process`로 띄워
+ * exit code/stderr를 수확하는 용도(키 이벤트 주입). `buildSshArgs`와 달리:
+ *  - `BatchMode=yes` — 비대화형이라 비밀번호 프롬프트에 매달리지 않는다.
+ *  - `ControlPersist=60` — 프리웜으로 띄운 마스터를 60초 유지해 다음 키부터
+ *    재인증 없이 재사용한다.
+ * 원격 명령은 항상 마지막 인자 — OpenSSH는 호스트 뒤 토큰을 원격 명령으로 본다.
+ */
+export function buildSshExecArgs(
+	t: SshTarget,
+	controlPath: string | undefined,
+	remoteCommand: string
+): string[] {
+	const args: string[] = [];
+	if (t.port) args.push('-p', String(t.port));
+	args.push('-o', 'StrictHostKeyChecking=accept-new', '-o', 'BatchMode=yes');
+	if (controlPath) args.push(...controlMasterArgs(controlPath), '-o', 'ControlPersist=60');
+	args.push(t.user ? `${t.user}@${t.host}` : t.host);
+	args.push(remoteCommand);
+	return args;
+}
+
+/**
  * 타깃용 PTY를 띄운다.
  *  - 로컬 타깃 → 브릿지 호스트의 로그인 셸.
  *  - 그 외 → `ssh ...`. 인증(키/비번)은 PTY를 통해 직접 흐른다 —
