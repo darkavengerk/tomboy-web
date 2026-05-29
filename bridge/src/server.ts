@@ -6,7 +6,7 @@ import {
 	passwordMatches,
 	verifyToken
 } from './auth.js';
-import { parseSshTarget, spawnForTarget, isLocalTarget, type SshTarget } from './pty.js';
+import { parseSshTarget, spawnForTarget, isLocalTarget, buildSshExecArgs, type SshTarget } from './pty.js';
 import { mkdirSync } from 'node:fs';
 import { unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -22,6 +22,8 @@ import { loadRemarkableHosts } from './remarkableHosts.js';
 import { loadSshHosts, applySshAlias } from './sshHosts.js';
 import { SpectatorHubRegistry, type SpectatorSubscription } from './spectatorHub.js';
 import { transferImage, bracketedPaste } from './imageTransfer.js';
+import { spawn } from 'node:child_process';
+import { isAllowedKeyCode, buildKeyCommand } from './keyEvents.js';
 
 const PORT = Number(process.env.BRIDGE_PORT || 3000);
 const PASSWORD = requireEnv('BRIDGE_PASSWORD');
@@ -193,19 +195,20 @@ function sleep(ms: number): Promise<void> {
 // --- WebSocket session ---
 
 interface ClientMsg {
-	type: 'connect' | 'data' | 'resize' | 'tmux-nav' | 'image' | 'subscribe-pane';
+	type: 'connect' | 'data' | 'resize' | 'tmux-nav' | 'image' | 'subscribe-pane' | 'key';
 	target?: string;
 	token?: string;
 	cols?: number;
 	rows?: number;
 	d?: string;
-	mode?: 'shell' | 'spectate';
+	mode?: 'shell' | 'spectate' | 'keys';
 	session?: string;
 	action?: 'next-pane' | 'prev-pane' | 'next-window' | 'prev-window' | 'select-pane';
 	index?: number;
 	ordinal?: number;
 	mime?: string;
 	data?: string;
+	code?: number;
 }
 
 const TMUX_NAV_ACTIONS = new Set([
@@ -222,6 +225,8 @@ function handleWs(ws: WebSocket): void {
 	let controlPath: string | null = null;
 	let sessionTarget: SshTarget | null = null;
 	let connectAlias: string | null = null;
+	let keysMode = false;
+	let keysReady = false;
 	const abortCtrl = new AbortController();
 	const authTimer = setTimeout(() => {
 		if (!connected) {
@@ -277,6 +282,11 @@ function handleWs(ws: WebSocket): void {
 				return;
 			}
 
+			if (msg.mode === 'keys') {
+				void startKeys(target);
+				return;
+			}
+
 			const cols = clampSize(msg.cols, 80);
 			const rows = clampSize(msg.rows, 24);
 			void startSession(target, cols, rows);
@@ -292,6 +302,27 @@ function handleWs(ws: WebSocket): void {
 			if (typeof msg.mime === 'string' && typeof msg.data === 'string') {
 				void handleImageMessage(msg.mime, msg.data);
 			}
+			return;
+		}
+
+		if (msg.type === 'key') {
+			if (!keysReady || !controlPath || !sessionTarget) return;
+			if (!isAllowedKeyCode(msg.code)) {
+				send({
+					type: 'key-error',
+					code: typeof msg.code === 'number' ? msg.code : -1,
+					message: '허용되지 않은 키코드'
+				});
+				return;
+			}
+			const code = msg.code;
+			const target = sessionTarget;
+			const sock = controlPath;
+			void (async () => {
+				const r = await runSshExec(target, sock, buildKeyCommand(code));
+				if (r.code === 0) send({ type: 'key-ok', code });
+				else send({ type: 'key-error', code, message: r.stderr || `ssh exit ${r.code}` });
+			})();
 			return;
 		}
 
@@ -364,6 +395,18 @@ function handleWs(ws: WebSocket): void {
 			subscription = null;
 		}
 		if (controlPath) {
+			// keys 모드는 ControlPersist 마스터가 떠 있으므로 명시적으로 종료한다.
+			// (PTY 경로는 ControlPersist가 없어 PTY 종료 시 마스터도 사라진다.)
+			if (keysMode && sessionTarget) {
+				const host = sessionTarget.user
+					? `${sessionTarget.user}@${sessionTarget.host}`
+					: sessionTarget.host;
+				try {
+					spawn('ssh', ['-o', `ControlPath=${controlPath}`, '-O', 'exit', host], {
+						stdio: 'ignore'
+					});
+				} catch { /* best-effort */ }
+			}
 			// ssh 마스터가 죽으면 소켓도 사라지지만 best-effort로 정리.
 			unlink(controlPath).catch(() => { /* 이미 없음 */ });
 			controlPath = null;
@@ -477,6 +520,49 @@ function handleWs(ws: WebSocket): void {
 		send({ type: 'ready' });
 	}
 
+	async function startKeys(target: SshTarget): Promise<void> {
+		keysMode = true;
+		sessionTarget = target;
+		// keys 모드는 원격 폰 타깃 전용 — 로컬 셸엔 input keyevent가 의미 없다.
+		if (isLocalTarget(target)) {
+			send({ type: 'error', message: 'keys 모드는 원격 폰 타깃 전용입니다' });
+			try { ws.close(1008, 'keys local'); } catch { /* ignore */ }
+			return;
+		}
+		controlPath = `${CTRL_DIR}/${randomUUID().slice(0, 8)}.sock`;
+		console.log(
+			`[term-bridge] keys target=${target.user ?? ''}@${target.host}:${target.port ?? 22} alias=${connectAlias ?? 'none'}`
+		);
+		// 별칭(역터널) 타깃 도달성 — 터널 끊김 시 raw 에러 대신 한국어 안내.
+		if (connectAlias) {
+			const reachable = await probePort(target.host, target.port ?? 22, {
+				timeoutMs: 1000,
+				signal: abortCtrl.signal
+			});
+			if (!reachable) {
+				if (!abortCtrl.signal.aborted) {
+					send({
+						type: 'error',
+						message: `'${connectAlias}' 터널이 연결되어 있지 않습니다 (폰이 깨어 있고 네트워크에 연결됐는지 확인하세요)`
+					});
+					try { ws.close(1011, 'tunnel down'); } catch { /* ignore */ }
+				}
+				return;
+			}
+		}
+		if (abortCtrl.signal.aborted) return;
+		// 프리웜: ControlMaster 마스터를 띄우고 인증을 미리 끝낸다 → 첫 키부터 저지연.
+		const warm = await runSshExec(target, controlPath, 'true');
+		if (abortCtrl.signal.aborted) return;
+		if (warm.code !== 0) {
+			send({ type: 'error', message: `폰 연결 실패: ${warm.stderr || 'ssh exit ' + warm.code}` });
+			try { ws.close(1011, 'keys prewarm failed'); } catch { /* ignore */ }
+			return;
+		}
+		keysReady = true;
+		send({ type: 'ready' });
+	}
+
 	/**
 	 * `image` 메시지 처리 — base64 디코딩 → 타깃 호스트로 전송 → PTY 또는
 	 * spectator 활성 패널에 경로를 bracketed-paste로 주입.
@@ -564,6 +650,29 @@ async function wakeIfNeeded(
 		send({ type: 'data', d: '\x1b[2m연결 중...\x1b[0m\r\n' });
 	}
 	return ok;
+}
+
+/**
+ * 일회성 ssh exec — exit code와 stderr를 수확한다(키 이벤트 주입용).
+ * stdin 없음, stdout 무시, stderr만 캡처(상한 2KB). `error` 이벤트(ssh 미설치
+ * 등)는 code:-1로 정규화.
+ */
+function runSshExec(
+	target: SshTarget,
+	controlPath: string,
+	remoteCommand: string
+): Promise<{ code: number; stderr: string }> {
+	return new Promise((resolve) => {
+		const child = spawn('ssh', buildSshExecArgs(target, controlPath, remoteCommand), {
+			stdio: ['ignore', 'ignore', 'pipe']
+		});
+		let stderr = '';
+		child.stderr.on('data', (d: Buffer) => {
+			if (stderr.length < 2000) stderr += d.toString();
+		});
+		child.on('error', (err) => resolve({ code: -1, stderr: err.message }));
+		child.on('close', (code) => resolve({ code: code ?? -1, stderr: stderr.trim() }));
+	});
 }
 
 function clampSize(v: unknown, fallback: number): number {
