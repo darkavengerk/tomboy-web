@@ -74,9 +74,11 @@
 		client = null;
 	});
 
+	// 볼륨은 여러 번 연타하는 키라 버튼을 응답 대기 동안 막지 않는다 — 항상
+	// 활성 상태로 두고 누를 때마다 즉시 전송. 미연결/대기 상태의 전송은
+	// keysClient.sendKey 가 안전하게 무시한다(소켓 미개방이면 throw 안 함).
 	function press(code: number): void {
-		if (status !== 'ready' || !client) return;
-		client.sendKey(code);
+		client?.sendKey(code);
 	}
 </script>
 
@@ -99,7 +101,6 @@
 				class="key-btn"
 				class:ok={feedback[k.code] === 'ok'}
 				class:err={feedback[k.code] === 'err'}
-				disabled={status !== 'ready'}
 				onclick={() => press(k.code)}
 			>
 				<span>{k.label}</span>

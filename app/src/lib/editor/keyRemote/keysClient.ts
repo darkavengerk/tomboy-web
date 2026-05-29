@@ -87,7 +87,14 @@ export class KeysWsClient {
 
 	sendKey(code: number): void {
 		if (!this.ws) return;
-		this.ws.send(JSON.stringify({ type: 'key', code }));
+		// 버튼은 항상 활성 상태라 연결 전/후(소켓 미개방·종료)에도 눌릴 수 있다.
+		// 그 경우 send 가 throw 하므로 삼켜서 무해하게 만든다 — 미준비 키는
+		// 브리지가 어차피 drop 한다.
+		try {
+			this.ws.send(JSON.stringify({ type: 'key', code }));
+		} catch {
+			/* socket not open — ignore */
+		}
 	}
 
 	close(): void {
