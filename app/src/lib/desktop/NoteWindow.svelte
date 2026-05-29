@@ -18,6 +18,8 @@
 		parseTerminalNote,
 		type TerminalNoteSpec
 	} from '$lib/editor/terminal/parseTerminalNote.js';
+	import KeysView from '$lib/editor/keyRemote/KeysView.svelte';
+	import { parseKeysNote, type KeysNoteSpec } from '$lib/editor/keyRemote/parseKeysNote.js';
 	import ChatSendBar from '$lib/editor/chatNote/ChatSendBar.svelte';
 	import RemarkableActionBar from '$lib/editor/remarkable/RemarkableActionBar.svelte';
 	import { parseOcrNote } from '$lib/ocrNote/parseOcrNote.js';
@@ -127,6 +129,9 @@
 	let terminalSpec: TerminalNoteSpec | null = $state.raw(null);
 	let terminalConnectMode = $state(false);
 	const showTerminal = $derived(!!terminalSpec && terminalConnectMode);
+	let keysSpec: KeysNoteSpec | null = $state.raw(null);
+	let keysConnectMode = $state(false);
+	const showKeys = $derived(!!keysSpec && keysConnectMode);
 
 	// Bridge settings for ChatSendBar — loaded once on mount from appSettings.
 	let llmBridgeUrl = $state('');
@@ -223,6 +228,8 @@
 			editorContent = getNoteEditorContent(loaded);
 			terminalSpec = parseTerminalNote(editorContent);
 			terminalConnectMode = false;
+			keysSpec = parseKeysNote(editorContent);
+			keysConnectMode = false;
 			loading = false;
 
 			const homeGuid = await getHomeNoteGuid();
@@ -474,6 +481,8 @@
 		editorContent = getNoteEditorContent(fresh);
 		terminalSpec = parseTerminalNote(editorContent);
 		if (!terminalSpec) terminalConnectMode = false;
+		keysSpec = parseKeysNote(editorContent);
+		if (!keysSpec) keysConnectMode = false;
 		lastSavedDocFingerprint = null;
 		const ed = getEditor();
 		if (ed && editorContent) {
@@ -854,7 +863,7 @@
 		>✕</button>
 	</div>
 
-	<div class="body" class:terminal-edit={!!terminalSpec && !showTerminal}>
+	<div class="body" class:terminal-edit={(!!terminalSpec && !showTerminal) || (!!keysSpec && !showKeys)}>
 		{#if loading}
 			<div class="loading">로딩 중...</div>
 		{:else if showTerminal && terminalSpec}
@@ -863,6 +872,14 @@
 					spec={terminalSpec}
 					{guid}
 					onedit={() => (terminalConnectMode = false)}
+				/>
+			{/key}
+		{:else if showKeys && keysSpec}
+			{#key guid}
+				<KeysView
+					spec={keysSpec}
+					{guid}
+					onedit={() => (keysConnectMode = false)}
 				/>
 			{/key}
 		{:else}
@@ -924,7 +941,19 @@
 		>접속</button>
 	{/if}
 
-	{#if !loading && editorContent && isFocused && !showTerminal}
+	{#if keysSpec && !showKeys}
+		<button
+			type="button"
+			class="fab-terminal-connect"
+			class:above-toolbar={isFocused}
+			onclick={() => (keysConnectMode = true)}
+			aria-label="키 패드"
+			title="키 이벤트 — {keysSpec.raw}"
+			data-no-drag
+		>키</button>
+	{/if}
+
+	{#if !loading && editorContent && isFocused && !showTerminal && !showKeys}
 		<div class="toolbar-slot">
 			<Toolbar
 				editor={getEditor()}
