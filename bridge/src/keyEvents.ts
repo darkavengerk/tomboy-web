@@ -14,10 +14,11 @@ export function isAllowedKeyCode(code: unknown): code is number {
 }
 
 /**
- * 원격에서 실행할 명령 문자열. `isAllowedKeyCode(code) === true` 를 전제한다 —
- * 호출 전 반드시 검증할 것. 정수만 보간하므로 셸 메타문자가 끼어들 여지가 없다.
+ * 원격에서 실행할 명령 문자열. 화이트리스트에 없는 code는 즉시 throw한다.
+ * 정수만 보간하므로 셸 메타문자가 끼어들 여지가 없다.
  * Termux 앱 uid엔 INJECT_EVENTS 권한이 없어 `su -c` 경유가 필수.
  */
 export function buildKeyCommand(code: number): string {
+	if (!isAllowedKeyCode(code)) throw new Error(`keycode ${code} not in whitelist`);
 	return `su -c 'input keyevent ${code}'`;
 }

@@ -31,3 +31,7 @@ test('whitelist maps codes to readable names', () => {
 	assert.equal(KEY_WHITELIST[24], 'VOLUME_UP');
 	assert.equal(KEY_WHITELIST[25], 'VOLUME_DOWN');
 });
+
+test('buildKeyCommand throws on non-whitelisted code', () => {
+	assert.throws(() => buildKeyCommand(26), /not in whitelist/);
+});
