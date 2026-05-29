@@ -17,14 +17,34 @@
 
 	let status: KeysClientStatus = $state('connecting');
 	let statusMessage = $state('');
-	// code → 'ok' | 'err' 일시 피드백.
-	let feedback: Record<number, 'ok' | 'err'> = $state({});
+	// code → 'err' 에러 표시(✗ + 메시지). 성공은 즉시 누름 펄스로 대신한다.
+	let feedback: Record<number, 'err'> = $state({});
 	let feedbackMsg = $state('');
 	let client: KeysWsClient | null = null;
 	const feedbackTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
-	function flash(code: number, kind: 'ok' | 'err', msg = ''): void {
-		feedback = { ...feedback, [code]: kind };
+	// 버튼 DOM 참조 + 진행 중인 누름 애니메이션. WAAPI 로 클릭 즉시 펄스를
+	// 돌리고, 같은 버튼을 또 누르면 이전 애니메이션을 취소하고 새로 시작한다
+	// (응답을 기다리지 않으므로 지연 없이 매 클릭마다 반응이 보인다).
+	const btnEls: Record<number, HTMLButtonElement> = {};
+	const pressAnims = new Map<number, Animation>();
+
+	function pulse(code: number): void {
+		const el = btnEls[code];
+		if (!el || typeof el.animate !== 'function') return;
+		pressAnims.get(code)?.cancel();
+		const anim = el.animate(
+			[
+				{ transform: 'scale(0.94)', boxShadow: '0 0 0 3px rgba(80, 140, 255, 0.6)' },
+				{ transform: 'scale(1)', boxShadow: '0 0 0 0 rgba(80, 140, 255, 0)' }
+			],
+			{ duration: 130, easing: 'ease-out' }
+		);
+		pressAnims.set(code, anim);
+	}
+
+	function showError(code: number, msg: string): void {
+		feedback = { ...feedback, [code]: 'err' };
 		feedbackMsg = msg;
 		const prev = feedbackTimers.get(code);
 		if (prev) clearTimeout(prev);
@@ -34,7 +54,7 @@
 				const next = { ...feedback };
 				delete next[code];
 				feedback = next;
-			}, 800)
+			}, 1500)
 		);
 	}
 
@@ -60,8 +80,8 @@
 					status = s;
 					if (info?.message) statusMessage = info.message;
 				},
-				onKeyOk: (code) => flash(code, 'ok'),
-				onKeyError: (code, message) => flash(code, 'err', message)
+				onKeyOk: () => {},
+				onKeyError: (code, message) => showError(code, message)
 			}
 		});
 		client.connect();
@@ -70,6 +90,8 @@
 	onDestroy(() => {
 		for (const t of feedbackTimers.values()) clearTimeout(t);
 		feedbackTimers.clear();
+		for (const a of pressAnims.values()) a.cancel();
+		pressAnims.clear();
 		client?.close();
 		client = null;
 	});
@@ -78,6 +100,7 @@
 	// 활성 상태로 두고 누를 때마다 즉시 전송. 미연결/대기 상태의 전송은
 	// keysClient.sendKey 가 안전하게 무시한다(소켓 미개방이면 throw 안 함).
 	function press(code: number): void {
+		pulse(code); // 클릭 즉시 시각 반응 (응답 대기 X, 매 클릭 재시작)
 		client?.sendKey(code);
 	}
 </script>
@@ -98,13 +121,12 @@
 	<div class="pad">
 		{#each KEYS as k (k.code)}
 			<button
+				bind:this={btnEls[k.code]}
 				class="key-btn"
-				class:ok={feedback[k.code] === 'ok'}
 				class:err={feedback[k.code] === 'err'}
 				onclick={() => press(k.code)}
 			>
 				<span>{k.label}</span>
-				{#if feedback[k.code] === 'ok'}<span class="mark">✓</span>{/if}
 				{#if feedback[k.code] === 'err'}<span class="mark">✗</span>{/if}
 			</button>
 		{/each}
@@ -165,15 +187,11 @@
 		border-radius: 14px;
 		background: #fff;
 		cursor: pointer;
-		transition: background 0.15s, border-color 0.15s;
-	}
-	.key-btn:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
-	.key-btn.ok {
-		border-color: #2e7d32;
-		background: #e8f5e9;
+		/* 누름 펄스(transform/box-shadow)는 WAAPI 가 즉시 처리하므로 여기
+		   transition 대상에 넣지 않는다 — 넣으면 펄스가 느려진다. */
+		transition: border-color 0.1s;
+		-webkit-tap-highlight-color: transparent;
+		touch-action: manipulation;
 	}
 	.key-btn.err {
 		border-color: #b3261e;
