@@ -45,6 +45,7 @@ export interface PrefixParse {
 }
 
 // 일정 줄 prefix: [공백][일][*?]([요일])[*|^N]?[라벨]
+// `^N`은 한두 자리(1~99주)만 인식 — 그 이상은 라벨로 흘러간다.
 const PREFIX_RE = /^(\s*)(\d{1,2})(\*?)\(([^)]*)\)(\*|\^\d{1,2})?(.*)$/;
 
 /** 일정 줄의 prefix를 구조 분해한다. day 번호 prefix가 없으면 null. */
@@ -134,7 +135,7 @@ export type MonthInsertPlan =
 	| { kind: 'new-section-at-end'; insertPos: number };
 
 /**
- * Decide where in `doc` a list-item for `nextMonth` should be inserted.
+ * Decide where in `doc` a list-item for `targetMonth` should be inserted.
  *
  *   `append-to-list`        - month header exists and has a following bulletList;
  *                             insert before its closing token.
