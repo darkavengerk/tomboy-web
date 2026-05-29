@@ -17,7 +17,10 @@
       "id": 13,
       "subject": "Task 3: bridge server.ts keys 모드",
       "status": "completed",
-      "blockedBy": [11, 12],
+      "blockedBy": [
+        11,
+        12
+      ],
       "description": "**Goal:** WS connect에 mode:'keys'를 추가해 ControlMaster를 프리웜하고, {type:'key',code}를 화이트리스트 검증 후 일회성 ssh exec로 폰에 주입한다.\n\n**Files:** Modify bridge/src/server.ts\n\n**Acceptance Criteria:** ClientMsg key/keys/code; keys connect 로컬→error·별칭→probe·프리웜 ok→ready/fail→error+close; key msg 비화이트리스트→key-error(유지)·정상→ssh exec→key-ok/key-error+stderr; close시 ssh -O exit+unlink; 기존 테스트 회귀 없음.\n\n**Verify:** cd bridge && npx tsc -p . && node --test dist/*.test.js\n\n```json:metadata\n{\"files\": [\"bridge/src/server.ts\"], \"verifyCommand\": \"cd bridge && npx tsc -p . && node --test dist/*.test.js\", \"acceptanceCriteria\": [\"ClientMsg key/keys/code added, tsc passes\", \"keys connect: local→error, alias→probe, prewarm ok→ready / fail→error+close\", \"key msg: bad code→key-error(stay), good→ssh exec→key-ok / key-error+stderr\", \"WS close: keys master ssh -O exit + unlink\", \"existing bridge tests still pass\"]}\n```"
     },
     {
@@ -36,23 +39,32 @@
       "id": 16,
       "subject": "Task 6: 프론트 KeysView.svelte 버튼 패드",
       "status": "completed",
-      "blockedBy": [14, 15],
+      "blockedBy": [
+        14,
+        15
+      ],
       "description": "**Goal:** KeysNoteSpec를 받아 볼륨 ±버튼 패드를 렌더하고, 브릿지에 연결해 버튼 누름마다 키를 전송하고 ✓/✗ 피드백을 표시한다.\n\n**Files:** Create app/src/lib/editor/keyRemote/KeysView.svelte\n\n**Acceptance Criteria:** 두 버튼 렌더·ready 아니면 disabled; bridge/token 미설정 한국어 배너; press→sendKey·key-ok ✓·key-error ✗+메시지; 편집 버튼→onedit; check 0 errors.\n\n**Verify:** cd app && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/keyRemote/KeysView.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"two buttons render, disabled when not ready\", \"missing bridge/token → korean error banner\", \"press→sendKey; key-ok→✓, key-error→✗+msg\", \"edit button → onedit()\", \"npm run check 0 errors\"]}\n```"
     },
     {
       "id": 17,
       "subject": "Task 7: 프론트 note 페이지 keys:// 배선",
       "status": "completed",
-      "blockedBy": [14, 16],
+      "blockedBy": [
+        14,
+        16
+      ],
       "description": "**Goal:** note/[id]/+page.svelte가 keys:// 노트를 인식해 '키' FAB → KeysView를 띄우게 한다(터미널 노트 패턴 미러).\n\n**Files:** Modify app/src/routes/note/[id]/+page.svelte\n\n**Acceptance Criteria:** keys:// 노트 키 FAB→KeysView 마운트; keys 모드 툴바 숨김·편집 복귀; 일반/터미널 회귀 없음; check 0 errors.\n\n**Verify:** cd app && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/routes/note/[id]/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"keys:// note shows 키 FAB → mounts KeysView\", \"keys mode hides toolbar, edit returns\", \"plain/terminal notes unaffected\", \"npm run check 0 errors\"]}\n```"
     },
     {
       "id": 18,
       "subject": "Task 8: E2E — keys://phone 볼륨 ±버튼이 폰 볼륨을 바꾼다 (사용자 게이트)",
-      "status": "pending",
-      "blockedBy": [13, 17],
+      "status": "completed",
+      "blockedBy": [
+        13,
+        17
+      ],
       "description": "**Goal:** 앱에서 keys://phone 노트를 열고 ▲/▼ 버튼을 눌러 폰 볼륨이 실제로 변하는지 사용자가 직접 확인한다.\n\n**USER-ORDERED GATE — NON-SKIPPABLE.** Close only after every acceptanceCriteria is re-validated independently with output captured.\n\n**Files:** 없음(검증 전용).\n\n**Acceptance Criteria:** 사전조건(bridge 재배포+역터널 LISTEN+폰 잠금해제); keys:// 노트 키 FAB→KeysView ready; 🔊 볼륨 업→OSD 상승+✓; 🔉 볼륨 다운→OSD 하강+✓; u0_a186 su -c grant 통과.\n\n**Verify:** 앱에서 ▲/▼ → 폰 볼륨 OSD 변화 + 버튼 ✓ 육안 확인 (사용자 게이트).\n\n```json:metadata\n{\"userGate\": true, \"tags\": [\"user-gate\"], \"requireEvidenceTokens\": [[\"volume-up\", \"▲\", \"볼륨 업\"], [\"volume-down\", \"▼\", \"볼륨 다운\"]], \"files\": [], \"verifyCommand\": \"앱에서 keys://phone 노트 ▲/▼ → 폰 볼륨 OSD 변화 + 버튼 ✓ 육안 확인\", \"acceptanceCriteria\": [\"사전조건: bridge 재배포 + 역터널 LISTEN + 폰 잠금해제\", \"keys:// 노트 키 FAB → KeysView ready\", \"🔊 볼륨 업 → 폰 OSD 상승 + ✓\", \"🔉 볼륨 다운 → 폰 OSD 하강 + ✓\", \"u0_a186 su -c grant 통과(첫 키 ✓)\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-29T00:00:00Z"
+  "lastUpdated": "2026-05-29T17:30:00Z"
 }
