@@ -56,3 +56,26 @@ test('applySshAlias leaves non-alias targets untouched', () => {
 	assert.equal(alias, null);
 	assert.deepEqual(target, { host: 'example.com', user: 'bob', port: 22 });
 });
+
+test('applySshAlias with bare-host alias leaves user/port undefined', () => {
+	const path = writeHosts({ box: { host: '10.0.0.5' } });
+	loadSshHosts(path);
+	const { target, alias } = applySshAlias({ host: 'box' });
+	assert.equal(alias, 'box');
+	assert.deepEqual(target, { host: '10.0.0.5', port: undefined, user: undefined });
+});
+
+test('invalid JSON → empty table, no throw', () => {
+	const dir = mkdtempSync(join(tmpdir(), 'sshhosts-'));
+	const path = join(dir, 'ssh-hosts.json');
+	writeFileSync(path, '{not json', 'utf8');
+	loadSshHosts(path);
+	assert.equal(lookupSshHost('phone'), null);
+});
+
+test('out-of-range port is dropped from entry', () => {
+	const path = writeHosts({ a: { host: 'h', port: 0 }, b: { host: 'h2', port: 70000 } });
+	loadSshHosts(path);
+	assert.equal(lookupSshHost('a')!.port, undefined);
+	assert.equal(lookupSshHost('b')!.port, undefined);
+});
