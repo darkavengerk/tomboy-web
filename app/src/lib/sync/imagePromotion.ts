@@ -34,6 +34,19 @@ export interface PromotionResult {
   vercelDeleteError: string | null;
 }
 
+/**
+ * Escape a URL for insertion as `<link:url>` text content. xmlContent is
+ * well-formed XML, so a raw `&` in a Dropbox share URL (e.g. `&raw=1`) would
+ * break the parser. Matches `noteContentArchiver`'s `escapeXmlContent` so the
+ * promoted URL is stored byte-identically to a normally-pasted one.
+ */
+function escapeUrlForXml(url: string): string {
+  return url
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function fileExtFromUrl(url: string): string {
   const m = /\.([A-Za-z0-9]+)(?:\?|$)/.exec(url);
   return m ? m[1].toLowerCase() : 'png';
@@ -73,7 +86,9 @@ export async function promoteImageToDropbox(tempUrl: string): Promise<PromotionR
   for (const note of affected) {
     try {
       const next = { ...note };
-      next.xmlContent = (note.xmlContent ?? '').split(tempUrl).join(dropboxUrl);
+      next.xmlContent = (note.xmlContent ?? '')
+        .split(tempUrl)
+        .join(escapeUrlForXml(dropboxUrl));
       next.changeDate = now;
       next.metadataChangeDate = now;
       await noteStore.putNote(next);

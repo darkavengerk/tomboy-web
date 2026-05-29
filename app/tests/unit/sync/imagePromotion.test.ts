@@ -77,6 +77,25 @@ describe('promoteImageToDropbox', () => {
     expect(emitReloadMock).toHaveBeenCalledWith(expect.arrayContaining(['h1', 'h2']));
   });
 
+  it('escapes & in the dropbox URL so xmlContent stays well-formed XML', async () => {
+    // Real Dropbox share URLs carry `&rlkey=…&raw=1`; a raw `&` in xmlContent
+    // breaks the XML parser. The rewrite must store `&amp;` like the editor's
+    // normal serialization does.
+    const TEMP_E = 'https://a.public.blob.vercel-storage.com/temp-images/esc.webp';
+    const DROPBOX_AMP =
+      'https://www.dropbox.com/scl/fi/abc/img.jpg?rlkey=xyz&raw=1';
+    await noteStore.putNoteSynced(noteWith('e1', `<link:url>${TEMP_E}</link:url>`));
+    downloadMock.mockResolvedValue(new Blob(['x'], { type: 'image/webp' }));
+    uploadDropboxMock.mockResolvedValue(DROPBOX_AMP);
+    deleteTempMock.mockResolvedValue(undefined);
+
+    await promoteImageToDropbox(TEMP_E);
+
+    const xml = (await noteStore.getNote('e1'))!.xmlContent!;
+    expect(xml).toContain('?rlkey=xyz&amp;raw=1'); // escaped
+    expect(xml).not.toMatch(/&raw=1/); // no raw ampersand left behind
+  });
+
   it('step 1 fail (fetch): no changes', async () => {
     await noteStore.putNoteSynced(noteWith('f1', `<link:url>${TEMP_F1}</link:url>`));
     downloadMock.mockRejectedValue(new Error('CORS'));
