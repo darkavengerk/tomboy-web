@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSshArgs, controlMasterArgs, isLocalTarget } from './pty.js';
+import { buildSshArgs, controlMasterArgs, isLocalTarget, buildSshExecArgs } from './pty.js';
 
 test('buildSshArgs: basic remote, no controlPath', () => {
 	assert.deepEqual(buildSshArgs({ host: 'example.com', user: 'me' }), [
@@ -56,4 +56,26 @@ test('isLocalTarget: user@localhost is NOT local (routes through host sshd)', ()
 
 test('isLocalTarget: arbitrary remote is not local', () => {
 	assert.equal(isLocalTarget({ host: 'example.com', user: 'me' }), false);
+});
+
+test('buildSshExecArgs: command last, host before it', () => {
+	const args = buildSshExecArgs(
+		{ host: 'localhost', port: 18022, user: 'u0_a186' },
+		'/tmp/x.sock',
+		"su -c 'input keyevent 24'"
+	);
+	assert.equal(args[args.length - 1], "su -c 'input keyevent 24'");
+	assert.equal(args[args.length - 2], 'u0_a186@localhost');
+	assert.ok(args.includes('-p') && args.includes('18022'));
+	assert.ok(args.includes('BatchMode=yes'));
+	assert.ok(args.some((a) => a.startsWith('ControlPath=')));
+	assert.ok(args.includes('ControlPersist=60'));
+});
+
+test('buildSshExecArgs: no controlPath → no multiplexing opts', () => {
+	const args = buildSshExecArgs({ host: 'h' }, undefined, 'true');
+	assert.ok(!args.some((a) => a.startsWith('ControlPath=')));
+	assert.ok(!args.includes('ControlPersist=60'));
+	assert.equal(args[args.length - 1], 'true');
+	assert.equal(args[args.length - 2], 'h');
 });
