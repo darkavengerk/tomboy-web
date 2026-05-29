@@ -11,6 +11,7 @@
 		{ href: "/admin/remarkable", label: "리마커블" },
 		{ href: "/admin/gpu", label: "GPU" },
 		{ href: "/admin/images", label: "이미지" },
+		{ href: "/admin/files", label: "파일" },
 		{ href: "/admin/tools", label: "도구" },
 	];
 
