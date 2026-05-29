@@ -319,7 +319,7 @@ function handleWs(ws: WebSocket): void {
 			const target = sessionTarget;
 			const sock = controlPath;
 			void (async () => {
-				const r = await runSshExec(target, sock, buildKeyCommand(code));
+				const r = await runSshExec(target, sock, buildKeyCommand(code), abortCtrl.signal);
 				if (r.code === 0) send({ type: 'key-ok', code });
 				else send({ type: 'key-error', code, message: r.stderr || `ssh exit ${r.code}` });
 			})();
@@ -402,9 +402,10 @@ function handleWs(ws: WebSocket): void {
 					? `${sessionTarget.user}@${sessionTarget.host}`
 					: sessionTarget.host;
 				try {
-					spawn('ssh', ['-o', `ControlPath=${controlPath}`, '-O', 'exit', host], {
+					const cm = spawn('ssh', ['-o', `ControlPath=${controlPath}`, '-O', 'exit', host], {
 						stdio: 'ignore'
 					});
+					cm.on('error', () => { /* best-effort */ });
 				} catch { /* best-effort */ }
 			}
 			// ssh 마스터가 죽으면 소켓도 사라지지만 best-effort로 정리.
@@ -552,7 +553,7 @@ function handleWs(ws: WebSocket): void {
 		}
 		if (abortCtrl.signal.aborted) return;
 		// 프리웜: ControlMaster 마스터를 띄우고 인증을 미리 끝낸다 → 첫 키부터 저지연.
-		const warm = await runSshExec(target, controlPath, 'true');
+		const warm = await runSshExec(target, controlPath, 'true', abortCtrl.signal);
 		if (abortCtrl.signal.aborted) return;
 		if (warm.code !== 0) {
 			send({ type: 'error', message: `폰 연결 실패: ${warm.stderr || 'ssh exit ' + warm.code}` });
@@ -660,17 +661,22 @@ async function wakeIfNeeded(
 function runSshExec(
 	target: SshTarget,
 	controlPath: string,
-	remoteCommand: string
+	remoteCommand: string,
+	signal?: AbortSignal
 ): Promise<{ code: number; stderr: string }> {
 	return new Promise((resolve) => {
 		const child = spawn('ssh', buildSshExecArgs(target, controlPath, remoteCommand), {
-			stdio: ['ignore', 'ignore', 'pipe']
+			stdio: ['ignore', 'ignore', 'pipe'],
+			signal
 		});
 		let stderr = '';
 		child.stderr.on('data', (d: Buffer) => {
 			if (stderr.length < 2000) stderr += d.toString();
 		});
-		child.on('error', (err) => resolve({ code: -1, stderr: err.message }));
+		child.on('error', (err: NodeJS.ErrnoException) => {
+			if (err.code === 'ABORT_ERR') resolve({ code: -1, stderr: 'aborted' });
+			else resolve({ code: -1, stderr: err.message });
+		});
 		child.on('close', (code) => resolve({ code: code ?? -1, stderr: stderr.trim() }));
 	});
 }
