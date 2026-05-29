@@ -27,6 +27,81 @@ export function nextMonthOf(month: number): { month: number; yearOffset: number 
 	return { month: month + 1, yearOffset: 0 };
 }
 
+export type RecurrenceSpec =
+	| { kind: 'monthly' }
+	| { kind: 'weekly' }
+	| { kind: 'everyNWeeks'; weeks: number };
+
+export interface PrefixParse {
+	/** 선행 공백. */
+	leadingWs: string;
+	/** 일 번호. */
+	day: number;
+	/** 일 번호와 `(` 사이의 `*` (월간 마커) 또는 `''`. */
+	monthMark: string;
+	/** 파렌 안의 요일 글자(틀렸거나 쓰레기일 수 있음). */
+	weekday: string;
+	/** `)` 바로 뒤의 `*` / `^N` (요일 마커) 또는 `''`. */
+	weekMark: string;
+	/** 라벨(선행 공백 포함). */
+	rest: string;
+}
+
+// 일정 줄 prefix: [공백][일][*?]([요일])[*|^N]?[라벨]
+const PREFIX_RE = /^(\s*)(\d{1,2})(\*?)\(([^)]*)\)(\*|\^\d{1,2})?(.*)$/;
+
+/** 일정 줄의 prefix를 구조 분해한다. day 번호 prefix가 없으면 null. */
+export function parsePrefix(text: string): PrefixParse | null {
+	const m = PREFIX_RE.exec(text);
+	if (!m) return null;
+	return {
+		leadingWs: m[1],
+		day: parseInt(m[2], 10),
+		monthMark: m[3] ?? '',
+		weekday: m[4],
+		weekMark: m[5] ?? '',
+		rest: m[6] ?? ''
+	};
+}
+
+/**
+ * 분해된 prefix에서 반복 종류를 판별한다.
+ * - 날짜 옆 `*` → monthly (요일 마커보다 우선)
+ * - 요일 옆 `*` → weekly
+ * - 요일 옆 `^N` (N ≥ 1) → everyNWeeks
+ * - 그 외 → null (반복 아님)
+ */
+export function recurrenceFromParse(p: PrefixParse): RecurrenceSpec | null {
+	if (p.monthMark === '*') return { kind: 'monthly' };
+	if (p.weekMark === '*') return { kind: 'weekly' };
+	const m = /^\^(\d{1,2})$/.exec(p.weekMark);
+	if (m) {
+		const weeks = parseInt(m[1], 10);
+		if (weeks >= 1) return { kind: 'everyNWeeks', weeks };
+	}
+	return null;
+}
+
+/**
+ * 항목에 적힌 날짜(섹션 월 + 일 번호 + 기준 연도)로부터 반복 목표 날짜를 계산한다.
+ * - monthly: 일 번호 유지, 월 +1 (12월 → 다음 해 1월).
+ * - weekly / everyNWeeks: 기준일 + 7×주 일 (JS Date가 월·연 넘어감 처리).
+ */
+export function computeTargetDate(
+	baseYear: number,
+	baseMonth: number,
+	baseDay: number,
+	spec: RecurrenceSpec
+): { year: number; month: number; day: number } {
+	if (spec.kind === 'monthly') {
+		const { month, yearOffset } = nextMonthOf(baseMonth);
+		return { year: baseYear + yearOffset, month, day: baseDay };
+	}
+	const weeks = spec.kind === 'weekly' ? 1 : spec.weeks;
+	const d = new Date(baseYear, baseMonth - 1, baseDay + 7 * weeks);
+	return { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() };
+}
+
 function nodeFirstParaText(n: PMNode): string {
 	if (n.type.name === 'paragraph' || n.type.name === 'heading') return n.textContent;
 	if (n.type.name === 'listItem') {
