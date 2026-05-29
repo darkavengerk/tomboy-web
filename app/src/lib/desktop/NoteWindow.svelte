@@ -929,6 +929,7 @@
 			<Toolbar
 				editor={getEditor()}
 				onuploadimage={(file) => editorComponent?.uploadAndInsertImage(file)}
+				onuploadfile={(file) => editorComponent?.uploadAndInsertFile(file)}
 				onfind={() => editorComponent?.openFind()}
 			/>
 			{#if note}

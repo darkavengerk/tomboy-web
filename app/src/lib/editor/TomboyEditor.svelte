@@ -1231,6 +1231,7 @@
 		y={ctxMenu.y}
 		onclose={() => (ctxMenu = null)}
 		{oninternallink}
+		onuploadfile={uploadAndInsertFile}
 	/>
 {/if}
 
