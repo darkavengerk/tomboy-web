@@ -424,7 +424,7 @@ function handleWs(ws: WebSocket): void {
 			controlPath = `${CTRL_DIR}/${randomUUID().slice(0, 8)}.sock`;
 		}
 		const wol = lookupWolTarget(target.host);
-		console.log(`[term-bridge] connect target=${target.user ?? ''}@${target.host}:${target.port ?? 22} wol=${wol ? wol.mac : 'none'}`);
+		console.log(`[term-bridge] connect target=${target.user ?? ''}@${target.host}:${target.port ?? 22} alias=${connectAlias ?? 'none'} wol=${wol ? wol.mac : 'none'}`);
 		if (wol) {
 			const ok = await wakeIfNeeded(target, wol, abortCtrl.signal, send);
 			if (!ok) {
