@@ -69,12 +69,15 @@ Server messages:
 
 ## Required environment variables
 
-| Variable                | Notes                                                         |
-|-------------------------|---------------------------------------------------------------|
-| `BRIDGE_PASSWORD`       | The login password. Pick something long.                      |
-| `BRIDGE_SECRET`         | HMAC key for cookie signatures. 32+ random bytes.             |
-| `BRIDGE_ALLOWED_ORIGIN` | Comma-separated list of allowed Origin headers (your app URL).|
-| `BRIDGE_PORT`           | Optional. Defaults to 3000.                                   |
+| Variable                  | Notes                                                                                  |
+|---------------------------|----------------------------------------------------------------------------------------|
+| `BRIDGE_PASSWORD`         | The login password. Pick something long.                                               |
+| `BRIDGE_SECRET`           | HMAC key for cookie signatures. 32+ random bytes.                                      |
+| `BRIDGE_ALLOWED_ORIGIN`   | Comma-separated list of allowed Origin headers (your app URL).                         |
+| `OCR_SERVICE_URL`         | OCR FastAPI URL (e.g. `http://localhost:8080`). Missing → bridge refuses to boot.      |
+| `BRIDGE_FILES_DIR`        | Persistent dir for `/files` uploads. Provided by the Quadlet unit's `Environment=` line (not `term-bridge.env`). Missing → boot refused. **Pre-create on host.** |
+| `BRIDGE_PUBLIC_BASE_URL`  | HTTPS URL Caddy fronts the bridge at; embedded in upload responses. Missing → refused. |
+| `BRIDGE_PORT`             | Optional. Defaults to 3000.                                                            |
 
 Generate `BRIDGE_SECRET` with: `openssl rand -hex 32`.
 
@@ -96,22 +99,32 @@ cat > ~/.config/term-bridge.env <<EOF
 BRIDGE_PASSWORD=$(openssl rand -base64 24)
 BRIDGE_SECRET=$(openssl rand -hex 32)
 BRIDGE_ALLOWED_ORIGIN=https://your-app-domain
+OCR_SERVICE_URL=http://localhost:8080
+BRIDGE_PUBLIC_BASE_URL=https://your-bridge-host
 EOF
 chmod 600 ~/.config/term-bridge.env
 echo "Save the password from term-bridge.env somewhere safe — you'll log in with it."
 
-# 3. Drop the Quadlet unit.
+# 3. Pre-create the bind-mount source dirs/files. Podman creates a FILE
+#    at the source path if it doesn't exist, which silently breaks the
+#    bind mount — for hosts.json this means the WOL map looks empty; for
+#    the files dir this means /files uploads can't write anything.
+mkdir -p ~/.config/term-bridge
+[ -e ~/.config/term-bridge/hosts.json ] || echo '{}' > ~/.config/term-bridge/hosts.json
+mkdir -p ~/.local/share/term-bridge/files
+
+# 4. Drop the Quadlet unit.
 mkdir -p ~/.config/containers/systemd
 cp deploy/term-bridge.container ~/.config/containers/systemd/
 
-# 4. Reload + start.
+# 5. Reload + start.
 #    Quadlet-generated units can't be `enable`d directly — systemd treats
 #    them as transient. Auto-start at boot is handled by the [Install]
 #    section in the .container file plus `loginctl enable-linger`.
 systemctl --user daemon-reload
 systemctl --user start term-bridge.service
 
-# 5. Survive logout / reboot.
+# 6. Survive logout / reboot.
 loginctl enable-linger $USER
 ```
 
