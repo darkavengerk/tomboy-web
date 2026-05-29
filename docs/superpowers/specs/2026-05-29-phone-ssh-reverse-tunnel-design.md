@@ -144,3 +144,64 @@ bridge: wss://term.<도메인>/ws
 - bridge 별칭 로직: `bridge/src/sshHosts.test.ts` (`node --test`) — 로더 파싱/검증, alias 치환, 결측 파일 비활성. `hosts.test.ts`/`remarkableHosts.test.ts` 미러링.
 - 친절 에러: `probePort` 실패 경로 단위 테스트(기존 `probePort` 모킹 패턴 따름).
 - E2E: 실기. ① 터널 확립 후 `ssh://phone` 노트 → 셸 진입. ② autossh kill → 노트 열기 → 친절 에러. ③ 폰 재부팅 → 무개입 복구(가장 중요한 수용 기준).
+
+---
+
+## 10. 구현 결과 및 보정 (2026-05-29 실기 적용)
+
+실제 LG V30 + RPi(`bridge`)에 적용하며 확정된 사실과 설계 보정.
+
+### 10.1 확정 파라미터 (스펙 가정 → 실제)
+
+| 항목 | 스펙 가정 | 실제 |
+|---|---|---|
+| 폰 Termux 로그인 user | `termux` | **`u0_a186`** (uid 10186) |
+| 폰 sshd 포트 | 8022 | 8022 (동일) |
+| RPi sshd 포트(터널 종단) | 22 | **2222** (`:22`는 닫힘) |
+| RPi = bridge 호스트 | 가정 | 확인됨 (hostname `bridge`, 192.168.219.110, `term-bridge` Quadlet active, `:3000`) |
+| 터널 종단 계정 | 전용 `tunnel` 유저 | **기존 `umayloveme` 계정**에 포워딩 전용 키 등록 (RPi 무인 sudo 불가로 전용 유저 생성 보류). per-key `restrict,port-forwarding`로 셸 차단 |
+| bridge→폰 인증 키 | Pi `~/.ssh` 키 | `umayloveme@bridge`의 `~/.ssh/id_ed25519.pub` (폰 authorized_keys에 등록) |
+| ssh-hosts.json user | `termux` | `u0_a186` |
+
+### 10.2 autossh → keepalive 루프 (설계 보정)
+
+`autossh -f`가 **비대화형 SSH 채널에서 데몬화가 불안정**(verbose 출력조차 안 남고 포워딩 미확립)했다. 더 투명하고 디버깅 쉬운 **평문 `ssh -N -R` keepalive 루프**로 대체:
+
+`~/tunnel.sh` (폰):
+```sh
+#!/data/data/com.termux/files/usr/bin/bash
+pgrep -x sshd >/dev/null 2>&1 || sshd
+while true; do
+  ssh -N -R 127.0.0.1:18022:127.0.0.1:8022 \
+    -i "$HOME/.ssh/tunnel_key" -p 2222 umayloveme@192.168.219.110 \
+    -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ConnectTimeout=10 \
+    -o ExitOnForwardFailure=yes -o StrictHostKeyChecking=accept-new \
+    -o BatchMode=yes >> "$HOME/tunnel.log" 2>&1
+  echo "[$(date)] tunnel dropped rc=$?, retry in 5s" >> "$HOME/tunnel.log"
+  sleep 5
+done
+```
+*개선 여지*: 루프 내부에서도 `pgrep sshd || sshd`를 매 반복 보장하면 sshd 사망 시 self-heal.
+
+### 10.3 완료 상태
+
+- **Task 1–3 (bridge 코드)**: 완료·커밋·리뷰. RPi에서 `phone-ssh-reverse-tunnel` 브랜치 체크아웃 + 이미지 재빌드 + 재시작 → `loaded 1 ssh alias(es)` 확인, `/health` 200.
+- **Task 4 (터널 + 노트)**: 완료. `~/tunnel.sh`를 **폰에서 직접** 기동 시 RPi `127.0.0.1:18022` LISTEN + through-test(`ssh -p 18022 u0_a186@localhost`) 성공. 앱에서 `ssh://phone` 노트 → 폰 셸 진입 **end-to-end 확인**.
+
+### 10.4 Task 5 막힘 + 방향 전환 → Termux:Boot
+
+**핵심 발견 — service.d 자동기동의 SELinux 한계**: Magisk `/data/adb/service.d/` 스크립트는 root(`u:r:magisk:s0`)로 실행되는데, 거기서 `su <uid>`로 띄운 Termux 프로세스는 **Android 앱 SELinux 도메인(`untrusted_app` + `inet`(AID 3003) 그룹 + per-app MLS 카테고리)을 못 갖춰** 네트워크 소켓 생성/sshd 바인딩이 거부된다(`socket: Permission denied`, `Cannot execute /system/bin/sh`). 재부팅 *전* 검증이 성공했던 건 Termux 앱이 이미 떠 있어 정상 도메인이었기 때문.
+
+재부팅 후 증상: ssh `-R` 전송로는 부분적으로 떠도 폰 sshd가 8022를 못 열어 through-test가 `Connection reset`.
+
+**결정**: 정석 도구인 **Termux:Boot**으로 전환. Termux:Boot은 부팅 시 스크립트를 **Termux 앱 컨텍스트(정상 도메인)**에서 실행하므로 한계를 우회한다. 단 현 Termux가 GitHub 디버그 빌드(서명 `db86cf3c`, 사이드로드)라 F-Droid Termux:Boot은 서명 충돌. **같은 서명의 GitHub Termux:Boot APK를 우선 시도**(재설치·키 손실 없이 애드온만 추가); 불가 시 Termux+Boot을 동일 소스로 재설치 후 4a 재셋업.
+
+부팅 스크립트 `~/.termux/boot/start-tunnel.sh`:
+```sh
+#!/data/data/com.termux/files/usr/bin/sh
+termux-wake-lock 2>/dev/null || true
+pgrep -x sshd >/dev/null || sshd
+nohup ~/tunnel.sh >/dev/null 2>&1 &
+```
+
+**비범위 확인**: 이 변경은 bridge 코드(Task 1–3)·터널·노트 동작과 무관 — Task 5는 순수 "폰 부팅 자동기동" 단계.

@@ -512,3 +512,11 @@ ssh -p 18022 termux@localhost 'echo reboot-ok'   # → reboot-ok
 - 스펙 §5.3(코드)=Task 1~3, §5.1/5.2/6(런북)=Task 4~5, §7 실패모드=Task 2 친절에러 + Task 5 재부팅, §9 테스트=Task 1 단위 + Task 4/5 E2E. 누락 없음.
 - 포트 18022는 코드가 아니라 config(ssh-hosts.json)·런북에만 등장 — bridge는 범용 별칭 해석만.
 - 앱 코드 변경 0 (스펙 §5.3 확인) — 플랜에 app/ 태스크 없음이 정상.
+
+---
+
+## 실기 적용 결과 (2026-05-29) — 스펙 §10 참조
+
+- **Task 1–4: 완료.** bridge 별칭 코드 커밋·RPi 배포(`loaded 1 ssh alias(es)`), 폰 keepalive 루프(`~/tunnel.sh`)로 역터널 확립, 앱 `ssh://phone` end-to-end 확인.
+- **보정**: 폰 user `u0_a186`, RPi 종단 `umayloveme@192.168.219.110:2222`, 터널 종단 = 기존 umayloveme 계정(포워딩 전용 키), autossh→keepalive 루프. ssh-hosts.json user=`u0_a186`.
+- **Task 5 방향 전환**: Magisk service.d 는 SELinux 앱 도메인/inet 그룹 문제로 Termux 네트워크 데몬 기동 불가 → **Termux:Boot** 으로 전환. 폰 측 산출물: `bridge/deploy/phone-tunnel/{tunnel.sh,start-tunnel.sh,README.md}`. Termux:Boot 설치(앱)는 사용자 액션 — 같은 서명 GitHub APK 우선 시도, 불가 시 F-Droid 재설치.
