@@ -213,14 +213,44 @@ test('download: 200 + Content-Disposition + body', async () => {
 	}
 });
 
-test('download: 404 when filename mismatches disk', async () => {
+test('download: filename mismatch falls back to single file in UUID dir', async () => {
+	// iOS Safari may NFD-normalize percent-encoded paths before sending,
+	// so the URL filename can disagree with the on-disk (NFC) name. UUID
+	// is the security boundary; serve the dir's sole file regardless.
 	const dir = mkdtempSync(join(tmpdir(), 'files-test-'));
 	try {
 		const uuid = '11111111-2222-3333-4444-555555555555';
 		mkdirSync(join(dir, uuid), { recursive: true });
-		writeFileSync(join(dir, uuid, 'doc.pdf'), 'x');
+		// NFC composed Hangul on disk.
+		const onDisk = '달콤한.mp3'.normalize('NFC');
+		writeFileSync(join(dir, uuid, onDisk), 'audio-bytes');
+		// URL sends NFD decomposed form.
+		const nfdName = '달콤한.mp3'.normalize('NFD');
 		const { res, get } = mockRes();
-		const req = mockReq({ method: 'GET', url: `/files/${uuid}/other.pdf` });
+		const req = mockReq({
+			method: 'GET',
+			url: `/files/${uuid}/${encodeURIComponent(nfdName)}`
+		});
+		await handleFileDownload(req, res, dir);
+		const r = get();
+		assert.equal(r.status, 200);
+		assert.equal(r.body.toString('utf8'), 'audio-bytes');
+		// Content-Disposition uses the on-disk NFC name.
+		assert.equal(
+			r.headers['Content-Disposition'],
+			`attachment; filename*=UTF-8''${encodeURIComponent(onDisk)}`
+		);
+	} finally {
+		rmSync(dir, { recursive: true });
+	}
+});
+
+test('download: 404 when UUID dir does not exist', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'files-test-'));
+	try {
+		const uuid = '11111111-2222-3333-4444-555555555555';
+		const { res, get } = mockRes();
+		const req = mockReq({ method: 'GET', url: `/files/${uuid}/doc.pdf` });
 		await handleFileDownload(req, res, dir);
 		assert.equal(get().status, 404);
 	} finally {
