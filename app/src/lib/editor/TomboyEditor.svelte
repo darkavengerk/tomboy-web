@@ -34,6 +34,7 @@
 		extractTitleText,
 	} from "./titleUniqueGuard.js";
 	import { createImagePreviewPlugin } from "./imagePreview/imagePreviewPlugin.js";
+	import { createFilePreviewPlugin } from "./filePreview/filePreviewPlugin.js";
 	import { createGeoMapPlugin } from "./geoMap/geoMapPlugin.js";
 	import {
 		createSendListItemPlugin,
@@ -408,7 +409,7 @@
 				Extension.create({
 					name: "tomboyImagePreview",
 					addProseMirrorPlugins() {
-						return [createImagePreviewPlugin()];
+						return [createImagePreviewPlugin(), createFilePreviewPlugin()];
 					},
 				}),
 				Extension.create({
@@ -1385,6 +1386,32 @@
 	   removes the whole URL, arrow keys skip across it. */
 	.tomboy-editor :global(.tomboy-image-url-hidden) {
 		display: none;
+	}
+
+	/* Bridge file-URL text is hidden so the 📎 badge alone represents the link.
+	   The URL stays in the doc verbatim for Tomboy XML round-trip. */
+	.tomboy-editor :global(.tomboy-file-url-hidden) {
+		display: none;
+	}
+
+	.tomboy-editor :global(.tomboy-file-badge) {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25em;
+		padding: 0.1em 0.5em;
+		margin: 0 0.15em;
+		background: #eef2f7;
+		border: 1px solid #d4dbe4;
+		border-radius: 4px;
+		color: #1565c0;
+		text-decoration: none;
+		font-size: 0.9em;
+		line-height: 1.3;
+		cursor: pointer;
+	}
+	.tomboy-editor :global(.tomboy-file-badge:hover) {
+		background: #e3eaf3;
+		text-decoration: underline;
 	}
 
 	.tomboy-editor :global(.tomboy-geo-map) {
