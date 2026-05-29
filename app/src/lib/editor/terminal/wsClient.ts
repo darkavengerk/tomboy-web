@@ -311,7 +311,7 @@ export class TerminalWsClient {
  * Accept either an `https://`/`http://` form or a `wss://`/`ws://` form for
  * the bridge URL — UX is friendlier when the user can paste either.
  */
-function bridgeToWsUrl(bridge: string): string {
+export function bridgeToWsUrl(bridge: string): string {
 	const trimmed = bridge.trim();
 	if (/^wss?:\/\//i.test(trimmed)) {
 		return appendWsPath(trimmed);
