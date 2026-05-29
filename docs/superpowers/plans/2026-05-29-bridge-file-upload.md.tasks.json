@@ -1,0 +1,53 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-29-bridge-file-upload.md",
+  "tasks": [
+    {
+      "id": 7,
+      "subject": "Task 1: Bridge files.ts — sanitize + 4 handlers + tests",
+      "status": "pending",
+      "description": "**Goal:** Bridge에 파일 업로드/다운로드/목록/삭제 핸들러 4개와 sanitize 헬퍼를 TDD로 작성. server.ts 통합은 Task 2.\n\n**Files:**\n- Create: `bridge/src/files.ts`\n- Create: `bridge/src/files.test.ts`\n\n**Acceptance Criteria:**\n- sanitizeFilename basename/NFC/제어문자/255-byte/untitled 폴백\n- handleFileUpload 401/413/400/200 + 디스크 작성 확인\n- handleFileDownload 인증 없음, 200+headers / 404 / 400\n- handleFileList 401 / 200 + 메타 배열\n- handleFileDelete 401 / 400 / 200 / 404\n- 라운드트립 byte-identical\n- Path traversal 차단\n\n**Verify:** `cd bridge && npm test` → files.test.ts 통과 + 기존 테스트 회귀 없음.\n\n```json:metadata\n{\"files\": [\"bridge/src/files.ts\", \"bridge/src/files.test.ts\"], \"verifyCommand\": \"cd bridge && npm test\", \"acceptanceCriteria\": [\"sanitizeFilename\", \"upload 401/413/400/200\", \"download 200/404/400\", \"list 401/200\", \"delete 401/400/200/404\", \"roundtrip\", \"path traversal\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 2: Bridge wire-up — server.ts routes + Quadlet Volume + README",
+      "status": "pending",
+      "blockedBy": [7],
+      "description": "**Goal:** Task 1 핸들러를 server.ts에 라우팅하고 영속 Volume 추가.\n\n**Files:**\n- Modify: `bridge/src/server.ts`\n- Modify: `bridge/deploy/term-bridge.container`\n- Modify: `bridge/README.md`\n\n**Acceptance Criteria:**\n- BRIDGE_FILES_DIR + BRIDGE_PUBLIC_BASE_URL requireEnv\n- 부팅 시 mkdir recursive\n- 4 라우트 등록\n- Quadlet Volume + Environment\n- README 사전 mkdir 안내\n\n**Verify:** `cd bridge && npm run build` 통과, smoke server boot → curl /files → 401.\n\n```json:metadata\n{\"files\": [\"bridge/src/server.ts\", \"bridge/deploy/term-bridge.container\", \"bridge/README.md\"], \"verifyCommand\": \"cd bridge && npm run build && npm test\", \"acceptanceCriteria\": [\"requireEnv BRIDGE_FILES_DIR + BRIDGE_PUBLIC_BASE_URL\", \"4 라우트\", \"Quadlet Volume\", \"README\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 3: App SDK — bridgeFileUpload.ts + bridgeFileAdmin.ts",
+      "status": "pending",
+      "description": "**Goal:** bridge /files를 호출할 클라이언트 SDK + 단위 테스트.\n\n**Files:**\n- Create: `app/src/lib/sync/bridgeFileUpload.ts`\n- Create: `app/src/lib/sync/bridgeFileAdmin.ts`\n- Create: `app/tests/unit/sync/bridgeFileUpload.test.ts`\n- Create: `app/tests/unit/sync/bridgeFileAdmin.test.ts`\n\n**Acceptance Criteria:**\n- uploadBridgeFile 헤더(Authorization/Content-Type/X-Filename)\n- 에러 분류 bridge_not_configured/empty_file/too_large/unauthorized/network/server\n- 50 MiB 사전 컷\n- listBridgeFiles, deleteBridgeFile\n- BridgeFileMeta 타입 export\n\n**Verify:** `cd app && npm run test -- bridgeFileUpload bridgeFileAdmin` 통과.\n\n```json:metadata\n{\"files\": [\"app/src/lib/sync/bridgeFileUpload.ts\", \"app/src/lib/sync/bridgeFileAdmin.ts\", \"app/tests/unit/sync/bridgeFileUpload.test.ts\", \"app/tests/unit/sync/bridgeFileAdmin.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- bridgeFileUpload bridgeFileAdmin\", \"acceptanceCriteria\": [\"uploadBridgeFile\", \"listBridgeFiles\", \"deleteBridgeFile\", \"BridgeFileMeta\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 4: extractAnyFile + TomboyEditor paste/drop + uploadAndInsertFile",
+      "status": "pending",
+      "blockedBy": [9],
+      "description": "**Goal:** paste/drop에서 비이미지 fall-through + uploadAndInsertFile 함수.\n\n**Files:**\n- Create: `app/src/lib/editor/extractFile.ts`\n- Create: `app/tests/unit/editor/extractFile.test.ts`\n- Modify: `app/src/lib/editor/TomboyEditor.svelte`\n\n**Acceptance Criteria:**\n- extractAnyFile 4 케이스(이미지 only/파일 only/이미지+파일/빈)\n- handlePaste/handleDrop fall-through\n- uploadAndInsertFile insertContent + tomboyUrlLink + 토스트\n\n**Verify:** `cd app && npm run test -- extractFile && npm run check`\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/extractFile.ts\", \"app/tests/unit/editor/extractFile.test.ts\", \"app/src/lib/editor/TomboyEditor.svelte\"], \"verifyCommand\": \"cd app && npm run test -- extractFile && npm run check\", \"acceptanceCriteria\": [\"extractAnyFile\", \"paste/drop fall-through\", \"uploadAndInsertFile\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 5: Picker UI — Toolbar 버튼 + EditorContextMenu 항목",
+      "status": "pending",
+      "blockedBy": [10],
+      "description": "**Goal:** 툴바 + 우클릭 메뉴에 파일 첨부 picker.\n\n**Files:**\n- Modify: `app/src/lib/editor/Toolbar.svelte`\n- Modify: `app/src/lib/editor/EditorContextMenu.svelte`\n- Modify: `app/src/lib/editor/TomboyEditor.svelte`\n\n**Acceptance Criteria:**\n- Toolbar onuploadfile prop + 버튼 + accept=*/* input\n- ContextMenu 파일 첨부 항목 + 자체 picker\n- TomboyEditor가 uploadAndInsertFile을 두 컴포넌트에 전달\n- single-file (multiple 없음)\n\n**Verify:** `cd app && npm run check` + 수동 dev에서 두 픽커 트리거.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/Toolbar.svelte\", \"app/src/lib/editor/EditorContextMenu.svelte\", \"app/src/lib/editor/TomboyEditor.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"Toolbar button + input\", \"ContextMenu item + picker\", \"TomboyEditor wiring\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 6: filePreviewPlugin + fileBadge + 등록",
+      "status": "pending",
+      "blockedBy": [9],
+      "description": "**Goal:** bridge 파일 URL을 detect해 클릭 가능 뱃지로 렌더하는 ProseMirror plugin.\n\n**Files:**\n- Create: `app/src/lib/editor/filePreview/filePreviewPlugin.ts`\n- Create: `app/src/lib/editor/filePreview/fileBadge.ts`\n- Create: `app/tests/unit/editor/filePreview/filePreviewPlugin.test.ts`\n- Create: `app/tests/unit/editor/filePreview/fileBadge.test.ts`\n- Modify: `app/src/lib/editor/TomboyEditor.svelte`\n\n**Acceptance Criteria:**\n- createFileBadgeElement filename 추출(decodeURIComponent), 빈 → 파일\n- filePreviewPlugin host base getDefaultTerminalBridge+bridgeToHttpBase view() 비동기 + setMeta('rebuild')\n- non-bridge URL/잘못된 uuid/비-/files/ prefix 무시\n- 라운드트립: archive → unarchive → URL byte-identical\n\n**Verify:** `cd app && npm run test -- filePreview && npm run check`\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/filePreview/filePreviewPlugin.ts\", \"app/src/lib/editor/filePreview/fileBadge.ts\", \"app/tests/unit/editor/filePreview/filePreviewPlugin.test.ts\", \"app/tests/unit/editor/filePreview/fileBadge.test.ts\", \"app/src/lib/editor/TomboyEditor.svelte\"], \"verifyCommand\": \"cd app && npm run test -- filePreview && npm run check\", \"acceptanceCriteria\": [\"fileBadge filename\", \"URL 매칭\", \"non-bridge 무시\", \"roundtrip\"]}\n```"
+    },
+    {
+      "id": 13,
+      "subject": "Task 7: /admin/files 페이지",
+      "status": "pending",
+      "blockedBy": [9],
+      "description": "**Goal:** /admin/files 파일 목록 + 검색 + 삭제 UI.\n\n**Files:**\n- Create: `app/src/routes/admin/files/+page.svelte`\n- Create: `app/tests/unit/routes/admin/files/+page.test.ts`\n- Modify: admin nav\n\n**Acceptance Criteria:**\n- listBridgeFiles → 테이블(filename/size/mtime/download/delete)\n- mtime desc 기본 정렬, filename 부분 일치 검색\n- 삭제 confirm → deleteBridgeFile → 즉시 갱신\n- 빈 상태 안내\n- admin nav 파일 탭\n\n**Verify:** `cd app && npm run test -- admin/files` + dev에서 /admin/files 접근.\n\n```json:metadata\n{\"files\": [\"app/src/routes/admin/files/+page.svelte\", \"app/tests/unit/routes/admin/files/+page.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- admin/files\", \"acceptanceCriteria\": [\"테이블\", \"검색\", \"삭제\", \"empty\", \"nav\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-29T00:00:00Z"
+}

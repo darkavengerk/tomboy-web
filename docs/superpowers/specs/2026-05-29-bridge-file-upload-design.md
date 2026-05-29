@@ -23,7 +23,7 @@
 1. 사용자가 노트 편집 중 PDF를 클립보드에서 paste 한다.
 2. `extractAnyFile`이 이미지가 아니라고 판정 → `uploadBridgeFile(file)` 호출.
 3. 토스트: "<filename> 업로드 중…".
-4. 업로드 성공 → 응답 URL(`https://<bridge>/files/<uuid>/<filename>`)을 plain text로 에디터에 insert.
+4. 업로드 성공 → 응답 URL(`https://<bridge>/files/<uuid>/<filename>`)을 기존 `tomboyUrlLink` 마크로 감싸 에디터에 insert(이미지 흐름과 동일 패턴).
 5. `filePreviewPlugin`이 URL을 보고 `[📎 filename]` 클릭 가능 뱃지를 widget decoration으로 렌더.
 6. 사용자는 뱃지를 클릭하면 브라우저가 직접 파일을 다운로드한다.
 
@@ -59,7 +59,7 @@
 │         Content-Type: <file.type>                          │
 │         X-Filename: <urlencode(file.name)>                 │
 │         body: raw bytes                                    │
-│   응답 url을 editor에 plain text로 insert                  │
+│   응답 url을 tomboyUrlLink 마크로 감싸 editor에 insert     │
 └──────────────────────────────────────────────────────────┘
                             ↑ HTTPS (Caddy reverse proxy)
 ┌── Bridge (term-bridge container, 새 Volume mount) ────────┐
@@ -122,11 +122,11 @@
 - **`extractFile.ts`** (신규)
   - `extractAnyFile(dt: DataTransfer | null): { file: File; isImage: boolean } | null`
   - 이미지 우선.
-- **`TomboyEditor.svelte`** — `handlePaste` / `handleDrop`에서 이미지 분기 후 fall-through로 `uploadAndInsertFile(file)` 추가. 새 함수가 `uploadBridgeFile` 호출 → 응답 URL을 plain text로 insert (이미지 흐름과 동일).
+- **`TomboyEditor.svelte`** — `handlePaste` / `handleDrop`에서 이미지 분기 후 fall-through로 `uploadAndInsertFile(file)` 추가. 새 함수가 `uploadBridgeFile` 호출 → 응답 URL을 `tomboyUrlLink` 마크로 감싸 insert (이미지 흐름과 동일 — `TomboyEditor.svelte:1127-1134`).
 - **`Toolbar.svelte`** — 기존 이미지 input 옆에 `<input type="file" accept="*/*">` + 새 버튼 + `onuploadfile` 이벤트.
 - **`EditorContextMenu.svelte`** — "파일 첨부" 항목 추가, `onuploadfile`로 부모에 위임.
 - **`filePreview/`** (신규 디렉토리)
-  - `filePreviewPlugin.ts` — ProseMirror Plugin. 정규식으로 `https?://<bridgeHost>/files/<uuid>/<name>` 검출 → widget decoration으로 `[📎 filename]` 클릭 가능 `<a href>` 렌더. 호스트는 runtime에 `getBridgeHttpBase()`에서 가져옴.
+  - `filePreviewPlugin.ts` — ProseMirror Plugin. 정규식으로 `https?://<bridgeHost>/files/<uuid>/<name>` 검출 → widget decoration으로 `[📎 filename]` 클릭 가능 `<a href>` 렌더. 호스트는 plugin `view()` lifecycle에서 `getDefaultTerminalBridge()` + `bridgeToHttpBase()`로 비동기 resolve, resolve 완료 시 `setMeta('rebuild')`로 재빌드.
   - `fileBadge.ts` — `createFileBadgeElement(url)` 순수 헬퍼.
   - 테스트: URL 파싱, decoration 위치, 비-bridge URL 무시, badge href.
 
@@ -144,7 +144,7 @@
 
 - **추측 불가 ID에 다운로드 보안 의존.** UUID v4 = 122-bit 엔트로피. URL이 유출되면 파일 노출 — Dropbox 공유 링크와 동일 모델. 사용자가 이해해야 함.
 - **업로드는 Bearer 보호.** 무단 업로드 방지.
-- **노트 source = plain text URL.** 새 mark/node 없음. `noteContentArchiver`는 한 줄도 변경하지 않음 → Tomboy XML 라운드트립 무손상.
+- **노트 source = URL 텍스트 + 기존 `tomboyUrlLink` 마크.** 이미지 흐름과 같은 패턴(`TomboyEditor.svelte:1127-1134`). 새 mark/node 정의 없음(`tomboyUrlLink`는 이미 존재). `noteContentArchiver`도 한 줄도 변경하지 않음 → Tomboy XML 라운드트립은 기존 `<link:url>` 경로 그대로 사용 → 무손상.
 - **이미지 흐름 무변경.** `imageUpload.ts`, `tempImageUpload.ts`, `imagePreviewPlugin.ts` 0줄 변경. paste 분기 단 한 곳에서 fall-through 추가.
 - **브릿지 URL 변경 시 기존 링크 깨짐.** 알려진 한계. 자동 마이그레이션 없음. README에 명시.
 - **`<bridge>/files/<uuid>` host + path 매칭으로만 `filePreviewPlugin` 활성.** 다른 호스트의 `/files/...`는 무시 → 오작동 방지.
@@ -190,7 +190,7 @@
 ### 6.5 노트 측 엣지
 
 - 이미지 + 비이미지 동시 paste → 이미지 우선 (기존 Vercel Blob 흐름).
-- `filePreviewPlugin` host 매칭은 runtime — `getBridgeHttpBase()` 변경 시 재계산.
+- `filePreviewPlugin` host 매칭은 runtime resolve. 첫 doc render 시점에는 base가 아직 빈 문자열이라 매칭 0개; plugin `view()` lifecycle에서 base가 resolve되면 `setMeta('rebuild')`로 한 번 재빌드. 알려진 작은 지연.
 - 브릿지 URL이 바뀌면 기존 노트의 모든 파일 링크 끊김. 알려진 한계.
 
 ## 7. 테스트 전략
