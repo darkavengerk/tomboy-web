@@ -25,6 +25,8 @@
 		parseTerminalNote,
 		type TerminalNoteSpec
 	} from '$lib/editor/terminal/parseTerminalNote.js';
+	import KeysView from '$lib/editor/keyRemote/KeysView.svelte';
+	import { parseKeysNote, type KeysNoteSpec } from '$lib/editor/keyRemote/parseKeysNote.js';
 	import ChatSendBar from '$lib/editor/chatNote/ChatSendBar.svelte';
 	import RemarkableActionBar from '$lib/editor/remarkable/RemarkableActionBar.svelte';
 	import { parseOcrNote } from '$lib/ocrNote/parseOcrNote.js';
@@ -86,6 +88,9 @@
 	let terminalSpec: TerminalNoteSpec | null = $state.raw(null);
 	let terminalConnectMode = $state(false);
 	const showTerminal = $derived(!!terminalSpec && terminalConnectMode);
+	let keysSpec: KeysNoteSpec | null = $state.raw(null);
+	let keysConnectMode = $state(false);
+	const showKeys = $derived(!!keysSpec && keysConnectMode);
 
 	// Bridge settings for ChatSendBar — loaded once on mount from appSettings.
 	let llmBridgeUrl = $state('');
@@ -193,6 +198,8 @@
 			editorContent = getNoteEditorContent(fresh);
 			terminalSpec = parseTerminalNote(editorContent);
 			if (!terminalSpec) terminalConnectMode = false;
+			keysSpec = parseKeysNote(editorContent);
+			if (!keysSpec) keysConnectMode = false;
 			lastSavedDocFingerprint = null;
 		});
 		return off;
@@ -254,6 +261,8 @@
 			editorContent = getNoteEditorContent(loaded);
 			terminalSpec = parseTerminalNote(editorContent);
 			terminalConnectMode = false;
+			keysSpec = parseKeysNote(editorContent);
+			keysConnectMode = false;
 			loading = false;
 
 			const homeGuid = await getHomeNoteGuid();
@@ -469,6 +478,8 @@
 		editorContent = getNoteEditorContent(fresh);
 		terminalSpec = parseTerminalNote(editorContent);
 		if (!terminalSpec) terminalConnectMode = false;
+		keysSpec = parseKeysNote(editorContent);
+		if (!keysSpec) keysConnectMode = false;
 		lastSavedDocFingerprint = null;
 		const ed = getEditor();
 		if (ed && editorContent) {
@@ -654,7 +665,7 @@
 	}
 </script>
 
-<div class="editor-page" class:terminal-connected={showTerminal}>
+<div class="editor-page" class:terminal-connected={showTerminal || showKeys}>
 	<!-- 저장 상태 + 노트북/액션 버튼을 에디터 위 간결한 바로.
 	     터미널 접속 모드에서는 숨김 — 헤더가 좁아져서 겹치고, 어차피
 	     '편집 모드' 버튼으로 빠져나오면 다시 노출되니까 안전. -->
@@ -688,7 +699,7 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="editor-area"
-		class:terminal-edit={!!terminalSpec && !showTerminal}
+		class:terminal-edit={(!!terminalSpec && !showTerminal) || (!!keysSpec && !showKeys)}
 		bind:this={editorAreaEl}
 		onclick={handleEditorAreaClick}
 	>
@@ -700,6 +711,14 @@
 					spec={terminalSpec}
 					guid={noteId ?? ''}
 					onedit={() => (terminalConnectMode = false)}
+				/>
+			{/key}
+		{:else if showKeys && keysSpec}
+			{#key noteId}
+				<KeysView
+					spec={keysSpec}
+					guid={noteId ?? ''}
+					onedit={() => (keysConnectMode = false)}
 				/>
 			{/key}
 		{:else}
@@ -753,7 +772,7 @@
 		{/if}
 	</div>
 
-	{#if !showTerminal}
+	{#if !showTerminal && !showKeys}
 		<div class="toolbar-area">
 			<Toolbar
 				editor={getEditor()}
@@ -776,6 +795,14 @@
 			aria-label="SSH 접속"
 			title="SSH 접속 — {terminalSpec.target}"
 		>접속</button>
+	{/if}
+	{#if keysSpec && !showKeys}
+		<button
+			class="fab-terminal-connect"
+			onclick={() => (keysConnectMode = true)}
+			aria-label="키 패드"
+			title="키 이벤트 — {keysSpec.raw}"
+		>키</button>
 	{/if}
 </div>
 

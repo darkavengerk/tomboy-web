@@ -1,0 +1,58 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-29-phone-key-events.md",
+  "tasks": [
+    {
+      "id": 11,
+      "subject": "Task 1: bridge keyEvents.ts 화이트리스트+명령빌더",
+      "status": "completed",
+      "description": "**Goal:** 정수 keycode 화이트리스트와 고정 템플릿 명령 빌더를 순수 함수로 만들어 셸 인젝션을 원천 차단한다.\n\n**Files:** Create bridge/src/keyEvents.ts, bridge/src/keyEvents.test.ts\n\n**Acceptance Criteria:** isAllowedKeyCode 24/25 true·26/99/0 false; 비정수/문자열/음수/NaN/null/undefined 거부; buildKeyCommand(24)===\"su -c 'input keyevent 24'\"; KEY_WHITELIST 24=VOLUME_UP 25=VOLUME_DOWN.\n\n**Verify:** cd bridge && npx tsc -p . && node --test dist/keyEvents.test.js\n\n```json:metadata\n{\"files\": [\"bridge/src/keyEvents.ts\", \"bridge/src/keyEvents.test.ts\"], \"verifyCommand\": \"cd bridge && npx tsc -p . && node --test dist/keyEvents.test.js\", \"acceptanceCriteria\": [\"isAllowedKeyCode 24/25 true, 26/99/0 false\", \"non-integer/string/negative/NaN/null/undefined rejected\", \"buildKeyCommand(24) === su -c 'input keyevent 24'\", \"KEY_WHITELIST 24=VOLUME_UP 25=VOLUME_DOWN\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 2: bridge buildSshExecArgs (pty.ts)",
+      "status": "completed",
+      "description": "**Goal:** PTY가 아닌 일회성 원격 명령 실행용 ssh argv 빌더를 만들어 keys 세션이 ControlMaster를 재사용하게 한다.\n\n**Files:** Modify bridge/src/pty.ts, bridge/src/pty.test.ts\n\n**Acceptance Criteria:** remoteCommand 마지막 인자·앞이 user@host; controlPath 있으면 ControlMaster/ControlPath/ControlPersist=60; 없으면 멀티플렉싱 옵션 없음; BatchMode=yes 항상; port 있으면 -p.\n\n**Verify:** cd bridge && npx tsc -p . && node --test dist/pty.test.js\n\n```json:metadata\n{\"files\": [\"bridge/src/pty.ts\", \"bridge/src/pty.test.ts\"], \"verifyCommand\": \"cd bridge && npx tsc -p . && node --test dist/pty.test.js\", \"acceptanceCriteria\": [\"remoteCommand last arg, user@host before it\", \"controlPath set → ControlMaster/ControlPath/ControlPersist=60\", \"no controlPath → no multiplexing opts\", \"BatchMode=yes always; -p port when present\"]}\n```"
+    },
+    {
+      "id": 13,
+      "subject": "Task 3: bridge server.ts keys 모드",
+      "status": "completed",
+      "blockedBy": [11, 12],
+      "description": "**Goal:** WS connect에 mode:'keys'를 추가해 ControlMaster를 프리웜하고, {type:'key',code}를 화이트리스트 검증 후 일회성 ssh exec로 폰에 주입한다.\n\n**Files:** Modify bridge/src/server.ts\n\n**Acceptance Criteria:** ClientMsg key/keys/code; keys connect 로컬→error·별칭→probe·프리웜 ok→ready/fail→error+close; key msg 비화이트리스트→key-error(유지)·정상→ssh exec→key-ok/key-error+stderr; close시 ssh -O exit+unlink; 기존 테스트 회귀 없음.\n\n**Verify:** cd bridge && npx tsc -p . && node --test dist/*.test.js\n\n```json:metadata\n{\"files\": [\"bridge/src/server.ts\"], \"verifyCommand\": \"cd bridge && npx tsc -p . && node --test dist/*.test.js\", \"acceptanceCriteria\": [\"ClientMsg key/keys/code added, tsc passes\", \"keys connect: local→error, alias→probe, prewarm ok→ready / fail→error+close\", \"key msg: bad code→key-error(stay), good→ssh exec→key-ok / key-error+stderr\", \"WS close: keys master ssh -O exit + unlink\", \"existing bridge tests still pass\"]}\n```"
+    },
+    {
+      "id": 14,
+      "subject": "Task 4: 프론트 parseKeysNote.ts",
+      "status": "completed",
+      "description": "**Goal:** 노트 본문 첫 줄 keys://[user@]host[:port]을 인식해 KeysNoteSpec(와이어용 ssh:// 타깃 포함)을 반환한다.\n\n**Files:** Create app/src/lib/editor/keyRemote/parseKeysNote.ts, app/tests/unit/editor/keyRemote/parseKeysNote.test.ts\n\n**Acceptance Criteria:** keys://phone 풀스펙(sshTarget ssh://phone); user@host:port 파싱+sshTarget; 제목 후 빈줄 스킵; 포트범위밖 null; ssh:///평문/본문없음 null.\n\n**Verify:** cd app && npm run test -- parseKeysNote\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/keyRemote/parseKeysNote.ts\", \"app/tests/unit/editor/keyRemote/parseKeysNote.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- parseKeysNote\", \"acceptanceCriteria\": [\"keys://phone full spec incl sshTarget ssh://phone\", \"keys://user@host:port parsed + sshTarget\", \"skips empty lines after title\", \"out-of-range port → null\", \"ssh:// / plain / no-body → null\"]}\n```"
+    },
+    {
+      "id": 15,
+      "subject": "Task 5: 프론트 keysClient.ts + bridgeToWsUrl export",
+      "status": "completed",
+      "description": "**Goal:** keys 모드 WS 클라이언트(connect/sendKey + 콜백)를 주입가능 소켓으로 테스트가능하게 만들고, bridgeToWsUrl을 wsClient에서 재사용한다.\n\n**Files:** Modify app/src/lib/editor/terminal/wsClient.ts; Create app/src/lib/editor/keyRemote/keysClient.ts, app/tests/unit/editor/keyRemote/keysClient.test.ts\n\n**Acceptance Criteria:** open시 connect(mode:keys); ready→onStatus(ready); sendKey→{key,code}; key-ok/key-error 콜백; error→onStatus(error); bridgeToWsUrl export(회귀 없음).\n\n**Verify:** cd app && npm run test -- keysClient && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/wsClient.ts\", \"app/src/lib/editor/keyRemote/keysClient.ts\", \"app/tests/unit/editor/keyRemote/keysClient.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- keysClient && npm run check\", \"acceptanceCriteria\": [\"connect frame mode:keys on open\", \"ready→onStatus(ready)\", \"sendKey→{type:key,code}\", \"key-ok/key-error routed to callbacks\", \"error→onStatus(error,msg)\", \"bridgeToWsUrl exported, terminal unaffected\"]}\n```"
+    },
+    {
+      "id": 16,
+      "subject": "Task 6: 프론트 KeysView.svelte 버튼 패드",
+      "status": "completed",
+      "blockedBy": [14, 15],
+      "description": "**Goal:** KeysNoteSpec를 받아 볼륨 ±버튼 패드를 렌더하고, 브릿지에 연결해 버튼 누름마다 키를 전송하고 ✓/✗ 피드백을 표시한다.\n\n**Files:** Create app/src/lib/editor/keyRemote/KeysView.svelte\n\n**Acceptance Criteria:** 두 버튼 렌더·ready 아니면 disabled; bridge/token 미설정 한국어 배너; press→sendKey·key-ok ✓·key-error ✗+메시지; 편집 버튼→onedit; check 0 errors.\n\n**Verify:** cd app && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/keyRemote/KeysView.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"two buttons render, disabled when not ready\", \"missing bridge/token → korean error banner\", \"press→sendKey; key-ok→✓, key-error→✗+msg\", \"edit button → onedit()\", \"npm run check 0 errors\"]}\n```"
+    },
+    {
+      "id": 17,
+      "subject": "Task 7: 프론트 note 페이지 keys:// 배선",
+      "status": "completed",
+      "blockedBy": [14, 16],
+      "description": "**Goal:** note/[id]/+page.svelte가 keys:// 노트를 인식해 '키' FAB → KeysView를 띄우게 한다(터미널 노트 패턴 미러).\n\n**Files:** Modify app/src/routes/note/[id]/+page.svelte\n\n**Acceptance Criteria:** keys:// 노트 키 FAB→KeysView 마운트; keys 모드 툴바 숨김·편집 복귀; 일반/터미널 회귀 없음; check 0 errors.\n\n**Verify:** cd app && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/routes/note/[id]/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"keys:// note shows 키 FAB → mounts KeysView\", \"keys mode hides toolbar, edit returns\", \"plain/terminal notes unaffected\", \"npm run check 0 errors\"]}\n```"
+    },
+    {
+      "id": 18,
+      "subject": "Task 8: E2E — keys://phone 볼륨 ±버튼이 폰 볼륨을 바꾼다 (사용자 게이트)",
+      "status": "pending",
+      "blockedBy": [13, 17],
+      "description": "**Goal:** 앱에서 keys://phone 노트를 열고 ▲/▼ 버튼을 눌러 폰 볼륨이 실제로 변하는지 사용자가 직접 확인한다.\n\n**USER-ORDERED GATE — NON-SKIPPABLE.** Close only after every acceptanceCriteria is re-validated independently with output captured.\n\n**Files:** 없음(검증 전용).\n\n**Acceptance Criteria:** 사전조건(bridge 재배포+역터널 LISTEN+폰 잠금해제); keys:// 노트 키 FAB→KeysView ready; 🔊 볼륨 업→OSD 상승+✓; 🔉 볼륨 다운→OSD 하강+✓; u0_a186 su -c grant 통과.\n\n**Verify:** 앱에서 ▲/▼ → 폰 볼륨 OSD 변화 + 버튼 ✓ 육안 확인 (사용자 게이트).\n\n```json:metadata\n{\"userGate\": true, \"tags\": [\"user-gate\"], \"requireEvidenceTokens\": [[\"volume-up\", \"▲\", \"볼륨 업\"], [\"volume-down\", \"▼\", \"볼륨 다운\"]], \"files\": [], \"verifyCommand\": \"앱에서 keys://phone 노트 ▲/▼ → 폰 볼륨 OSD 변화 + 버튼 ✓ 육안 확인\", \"acceptanceCriteria\": [\"사전조건: bridge 재배포 + 역터널 LISTEN + 폰 잠금해제\", \"keys:// 노트 키 FAB → KeysView ready\", \"🔊 볼륨 업 → 폰 OSD 상승 + ✓\", \"🔉 볼륨 다운 → 폰 OSD 하강 + ✓\", \"u0_a186 su -c grant 통과(첫 키 ✓)\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-29T00:00:00Z"
+}
