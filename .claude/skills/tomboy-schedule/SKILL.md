@@ -313,7 +313,8 @@ uses Admin SDK and bypasses rules.
 | `lib/schedule/installId.ts` | per-install UUID in `appSettings` |
 | `lib/schedule/autoWeekday.ts` | pure transforms: `getWeekdayChar`, `formatDayWithWeekday`, `transformDayPrefixLine`, `transformMultilineDayPrefix` |
 | `lib/editor/autoWeekday/autoWeekdayPlugin.ts` | ProseMirror plugin: `appendTransaction` runs the pure transform on doc-change AND on `setMeta(autoWeekdayPluginKey, { rescan: true })` |
-| `lib/editor/sendListItem/transferListItem.ts` | hardcoded `SEND_SOURCE_GUID` + `SEND_TARGET_GUID`; live-editor / IDB write path |
+| `lib/editor/sendListItem/transferListItem.ts` | hardcoded `SEND_SOURCE_GUID` + `SEND_TARGET_GUID`; live-editor / IDB write path; recurred-copy insert + both-list day-sort glue |
+| `lib/editor/sendListItem/recurringCopy.ts` | pure recurrence core: `parsePrefix`, `recurrenceFromParse`, `computeTargetDate`, `buildRecurredLiJson`, `planMonthInsert` / `findMonthBulletList`, `scheduleDayOf` / `sortListItemsByDay` |
 | `lib/editor/sendListItem/sendActiveGate.ts` | pure `shouldSendListBeActive` — gates the "보내기" button by source-guid + Ctrl + window focus |
 | `lib/core/schedule.ts` | `getScheduleNoteGuid` / `setScheduleNote` (mirrors `home.ts`) |
 | `lib/sync/dropboxClient.ts` | `getAccessToken()` exposed for the auth bridge |
@@ -450,6 +451,72 @@ there's no focus ambiguity. The mobile route also calls
 desktop browsers viewing the mobile route) updates the shared
 `modKeys` state; the same listeners power the Toolbar's Ctrl-lock
 toggle.
+
+## "보내기" 반복 마커 + 삽입 정렬
+
+When 보내기 fires, besides the regular transfer to `SEND_TARGET_GUID`,
+a recurrence marker on the source line makes the orchestrator copy the
+line (marker preserved) into the month section of a computed target
+date, so a routine reappears. The marker POSITION decides the kind —
+all parsing is pure in `lib/editor/sendListItem/recurringCopy.ts`.
+
+### Marker syntax
+
+| Line | Kind | Target date | Toast |
+|------|------|-------------|-------|
+| `25*(수) 라벨` | `monthly` | same day, month +1 (Dec → next-year Jan) | "다음 달에도 추가했어요." |
+| `25(수*) 라벨` | `everyNWeeks` weeks=1 | base date + 7d | "다음 주에도 추가했어요." |
+| `25(수**) 라벨` | `everyNWeeks` weeks=2 | base date + 14d | "N주 뒤에도 추가했어요." |
+| `25(수***) …` | `everyNWeeks` weeks=N | base date + 7N d | "N주 뒤에도 추가했어요." |
+
+- **월간 마커** = the `*` sits between the day number and `(`
+  (`25*(수)`). **주간 마커** = `*`s sit INSIDE the parens after the
+  weekday (`25(수**)`). `*` count inside the parens = number of weeks;
+  weekly is just `everyNWeeks` with `weeks = 1` — there is no separate
+  `weekly` kind.
+- Monthly takes priority: `25*(수*)` → monthly (the day-side `*` wins).
+- A `*` anywhere else (e.g. in the label, or outside the parens with no
+  day prefix) is ignored — no recurrence.
+- **No backward compat.** The old post-parens `25(수)*` / `25(수)^N`
+  syntaxes were dropped in the unification; only the in-parens form is
+  parsed now.
+- `RecurrenceSpec = { kind: 'monthly' } | { kind: 'everyNWeeks'; weeks }`.
+  `parsePrefix` → `PrefixParse` (`weekStars` = in-parens `*` count),
+  `recurrenceFromParse` maps it to the spec, `computeTargetDate` does
+  the date math (everyNWeeks uses `new Date(y, m-1, day + 7*weeks)` so
+  month/year rollover is automatic), `buildRecurredLiJson` rewrites the
+  first-para prefix to the target day+weekday while preserving the
+  marker `*`s in place.
+
+### autoWeekday interaction
+
+Because the weekly marker now lives INSIDE the parens, the auto-weekday
+helper (`autoWeekday.ts`) splits off and preserves trailing `*`s when it
+corrects the weekday char (`splitInnerStars`). `12(wrong**)` →
+`12(<correct>**)` — the marker survives weekday correction; it is not
+stripped.
+
+### Insert-time day sort
+
+Both insertion targets are re-sorted by schedule day after the item
+lands (user-requested "리스트 전체 재정렬"):
+
+- **Destination note** (`SEND_TARGET_GUID`) — `appendListItemToDocJson`
+  (IDB path) and `appendLiToLiveEditor` (open-editor path) append then
+  sort the last bulletList.
+- **Source recurred copy** — `applySourceSideEdits` inserts the copy,
+  deletes the original, THEN re-finds the target month's list in the
+  post-mutation `tr.doc` via `findMonthBulletList` and sorts it. This
+  ordering correctly handles the same-month everyNWeeks case where the
+  original is deleted from the very list being sorted.
+
+Sort rule (`sortListItemsByDay`): dated items (leading 1–2 digit day,
+via `scheduleDayOf` / `DAY_SORT_RE`) sort ascending and stable;
+**undated items stay pinned at their original index**. The sort
+preserves item object identity, so `sortListNodeInTr` skips the
+ProseMirror `replaceWith` entirely when the order is already correct
+(reference-equality check) — keeps the edit a single undoable
+transaction with no spurious re-render.
 
 ## Testing
 
