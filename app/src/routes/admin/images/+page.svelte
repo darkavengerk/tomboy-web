@@ -14,6 +14,17 @@
   let loading = $state(false);
   let busyUrl = $state<string | null>(null);
 
+  const PAGE_SIZE = 30;
+  let page = $state(0);
+
+  const allItems = $derived(inventory?.items ?? []);
+  const totalPages = $derived(Math.max(1, Math.ceil(allItems.length / PAGE_SIZE)));
+  // Clamp page when the list shrinks (e.g. after delete/promote refresh).
+  const currentPage = $derived(Math.min(page, totalPages - 1));
+  const pagedItems = $derived(
+    allItems.slice(currentPage * PAGE_SIZE, currentPage * PAGE_SIZE + PAGE_SIZE)
+  );
+
   // url → resolved src (ObjectURL on cache hit/successful fetch, else original
   // URL fallback). Dropbox URLs need this because plain `<img src>` can fail
   // on some referrer/redirect combinations; lookupOrFetch routes through the
@@ -30,8 +41,11 @@
     }
   }
 
+  // Only resolve thumbnails for the current page so a large inventory doesn't
+  // kick off dozens of concurrent first-time downloads. Cached URLs return
+  // instantly; the rest fetch lazily as the user pages through.
   $effect(() => {
-    for (const item of inventory?.items ?? []) {
+    for (const item of pagedItems) {
       void resolveThumb(item.url);
     }
   });
@@ -40,6 +54,7 @@
     loading = true;
     try {
       inventory = await loadImageInventory();
+      page = 0;
     } catch (err) {
       pushToast(`인벤토리 로드 실패: ${(err as Error).message}`, { kind: 'error' });
     } finally {
@@ -125,7 +140,7 @@
   {/if}
 
   <div class="grid">
-    {#each inventory?.items ?? [] as item (item.url)}
+    {#each pagedItems as item (item.url)}
       <article class="card" class:busy={busyUrl === item.url}>
         <div class="thumb">
           <!-- decorative thumbnail; src resolved via image cache (Dropbox SDK route etc.) -->
@@ -171,6 +186,24 @@
       </article>
     {/each}
   </div>
+
+  {#if allItems.length > PAGE_SIZE}
+    <nav class="pager">
+      <button onclick={() => (page = currentPage - 1)} disabled={currentPage === 0}>
+        이전
+      </button>
+      <span class="pager-info">
+        {currentPage + 1} / {totalPages}
+        <em>(총 {allItems.length}개)</em>
+      </span>
+      <button
+        onclick={() => (page = currentPage + 1)}
+        disabled={currentPage >= totalPages - 1}
+      >
+        다음
+      </button>
+    </nav>
+  {/if}
 </section>
 
 <style>
@@ -300,5 +333,37 @@
   .actions button:disabled {
     cursor: not-allowed;
     opacity: 0.5;
+  }
+  .pager {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 8px 0;
+  }
+  .pager button {
+    padding: 6px 14px;
+    font-size: 0.85rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+  }
+  .pager button:hover:not(:disabled) {
+    background: #f9fafb;
+  }
+  .pager button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+  .pager-info {
+    font-size: 0.85rem;
+    color: #374151;
+    min-width: 7em;
+    text-align: center;
+  }
+  .pager-info em {
+    color: #6b7280;
+    font-style: normal;
   }
 </style>
