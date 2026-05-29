@@ -19,6 +19,7 @@ import { handleClaudeChat } from './claude.js';
 import { handleGpuStatus, handleGpuUnload } from './gpu.js';
 import { handleRemarkableWallpaper } from './remarkable.js';
 import { loadRemarkableHosts } from './remarkableHosts.js';
+import { loadSshHosts, applySshAlias } from './sshHosts.js';
 import { SpectatorHubRegistry, type SpectatorSubscription } from './spectatorHub.js';
 import { transferImage, bracketedPaste } from './imageTransfer.js';
 
@@ -36,9 +37,11 @@ const CLAUDE_SERVICE_URL = process.env.CLAUDE_SERVICE_URL ?? '';
 const OLLAMA_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
 const HOSTS_FILE = process.env.BRIDGE_HOSTS_FILE;
 const REMARKABLE_HOSTS_FILE = process.env.BRIDGE_REMARKABLE_HOSTS_FILE;
+const SSH_HOSTS_FILE = process.env.BRIDGE_SSH_HOSTS_FILE;
 
 loadHostsFile(HOSTS_FILE);
 loadRemarkableHosts(REMARKABLE_HOSTS_FILE);
+loadSshHosts(SSH_HOSTS_FILE);
 
 // ControlMaster 소켓이 사는 디렉터리. Unix 소켓 경로 길이 제한 때문에 /tmp 아래.
 const CTRL_DIR = '/tmp/tomboy-ctl';
@@ -218,6 +221,7 @@ function handleWs(ws: WebSocket): void {
 	let connected = false;
 	let controlPath: string | null = null;
 	let sessionTarget: SshTarget | null = null;
+	let connectAlias: string | null = null;
 	const abortCtrl = new AbortController();
 	const authTimer = setTimeout(() => {
 		if (!connected) {
@@ -248,12 +252,15 @@ function handleWs(ws: WebSocket): void {
 				ws.close(1008, 'unauthorized');
 				return;
 			}
-			const target = parseSshTarget(String(msg.target ?? ''));
-			if (!target) {
+			const parsed = parseSshTarget(String(msg.target ?? ''));
+			if (!parsed) {
 				send({ type: 'error', message: 'invalid target' });
 				ws.close(1008, 'invalid target');
 				return;
 			}
+			const resolved = applySshAlias(parsed);
+			const target = resolved.target;
+			connectAlias = resolved.alias;
 			// Mark connected early so duplicate `connect` frames during WOL
 			// wait can't re-enter this branch.
 			connected = true;
@@ -429,6 +436,24 @@ function handleWs(ws: WebSocket): void {
 			}
 		}
 		if (abortCtrl.signal.aborted) return;
+		// 별칭(역터널) 타깃은 WoL이 없으므로 별도 도달성 체크 — 터널이
+		// 안 떠 있으면 raw connection-refused 대신 한국어 안내를 보낸다.
+		if (connectAlias && !isLocalTarget(target)) {
+			const reachable = await probePort(target.host, target.port ?? 22, {
+				timeoutMs: 1000,
+				signal: abortCtrl.signal
+			});
+			if (!reachable) {
+				if (!abortCtrl.signal.aborted) {
+					send({
+						type: 'error',
+						message: `'${connectAlias}' 터널이 연결되어 있지 않습니다 (폰이 깨어 있고 네트워크에 연결됐는지 확인하세요)`
+					});
+					try { ws.close(1011, 'tunnel down'); } catch { /* ignore */ }
+				}
+				return;
+			}
+		}
 		try {
 			pty = spawnForTarget(target, cols, rows, controlPath ?? undefined);
 		} catch (err) {
