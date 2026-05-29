@@ -185,7 +185,7 @@ export function planMonthInsert(doc: PMNode, targetMonth: number): MonthInsertPl
 
 /**
  * `liJson`을 복제하고 첫 문단 prefix를 `target` 날짜로 다시 쓴다.
- * 일 번호와 요일을 `target`으로 갱신하되, 마커(`*`/`^N`)는 원위치 그대로 보존한다.
+ * 일 번호와 요일을 `target`으로 갱신하되, 마커(`*`들)는 원위치 그대로 보존한다.
  * day prefix가 없으면 텍스트를 건드리지 않는다. 목표 날짜가 무효면(예: 30일 달의
  * 31일) 요일 재계산을 생략하고 기존 요일 글자를 유지한다.
  */
