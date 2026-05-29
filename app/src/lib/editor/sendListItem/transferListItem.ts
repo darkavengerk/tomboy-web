@@ -1,5 +1,6 @@
 import type { Editor, JSONContent } from '@tiptap/core';
 import type { Node as PMNode, Schema } from '@tiptap/pm/model';
+import type { Transaction } from '@tiptap/pm/state';
 import { desktopSession } from '$lib/desktop/session.svelte.js';
 import {
 	getNote,
@@ -11,9 +12,11 @@ import {
 	buildRecurredLiJson,
 	computeTargetDate,
 	findContainingMonth,
+	findMonthBulletList,
 	parsePrefix,
 	planMonthInsert,
 	recurrenceFromParse,
+	sortListItemsByDay,
 	type MonthInsertPlan,
 	type RecurrenceSpec
 } from './recurringCopy.js';
@@ -25,8 +28,9 @@ export const SEND_SOURCE_GUID = 'd5ef5481-b301-44fa-bd50-aa5ce7b32cf2';
 export const SEND_TARGET_GUID = '1cc0670b-8a5c-4858-b6a1-a2f7b5c24103';
 
 /**
- * Append `liJson` to the end of the last bulletList in `docJson`. If the doc
- * has no bulletList, create one at the end containing just the new item.
+ * Append `liJson` to the end of the last bulletList in `docJson`, then sort
+ * that list by schedule day (undated items pinned in place). If the doc has no
+ * bulletList, create one at the end containing just the new item.
  *
  * Returns a new doc JSON — does not mutate the input.
  */
@@ -44,7 +48,7 @@ export function appendListItemToDocJson(
 	}
 	if (lastListIdx >= 0) {
 		const list = content[lastListIdx];
-		const items = [...(list.content ?? []), liJson];
+		const items = sortListItemsByDay([...(list.content ?? []), liJson]);
 		content[lastListIdx] = { ...list, content: items };
 	} else {
 		content.push({ type: 'bulletList', content: [liJson] });
@@ -65,19 +69,15 @@ function appendLiToLiveEditor(editor: Editor, liJson: JSONContent): boolean {
 		return false;
 	}
 
-	let lastListOffset = -1;
-	let lastList: PMNode | null = null;
-	state.doc.forEach((child, offset) => {
-		if (child.type.name === 'bulletList') {
-			lastListOffset = offset;
-			lastList = child;
-		}
-	});
+	const lastList = findLastBulletList(state.doc);
 
 	const tr = state.tr;
-	if (lastList && lastListOffset >= 0) {
-		const insertPos = lastListOffset + (lastList as PMNode).nodeSize - 1;
+	if (lastList) {
+		const insertPos = lastList.pos + lastList.node.nodeSize - 1;
 		tr.insert(insertPos, liNode);
+		// Re-find the (now larger) last list in tr.doc and day-sort it.
+		const grown = findLastBulletList(tr.doc);
+		if (grown) sortListNodeInTr(tr, schema, grown.pos, grown.node);
 	} else {
 		const ul = schema.nodes.bulletList.create(null, [liNode]);
 		tr.insert(state.doc.content.size, ul);
@@ -114,6 +114,40 @@ function buildSchemaNode(schema: Schema, json: JSONContent): PMNode | null {
 	} catch {
 		return null;
 	}
+}
+
+/** Find the last top-level bulletList in `doc` (offset + node), or null. */
+function findLastBulletList(doc: PMNode): { pos: number; node: PMNode } | null {
+	let result: { pos: number; node: PMNode } | null = null;
+	doc.forEach((child, offset) => {
+		if (child.type.name === 'bulletList') result = { pos: offset, node: child };
+	});
+	return result;
+}
+
+/**
+ * Replace the list node at `listPos` with a day-sorted copy of its items
+ * (undated items pinned in place), within `tr`. No-op if the order is already
+ * sorted or the schema can't rebuild the node. `sortListItemsByDay` preserves
+ * item object identity, so reference equality detects an unchanged order.
+ */
+function sortListNodeInTr(
+	tr: Transaction,
+	schema: Schema,
+	listPos: number,
+	listNode: PMNode
+): void {
+	const items: JSONContent[] = [];
+	listNode.forEach((child) => items.push(child.toJSON()));
+	const sorted = sortListItemsByDay(items);
+	if (sorted.every((it, i) => it === items[i])) return;
+	let newList: PMNode;
+	try {
+		newList = schema.nodeFromJSON({ type: listNode.type.name, content: sorted });
+	} catch {
+		return;
+	}
+	tr.replaceWith(listPos, listPos + listNode.nodeSize, newList);
 }
 
 /**
@@ -155,7 +189,7 @@ type SourceEditOutcome =
  * Ctrl+Z로 되돌릴 수 있게 한다. spec이 있으면 항목에 적힌 날짜로 목표 날짜를
  * 계산해 해당 월 섹션에 복제본을 삽입한다.
  */
-function applySourceSideEdits(
+export function applySourceSideEdits(
 	sourceEditor: Editor,
 	liPos: number,
 	originalFingerprint: string,
@@ -172,6 +206,9 @@ function applySourceSideEdits(
 
 	const tr = state.tr;
 	let recurredSpec: RecurrenceSpec | null = null;
+	// Set to the target month when the recurred copy went into an EXISTING list,
+	// so we day-sort that list once the original li is gone.
+	let sortMonth: number | null = null;
 
 	if (spec) {
 		const baseMonth = findContainingMonth(state.doc, liPos);
@@ -189,25 +226,29 @@ function applySourceSideEdits(
 					plan.kind === 'new-section-at-end' ? state.doc.content.size : plan.insertPos;
 				tr.insert(insertPos, nodes);
 				recurredSpec = spec;
+				// A freshly created section/list holds a single item — nothing to sort.
+				if (plan.kind === 'append-to-list') sortMonth = target.month;
 			}
 		}
 	}
 
 	const mappedLiPos = tr.mapping.map(liPos);
 	tr.delete(mappedLiPos, mappedLiPos + expectedSize);
+
+	if (sortMonth !== null) {
+		// Re-find the target month's list in the post-insert/delete doc and sort it.
+		const list = findMonthBulletList(tr.doc, sortMonth);
+		if (list) sortListNodeInTr(tr, state.schema, list.pos, list.node);
+	}
+
 	sourceEditor.view.dispatch(tr);
 	return recurredSpec ? { status: 'recurred', spec: recurredSpec } : { status: 'sent' };
 }
 
 function recurredToastMessage(spec: RecurrenceSpec): string {
-	switch (spec.kind) {
-		case 'monthly':
-			return '보냈습니다. 다음 달에도 추가했어요.';
-		case 'weekly':
-			return '보냈습니다. 다음 주에도 추가했어요.';
-		case 'everyNWeeks':
-			return `보냈습니다. ${spec.weeks}주 뒤에도 추가했어요.`;
-	}
+	if (spec.kind === 'monthly') return '보냈습니다. 다음 달에도 추가했어요.';
+	if (spec.weeks === 1) return '보냈습니다. 다음 주에도 추가했어요.';
+	return `보냈습니다. ${spec.weeks}주 뒤에도 추가했어요.`;
 }
 
 /**
@@ -219,9 +260,9 @@ function recurredToastMessage(spec: RecurrenceSpec): string {
  *
  * Recurring extension: the marker POSITION decides the recurrence kind:
  *   - `25*(수)` (월간 마커) → monthly (same day, month+1)
- *   - `25(수)*` (주간 마커) → weekly (+7d, inserted into that month's section)
- *   - `25(수)^N` (N주 마커) → everyNWeeks (+7N d, inserted into that month's section)
- * Label-only `*` (no day prefix) and plain items trigger no recurrence.
+ *   - `25(수*)` (주간 마커 N개) → everyNWeeks (+7N d, inserted into that month's section)
+ * Label-only `*` (no day prefix) and plain items trigger no recurrence. Both
+ * insertion lists (this month's section and the destination note) are day-sorted.
  */
 export async function transferListItem(
 	sourceEditor: Editor,

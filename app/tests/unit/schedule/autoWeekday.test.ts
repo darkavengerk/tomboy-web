@@ -672,3 +672,39 @@ describe('transformDayPrefixLine — 월간 마커 *', () => {
 		expect(res.output).toBe(`12*(${APR12_WD}) 가스점검`);
 	});
 });
+
+describe('transformDayPrefixLine — 파렌 안 주간 마커 * 보존', () => {
+	it('요일 뒤 `*` 1개를 보존하며 요일 교정', () => {
+		const wrong = APR12_WD === '월' ? '화' : '월';
+		const res = transformDayPrefixLine(`12(${wrong}*) 화분`, Y, M);
+		expect(res.changed).toBe(true);
+		expect(res.output).toBe(`12(${APR12_WD}*) 화분`);
+	});
+
+	it('요일 뒤 `**` 여러 개를 보존하며 요일 교정', () => {
+		const wrong = APR12_WD === '월' ? '화' : '월';
+		const res = transformDayPrefixLine(`12(${wrong}**) 책반납`, Y, M);
+		expect(res.changed).toBe(true);
+		expect(res.output).toBe(`12(${APR12_WD}**) 책반납`);
+	});
+
+	it('이미 정답이면 마커 포함 그대로(idempotent)', () => {
+		const res = transformDayPrefixLine(`12(${APR12_WD}**) 책반납`, Y, M);
+		expect(res.changed).toBe(false);
+		expect(res.output).toBe(`12(${APR12_WD}**) 책반납`);
+	});
+
+	it('월간 + 주간 마커 혼합 `12*(wrong**)` 도 둘 다 보존', () => {
+		const wrong = APR12_WD === '월' ? '화' : '월';
+		const res = transformDayPrefixLine(`12*(${wrong}**) 혼합`, Y, M);
+		expect(res.changed).toBe(true);
+		expect(res.output).toBe(`12*(${APR12_WD}**) 혼합`);
+	});
+
+	it('공백 앞 파렌 변형도 마커 보존: `12 (wrong*)` → 붙이고 마커 유지', () => {
+		const wrong = APR12_WD === '월' ? '화' : '월';
+		const res = transformDayPrefixLine(`12 (${wrong}*) 화분`, Y, M);
+		expect(res.changed).toBe(true);
+		expect(res.output).toBe(`12(${APR12_WD}*) 화분`);
+	});
+});
