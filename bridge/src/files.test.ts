@@ -10,7 +10,8 @@ import {
 	handleFileUpload,
 	handleFileDownload,
 	handleFileList,
-	handleFileDelete
+	handleFileDelete,
+	parseSingleByteRange
 } from './files.js';
 import { mintToken } from './auth.js';
 
@@ -240,6 +241,69 @@ test('download: filename mismatch falls back to single file in UUID dir', async 
 			r.headers['Content-Disposition'],
 			`attachment; filename*=UTF-8''${encodeURIComponent(onDisk)}`
 		);
+	} finally {
+		rmSync(dir, { recursive: true });
+	}
+});
+
+test('parseSingleByteRange: open + bounded + suffix + invalid', () => {
+	const size = 1000;
+	assert.deepEqual(parseSingleByteRange('bytes=0-99', size), { start: 0, end: 99 });
+	assert.deepEqual(parseSingleByteRange('bytes=200-', size), { start: 200, end: 999 });
+	assert.deepEqual(parseSingleByteRange('bytes=-100', size), { start: 900, end: 999 });
+	// End past EOF clamps to last byte.
+	assert.deepEqual(parseSingleByteRange('bytes=0-9999', size), { start: 0, end: 999 });
+	// Whitespace tolerance.
+	assert.deepEqual(parseSingleByteRange(' bytes=0-9 ', size), { start: 0, end: 9 });
+	// Malformed / unsupported.
+	assert.equal(parseSingleByteRange(undefined, size), null);
+	assert.equal(parseSingleByteRange('', size), null);
+	assert.equal(parseSingleByteRange('bytes=-', size), null);
+	assert.equal(parseSingleByteRange('bytes=abc-def', size), null);
+	assert.equal(parseSingleByteRange('bytes=500-200', size), null); // reversed
+	assert.equal(parseSingleByteRange('bytes=2000-3000', size), null); // start past EOF
+	assert.equal(parseSingleByteRange('bytes=0-99,200-299', size), null); // multi-range
+});
+
+test('download: Range request → 206 + sliced body + Content-Range', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'files-test-'));
+	try {
+		const uuid = '11111111-2222-3333-4444-555555555555';
+		const fname = 'audio.mp3';
+		mkdirSync(join(dir, uuid), { recursive: true });
+		writeFileSync(join(dir, uuid, fname), 'abcdefghij'); // 10 bytes
+		const { res, get } = mockRes();
+		const req = mockReq({
+			method: 'GET',
+			url: `/files/${uuid}/${fname}`,
+			headers: { range: 'bytes=2-5' }
+		});
+		await handleFileDownload(req, res, dir);
+		const r = get();
+		assert.equal(r.status, 206);
+		assert.equal(r.body.toString('utf8'), 'cdef');
+		assert.equal(r.headers['Content-Length'], '4');
+		assert.equal(r.headers['Content-Range'], 'bytes 2-5/10');
+		assert.equal(r.headers['Accept-Ranges'], 'bytes');
+	} finally {
+		rmSync(dir, { recursive: true });
+	}
+});
+
+test('download: no Range header → 200 + Accept-Ranges advertised', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'files-test-'));
+	try {
+		const uuid = '11111111-2222-3333-4444-555555555555';
+		const fname = 'doc.pdf';
+		mkdirSync(join(dir, uuid), { recursive: true });
+		writeFileSync(join(dir, uuid, fname), 'fullbody');
+		const { res, get } = mockRes();
+		const req = mockReq({ method: 'GET', url: `/files/${uuid}/${fname}` });
+		await handleFileDownload(req, res, dir);
+		const r = get();
+		assert.equal(r.status, 200);
+		assert.equal(r.headers['Accept-Ranges'], 'bytes');
+		assert.equal(r.body.toString('utf8'), 'fullbody');
 	} finally {
 		rmSync(dir, { recursive: true });
 	}
