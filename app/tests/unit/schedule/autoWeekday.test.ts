@@ -656,3 +656,19 @@ describe('transformMultilineDayPrefix', () => {
 		expect(second).toBe(first);
 	});
 });
+
+describe('transformDayPrefixLine — 월간 마커 *', () => {
+	it('일 번호와 파렌 사이의 *를 보존하며 요일 교정', () => {
+		// Apr 12 2026 정답 요일 = APR12_WD
+		const wrong = APR12_WD === '월' ? '화' : '월';
+		const res = transformDayPrefixLine(`12*(${wrong}) 가스점검`, Y, M);
+		expect(res.changed).toBe(true);
+		expect(res.output).toBe(`12*(${APR12_WD}) 가스점검`);
+	});
+
+	it('이미 정답이면 변경 없음(idempotent)', () => {
+		const res = transformDayPrefixLine(`12*(${APR12_WD}) 가스점검`, Y, M);
+		expect(res.changed).toBe(false);
+		expect(res.output).toBe(`12*(${APR12_WD}) 가스점검`);
+	});
+});

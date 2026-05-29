@@ -34,6 +34,7 @@
 		extractTitleText,
 	} from "./titleUniqueGuard.js";
 	import { createImagePreviewPlugin } from "./imagePreview/imagePreviewPlugin.js";
+	import { createFilePreviewPlugin } from "./filePreview/filePreviewPlugin.js";
 	import { createGeoMapPlugin } from "./geoMap/geoMapPlugin.js";
 	import {
 		createSendListItemPlugin,
@@ -62,7 +63,12 @@
 		saveColumnWidths,
 	} from "./hrSplit/hrSplitStore.js";
 	import { extractImageFile } from "./imagePreview/extractImageFile.js";
+	import { extractAnyFile } from "./extractFile.js";
 	import { uploadTempImage } from "$lib/sync/tempImageUpload.js";
+	import {
+		uploadBridgeFile,
+		BridgeFileUploadError,
+	} from "$lib/sync/bridgeFileUpload.js";
 	import { pushToast, dismissToast } from "$lib/stores/toast.js";
 	import { Extension } from "@tiptap/core";
 	import { insertTodayDate } from "./insertDate.js";
@@ -403,7 +409,7 @@
 				Extension.create({
 					name: "tomboyImagePreview",
 					addProseMirrorPlugins() {
-						return [createImagePreviewPlugin()];
+						return [createImagePreviewPlugin(), createFilePreviewPlugin()];
 					},
 				}),
 				Extension.create({
@@ -715,18 +721,34 @@
 					return false;
 				},
 				handlePaste: (_view, event) => {
-					const file = extractImageFile(event.clipboardData);
-					if (!file) return false;
-					event.preventDefault();
-					void uploadAndInsertImage(file);
-					return true;
+					const img = extractImageFile(event.clipboardData);
+					if (img) {
+						event.preventDefault();
+						void uploadAndInsertImage(img);
+						return true;
+					}
+					const any = extractAnyFile(event.clipboardData);
+					if (any && !any.isImage) {
+						event.preventDefault();
+						void uploadAndInsertFile(any.file);
+						return true;
+					}
+					return false;
 				},
 				handleDrop: (_view, event) => {
-					const file = extractImageFile(event.dataTransfer);
-					if (!file) return false;
-					event.preventDefault();
-					void uploadAndInsertImage(file);
-					return true;
+					const img = extractImageFile(event.dataTransfer);
+					if (img) {
+						event.preventDefault();
+						void uploadAndInsertImage(img);
+						return true;
+					}
+					const any = extractAnyFile(event.dataTransfer);
+					if (any && !any.isImage) {
+						event.preventDefault();
+						void uploadAndInsertFile(any.file);
+						return true;
+					}
+					return false;
 				},
 				// Override PM's default clipboard path so Ctrl+C / Ctrl+X and the
 				// browser-level right-click copy/cut menu items all produce
@@ -1140,6 +1162,44 @@
 			pushToast(`이미지 업로드 실패: ${msg}`, { kind: "error" });
 		}
 	}
+
+	/**
+	 * Upload a non-image file to the bridge and insert the resulting
+	 * download URL at the current cursor position. Wraps URL text in a
+	 * tomboyUrlLink mark so the `.note` XML round-trip writes `<link:url>`
+	 * (same path images take); the future filePreviewPlugin will render a
+	 * 📎-filename badge in place of the URL text.
+	 */
+	export async function uploadAndInsertFile(file: File): Promise<void> {
+		const ed = editor;
+		if (!ed) return;
+
+		const toastId = pushToast(`${file.name} 업로드 중…`, { timeoutMs: 0 });
+		try {
+			const result = await uploadBridgeFile(file);
+			dismissToast(toastId);
+			ed.chain()
+				.focus()
+				.insertContent({
+					type: "text",
+					text: result.url,
+					marks: [
+						{ type: "tomboyUrlLink", attrs: { href: result.url } },
+					],
+				})
+				.run();
+			pushToast(`${result.filename} 업로드 완료`);
+		} catch (err) {
+			dismissToast(toastId);
+			const msg =
+				err instanceof BridgeFileUploadError
+					? err.message
+					: err instanceof Error
+						? err.message
+						: String(err);
+			pushToast(`파일 업로드 실패: ${msg}`, { kind: "error" });
+		}
+	}
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1172,6 +1232,7 @@
 		y={ctxMenu.y}
 		onclose={() => (ctxMenu = null)}
 		{oninternallink}
+		onuploadfile={uploadAndInsertFile}
 	/>
 {/if}
 
@@ -1325,6 +1386,32 @@
 	   removes the whole URL, arrow keys skip across it. */
 	.tomboy-editor :global(.tomboy-image-url-hidden) {
 		display: none;
+	}
+
+	/* Bridge file-URL text is hidden so the 📎 badge alone represents the link.
+	   The URL stays in the doc verbatim for Tomboy XML round-trip. */
+	.tomboy-editor :global(.tomboy-file-url-hidden) {
+		display: none;
+	}
+
+	.tomboy-editor :global(.tomboy-file-badge) {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25em;
+		padding: 0.1em 0.5em;
+		margin: 0 0.15em;
+		background: #eef2f7;
+		border: 1px solid #d4dbe4;
+		border-radius: 4px;
+		color: #1565c0;
+		text-decoration: none;
+		font-size: 0.9em;
+		line-height: 1.3;
+		cursor: pointer;
+	}
+	.tomboy-editor :global(.tomboy-file-badge:hover) {
+		background: #e3eaf3;
+		text-decoration: underline;
 	}
 
 	.tomboy-editor :global(.tomboy-geo-map) {

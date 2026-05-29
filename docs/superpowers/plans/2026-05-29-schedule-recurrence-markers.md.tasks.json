@@ -1,0 +1,32 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-29-schedule-recurrence-markers.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: 마커 파서 + 목표 날짜 계산 (순수 함수)",
+      "status": "completed",
+      "description": "**Goal:** recurringCopy.ts에 위치 마커 파서·반복 종류 판별·목표 절대 날짜 계산 순수 함수를 추가(additive, green).\n\n**Files:**\n- Modify: app/src/lib/editor/sendListItem/recurringCopy.ts\n- Test: app/tests/unit/editor/recurringCopy.test.ts\n\n**Acceptance Criteria:**\n- parsePrefix tokenizes 25*(수)/25(수)*/25(수)^2/25(수)\n- parsePrefix null for no day prefix (label * ignored)\n- recurrenceFromParse monthly/weekly/everyNWeeks/null, monthly priority\n- computeTargetDate monthly(+1mo)/weekly(+7)/everyNWeeks(+7N)\n\n**Verify:** cd app && npx vitest run tests/unit/editor/recurringCopy.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/sendListItem/recurringCopy.ts\", \"app/tests/unit/editor/recurringCopy.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/recurringCopy.test.ts\", \"acceptanceCriteria\": [\"parsePrefix tokenizes all 4 forms\", \"parsePrefix null for no day prefix\", \"recurrenceFromParse monthly-priority\", \"computeTargetDate monthly/weekly/everyNWeeks correct\", \"existing tests pass\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: 반복 복제본 빌더 (buildRecurredLiJson)",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "**Goal:** 목표 날짜로 prefix(일+요일) 재작성 + 마커 원위치 보존하는 buildRecurredLiJson 추가(additive, green).\n\n**Files:**\n- Modify: app/src/lib/editor/sendListItem/recurringCopy.ts\n- Test: app/tests/unit/editor/recurringCopy.test.ts\n\n**Acceptance Criteria:**\n- monthly 25*(수)+{2026,6,25}→25*(<wd>)\n- weekly 25(수)*+{2026,6,1}→1(<wd>)*\n- everyNWeeks 25(수)^2+{2026,6,8}→8(<wd>)^2\n- no day prefix unchanged; input not mutated\n\n**Verify:** cd app && npx vitest run tests/unit/editor/recurringCopy.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/sendListItem/recurringCopy.ts\", \"app/tests/unit/editor/recurringCopy.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/recurringCopy.test.ts\", \"acceptanceCriteria\": [\"monthly marker preserved + weekday recalc\", \"weekly marker preserved + day/weekday recalc\", \"everyNWeeks ^N preserved\", \"no day prefix unchanged\", \"input not mutated\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: transferListItem 배선 + 옛 substring 경로 제거",
+      "status": "completed",
+      "blockedBy": [1, 2],
+      "description": "**Goal:** transferListItem.ts를 위치 마커 기반으로 교체(목표 월 섹션 삽입 + 종류별 토스트), recurringCopy.ts 옛 export 제거 + planMonthInsert/MonthInsertPlan 리네임.\n\n**Files:**\n- Modify: app/src/lib/editor/sendListItem/transferListItem.ts\n- Modify: app/src/lib/editor/sendListItem/recurringCopy.ts\n- Test: app/tests/unit/editor/recurringCopy.test.ts\n\n**Acceptance Criteria:**\n- 25*(수)→다음달 + 토스트; 25(수)*→+7일 월섹션 + 토스트; 25(수)^2→+14일 월섹션 + 토스트\n- 마커없음/라벨* → '보냈습니다.'만\n- containsRecurringMarker/buildNextMonthLiJson/RECURRING_MARKER 제거, planMonthInsert/MonthInsertPlan 리네임\n- npm run check 타입 0\n\n**Verify:** cd app && npx vitest run tests/unit/editor/recurringCopy.test.ts && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/sendListItem/transferListItem.ts\", \"app/src/lib/editor/sendListItem/recurringCopy.ts\", \"app/tests/unit/editor/recurringCopy.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/recurringCopy.test.ts && npm run check\", \"acceptanceCriteria\": [\"monthly insert + toast\", \"weekly insert + toast\", \"everyNWeeks insert + toast\", \"non-marker = plain sent\", \"old symbols removed + renamed\", \"npm run check clean\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: autoWeekday가 25*(수) 형태 처리",
+      "status": "completed",
+      "description": "**Goal:** autoWeekday 정규식이 일 번호와 ( 사이 *(월간 마커)를 허용·보존하도록 확장.\n\n**Files:**\n- Modify: app/src/lib/schedule/autoWeekday.ts\n- Test: app/tests/unit/schedule/autoWeekday.test.ts\n\n**Acceptance Criteria:**\n- 25*(틀린요일)→교정 + * 보존\n- 25*(정답) idempotent\n- 기존 케이스 불변 (autoWeekday + autoWeekdayPlugin 테스트 통과)\n\n**Verify:** cd app && npx vitest run tests/unit/schedule/autoWeekday.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/schedule/autoWeekday.ts\", \"app/tests/unit/schedule/autoWeekday.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/schedule/autoWeekday.test.ts && npx vitest run tests/unit/editor/autoWeekdayPlugin.test.ts\", \"acceptanceCriteria\": [\"25*(wrong) corrected + * preserved\", \"25*(correct) idempotent\", \"existing cases unchanged\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-29"
+}

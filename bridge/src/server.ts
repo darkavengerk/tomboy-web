@@ -22,6 +22,12 @@ import { loadRemarkableHosts } from './remarkableHosts.js';
 import { loadSshHosts, applySshAlias } from './sshHosts.js';
 import { SpectatorHubRegistry, type SpectatorSubscription } from './spectatorHub.js';
 import { transferImage, bracketedPaste } from './imageTransfer.js';
+import {
+	handleFileUpload,
+	handleFileDownload,
+	handleFileList,
+	handleFileDelete
+} from './files.js';
 import { spawn } from 'node:child_process';
 import { isAllowedKeyCode, buildKeyCommand } from './keyEvents.js';
 
@@ -30,6 +36,13 @@ const PASSWORD = requireEnv('BRIDGE_PASSWORD');
 const SECRET = requireEnv('BRIDGE_SECRET');
 const ALLOWED_ORIGIN = requireEnv('BRIDGE_ALLOWED_ORIGIN');
 const OCR_SERVICE_URL = requireEnv('OCR_SERVICE_URL');
+const BRIDGE_FILES_DIR = requireEnv('BRIDGE_FILES_DIR');
+const BRIDGE_PUBLIC_BASE_URL = requireEnv('BRIDGE_PUBLIC_BASE_URL');
+mkdirSync(BRIDGE_FILES_DIR, { recursive: true });
+if (!/^https?:\/\//.test(BRIDGE_PUBLIC_BASE_URL)) {
+	console.error('[term-bridge] BRIDGE_PUBLIC_BASE_URL must start with http:// or https://');
+	process.exit(1);
+}
 // CLAUDE_SERVICE_URL is optional — bridge boots without it and returns 503.
 const CLAUDE_SERVICE_URL = process.env.CLAUDE_SERVICE_URL ?? '';
 // Ollama runs on the desktop alongside ocr-service. The bridge reads this
@@ -153,6 +166,26 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 		return;
 	}
 
+	if (url === '/files' && req.method === 'POST') {
+		await handleFileUpload(req, res, SECRET, BRIDGE_FILES_DIR, BRIDGE_PUBLIC_BASE_URL);
+		return;
+	}
+
+	if (url === '/files' && req.method === 'GET') {
+		await handleFileList(req, res, SECRET, BRIDGE_FILES_DIR);
+		return;
+	}
+
+	if (url.startsWith('/files/') && req.method === 'GET') {
+		await handleFileDownload(req, res, BRIDGE_FILES_DIR);
+		return;
+	}
+
+	if (url.startsWith('/files/') && req.method === 'DELETE') {
+		await handleFileDelete(req, res, SECRET, BRIDGE_FILES_DIR);
+		return;
+	}
+
 	res.writeHead(404).end();
 }
 
@@ -160,8 +193,8 @@ function applyCors(req: IncomingMessage, res: ServerResponse): void {
 	const origin = req.headers.origin;
 	if (origin && originAllowed(origin)) {
 		res.setHeader('Access-Control-Allow-Origin', origin);
-		res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-		res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+		res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+		res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Filename');
 		res.setHeader('Vary', 'Origin');
 		// No `Allow-Credentials` — we no longer use cookies. The Bearer
 		// token travels in the Authorization header (HTTP) or in the first
