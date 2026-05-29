@@ -4,27 +4,27 @@
     {
       "id": 5,
       "subject": "Task 1: bridge SSH 별칭 맵 (sshHosts.ts)",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** ssh-hosts.json 로드 + SshTarget host가 별칭이면 치환하는 순수 모듈. Files: bridge/src/sshHosts.ts (+test). Verify: cd bridge && npx tsc -p . && node --test dist/sshHosts.test.js.\n\n```json:metadata\n{\"files\": [\"bridge/src/sshHosts.ts\", \"bridge/src/sshHosts.test.ts\"], \"verifyCommand\": \"cd bridge && npx tsc -p . && node --test dist/sshHosts.test.js\", \"acceptanceCriteria\": [\"valid load returns entry\", \"missing/undefined path empty no throw\", \"applySshAlias resolves bare alias\", \"note user/port preserved\", \"non-alias untouched\"]}\n```"
     },
     {
       "id": 6,
       "subject": "Task 2: server.ts 별칭 해석 + 터널 끊김 친절 에러",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [5],
       "description": "**Goal:** 부팅 시 BRIDGE_SSH_HOSTS_FILE 로드, connect에서 applySshAlias 해석, 별칭 도달불가 시 한국어 에러. Files: bridge/src/server.ts. Verify: cd bridge && npx tsc -p . && node --test.\n\n```json:metadata\n{\"files\": [\"bridge/src/server.ts\"], \"verifyCommand\": \"cd bridge && npx tsc -p . && node --test\", \"acceptanceCriteria\": [\"tsc+full test pass no regression\", \"ssh://phone -> localhost:18022\", \"tunnel-down friendly error\", \"non-alias unchanged\"]}\n```"
     },
     {
       "id": 7,
       "subject": "Task 3: Quadlet 마운트 + ssh-hosts.json 예시",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [6],
       "description": "**Goal:** ssh-hosts.json RO 마운트 + BRIDGE_SSH_HOSTS_FILE env + 셋업 주석. Files: bridge/deploy/term-bridge.container. Verify: grep -n 'ssh-hosts' bridge/deploy/term-bridge.container.\n\n```json:metadata\n{\"files\": [\"bridge/deploy/term-bridge.container\"], \"verifyCommand\": \"grep -n 'ssh-hosts' bridge/deploy/term-bridge.container\", \"acceptanceCriteria\": [\"RO volume + env present\", \"header example present\", \"missing-file disabled noted\"]}\n```"
     },
     {
       "id": 8,
       "subject": "Task 4: 폰+RPi 역터널 1회 셋업 + ssh://phone 접속 검증 (런북)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [7],
       "description": "**Goal:** 폰 sshd+키+autossh + RPi tunnel 유저 + bridge ssh-hosts.json으로 ssh://phone 셸 진입 1회 수동 성공. Files: device/server config. Verify: ssh -p 18022 termux@localhost 'getprop ro.product.model'.\n\n```json:metadata\n{\"files\": [], \"verifyCommand\": \"ssh -p 18022 termux@localhost 'getprop ro.product.model'\", \"acceptanceCriteria\": [\"RPi ss 18022 LISTEN\", \"ssh -p 18022 termux@localhost shell keyauth\", \"ssh://phone note opens shell\"]}\n```"
     },
