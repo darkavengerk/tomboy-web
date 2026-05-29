@@ -1,26 +1,23 @@
 /**
- * Helpers for the "monthly recurring" send-button extension.
+ * Helpers for the recurring send-button extension.
  *
- * A list-item line whose text contains `*` is treated as a monthly routine
- * (e.g. card-balance check). When the user presses 보내기 on such an item, in
- * addition to the regular transfer to SEND_TARGET_GUID, the orchestrator
- * copies the line into the next month's section of the schedule note so the
- * routine reappears the following month.
+ * A list-item line carries a recurrence based on the POSITION of its marker:
+ *   - `25*(수)`  — `*` beside the day number → monthly (next month, same day).
+ *   - `25(수)*`  — `*` beside the weekday    → weekly (the next same weekday, +7d).
+ *   - `25(수)^2` — `^N` beside the weekday   → every N weeks (+7N days).
+ * A `*` anywhere else in the label is ignored. When the user presses 보내기 on
+ * such an item, in addition to the regular transfer to SEND_TARGET_GUID, the
+ * orchestrator copies the line (marker preserved) into the month section of the
+ * computed target date so the routine reappears, and keeps recurring.
  *
  * This file is pure (no editor / DOM imports) so it can be unit-tested.
  */
 
 import type { JSONContent } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { transformDayPrefixLine, getWeekdayChar } from '$lib/schedule/autoWeekday.js';
-
-export const RECURRING_MARKER = '*';
+import { getWeekdayChar } from '$lib/schedule/autoWeekday.js';
 
 const MONTH_HEADER_RE = /^\s*(\d{1,2})월\s*$/;
-
-export function containsRecurringMarker(text: string): boolean {
-	return text.includes(RECURRING_MARKER);
-}
 
 export function nextMonthOf(month: number): { month: number; yearOffset: number } {
 	if (month === 12) return { month: 1, yearOffset: 1 };
@@ -131,7 +128,7 @@ export function findContainingMonth(doc: PMNode, liPos: number): number | null {
 	return result;
 }
 
-export type NextMonthInsertPlan =
+export type MonthInsertPlan =
 	| { kind: 'append-to-list'; insertPos: number }
 	| { kind: 'new-list-after-header'; insertPos: number }
 	| { kind: 'new-section-at-end'; insertPos: number };
@@ -146,7 +143,7 @@ export type NextMonthInsertPlan =
  *   `new-section-at-end`    - no header anywhere; append `N월` paragraph + list
  *                             at the end of the doc.
  */
-export function planNextMonthInsert(doc: PMNode, nextMonth: number): NextMonthInsertPlan {
+export function planMonthInsert(doc: PMNode, targetMonth: number): MonthInsertPlan {
 	let headerPos = -1;
 	let headerNode: PMNode | null = null;
 	let headerIndex = -1;
@@ -155,7 +152,7 @@ export function planNextMonthInsert(doc: PMNode, nextMonth: number): NextMonthIn
 		if (headerNode) return;
 		const text = nodeFirstParaText(child);
 		const m = MONTH_HEADER_RE.exec(text);
-		if (m && parseInt(m[1], 10) === nextMonth) {
+		if (m && parseInt(m[1], 10) === targetMonth) {
 			headerPos = offset;
 			headerNode = child;
 			headerIndex = index;
@@ -190,32 +187,6 @@ export function planNextMonthInsert(doc: PMNode, nextMonth: number): NextMonthIn
 	}
 
 	return { kind: 'new-section-at-end', insertPos: doc.content.size };
-}
-
-/**
- * Clone `liJson` and rewrite the day prefix of its first paragraph for the new
- * month (so `15(금)` in May becomes `15(<weekday-in-June>)` in June). The
- * recurring marker (`*`) is preserved verbatim.
- *
- * If the line has no recognisable day prefix, or the new (day, month) is
- * invalid (e.g. day 31 in February), the text is left unchanged — the user can
- * fix it manually.
- */
-export function buildNextMonthLiJson(
-	liJson: JSONContent,
-	year: number,
-	nextMonth: number
-): JSONContent {
-	const cloned = JSON.parse(JSON.stringify(liJson)) as JSONContent;
-	const firstPara = cloned.content?.[0];
-	if (firstPara?.type === 'paragraph') {
-		const firstChild = firstPara.content?.[0];
-		if (firstChild?.type === 'text' && typeof firstChild.text === 'string') {
-			const { output } = transformDayPrefixLine(firstChild.text, year, nextMonth);
-			firstChild.text = output;
-		}
-	}
-	return cloned;
 }
 
 /**

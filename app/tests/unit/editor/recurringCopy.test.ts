@@ -5,12 +5,10 @@ import { TomboyListItem } from '$lib/editor/extensions/TomboyListItem.js';
 import { TomboyParagraph } from '$lib/editor/extensions/TomboyParagraph.js';
 import type { JSONContent } from '@tiptap/core';
 import {
-	buildNextMonthLiJson,
 	buildRecurredLiJson,
-	containsRecurringMarker,
 	findContainingMonth,
 	nextMonthOf,
-	planNextMonthInsert,
+	planMonthInsert,
 	parsePrefix,
 	recurrenceFromParse,
 	computeTargetDate
@@ -65,19 +63,6 @@ function findLiPos(editor: Editor, match: string): number {
 	return pos;
 }
 
-describe('containsRecurringMarker', () => {
-	it('returns true when the line has a `*`', () => {
-		expect(containsRecurringMarker('15(금) * 카드값 확인')).toBe(true);
-		expect(containsRecurringMarker('*월급 입금 확인')).toBe(true);
-		expect(containsRecurringMarker('1 * 2 * 3')).toBe(true);
-	});
-
-	it('returns false when there is no `*`', () => {
-		expect(containsRecurringMarker('15(금) 등산 7시')).toBe(false);
-		expect(containsRecurringMarker('')).toBe(false);
-	});
-});
-
 describe('nextMonthOf', () => {
 	it('increments the month within the same year', () => {
 		expect(nextMonthOf(1)).toEqual({ month: 2, yearOffset: 0 });
@@ -116,7 +101,7 @@ describe('findContainingMonth (flat shape)', () => {
 	});
 });
 
-describe('planNextMonthInsert', () => {
+describe('planMonthInsert', () => {
 	it('appends to the existing next-month bullet list', () => {
 		const editor = makeEditor({
 			type: 'doc',
@@ -127,7 +112,7 @@ describe('planNextMonthInsert', () => {
 				bullet([li('1(월) 친구 만나기')])
 			]
 		});
-		const plan = planNextMonthInsert(editor.state.doc, 6);
+		const plan = planMonthInsert(editor.state.doc, 6);
 		expect(plan.kind).toBe('append-to-list');
 	});
 
@@ -140,7 +125,7 @@ describe('planNextMonthInsert', () => {
 				para('6월')
 			]
 		});
-		const plan = planNextMonthInsert(editor.state.doc, 6);
+		const plan = planMonthInsert(editor.state.doc, 6);
 		expect(plan.kind).toBe('new-list-after-header');
 	});
 
@@ -149,37 +134,9 @@ describe('planNextMonthInsert', () => {
 			type: 'doc',
 			content: [para('5월'), bullet([li('15(월) * 카드값 확인')])]
 		});
-		const plan = planNextMonthInsert(editor.state.doc, 6);
+		const plan = planMonthInsert(editor.state.doc, 6);
 		expect(plan.kind).toBe('new-section-at-end');
 		expect(plan.insertPos).toBe(editor.state.doc.content.size);
-	});
-});
-
-describe('buildNextMonthLiJson', () => {
-	it('rewrites the day-prefix weekday for the new month and keeps `*`', () => {
-		// 5월 15일 2026 = 금요일, 6월 15일 2026 = 월요일
-		const src = li('15(금) * 카드값 확인');
-		const out = buildNextMonthLiJson(src, 2026, 6);
-		const firstParaText = (
-			out.content?.[0]?.content?.[0] as { text?: string } | undefined
-		)?.text;
-		expect(firstParaText).toBe('15(월) * 카드값 확인');
-	});
-
-	it('leaves text unchanged when the prefix is unrecognised', () => {
-		const src = li('카드값 확인 *');
-		const out = buildNextMonthLiJson(src, 2026, 6);
-		const firstParaText = (
-			out.content?.[0]?.content?.[0] as { text?: string } | undefined
-		)?.text;
-		expect(firstParaText).toBe('카드값 확인 *');
-	});
-
-	it('does not mutate the input JSON', () => {
-		const src = li('15(금) * 카드값 확인');
-		const before = JSON.stringify(src);
-		buildNextMonthLiJson(src, 2026, 6);
-		expect(JSON.stringify(src)).toBe(before);
 	});
 });
 
