@@ -167,28 +167,46 @@ export async function handleFileDownload(
 	}
 	const filename = safeDecode(m[2]);
 	const sanitized = sanitizeFilename(filename);
-	if (sanitized !== filename) {
-		// URL filename doesn't survive sanitize → guaranteed miss.
+
+	const dirPath = join(baseDir, uuid);
+	const dirResolved = pathResolve(dirPath);
+	if (!dirResolved.startsWith(pathResolve(baseDir) + '/')) {
+		res.writeHead(400).end();
+		return;
+	}
+	if (!existsSync(dirPath)) {
 		res.writeHead(404).end();
 		return;
 	}
 
-	const dest = join(baseDir, uuid, sanitized);
-	const resolved = pathResolve(dest);
-	if (!resolved.startsWith(pathResolve(baseDir) + '/')) {
-		res.writeHead(400).end();
-		return;
-	}
-	if (!existsSync(dest)) {
-		res.writeHead(404).end();
-		return;
+	// Primary: URL filename matches disk byte-for-byte after sanitize.
+	// Fallback: filename mismatch (e.g. iOS Safari NFD-normalizes the
+	// percent-encoded path before sending). UUID dir holds exactly one
+	// file by invariant; serve it. UUID is the unguessable boundary —
+	// filename-in-URL is cosmetic, not security-critical.
+	let actualFilename = sanitized;
+	let dest = join(dirPath, sanitized);
+	if (!sanitized || !existsSync(dest)) {
+		let names: string[];
+		try {
+			names = readdirSync(dirPath);
+		} catch {
+			res.writeHead(404).end();
+			return;
+		}
+		if (names.length !== 1) {
+			res.writeHead(404).end();
+			return;
+		}
+		actualFilename = names[0];
+		dest = join(dirPath, actualFilename);
 	}
 
 	const stat = statSync(dest);
 	res.writeHead(200, {
-		'Content-Type': contentTypeFor(sanitized),
+		'Content-Type': contentTypeFor(actualFilename),
 		'Content-Length': String(stat.size),
-		'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(sanitized)}`,
+		'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(actualFilename)}`,
 		'Cache-Control': 'public, max-age=31536000, immutable',
 		ETag: `"${uuid}"`
 	});
