@@ -1,4 +1,8 @@
 import { getDB } from './db.js';
+import {
+	CLAUDE_HEADER_DEFAULTS,
+	CLAUDE_VALID_EFFORTS
+} from '../chatNote/defaults.js';
 
 interface Row<T> {
 	id: string;
@@ -171,4 +175,44 @@ export async function getImageCacheQuotaBytes(): Promise<number> {
 
 export async function setImageCacheQuotaBytes(bytes: number): Promise<void> {
 	await setSetting(KEY_IMAGE_CACHE_QUOTA_BYTES, Math.max(0, bytes));
+}
+
+// ── Claude chat-note default settings ─────────────────────────────────
+//
+// Injected into the auto-written header of new claude:// notes and used as
+// the send-time fallback when a note omits a field. User-editable in
+// 설정 → Claude. Single source of truth for the fallback values is
+// CLAUDE_HEADER_DEFAULTS in chatNote/defaults.ts.
+
+const CLAUDE_DEFAULT_SYSTEM = 'claudeDefaultSystem';
+const CLAUDE_DEFAULT_MODEL = 'claudeDefaultModel';
+const CLAUDE_DEFAULT_EFFORT = 'claudeDefaultEffort';
+
+export async function getClaudeDefaultSystem(): Promise<string> {
+	const v = await getSetting<string>(CLAUDE_DEFAULT_SYSTEM);
+	return typeof v === 'string' ? v : CLAUDE_HEADER_DEFAULTS.system;
+}
+
+export async function setClaudeDefaultSystem(value: string): Promise<void> {
+	await setSetting(CLAUDE_DEFAULT_SYSTEM, value);
+}
+
+export async function getClaudeDefaultModel(): Promise<string> {
+	const v = await getSetting<string>(CLAUDE_DEFAULT_MODEL);
+	return typeof v === 'string' && v.trim() !== '' ? v.trim() : CLAUDE_HEADER_DEFAULTS.model;
+}
+
+export async function setClaudeDefaultModel(value: string): Promise<void> {
+	await setSetting(CLAUDE_DEFAULT_MODEL, value);
+}
+
+export async function getClaudeDefaultEffort(): Promise<string> {
+	const v = await getSetting<string>(CLAUDE_DEFAULT_EFFORT);
+	return (CLAUDE_VALID_EFFORTS as readonly string[]).includes(v ?? '')
+		? (v as string)
+		: CLAUDE_HEADER_DEFAULTS.effort;
+}
+
+export async function setClaudeDefaultEffort(value: string): Promise<void> {
+	await setSetting(CLAUDE_DEFAULT_EFFORT, value);
 }
