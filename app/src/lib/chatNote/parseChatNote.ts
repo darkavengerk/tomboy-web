@@ -3,6 +3,7 @@ import {
 	CHAT_SIGNATURE_RE,
 	OLLAMA_HEADER_KEY_RE,
 	CLAUDE_HEADER_KEY_RE,
+	CLAUDE_VALID_EFFORTS,
 	type OllamaHeaderKey,
 	type ClaudeHeaderKey
 } from './defaults.js';
@@ -29,8 +30,7 @@ export interface ChatNoteSpec {
 		num_predict?: number;
 		rag?: number;
 		// claude-specific
-		cwd?: string;
-		allowedTools?: string[];
+		effort?: string;
 	};
 }
 
@@ -158,15 +158,11 @@ export function parseChatNote(doc: JSONContent | null | undefined): ChatNoteSpec
 			} else if (key === 'model') {
 				const trimmed = value.trim();
 				if (trimmed !== '') result.model = trimmed;
-			} else if (key === 'cwd') {
-				const trimmed = value.trim();
-				if (trimmed !== '') result.options.cwd = trimmed;
-			} else if (key === 'allowedTools') {
-				const tools = value
-					.split(',')
-					.map((t) => t.trim())
-					.filter((t) => t !== '');
-				if (tools.length > 0) result.options.allowedTools = tools;
+			} else if (key === 'effort') {
+				const trimmed = value.trim().toLowerCase();
+				if ((CLAUDE_VALID_EFFORTS as readonly string[]).includes(trimmed)) {
+					result.options.effort = trimmed;
+				}
 			}
 		}
 

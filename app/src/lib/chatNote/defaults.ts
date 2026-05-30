@@ -39,16 +39,38 @@ export type OllamaHeaderKey = (typeof OLLAMA_RECOGNIZED_HEADER_KEYS)[number];
  * Capture 1 = key name, capture 2 = value (may be empty).
  */
 export const CLAUDE_HEADER_KEY_RE =
-	/^(system|model|cwd|allowedTools):\s*(.*)$/;
+	/^(system|model|effort):\s*(.*)$/;
 
 export const CLAUDE_RECOGNIZED_HEADER_KEYS = [
 	'system',
 	'model',
-	'cwd',
-	'allowedTools'
+	'effort'
 ] as const;
 
 export type ClaudeHeaderKey = (typeof CLAUDE_RECOGNIZED_HEADER_KEYS)[number];
+
+/** Valid Claude reasoning effort levels (Opus 4.8 / 4.7 surface). */
+export const CLAUDE_VALID_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+export type ClaudeEffort = (typeof CLAUDE_VALID_EFFORTS)[number];
+
+/** Return value if it is a valid effort level, else 'high'. */
+export function normalizeEffort(value: string | undefined | null): ClaudeEffort {
+	return (CLAUDE_VALID_EFFORTS as readonly string[]).includes(value ?? '')
+		? (value as ClaudeEffort)
+		: 'high';
+}
+
+/**
+ * Hardcoded fallback for the claude backend. The user-editable source of
+ * truth is 설정 → Claude (appSettings); these apply only before settings
+ * load or when a setting is unset. `system` is intentionally minimal — the
+ * coding-agent default prompt is ALWAYS replaced, so this is the whole persona.
+ */
+export const CLAUDE_HEADER_DEFAULTS = {
+	system: '당신은 사용자를 돕는 어시스턴트입니다.',
+	model: 'opus',
+	effort: 'high' as ClaudeEffort
+} as const;
 
 // ─── Backwards-compat aliases (keep existing imports working) ──────────────
 

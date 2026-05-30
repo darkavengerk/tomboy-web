@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseChatNote } from '$lib/chatNote/parseChatNote.js';
+import { normalizeEffort, CLAUDE_HEADER_DEFAULTS } from '$lib/chatNote/defaults.js';
 import type { JSONContent } from '@tiptap/core';
 
 // Helper: build a doc from an array of paragraph strings
@@ -266,18 +267,20 @@ describe('parseChatNote — claude:// backend', () => {
 		expect(r!.model).toBe('claude-opus-4-7');
 	});
 
-	it('parses cwd: header', () => {
+	it('ignores legacy cwd: header (clean mode)', () => {
 		const r = parseChatNote(
 			doc('t', 'claude://', 'cwd: /home/jh/workspace/foo')
 		);
-		expect(r!.options.cwd).toBe('/home/jh/workspace/foo');
+		expect(r).not.toBeNull();
+		expect('cwd' in (r!.options as object)).toBe(false);
 	});
 
-	it('parses allowedTools: header into array', () => {
+	it('ignores legacy allowedTools: header (clean mode)', () => {
 		const r = parseChatNote(
 			doc('t', 'claude://', 'cwd: /tmp', 'allowedTools: Read, Bash, Edit')
 		);
-		expect(r!.options.allowedTools).toEqual(['Read', 'Bash', 'Edit']);
+		expect(r).not.toBeNull();
+		expect('allowedTools' in (r!.options as object)).toBe(false);
 	});
 
 	it('ignores rag: header on claude:// note', () => {
@@ -317,5 +320,56 @@ describe('parseChatNote — claude:// backend', () => {
 
 	it('llm:// still requires model (returns null without)', () => {
 		expect(parseChatNote(doc('t', 'llm://'))).toBeNull();
+	});
+});
+
+describe('parseChatNote — claude effort/clean headers', () => {
+	function claudeDoc(headerLines: string[]) {
+		return {
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{ type: 'paragraph', content: [{ type: 'text', text: 'claude://' }] },
+				...headerLines.map((l) => ({
+					type: 'paragraph',
+					content: [{ type: 'text', text: l }]
+				})),
+				{ type: 'paragraph' },
+				{ type: 'paragraph', content: [{ type: 'text', text: 'Q: 안녕' }] }
+			]
+		};
+	}
+
+	it('parses a valid effort header', () => {
+		const spec = parseChatNote(claudeDoc(['effort: xhigh']));
+		expect(spec?.options.effort).toBe('xhigh');
+	});
+
+	it('ignores an invalid effort header', () => {
+		const spec = parseChatNote(claudeDoc(['effort: bogus']));
+		expect(spec?.options.effort).toBeUndefined();
+	});
+
+	it('ignores legacy cwd / allowedTools headers (clean mode)', () => {
+		const spec = parseChatNote(claudeDoc(['cwd: /tmp', 'allowedTools: Read,Bash']));
+		expect(spec).not.toBeNull();
+		expect('cwd' in (spec!.options as object)).toBe(false);
+		expect('allowedTools' in (spec!.options as object)).toBe(false);
+	});
+
+	it('parses system + model + effort together', () => {
+		const spec = parseChatNote(
+			claudeDoc(['system: 번역기', 'model: opus', 'effort: high'])
+		);
+		expect(spec?.system).toBe('번역기');
+		expect(spec?.model).toBe('opus');
+		expect(spec?.options.effort).toBe('high');
+	});
+
+	it('normalizeEffort falls back to high', () => {
+		expect(normalizeEffort('max')).toBe('max');
+		expect(normalizeEffort('nonsense')).toBe('high');
+		expect(normalizeEffort(undefined)).toBe('high');
+		expect(CLAUDE_HEADER_DEFAULTS.effort).toBe('high');
 	});
 });
