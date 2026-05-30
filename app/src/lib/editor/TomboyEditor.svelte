@@ -2102,6 +2102,10 @@
 		transform: translate(-50%, -50%);
 	}
 
+	.tomboy-editor :global(.tomboy-inline-radio:hover) {
+		border-color: var(--accent, #4a76d4);
+	}
+
 	/* 인용 단락 — blockquote 플러그인이 '> ' 로 시작하는 최상위 단락에
 	   .tomboy-quote 노드 데코를, 맨 앞 '> ' 2자에 .tomboy-quote-marker
 	   폭 0 데코를 단다. 연속 인용은 인접 형제 선택자로 위 여백을 좁혀
