@@ -5,8 +5,7 @@ interface ClaudeBody {
 	messages?: unknown;
 	model?: unknown;
 	system?: unknown;
-	cwd?: unknown;
-	allowedTools?: unknown;
+	effort?: unknown;
 }
 
 /**
