@@ -18,8 +18,10 @@ import {
 	findFootnoteMatches,
 	findFootnoteAt,
 	findFootnotePartner,
+	getDefinitionPreviewText,
 	type FootnoteMatch
 } from './footnotes.js';
+import { FootnotePreview } from './preview.js';
 
 export interface FootnotePluginOptions {
 	/** 짝(참조/설명)을 찾지 못했을 때. kind 는 클릭한 마커의 역할. */
@@ -79,9 +81,86 @@ function scrollToMatch(view: EditorView, target: FootnoteMatch): void {
 	window.setTimeout(() => block.classList.remove('tomboy-fn-flash'), 1200);
 }
 
+/** 터치/호버 불가 환경(모바일)이면 true. matchMedia 미지원 시 데스크탑으로 폴백. */
+function isTouchDevice(): boolean {
+	try {
+		return (
+			typeof window !== 'undefined' &&
+			typeof window.matchMedia === 'function' &&
+			window.matchMedia('(hover: none), (pointer: coarse)').matches
+		);
+	} catch {
+		return false;
+	}
+}
+
+/** 각주 DOM 요소에 대응하는 매치를 찾는다(없으면 null). */
+function footnoteHitFor(
+	view: EditorView,
+	matches: FootnoteMatch[],
+	fnEl: HTMLElement
+): FootnoteMatch | null {
+	let pos: number | null = null;
+	try {
+		pos = view.posAtDOM(fnEl, 0);
+	} catch {
+		pos = null;
+	}
+	return pos != null ? findFootnoteAt(matches, pos) : null;
+}
+
 export function createFootnotePlugin(
 	options: FootnotePluginOptions
 ): Plugin<FootnotePluginState> {
+	const preview = new FootnotePreview();
+	let hoverTimer: number | null = null;
+	const clearHoverTimer = () => {
+		if (hoverTimer != null) {
+			window.clearTimeout(hoverTimer);
+			hoverTimer = null;
+		}
+	};
+
+	// 짝으로 이동(없으면 onMissing). 데스크탑 클릭/설명 마커 공용.
+	const jumpToPartner = (view: EditorView, hit: FootnoteMatch) => {
+		preview.hide();
+		const st = footnotePluginKey.getState(view.state);
+		if (!st) return;
+		const partner = findFootnotePartner(st.matches, hit);
+		if (partner) {
+			scrollToMatch(view, partner);
+		} else {
+			options.onMissing(
+				hit.label,
+				hit.isDefinitionMarker ? 'definition' : 'reference'
+			);
+		}
+	};
+
+	// 참조 마커의 설명 미리보기 표시(짝 없으면 안내 문구).
+	const showRefPreview = (
+		view: EditorView,
+		anchorEl: HTMLElement,
+		hit: FootnoteMatch,
+		withJumpButton: boolean
+	) => {
+		const st = footnotePluginKey.getState(view.state);
+		if (!st) return;
+		const partner = findFootnotePartner(st.matches, hit);
+		if (partner) {
+			const text = getDefinitionPreviewText(view.state.doc, partner);
+			preview.show(anchorEl, text, {
+				withJumpButton,
+				onJump: () => scrollToMatch(view, partner)
+			});
+		} else {
+			preview.show(anchorEl, '설명을 찾을 수 없습니다', {
+				withJumpButton,
+				missing: true
+			});
+		}
+	};
+
 	return new Plugin<FootnotePluginState>({
 		key: footnotePluginKey,
 		state: {
@@ -101,47 +180,82 @@ export function createFootnotePlugin(
 				};
 			}
 		},
+		view() {
+			return {
+				destroy() {
+					clearHoverTimer();
+					preview.hide();
+				}
+			};
+		},
 		props: {
 			decorations(state) {
 				return footnotePluginKey.getState(state)?.decorations ?? null;
 			},
 			handleDOMEvents: {
-				// 각주 탭은 mousedown 단계에서 처리한다. preventDefault 로
-				// 에디터 포커스/캐럿 이동을 막아(모바일에서 키보드가 본문을
-				// 가리는 문제 방지) 하고, true 를 반환해 PM 의 기본 클릭
-				// 처리를 통째로 건너뛴 뒤 곧바로 짝으로 스크롤한다.
+				// 탭/클릭은 mousedown 단계에서 처리한다. preventDefault 로
+				// 에디터 포커스/캐럿 이동을 막아(모바일 키보드 방지) true 반환.
 				mousedown(view, event) {
 					const target = event.target;
 					const fnEl =
 						target instanceof Element
 							? target.closest('.tomboy-fn-ref, .tomboy-fn-def')
 							: null;
-					if (!fnEl) return false;
+					if (!(fnEl instanceof HTMLElement)) return false;
 					event.preventDefault();
 					const st = footnotePluginKey.getState(view.state);
 					if (!st) return true;
-					let pos: number | null = null;
-					try {
-						pos = view.posAtDOM(fnEl, 0);
-					} catch {
-						pos = null;
+					const hit = footnoteHitFor(view, st.matches, fnEl);
+					if (!hit) return true;
+					// 설명 마커: 양쪽 플랫폼 모두 즉시 이동.
+					if (hit.isDefinitionMarker) {
+						jumpToPartner(view, hit);
+						return true;
 					}
-					const hit =
-						pos != null ? findFootnoteAt(st.matches, pos) : null;
-					if (hit) {
-						const partner = findFootnotePartner(st.matches, hit);
-						if (partner) {
-							scrollToMatch(view, partner);
-						} else {
-							options.onMissing(
-								hit.label,
-								hit.isDefinitionMarker
-									? 'definition'
-									: 'reference'
-							);
-						}
+					// 참조 마커: 모바일은 미리보기, 데스크탑은 즉시 이동.
+					if (isTouchDevice()) {
+						showRefPreview(view, fnEl, hit, true);
+					} else {
+						jumpToPartner(view, hit);
 					}
 					return true;
+				},
+				// 데스크탑 hover: 참조 마커 위에서 미리보기(표시 전용).
+				mouseover(view, event) {
+					if (isTouchDevice()) return false;
+					const target = event.target;
+					const fnEl =
+						target instanceof Element
+							? target.closest('.tomboy-fn-ref')
+							: null;
+					if (!(fnEl instanceof HTMLElement)) return false;
+					const st = footnotePluginKey.getState(view.state);
+					if (!st) return false;
+					const hit = footnoteHitFor(view, st.matches, fnEl);
+					if (!hit || hit.isDefinitionMarker) return false;
+					clearHoverTimer();
+					hoverTimer = window.setTimeout(() => {
+						hoverTimer = null;
+						showRefPreview(view, fnEl, hit, false);
+					}, 120);
+					return false;
+				},
+				mouseout(view, event) {
+					if (isTouchDevice()) return false;
+					const target = event.target;
+					const fnEl =
+						target instanceof Element
+							? target.closest('.tomboy-fn-ref')
+							: null;
+					if (!fnEl) return false;
+					const related = event.relatedTarget;
+					// 같은 마커 내부 이동이면 무시.
+					if (related instanceof Node && fnEl.contains(related)) {
+						return false;
+					}
+					clearHoverTimer();
+					preview.hide();
+					return false;
 				}
 			}
 		}
