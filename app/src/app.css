@@ -50,3 +50,16 @@ button {
 * {
 	-webkit-tap-highlight-color: transparent;
 }
+
+.tomboy-chart-error {
+	border: 1px solid #ef4444;
+	background: #fef2f2;
+	color: #b91c1c;
+	border-radius: 8px;
+	padding: 8px 12px;
+	font-size: 0.9em;
+}
+.tomboy-chart-widget {
+	margin: 8px 0;
+	max-width: 100%;
+}
