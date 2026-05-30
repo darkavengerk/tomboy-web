@@ -6,14 +6,14 @@ import {
 	chatNotePluginKey
 } from '$lib/editor/chatNote/chatNotePlugin.js';
 
-function createTestEditor(): Editor {
+function createTestEditor(claudeDefaults?: () => { system: string; model: string; effort: string }): Editor {
 	const editor = new Editor({
 		extensions: [
 			StarterKit.configure({ undoRedo: false }),
 			Extension.create({
 				name: 'llmNoteExt',
 				addProseMirrorPlugins() {
-					return [createChatNotePlugin()];
+					return [createChatNotePlugin({ claudeDefaults })];
 				}
 			})
 		],
@@ -152,6 +152,35 @@ describe('chatNotePlugin', () => {
 			editor.state.tr.setMeta(chatNotePluginKey, { rescan: true })
 		);
 		expect(editor.getJSON()).toEqual(before);
+		editor.destroy();
+	});
+
+	it('inserts claude headers (system/model/effort) with injected defaults', () => {
+		const editor = createTestEditor(() => ({
+			system: '번역기',
+			model: 'opus',
+			effort: 'xhigh'
+		}));
+		editor.commands.setContent('');
+		editor.commands.insertContent('claude://');
+		const paras = editorParagraphTexts(editor);
+		expect(paras).toContain('system: 번역기');
+		expect(paras).toContain('model: opus');
+		expect(paras).toContain('effort: xhigh');
+		expect(paras[paras.length - 1]).toBe('Q: ');
+		const qIndex = paras.lastIndexOf('Q: ');
+		expect(paras[qIndex - 1]).toBe('');
+		editor.destroy();
+	});
+
+	it('falls back to hardcoded claude defaults when no closure given', () => {
+		const editor = createTestEditor();
+		editor.commands.setContent('');
+		editor.commands.insertContent('claude://');
+		const paras = editorParagraphTexts(editor);
+		expect(paras).toContain('system: 당신은 사용자를 돕는 어시스턴트입니다.');
+		expect(paras).toContain('model: opus');
+		expect(paras).toContain('effort: high');
 		editor.destroy();
 	});
 });

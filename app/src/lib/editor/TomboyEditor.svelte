@@ -45,6 +45,12 @@
 		autoWeekdayPluginKey,
 	} from "./autoWeekday/autoWeekdayPlugin.js";
 	import { createChatNotePlugin } from "./chatNote/chatNotePlugin.js";
+	import { CLAUDE_HEADER_DEFAULTS } from "$lib/chatNote/defaults.js";
+	import {
+		getClaudeDefaultSystem,
+		getClaudeDefaultModel,
+		getClaudeDefaultEffort,
+	} from "$lib/storage/appSettings.js";
 	import { createThinkingDisplayPlugin } from "./chatNote/thinkingDisplayPlugin.js";
 	import {
 		createTableBlockPlugin,
@@ -218,6 +224,12 @@
 	// to false here; the $effect below keeps it in sync with the prop so the
 	// plugin always reflects the current isScheduleNote value at call-time.
 	let autoWeekdayEnabled = false;
+	// Claude chat-note defaults, read by createChatNotePlugin via a closure so
+	// 설정 changes apply to new notes without re-creating the editor. Seeded to
+	// the hardcoded fallback; loaded from appSettings in onMount.
+	let claudeDefSystem: string = CLAUDE_HEADER_DEFAULTS.system;
+	let claudeDefModel: string = CLAUDE_HEADER_DEFAULTS.model;
+	let claudeDefEffort: string = CLAUDE_HEADER_DEFAULTS.effort;
 	// Same trick for the hrSplit plugin's enabled gate and change emitter.
 	// The plugin reads `hrSplitEnabledFlag` and calls `hrSplitChangeFn` via
 	// closures so prop changes take effect without re-creating extensions.
@@ -341,6 +353,10 @@
 		// every editor can safely call it in parallel.
 		const uninstallModKeys = installModKeyListeners();
 
+		void getClaudeDefaultSystem().then((v) => (claudeDefSystem = v));
+		void getClaudeDefaultModel().then((v) => (claudeDefModel = v));
+		void getClaudeDefaultEffort().then((v) => (claudeDefEffort = v));
+
 		// The current-note filter is applied inside findTitleMatches via the
 		// plugin's getCurrentGuid() — the provider returns the full title
 		// list so the excluded title can still claim its matched region.
@@ -446,7 +462,15 @@
 				Extension.create({
 					name: "tomboyLlmNote",
 					addProseMirrorPlugins() {
-						return [createChatNotePlugin()];
+						return [
+							createChatNotePlugin({
+								claudeDefaults: () => ({
+									system: claudeDefSystem,
+									model: claudeDefModel,
+									effort: claudeDefEffort,
+								}),
+							}),
+						];
 					},
 				}),
 				Extension.create({
