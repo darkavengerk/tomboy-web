@@ -9,41 +9,75 @@ async function consume(stream: NodeJS.ReadableStream): Promise<string> {
 }
 
 describe('runClaude', () => {
-  it('passes --disallowedTools * when no cwd', () => {
+  it('always passes --disallowedTools * (tools always off)', () => {
     const fake = makeFakeSpawn();
     void runClaude(
       { messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }] },
       new AbortController().signal,
       { spawn: fake.spawn },
     );
-    expect(fake.lastCall!.args).toContain('--disallowedTools');
     const i = fake.lastCall!.args.indexOf('--disallowedTools');
+    expect(i).toBeGreaterThanOrEqual(0);
     expect(fake.lastCall!.args[i + 1]).toBe('*');
+    expect(fake.lastCall!.args).not.toContain('--allowedTools');
   });
 
-  it('omits --disallowedTools when cwd present', () => {
+  it('always replaces system prompt with --system-prompt (not --append)', () => {
     const fake = makeFakeSpawn();
     void runClaude(
-      { messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }], cwd: '/tmp' },
+      { messages: [], system: '번역기' },
       new AbortController().signal,
       { spawn: fake.spawn },
     );
-    expect(fake.lastCall!.args).not.toContain('--disallowedTools');
+    expect(fake.lastCall!.args).not.toContain('--append-system-prompt');
+    const i = fake.lastCall!.args.indexOf('--system-prompt');
+    expect(fake.lastCall!.args[i + 1]).toBe('번역기');
   });
 
-  it('passes --allowedTools when cwd + allowedTools', () => {
+  it('falls back to default system prompt when none given', () => {
     const fake = makeFakeSpawn();
     void runClaude(
-      {
-        messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
-        cwd: '/tmp',
-        allowedTools: ['Read', 'Bash'],
-      },
+      { messages: [] },
       new AbortController().signal,
       { spawn: fake.spawn },
     );
-    const i = fake.lastCall!.args.indexOf('--allowedTools');
-    expect(fake.lastCall!.args[i + 1]).toBe('Read,Bash');
+    const i = fake.lastCall!.args.indexOf('--system-prompt');
+    expect(fake.lastCall!.args[i + 1]).toBe('당신은 사용자를 돕는 어시스턴트입니다.');
+  });
+
+  it('always passes --exclude-dynamic-system-prompt-sections', () => {
+    const fake = makeFakeSpawn();
+    void runClaude({ messages: [] }, new AbortController().signal, { spawn: fake.spawn });
+    expect(fake.lastCall!.args).toContain('--exclude-dynamic-system-prompt-sections');
+  });
+
+  it('passes --effort from request', () => {
+    const fake = makeFakeSpawn();
+    void runClaude(
+      { messages: [], effort: 'xhigh' },
+      new AbortController().signal,
+      { spawn: fake.spawn },
+    );
+    const i = fake.lastCall!.args.indexOf('--effort');
+    expect(fake.lastCall!.args[i + 1]).toBe('xhigh');
+  });
+
+  it('defaults --effort to high when absent or invalid', () => {
+    const fakeA = makeFakeSpawn();
+    void runClaude({ messages: [] }, new AbortController().signal, { spawn: fakeA.spawn });
+    const ia = fakeA.lastCall!.args.indexOf('--effort');
+    expect(fakeA.lastCall!.args[ia + 1]).toBe('high');
+
+    const fakeB = makeFakeSpawn();
+    void runClaude({ messages: [], effort: 'bogus' }, new AbortController().signal, { spawn: fakeB.spawn });
+    const ib = fakeB.lastCall!.args.indexOf('--effort');
+    expect(fakeB.lastCall!.args[ib + 1]).toBe('high');
+  });
+
+  it('spawns with cwd = HOME', () => {
+    const fake = makeFakeSpawn();
+    void runClaude({ messages: [] }, new AbortController().signal, { spawn: fake.spawn });
+    expect(fake.lastCall!.cwd).toBe(process.env.HOME ?? '');
   });
 
   it('clears ANTHROPIC_API_KEY env', () => {

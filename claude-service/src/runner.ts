@@ -20,12 +20,18 @@ export interface AnthropicMessage {
   >;
 }
 
+const VALID_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'];
+const DEFAULT_SYSTEM = '당신은 사용자를 돕는 어시스턴트입니다.';
+
+function normalizeEffort(v?: string): string {
+  return v && VALID_EFFORTS.includes(v) ? v : 'high';
+}
+
 export interface RunRequest {
   messages: AnthropicMessage[];
   model?: string;
   system?: string;
-  cwd?: string;
-  allowedTools?: string[];
+  effort?: string;
 }
 
 interface RunnerDeps {
@@ -56,15 +62,13 @@ export function runClaude(
     '--verbose',
   ];
   if (req.model) args.push('--model', req.model);
-  if (req.system) args.push('--append-system-prompt', req.system);
-  if (!req.cwd) {
-    args.push('--disallowedTools', '*');
-  } else if (req.allowedTools?.length) {
-    args.push('--allowedTools', req.allowedTools.join(','));
-  }
+  args.push('--system-prompt', req.system || DEFAULT_SYSTEM);
+  args.push('--exclude-dynamic-system-prompt-sections');
+  args.push('--disallowedTools', '*');
+  args.push('--effort', normalizeEffort(req.effort));
 
   const child = spawn('claude', args, {
-    cwd: req.cwd ?? process.env.HOME,
+    cwd: process.env.HOME,
     env: { ...process.env, ANTHROPIC_API_KEY: '' },
     stdio: ['pipe', 'pipe', 'pipe'],
   });

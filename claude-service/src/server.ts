@@ -1,5 +1,4 @@
 import Fastify, { type FastifyInstance } from 'fastify';
-import { existsSync, statSync } from 'node:fs';
 import { runClaude, type ClaudeRunnerSpawn, type RunRequest } from './runner.js';
 import { extractBearer, verifyToken } from './auth.js';
 import { inlineImageUrls, ImageFetchError, type FetchFn } from './imageInline.js';
@@ -33,19 +32,13 @@ export function buildServer(opts: BuildServerOpts): FastifyInstance {
     if (!body || !Array.isArray(body.messages) || body.messages.length === 0) {
       return reply.code(400).send({ error: 'bad_request', detail: 'messages required' });
     }
-    if (body.cwd) {
-      if (!existsSync(body.cwd) || !statSync(body.cwd).isDirectory()) {
-        return reply.code(400).send({ error: 'bad_request', detail: 'cwd not a directory' });
-      }
-    }
-
     // Diagnostic line: messages × content block types per turn, so silent
     // image-fail / oversized-payload cases are visible in journalctl.
     const shape = body.messages
       .map((m) => `${m.role}[${m.content.map((c) => c.type).join(',')}]`)
       .join(' ');
     req.log.info(
-      { messages: body.messages.length, shape, model: body.model, cwd: body.cwd ?? null },
+      { messages: body.messages.length, shape, model: body.model, effort: body.effort ?? null },
       'chat request',
     );
 
