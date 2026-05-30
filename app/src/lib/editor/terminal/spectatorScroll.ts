@@ -39,6 +39,46 @@ export function computeScrollState(
 }
 
 /**
+ * 관전 모드 "하단 정렬" 레이아웃이 보여줄 행 수를 계산하기 위한 버퍼 추상화.
+ * xterm 의 `term.buffer.active` 을 그대로 받지 않고, 필요한 좌표만 노출해
+ * 단위테스트에서 mock 가능하게 한다.
+ *
+ * - `rows`: 패널 행 수 (= `term.rows`).
+ * - `cursorY`: 뷰포트 기준 cursor 행 (0..rows-1).
+ * - `isRowEmpty(row)`: 해당 행이 의미 있는 글리프가 없는지 (호출측이 trim 후 판정).
+ */
+export interface BufferProbe {
+	rows: number;
+	cursorY: number;
+	isRowEmpty(row: number): boolean;
+}
+
+/**
+ * 셸 모드 + 라이브 맨 아래 고정 상태일 때 stage 박스가 담아야 할 행 수 `n`.
+ * 결과는 `max(cursorY + 1, lastNonEmptyRow + 1)` — cursor 위치(=활성 입력 줄)
+ * 와 마지막 비어있지 않은 행 중 더 아래쪽이 기준.
+ *
+ * 두 값을 모두 보는 이유:
+ * - 단일 라인 셸: cursor 가 곧 콘텐츠의 끝 → cursorY+1 로 충분.
+ * - 다중 라인 프롬프트 (p10k, starship): 프롬프트 프레임이 cursor 위 행들에 있고
+ *   cursor 는 입력 줄에 있음 → cursorY+1 이 위 프레임까지 커버.
+ * - 백그라운드 출력이 셸 redraw 사이에 cursor 아래로 더 그려진 케이스 → lastNonEmpty+1
+ *   가 그 출력까지 커버.
+ *
+ * 결과는 항상 ≥ 1 (cursor 가 어딘가에는 있으니 stage 가 0 줄로 줄어들면 안 됨).
+ */
+export function computeAnchorRows(probe: BufferProbe): number {
+	let lastNonEmpty = -1;
+	for (let i = probe.rows - 1; i >= 0; i--) {
+		if (!probe.isRowEmpty(i)) {
+			lastNonEmpty = i;
+			break;
+		}
+	}
+	return Math.max(probe.cursorY + 1, lastNonEmpty + 1, 1);
+}
+
+/**
  * 모바일 관전 모드의 터치 드래그를 xterm 줄 스크롤로 환산한다. 순수 함수.
  *
  * xterm v6 자체 터치 스크롤 제스처는 관전 모드의 `transform: scale` 안에서
