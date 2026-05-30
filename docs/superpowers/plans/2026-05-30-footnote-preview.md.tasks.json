@@ -4,26 +4,26 @@
     {
       "id": 1,
       "subject": "Task 1: 설명 텍스트 추출 순수 함수 getDefinitionPreviewText",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** 설명 마커가 위치한 블록의 텍스트에서 선행 [^label]를 제거하고 120자 말줄임한 미리보기 문자열을 반환하는 순수 함수를 추가한다.\n\n**Files:** Modify app/src/lib/editor/footnote/footnotes.ts, app/src/lib/editor/footnote/index.ts; Test app/tests/unit/editor/footnotes.test.ts\n\n**Verify:** cd app && npm run test -- footnotes\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/footnote/footnotes.ts\", \"app/src/lib/editor/footnote/index.ts\", \"app/tests/unit/editor/footnotes.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- footnotes\", \"acceptanceCriteria\": [\"getDefinitionPreviewText가 선행 [^label]와 공백 제거\", \"선행 공백 있는 설명도 마커 제거\", \"120자 초과 시 … 말줄임\", \"index.ts에서 export\"]}\n```"
     },
     {
       "id": 2,
       "subject": "Task 2: 미리보기 DOM 컨트롤러 FootnotePreview",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** document.body 에 position: fixed 팝오버를 띄우는 PM 비의존 DOM 컨트롤러를 신규 작성한다. 모바일용 이동 버튼, missing 안내 상태, 바깥 탭/스크롤 자동 닫힘 포함.\n\n**Files:** Create app/src/lib/editor/footnote/preview.ts; Test app/tests/unit/editor/footnotePreview.test.ts\n\n**Verify:** cd app && npm run test -- footnotePreview\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/footnote/preview.ts\", \"app/tests/unit/editor/footnotePreview.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- footnotePreview\", \"acceptanceCriteria\": [\"show가 .tomboy-fn-preview 추가 + 텍스트\", \"withJumpButton:true 버튼 클릭이 onJump+제거\", \"withJumpButton:false static 클래스 무버튼\", \"missing:true missing 클래스 무버튼\", \"hide 제거 + show 재호출 시 이전 제거\", \"바깥 pointerdown 자동 닫힘\"]}\n```"
     },
     {
       "id": 3,
       "subject": "Task 3: 플러그인 이벤트 배선 — hover/탭 분기 + 미리보기 통합",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1, 2],
       "description": "**Goal:** plugin.ts 에 데스크탑/모바일 판별을 추가하고, 참조 마커는 데스크탑 hover→미리보기 / 클릭→이동, 모바일 탭→미리보기+이동 버튼으로 분기한다. 설명 마커는 양쪽 모두 즉시 이동. 플러그인 파괴 시 미리보기를 정리한다.\n\n**Files:** Modify app/src/lib/editor/footnote/plugin.ts; Test app/tests/unit/editor/footnotePlugin.test.ts\n\n**Verify:** cd app && npm run test -- footnotePlugin && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/footnote/plugin.ts\", \"app/tests/unit/editor/footnotePlugin.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- footnotePlugin && npm run check\", \"acceptanceCriteria\": [\"데스크탑 폴백 참조 mousedown 기존 이동/onMissing 보존\", \"모바일 참조 탭 미이동 + 미리보기+이동버튼\", \"모바일 이동버튼 클릭 scrollIntoView\", \"모바일 짝없는 참조 안내 + onMissing 미호출\", \"설명 마커 양쪽 즉시 이동 무미리보기\"]}\n```"
     },
     {
       "id": 4,
       "subject": "Task 4: 미리보기 팝오버 스타일",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [3],
       "description": "**Goal:** TomboyEditor.svelte 에 미리보기 팝오버의 전역 CSS 를 추가한다. 데스크탑(static) 변형은 pointer-events: none, 모바일은 이동 버튼 스타일, missing 은 회색 톤.\n\n**Files:** Modify app/src/lib/editor/TomboyEditor.svelte\n\n**Verify:** cd app && npm run check && npm run build\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/TomboyEditor.svelte\"], \"verifyCommand\": \"cd app && npm run check && npm run build\", \"acceptanceCriteria\": [\".tomboy-fn-preview fixed/흰배경/그림자/z-index<1000\", \".tomboy-fn-preview-static pointer-events:none\", \"-jump 버튼 + -missing 회색 톤\", \"npm run check + build 성공\"]}\n```"
     }
