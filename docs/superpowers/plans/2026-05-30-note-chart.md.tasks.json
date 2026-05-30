@@ -7,7 +7,7 @@
     { "id": 4, "subject": "Task 4: Chart.js config 빌더", "status": "pending", "blockedBy": [1, 3], "verifyCommand": "cd app && npx vitest run tests/unit/chart/buildChartConfig.test.ts", "files": ["app/src/lib/chart/buildChartConfig.ts", "app/tests/unit/chart/buildChartConfig.test.ts"] },
     { "id": 5, "subject": "Task 5: 차트 블록 doc 워커", "status": "pending", "blockedBy": [1], "verifyCommand": "cd app && npx vitest run tests/unit/chart/findChartRegions.test.ts", "files": ["app/src/lib/editor/chartBlock/findChartRegions.ts", "app/tests/unit/chart/findChartRegions.test.ts"] },
     { "id": 6, "subject": "Task 6: Chart.js 렌더러 + 에러 카드", "status": "pending", "blockedBy": [4], "verifyCommand": "cd app && npm run check", "files": ["app/package.json", "app/src/lib/chart/renderChart.ts", "app/src/app.css"] },
-    { "id": 7, "subject": "Task 7: 에디터 플러그인 통합 + 체크박스 토글", "status": "pending", "blockedBy": [1, 2, 3, 4, 5, 6], "verifyCommand": "cd app && npm run check", "files": ["app/src/lib/editor/chartBlock/chartBlockPlugin.ts", "app/src/lib/editor/chartBlockExtension.ts", "app/src/lib/editor/extensions.ts"] }
+    { "id": 7, "subject": "Task 7: 에디터 플러그인 통합 + 체크박스 토글", "status": "pending", "blockedBy": [1, 2, 3, 4, 5, 6], "verifyCommand": "cd app && npm run check", "files": ["app/src/lib/editor/chartBlock/chartBlockPlugin.ts", "app/src/lib/editor/TomboyEditor.svelte"] }
   ],
   "lastUpdated": "2026-05-30"
 }

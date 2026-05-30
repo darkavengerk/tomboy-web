@@ -1275,10 +1275,11 @@ git commit -m "feat(chart): Chart.js 동적 import 렌더러 + 에러 카드"
 
 **Goal:** ProseMirror 플러그인으로 차트 블록을 스캔해 체크 시 차트/에러 카드를 위젯으로 mount, 미체크 시 설정 노출. 헤더 체크박스 클릭으로 `[ ]`↔`[x]` 토글.
 
+> **통합 위치 주의:** 이 저장소에는 `extensions.ts`가 없다. 플러그인은 `TomboyEditor.svelte`의 `extensions` 배열에 인라인 `Extension.create({...})` 블록으로 등록한다(geoMap의 `tomboyGeoMap` 블록과 동일 패턴, 파일 내 lines ~417-421 참고). 또한 데이터 노트의 JSONContent는 `getNoteEditorContent(note)`(`lib/core/noteManager.ts`)로 얻는다 — `NoteData`의 본문 필드는 `xmlContent`이며 `deserializeContent`로 디코드된다. `noteContentToJson`/`note.content` 같은 API는 없다.
+
 **Files:**
 - Create: `app/src/lib/editor/chartBlock/chartBlockPlugin.ts`
-- Create: `app/src/lib/editor/chartBlockExtension.ts`
-- Modify: `app/src/lib/editor/extensions.ts`
+- Modify: `app/src/lib/editor/TomboyEditor.svelte` (인라인 Extension.create 등록)
 
 **Acceptance Criteria:**
 - [ ] 체크된(`[x]`) 차트 블록 헤더 뒤에 차트 위젯(`<canvas>`)이 렌더됨
@@ -1311,8 +1312,7 @@ import { parseDataNote } from '../../chart/parseDataNote';
 import { transformData } from '../../chart/transformData';
 import { buildChartConfig } from '../../chart/buildChartConfig';
 import { mountChart, destroyChart, renderErrorCard, type ChartHandle } from '../../chart/renderChart';
-import { findNoteByTitle } from '../../storage/noteStore';
-import { noteContentToJson } from '../noteContentXml';
+import { findNoteByTitle, getNoteEditorContent } from '../../core/noteManager';
 
 export const chartBlockPluginKey = new PluginKey('tomboyChartBlock');
 
@@ -1349,7 +1349,7 @@ function renderChartWidget(region: ChartRegion): HTMLElement {
 			renderErrorCard(container, `데이터 노트 '${spec.dataNoteTitle}'를 찾을 수 없습니다`);
 			return;
 		}
-		const tables = parseDataNote(noteContentToJson(note.content));
+		const tables = parseDataNote(getNoteEditorContent(note));
 		if (tables.length === 0) {
 			renderErrorCard(container, '데이터 노트에 csv/tsv 블록이 없습니다');
 			return;
@@ -1420,53 +1420,41 @@ export function createChartBlockPlugin(): Plugin {
 
 > 데이터 스냅샷: 위젯이 mount될 때마다 `findNoteByTitle`로 1회 조회한다. 토글하거나 노트를 다시 열면 위젯 key가 바뀌어 재mount → 자동 갱신. 실시간 구독은 비범위.
 
-- [ ] **Step 2: Extension 래퍼 작성**
+- [ ] **Step 2: TomboyEditor.svelte에 인라인 등록**
 
-`app/src/lib/editor/chartBlockExtension.ts`:
-
-```ts
-import { Extension } from '@tiptap/core';
-import { createChartBlockPlugin } from './chartBlock/chartBlockPlugin';
-
-export const ChartBlockExtension = Extension.create({
-	name: 'tomboyChartBlock',
-	addProseMirrorPlugins() {
-		return [createChartBlockPlugin()];
-	}
-});
-```
-
-- [ ] **Step 3: extensions.ts에 등록**
-
-`app/src/lib/editor/extensions.ts` 수정 — import 추가 및 배열에 등록:
+`app/src/lib/editor/TomboyEditor.svelte` 상단 import 영역(다른 plugin import들 근처, 예: `createGeoMapPlugin` import 아래)에 추가:
 
 ```ts
-import { ChartBlockExtension } from './chartBlockExtension';
+import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 ```
 
-그리고 `buildExtensions()`가 반환하는 배열에 `ChartBlockExtension`을 `ChecklistExtension` 다음 줄에 추가:
+그리고 `extensions` 배열의 `tomboyGeoMap` 블록(`Extension.create({ name: "tomboyGeoMap", … })`) 바로 다음에 동일 패턴으로 블록을 추가:
 
 ```ts
-		TableBlockExtension,
-		GeoMapExtension,
-		ChecklistExtension,
-		ChartBlockExtension
+				Extension.create({
+					name: "tomboyChartBlock",
+					addProseMirrorPlugins() {
+						return [createChartBlockPlugin()];
+					},
+				}),
 ```
 
-- [ ] **Step 4: 타입 체크**
+> 차트 위젯은 체크된 블록의 데이터를 표시만 하고 문서를 변형하지 않으므로 체크리스트/테이블 블록 등 다른 데코레이션 플러그인과 순서 의존성이 없다. geoMap 블록 뒤 어디든 무방.
+
+- [ ] **Step 3: 타입 체크**
 
 Run: `cd app && npm run check`
-Expected: 에러 없음. (`noteContentToJson`, `findNoteByTitle` 시그니처 일치 확인. 불일치 시 실제 export에 맞춰 import 경로/이름 수정.)
+Expected: 에러 없음. (`findNoteByTitle` / `getNoteEditorContent`는 `lib/core/noteManager.ts`에서 export됨 — 시그니처 불일치 시 실제 export에 맞춰 수정.)
 
-- [ ] **Step 5: 수동 브라우저 검증**
+- [ ] **Step 4: 수동 브라우저 검증**
 
 Run: `cd app && npm run dev`
 위 **Verify**의 4가지 시나리오를 브라우저에서 수행하고 모두 통과 확인.
 
-- [ ] **Step 6: 커밋**
+- [ ] **Step 5: 커밋**
 
 ```bash
-git add app/src/lib/editor/chartBlock/chartBlockPlugin.ts app/src/lib/editor/chartBlockExtension.ts app/src/lib/editor/extensions.ts
+git add app/src/lib/editor/chartBlock/chartBlockPlugin.ts app/src/lib/editor/TomboyEditor.svelte
 git commit -m "feat(chart): 에디터 차트 블록 플러그인 + 체크박스 토글 통합"
 ```
 
