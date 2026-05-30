@@ -144,3 +144,21 @@ export function findFootnotePartner(
 	}
 	return found;
 }
+
+/**
+ * 설명 마커(`defMatch`)가 위치한 textblock 의 텍스트에서 선행 `[^label]`
+ * 토큰과 양끝 공백을 제거해 미리보기 문자열을 만든다. `maxLen`(기본 120)
+ * 초과 시 잘라내고 `…` 를 붙인다. 순수 함수.
+ */
+export function getDefinitionPreviewText(
+	doc: PMNode,
+	defMatch: FootnoteMatch,
+	maxLen = 120
+): string {
+	const block = doc.resolve(defMatch.from + 1).parent;
+	const raw = block.textContent;
+	// 선행 공백 + 첫 [^라벨] 토큰 제거.
+	const stripped = raw.replace(/^\s*\[\^[^\]\s]+\]/, '').trim();
+	if (stripped.length <= maxLen) return stripped;
+	return stripped.slice(0, maxLen) + '…';
+}

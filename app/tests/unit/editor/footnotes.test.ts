@@ -7,7 +7,8 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import {
 	findFootnoteMatches,
 	findFootnoteAt,
-	findFootnotePartner
+	findFootnotePartner,
+	getDefinitionPreviewText
 } from '$lib/editor/footnote/footnotes.js';
 
 let currentEditor: Editor | null = null;
@@ -169,5 +170,34 @@ describe('findFootnotePartner', () => {
 		// 설명 → 자신 앞의 마지막 참조.
 		expect(findFootnotePartner(matches, defA)).toBe(refA);
 		expect(findFootnotePartner(matches, defB)).toBe(refB);
+	});
+});
+
+describe('getDefinitionPreviewText', () => {
+	it('설명 마커 단락에서 선행 [^label] 와 공백을 제거한다', () => {
+		const doc = makeDoc([P('제목'), P('[^7] 설명 내용')]);
+		const def = findFootnoteMatches(doc).find((m) => m.isDefinitionMarker)!;
+		expect(getDefinitionPreviewText(doc, def)).toBe('설명 내용');
+	});
+
+	it('선행 공백이 있는 설명도 마커를 제거한다', () => {
+		const doc = makeDoc([P('제목'), P('   [^7] 띄어쓴 설명')]);
+		const def = findFootnoteMatches(doc).find((m) => m.isDefinitionMarker)!;
+		expect(getDefinitionPreviewText(doc, def)).toBe('띄어쓴 설명');
+	});
+
+	it('120자를 넘으면 말줄임표를 붙인다', () => {
+		const long = '가'.repeat(200);
+		const doc = makeDoc([P('제목'), P(`[^7] ${long}`)]);
+		const def = findFootnoteMatches(doc).find((m) => m.isDefinitionMarker)!;
+		const out = getDefinitionPreviewText(doc, def);
+		expect(out.endsWith('…')).toBe(true);
+		expect(out.length).toBe(121); // 120자 + …
+	});
+
+	it('짧은 설명은 그대로 반환한다', () => {
+		const doc = makeDoc([P('제목'), P('[^7] 짧음')]);
+		const def = findFootnoteMatches(doc).find((m) => m.isDefinitionMarker)!;
+		expect(getDefinitionPreviewText(doc, def)).toBe('짧음');
 	});
 });

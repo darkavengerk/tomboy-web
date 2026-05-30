@@ -9,7 +9,8 @@ import {
 export {
 	findFootnoteMatches,
 	findFootnoteAt,
-	findFootnotePartner
+	findFootnotePartner,
+	getDefinitionPreviewText
 } from './footnotes.js';
 export type { FootnoteMatch } from './footnotes.js';
 export { footnotePluginKey };
