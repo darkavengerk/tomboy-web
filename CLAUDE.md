@@ -222,7 +222,7 @@ Invariants:
 
 Two-backend chat notes. Body signature: `llm://<model>` (Ollama, desktop service) or `claude://[<model>]` (Claude Code CLI subprocess, subscription OAuth).
 
-Common shape: `Q:`/`A:` turns, send button, streaming, abort, Korean errors. Headers — Ollama: `temperature`/`num_ctx`/`top_p`/`seed`/`num_predict`/`rag`; Claude: `cwd` (tool-enable gate)/`allowedTools`/`model`; both: `system`. `parseChatNote` recognizes both signatures; cross-backend headers silently ignored.
+Common shape: `Q:`/`A:` turns, send button, streaming, abort, Korean errors. Headers — Ollama: `temperature`/`num_ctx`/`top_p`/`seed`/`num_predict`/`rag`; Claude: `model`/`effort` (low|medium|high|xhigh|max); both: `system`. `parseChatNote` recognizes both signatures; cross-backend and legacy headers (옛 `cwd`/`allowedTools` 포함) silently ignored.
 
 Files: `lib/chatNote/` (`parseChatNote`, `defaults`, `backends/{ollama,claude}.ts`, `buildClaudeMessages.ts`), `lib/editor/chatNote/ChatSendBar.svelte` (backend branch), `bridge/src/claude.ts` (POST `/claude/chat` proxy), `claude-service/` (desktop Fastify, `claude -p` stream-json → SSE).
 
@@ -230,7 +230,8 @@ Invariants:
 
 - **Claude backend forces subscription OAuth.** `claude-service/src/runner.ts` spawns with `ANTHROPIC_API_KEY=''` explicit empty — prevents host API-key leak.
 - **claude-service is desktop-only** (same machine as ocr-service). Never on Pi bridge (CPU-only, and OAuth creds live in host `~/.claude`).
-- **Tool-enable gate = presence of `cwd:` header.** No `cwd:` → spawn args force `--disallowedTools '*'`. With `cwd:` → default toolset or `allowedTools:`.
+- **Claude backend는 항상 클린 모드.** 런너(`claude-service/src/runner.ts`)가 항상 `--system-prompt`(코딩 에이전트 프롬프트 교체) + `--exclude-dynamic-system-prompt-sections` + `--disallowedTools '*'`(도구 off) + `--effort`(없으면 high)로 spawn. 노트로 코딩을 하지 않으므로 도구 게이트(`cwd`/`allowedTools`)는 제거됨. spawn cwd는 항상 `$HOME`.
+- **기본값은 설정 Claude 탭에서 변경.** `system`/`model`/`effort` 기본값은 `appSettings`(`claudeDefault*`)에 저장되고 설정 Claude 탭에서 편집. 새 `claude://` 노트 헤더에 자동으로 채워지고(`chatNotePlugin` 자동 헤더), 헤더가 비면 전송 시 폴백. 우선순위: 노트 헤더 > 설정 기본값 > `CLAUDE_HEADER_DEFAULTS` 안전망.
 - **Images = Dropbox URL passthrough.** `tomboyUrlLink` mark + image extension → Anthropic `image/url` content block direct, no base64.
 - **No session resume.** Note is source of truth. Every send re-serializes full transcript from Q:/A: history. User-edited history reflected in next send.
 - **`llm://` notes unchanged.** `LlmNoteSpec` / `LLM_*` constants remain as aliases inside `chatNote/`.
