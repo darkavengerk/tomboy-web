@@ -113,6 +113,8 @@ export function createFootnotePlugin(
 	options: FootnotePluginOptions
 ): Plugin<FootnotePluginState> {
 	const preview = new FootnotePreview();
+	// 세션 중 기기 타입은 바뀌지 않으므로 한 번만 평가.
+	const isTouch = isTouchDevice();
 	let hoverTimer: number | null = null;
 	const clearHoverTimer = () => {
 		if (hoverTimer != null) {
@@ -213,7 +215,7 @@ export function createFootnotePlugin(
 						return true;
 					}
 					// 참조 마커: 모바일은 미리보기, 데스크탑은 즉시 이동.
-					if (isTouchDevice()) {
+					if (isTouch) {
 						showRefPreview(view, fnEl, hit, true);
 					} else {
 						jumpToPartner(view, hit);
@@ -222,7 +224,7 @@ export function createFootnotePlugin(
 				},
 				// 데스크탑 hover: 참조 마커 위에서 미리보기(표시 전용).
 				mouseover(view, event) {
-					if (isTouchDevice()) return false;
+					if (isTouch) return false;
 					const target = event.target;
 					const fnEl =
 						target instanceof Element
@@ -241,7 +243,7 @@ export function createFootnotePlugin(
 					return false;
 				},
 				mouseout(view, event) {
-					if (isTouchDevice()) return false;
+					if (isTouch) return false;
 					const target = event.target;
 					const fnEl =
 						target instanceof Element

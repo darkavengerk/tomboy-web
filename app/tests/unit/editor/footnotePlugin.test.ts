@@ -170,3 +170,36 @@ describe('footnote plugin 모바일 미리보기', () => {
 		scroll.mockRestore();
 	});
 });
+
+function hoverFootnote(e: Editor, selector: string, type: 'mouseover' | 'mouseout'): void {
+	const el = e.view.dom.querySelector(selector);
+	if (!el) throw new Error(`footnote element not found: ${selector}`);
+	el.dispatchEvent(new MouseEvent(type, { bubbles: true }));
+}
+
+describe('footnote plugin 데스크탑 hover 미리보기', () => {
+	it('참조에 hover 하면 120ms 후 버튼 없는 미리보기가 뜬다', () => {
+		vi.useFakeTimers();
+		const e = makeEditor([P('제목'), P('본문 [^7]'), P('[^7] 라벨7 설명')]);
+		hoverFootnote(e, 'sup.tomboy-fn-ref', 'mouseover');
+		// 아직 지연 전 — 미리보기 없음.
+		expect(document.querySelector('.tomboy-fn-preview')).toBeNull();
+		vi.advanceTimersByTime(120);
+		const el = document.querySelector('.tomboy-fn-preview');
+		expect(el).not.toBeNull();
+		expect(el!.textContent).toContain('라벨7 설명');
+		// 데스크탑 hover 미리보기는 이동 버튼이 없다.
+		expect(document.querySelector('.tomboy-fn-preview-jump')).toBeNull();
+		vi.useRealTimers();
+	});
+
+	it('120ms 전에 mouseout 하면 미리보기가 뜨지 않는다', () => {
+		vi.useFakeTimers();
+		const e = makeEditor([P('제목'), P('본문 [^7]'), P('[^7] 라벨7 설명')]);
+		hoverFootnote(e, 'sup.tomboy-fn-ref', 'mouseover');
+		hoverFootnote(e, 'sup.tomboy-fn-ref', 'mouseout');
+		vi.advanceTimersByTime(200);
+		expect(document.querySelector('.tomboy-fn-preview')).toBeNull();
+		vi.useRealTimers();
+	});
+});
