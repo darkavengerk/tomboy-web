@@ -72,6 +72,17 @@ describe('parseChartBlock', () => {
 		expect(spec.yMax).toBe(1000);
 		expect(spec.height).toBe(300);
 	});
+	it('keeps comma-joined Hangul-keyed tokens separate', () => {
+		// Two Korean-only keys on one comma-separated line must both be parsed.
+		const spec = parseChartBlock(header, ['DATA::d', '묶기:30, 방식:합계'])!;
+		expect(spec.bin).toEqual({ count: 30, method: 'sum' });
+	});
+
+	it('keeps a comma-separated value inside one key together', () => {
+		const spec = parseChartBlock(header, ['DATA::d', '색상:#3b82f6, #ef4444'])!;
+		expect(spec.colors).toEqual(['#3b82f6', '#ef4444']);
+	});
+
 	it('returns null when header invalid', () => {
 		expect(parseChartBlock('nope', ['DATA::d'])).toBeNull();
 	});

@@ -35,7 +35,13 @@ export function buildChartConfig(spec: ChartSpec, data: ChartData): ChartJsConfi
 			backgroundColor: color
 		};
 		if (spec.type === 'scatter') {
-			ds.data = s.values.map((y, idx) => ({ x: Number(data.labels[idx]) || idx, y }));
+			ds.data = s.values.map((y, idx) => {
+				// Use the numeric label as x; fall back to the row index only when
+				// the label isn't a finite number. (`|| idx` would wrongly treat
+				// "0" as a fallback, since Number("0") === 0 is falsy.)
+				const n = Number(data.labels[idx]);
+				return { x: Number.isFinite(n) ? n : idx, y };
+			});
 			ds.pointRadius = spec.pointRadius ?? 4;
 		} else {
 			ds.data = s.values;

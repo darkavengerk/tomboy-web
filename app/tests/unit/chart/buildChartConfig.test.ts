@@ -51,6 +51,29 @@ describe('buildChartConfig', () => {
 		]);
 	});
 
+	it('scatter maps a "0" label to x:0, not the row index', () => {
+		const cfg = buildChartConfig(spec({ type: 'scatter' }), {
+			labels: ['0', '2', '5'],
+			series: [{ name: 's', values: [10, 20, 30] }]
+		});
+		expect(cfg.data.datasets[0].data).toEqual([
+			{ x: 0, y: 10 },
+			{ x: 2, y: 20 },
+			{ x: 5, y: 30 }
+		]);
+	});
+
+	it('scatter falls back to index for a non-numeric label', () => {
+		const cfg = buildChartConfig(spec({ type: 'scatter' }), {
+			labels: ['1월', '2월'],
+			series: [{ name: 's', values: [10, 20] }]
+		});
+		expect(cfg.data.datasets[0].data).toEqual([
+			{ x: 0, y: 10 },
+			{ x: 1, y: 20 }
+		]);
+	});
+
 	it('stacked sets scale stacking', () => {
 		const cfg = buildChartConfig(spec({ stacked: true }), data);
 		expect(cfg.options.scales.x.stacked).toBe(true);
