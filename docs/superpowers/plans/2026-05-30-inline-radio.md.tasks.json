@@ -4,23 +4,23 @@
     {
       "id": 1,
       "subject": "Task 1: inlineRadio node module + group-toggle NodeView",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Create the `inlineRadio` ProseMirror Node with input rule, paste transform plugin, and a NodeView whose click handler implements the same-textblock radio-group toggle (selected→none allowed).\n\n**Files:**\n- Create: `app/src/lib/editor/inlineRadio/index.ts`\n- Create: `app/src/lib/editor/inlineRadio/node.ts`\n- Create: `app/tests/unit/editor/inlineRadio/node.test.ts`\n\n**Verify:** `cd app && npm run test -- inlineRadio/node.test.ts` → all tests pass.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/inlineRadio/index.ts\", \"app/src/lib/editor/inlineRadio/node.ts\", \"app/tests/unit/editor/inlineRadio/node.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- inlineRadio/node.test.ts\", \"acceptanceCriteria\": [\"inlineRadio schema atomic/inline/marks:''/selected default false\", \"( ) (o) (O) input rule converts in body\", \"title-line input rule blocked\", \"paste transform splits ( )/(o), recurses, blocks title destination\", \"click unselected radio selects it + clears siblings in same textblock\", \"click selected radio toggles off (none selected allowed)\", \"list-item bodies are independent groups vs nested li\", \"inlineCheckbox in same textblock unaffected\", \"single tr per click (undo one step)\"]}\n```"
     },
     {
       "id": 2,
       "subject": "Task 2: Archiver round-trip for inlineRadio",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "**Goal:** Add `( )` / `(o)` text ↔ `inlineRadio` node conversion to `noteContentArchiver.ts` parse + serialize paths, mirroring the existing `inlineCheckbox` handling at 5 sites: split helper, parse-split call (3-pass chain), serialize emit (paragraph loop + bulletList loop), `nextTextNodeMarks` early-return, `getPlainText` branch.\n\n**Files:**\n- Modify: `app/src/lib/core/noteContentArchiver.ts` (lines 96, 205, 280–284, 422–436, 785–789, 976–978)\n- Create: `app/tests/unit/core/archiverInlineRadio.test.ts`\n\n**Verify:** `cd app && npm run test -- archiverInlineRadio.test.ts && cd app && npm run test -- archiverInlineCheckbox.test.ts && cd app && npm run check` → all pass, 0 type errors.\n\n```json:metadata\n{\"files\": [\"app/src/lib/core/noteContentArchiver.ts\", \"app/tests/unit/core/archiverInlineRadio.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- archiverInlineRadio.test.ts && cd app && npm run test -- archiverInlineCheckbox.test.ts && cd app && npm run check\", \"acceptanceCriteria\": [\"( ) parses to inlineRadio selected:false\", \"(o) and (O) parse to selected:true\", \"serialize emits ( ) and (o), closes marks first\", \"<bold>중요 ( ) 작업</bold> round-trips with bold split\", \"coexists with checkbox + footnote in same text\", \"title line unaffected\", \"getPlainText returns ( )/(o) for inlineRadio\", \"nextTextNodeMarks returns [] for inlineRadio\", \"no regression in checkbox archiver tests + npm run check passes\"]}\n```"
     },
     {
       "id": 3,
       "subject": "Task 3: Register extension + CSS in TomboyEditor.svelte",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1, 2],
       "description": "**Goal:** Register `TomboyInlineRadio` in the editor's extension list and add CSS that mirrors `.tomboy-inline-checkbox` styling but with circular shape and centered dot for the selected state.\n\n**Files:**\n- Modify: `app/src/lib/editor/TomboyEditor.svelte` (line ~94 import; line ~527 extensions array; line ~2050 CSS section after checkbox styles)\n\n**Verify:** `cd app && npm run check` → 0 errors. Then manual `cd app && npm run dev` smoke per plan Steps 5–6.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/TomboyEditor.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"TomboyInlineRadio imported and spread into extensions array\", \"( ) 사과 (o) 배 renders two circles, second filled with dot\", \".tomboy-inline-radio CSS exists: border-radius 50%, 24x24 ::before hit area, data-selected='true' ::after dot\", \"npm run check 0 errors\", \"manual smoke: select/toggle/persist + list-item isolation\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-30"
+  "lastUpdated": "2026-05-30T12:30:00Z"
 }
