@@ -131,6 +131,45 @@ function splitInlineCheckboxesInText(
 	return out;
 }
 
+// Inline-radio 패턴. `( )` (공백 1 개) 또는 `(o)` / `(O)`.
+const INLINE_RADIO_SPLIT_RE = /\(([ oO])\)/g;
+
+/**
+ * 텍스트 안의 ( )/(o) 패턴을 inlineRadio 노드로 split.
+ * splitInlineCheckboxesInText 와 동일 구조 — atomic 노드는 mark 안
+ * 받음, 좌우 텍스트만 원본 mark 유지.
+ */
+function splitInlineRadiosInText(
+	text: string,
+	marks: InlineMark[] | undefined
+): JSONContent[] {
+	INLINE_RADIO_SPLIT_RE.lastIndex = 0;
+	const out: JSONContent[] = [];
+	let last = 0;
+	let m: RegExpExecArray | null;
+	while ((m = INLINE_RADIO_SPLIT_RE.exec(text)) !== null) {
+		if (m.index > last) {
+			const piece: JSONContent = { type: 'text', text: text.slice(last, m.index) };
+			if (marks) piece.marks = marks;
+			out.push(piece);
+		}
+		const selected = m[1] === 'o' || m[1] === 'O';
+		out.push({ type: 'inlineRadio', attrs: { selected } });
+		last = m.index + m[0].length;
+	}
+	if (last === 0) {
+		const piece: JSONContent = { type: 'text', text };
+		if (marks) piece.marks = marks;
+		return [piece];
+	}
+	if (last < text.length) {
+		const piece: JSONContent = { type: 'text', text: text.slice(last) };
+		if (marks) piece.marks = marks;
+		out.push(piece);
+	}
+	return out;
+}
+
 // --- XML → ProseMirror JSON ---
 
 /**
@@ -203,6 +242,7 @@ export function serializeContent(doc: JSONContent): string {
 					if (inline.type === 'hardBreak') return [];
 					if (inline.type === 'footnoteMarker') return [];
 					if (inline.type === 'inlineCheckbox') return [];
+					if (inline.type === 'inlineRadio') return [];
 				}
 				// Empty paragraph — keep scanning subsequent blocks.
 				continue;
@@ -281,6 +321,10 @@ export function serializeContent(doc: JSONContent): string {
 					// 모든 mark 닫고 [ ]/[x] emit. 다음 text 노드가 mark 를 다시 연다.
 					closeAll();
 					result += inline.attrs?.checked ? '[x]' : '[ ]';
+				} else if (inline.type === 'inlineRadio') {
+					// 모든 mark 닫고 ( )/(o) emit. 다음 text 노드가 mark 를 다시 연다.
+					closeAll();
+					result += inline.attrs?.selected ? '(o)' : '( )';
 				}
 			}
 			// 헤더 문단이면 영역 시작, 그 외 문단/헤딩이면 영역 종료.
@@ -423,13 +467,23 @@ function parseBlocks(container: Element): JSONContent[] {
 		for (const n of nodes) {
 			if (n.type === 'text' && typeof n.text === 'string') {
 				if (n.text.length === 0) continue;
-				// 1) 각주 split (footnoteMarker) → 2) 인라인 체크박스 split.
-				// 각주가 분리한 텍스트 조각 각각에 대해 체크박스 패턴을 다시 split.
+				// 3-pass inline split: 1) 각주 (footnoteMarker) → 2) 인라인
+				// 체크박스 → 3) 인라인 라디오. 패턴들이 서로 겹치지 않으므로
+				// 순서는 관례적이지만 일관성을 위해 footnote → checkbox → radio
+				// 순서를 유지한다.
 				const fnSplit = splitFootnotesInText(n.text, n.marks);
-				const split: JSONContent[] = [];
+				const cbSplit: JSONContent[] = [];
 				for (const piece of fnSplit) {
 					if (piece.type === 'text' && typeof piece.text === 'string') {
-						split.push(...splitInlineCheckboxesInText(piece.text, piece.marks));
+						cbSplit.push(...splitInlineCheckboxesInText(piece.text, piece.marks));
+					} else {
+						cbSplit.push(piece);
+					}
+				}
+				const split: JSONContent[] = [];
+				for (const piece of cbSplit) {
+					if (piece.type === 'text' && typeof piece.text === 'string') {
+						split.push(...splitInlineRadiosInText(piece.text, piece.marks));
 					} else {
 						split.push(piece);
 					}
@@ -786,6 +840,10 @@ function serializeInlineContent(content: JSONContent[]): string {
 			// 모든 mark 닫고 [ ]/[x] emit. 다음 text 노드가 mark 를 다시 연다.
 			closeAll();
 			result += node.attrs?.checked ? '[x]' : '[ ]';
+		} else if (node.type === 'inlineRadio') {
+			// 모든 mark 닫고 ( )/(o) emit. 다음 text 노드가 mark 를 다시 연다.
+			closeAll();
+			result += node.attrs?.selected ? '(o)' : '( )';
 		}
 	}
 
@@ -975,6 +1033,9 @@ function getPlainText(node: JSONContent): string {
 	}
 	if (node.type === 'inlineCheckbox') {
 		return node.attrs?.checked ? '[x]' : '[ ]';
+	}
+	if (node.type === 'inlineRadio') {
+		return node.attrs?.selected ? '(o)' : '( )';
 	}
 	if (!node.content) return '';
 	return node.content.map(getPlainText).join('');

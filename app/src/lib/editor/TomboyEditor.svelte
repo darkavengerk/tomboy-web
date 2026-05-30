@@ -92,6 +92,7 @@
 	} from "./checklist/index.js";
 	import { FootnoteMarker, TomboyFootnoteExtension } from "./footnote/index.js";
 	import { TomboyInlineCheckbox } from './inlineCheckbox';
+	import { TomboyInlineRadio } from './inlineRadio';
 	import { TomboyBlockquote } from "./blockquote/index.js";
 	import { createFindPlugin, findPluginKey } from "./find/findPlugin.js";
 	import FindBar from "./find/FindBar.svelte";
@@ -525,6 +526,7 @@
 					},
 				}),
 				...TomboyInlineCheckbox,
+				...TomboyInlineRadio,
 				TomboyBlockquote,
 				Extension.create({
 					name: "tomboyFind",
@@ -2052,6 +2054,55 @@
 	}
 
 	.tomboy-editor :global(.tomboy-inline-checkbox:hover) {
+		border-color: var(--accent, #4a76d4);
+	}
+
+	/* 인라인 라디오 — TomboyInlineRadio 노드의 NodeView 가
+	   .tomboy-inline-radio span 을 렌더한다. 14px 원형, 모바일
+	   hit-area 는 ::before 가 24×24 px 확보. 같은 textblock 의 다른
+	   라디오와 상호 배타 (NodeView 클릭 핸들러). */
+	.tomboy-editor :global(.tomboy-inline-radio) {
+		display: inline-block;
+		width: 14px;
+		height: 14px;
+		border: 1px solid var(--text-muted, #888);
+		border-radius: 50%;
+		vertical-align: -2px;
+		margin: 0 2px;
+		cursor: pointer;
+		background: transparent;
+		user-select: none;
+		position: relative;
+		box-sizing: border-box;
+		transition: background-color 0.12s ease, border-color 0.12s ease;
+	}
+
+	.tomboy-editor :global(.tomboy-inline-radio::before) {
+		content: '';
+		position: absolute;
+		top: -5px;
+		left: -5px;
+		right: -5px;
+		bottom: -5px;
+	}
+
+	.tomboy-editor :global(.tomboy-inline-radio[data-selected='true']) {
+		border-color: var(--accent, #4a76d4);
+	}
+
+	.tomboy-editor :global(.tomboy-inline-radio[data-selected='true']::after) {
+		content: '';
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background-color: var(--accent, #4a76d4);
+		transform: translate(-50%, -50%);
+	}
+
+	.tomboy-editor :global(.tomboy-inline-radio:hover) {
 		border-color: var(--accent, #4a76d4);
 	}
 
