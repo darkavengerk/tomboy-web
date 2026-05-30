@@ -5,47 +5,45 @@
  * widget decoration right after the header. UNCHECKED (`[ ]`) blocks render
  * nothing — the user just sees the raw config list.
  *
- * Clicking the header's `[ ]`/`[x]` checkbox text toggles it, which flips the
- * widget on/off via the normal decoration rebuild.
+ * Toggling: the header's checkbox is an `inlineCheckbox` atom node whose own
+ * NodeView toggles `checked` on click (see inlineCheckbox/node.ts). That doc
+ * change re-runs `apply` here, which rebuilds decorations — so the chart
+ * appears/disappears automatically. This plugin does NOT handle the click
+ * itself; it only reads the checked state and renders.
  *
- * Invariant: the document is never mutated by rendering. The only doc change
- * this plugin makes is the explicit checkbox toggle dispatched on click.
- *
- * Note on `findChartRegions`: that module consumes a `JSONContent` tree (its
- * internal `sizeOf` reproduces ProseMirror positions from the JSON shape), so
- * we feed it `doc.toJSON()`. The positions it returns match the live document.
+ * Invariant: the document is never mutated by this plugin.
  */
 
-import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import type { EditorView } from "@tiptap/pm/view";
-import type { Node as PMNode } from "@tiptap/pm/model";
-import { findChartRegions, type ChartRegion } from "./findChartRegions.js";
-import { parseChartBlock } from "../../chart/parseChartBlock.js";
-import { parseDataNote } from "../../chart/parseDataNote.js";
-import { transformData } from "../../chart/transformData.js";
-import { buildChartConfig } from "../../chart/buildChartConfig.js";
+import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import type { Node as PMNode } from '@tiptap/pm/model';
+import { findChartRegions, type ChartRegion } from './findChartRegions.js';
+import { parseChartBlock } from '../../chart/parseChartBlock.js';
+import { parseDataNote } from '../../chart/parseDataNote.js';
+import { transformData } from '../../chart/transformData.js';
+import { buildChartConfig } from '../../chart/buildChartConfig.js';
 import {
 	mountChart,
 	destroyChart,
 	renderErrorCard,
-	type ChartHandle,
-} from "../../chart/renderChart.js";
-import { findNoteByTitle, getNoteEditorContent } from "../../core/noteManager.js";
+	type ChartHandle
+} from '../../chart/renderChart.js';
+import { findNoteByTitle, getNoteEditorContent } from '../../core/noteManager.js';
 
-export const chartBlockPluginKey = new PluginKey<DecorationSet>("tomboyChartBlock");
+export const chartBlockPluginKey = new PluginKey<DecorationSet>('tomboyChartBlock');
 
 function buildDecorations(doc: PMNode): DecorationSet {
-	// findChartRegions walks the JSON tree; its positions match the live doc.
-	const regions = findChartRegions(doc.toJSON());
+	const regions = findChartRegions(doc);
 	const decos: Decoration[] = [];
 	for (const region of regions) {
 		if (!region.checked) continue; // unchecked → show config text, no widget
 		decos.push(
-			Decoration.widget(region.headerToPos, () => renderChartWidget(region), {
+			Decoration.widget(region.headerEndPos, () => renderChartWidget(region), {
 				side: 1,
-				key: `chart:${region.headerFromPos}:${region.headerText}`,
-			}),
+				// headerText carries the `[x]` marker + title; including it (plus the
+				// anchor pos) rebuilds the widget when the block's text changes.
+				key: `chart:${region.headerEndPos}:${region.headerText}`
+			})
 		);
 	}
 	return DecorationSet.create(doc, decos);
@@ -53,15 +51,15 @@ function buildDecorations(doc: PMNode): DecorationSet {
 
 /** Build the widget container and asynchronously fill it with a chart or error. */
 function renderChartWidget(region: ChartRegion): HTMLElement {
-	const container = document.createElement("div");
-	container.className = "tomboy-chart-widget";
-	container.contentEditable = "false";
+	const container = document.createElement('div');
+	container.className = 'tomboy-chart-widget';
+	container.contentEditable = 'false';
 	let handle: ChartHandle | null = null;
 
 	void (async () => {
 		const spec = parseChartBlock(region.headerText, region.configLines);
 		if (!spec || !spec.dataNoteTitle) {
-			renderErrorCard(container, "데이터 노트 제목(DATA::)이 필요합니다");
+			renderErrorCard(container, '데이터 노트 제목(DATA::)이 필요합니다');
 			return;
 		}
 		// Snapshot the data note at mount time. Toggling / reopening the note
@@ -73,7 +71,7 @@ function renderChartWidget(region: ChartRegion): HTMLElement {
 		}
 		const tables = parseDataNote(getNoteEditorContent(note));
 		if (tables.length === 0) {
-			renderErrorCard(container, "데이터 노트에 csv/tsv 블록이 없습니다");
+			renderErrorCard(container, '데이터 노트에 csv/tsv 블록이 없습니다');
 			return;
 		}
 		try {
@@ -83,10 +81,7 @@ function renderChartWidget(region: ChartRegion): HTMLElement {
 			const config = buildChartConfig(spec, data);
 			handle = await mountChart(container, config, spec.height);
 		} catch (err) {
-			renderErrorCard(
-				container,
-				err instanceof Error ? err.message : "차트를 그릴 수 없습니다",
-			);
+			renderErrorCard(container, err instanceof Error ? err.message : '차트를 그릴 수 없습니다');
 		}
 	})();
 
@@ -103,14 +98,6 @@ function renderChartWidget(region: ChartRegion): HTMLElement {
 	return container;
 }
 
-/** Toggle the header checkbox text [ ] <-> [x] at checkboxPos. */
-function toggleHeaderCheckbox(view: EditorView, region: ChartRegion): void {
-	const from = region.checkboxPos;
-	const cur = view.state.doc.textBetween(from, from + 3); // "[ ]" or "[x]"
-	const next = cur.toLowerCase() === "[x]" ? "[ ]" : "[x]";
-	view.dispatch(view.state.tr.insertText(next, from, from + 3));
-}
-
 export function createChartBlockPlugin(): Plugin<DecorationSet> {
 	return new Plugin<DecorationSet>({
 		key: chartBlockPluginKey,
@@ -121,31 +108,12 @@ export function createChartBlockPlugin(): Plugin<DecorationSet> {
 			apply(tr, old): DecorationSet {
 				if (!tr.docChanged) return old.map(tr.mapping, tr.doc);
 				return buildDecorations(tr.doc);
-			},
+			}
 		},
 		props: {
 			decorations(state): DecorationSet | undefined {
 				return chartBlockPluginKey.getState(state);
-			},
-			handleClickOn(view, _pos, _node, _nodePos, event): boolean {
-				// Toggle when the click lands on the header's checkbox text.
-				const regions = findChartRegions(view.state.doc.toJSON());
-				const clickPos = view.posAtCoords({
-					left: (event as MouseEvent).clientX,
-					top: (event as MouseEvent).clientY,
-				});
-				if (!clickPos) return false;
-				for (const region of regions) {
-					if (
-						clickPos.pos >= region.checkboxPos &&
-						clickPos.pos <= region.checkboxPos + 3
-					) {
-						toggleHeaderCheckbox(view, region);
-						return true;
-					}
-				}
-				return false;
-			},
-		},
+			}
+		}
 	});
 }
