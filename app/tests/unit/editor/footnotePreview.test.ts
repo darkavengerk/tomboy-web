@@ -79,4 +79,22 @@ describe('FootnotePreview', () => {
 		);
 		expect(document.querySelector('.tomboy-fn-preview')).toBeNull();
 	});
+
+	it('데스크탑(버튼 없는) 팝오버도 스크롤하면 닫힌다', () => {
+		vi.useFakeTimers();
+		preview.show(anchor, '설명', { withJumpButton: false });
+		vi.runAllTimers(); // 스크롤 닫힘 리스너 등록(0ms setTimeout)
+		window.dispatchEvent(new Event('scroll'));
+		expect(document.querySelector('.tomboy-fn-preview')).toBeNull();
+	});
+
+	it('버튼 없는 팝오버는 바깥 pointerdown 에는 닫히지 않는다', () => {
+		vi.useFakeTimers();
+		preview.show(anchor, '설명', { withJumpButton: false });
+		vi.runAllTimers();
+		document.body.dispatchEvent(
+			new Event('pointerdown', { bubbles: true })
+		);
+		expect(document.querySelector('.tomboy-fn-preview')).not.toBeNull();
+	});
 });

@@ -55,20 +55,21 @@ export class FootnotePreview {
 		this.el = el;
 		this.position(anchorEl);
 
-		if (opts.withJumpButton) {
-			// 모바일: 바깥 탭/스크롤 시 닫기. 현재 mousedown 이벤트 루프를
-			// 건너뛰도록 0ms 지연 후 등록(즉시 닫힘 방지).
-			const handler = (ev: Event) => {
-				if (ev.target instanceof Node && el.contains(ev.target)) return;
-				this.hide();
-			};
-			this.dismissHandler = handler;
-			window.setTimeout(() => {
-				if (this.dismissHandler !== handler) return;
+		// 스크롤하면(데스크탑 hover·모바일 공통) 고정 위치 팝오버가 엉뚱한
+		// 자리에 남으므로 닫는다. 바깥 탭 닫힘은 버튼이 있는 모바일에만 건다.
+		// 현재 mousedown 이벤트 루프를 건너뛰도록 0ms 지연 후 등록(즉시 닫힘 방지).
+		const handler = (ev: Event) => {
+			if (ev.target instanceof Node && el.contains(ev.target)) return;
+			this.hide();
+		};
+		this.dismissHandler = handler;
+		window.setTimeout(() => {
+			if (this.dismissHandler !== handler) return;
+			window.addEventListener('scroll', handler, true);
+			if (opts.withJumpButton) {
 				document.addEventListener('pointerdown', handler, true);
-				window.addEventListener('scroll', handler, true);
-			}, 0);
-		}
+			}
+		}, 0);
 	}
 
 	hide(): void {
