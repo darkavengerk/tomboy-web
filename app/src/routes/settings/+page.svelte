@@ -86,8 +86,17 @@
 	import { readPublicConfigForHost } from '$lib/sync/firebase/publicConfig.js';
 	import { ensureSignedIn } from '$lib/firebase/app.js';
 	import { getStats as getImageCacheStats, setQuota as setImageCacheQuota, clearAll as clearImageCache } from '$lib/imageCache/imageCache.js';
+	import {
+		getClaudeDefaultSystem,
+		setClaudeDefaultSystem,
+		getClaudeDefaultModel,
+		setClaudeDefaultModel,
+		getClaudeDefaultEffort,
+		setClaudeDefaultEffort
+	} from '$lib/storage/appSettings.js';
+	import { CLAUDE_VALID_EFFORTS } from '$lib/chatNote/defaults.js';
 
-	type Tab = 'sync' | 'config' | 'share' | 'terminal' | 'notify' | 'guide' | 'shortcuts' | 'advanced';
+	type Tab = 'sync' | 'config' | 'share' | 'terminal' | 'notify' | 'guide' | 'shortcuts' | 'advanced' | 'claude';
 	let activeTab = $state<Tab>('sync');
 
 	let authenticated = $state(false);
@@ -128,6 +137,12 @@
 	// ── 이미지 서버 토큰 ──────────────────────────────────────────────
 	let imageStorageToken = $state('');
 	let imageStorageTokenSaved = $state(false);
+
+	// ── Claude 기본값 ─────────────────────────────────────────────────
+	let claudeDefSystem = $state('');
+	let claudeDefModel = $state('');
+	let claudeDefEffort = $state('high');
+	let claudeDefSaved = $state(false);
 
 	// ── 터미널 히스토리 설정 ──────────────────────────────────────────
 	let termHistOpenDesktop = $state(true);
@@ -303,6 +318,14 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 		await setImageStorageToken(imageStorageToken.trim());
 		imageStorageTokenSaved = true;
 		setTimeout(() => (imageStorageTokenSaved = false), 1500);
+	}
+
+	async function saveClaudeDefaults(): Promise<void> {
+		await setClaudeDefaultSystem(claudeDefSystem);
+		await setClaudeDefaultModel(claudeDefModel.trim());
+		await setClaudeDefaultEffort(claudeDefEffort);
+		claudeDefSaved = true;
+		setTimeout(() => (claudeDefSaved = false), 1500);
 	}
 
 	async function copySnippet(): Promise<void> {
@@ -628,6 +651,9 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 		void loadTerminalBridgeState();
 		void loadTerminalHistorySettings();
 		void getImageStorageToken().then((v) => (imageStorageToken = v));
+		void getClaudeDefaultSystem().then((v) => (claudeDefSystem = v));
+		void getClaudeDefaultModel().then((v) => (claudeDefModel = v));
+		void getClaudeDefaultEffort().then((v) => (claudeDefEffort = v));
 
 		(async () => {
 			// Check if we're returning from OAuth callback
@@ -839,7 +865,8 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 		{ id: 'notify', label: '알림' },
 		{ id: 'guide', label: '가이드' },
 		{ id: 'shortcuts', label: '단축키' },
-		{ id: 'advanced', label: '고급' }
+		{ id: 'advanced', label: '고급' },
+		{ id: 'claude', label: 'Claude' }
 	];
 </script>
 
@@ -1849,6 +1876,46 @@ https://www.dropbox.com/…/starting.png</pre>
 					</button>
 				</section>
 			{/if}
+		{:else if activeTab === 'claude'}
+			<!-- ── Claude 탭 ───────────────────────────────────────────────── -->
+			<section class="section">
+				<h2>Claude 채팅 기본값</h2>
+				<p class="info-text">
+					새 <code>claude://</code> 채팅 노트의 헤더에 자동으로 채워지는 기본값입니다.
+					노트 헤더에 값이 없으면 전송 시 이 값으로 대체됩니다. Claude 채팅 노트는
+					항상 코딩 에이전트 프롬프트를 교체하고 도구를 끈 "클린 모드"로 동작합니다.
+				</p>
+
+				<h3 class="field-label">기본 시스템 프롬프트</h3>
+				<textarea
+					id="claude-default-system"
+					class="path-input"
+					rows="3"
+					bind:value={claudeDefSystem}
+				></textarea>
+
+				<h3 class="field-label">기본 모델</h3>
+				<input
+					id="claude-default-model"
+					class="path-input"
+					type="text"
+					placeholder="opus"
+					bind:value={claudeDefModel}
+				/>
+
+				<h3 class="field-label">기본 effort</h3>
+				<select id="claude-default-effort" class="path-input" bind:value={claudeDefEffort}>
+					{#each CLAUDE_VALID_EFFORTS as lvl (lvl)}
+						<option value={lvl}>{lvl}</option>
+					{/each}
+				</select>
+
+				<div class="path-row" style="margin-top: 0.75rem;">
+					<button class="btn-save" onclick={saveClaudeDefaults}>
+						{claudeDefSaved ? '저장됨' : '저장'}
+					</button>
+				</div>
+			</section>
 		{/if}
 	</main>
 </div>
@@ -1959,6 +2026,13 @@ https://www.dropbox.com/…/starting.png</pre>
 		font-weight: 600;
 		margin-bottom: 12px;
 		color: var(--color-text);
+	}
+
+	.field-label {
+		font-size: 0.85rem;
+		font-weight: 600;
+		margin: 12px 0 4px;
+		color: var(--color-text-secondary);
 	}
 
 	.status-card {
