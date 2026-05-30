@@ -80,6 +80,11 @@
 		insertTodoBlock,
 	} from "./todoRegion/index.js";
 	import {
+		TomboyProcessRegion,
+		moveProcessItem,
+		insertProcessBlock,
+	} from "./processRegion/index.js";
+	import {
 		TomboyChecklist,
 		toggleCheckboxAt,
 		insertChecklistBlock,
@@ -493,6 +498,13 @@
 						moveTodoItem(ed, liPos, fromKind);
 					},
 				}),
+				TomboyProcessRegion.configure({
+					onMove: (liPos, direction) => {
+						const ed = editor;
+						if (!ed || ed.isDestroyed) return;
+						moveProcessItem(ed, liPos, direction);
+					},
+				}),
 				TomboyChecklist.configure({
 					onToggle: (liPos) => {
 						const ed = editor;
@@ -686,6 +698,12 @@
 						if (event.key === "j" || event.key === "J") {
 							event.preventDefault();
 							ed.chain().focus().insertFootnote().run();
+							return true;
+						}
+						// 'p' || 'P' — 프로세스(멀티스테이지 칸반) 블록 삽입.
+						if (event.key === "p" || event.key === "P") {
+							event.preventDefault();
+							insertProcessBlock(ed);
 							return true;
 						}
 					}
@@ -1826,6 +1844,76 @@
 			:global(li.tomboy-todo-item .tomboy-todo-complete-btn),
 		.tomboy-editor.tomboy-todo-ctrl-hold
 			:global(li.tomboy-todo-item .tomboy-todo-revert-btn) {
+			opacity: 1;
+			pointer-events: auto;
+		}
+	}
+
+	/* 프로세스(멀티스테이지 칸반) 항목별 이전/다음 버튼. TODO 와 동일하게
+	   widget 데코로 각 li 안에 들어가며, 가시성은 (a) 창에서 Ctrl/Cmd 눌림
+	   = .tomboy-todo-ctrl-hold 클래스 + (b) 해당 li hover 로 게이트된다.
+	   첫 단계는 '다음'만, 마지막 단계는 '이전'만, 중간 단계는 둘 다. */
+	.tomboy-editor :global(li.tomboy-process-item) {
+		position: relative;
+		border-radius: 3px;
+		transition: background-color 0.1s;
+	}
+	.tomboy-editor.tomboy-todo-ctrl-hold
+		:global(li.tomboy-process-item:hover) {
+		background-color: rgba(21, 101, 192, 0.1);
+	}
+	.tomboy-editor :global(.tomboy-process-btns) {
+		position: absolute;
+		right: 0;
+		top: 0;
+		display: inline-flex;
+		gap: 4px;
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 0.1s;
+		z-index: 1;
+	}
+	.tomboy-editor :global(.tomboy-process-prev-btn),
+	.tomboy-editor :global(.tomboy-process-next-btn) {
+		padding: 2px 8px;
+		font-size: 0.75rem;
+		line-height: 1.3;
+		border: none;
+		border-radius: 3px;
+		cursor: pointer;
+		user-select: none;
+		color: #fff;
+	}
+	.tomboy-editor :global(.tomboy-process-prev-btn) {
+		background: #757575;
+	}
+	.tomboy-editor :global(.tomboy-process-prev-btn:hover) {
+		background: #555;
+	}
+	.tomboy-editor :global(.tomboy-process-next-btn) {
+		background: #1565c0;
+	}
+	.tomboy-editor :global(.tomboy-process-next-btn:hover) {
+		background: #0d47a1;
+	}
+	.tomboy-editor.tomboy-todo-ctrl-hold
+		:global(li.tomboy-process-item:hover > .tomboy-process-btns) {
+		opacity: 1;
+		pointer-events: auto;
+	}
+	/* 깊은(중첩) 항목 hover 시 부모 단계 항목의 버튼은 숨겨 한 행만 노출. */
+	.tomboy-editor.tomboy-todo-ctrl-hold
+		:global(
+			li.tomboy-process-item:has(li.tomboy-process-item:hover)
+				> .tomboy-process-btns
+		) {
+		opacity: 0;
+		pointer-events: none;
+	}
+	/* 터치 기기는 hover 가 없으므로 모바일 Ctrl 고정 시 hover 없이 노출. */
+	@media (hover: none), (pointer: coarse) {
+		.tomboy-editor.tomboy-todo-ctrl-hold
+			:global(li.tomboy-process-item .tomboy-process-btns) {
 			opacity: 1;
 			pointer-events: auto;
 		}

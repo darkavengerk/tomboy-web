@@ -42,8 +42,11 @@ Detection rules:
   a word boundary so `Processing` / `Completed` do **not** match, but `Process: x` /
   `Complete: y` do. They are distinct from TODO's `TODO`/`Done`, so the two features
   never fight over the same headers.
-- If `Complete:` is missing (user deleted it), the span runs to end-of-doc or the next
-  `Process:` header. Buttons still work between whatever stages exist.
+- The terminal `Complete:` is **required**: a `Process:` with no matching `Complete:`
+  before end-of-doc (or before the next `Process:`) is **not** detected as a block. This
+  keeps a stray `Process:` line in prose from turning every following paragraph into a
+  phantom stage. If the user deletes `Complete:`, the kanban buttons disappear until it
+  is restored.
 
 ### Coexistence
 
