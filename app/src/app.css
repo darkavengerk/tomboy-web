@@ -63,3 +63,9 @@ button {
 	margin: 8px 0;
 	max-width: 100%;
 }
+
+/* Config list of a checked chart block — hidden while the chart shows.
+   Uncheck the header checkbox to reveal and edit the settings again. */
+.tomboy-chart-config-hidden {
+	display: none;
+}

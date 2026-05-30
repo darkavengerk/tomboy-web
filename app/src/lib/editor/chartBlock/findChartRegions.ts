@@ -25,6 +25,10 @@ export interface ChartRegion {
 	/** Flattened text of every list-item in the following list (nested incl.),
 	 *  each line reconstructed with its `[x]`/`[ ]` markers. */
 	configLines: string[];
+	/** Node range of the following config list, if any. Lets the plugin hide
+	 *  the config list while a checked chart is shown. Undefined when no list. */
+	configListFrom?: number;
+	configListTo?: number;
 }
 
 /**
@@ -71,9 +75,13 @@ export function findChartRegions(doc: PMNode): ChartRegion[] {
 		if (!header) continue;
 
 		const configLines: string[] = [];
-		const next = children[i + 1]?.node;
-		if (next && LIST_TYPES.has(next.type.name)) {
-			collectListLines(next, configLines);
+		const nextEntry = children[i + 1];
+		let configListFrom: number | undefined;
+		let configListTo: number | undefined;
+		if (nextEntry && LIST_TYPES.has(nextEntry.node.type.name)) {
+			collectListLines(nextEntry.node, configLines);
+			configListFrom = nextEntry.offset;
+			configListTo = nextEntry.offset + nextEntry.node.nodeSize;
 		}
 
 		regions.push({
@@ -83,7 +91,9 @@ export function findChartRegions(doc: PMNode): ChartRegion[] {
 			headerEndPos: offset + node.nodeSize - 1,
 			headerText: text,
 			checked: header.checked,
-			configLines
+			configLines,
+			configListFrom,
+			configListTo
 		});
 	}
 	return regions;

@@ -98,6 +98,20 @@ describe('findChartRegions (live editor with inlineCheckbox atoms)', () => {
 			'범위',
 			'[ ]last:15, [x]all'
 		]);
+		// The config list range is captured so the plugin can hide it when checked.
+		expect(typeof regions[0].configListFrom).toBe('number');
+		expect(typeof regions[0].configListTo).toBe('number');
+		expect(regions[0].configListTo!).toBeGreaterThan(regions[0].configListFrom!);
+	});
+
+	it('leaves config list range undefined when there is no following list', () => {
+		const editor = makeDoc({
+			type: 'doc',
+			content: [textPara('t'), cbPara(true, ' Chart:bar 제목')]
+		});
+		const region = findChartRegions(editor.state.doc)[0];
+		expect(region.configListFrom).toBeUndefined();
+		expect(region.configListTo).toBeUndefined();
 	});
 
 	it('exposes a headerEndPos that lands at the end of the header paragraph', () => {
