@@ -1317,7 +1317,7 @@ import { findNoteByTitle, getNoteEditorContent } from '../../core/noteManager';
 export const chartBlockPluginKey = new PluginKey('tomboyChartBlock');
 
 function buildDecorations(doc: PMNode): DecorationSet {
-	const regions = findChartRegions(doc.toJSON());
+	const regions = findChartRegions(doc); // doc is a live PMNode
 	const decos: Decoration[] = [];
 	for (const region of regions) {
 		if (!region.checked) continue; // unchecked → show config text, no widget
@@ -1402,7 +1402,7 @@ export function createChartBlockPlugin(): Plugin {
 			},
 			handleClickOn(view, _pos, _node, _nodePos, event): boolean {
 				// Toggle when the click lands on the header's checkbox text.
-				const regions = findChartRegions(view.state.doc.toJSON());
+				const regions = findChartRegions(view.state.doc); // live PMNode
 				const clickPos = view.posAtCoords({ left: (event as MouseEvent).clientX, top: (event as MouseEvent).clientY });
 				if (!clickPos) return false;
 				for (const region of regions) {
