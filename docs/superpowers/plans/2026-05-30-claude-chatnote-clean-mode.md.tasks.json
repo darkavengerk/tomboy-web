@@ -1,0 +1,59 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-30-claude-chatnote-clean-mode.md",
+  "tasks": [
+    {
+      "id": 6,
+      "subject": "Task 1: 채팅 노트 헤더 스키마 (effort 추가, cwd/allowedTools 제거)",
+      "status": "pending",
+      "description": "claude 헤더를 system/model/effort로 변경, effort 검증·기본값 상수 추가, 파서가 effort 읽고 cwd/allowedTools 무시. Files: app/src/lib/chatNote/defaults.ts, parseChatNote.ts, tests/unit/chatNote/parseChatNote.test.ts. Verify: cd app && npm run test -- tests/unit/chatNote/parseChatNote.test.ts"
+    },
+    {
+      "id": 7,
+      "subject": "Task 2: appSettings — Claude 기본값 접근자",
+      "status": "pending",
+      "blockedBy": [6],
+      "description": "claudeDefaultSystem/Model/Effort get/set 접근자 추가, 기본값은 CLAUDE_HEADER_DEFAULTS. Files: app/src/lib/storage/appSettings.ts, tests/unit/storage/appSettingsClaude.test.ts. Verify: cd app && npm run test -- tests/unit/storage/appSettingsClaude.test.ts"
+    },
+    {
+      "id": 8,
+      "subject": "Task 3: claude-service 런너 클린 모드",
+      "status": "pending",
+      "description": "항상 --system-prompt/--exclude-dynamic-system-prompt-sections/--disallowedTools '*'/--effort. cwd/allowedTools/--append 제거. spawn cwd=HOME. server cwd 검증/로그 정리. Files: claude-service/src/runner.ts, server.ts, tests/runner.test.ts. Verify: cd claude-service && npm run test && npm run build"
+    },
+    {
+      "id": 9,
+      "subject": "Task 4: bridge /claude/chat 프록시 바디 타입 정리",
+      "status": "pending",
+      "description": "ClaudeBody에서 cwd/allowedTools 제거, effort 추가(타입만, 동작 무변). Files: bridge/src/claude.ts. Verify: cd bridge && node --import tsx --test src/claude.test.ts"
+    },
+    {
+      "id": 10,
+      "subject": "Task 5: Claude 백엔드 바디 + ChatSendBar 전송 폴백",
+      "status": "pending",
+      "blockedBy": [6, 7],
+      "description": "ClaudeChatBody cwd/allowedTools→effort, ChatSendBar.runClaude가 헤더 없는 값은 설정 기본값 폴백. Files: app/src/lib/chatNote/backends/claude.ts, editor/chatNote/ChatSendBar.svelte, tests/unit/chatNote/sendClaude.test.ts. Verify: cd app && npm run check"
+    },
+    {
+      "id": 11,
+      "subject": "Task 6: 자동 헤더 플러그인 (claude) + TomboyEditor 연동",
+      "status": "pending",
+      "blockedBy": [6, 7],
+      "description": "chatNotePlugin을 CHAT_SIGNATURE_RE backend 구분 재작성, claude 시그니처 입력 시 system/model/effort 자동 헤더(설정 기본값). TomboyEditor가 설정 로드해 클로저 주입. Files: app/src/lib/editor/chatNote/chatNotePlugin.ts, editor/TomboyEditor.svelte, tests/unit/editor/chatNotePlugin.test.ts. Verify: cd app && npm run check && npm run test -- tests/unit/editor/chatNotePlugin.test.ts"
+    },
+    {
+      "id": 12,
+      "subject": "Task 7: 설정 Claude 탭 UI",
+      "status": "pending",
+      "blockedBy": [7],
+      "description": "설정에 Claude 탭 + 기본 시스템 프롬프트(textarea)/모델(text)/effort(select) 3필드. Files: app/src/routes/settings/+page.svelte. Verify: cd app && npm run check (수동: dev에서 저장/재진입)"
+    },
+    {
+      "id": 13,
+      "subject": "Task 8: 문서 갱신 (CLAUDE.md 채팅 노트 섹션)",
+      "status": "pending",
+      "blockedBy": [6, 7, 8, 9, 10, 11, 12],
+      "description": "CLAUDE.md 채팅 노트 섹션: claude 헤더 system/model/effort, 도구 게이트 불변식 제거→항상 클린 모드+설정 탭. Files: CLAUDE.md. Verify: grep -n 'effort' CLAUDE.md"
+    }
+  ],
+  "lastUpdated": "2026-05-30"
+}
