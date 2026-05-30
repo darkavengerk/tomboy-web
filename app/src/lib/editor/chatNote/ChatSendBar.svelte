@@ -23,6 +23,11 @@
 		clearStep
 	} from '$lib/editor/chatNote/thinkingDisplayPlugin.js';
 	import { pushToast } from '$lib/stores/toast.js';
+	import {
+		getClaudeDefaultSystem,
+		getClaudeDefaultModel,
+		getClaudeDefaultEffort
+	} from '$lib/storage/appSettings.js';
 
 	type Props = {
 		editor: Editor;
@@ -227,12 +232,14 @@
 			appendParagraph('Q: ');
 			return;
 		}
+		const system = spec.system ?? (await getClaudeDefaultSystem());
+		const model = spec.model || (await getClaudeDefaultModel());
+		const effort = spec.options.effort ?? (await getClaudeDefaultEffort());
 		const body: ClaudeChatBody = {
 			messages,
-			model: spec.model || undefined,
-			system: spec.system,
-			cwd: spec.options.cwd,
-			allowedTools: spec.options.allowedTools
+			model: model || undefined,
+			system,
+			effort
 		};
 
 		try {

@@ -24,8 +24,7 @@ export interface ClaudeChatBody {
   messages: AnthropicMessage[];
   model?: string;
   system?: string;
-  cwd?: string;
-  allowedTools?: string[];
+  effort?: string;
 }
 
 export type ThinkingStepKind =

@@ -120,7 +120,7 @@ describe('sendClaude', () => {
       body: {
         messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
         model: 'opus',
-        cwd: '/tmp',
+        effort: 'normal',
       },
       onToken: () => {},
     });
@@ -132,7 +132,7 @@ describe('sendClaude', () => {
     expect(JSON.parse(init.body as string)).toMatchObject({
       messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
       model: 'opus',
-      cwd: '/tmp',
+      effort: 'normal',
     });
   });
 });
