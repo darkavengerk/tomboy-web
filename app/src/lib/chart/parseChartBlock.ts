@@ -43,8 +43,11 @@ interface Token {
  */
 function tokenize(line: string): Token[] {
 	// Split on commas that are immediately followed by a new-token boundary.
-	// A new-token starts with optional whitespace then either '[' or 'word:'.
-	const chunks = line.split(/,(?=\s*(?:\[|\w+[가-힣]*:))/);
+	// A new-token starts with optional whitespace then either '[' or 'key:'.
+	// The key class allows a leading Hangul char so Korean-only keys (`묶기:`,
+	// `방식:`, `높이:`) are split boundaries too — not just ASCII-led ones
+	// (`x축:`, `y최소:`). A comma inside one value stays with its key.
+	const chunks = line.split(/,(?=\s*(?:\[|[\w가-힣]+:))/);
 
 	return chunks
 		.map((chunk) => chunk.trim())
