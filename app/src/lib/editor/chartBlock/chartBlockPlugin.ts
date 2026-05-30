@@ -37,6 +37,8 @@ function buildDecorations(doc: PMNode): DecorationSet {
 	const decos: Decoration[] = [];
 	for (const region of regions) {
 		if (!region.checked) continue; // unchecked → show config text, no widget
+
+		// The chart widget, anchored just after the header line.
 		decos.push(
 			Decoration.widget(region.headerEndPos, () => renderChartWidget(region), {
 				side: 1,
@@ -45,9 +47,10 @@ function buildDecorations(doc: PMNode): DecorationSet {
 				key: `chart:${region.headerEndPos}:${region.headerText}`
 			})
 		);
-		// When checked, hide the config list so the user sees the chart instead of
-		// the settings (the spec's either/or). The header — including its
-		// inlineCheckbox — stays visible so the chart can be toggled back off.
+
+		// Hide the config list so the user sees the chart instead of the settings
+		// (the spec's either/or). The header — including its inlineCheckbox — stays
+		// visible so the chart can be toggled back off.
 		if (region.configListFrom !== undefined && region.configListTo !== undefined) {
 			decos.push(
 				Decoration.node(region.configListFrom, region.configListTo, {
