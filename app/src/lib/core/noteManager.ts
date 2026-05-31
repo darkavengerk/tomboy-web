@@ -8,6 +8,7 @@ import {
 } from './titleRewrite.js';
 import { emitNoteReload } from './noteReloadBus.js';
 import * as noteStore from '$lib/storage/noteStore.js';
+import * as backlinkIndex from './backlinkIndex.js';
 import { generateGuid } from '$lib/utils/guid.js';
 import { invalidateCache } from '$lib/stores/noteListCache.js';
 import { ensureTitleIndexReady } from '$lib/editor/autoLink/titleProvider.js';
@@ -163,11 +164,14 @@ export async function updateNoteFromEditor(guid: string, doc: JSONContent): Prom
 }
 
 /**
- * Scan every non-deleted note (except `selfGuid`) and rewrite any
- * `<link:internal>OLD</link:internal>` / `<link:broken>OLD</link:broken>`
- * references to use `newTitle`. Updated notes land via `putNote` so they
- * are `localDirty=true` and will upload on the next sync. Returns the list
- * of affected guids.
+ * Sweep backlinks for a renamed note. Uses the in-memory backlinkIndex
+ * to look up affected sources directly (O(M) where M = notes containing
+ * a mark targeting `oldTitle`), then rewrites them in parallel via
+ * `Promise.allSettled`. Returns the list of affected guids.
+ *
+ * Each `putNote` call automatically updates the index — by the time
+ * Promise.allSettled resolves, the `oldTitle` entry is empty (and pruned) and
+ * the same source guids live under `newTitle`.
  */
 async function rewriteBacklinksForRename(
 	oldTitle: string,
@@ -175,24 +179,45 @@ async function rewriteBacklinksForRename(
 	selfGuid: string
 ): Promise<string[]> {
 	if (oldTitle === newTitle) return [];
-	const all = await noteStore.getAllNotesIncludingTemplates();
-	const affected: string[] = [];
+	await backlinkIndex.ensureBacklinkIndexReady();
+	const sources = backlinkIndex.getSourcesFor(oldTitle);
+	if (!sources || sources.size === 0) return [];
+
+	// Snapshot — `sources` is the live Set; putNote mutates it during the
+	// sweep, so iterating directly would skip notes.
+	const targetGuids = [...sources].filter((g) => g !== selfGuid);
+	// Single timestamp so the whole sweep appears as one atomic operation.
 	const now = formatTomboyDate(new Date());
-	for (const other of all) {
-		if (other.guid === selfGuid) continue;
-		if (other.deleted) continue;
-		const { xml, changed } = rewriteInternalLinkRefsInXml(
-			other.xmlContent,
-			oldTitle,
-			newTitle
-		);
-		if (!changed) continue;
-		other.xmlContent = xml;
-		other.changeDate = now;
-		other.metadataChangeDate = now;
-		await noteStore.putNote(other);
-		notifyNoteSaved(other.guid);
-		affected.push(other.guid);
+
+	const results = await Promise.allSettled(
+		targetGuids.map(async (g) => {
+			const other = await noteStore.getNote(g);
+			if (!other || other.deleted) return null;
+			const { xml, changed } = rewriteInternalLinkRefsInXml(
+				other.xmlContent,
+				oldTitle,
+				newTitle
+			);
+			if (!changed) {
+				console.warn('[backlinkIndex] stale entry: no mark in xml for', g, oldTitle);
+				return null;
+			}
+			other.xmlContent = xml;
+			other.changeDate = now;
+			other.metadataChangeDate = now;
+			await noteStore.putNote(other);
+			notifyNoteSaved(other.guid);
+			return other.guid;
+		})
+	);
+
+	const affected: string[] = [];
+	for (const r of results) {
+		if (r.status === 'fulfilled' && r.value !== null) {
+			affected.push(r.value);
+		} else if (r.status === 'rejected') {
+			console.error('[rename-sweep] target failed', r.reason);
+		}
 	}
 	return affected;
 }

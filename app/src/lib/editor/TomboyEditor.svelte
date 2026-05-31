@@ -34,6 +34,9 @@
 		extractTitleText,
 	} from "./titleUniqueGuard.js";
 	import { createImagePreviewPlugin } from "./imagePreview/imagePreviewPlugin.js";
+	import { createFilePreviewPlugin } from "./filePreview/filePreviewPlugin.js";
+	import { createGeoMapPlugin } from "./geoMap/geoMapPlugin.js";
+import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 	import {
 		createSendListItemPlugin,
 		sendListItemPluginKey,
@@ -44,6 +47,7 @@
 		autoWeekdayPluginKey,
 	} from "./autoWeekday/autoWeekdayPlugin.js";
 	import { createChatNotePlugin } from "./chatNote/chatNotePlugin.js";
+	import { createThinkingDisplayPlugin } from "./chatNote/thinkingDisplayPlugin.js";
 	import {
 		createTableBlockPlugin,
 		setCtrlHeld as setTableBlockCtrlHeld,
@@ -60,7 +64,12 @@
 		saveColumnWidths,
 	} from "./hrSplit/hrSplitStore.js";
 	import { extractImageFile } from "./imagePreview/extractImageFile.js";
-	import { uploadImageToDropbox } from "$lib/sync/imageUpload.js";
+	import { extractAnyFile } from "./extractFile.js";
+	import { uploadTempImage } from "$lib/sync/tempImageUpload.js";
+	import {
+		uploadBridgeFile,
+		BridgeFileUploadError,
+	} from "$lib/sync/bridgeFileUpload.js";
 	import { pushToast, dismissToast } from "$lib/stores/toast.js";
 	import { Extension } from "@tiptap/core";
 	import { insertTodayDate } from "./insertDate.js";
@@ -82,10 +91,13 @@
 		toggleCheckboxAt,
 		insertChecklistBlock,
 	} from "./checklist/index.js";
-	import { TomboyFootnote } from "./footnote/index.js";
+	import { FootnoteMarker, TomboyFootnoteExtension } from "./footnote/index.js";
+	import { TomboyInlineCheckbox } from './inlineCheckbox';
+	import { TomboyInlineRadio } from './inlineRadio';
 	import { TomboyBlockquote } from "./blockquote/index.js";
 	import { createFindPlugin, findPluginKey } from "./find/findPlugin.js";
 	import FindBar from "./find/FindBar.svelte";
+	import { unfocusedCaretPlugin } from "./unfocusedCaret/unfocusedCaretPlugin.js";
 	import type { JSONContent } from "@tiptap/core";
 	import EditorContextMenu from "./EditorContextMenu.svelte";
 	import {
@@ -399,7 +411,25 @@
 				Extension.create({
 					name: "tomboyImagePreview",
 					addProseMirrorPlugins() {
-						return [createImagePreviewPlugin()];
+						return [createImagePreviewPlugin(), createFilePreviewPlugin()];
+					},
+				}),
+				Extension.create({
+					name: "tomboyUnfocusedCaret",
+					addProseMirrorPlugins() {
+						return [unfocusedCaretPlugin()];
+					},
+				}),
+				Extension.create({
+					name: "tomboyGeoMap",
+					addProseMirrorPlugins() {
+						return [createGeoMapPlugin()];
+					},
+				}),
+				Extension.create({
+					name: "tomboyChartBlock",
+					addProseMirrorPlugins() {
+						return [createChartBlockPlugin()];
 					},
 				}),
 				Extension.create({
@@ -431,6 +461,12 @@
 					name: "tomboyLlmNote",
 					addProseMirrorPlugins() {
 						return [createChatNotePlugin()];
+					},
+				}),
+				Extension.create({
+					name: "tomboyThinkingDisplay",
+					addProseMirrorPlugins() {
+						return [createThinkingDisplayPlugin()];
 					},
 				}),
 				Extension.create({
@@ -485,7 +521,8 @@
 						toggleCheckboxAt(ed, liPos);
 					},
 				}),
-				TomboyFootnote.configure({
+				FootnoteMarker,
+				TomboyFootnoteExtension.configure({
 					onMissing: (label, kind) => {
 						pushToast(
 							kind === "reference"
@@ -495,6 +532,8 @@
 						);
 					},
 				}),
+				...TomboyInlineCheckbox,
+				...TomboyInlineRadio,
 				TomboyBlockquote,
 				Extension.create({
 					name: "tomboyFind",
@@ -664,6 +703,13 @@
 							}
 							return true;
 						}
+						// 'j' || 'J' — CapsLock 이 켜져 있으면 shift 없이도 event.key 가
+						// 대문자로 들어옴. 위 가드의 !event.shiftKey 는 CapsLock 을 차단하지 않음.
+						if (event.key === "j" || event.key === "J") {
+							event.preventDefault();
+							ed.chain().focus().insertFootnote().run();
+							return true;
+						}
 					}
 
 					return false;
@@ -684,18 +730,34 @@
 					return false;
 				},
 				handlePaste: (_view, event) => {
-					const file = extractImageFile(event.clipboardData);
-					if (!file) return false;
-					event.preventDefault();
-					void uploadAndInsertImage(file);
-					return true;
+					const img = extractImageFile(event.clipboardData);
+					if (img) {
+						event.preventDefault();
+						void uploadAndInsertImage(img);
+						return true;
+					}
+					const any = extractAnyFile(event.clipboardData);
+					if (any && !any.isImage) {
+						event.preventDefault();
+						void uploadAndInsertFile(any.file);
+						return true;
+					}
+					return false;
 				},
 				handleDrop: (_view, event) => {
-					const file = extractImageFile(event.dataTransfer);
-					if (!file) return false;
-					event.preventDefault();
-					void uploadAndInsertImage(file);
-					return true;
+					const img = extractImageFile(event.dataTransfer);
+					if (img) {
+						event.preventDefault();
+						void uploadAndInsertImage(img);
+						return true;
+					}
+					const any = extractAnyFile(event.dataTransfer);
+					if (any && !any.isImage) {
+						event.preventDefault();
+						void uploadAndInsertFile(any.file);
+						return true;
+					}
+					return false;
 				},
 				// Override PM's default clipboard path so Ctrl+C / Ctrl+X and the
 				// browser-level right-click copy/cut menu items all produce
@@ -1074,11 +1136,12 @@
 	}
 
 	/**
-	 * Upload an image file to Dropbox and insert the resulting direct URL
-	 * at the current cursor position, wrapped in a tomboyUrlLink mark so
-	 * the note's XML round-trip treats it as a `<link:url>` anchor. The
-	 * image-preview plugin then renders the actual image in place of the
-	 * URL text — see imagePreviewPlugin.ts.
+	 * Upload an image file to Vercel Blob (임시 저장소) and insert the
+	 * resulting direct URL at the current cursor position, wrapped in a
+	 * tomboyUrlLink mark so the note's XML round-trip treats it as a
+	 * `<link:url>` anchor. The image-preview plugin then renders the actual
+	 * image in place of the URL text — see imagePreviewPlugin.ts.
+	 * (Permanent promotion to Dropbox is handled separately by imagePromotion.)
 	 */
 	export async function uploadAndInsertImage(file: File): Promise<void> {
 		const ed = editor;
@@ -1086,7 +1149,7 @@
 
 		const toastId = pushToast("이미지 업로드 중…", { timeoutMs: 0 });
 		try {
-			const url = await uploadImageToDropbox(file);
+			const url = await uploadTempImage(file);
 			dismissToast(toastId);
 			// Save the selection at the moment we insert. If the user moved
 			// the cursor while the upload was in flight, insert at the
@@ -1106,6 +1169,44 @@
 			dismissToast(toastId);
 			const msg = err instanceof Error ? err.message : String(err);
 			pushToast(`이미지 업로드 실패: ${msg}`, { kind: "error" });
+		}
+	}
+
+	/**
+	 * Upload a non-image file to the bridge and insert the resulting
+	 * download URL at the current cursor position. Wraps URL text in a
+	 * tomboyUrlLink mark so the `.note` XML round-trip writes `<link:url>`
+	 * (same path images take); the future filePreviewPlugin will render a
+	 * 📎-filename badge in place of the URL text.
+	 */
+	export async function uploadAndInsertFile(file: File): Promise<void> {
+		const ed = editor;
+		if (!ed) return;
+
+		const toastId = pushToast(`${file.name} 업로드 중…`, { timeoutMs: 0 });
+		try {
+			const result = await uploadBridgeFile(file);
+			dismissToast(toastId);
+			ed.chain()
+				.focus()
+				.insertContent({
+					type: "text",
+					text: result.url,
+					marks: [
+						{ type: "tomboyUrlLink", attrs: { href: result.url } },
+					],
+				})
+				.run();
+			pushToast(`${result.filename} 업로드 완료`);
+		} catch (err) {
+			dismissToast(toastId);
+			const msg =
+				err instanceof BridgeFileUploadError
+					? err.message
+					: err instanceof Error
+						? err.message
+						: String(err);
+			pushToast(`파일 업로드 실패: ${msg}`, { kind: "error" });
 		}
 	}
 </script>
@@ -1140,6 +1241,7 @@
 		y={ctxMenu.y}
 		onclose={() => (ctxMenu = null)}
 		{oninternallink}
+		onuploadfile={uploadAndInsertFile}
 	/>
 {/if}
 
@@ -1164,11 +1266,37 @@
 	.tomboy-editor {
 		flex: 1;
 		min-height: 0;
-		overflow-y: auto;
-		-webkit-overflow-scrolling: touch;
+		/* body 가 scrollable 이라 내부 스크롤 없이 컨텐츠 만큼 늘어남.
+		   overflow-y:auto / -webkit-overflow-scrolling 제거. */
 		padding: 0.5rem;
 		font-size: 16px;
 		line-height: 1.4;
+	}
+
+	/* blur 상태에서도 caret / selection 위치를 시각적으로 유지. 모바일
+	   에서 키보드 dismiss 후 "어디를 편집/선택 중이었는지" 잃지 않도록.
+	   native caret blink 주기 (~1.06s) 모방. */
+	.tomboy-editor :global(.unfocused-caret) {
+		display: inline-block;
+		width: 1px;
+		height: 1.1em;
+		background: currentColor;
+		vertical-align: text-bottom;
+		margin-bottom: -0.05em;
+		pointer-events: none;
+		opacity: 0.7;
+		animation: tomboy-caret-blink 1.06s steps(2, jump-none) infinite;
+	}
+
+	/* 가짜 selection — iOS Safari 의 native selection 색에 가까운 옅은
+	   파랑. blink 없이 안정적으로 표시. */
+	.tomboy-editor :global(.unfocused-selection) {
+		background-color: rgba(100, 150, 255, 0.35);
+	}
+
+	@keyframes tomboy-caret-blink {
+		0%, 49% { opacity: 0.7; }
+		50%, 100% { opacity: 0; }
 	}
 
 	.tomboy-editor :global(.tiptap) {
@@ -1267,6 +1395,52 @@
 	   removes the whole URL, arrow keys skip across it. */
 	.tomboy-editor :global(.tomboy-image-url-hidden) {
 		display: none;
+	}
+
+	/* Bridge file-URL text is hidden so the 📎 badge alone represents the link.
+	   The URL stays in the doc verbatim for Tomboy XML round-trip. */
+	.tomboy-editor :global(.tomboy-file-url-hidden) {
+		display: none;
+	}
+
+	.tomboy-editor :global(.tomboy-file-badge) {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25em;
+		padding: 0.1em 0.5em;
+		margin: 0 0.15em;
+		background: #eef2f7;
+		border: 1px solid #d4dbe4;
+		border-radius: 4px;
+		color: #1565c0;
+		text-decoration: none;
+		font-size: 0.9em;
+		line-height: 1.3;
+		cursor: pointer;
+	}
+	.tomboy-editor :global(.tomboy-file-badge:hover) {
+		background: #e3eaf3;
+		text-decoration: underline;
+	}
+
+	.tomboy-editor :global(.tomboy-geo-map) {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 100%;
+		aspect-ratio: 1 / 1;
+		margin: 8px 0;
+		background: #f0f0f0;
+		border-radius: 4px;
+		overflow: hidden;
+		color: #888;
+		font-size: 0.85rem;
+	}
+	/* Once Leaflet mounts, its container fills the box. The flex centering
+	   above only affects the placeholder text while loading. */
+	.tomboy-editor :global(.tomboy-geo-map .leaflet-container) {
+		width: 100%;
+		height: 100%;
 	}
 
 	/* Highlight */
@@ -1818,13 +1992,10 @@
 		background-size: contain;
 	}
 
-	/* 각주 [^N] — footnote 플러그인이 [^ 와 ] 를 .tomboy-fn-bracket 로
-	   폭 0 처리한다. 참조 라벨은 <sup class="tomboy-fn-ref"> 작은 위첨자,
-	   설명 마커 라벨은 <span class="tomboy-fn-def"> 일반 크기로 표시한다.
-	   마커는 .note XML 본문에 [^N] 텍스트로 그대로 남는다. */
-	.tomboy-editor :global(.tomboy-fn-bracket) {
-		font-size: 0;
-	}
+	/* 각주 [^N] — footnoteMarker atomic 노드의 NodeView (footnote/node.ts) 가
+	   참조는 <sup class="tomboy-fn-ref"> 작은 위첨자, 설명 마커는
+	   <span class="tomboy-fn-def"> 일반 크기로 렌더한다. 마커는 .note XML
+	   본문에 [^N] 텍스트로 그대로 직렬화된다. */
 	.tomboy-editor :global(.tomboy-fn-ref) {
 		font-size: 0.75em;
 		vertical-align: super;
@@ -1851,46 +2022,95 @@
 		}
 	}
 
-	/* 각주 미리보기 팝오버 — document.body 에 붙어 전역 클래스로 스타일. */
-	:global(.tomboy-fn-preview) {
-		position: fixed;
-		z-index: 900;
-		max-width: 300px;
-		padding: 0.5rem 0.625rem;
-		background: #ffffff;
-		border: 1px solid #d1d5db;
-		border-radius: 0.5rem;
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-		font-size: 0.8125rem;
-		line-height: 1.4;
-		color: #1f2937;
-	}
-	:global(.tomboy-fn-preview-static) {
-		pointer-events: none;
-	}
-	:global(.tomboy-fn-preview-text) {
-		display: -webkit-box;
-		-webkit-line-clamp: 4;
-		line-clamp: 4;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
-		white-space: pre-wrap;
-		word-break: break-word;
-	}
-	:global(.tomboy-fn-preview-missing) {
-		color: #6b7280;
-		font-style: italic;
-	}
-	:global(.tomboy-fn-preview-jump) {
+	/* 인라인 체크박스 — TomboyInlineCheckbox 노드의 NodeView 가
+	   .tomboy-inline-checkbox span 을 렌더한다. 14px 정사각형,
+	   모바일 hit-area 는 ::before 가 24×24 px 확보. */
+	.tomboy-editor :global(.tomboy-inline-checkbox) {
 		display: inline-block;
-		margin-top: 0.4rem;
-		padding: 0.25rem 0.6rem;
-		font-size: 0.8125rem;
-		color: #ffffff;
-		background: #2563eb;
-		border: none;
-		border-radius: 0.375rem;
+		width: 14px;
+		height: 14px;
+		border: 1px solid var(--text-muted, #888);
+		border-radius: 2px;
+		vertical-align: -2px;
+		margin: 0 2px;
 		cursor: pointer;
+		background: transparent;
+		user-select: none;
+		position: relative;
+		box-sizing: border-box;
+		transition: background-color 0.12s ease, border-color 0.12s ease;
+	}
+
+	/* 모바일 hit-area — 보이지 않는 ::before 가 24x24 영역 확보. */
+	.tomboy-editor :global(.tomboy-inline-checkbox::before) {
+		content: '';
+		position: absolute;
+		top: -5px;
+		left: -5px;
+		right: -5px;
+		bottom: -5px;
+	}
+
+	.tomboy-editor :global(.tomboy-inline-checkbox[data-checked='true']) {
+		background-color: var(--accent, #4a76d4);
+		border-color: var(--accent, #4a76d4);
+		background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='3 8 7 12 13 4'/></svg>");
+		background-size: 12px 12px;
+		background-position: center;
+		background-repeat: no-repeat;
+	}
+
+	.tomboy-editor :global(.tomboy-inline-checkbox:hover) {
+		border-color: var(--accent, #4a76d4);
+	}
+
+	/* 인라인 라디오 — TomboyInlineRadio 노드의 NodeView 가
+	   .tomboy-inline-radio span 을 렌더한다. 14px 원형, 모바일
+	   hit-area 는 ::before 가 24×24 px 확보. 같은 textblock 의 다른
+	   라디오와 상호 배타 (NodeView 클릭 핸들러). */
+	.tomboy-editor :global(.tomboy-inline-radio) {
+		display: inline-block;
+		width: 14px;
+		height: 14px;
+		border: 1px solid var(--text-muted, #888);
+		border-radius: 50%;
+		vertical-align: -2px;
+		margin: 0 2px;
+		cursor: pointer;
+		background: transparent;
+		user-select: none;
+		position: relative;
+		box-sizing: border-box;
+		transition: background-color 0.12s ease, border-color 0.12s ease;
+	}
+
+	.tomboy-editor :global(.tomboy-inline-radio::before) {
+		content: '';
+		position: absolute;
+		top: -5px;
+		left: -5px;
+		right: -5px;
+		bottom: -5px;
+	}
+
+	.tomboy-editor :global(.tomboy-inline-radio[data-selected='true']) {
+		border-color: var(--accent, #4a76d4);
+	}
+
+	.tomboy-editor :global(.tomboy-inline-radio[data-selected='true']::after) {
+		content: '';
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background-color: var(--accent, #4a76d4);
+		transform: translate(-50%, -50%);
+	}
+
+	.tomboy-editor :global(.tomboy-inline-radio:hover) {
+		border-color: var(--accent, #4a76d4);
 	}
 
 	/* 인용 단락 — blockquote 플러그인이 '> ' 로 시작하는 최상위 단락에
@@ -2146,5 +2366,48 @@
 	.tomboy-editor :global(.tomboy-table-block-add-col:hover),
 	.tomboy-editor :global(.tomboy-table-block-add-row:hover) {
 		background: #1b5e20;
+	}
+
+	/* Transient thinking display (PM widget decoration, Task 3/4).
+	   Widget DOM is created by the plugin outside Svelte's scoped CSS
+	   reach, so every selector below MUST be :global(...). The widget is
+	   removed by clearStep before the next Q: paragraph is appended, so
+	   it never persists in xmlContent — it's purely a streaming UI hint. */
+	:global(.thinking-display) {
+		margin: 0.5rem 0;
+		padding: 0.4rem 0.6rem 0.4rem 0.8rem;
+		border-left: 3px solid var(--border-color, #cbd5e1);
+		background: var(--bg-subtle, rgba(127, 127, 127, 0.06));
+		border-radius: 0 0.25rem 0.25rem 0;
+		font-size: clamp(0.8rem, 1.5vw, 0.95rem);
+		opacity: 0.78;
+		user-select: none;
+	}
+	:global(.thinking-display[data-kind="tool_use"]) {
+		border-left-color: #6b7c93;
+	}
+	:global(.thinking-display[data-kind="tool_result"]) {
+		border-left-color: #4ade80;
+	}
+	:global(.thinking-display[data-kind="response_start"]) {
+		border-left-color: #60a5fa;
+	}
+	:global(.thinking-display-label) {
+		display: block;
+		font-weight: 600;
+		font-size: 0.85em;
+		margin-bottom: 0.2rem;
+		color: var(--text-muted, #64748b);
+	}
+	:global(.thinking-display-body) {
+		margin: 0;
+		padding: 0;
+		border: none;
+		white-space: pre-wrap;
+		max-height: 12em;
+		overflow: hidden;
+		-webkit-mask-image: linear-gradient(to bottom, black 65%, transparent 100%);
+		mask-image: linear-gradient(to bottom, black 65%, transparent 100%);
+		font-family: inherit;
 	}
 </style>

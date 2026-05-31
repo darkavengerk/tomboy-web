@@ -45,6 +45,131 @@ function mintInstanceId(): string {
 	return `p${instanceIdCounter++}`;
 }
 
+// Footnote marker pattern — must stay byte-identical to FOOTNOTE_RE in
+// app/src/lib/editor/footnote/footnotes.ts. The label captures one or more
+// non-`]`, non-whitespace chars, so `[^]` and `[^ x]` correctly fail to match
+// and stay as plain text on the input side.
+const FOOTNOTE_SPLIT_RE = /\[\^([^\]\s]+)\]/g;
+
+// Element type of JSONContent.marks — element `type` is `string` (not the
+// looser `string | undefined` that JSONContent itself carries).
+type InlineMark = NonNullable<JSONContent['marks']>[number];
+
+/**
+ * 텍스트 안의 [^N] 패턴을 footnoteMarker 노드로 split.
+ * 마크는 좌우 텍스트에만 전달 — atomic 노드는 마크를 받지 않는다.
+ *
+ * Match 가 없으면 원본 그대로 한 개짜리 배열 (alloc 절약).
+ */
+function splitFootnotesInText(
+	text: string,
+	marks: InlineMark[] | undefined
+): JSONContent[] {
+	FOOTNOTE_SPLIT_RE.lastIndex = 0;
+	const out: JSONContent[] = [];
+	let last = 0;
+	let m: RegExpExecArray | null;
+	while ((m = FOOTNOTE_SPLIT_RE.exec(text)) !== null) {
+		if (m.index > last) {
+			const piece: JSONContent = { type: 'text', text: text.slice(last, m.index) };
+			if (marks) piece.marks = marks;
+			out.push(piece);
+		}
+		out.push({ type: 'footnoteMarker', attrs: { label: m[1] } });
+		last = m.index + m[0].length;
+	}
+	if (last === 0) {
+		const piece: JSONContent = { type: 'text', text };
+		if (marks) piece.marks = marks;
+		return [piece];
+	}
+	if (last < text.length) {
+		const piece: JSONContent = { type: 'text', text: text.slice(last) };
+		if (marks) piece.marks = marks;
+		out.push(piece);
+	}
+	return out;
+}
+
+// Inline-checkbox 패턴. `[ ]` (공백 1 개) 또는 `[x]` / `[X]`.
+// 좌우 텍스트는 mark 를 유지하고, 매치 자리에 atomic 노드를 삽입.
+const INLINE_CHECKBOX_SPLIT_RE = /\[([ xX])\]/g;
+
+/**
+ * 텍스트 안의 [ ]/[x] 패턴을 inlineCheckbox 노드로 split.
+ * splitFootnotesInText 와 동일 구조 — atomic 노드는 mark 안 받음,
+ * 좌우 텍스트만 원본 mark 유지.
+ */
+function splitInlineCheckboxesInText(
+	text: string,
+	marks: InlineMark[] | undefined
+): JSONContent[] {
+	INLINE_CHECKBOX_SPLIT_RE.lastIndex = 0;
+	const out: JSONContent[] = [];
+	let last = 0;
+	let m: RegExpExecArray | null;
+	while ((m = INLINE_CHECKBOX_SPLIT_RE.exec(text)) !== null) {
+		if (m.index > last) {
+			const piece: JSONContent = { type: 'text', text: text.slice(last, m.index) };
+			if (marks) piece.marks = marks;
+			out.push(piece);
+		}
+		const checked = m[1] === 'x' || m[1] === 'X';
+		out.push({ type: 'inlineCheckbox', attrs: { checked } });
+		last = m.index + m[0].length;
+	}
+	if (last === 0) {
+		const piece: JSONContent = { type: 'text', text };
+		if (marks) piece.marks = marks;
+		return [piece];
+	}
+	if (last < text.length) {
+		const piece: JSONContent = { type: 'text', text: text.slice(last) };
+		if (marks) piece.marks = marks;
+		out.push(piece);
+	}
+	return out;
+}
+
+// Inline-radio 패턴. `( )` (공백 1 개) 또는 `(o)` / `(O)`.
+const INLINE_RADIO_SPLIT_RE = /\(([ oO])\)/g;
+
+/**
+ * 텍스트 안의 ( )/(o) 패턴을 inlineRadio 노드로 split.
+ * splitInlineCheckboxesInText 와 동일 구조 — atomic 노드는 mark 안
+ * 받음, 좌우 텍스트만 원본 mark 유지.
+ */
+function splitInlineRadiosInText(
+	text: string,
+	marks: InlineMark[] | undefined
+): JSONContent[] {
+	INLINE_RADIO_SPLIT_RE.lastIndex = 0;
+	const out: JSONContent[] = [];
+	let last = 0;
+	let m: RegExpExecArray | null;
+	while ((m = INLINE_RADIO_SPLIT_RE.exec(text)) !== null) {
+		if (m.index > last) {
+			const piece: JSONContent = { type: 'text', text: text.slice(last, m.index) };
+			if (marks) piece.marks = marks;
+			out.push(piece);
+		}
+		const selected = m[1] === 'o' || m[1] === 'O';
+		out.push({ type: 'inlineRadio', attrs: { selected } });
+		last = m.index + m[0].length;
+	}
+	if (last === 0) {
+		const piece: JSONContent = { type: 'text', text };
+		if (marks) piece.marks = marks;
+		return [piece];
+	}
+	if (last < text.length) {
+		const piece: JSONContent = { type: 'text', text: text.slice(last) };
+		if (marks) piece.marks = marks;
+		out.push(piece);
+	}
+	return out;
+}
+
 // --- XML → ProseMirror JSON ---
 
 /**
@@ -115,6 +240,9 @@ export function serializeContent(doc: JSONContent): string {
 				for (const inline of b.content ?? []) {
 					if (inline.type === 'text') return inline.marks ?? [];
 					if (inline.type === 'hardBreak') return [];
+					if (inline.type === 'footnoteMarker') return [];
+					if (inline.type === 'inlineCheckbox') return [];
+					if (inline.type === 'inlineRadio') return [];
 				}
 				// Empty paragraph — keep scanning subsequent blocks.
 				continue;
@@ -185,6 +313,18 @@ export function serializeContent(doc: JSONContent): string {
 				} else if (inline.type === 'hardBreak') {
 					closeAll();
 					result += '\n';
+				} else if (inline.type === 'footnoteMarker') {
+					// 모든 mark 닫고 [^N] emit. 다음 text 노드가 mark 를 다시 연다.
+					closeAll();
+					result += `[^${escapeXmlContent((inline.attrs?.label as string | undefined) ?? '')}]`;
+				} else if (inline.type === 'inlineCheckbox') {
+					// 모든 mark 닫고 [ ]/[x] emit. 다음 text 노드가 mark 를 다시 연다.
+					closeAll();
+					result += inline.attrs?.checked ? '[x]' : '[ ]';
+				} else if (inline.type === 'inlineRadio') {
+					// 모든 mark 닫고 ( )/(o) emit. 다음 text 노드가 mark 를 다시 연다.
+					closeAll();
+					result += inline.attrs?.selected ? '(o)' : '( )';
 				}
 			}
 			// 헤더 문단이면 영역 시작, 그 외 문단/헤딩이면 영역 종료.
@@ -327,37 +467,80 @@ function parseBlocks(container: Element): JSONContent[] {
 		for (const n of nodes) {
 			if (n.type === 'text' && typeof n.text === 'string') {
 				if (n.text.length === 0) continue;
-				if (n.text.includes('\n')) {
-					const parts = n.text.split('\n');
-					for (let j = 0; j < parts.length; j++) {
-						if (j > 0) {
-							if (absorbNextNewline) absorbNextNewline = false;
-							// A '\n' inside a marked text node carries those
-							// marks in Tomboy's flat-buffer model. Capture
-							// them on the outgoing paragraph as trailingMarks
-							// so serialize's phantom-'\n' emission keeps the
-							// mark continuous across the block boundary when
-							// appropriate.
-							else pushParagraph(n.marks);
-						}
-						if (parts[j].length > 0) {
-							const piece: JSONContent = { type: 'text', text: parts[j] };
-							if (n.marks) piece.marks = n.marks;
+				// 3-pass inline split: 1) 각주 (footnoteMarker) → 2) 인라인
+				// 체크박스 → 3) 인라인 라디오. 패턴들이 서로 겹치지 않으므로
+				// 순서는 관례적이지만 일관성을 위해 footnote → checkbox → radio
+				// 순서를 유지한다.
+				const fnSplit = splitFootnotesInText(n.text, n.marks);
+				const cbSplit: JSONContent[] = [];
+				for (const piece of fnSplit) {
+					if (piece.type === 'text' && typeof piece.text === 'string') {
+						cbSplit.push(...splitInlineCheckboxesInText(piece.text, piece.marks));
+					} else {
+						cbSplit.push(piece);
+					}
+				}
+				const split: JSONContent[] = [];
+				for (const piece of cbSplit) {
+					if (piece.type === 'text' && typeof piece.text === 'string') {
+						split.push(...splitInlineRadiosInText(piece.text, piece.marks));
+					} else {
+						split.push(piece);
+					}
+				}
+				if (split.length === 1 && split[0].type === 'text') {
+					appendTextWithNewlines(split[0]);
+				} else {
+					for (const piece of split) {
+						if (piece.type === 'text') {
+							appendTextWithNewlines(piece);
+						} else {
 							currentInline.push(piece);
 							absorbNextNewline = false;
+							lastTextEndedWithNewline = false;
 						}
 					}
-					lastTextEndedWithNewline = n.text.endsWith('\n');
-				} else {
-					currentInline.push(n);
-					absorbNextNewline = false;
-					lastTextEndedWithNewline = false;
 				}
 			} else {
 				currentInline.push(n);
 				absorbNextNewline = false;
 				lastTextEndedWithNewline = false;
 			}
+		}
+	}
+
+	// Append a text node, splitting on embedded '\n' into paragraph
+	// boundaries while re-applying the same marks to each piece. Tomboy
+	// desktop's flat-buffer model allows a mark to span newlines
+	// (e.g. <bold>a\nb</bold>); ProseMirror's schema disallows '\n' inside
+	// text nodes so we split the logical range into per-line marked runs.
+	function appendTextWithNewlines(n: JSONContent) {
+		if (n.type !== 'text' || typeof n.text !== 'string' || n.text.length === 0) return;
+		if (n.text.includes('\n')) {
+			const parts = n.text.split('\n');
+			for (let j = 0; j < parts.length; j++) {
+				if (j > 0) {
+					if (absorbNextNewline) absorbNextNewline = false;
+					// A '\n' inside a marked text node carries those
+					// marks in Tomboy's flat-buffer model. Capture
+					// them on the outgoing paragraph as trailingMarks
+					// so serialize's phantom-'\n' emission keeps the
+					// mark continuous across the block boundary when
+					// appropriate.
+					else pushParagraph(n.marks);
+				}
+				if (parts[j].length > 0) {
+					const piece: JSONContent = { type: 'text', text: parts[j] };
+					if (n.marks) piece.marks = n.marks;
+					currentInline.push(piece);
+					absorbNextNewline = false;
+				}
+			}
+			lastTextEndedWithNewline = n.text.endsWith('\n');
+		} else {
+			currentInline.push(n);
+			absorbNextNewline = false;
+			lastTextEndedWithNewline = false;
 		}
 	}
 
@@ -649,6 +832,18 @@ function serializeInlineContent(content: JSONContent[]): string {
 		} else if (node.type === 'hardBreak') {
 			closeAll();
 			result += '\n';
+		} else if (node.type === 'footnoteMarker') {
+			// 모든 mark 닫고 [^N] emit. 다음 text 노드가 mark 를 다시 연다.
+			closeAll();
+			result += `[^${escapeXmlContent((node.attrs?.label as string | undefined) ?? '')}]`;
+		} else if (node.type === 'inlineCheckbox') {
+			// 모든 mark 닫고 [ ]/[x] emit. 다음 text 노드가 mark 를 다시 연다.
+			closeAll();
+			result += node.attrs?.checked ? '[x]' : '[ ]';
+		} else if (node.type === 'inlineRadio') {
+			// 모든 mark 닫고 ( )/(o) emit. 다음 text 노드가 mark 를 다시 연다.
+			closeAll();
+			result += node.attrs?.selected ? '(o)' : '( )';
 		}
 	}
 
@@ -833,6 +1028,15 @@ function escapeXmlContent(text: string): string {
  */
 function getPlainText(node: JSONContent): string {
 	if (node.text) return node.text;
+	if (node.type === 'footnoteMarker') {
+		return `[^${(node.attrs?.label as string | undefined) ?? ''}]`;
+	}
+	if (node.type === 'inlineCheckbox') {
+		return node.attrs?.checked ? '[x]' : '[ ]';
+	}
+	if (node.type === 'inlineRadio') {
+		return node.attrs?.selected ? '(o)' : '( )';
+	}
 	if (!node.content) return '';
 	return node.content.map(getPlainText).join('');
 }

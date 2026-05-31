@@ -136,3 +136,53 @@ describe('sendClaude', () => {
     });
   });
 });
+
+describe('sendClaude — step events', () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => { fetchSpy = vi.spyOn(globalThis, 'fetch'); });
+  afterEach(() => { fetchSpy.mockRestore(); });
+
+  it('forwards {step} frames to onStep', async () => {
+    fetchSpy.mockResolvedValue(
+      sseResponse([
+        'data: {"step":{"kind":"thinking","label":"생각 중","body":""}}',
+        'data: {"step":{"kind":"thinking","label":"생각 중","body":"먼저"}}',
+        'data: {"delta":"answer"}',
+        'data: {"done":true,"reason":"success"}',
+      ])
+    );
+    const steps: any[] = [];
+    const tokens: string[] = [];
+    const r = await sendClaude({
+      url: 'https://bridge/claude/chat',
+      token: 'tok',
+      body: { messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }] },
+      onToken: (d) => tokens.push(d),
+      onStep: (s) => steps.push(s),
+    });
+    expect(steps).toHaveLength(2);
+    expect(steps[0]).toEqual({ kind: 'thinking', label: '생각 중', body: '' });
+    expect(steps[1]).toEqual({ kind: 'thinking', label: '생각 중', body: '먼저' });
+    expect(tokens.join('')).toBe('answer');
+    expect(r.reason).toBe('done');
+  });
+
+  it('silently ignores {step} when onStep is undefined', async () => {
+    fetchSpy.mockResolvedValue(
+      sseResponse([
+        'data: {"step":{"kind":"thinking","label":"x","body":"y"}}',
+        'data: {"delta":"answer"}',
+        'data: {"done":true,"reason":"success"}',
+      ])
+    );
+    const tokens: string[] = [];
+    const r = await sendClaude({
+      url: 'x', token: 'y',
+      body: { messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }] },
+      onToken: (d) => tokens.push(d),
+      // no onStep
+    });
+    expect(tokens.join('')).toBe('answer');
+    expect(r.reason).toBe('done');
+  });
+});

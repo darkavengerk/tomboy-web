@@ -271,3 +271,79 @@ describe('tiptapToMarkdown', () => {
 		expect(tiptapToMarkdown(doc(p('5 * 3 = 15')))).toContain('5 \\* 3 = 15');
 	});
 });
+
+describe('copyFormatted — footnoteMarker', () => {
+	const docWithFn: JSONContent = doc(
+		p('제목'),
+		{
+			type: 'paragraph',
+			content: [
+				{ type: 'text', text: '본문 ' },
+				{ type: 'footnoteMarker', attrs: { label: '1' } },
+				{ type: 'text', text: ' 끝' }
+			]
+		}
+	);
+
+	it('plain → [^N]', () => {
+		expect(tiptapToPlainText(docWithFn)).toContain('본문 [^1] 끝');
+	});
+
+	it('structured → [^N]', () => {
+		expect(tiptapToStructuredText(docWithFn)).toContain('본문 [^1] 끝');
+	});
+
+	it('html → <sup>N</sup>', () => {
+		expect(tiptapToHtml(docWithFn)).toContain('<sup>1</sup>');
+	});
+
+	it('markdown → [^N]', () => {
+		expect(tiptapToMarkdown(docWithFn)).toContain('본문 [^1] 끝');
+	});
+});
+
+describe('inlineCheckbox serializers', () => {
+	const docOf = (checked: boolean) => ({
+		type: 'doc',
+		content: [
+			{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+			{
+				type: 'paragraph',
+				content: [
+					{ type: 'text', text: '할 일 ' },
+					{ type: 'inlineCheckbox', attrs: { checked } },
+					{ type: 'text', text: ' 우유' }
+				]
+			}
+		]
+	});
+
+	it('plain text emits [ ] for unchecked', () => {
+		expect(tiptapToPlainText(docOf(false))).toContain('[ ]');
+	});
+
+	it('plain text emits [x] for checked', () => {
+		expect(tiptapToPlainText(docOf(true))).toContain('[x]');
+	});
+
+	it('structured text emits [ ] / [x]', () => {
+		expect(tiptapToStructuredText(docOf(false))).toContain('[ ]');
+		expect(tiptapToStructuredText(docOf(true))).toContain('[x]');
+	});
+
+	it('markdown emits [ ] / [x] (GFM task list)', () => {
+		expect(tiptapToMarkdown(docOf(false))).toContain('[ ]');
+		expect(tiptapToMarkdown(docOf(true))).toContain('[x]');
+	});
+
+	it('html emits <input type="checkbox" disabled> for unchecked', () => {
+		const html = tiptapToHtml(docOf(false));
+		expect(html).toContain('<input type="checkbox" disabled>');
+		expect(html).not.toContain('checked');
+	});
+
+	it('html emits <input type="checkbox" disabled checked> for checked', () => {
+		const html = tiptapToHtml(docOf(true));
+		expect(html).toContain('<input type="checkbox" disabled checked>');
+	});
+});

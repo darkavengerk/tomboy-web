@@ -14,8 +14,10 @@
  * (`www.dropbox.com/scl/...`) respond with a 302 redirect but no permissive
  * CORS headers, so `fetch(url)` is blocked by the browser. Callers must
  * obtain the Blob through a CORS-safe route — either the in-memory File
- * from paste/drop, or `downloadImageFromDropboxUrl()` which routes through
- * the SDK's `api.dropboxapi.com` host.
+ * from paste/drop, or `downloadImageFromUrl()` (in `lib/sync/imageUpload.ts`)
+ * which host-dispatches: Dropbox URLs go through the SDK's
+ * `api.dropboxapi.com` host, Vercel Blob URLs are CORS-open so a plain
+ * `fetch()` works.
  */
 const MAX_LONG_EDGE = 1280;
 const JPEG_QUALITY = 0.85;

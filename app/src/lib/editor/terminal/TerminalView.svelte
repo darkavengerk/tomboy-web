@@ -14,6 +14,7 @@
 	import { runConnectScript } from './connectAutoRun.js';
 	import {
 		accumulateTouchScroll,
+		computeAnchorRows,
 		computeScrollState,
 		INITIAL_SCROLL_STATE,
 		type SpectatorScrollState
@@ -30,9 +31,19 @@
 	} from '$lib/storage/appSettings.js';
 	import { createBellRinger } from './terminalBell.js';
 	import { subscribeNoteReload } from '$lib/core/noteReloadBus.js';
-	import { getNote } from '$lib/storage/noteStore.js';
+	import { getNote, putNote } from '$lib/storage/noteStore.js';
 	import { deserializeContent } from '$lib/core/noteContentArchiver.js';
-	import { parseTerminalNote } from './parseTerminalNote.js';
+	import { parseTerminalNote, rewriteSpectateLine } from './parseTerminalNote.js';
+	import { type StickyMods, computeStickyKeySequence, applyStickyToText } from './stickyMods.js';
+	import {
+		INITIAL_DOUBLE_TAP_STATE,
+		modKeyFromEventKey,
+		onModKeydown as onStickyModKeydown,
+		onModKeyup as onStickyModKeyup,
+		onNonModKeydown as onStickyNonModKeydown,
+		type DoubleTapState
+	} from './stickyDoubleTap.js';
+	import { formatTomboyDate } from '$lib/core/note.js';
 	import HistoryPanel from './HistoryPanel.svelte';
 	import {
 		extractImageFile,
@@ -85,12 +96,46 @@
 	// send it — the footer then leaves all five buttons enabled.
 	let spectatorPaneOrdinal = $state(0);
 	let spectatorPaneCount = $state(0);
+	/**
+	 * Pinned pane ordinal (1..5). When non-null, the spectator subscribes
+	 * directly to this pane's output stream (bridge handles independent
+	 * live streams per-subscription). Initial value comes from
+	 * `spec.pinnedPane` (parsed from `spectate: <s>:<N>`); subsequent
+	 * updates are user-driven via the footer toggle, so capturing only
+	 * the initial spec value here is intentional.
+	 */
+	// svelte-ignore state_referenced_locally
+	let pinnedOrdinal: number | null = $state(spec.pinnedPane ?? null);
+	/**
+	 * Non-null when the bridge reports that the pinned ordinal exceeds the
+	 * current window's pane count (pane-unavailable frame).
+	 */
+	let pinUnavailableInfo = $state<{ pinnedOrdinal: number; paneCount: number } | null>(null);
 	// Spectator "보내기" popup — explicit keystroke injection into the
 	// active pane. Useful for quick claude-code confirmations (y/n/Enter)
 	// from mobile without breaking the read-only-by-default invariant.
 	let sendPopupOpen = $state(false);
 	let sendPopupText = $state('');
 	let sendPopupInput: HTMLInputElement | undefined = $state();
+
+	// Sticky modifier chips (관전 모드 전용) — buttons in the footer arm
+	// modifier(s) that apply to the next key press (desktop keydown
+	// branch) or the first byte of the next popup text submit (mobile).
+	// See ./stickyMods.ts for the key→byte mapping.
+	let stickyMods = $state<StickyMods>({ ctrl: false, alt: false, shift: false });
+
+	function toggleStickyMod(mod: keyof StickyMods): void {
+		stickyMods = { ...stickyMods, [mod]: !stickyMods[mod] };
+	}
+
+	function resetStickyMods(): void {
+		stickyMods = { ctrl: false, alt: false, shift: false };
+	}
+
+	// 더블탭으로 sticky 칩을 토글하는 단축키 상태머신. Ctrl/Alt/Shift 중
+	// 하나를 단독으로 두 번 연속 누르면 해당 칩이 토글된다. 클릭과 동일한
+	// 효과 — armed 상태에서 다시 더블탭하면 해제. See ./stickyDoubleTap.ts.
+	let doubleTapState: DoubleTapState = INITIAL_DOUBLE_TAP_STATE;
 
 	// 이미지 붙여넣기 (셸·관전 모드 모두). imageUploadCount > 0 → "업로드 중" 표시.
 	let imageUploadCount = $state(0);
@@ -193,16 +238,41 @@
 			closeSendPopup();
 			return;
 		}
+		if (pinnedOrdinal !== null) client?.selectPane(pinnedOrdinal);
+
+		const anyArmed = stickyMods.ctrl || stickyMods.alt || stickyMods.shift;
+
+		if (text.length > 0 && anyArmed) {
+			const transformed = applyStickyToText(text, stickyMods);
+			if (transformed !== null) {
+				client?.send(autoExecute ? transformed + '\r' : transformed);
+				resetStickyMods();
+				closeSendPopup();
+				return;
+			}
+			// 첫 글자 비대응 → 원본 전송, sticky 유지 (아래 default path로)
+		}
+
+		// 빈 텍스트 + autoExecute + Alt만 armed → \x1b\r
+		if (!text && autoExecute && stickyMods.alt && !stickyMods.ctrl && !stickyMods.shift) {
+			client?.send('\x1b\r');
+			resetStickyMods();
+			closeSendPopup();
+			return;
+		}
+
 		client?.sendCommand(text, autoExecute);
 		closeSendPopup();
 	}
 	/** One-tap injection of a literal key/sequence, bypassing the text field. */
 	function sendQuickKey(bytes: string): void {
+		if (pinnedOrdinal !== null) client?.selectPane(pinnedOrdinal);
 		client?.send(bytes);
 	}
 
 	/** 이미지 File 하나를 검증 후 브릿지로 전송. */
 	async function sendImageFile(file: File): Promise<void> {
+		if (pinnedOrdinal !== null) client?.selectPane(pinnedOrdinal);
 		const v = validateImageFile(file);
 		if (!v.ok) {
 			pushToast(v.error ?? '이미지를 보낼 수 없습니다.', { kind: 'error' });
@@ -304,12 +374,23 @@
 	 *   - `.xterm-mount` gets explicit width/height = natural dimensions
 	 *     and `transform: scale(s)` with `top left` origin. It renders
 	 *     visually at `naturalW * s × naturalH * s`.
-	 *   - `.xterm-stage` is sized at `naturalW * s × naturalH * s` —
+	 *   - `.xterm-stage` is sized at `naturalW * s × <stage_h>` —
 	 *     reserves the layout box so `.xterm-host`'s dimensions and
 	 *     `clientWidth` reflect the scaled footprint, preventing clipping
 	 *     of the transformed content.
 	 *
 	 * `min(host_w / naturalW, 1)` — width-fit, never scale up.
+	 *
+	 * Bottom-anchor for shell mode: when (1) we're rendering the live
+	 * main screen (not an alt-screen TUI) and (2) the user hasn't
+	 * scrolled into history, the stage height is set to
+	 * `n × cellH × scale` where `n` is the number of meaningful rows
+	 * (cursor + non-empty range). The host's `justify-content: flex-end`
+	 * anchors the shortened stage to the bottom, so cursor sits at the
+	 * bottom of the viewport — matching a real terminal feel. The mount
+	 * stays at natural height; stage's `overflow:hidden` clips the
+	 * trailing blank rows. For alt-screen TUIs or scrolled-up reading,
+	 * stage stays at full `naturalH × scale` so the entire pane shows.
 	 */
 	function applySpectatorFit(): void {
 		if (!isSpectator || !xtermContainer || !xtermStageEl || !xtermHostEl) return;
@@ -327,8 +408,39 @@
 		xtermContainer.style.transform = `scale(${scale})`;
 		// Stage: layout box at the scaled size so the host's scroll
 		// bounds reflect what the user actually sees.
+		const stageH = computeStageHeight(naturalH, scale);
 		xtermStageEl.style.width = `${naturalW * scale}px`;
-		xtermStageEl.style.height = `${naturalH * scale}px`;
+		xtermStageEl.style.height = `${stageH}px`;
+	}
+
+	/**
+	 * 셸 모드 + 라이브 맨 아래 고정일 때 콘텐츠 행 수만큼 stage 를 축소한다.
+	 * 그 외 (alt-screen TUI / 사용자가 스크롤백 위로 올린 상태) 는 전체 패널
+	 * 높이를 그대로 쓴다.
+	 *
+	 * `alternate` 판정은 xterm 내부 버퍼 타입을 직접 보기 때문에 (브릿지의
+	 * pane-switch.altScreen 스냅샷이 아닌) 같은 패널에서 vim 시작/종료처럼
+	 * DECSET 1049 토글이 일어나도 다음 데이터 콜백에서 즉시 반영된다.
+	 */
+	function computeStageHeight(naturalH: number, scale: number): number {
+		if (!term) return naturalH * scale;
+		const isAlt = term.buffer.active.type === 'alternate';
+		if (isAlt || !scrollState.atBottom) return naturalH * scale;
+		const R = term.rows;
+		if (R <= 0) return naturalH * scale;
+		const buf = term.buffer.active;
+		const viewportY = buf.viewportY;
+		const n = computeAnchorRows({
+			rows: R,
+			cursorY: buf.cursorY,
+			isRowEmpty: (row) => {
+				const line = buf.getLine(viewportY + row);
+				if (!line) return true;
+				return line.translateToString(true).trim().length === 0;
+			}
+		});
+		const cellH = naturalH / R;
+		return n * cellH * scale;
 	}
 
 	/** 관전 모드 스크롤 상태를 xterm 버퍼 좌표로부터 갱신한다. */
@@ -382,7 +494,7 @@
 	}
 
 	function onSpectatorTouchMove(e: TouchEvent): void {
-		if (touchLastY === null || !term || !xtermStageEl) return;
+		if (touchLastY === null || !term || !xtermContainer) return;
 		if (e.touches.length !== 1) {
 			touchLastY = null;
 			return;
@@ -390,7 +502,12 @@
 		const y = e.touches[0].clientY;
 		const deltaPx = y - touchLastY;
 		touchLastY = y;
-		const pxPerLine = xtermStageEl.clientHeight / term.rows;
+		// 한 줄당 화면 픽셀 = (스케일된 mount 높이) / term.rows.
+		// stage 는 셸 모드에서 콘텐츠 분량으로 축소되므로 stage.clientHeight 로
+		// 역산하면 안 된다 — mount 의 getBoundingClientRect 는 transform 을
+		// 반영한 실제 시각 픽셀이라 셀 높이의 진짜 값을 준다.
+		const mountRect = xtermContainer.getBoundingClientRect();
+		const pxPerLine = mountRect.height / term.rows;
 		const { lines, remainder } = accumulateTouchScroll(touchScrollRemainder, deltaPx, pxPerLine);
 		touchScrollRemainder = remainder;
 		// 손가락을 아래로 끌면 과거(위쪽) 출력이 드러나야 하므로 scrollLines 는 음수.
@@ -421,6 +538,65 @@
 	}
 
 	/**
+	 * Footer pane-button click router. Three branches:
+	 *  - 자물쇠 버튼 (n === pinnedOrdinal) → 고정 해제.
+	 *  - pin 없음 + 클릭한 번호가 이미 active → 그 번호로 고정.
+	 *  - 그 외 → 일반 select-pane(n).
+	 *
+	 * pin 활성 + 다른 번호 클릭은 footer가 disabled로 막아 여기까지 안 옴.
+	 * 토글 시 persistPinToNote()로 노트의 spectate: 라인을 즉시 갱신한다.
+	 */
+	async function onPaneNumClick(n: number): Promise<void> {
+		if (pinnedOrdinal === n) {
+			// Unpin: subscribe back to active pane (ordinal 0 = follow-active)
+			pinnedOrdinal = null;
+			client?.subscribePane(0);
+			await persistPinToNote(null);
+			return;
+		}
+		if (pinnedOrdinal === null && n === spectatorPaneOrdinal) {
+			// Pin to this pane
+			pinnedOrdinal = n;
+			client?.subscribePane(n);
+			await persistPinToNote(n);
+			return;
+		}
+		client?.selectPane(n);
+	}
+
+	/**
+	 * Persist the current pin state to the note by rewriting its `spectate:`
+	 * line. Called on every lock-icon toggle. `putNote` marks the note dirty
+	 * so Dropbox sync uploads on next manual sync; Firebase realtime sync
+	 * isn't triggered (no `notifyNoteSaved(guid)` call — that's only from
+	 * `noteManager.updateNoteFromEditor`), so cross-device pin propagation
+	 * waits for either a Dropbox round-trip or the other device opening
+	 * the note. Acceptable since pin is a per-device viewer pref.
+	 *
+	 * If the note no longer has a spectate: line (user removed it manually),
+	 * rewriteSpectateLine returns the input unchanged — we surface a toast and
+	 * keep in-memory pin so the user isn't silently betrayed.
+	 */
+	async function persistPinToNote(n: number | null): Promise<void> {
+		const sessionName = spec.spectate;
+		if (!sessionName) return; // shouldn't happen — pin is spectator-only
+		const note = await getNote(guid);
+		if (!note) return;
+		const updated = rewriteSpectateLine(note.xmlContent, sessionName, n);
+		if (updated === note.xmlContent) {
+			pushToast('고정을 저장할 수 없습니다 (노트 형식이 바뀌었습니다)', { kind: 'error' });
+			return;
+		}
+		const now = formatTomboyDate(new Date());
+		await putNote({
+			...note,
+			xmlContent: updated,
+			changeDate: now,
+			metadataChangeDate: now
+		});
+	}
+
+	/**
 	 * Whether keystrokes should flow into xterm at all. Mobile spectator
 	 * stays read-by-default — the on-screen keyboard popping up on every
 	 * tap would clobber the watch-only UX. Everywhere else (shell mode,
@@ -442,6 +618,7 @@
 	 * instead of a now-focused button.
 	 */
 	function handlePageClick(): void {
+		if (pinnedOrdinal !== null) client?.selectPane(pinnedOrdinal);
 		refocusTerminal();
 	}
 
@@ -470,6 +647,54 @@
 		if (!isSpectator || isMobile || !client || !pageEl) return;
 		const active = document.activeElement;
 		if (active && active !== document.body && !pageEl.contains(active)) return;
+
+		// 더블탭 분기 — Ctrl/Alt/Shift 단독 키. 두 번째 탭이 윈도우 안이면
+		// 토글, 아니면 첫 탭 등록. 단독 modifier keydown 자체는 어차피 셸로
+		// 의미 있는 바이트를 보내지 않으므로 항상 여기서 return.
+		const modName = modKeyFromEventKey(e.key);
+		if (modName) {
+			const decision = onStickyModKeydown(
+				doubleTapState,
+				modName,
+				e.repeat,
+				performance.now()
+			);
+			doubleTapState = decision.state;
+			if (decision.toggle) {
+				toggleStickyMod(decision.toggle);
+				e.preventDefault();
+				e.stopPropagation();
+			}
+			return;
+		}
+		// 비-modifier 키는 priming 무효화 (Ctrl+L 같은 chord 이후 단독 Ctrl 탭이
+		// "두 번째 탭"으로 오해되지 않도록).
+		doubleTapState = onStickyNonModKeydown(doubleTapState);
+
+		// 칩 자체에 키보드 포커스가 있으면 sticky 분기를 건너뛴다 — 그렇지
+		// 않으면 Alt-armed + Enter로 칩을 토글하려는 동작이 sticky-Alt+Enter
+		// 매칭에 가로채여 \x1b\r 가 셸로 가버리고 칩 토글이 안 된다.
+		// pane-nav 단축키는 칩 포커스와 무관하게 그대로 동작해야 하므로
+		// 전체 return 이 아니라 sticky 분기만 스킵.
+		const focusOnStickyChip =
+			active instanceof HTMLElement && !!active.closest('.sticky-mods');
+
+		// sticky 분기 — pane-nav 단축키 검사 이전. armed 상태일 때 대응
+		// 키면 변환 바이트 전송 + 모든 mod 해제 + 이벤트 차단. 비대응 키면
+		// preventDefault/stopPropagation 없이 return — capture 단계 끝나고
+		// target 단계에서 xterm이 정상 처리 (sticky는 유지).
+		if (!focusOnStickyChip && (stickyMods.ctrl || stickyMods.alt || stickyMods.shift)) {
+			const seq = computeStickyKeySequence(e, stickyMods);
+			if (seq !== null) {
+				client.send(seq);
+				resetStickyMods();
+				e.preventDefault();
+				e.stopPropagation();
+			}
+			return;
+		}
+
+		// 기존 pane-nav 단축키 (변경 없음)
 		if (!e.ctrlKey || e.altKey || e.metaKey) return;
 		const k = e.key.toLowerCase();
 		if (k !== 'h' && k !== 'l') return;
@@ -478,8 +703,29 @@
 		if (e.shiftKey) {
 			tmuxNav(k === 'h' ? 'prev-window' : 'next-window');
 		} else {
+			// Pin 활성 중에는 pane shift도 footer 1~5처럼 비활성.
+			// 이벤트는 이미 preventDefault 했으므로 ^H/^L이 셸로 가지는 않음.
+			if (pinnedOrdinal !== null) return;
 			tmuxNav(k === 'h' ? 'prev-pane' : 'next-pane');
 		}
+	}
+
+	/**
+	 * Companion to `handleWindowKeydown` — observes bare Ctrl/Alt/Shift
+	 * key-up events so the double-tap detector can prime its window. Only
+	 * a clean keyup (no other modifier still held + matched against a
+	 * pending keydown of the same mod) primes; combos like Ctrl+L don't.
+	 */
+	function handleWindowKeyup(e: KeyboardEvent): void {
+		if (!isSpectator || isMobile) return;
+		const modName = modKeyFromEventKey(e.key);
+		if (!modName) return;
+		doubleTapState = onStickyModKeyup(
+			doubleTapState,
+			modName,
+			{ ctrlKey: e.ctrlKey, altKey: e.altKey, shiftKey: e.shiftKey },
+			performance.now()
+		);
 	}
 
 	onMount(async () => {
@@ -526,7 +772,13 @@
 			cursorBlink: true,
 			theme: { background: '#1e1e1e' },
 			scrollback: 5000,
-			convertEol: false
+			convertEol: false,
+			// 사용자가 스크롤백 위로 올려서 과거 출력을 읽는 중에 타자를 치면
+			// xterm 기본값은 viewport 를 강제로 맨 아래로 스냅한다. 관전 모드
+			// 데스크탑에서는 이게 "타자 칠 때마다 자동 스크롤 복귀" 로 체감되어
+			// 매우 거슬리므로 비활성. 셸 모드도 동일하게 끄는 게 일관적 — 사용자가
+			// 명시적으로 ↓ 인디케이터를 누르거나 맨 아래로 드래그하면 복귀한다.
+			scrollOnUserInput: false
 		});
 
 		// Spectator mode skips OSC 133 capture, history wiring, the
@@ -617,7 +869,12 @@
 		}
 
 		if (isSpectator) {
-			term.onScroll(() => recomputeScroll());
+			term.onScroll(() => {
+				recomputeScroll();
+				// scrollState.atBottom 가 바뀌면 stage 높이도 바뀌어야 한다
+				// (스크롤백 열람 → 전체 높이, 다시 라이브 → 콘텐츠 분량).
+				applySpectatorFit();
+			});
 		}
 
 		client = new TerminalWsClient({
@@ -630,7 +887,13 @@
 			onData: (chunk) => {
 				if (term) {
 					term.write(chunk, () => {
-						if (isSpectator) recomputeScroll();
+						if (isSpectator) {
+							recomputeScroll();
+							// 새 데이터로 cursor / 마지막 비어있지 않은 행이 바뀌었을 수
+							// 있으므로 stage 높이도 다시 계산. alt-screen 진입/종료
+							// (DECSET 1049) 토글도 여기서 반영된다.
+							applySpectatorFit();
+						}
 					});
 				}
 			},
@@ -645,13 +908,21 @@
 					connectFired = true;
 					void runConnectScript(spec.connect, (line) => client?.send(line));
 				}
+				// 관전 모드 + pin 활성 → 구독 전환. Bridge handles independent
+				// live stream for the pinned pane — no selectPane needed.
+				if (isSpectator && s === 'open' && pinnedOrdinal !== null) {
+					client?.subscribePane(pinnedOrdinal);
+				}
 			},
 			onPaneSwitch: (info) => {
+				// Auto-clear unavailable banner when pane subscription re-resolves.
+				pinUnavailableInfo = null;
 				applyPaneSwitch(info);
 				try { term?.resize(info.cols, info.rows); } catch { /* ignore */ }
-				// term.resize triggers an async re-render; defer the fit one
-				// frame so .xterm's new natural dimensions have settled.
 				requestAnimationFrame(() => applySpectatorFit());
+			},
+			onPaneUnavailable: (info) => {
+				pinUnavailableInfo = info;
 			},
 			onPaneResize: ({ cols, rows }) => {
 				spectatorCols = cols;
@@ -704,6 +975,7 @@
 		// re-wiring the handler.
 		term.onData((data) => {
 			if (isSpectator && isMobile) return;
+			if (pinnedOrdinal !== null) client?.selectPane(pinnedOrdinal);
 			client?.send(data);
 		});
 
@@ -717,6 +989,7 @@
 		// textarea keydown handler, so we register on `window` with
 		// `capture: true`.
 		window.addEventListener('keydown', handleWindowKeydown, true);
+		window.addEventListener('keyup', handleWindowKeyup, true);
 		// 이미지 붙여넣기/드롭 — pageEl에 capture-phase로 등록해 xterm의 자체
 		// textarea 핸들러보다 먼저 가로챈다. 셸·관전 양 모드에서 모두 활성화된다.
 		if (pageEl) {
@@ -729,6 +1002,7 @@
 	onDestroy(() => {
 		unmounted = true;
 		window.removeEventListener('keydown', handleWindowKeydown, true);
+		window.removeEventListener('keyup', handleWindowKeyup, true);
 		if (pageEl) {
 			pageEl.removeEventListener('paste', handleImagePaste, true);
 			pageEl.removeEventListener('dragover', handleImageDragOver, true);
@@ -763,10 +1037,13 @@
 	function reconnect() {
 		if (!resolvedBridge || !resolvedToken) return;
 		resetSpectatorState(); // clear stale pane info so buttons reflect the new session
+		pinUnavailableInfo = null; // clear unavailable banner on reconnect
 		connectFired = false; // allow connect: script to re-run on next 'open'
 		// 이전 연결에서 in-flight 였던 이미지 업로드는 image-ok/error를 못 받았으므로
 		// 카운터가 stuck 상태일 수 있다 — 재연결 시 리셋해서 "업로드 중…" 버튼을 푼다.
 		imageUploadCount = 0;
+		resetStickyMods(); // 재연결 시 sticky 상태 잔존 방지
+		doubleTapState = INITIAL_DOUBLE_TAP_STATE; // 더블탭 priming 도 같이 초기화
 		client?.close();
 		term?.reset();
 		scrollState = INITIAL_SCROLL_STATE;
@@ -782,7 +1059,10 @@
 			onData: (chunk) => {
 				if (term) {
 					term.write(chunk, () => {
-						if (isSpectator) recomputeScroll();
+						if (isSpectator) {
+							recomputeScroll();
+							applySpectatorFit();
+						}
 					});
 				}
 			},
@@ -795,10 +1075,18 @@
 					connectFired = true;
 					void runConnectScript(spec.connect, (line) => client?.send(line));
 				}
+				if (isSpectator && s === 'open' && pinnedOrdinal !== null) {
+					client?.subscribePane(pinnedOrdinal);
+				}
 			},
 			onPaneSwitch: (info) => {
+				// Auto-clear unavailable banner when pane subscription re-resolves.
+				pinUnavailableInfo = null;
 				applyPaneSwitch(info);
 				try { term?.resize(info.cols, info.rows); } catch { /* ignore */ }
+			},
+			onPaneUnavailable: (info) => {
+				pinUnavailableInfo = info;
 			},
 			onPaneResize: ({ cols, rows }) => {
 				spectatorCols = cols;
@@ -876,6 +1164,12 @@
 		<div class="banner" class:banner-error={status === 'error' || bridgeMissing}>{statusMessage}</div>
 	{/if}
 
+	{#if pinUnavailableInfo}
+		<div class="banner banner-pin-unavailable">
+			패널 {pinUnavailableInfo.pinnedOrdinal}번 없음 (현재 윈도우 패널 {pinUnavailableInfo.paneCount}개)
+		</div>
+	{/if}
+
 	{#if shellHintVisible}
 		<div class="banner banner-hint">
 			셸 통합이 감지되지 않았습니다. 명령어가 자동으로 기록되지 않습니다.
@@ -938,13 +1232,47 @@
 
 	{#if isSpectator}
 		<div class="spec-footer" role="toolbar" aria-label="관전 도구">
-			<div class="spec-windowbar" aria-live="polite">
-				{#if spectatorWindowIndex || spectatorWindowName}
-					<span class="win-idx">{spectatorWindowIndex}</span>
-					<span class="win-name">{spectatorWindowName || '(이름 없음)'}</span>
-				{:else}
-					<span class="win-placeholder">윈도우 정보 대기 중…</span>
-				{/if}
+			<div class="spec-windowbar">
+				<div class="win-label" aria-live="polite">
+					{#if spectatorWindowIndex || spectatorWindowName}
+						<span class="win-idx">{spectatorWindowIndex}</span>
+						<span class="win-name">{spectatorWindowName || '(이름 없음)'}</span>
+					{:else}
+						<span class="win-placeholder">윈도우 정보 대기 중…</span>
+					{/if}
+				</div>
+				<div class="sticky-mods" role="group" aria-label="고정 modifier 키">
+					<button
+						type="button"
+						class="sticky-chip"
+						class:armed={stickyMods.ctrl}
+						aria-pressed={stickyMods.ctrl}
+						aria-label="Ctrl 키 고정 (Ctrl 두 번 눌러 토글)"
+						title="다음 키에 Ctrl 적용 — Ctrl 두 번 눌러도 토글"
+						onclick={() => toggleStickyMod('ctrl')}
+						disabled={status !== 'open'}
+					>Ctrl</button>
+					<button
+						type="button"
+						class="sticky-chip"
+						class:armed={stickyMods.alt}
+						aria-pressed={stickyMods.alt}
+						aria-label="Alt 키 고정 (Alt 두 번 눌러 토글)"
+						title="다음 키에 Alt 적용 — Alt 두 번 눌러도 토글"
+						onclick={() => toggleStickyMod('alt')}
+						disabled={status !== 'open'}
+					>Alt</button>
+					<button
+						type="button"
+						class="sticky-chip"
+						class:armed={stickyMods.shift}
+						aria-pressed={stickyMods.shift}
+						aria-label="Shift 키 고정 (Shift 두 번 눌러 토글)"
+						title="다음 키에 Shift 적용 — Shift 두 번 눌러도 토글"
+						onclick={() => toggleStickyMod('shift')}
+						disabled={status !== 'open'}
+					>Shift</button>
+				</div>
 			</div>
 			<div class="spec-controls">
 				<div class="spec-group">
@@ -959,11 +1287,17 @@
 						<button
 							type="button"
 							class="icon pane-num"
-							class:active={n === spectatorPaneOrdinal}
-							title="패널 {n}"
-							onclick={() => selectPane(n)}
-							disabled={status !== 'open' || (spectatorPaneCount > 0 && n > spectatorPaneCount)}
-						>{n}</button>
+							class:active={n === spectatorPaneOrdinal && pinnedOrdinal === null}
+							class:pinned={n === pinnedOrdinal}
+							class:unavailable={n === pinnedOrdinal && pinUnavailableInfo !== null}
+							title={n === pinnedOrdinal
+								? `패널 ${n} 고정 (해제하려면 다시 누르세요)`
+								: `패널 ${n}`}
+							onclick={() => onPaneNumClick(n)}
+							disabled={status !== 'open'
+								|| (n !== pinnedOrdinal && spectatorPaneCount > 0 && n > spectatorPaneCount)
+								|| (pinnedOrdinal !== null && n !== pinnedOrdinal)}
+						>{#if n === pinnedOrdinal}🔒{/if}{n}</button>
 					{/each}
 					<button
 						type="button"
@@ -1012,6 +1346,14 @@
 			onkeydown={(e) => e.stopPropagation()}
 		>
 			<div class="send-title">활성 패널로 전송</div>
+			{#if stickyMods.ctrl || stickyMods.alt || stickyMods.shift}
+				<div class="send-sticky-badge" role="status">
+					{#if stickyMods.ctrl}<span class="badge-tag">Ctrl+</span>{/if}
+					{#if stickyMods.alt}<span class="badge-tag">Alt+</span>{/if}
+					{#if stickyMods.shift}<span class="badge-tag">Shift+</span>{/if}
+					<span class="badge-desc">다음 키에 적용됩니다</span>
+				</div>
+			{/if}
 			<input
 				type="text"
 				class="send-input"
@@ -1045,8 +1387,14 @@
 				<button type="button" onclick={() => sendQuickKey('\r')}>↵</button>
 				<button type="button" onclick={() => sendQuickKey('\x1b')}>Esc</button>
 				<button type="button" onclick={() => sendQuickKey('\x03')}>^C</button>
+				<button type="button" title="Tab (자동완성)" onclick={() => sendQuickKey('\t')}>Tab</button>
+				<button type="button" title="Backspace" onclick={() => sendQuickKey('\x7f')}>⌫</button>
 				<button type="button" title="Page Up (TUI 내부 스크롤)" onclick={() => sendQuickKey('\x1b[5~')}>PgUp</button>
 				<button type="button" title="Page Down (TUI 내부 스크롤)" onclick={() => sendQuickKey('\x1b[6~')}>PgDn</button>
+				<button type="button" title="왼쪽 화살표" onclick={() => sendQuickKey('\x1b[D')}>←</button>
+				<button type="button" title="아래 화살표" onclick={() => sendQuickKey('\x1b[B')}>↓</button>
+				<button type="button" title="위 화살표" onclick={() => sendQuickKey('\x1b[A')}>↑</button>
+				<button type="button" title="오른쪽 화살표" onclick={() => sendQuickKey('\x1b[C')}>→</button>
 			</div>
 			<div class="send-image-row">
 				<button
@@ -1157,13 +1505,23 @@
 	}
 	.spec-windowbar {
 		display: flex;
-		align-items: baseline;
+		align-items: center;
+		justify-content: space-between;
 		gap: 6px;
+		flex-wrap: wrap;
 		font-size: 0.75rem;
 		line-height: 1.2;
 		color: #aac;
 		min-height: 1em;
 		min-width: 0;
+	}
+	.spec-windowbar .win-label {
+		display: flex;
+		align-items: baseline;
+		gap: 6px;
+		flex: 1 1 auto;
+		min-width: 0;
+		overflow: hidden;
 	}
 	.spec-windowbar .win-idx {
 		color: #6cf;
@@ -1181,6 +1539,42 @@
 		min-width: 0;
 	}
 	.spec-windowbar .win-placeholder { color: #667; font-style: italic; }
+	.sticky-mods {
+		display: flex;
+		gap: 4px;
+		flex-wrap: wrap;
+		flex-shrink: 0;
+	}
+	.spec-windowbar .sticky-chip {
+		font-size: 0.7rem;
+		padding: 2px 8px;
+		border: 1px solid #557;
+		background: transparent;
+		color: #aac;
+		border-radius: 999px;
+		cursor: pointer;
+		line-height: 1.2;
+		min-height: 1.4em;
+		font-family: ui-monospace, Menlo, Consolas, monospace;
+	}
+	.spec-windowbar .sticky-chip:hover:not(:disabled) {
+		border-color: #779;
+		color: #ccd;
+	}
+	.spec-windowbar .sticky-chip:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+	.spec-windowbar .sticky-chip.armed {
+		background: #6cf;
+		color: #1e1e1e;
+		border-color: #6cf;
+		font-weight: 600;
+	}
+	.spec-windowbar .sticky-chip:focus-visible {
+		outline: 2px solid #6cf;
+		outline-offset: 1px;
+	}
 	.spec-controls {
 		display: flex;
 		align-items: center;
@@ -1219,6 +1613,15 @@
 		background: #2563eb;
 		border-color: #5b8def;
 		color: #fff;
+	}
+	.spec-footer button.pane-num.pinned {
+		background: #2563eb;
+		border-color: #5b8def;
+		color: #fff;
+	}
+	.spec-footer button.pane-num.pinned.unavailable {
+		border-color: #f0c000;
+		box-shadow: inset 0 0 0 1px #f0c000;
 	}
 	.spec-footer button:active {
 		background: #4a4a4a;
@@ -1278,6 +1681,13 @@
 		gap: 6px;
 	}
 	.banner-hint a { color: #9bf; }
+	.banner-pin-unavailable {
+		background: #fff8e1;
+		color: #6b5b00;
+		border-left: 3px solid #f0c000;
+		padding: 6px 10px;
+		font-size: 0.85em;
+	}
 	.banner-close {
 		margin-left: auto;
 		background: transparent;
@@ -1322,8 +1732,14 @@
 	   scroller. Horizontal is always hidden — width fit guarantees no
 	   horizontal overflow. */
 	.terminal-page.spectator .xterm-host {
-		/* Bottom-anchor the scaled pane: when it's taller than the host
-		   the TOP overflows and is clipped, keeping prompt/cursor visible. */
+		/* Bottom-anchor the stage to the host's bottom edge. In shell mode
+		   the stage is sized to the meaningful content rows
+		   (computeStageHeight → n × cellH × scale), so flex-end anchors
+		   the cursor row to the host bottom and the empty terminal-page
+		   background fills above. In alt-screen / scrolled-up mode the
+		   stage is full naturalH × scale; if it exceeds host height the
+		   TOP overflows and is clipped (standard "tall pane scrolled
+		   into the visible area" behavior). */
 		display: flex;
 		flex-direction: column;
 		justify-content: flex-end;
@@ -1343,8 +1759,13 @@
 		/* Keep the explicit scaled height — never let the flex parent
 		   shrink the stage. A taller-than-host pane must overflow the TOP
 		   (clipped), not compress; compression would desync the absolute
-		   .xterm-mount and the touch-scroll pxPerLine math. */
+		   .xterm-mount. */
 		flex-shrink: 0;
+		/* Stage 가 셸 모드에서 콘텐츠 분량(n × cellH × scale) 으로 축소되었을 때
+		   mount 의 자연 높이(R × cellH × scale) 가 stage 밖으로 (= 아래로)
+		   넘치는 부분을 잘라낸다. mount 의 0..n-1 행만 보이고 n..R-1 의 빈
+		   셀들은 stage 박스 바깥이 되어 paint 도 hit-test 도 안 된다. */
+		overflow: hidden;
 	}
 	.terminal-page.spectator .xterm-mount {
 		/* width / height / transform set inline by applySpectatorFit. */
@@ -1413,6 +1834,26 @@
 	.send-title {
 		font-size: 0.85rem;
 		color: #cfe;
+	}
+	.send-sticky-badge {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		flex-wrap: wrap;
+		font-size: 0.85rem;
+		padding: 6px 10px;
+		background: rgba(102, 204, 255, 0.12);
+		border: 1px solid rgba(102, 204, 255, 0.35);
+		border-radius: 6px;
+		color: #cde;
+	}
+	.send-sticky-badge .badge-tag {
+		font-family: ui-monospace, Menlo, Consolas, monospace;
+		font-weight: 600;
+		color: #6cf;
+	}
+	.send-sticky-badge .badge-desc {
+		opacity: 0.85;
 	}
 	.send-input {
 		background: #1e1e1e;

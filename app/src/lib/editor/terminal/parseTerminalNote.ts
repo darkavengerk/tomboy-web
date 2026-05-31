@@ -39,6 +39,16 @@ export interface TerminalNoteSpec {
 	 * Pinned items always render above history in the panel.
 	 */
 	pinneds: Map<string, string[]>;
+	/**
+	 * Pinned spectator pane ordinal (1..5), encoded in the note as
+	 * `spectate: <session>:<N>`. When set, the spectator view sticks to the
+	 * N-th pane (1-based, matching the footer button ordinals) instead of
+	 * following the desktop's active pane. Out-of-range or non-integer
+	 * suffixes are silently dropped (the session name keeps its colon-prefix
+	 * portion as-is); non-numeric suffixes leave the colon attached to the
+	 * session name.
+	 */
+	pinnedPane?: number;
 }
 
 const SSH_RE = /^ssh:\/\/(?:([^@\s/]+)@)?([^:\s/]+)(?::(\d{1,5}))?\/?\s*$/;
@@ -89,6 +99,7 @@ export function parseTerminalNote(doc: JSONContent | null | undefined): Terminal
 	// most once. Any other content makes the note fall back to a regular note.
 	let bridge: string | undefined;
 	let spectate: string | undefined;
+	let pinnedPane: number | undefined;
 	for (let k = 1; k < meta.length; k++) {
 		const text = paragraphText(meta[k]);
 		if (text === null) return null;
@@ -101,7 +112,20 @@ export function parseTerminalNote(doc: JSONContent | null | undefined): Terminal
 		const spectateMatch = SPECTATE_RE.exec(text);
 		if (spectateMatch) {
 			if (spectate !== undefined) return null;
-			spectate = spectateMatch[1];
+			const raw = spectateMatch[1];
+			const pinMatch = /^(.+):(\d+)$/.exec(raw);
+			if (pinMatch) {
+				const n = Number(pinMatch[2]);
+				if (Number.isInteger(n) && n >= 1 && n <= 5) {
+					spectate = pinMatch[1];
+					pinnedPane = n;
+				} else {
+					spectate = pinMatch[1];
+					// pinnedPane stays undefined.
+				}
+			} else {
+				spectate = raw;
+			}
 			continue;
 		}
 		return null;
@@ -188,7 +212,8 @@ export function parseTerminalNote(doc: JSONContent | null | undefined): Terminal
 		histories,
 		history,
 		connect: connect ?? [],
-		pinneds
+		pinneds,
+		pinnedPane
 	};
 }
 
@@ -251,4 +276,29 @@ function listItemText(item: JSONContent): string {
 		}
 	}
 	return out;
+}
+
+/**
+ * `<note-content>` 내부의 첫 번째 `spectate:` 라인을 in-place 치환한다.
+ * ProseMirror JSON round-trip 없이 raw XML 텍스트 노드만 건드리는 보수적 접근:
+ * `spectate:` 라인은 메타 라인이라 mark가 거의 없고, 있어도 텍스트 부분만
+ * 교체하면 마크 자체는 자동으로 보존된다.
+ *
+ * - `n === null`: `:<N>` 부분 제거. 라인은 `spectate: <session>` 으로 남음.
+ * - `n` (1..5): `:<N>` 부분 추가/교체. 라인은 `spectate: <session>:<n>` 가 됨.
+ * - 라인이 없으면 입력을 그대로 반환 (no-op).
+ *
+ * 첫 번째 매칭만 치환. 다중 spectate: 라인은 파서가 reject 하므로 실제로는
+ * 발생하지 않지만 방어적으로 첫 인스턴스만 건드린다.
+ */
+export function rewriteSpectateLine(
+	xmlContent: string,
+	session: string,
+	n: number | null
+): string {
+	const re = /spectate:\s*([^\n<]+)/;
+	const m = re.exec(xmlContent);
+	if (!m) return xmlContent;
+	const replacement = n === null ? `spectate: ${session}` : `spectate: ${session}:${n}`;
+	return xmlContent.slice(0, m.index) + replacement + xmlContent.slice(m.index + m[0].length);
 }

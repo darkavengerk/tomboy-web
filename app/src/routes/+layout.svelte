@@ -16,6 +16,8 @@
 	} from '$lib/schedule/flushScheduler.js';
 	import { subscribeForegroundMessages } from '$lib/schedule/notification.js';
 	import { installRealNoteSync } from '$lib/sync/firebase/install.js';
+	import { installBacklinkIndex } from '$lib/core/backlinkIndex.js';
+	import { installImageFetchers } from '$lib/imageCache/fetchers/install.js';
 	import { pushToast } from '$lib/stores/toast.js';
 	import { getAllNotes } from '$lib/storage/noteStore.js';
 	import { favoriteStore } from '$lib/storage/favoriteStore.svelte.js';
@@ -136,6 +138,14 @@
 		// 즐겨찾기 — 로컬 전용 set 을 appSettings 에서 복원.
 		void favoriteStore.load();
 
+		// 이미지 캐시 fetcher 등록 — Dropbox SDK 우회로 등이 lookupOrFetch
+		// 미스 경로에서 활성화됨. idempotent.
+		installImageFetchers();
+
+		// 백링크 인덱스 빌드 — IDB read만 하므로 auth 와 무관. 가능한 한 빨리
+		// 시작해서 첫 번째 rename sweep 전까지 따뜻하게 유지.
+		installBacklinkIndex();
+
 		// 일정 알림: 온라인 복귀 시 미발신 diff 자동 flush + 시작 시 한 번 시도.
 		installOnlineFlushListener();
 		void flushIfEnabled();
@@ -246,38 +256,24 @@
 
 <style>
 	.app-shell {
-		/* Fill the dynamic viewport; when the on-screen keyboard is open,
-		   `--keyboard-inset` (set by bindViewportHeight) shrinks the
-		   content area from the bottom so the toolbar lands right above
-		   the keyboard. See lib/viewport/viewportHeight.ts for the
-		   rationale — pinning to `visualViewport.height` instead caused
-		   blank space when the Safari URL bar was visible and visibly
-		   fought iOS's scroll-to-focus. */
-		position: fixed;
-		top: 0;
-		left: 0;
-		right: 0;
-		height: 100vh;
-		height: 100dvh;
-		padding-bottom: var(--keyboard-inset, 0px);
-		box-sizing: border-box;
+		/* 모바일 route 는 body 가 scrollable. shell 은 일반 flex column,
+		   viewport 를 최소로 채우게 min-height. TopNav 는 sticky top,
+		   하단 toolbar 는 fixed bottom (키보드 inset 적용). 키보드가
+		   뜨면 OS 가 body 를 scroll 해서 cursor 를 visible 영역으로
+		   올려줌 — 우리가 vv panning 을 추적할 필요 없음. */
 		display: flex;
 		flex-direction: column;
-		overflow: hidden;
+		min-height: 100dvh;
 	}
 
-	/* When embedded (in an iframe) or on the desktop route, the settings page
-	   still needs a flex column container so its inner layout (which uses
-	   height:100%) sizes correctly. */
+	/* desktop route (multi-window) 와 embedded 모드는 페이지 scroll 이
+	   의미 없으므로 fixed 유지. 키보드 inset 만 적용. */
 	.chromeless {
 		position: fixed;
 		top: 0;
 		left: 0;
 		right: 0;
-		height: 100vh;
-		height: 100dvh;
-		padding-bottom: var(--keyboard-inset, 0px);
-		box-sizing: border-box;
+		bottom: var(--keyboard-inset, 0px);
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
@@ -290,7 +286,6 @@
 
 	.content {
 		flex: 1;
-		overflow: hidden;
 		display: flex;
 		flex-direction: column;
 		min-height: 0;

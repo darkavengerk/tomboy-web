@@ -24,6 +24,8 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { isImageUrl } from './isImageUrl.js';
 import { imageViewer } from '$lib/stores/imageViewer.svelte.js';
+import * as pool from '../../imageCache/objectUrlPool.js';
+import * as imageCache from '../../imageCache/imageCache.js';
 
 export const imagePreviewPluginKey = new PluginKey<PluginState>('tomboyImagePreview');
 
@@ -113,15 +115,40 @@ function buildState(doc: PMNode): PluginState {
 	return { decorations: DecorationSet.create(doc, decos), ranges };
 }
 
-function renderImagePreview(range: ImageUrlRange): HTMLElement {
+export function renderImagePreview(href: string): HTMLImageElement;
+export function renderImagePreview(range: ImageUrlRange): HTMLElement;
+export function renderImagePreview(rangeOrHref: ImageUrlRange | string): HTMLElement {
+	const range: ImageUrlRange =
+		typeof rangeOrHref === 'string'
+			? { href: rangeOrHref, from: 0, to: 0 }
+			: rangeOrHref;
+
 	const img = document.createElement('img');
-	img.src = range.href;
 	img.alt = '';
 	img.className = 'tomboy-image-preview';
 	img.loading = 'lazy';
 	img.decoding = 'async';
 	img.setAttribute('contenteditable', 'false');
 	img.draggable = false;
+
+	// ── Image cache integration ─────────────────────────────────────────
+	// Synchronous pool hit → use ObjectURL immediately (no flicker).
+	// Miss → set original URL as fallback, then kick off async lookup.
+	const sync = pool.peek(range.href);
+	if (sync) {
+		img.src = sync;
+	} else {
+		img.src = range.href; // fallback — preserved current behavior
+		imageCache
+			.lookupOrFetch(range.href)
+			.then((r) => {
+				if (r.src !== img.src) img.src = r.src;
+			})
+			.catch(() => {
+				// cache failure → fallback URL keeps showing
+			});
+	}
+	// ───────────────────────────────────────────────────────────────────
 
 	// Block ProseMirror's selection-on-mousedown so tapping the image
 	// doesn't move the caret onto the (hidden) URL or steal editor focus

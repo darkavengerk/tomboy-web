@@ -20,8 +20,6 @@
 }
 
 html, body {
-	height: 100%;
-	overflow: hidden;
 	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 	font-size: 16px;
 	color: var(--color-text);
@@ -29,6 +27,12 @@ html, body {
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 	-webkit-text-size-adjust: 100%;
+}
+
+/* overscroll-behavior 로 page 가 scroll 끝에 닿았을 때 bounce 와
+   pull-to-refresh 를 막아 mobile 앱 같은 느낌은 유지. */
+html {
+	overscroll-behavior: none;
 }
 
 a {
@@ -45,4 +49,23 @@ button {
 /* Prevent iOS tap highlight */
 * {
 	-webkit-tap-highlight-color: transparent;
+}
+
+.tomboy-chart-error {
+	border: 1px solid #ef4444;
+	background: #fef2f2;
+	color: #b91c1c;
+	border-radius: 8px;
+	padding: 8px 12px;
+	font-size: 0.9em;
+}
+.tomboy-chart-widget {
+	margin: 8px 0;
+	max-width: 100%;
+}
+
+/* Config list of a checked chart block — hidden while the chart shows.
+   Uncheck the header checkbox to reveal and edit the settings again. */
+.tomboy-chart-config-hidden {
+	display: none;
 }

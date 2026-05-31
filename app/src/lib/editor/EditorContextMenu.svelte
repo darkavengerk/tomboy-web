@@ -18,9 +18,10 @@
 		y: number;
 		onclose: () => void;
 		oninternallink?: (target: string) => void;
+		onuploadfile?: (file: File) => void;
 	}
 
-	let { editor, x, y, onclose, oninternallink }: Props = $props();
+	let { editor, x, y, onclose, oninternallink, onuploadfile }: Props = $props();
 
 	let formatSubmenuOpen = $state(false);
 
@@ -159,6 +160,29 @@
 			oninternallink?.(info.target);
 		}
 	}
+
+	// 파일 첨부: spin up a transient <input type=file>, trigger it, and pass
+	// the selected file to the parent callback. The input is appended to
+	// document.body so the click is treated as a user-gesture; it's removed
+	// via either the onchange handler (file picked) or the oncancel handler
+	// (picker dismissed without selection) so the element never leaks.
+	function openFilePicker() {
+		if (!onuploadfile) return;
+		const input = document.createElement('input');
+		input.type = 'file';
+		input.style.display = 'none';
+		input.onchange = (e: Event) => {
+			const target = e.target as HTMLInputElement;
+			const file = target.files?.[0];
+			if (file) onuploadfile?.(file);
+			target.value = '';
+			input.remove();
+		};
+		input.oncancel = () => input.remove();
+		document.body.appendChild(input);
+		input.click();
+		close();
+	}
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -201,6 +225,9 @@
 	<button class="item" onclick={doPaste}>붙여넣기</button>
 	<div class="sep"></div>
 	<button class="item" onclick={doInsertDate}>오늘 날짜 삽입</button>
+	{#if onuploadfile}
+		<button class="item" onclick={openFilePicker}>파일 첨부</button>
+	{/if}
 	<button class="item" onclick={doToggleList}>리스트로 만들기</button>
 	{#if inList}
 		<button class="item" onclick={doLift}>깊이 ↑ (Alt+←)</button>

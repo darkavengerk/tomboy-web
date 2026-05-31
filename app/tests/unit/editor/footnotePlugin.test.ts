@@ -4,7 +4,8 @@ import StarterKit from '@tiptap/starter-kit';
 import type { JSONContent } from '@tiptap/core';
 
 import {
-	TomboyFootnote,
+	FootnoteMarker,
+	TomboyFootnoteExtension,
 	footnotePluginKey
 } from '$lib/editor/footnote/index.js';
 
@@ -17,35 +18,30 @@ let currentEditor: Editor | null = null;
 afterEach(() => {
 	currentEditor?.destroy();
 	currentEditor = null;
-	// 테스트 간 격리: mockTouch 가 심은 matchMedia 제거.
-	(window as { matchMedia?: typeof window.matchMedia }).matchMedia = undefined;
-	document
-		.querySelectorAll('.tomboy-fn-preview')
-		.forEach((el) => el.remove());
 });
 
-function mockTouch(isTouch: boolean): void {
-	// jsdom 은 matchMedia 를 구현하지 않아 직접 심는다.
-	window.matchMedia = ((q: string) => ({
-		matches: isTouch,
-		media: q,
-		onchange: null,
-		addEventListener() {},
-		removeEventListener() {},
-		addListener() {},
-		removeListener() {},
-		dispatchEvent: () => false
-	})) as typeof window.matchMedia;
-}
-
-const P = (text: string): JSONContent => ({
-	type: 'paragraph',
-	content: text ? [{ type: 'text', text }] : []
-});
+/**
+ * 단락 빌더 — 문자열은 text 노드, `{ fn }` 객체는 footnoteMarker 노드.
+ * 예: `P('본문 ', { fn: '7' }, ' 끝')`
+ *   → paragraph[text('본문 '), footnoteMarker(label=7), text(' 끝')]
+ * 빈 문자열은 무시되므로 마커로만 구성된 단락은 `P({ fn: '7' }, ' 정의')`.
+ */
+type Part = string | { fn: string };
+const P = (...parts: Part[]): JSONContent => {
+	const content: JSONContent[] = [];
+	for (const p of parts) {
+		if (typeof p === 'string') {
+			if (p.length > 0) content.push({ type: 'text', text: p });
+		} else {
+			content.push({ type: 'footnoteMarker', attrs: { label: p.fn } });
+		}
+	}
+	return content.length ? { type: 'paragraph', content } : { type: 'paragraph' };
+};
 
 function makeEditor(blocks: JSONContent[], onMissing = () => {}): Editor {
 	currentEditor = new Editor({
-		extensions: [StarterKit, TomboyFootnote.configure({ onMissing })],
+		extensions: [StarterKit, FootnoteMarker, TomboyFootnoteExtension.configure({ onMissing })],
 		content: { type: 'doc', content: blocks }
 	});
 	return currentEditor;
@@ -63,38 +59,43 @@ function tapFootnote(e: Editor, selector: string): MouseEvent {
 	return event;
 }
 
-describe('footnote plugin decorations', () => {
-	it('builds 3 decorations per [^N] match', () => {
-		const e = makeEditor([P('제목'), P('가[^7] 나[^8]')]);
+describe('footnote plugin state', () => {
+	it('tracks matches across the document', () => {
+		const e = makeEditor([
+			P('제목'),
+			P('가', { fn: '7' }, ' 나', { fn: '8' })
+		]);
 		const st = footnotePluginKey.getState(e.state)!;
 		expect(st.matches).toHaveLength(2);
-		expect(st.decorations.find()).toHaveLength(6);
 	});
 
-	it('produces no decorations when there are no footnotes', () => {
+	it('exposes no matches when there are no footnotes', () => {
 		const e = makeEditor([P('제목'), P('각주 없음')]);
 		const st = footnotePluginKey.getState(e.state)!;
-		expect(st.decorations.find()).toHaveLength(0);
+		expect(st.matches).toHaveLength(0);
 	});
 
-	it('recomputes decorations when the document changes', () => {
+	it('recomputes matches when the document changes', () => {
 		const e = makeEditor([P('제목'), P('본문')]);
 		expect(footnotePluginKey.getState(e.state)!.matches).toHaveLength(0);
-		e.commands.insertContentAt(e.state.doc.content.size - 1, ' [^9]');
+		// 노드 기반 삽입 — text 가 아닌 footnoteMarker 노드 자체를 넣는다.
+		e.commands.insertContentAt(e.state.doc.content.size - 1, [
+			{ type: 'text', text: ' ' },
+			{ type: 'footnoteMarker', attrs: { label: '9' } }
+		]);
 		const st = footnotePluginKey.getState(e.state)!;
 		expect(st.matches).toHaveLength(1);
 		expect(st.matches[0].label).toBe('9');
-		expect(st.decorations.find()).toHaveLength(3);
 	});
 
 	it('renders a reference label as a superscript', () => {
-		const e = makeEditor([P('제목'), P('본문 [^7] 끝')]);
+		const e = makeEditor([P('제목'), P('본문 ', { fn: '7' }, ' 끝')]);
 		expect(e.view.dom.querySelector('sup.tomboy-fn-ref')).not.toBeNull();
 		expect(e.view.dom.querySelector('.tomboy-fn-def')).toBeNull();
 	});
 
 	it('renders a definition marker label at normal size, not a superscript', () => {
-		const e = makeEditor([P('제목'), P('[^7] 설명 내용')]);
+		const e = makeEditor([P('제목'), P({ fn: '7' }, ' 설명 내용')]);
 		expect(e.view.dom.querySelector('.tomboy-fn-def')).not.toBeNull();
 		expect(e.view.dom.querySelector('sup.tomboy-fn-ref')).toBeNull();
 	});
@@ -103,14 +104,14 @@ describe('footnote plugin decorations', () => {
 describe('footnote plugin tap (mousedown)', () => {
 	it('calls onMissing for a reference with no definition', () => {
 		const onMissing = vi.fn();
-		const e = makeEditor([P('제목'), P('본문 [^7]')], onMissing);
+		const e = makeEditor([P('제목'), P('본문 ', { fn: '7' })], onMissing);
 		tapFootnote(e, 'sup.tomboy-fn-ref');
 		expect(onMissing).toHaveBeenCalledWith('7', 'reference');
 	});
 
 	it('calls onMissing for a definition marker with no reference', () => {
 		const onMissing = vi.fn();
-		const e = makeEditor([P('제목'), P('[^7] 설명만 있음')], onMissing);
+		const e = makeEditor([P('제목'), P({ fn: '7' }, ' 설명만 있음')], onMissing);
 		tapFootnote(e, '.tomboy-fn-def');
 		expect(onMissing).toHaveBeenCalledWith('7', 'definition');
 	});
@@ -118,7 +119,7 @@ describe('footnote plugin tap (mousedown)', () => {
 	it('does not call onMissing when a partner exists', () => {
 		const onMissing = vi.fn();
 		const e = makeEditor(
-			[P('제목'), P('본문 [^7]'), P('[^7] 설명')],
+			[P('제목'), P('본문 ', { fn: '7' }), P({ fn: '7' }, ' 설명')],
 			onMissing
 		);
 		tapFootnote(e, 'sup.tomboy-fn-ref');
@@ -126,80 +127,12 @@ describe('footnote plugin tap (mousedown)', () => {
 	});
 
 	it('prevents the default on a footnote tap (no editor focus → no mobile keyboard)', () => {
-		const e = makeEditor([P('제목'), P('본문 [^7]'), P('[^7] 설명')]);
+		const e = makeEditor([
+			P('제목'),
+			P('본문 ', { fn: '7' }),
+			P({ fn: '7' }, ' 설명')
+		]);
 		const event = tapFootnote(e, 'sup.tomboy-fn-ref');
 		expect(event.defaultPrevented).toBe(true);
-	});
-});
-
-describe('footnote plugin 모바일 미리보기', () => {
-	it('참조 탭은 이동하지 않고 이동 버튼이 있는 미리보기를 띄운다', () => {
-		mockTouch(true);
-		const scroll = vi.spyOn(Element.prototype, 'scrollIntoView');
-		const e = makeEditor([P('제목'), P('본문 [^7]'), P('[^7] 라벨7 설명')]);
-		tapFootnote(e, 'sup.tomboy-fn-ref');
-		// 탭만으로는 이동하지 않음.
-		expect(scroll).not.toHaveBeenCalled();
-		const el = document.querySelector('.tomboy-fn-preview');
-		expect(el).not.toBeNull();
-		expect(el!.textContent).toContain('라벨7 설명');
-		// 이동 버튼 클릭 → 이동.
-		(document.querySelector('.tomboy-fn-preview-jump') as HTMLButtonElement).click();
-		expect(scroll).toHaveBeenCalled();
-		scroll.mockRestore();
-	});
-
-	it('짝 없는 참조 탭은 안내 미리보기를 띄우고 onMissing 을 부르지 않는다', () => {
-		mockTouch(true);
-		const onMissing = vi.fn();
-		const e = makeEditor([P('제목'), P('본문 [^7]')], onMissing);
-		tapFootnote(e, 'sup.tomboy-fn-ref');
-		const el = document.querySelector('.tomboy-fn-preview');
-		expect(el).not.toBeNull();
-		expect(el!.classList.contains('tomboy-fn-preview-missing')).toBe(true);
-		expect(onMissing).not.toHaveBeenCalled();
-	});
-
-	it('설명 마커 탭은 모바일에서도 미리보기 없이 즉시 이동한다', () => {
-		mockTouch(true);
-		const scroll = vi.spyOn(Element.prototype, 'scrollIntoView');
-		const e = makeEditor([P('제목'), P('본문 [^7]'), P('[^7] 설명')]);
-		tapFootnote(e, '.tomboy-fn-def');
-		expect(scroll).toHaveBeenCalled();
-		expect(document.querySelector('.tomboy-fn-preview')).toBeNull();
-		scroll.mockRestore();
-	});
-});
-
-function hoverFootnote(e: Editor, selector: string, type: 'mouseover' | 'mouseout'): void {
-	const el = e.view.dom.querySelector(selector);
-	if (!el) throw new Error(`footnote element not found: ${selector}`);
-	el.dispatchEvent(new MouseEvent(type, { bubbles: true }));
-}
-
-describe('footnote plugin 데스크탑 hover 미리보기', () => {
-	it('참조에 hover 하면 120ms 후 버튼 없는 미리보기가 뜬다', () => {
-		vi.useFakeTimers();
-		const e = makeEditor([P('제목'), P('본문 [^7]'), P('[^7] 라벨7 설명')]);
-		hoverFootnote(e, 'sup.tomboy-fn-ref', 'mouseover');
-		// 아직 지연 전 — 미리보기 없음.
-		expect(document.querySelector('.tomboy-fn-preview')).toBeNull();
-		vi.advanceTimersByTime(120);
-		const el = document.querySelector('.tomboy-fn-preview');
-		expect(el).not.toBeNull();
-		expect(el!.textContent).toContain('라벨7 설명');
-		// 데스크탑 hover 미리보기는 이동 버튼이 없다.
-		expect(document.querySelector('.tomboy-fn-preview-jump')).toBeNull();
-		vi.useRealTimers();
-	});
-
-	it('120ms 전에 mouseout 하면 미리보기가 뜨지 않는다', () => {
-		vi.useFakeTimers();
-		const e = makeEditor([P('제목'), P('본문 [^7]'), P('[^7] 라벨7 설명')]);
-		hoverFootnote(e, 'sup.tomboy-fn-ref', 'mouseover');
-		hoverFootnote(e, 'sup.tomboy-fn-ref', 'mouseout');
-		vi.advanceTimersByTime(200);
-		expect(document.querySelector('.tomboy-fn-preview')).toBeNull();
-		vi.useRealTimers();
 	});
 });

@@ -18,6 +18,8 @@
 		parseTerminalNote,
 		type TerminalNoteSpec
 	} from '$lib/editor/terminal/parseTerminalNote.js';
+	import KeysView from '$lib/editor/keyRemote/KeysView.svelte';
+	import { parseKeysNote, type KeysNoteSpec } from '$lib/editor/keyRemote/parseKeysNote.js';
 	import ChatSendBar from '$lib/editor/chatNote/ChatSendBar.svelte';
 	import RemarkableActionBar from '$lib/editor/remarkable/RemarkableActionBar.svelte';
 	import { parseOcrNote } from '$lib/ocrNote/parseOcrNote.js';
@@ -127,6 +129,9 @@
 	let terminalSpec: TerminalNoteSpec | null = $state.raw(null);
 	let terminalConnectMode = $state(false);
 	const showTerminal = $derived(!!terminalSpec && terminalConnectMode);
+	let keysSpec: KeysNoteSpec | null = $state.raw(null);
+	let keysConnectMode = $state(false);
+	const showKeys = $derived(!!keysSpec && keysConnectMode);
 
 	// Bridge settings for ChatSendBar — loaded once on mount from appSettings.
 	let llmBridgeUrl = $state('');
@@ -138,6 +143,7 @@
 	// the whole save pipeline (IDB read + XML serialize) when the incoming
 	// doc stringifies identically — catches the type-and-undo case cheaply.
 	let lastSavedDocFingerprint: string | null = null;
+	let flushChain: Promise<void> = Promise.resolve();
 
 	const isFavoriteState = $derived(note ? isFavorite(note) : false);
 	const currentNotebook = $derived(note ? getNotebook(note) : null);
@@ -222,6 +228,8 @@
 			editorContent = getNoteEditorContent(loaded);
 			terminalSpec = parseTerminalNote(editorContent);
 			terminalConnectMode = false;
+			keysSpec = parseKeysNote(editorContent);
+			keysConnectMode = false;
 			loading = false;
 
 			const homeGuid = await getHomeNoteGuid();
@@ -378,19 +386,25 @@
 		desktopSession.updateGeometry(guid, { x, y, width: newWidth, height });
 	}
 
-	async function flushSave(): Promise<void> {
-		if (!pendingDoc || !note) return;
-		const fingerprint = JSON.stringify(pendingDoc);
-		if (fingerprint === lastSavedDocFingerprint) {
+	function flushSave(): Promise<void> {
+		flushChain = flushChain.then(async () => {
+			if (!pendingDoc || !note) return;
+			const fingerprint = JSON.stringify(pendingDoc);
+			if (fingerprint === lastSavedDocFingerprint) {
+				pendingDoc = null;
+				return;
+			}
+			saving = true;
+			const updated = await updateNoteFromEditor(note.guid, pendingDoc);
+			if (updated) note = updated;
+			lastSavedDocFingerprint = fingerprint;
 			pendingDoc = null;
-			return;
-		}
-		saving = true;
-		const updated = await updateNoteFromEditor(note.guid, pendingDoc);
-		if (updated) note = updated;
-		lastSavedDocFingerprint = fingerprint;
-		pendingDoc = null;
-		saving = false;
+			saving = false;
+		}).catch((err) => {
+			console.error('[flushSave]', err);
+			saving = false;
+		});
+		return flushChain;
 	}
 
 	async function handleInternalLink(target: string) {
@@ -467,6 +481,8 @@
 		editorContent = getNoteEditorContent(fresh);
 		terminalSpec = parseTerminalNote(editorContent);
 		if (!terminalSpec) terminalConnectMode = false;
+		keysSpec = parseKeysNote(editorContent);
+		if (!keysSpec) keysConnectMode = false;
 		lastSavedDocFingerprint = null;
 		const ed = getEditor();
 		if (ed && editorContent) {
@@ -847,7 +863,7 @@
 		>✕</button>
 	</div>
 
-	<div class="body" class:terminal-edit={!!terminalSpec && !showTerminal}>
+	<div class="body" class:terminal-edit={(!!terminalSpec && !showTerminal) || (!!keysSpec && !showKeys)}>
 		{#if loading}
 			<div class="loading">로딩 중...</div>
 		{:else if showTerminal && terminalSpec}
@@ -856,6 +872,14 @@
 					spec={terminalSpec}
 					{guid}
 					onedit={() => (terminalConnectMode = false)}
+				/>
+			{/key}
+		{:else if showKeys && keysSpec}
+			{#key guid}
+				<KeysView
+					spec={keysSpec}
+					{guid}
+					onedit={() => (keysConnectMode = false)}
 				/>
 			{/key}
 		{:else}
@@ -917,11 +941,24 @@
 		>접속</button>
 	{/if}
 
-	{#if !loading && editorContent && isFocused && !showTerminal}
+	{#if keysSpec && !showKeys}
+		<button
+			type="button"
+			class="fab-terminal-connect"
+			class:above-toolbar={isFocused}
+			onclick={() => (keysConnectMode = true)}
+			aria-label="키 패드"
+			title="키 이벤트 — {keysSpec.raw}"
+			data-no-drag
+		>키</button>
+	{/if}
+
+	{#if !loading && editorContent && isFocused && !showTerminal && !showKeys}
 		<div class="toolbar-slot">
 			<Toolbar
 				editor={getEditor()}
 				onuploadimage={(file) => editorComponent?.uploadAndInsertImage(file)}
+				onuploadfile={(file) => editorComponent?.uploadAndInsertFile(file)}
 				onfind={() => editorComponent?.openFind()}
 			/>
 			{#if note}
@@ -1158,6 +1195,14 @@
 	.body :global(.tomboy-editor-shell) {
 		flex: 1;
 		min-height: 0;
+	}
+
+	/* desktop window 는 body scroll 이 없고 (chromeless) 윈도우 박스 안에서
+	   자체 scroll 해야 함. TomboyEditor 컴포넌트 자체는 모바일 body-scroll
+	   모델로 동작하므로 desktop 안에서만 inner scroll 을 복구. */
+	.body :global(.tomboy-editor) {
+		overflow-y: auto;
+		-webkit-overflow-scrolling: touch;
 	}
 
 	/* Bottom margin lives INSIDE the editor's scrollable content (on the

@@ -33,6 +33,11 @@ interface ClientOptions {
 	onPaneResize?: (info: { cols: number; rows: number }) => void;
 	/** Called when the bridge reports an image transfer result. */
 	onImageResult?: (ok: boolean, info: { path?: string; message?: string }) => void;
+	/**
+	 * Called when a pinned pane ordinal exceeds the current window's pane
+	 * count. The UI should surface a "pane unavailable" banner.
+	 */
+	onPaneUnavailable?: (info: { pinnedOrdinal: number; paneCount: number }) => void;
 }
 
 interface ServerMsg {
@@ -43,6 +48,7 @@ interface ServerMsg {
 		| 'ready'
 		| 'pane-switch'
 		| 'pane-resize'
+		| 'pane-unavailable'
 		| 'image-ok'
 		| 'image-error';
 	d?: string;
@@ -56,6 +62,7 @@ interface ServerMsg {
 	windowName?: string;
 	paneOrdinal?: number;
 	paneCount?: number;
+	pinnedOrdinal?: number;
 	path?: string;
 }
 
@@ -172,6 +179,17 @@ export class TerminalWsClient {
 				) {
 					this.opts.onPaneResize({ cols: msg.cols, rows: msg.rows });
 				}
+			} else if (msg.type === 'pane-unavailable') {
+				if (
+					this.opts.onPaneUnavailable &&
+					typeof msg.pinnedOrdinal === 'number' &&
+					typeof msg.paneCount === 'number'
+				) {
+					this.opts.onPaneUnavailable({
+						pinnedOrdinal: msg.pinnedOrdinal,
+						paneCount: msg.paneCount
+					});
+				}
 			} else if (msg.type === 'image-ok') {
 				this.opts.onImageResult?.(true, { path: msg.path });
 			} else if (msg.type === 'image-error') {
@@ -263,6 +281,18 @@ export class TerminalWsClient {
 		}
 	}
 
+	/**
+	 * Spectator-only: subscribe to a specific pane by 1-based ordinal.
+	 * ordinal >= 1 → pin to that pane in the current window.
+	 * ordinal === 0 → unpin (back to follow-active mode).
+	 * The bridge replies with `pane-unavailable` if the ordinal exceeds the
+	 * current window's pane count, or with `pane-switch` when the pin succeeds.
+	 */
+	subscribePane(ordinal: number): void {
+		if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+			this.ws.send(JSON.stringify({ type: 'subscribe-pane', ordinal }));
+		}
+	}
 
 	close(): void {
 		this.closed = true;
@@ -281,7 +311,7 @@ export class TerminalWsClient {
  * Accept either an `https://`/`http://` form or a `wss://`/`ws://` form for
  * the bridge URL — UX is friendlier when the user can paste either.
  */
-function bridgeToWsUrl(bridge: string): string {
+export function bridgeToWsUrl(bridge: string): string {
 	const trimmed = bridge.trim();
 	if (/^wss?:\/\//i.test(trimmed)) {
 		return appendWsPath(trimmed);

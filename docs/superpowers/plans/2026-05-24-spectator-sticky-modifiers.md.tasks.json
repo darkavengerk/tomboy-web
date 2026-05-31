@@ -1,0 +1,40 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-24-spectator-sticky-modifiers.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: stickyMods.ts 순수 함수 + 단위 테스트",
+      "status": "completed",
+      "description": "**Goal:** 키→바이트 매핑 로직을 순수 함수로 분리하고 vitest로 검증한다.\n\n**Files:**\n- Create: `app/src/lib/editor/terminal/stickyMods.ts`\n- Create: `app/tests/unit/editor/stickyMods.test.ts`\n\n**Verify:** `cd app && npm run test -- stickyMods` → 모든 테스트 PASS\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/stickyMods.ts\", \"app/tests/unit/editor/stickyMods.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- stickyMods\", \"acceptanceCriteria\": [\"StickyMods type exported\", \"computeStickyKeySequence covers all spec table cells\", \"applyStickyToText returns null for unsupported first char\", \"armed 없음 returns null\", \"Ctrl+L (uppercase) yields \\\\x0c\", \"24+ tests pass\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: 푸터 sticky 칩 UI + state",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "**Goal:** 관전 모드 푸터 윈도우 라벨 오른쪽에 Ctrl/Alt/Shift 토글 칩 3개를 렌더하고 클릭으로 armed 상태를 토글한다.\n\n**Files:**\n- Modify: `app/src/lib/editor/terminal/TerminalView.svelte`\n\n**Verify:** `cd app && npm run check` 새 오류 없음 + 수동 검증 (칩 렌더/토글)\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/TerminalView.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"stickyMods $state declared\", \"chips render in spectator mode only\", \"armed visual via .armed class\", \"disabled when status !== 'open'\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: 데스크탑 keydown sticky 분기",
+      "status": "completed",
+      "blockedBy": [1, 2],
+      "description": "**Goal:** 데스크탑 관전 모드 keydown 리스너에 sticky 분기를 추가, armed 상태에서 변환 바이트 전송 + 자동 해제. 기존 pane-nav는 보존.\n\n**Files:**\n- Modify: `app/src/lib/editor/terminal/TerminalView.svelte` (`handleWindowKeydown`, `reconnect`)\n\n**Verify:** 수동 — sticky-Ctrl+L 클리어, real Ctrl+L next-pane, sticky-Ctrl+Tab 유지\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/TerminalView.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"sticky branch precedes pane-nav\", \"matched: send+reset+prevent\", \"unmatched: sticky preserved + event continues\", \"reconnect resets sticky\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: 모바일 보내기 팝업 sticky 통합",
+      "status": "completed",
+      "blockedBy": [1, 2],
+      "description": "**Goal:** 모바일 보내기 팝업에 armed 뱃지 표시 + 텍스트 첫 바이트에 modifier 적용. 퀵키는 무시 + 유지.\n\n**Files:**\n- Modify: `app/src/lib/editor/terminal/TerminalView.svelte` (`sendPopupSubmit`, 팝업 마크업/CSS)\n\n**Verify:** 수동 (모바일 뷰포트) — 뱃지/변환/비대응/퀵키 시나리오\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/terminal/TerminalView.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"badge renders when any mod armed\", \"applyStickyToText on text submit\", \"matched first-char clears sticky\", \"quick-keys preserve sticky\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: 스킬 / CLAUDE.md 문서 갱신",
+      "status": "completed",
+      "blockedBy": [1, 2, 3, 4],
+      "description": "**Goal:** 스킬과 CLAUDE.md에 sticky modifier 기능 반영.\n\n**Files:**\n- Modify: `.claude/skills/tomboy-terminal/SKILL.md`, `CLAUDE.md`\n\n**Verify:** `grep -in 'sticky' .claude/skills/tomboy-terminal/SKILL.md CLAUDE.md` 두 파일 모두 매치\n\n```json:metadata\n{\"files\": [\".claude/skills/tomboy-terminal/SKILL.md\", \"CLAUDE.md\"], \"verifyCommand\": \"grep -in 'sticky' .claude/skills/tomboy-terminal/SKILL.md CLAUDE.md\", \"acceptanceCriteria\": [\"SKILL.md Client side table updated\", \"SKILL.md gains sticky subsection\", \"SKILL.md invariants gains entry\", \"CLAUDE.md mentions sticky\", \"CLAUDE.md Quick map lists stickyMods.ts\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-24T01:00:00Z"
+}

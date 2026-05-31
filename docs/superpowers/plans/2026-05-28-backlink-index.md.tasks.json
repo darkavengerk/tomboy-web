@@ -1,0 +1,47 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-28-backlink-index.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: backlinkIndex core API (extract + updateNote + getSourcesFor + clear)",
+      "status": "completed",
+      "description": "**Goal:** Land the pure in-memory index module — extraction, two-way map updates, lookup, clear — with full unit-test coverage. No IDB integration yet.\n\n**Files:**\n- Create: `app/src/lib/core/backlinkIndex.ts`\n- Create: `app/tests/unit/core/backlinkIndex.test.ts`\n\n**Verify:** `cd app && npm run test -- backlinkIndex.test.ts`\n\n```json:metadata\n{\"files\":[\"app/src/lib/core/backlinkIndex.ts\",\"app/tests/unit/core/backlinkIndex.test.ts\"],\"verifyCommand\":\"cd app && npm run test -- backlinkIndex.test.ts\",\"acceptanceCriteria\":[\"extractLinkTargets parses internal+broken marks with xml-unescape\",\"updateNote diffs forward map and updates both maps\",\"deleted=true purges all entries for the guid\",\"getSourcesFor returns ReadonlySet or undefined\",\"clear empties both maps\",\"symmetric invariant holds after every op\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Init lifecycle (installBacklinkIndex + ensureBacklinkIndexReady + layout wire-in)",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "**Goal:** Expose `installBacklinkIndex()` async-rebuild + `ensureBacklinkIndexReady()` awaitable, and wire into +layout.svelte next to installRealNoteSync.\n\n**Files:** `app/src/lib/core/backlinkIndex.ts`, `app/tests/unit/core/backlinkIndex.test.ts`, `app/src/routes/+layout.svelte:177`\n\n**Verify:** `cd app && npm run test -- backlinkIndex.test.ts && npm run check`\n\n```json:metadata\n{\"files\":[\"app/src/lib/core/backlinkIndex.ts\",\"app/tests/unit/core/backlinkIndex.test.ts\",\"app/src/routes/+layout.svelte\"],\"verifyCommand\":\"cd app && npm run test -- backlinkIndex.test.ts && npm run check\",\"acceptanceCriteria\":[\"installBacklinkIndex schedules async rebuild from IDB\",\"ensureBacklinkIndexReady awaits or resolves immediately\",\"repeat install replaces in-flight promise\",\"layout.svelte wires install before installRealNoteSync\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Wire backlinkIndex.updateNote into noteStore",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "**Goal:** Funnel every IDB write through backlinkIndex.updateNote — putNote, putNoteSynced, deleteNote.\n\n**Files:** `app/src/lib/storage/noteStore.ts:36-44, 51-54, 63-74`, `app/tests/unit/core/backlinkIndexStoreIntegration.test.ts`\n\n**Verify:** `cd app && npm run test && npm run check`\n\n```json:metadata\n{\"files\":[\"app/src/lib/storage/noteStore.ts\",\"app/tests/unit/core/backlinkIndexStoreIntegration.test.ts\"],\"verifyCommand\":\"cd app && npm run test && npm run check\",\"acceptanceCriteria\":[\"putNote populates index\",\"putNoteSynced updates index\",\"deleteNote purges entries for guid\",\"no caller-side changes required\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Rewrite rewriteBacklinksForRename using index + Promise.all",
+      "status": "completed",
+      "blockedBy": [2, 3],
+      "description": "**Goal:** Replace O(N × L) full-corpus scan with O(M) indexed sweep + Promise.all parallel writes.\n\n**Files:** `app/src/lib/core/noteManager.ts:172-198`, `app/tests/unit/core/rewriteBacklinksForRename.test.ts`\n\n**Verify:** `cd app && npm run test`\n\n```json:metadata\n{\"files\":[\"app/src/lib/core/noteManager.ts\",\"app/tests/unit/core/rewriteBacklinksForRename.test.ts\"],\"verifyCommand\":\"cd app && npm run test\",\"acceptanceCriteria\":[\"sweep uses index for source lookup\",\"Promise.all parallel writes\",\"soft-deleted skipped\",\"oldTitle===newTitle short-circuit\",\"empty sources short-circuit\",\"post-sweep index migrated to newTitle\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: flushSave serialization (both editor routes)",
+      "status": "completed",
+      "blockedBy": [4],
+      "description": "**Goal:** Chain consecutive flushSave calls via promise chain so a second cannot start until first (+ sweep) resolves.\n\n**Files:** `app/src/routes/note/[id]/+page.svelte:349-367`, `app/src/lib/desktop/NoteWindow.svelte:381-394`\n\n**Verify:** `cd app && npm run check && npm run test` + manual UI smoke\n\n```json:metadata\n{\"files\":[\"app/src/routes/note/[id]/+page.svelte\",\"app/src/lib/desktop/NoteWindow.svelte\"],\"verifyCommand\":\"cd app && npm run check && npm run test\",\"acceptanceCriteria\":[\"flushSave body wrapped in flushChain.then\",\"second call awaits first\",\"errors logged but chain survives\",\"Promise<void> return preserved\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: Admin tools — 백링크 인덱스 재구성 button",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "**Goal:** Manual rebuild action on /admin/tools. Clears index + re-scans all notes. No content modification.\n\n**Files:** `app/src/routes/admin/tools/+page.svelte`\n\n**Verify:** Manual smoke + `cd app && npm run check`\n\n```json:metadata\n{\"files\":[\"app/src/routes/admin/tools/+page.svelte\"],\"verifyCommand\":\"cd app && npm run check\",\"acceptanceCriteria\":[\"button labeled '백링크 인덱스 재구성' on /admin/tools\",\"click clears index and re-scans all notes\",\"button disabled during rebuild\",\"toast shows note count\",\"no note content modified\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-05-28T14:00:00Z"
+}

@@ -76,16 +76,25 @@
 		setTerminalHistoryBlocklist,
 		TERMINAL_HISTORY_BLOCKLIST_DEFAULT,
 		getTerminalBellEnabled,
-		setTerminalBellEnabled
+		setTerminalBellEnabled,
+		getImageStorageToken,
+		setImageStorageToken
 	} from '$lib/storage/appSettings.js';
 	import { listNotebooks, getNotebook } from '$lib/core/notebooks.js';
 	import { getAllNotes } from '$lib/storage/noteStore.js';
 	import { setNotebookPublic } from '$lib/sync/firebase/publishNotebook.js';
 	import { readPublicConfigForHost } from '$lib/sync/firebase/publicConfig.js';
 	import { ensureSignedIn } from '$lib/firebase/app.js';
+	import { getStats as getImageCacheStats, setQuota as setImageCacheQuota, clearAll as clearImageCache } from '$lib/imageCache/imageCache.js';
 
 	type Tab = 'sync' | 'config' | 'share' | 'terminal' | 'notify' | 'guide' | 'shortcuts' | 'advanced';
 	let activeTab = $state<Tab>('sync');
+
+	// 가이드 탭 내부 sub-tab. 콘텐츠 양이 많아 카테고리별 분리.
+	// 새 노트 형식 / 에디터 블록 / 환경 요구사항을 추가할 때마다 해당 sub-tab 에
+	// guide-card 를 한 장 더 끼워 넣는다.
+	type GuideSubTab = 'notes' | 'editor' | 'env';
+	let guideSubTab = $state<GuideSubTab>('notes');
 
 	let authenticated = $state(false);
 	let syncStatus: SyncStatus = $state('idle');
@@ -121,6 +130,10 @@
 	let terminalBridgeAuthed = $state<boolean | null>(null); // null = unknown
 	let terminalBridgeBusy = $state(false);
 	let terminalBridgeMessage = $state('');
+
+	// ── 이미지 서버 토큰 ──────────────────────────────────────────────
+	let imageStorageToken = $state('');
+	let imageStorageTokenSaved = $state(false);
 
 	// ── 터미널 히스토리 설정 ──────────────────────────────────────────
 	let termHistOpenDesktop = $state(true);
@@ -292,6 +305,12 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 		await setTerminalHistoryBlocklist([...TERMINAL_HISTORY_BLOCKLIST_DEFAULT]);
 	}
 
+	async function saveImageStorageToken(): Promise<void> {
+		await setImageStorageToken(imageStorageToken.trim());
+		imageStorageTokenSaved = true;
+		setTimeout(() => (imageStorageTokenSaved = false), 1500);
+	}
+
 	async function copySnippet(): Promise<void> {
 		await navigator.clipboard.writeText(shellSnippet);
 		snippetCopied = true;
@@ -319,6 +338,38 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 			console.warn('clipboard write failed', err);
 		}
 	}
+
+	// ── 이미지 캐시 ──────────────────────────────────────────────────────
+	let imageCacheStats = $state<{ count: number; totalBytes: number; quotaBytes: number } | null>(null);
+	let imageCacheQuotaMb = $state(500);
+
+	async function refreshImageCacheStats(): Promise<void> {
+		imageCacheStats = await getImageCacheStats();
+		imageCacheQuotaMb = Math.round(imageCacheStats.quotaBytes / (1024 * 1024));
+	}
+
+	function formatMb(bytes: number): string {
+		return (bytes / (1024 * 1024)).toFixed(1);
+	}
+
+	async function handleImageCacheQuotaChange(): Promise<void> {
+		const clamped = Math.max(100, Math.min(5000, Math.floor(imageCacheQuotaMb)));
+		imageCacheQuotaMb = clamped;
+		await setImageCacheQuota(clamped * 1024 * 1024);
+		await refreshImageCacheStats();
+		pushToast(`이미지 캐시 한도 ${clamped}MB로 변경되었습니다.`);
+	}
+
+	async function handleImageCacheClear(): Promise<void> {
+		if (!confirm('이미지 캐시를 모두 비우시겠습니까?')) return;
+		await clearImageCache();
+		await refreshImageCacheStats();
+		pushToast('이미지 캐시를 비웠습니다.');
+	}
+
+	$effect(() => {
+		void refreshImageCacheStats();
+	});
 
 	// ── 파이어베이스 실시간 노트 동기화 ──────────────────────────────────
 	let firebaseNotesEnabled = $state(false);
@@ -582,6 +633,7 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 		imagesPath = getImagesPath();
 		void loadTerminalBridgeState();
 		void loadTerminalHistorySettings();
+		void getImageStorageToken().then((v) => (imageStorageToken = v));
 
 		(async () => {
 			// Check if we're returning from OAuth callback
@@ -795,6 +847,12 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 		{ id: 'shortcuts', label: '단축키' },
 		{ id: 'advanced', label: '고급' }
 	];
+
+	const guideSubTabs: { id: GuideSubTab; label: string }[] = [
+		{ id: 'notes', label: '노트 형식' },
+		{ id: 'editor', label: '에디터 블록' },
+		{ id: 'env', label: '환경 / 호환성' }
+	];
 </script>
 
 <div class="settings-page">
@@ -988,6 +1046,60 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 						{imagesPathSaved ? '저장됨' : '저장'}
 					</button>
 				</div>
+			</section>
+
+			<section class="section">
+				<h2>이미지 서버 토큰</h2>
+				<p class="info-text">
+					이미지 붙여넣기 시 Vercel Blob에 업로드할 때 사용되는 Bearer 토큰입니다.
+					서버의 <code>IMAGE_STORAGE_TOKEN</code> 환경변수와 동일하게 설정하세요.
+					기기마다 한 번씩 입력이 필요합니다.
+				</p>
+				<div class="path-row">
+					<input
+						class="path-input"
+						type="password"
+						bind:value={imageStorageToken}
+						placeholder="••••••••"
+						onkeydown={(e) => e.key === 'Enter' && saveImageStorageToken()}
+					/>
+					<button class="btn-save" onclick={saveImageStorageToken}>
+						{imageStorageTokenSaved ? '저장됨' : '저장'}
+					</button>
+				</div>
+			</section>
+
+			<section class="section">
+				<h2>이미지 캐시</h2>
+				<p class="info-text">
+					노트에 붙여넣은 이미지를 이 기기에 저장해서 다시 열 때 네트워크 요청 없이 즉시
+					표시합니다. 한도를 초과하면 오래된 이미지부터 자동으로 지워집니다.
+				</p>
+				{#if imageCacheStats}
+					<p class="info-text">
+						사용 중:
+						<strong>{formatMb(imageCacheStats.totalBytes)}MB</strong>
+						/ {formatMb(imageCacheStats.quotaBytes)}MB ({imageCacheStats.count}개)
+					</p>
+					<div class="path-row image-cache-quota-row">
+						<label class="image-cache-quota-label" for="image-cache-quota-input">한도 (MB)</label>
+						<input
+							id="image-cache-quota-input"
+							class="path-input image-cache-quota-input"
+							type="number"
+							min="100"
+							max="5000"
+							step="50"
+							bind:value={imageCacheQuotaMb}
+							onchange={handleImageCacheQuotaChange}
+						/>
+					</div>
+					<button type="button" class="btn btn-secondary" onclick={handleImageCacheClear}>
+						캐시 비우기
+					</button>
+				{:else}
+					<p class="info-text">불러오는 중…</p>
+				{/if}
 			</section>
 
 			{#if authenticated}
@@ -1248,6 +1360,7 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 					<li>공백 또는 탭으로 시작하는 명령은 캡처되지 않습니다 (<code>HISTCONTROL=ignorespace</code> 관행). 일회성으로 민감한 명령을 숨기고 싶다면 명령 앞에 공백을 한 칸 두고 입력하세요.</li>
 				</ul>
 			</section>
+
 		{:else if activeTab === 'notify'}
 			<!-- ── 알림 탭 ─────────────────────────────────────────────────── -->
 			<section class="section">
@@ -1387,10 +1500,25 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 			<section class="section">
 				<p class="info-text">
 					이 노트앱의 노트 형식 규칙과 브라우저/환경 요구사항을 정리한 페이지입니다. 새 기기에서
-					처음 쓸 때 한 번씩 훑어보세요.
+					처음 쓸 때 한 번씩 훑어보세요. 카테고리는 아래 탭으로 전환합니다.
 				</p>
 			</section>
 
+			<nav class="guide-subtabs" aria-label="가이드 카테고리">
+				{#each guideSubTabs as t (t.id)}
+					<button
+						type="button"
+						class="guide-subtab"
+						class:active={guideSubTab === t.id}
+						aria-current={guideSubTab === t.id ? 'page' : undefined}
+						onclick={() => (guideSubTab = t.id)}
+					>
+						{t.label}
+					</button>
+				{/each}
+			</nav>
+
+			{#if guideSubTab === 'notes'}
 			<section class="section">
 				<h2>구조화 노트 형식</h2>
 				<p class="info-text">
@@ -1508,6 +1636,51 @@ https://www.dropbox.com/…/starting.png</pre>
 				</details>
 			</section>
 
+			{:else if guideSubTab === 'editor'}
+			<section class="section">
+				<h2>에디터 본문 블록</h2>
+				<p class="info-text">
+					아래는 노트의 일부 영역에만 적용되는 인라인 블록 형식입니다. 한 노트 안에 여러 개를 섞을
+					수 있고, 형식이 어긋나면 그 블록만 일반 문단으로 보입니다.
+				</p>
+
+				<details class="guide-card" open>
+					<summary>표 (CSV / TSV) — 본문 안의 펜스 블록</summary>
+					<p class="info-text">
+						GitHub 마크다운과 같은 <strong>코드 펜스</strong>로 표를 그립니다. 본문 위에 떠 있는
+						별도 형식이 아니라, 일반 문단들 위에 렌더링 레이어로 표가 얹히는 방식입니다.
+						원본 텍스트는 그대로 보존되어 Tomboy XML로 라운드트립됩니다.
+					</p>
+					<pre class="snippet">```csv
+헤더1, 헤더2, 헤더3
+가, 나, 다
+라, 마, 바
+```</pre>
+					<ul class="guide-list">
+						<li>여는 펜스: <code>```csv</code> 또는 <code>```tsv</code>. 언어 태그는 대소문자 무관이며,
+							태그 뒤에 다른 글자가 붙으면 펜스로 인식되지 않습니다(<code>```csv extra</code> ✗).</li>
+						<li>닫는 펜스: 빈 <code>```</code> 한 줄. 닫기 전에 또 다른 여는 펜스가 나오면 첫 표는
+							미완료로 간주되어 표 렌더가 적용되지 않습니다.</li>
+						<li><strong>CSV</strong>: 쉼표(<code>,</code>)로 셀을 나누고 각 셀 양끝 공백을 트림합니다.</li>
+						<li><strong>TSV</strong>: 탭(<code>\t</code>)으로 나누고 공백을 보존합니다. 탭만 있는 빈 행도
+							데이터로 인정(예: <code>\t\t</code>는 빈 세 셀).</li>
+						<li><strong>첫 행이 헤더</strong>입니다. 행마다 셀 개수가 달라도 그대로 렌더링됩니다(자동
+							패딩 없음).</li>
+						<li>셀 안의 <strong>굵게 · 기울임 · 내부/외부 링크 · 폰트 크기</strong> 등 마크는 보존됩니다.</li>
+						<li>같은 노트에 여러 표를 둘 수 있고, 표와 일반 문단을 자유롭게 섞을 수 있습니다.</li>
+					</ul>
+					<p class="info-text">조작:</p>
+					<ul class="guide-list">
+						<li>표 좌측 상단의 체크박스 — 켜면 표로 렌더, 끄면 원본 펜스 문단으로 펼쳐 직접 편집.</li>
+						<li><kbd>Ctrl</kbd>(또는 <kbd>Cmd</kbd>)을 누르고 있으면 표 외곽에 <strong>행 추가</strong> /
+							<strong>열 추가</strong> + 버튼과 행·열 삭제 X 버튼이 나타납니다.</li>
+						<li>셀을 더블 클릭하면 해당 셀만 인라인 편집됩니다. 한 셀을 고쳐도 같은 행 다른 셀의
+							마크는 그대로 살아남습니다.</li>
+					</ul>
+				</details>
+			</section>
+
+			{:else if guideSubTab === 'env'}
 			<section class="section">
 				<h2>환경 / 호환성 요구사항</h2>
 				<p class="info-text">이게 안 맞으면 해당 기능이 동작하지 않거나 깨져 보입니다.</p>
@@ -1564,6 +1737,7 @@ https://www.dropbox.com/…/starting.png</pre>
 					</ul>
 				</details>
 			</section>
+			{/if}
 
 		{:else if activeTab === 'shortcuts'}
 			<!-- ── 단축키 탭 ───────────────────────────────────────────────── -->
@@ -2054,6 +2228,40 @@ https://www.dropbox.com/…/starting.png</pre>
 
 	/* ── 가이드 / 단축키 탭 ──────────────────────────────────────────── */
 
+	/* 가이드 탭 내부 카테고리 sub-nav. 메인 settings-tabs (밑줄 active) 와 시각적으로
+	   구분되도록 알약(pill) 형태로 디자인 — 메인 탭 vs 서브 탭 위계가 한 눈에 보임. */
+	.guide-subtabs {
+		display: flex;
+		gap: 6px;
+		flex-wrap: wrap;
+		margin-bottom: 20px;
+	}
+
+	.guide-subtab {
+		flex: 0 0 auto;
+		padding: 6px 14px;
+		border: 1px solid var(--color-border, #ccc);
+		background: transparent;
+		border-radius: 999px;
+		font-size: clamp(0.78rem, 2.2vw, 0.88rem);
+		color: var(--color-text-secondary, #777);
+		cursor: pointer;
+		transition: color 0.1s, border-color 0.1s, background 0.1s;
+		white-space: nowrap;
+	}
+
+	.guide-subtab:hover {
+		color: var(--color-text, #111);
+		border-color: var(--color-text-secondary, #777);
+	}
+
+	.guide-subtab.active {
+		background: var(--color-primary, #d05b10);
+		color: #fff;
+		border-color: var(--color-primary, #d05b10);
+		font-weight: 600;
+	}
+
 	.guide-card {
 		border: 1px solid var(--color-border, #e5e5e5);
 		border-radius: 8px;
@@ -2195,5 +2403,23 @@ https://www.dropbox.com/…/starting.png</pre>
 
 	.share-progress progress {
 		width: 100%;
+	}
+
+	/* ── 이미지 캐시 ─────────────────────────────────────────────────────── */
+
+	.image-cache-quota-row {
+		align-items: center;
+		margin-bottom: 12px;
+	}
+
+	.image-cache-quota-label {
+		flex-shrink: 0;
+		font-size: clamp(0.85rem, 2.5vw, 0.95rem);
+		color: var(--color-text-secondary);
+	}
+
+	.image-cache-quota-input {
+		max-width: 120px;
+		flex: 0 0 auto;
 	}
 </style>

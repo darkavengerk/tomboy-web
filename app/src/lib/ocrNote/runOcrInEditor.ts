@@ -3,7 +3,7 @@ import type { Node as PMNode } from 'prosemirror-model';
 import { sendChat, LlmChatError, type ChatRequestBody } from '../chatNote/backends/ollama.js';
 import { sendOcr, OcrSendError } from './sendOcr.js';
 import { imageBlobToBase64 } from './imageToBase64.js';
-import { downloadImageFromDropboxUrl } from '../sync/imageUpload.js';
+import { downloadImageFromUrl } from '../sync/imageUpload.js';
 import {
 	OCR_DEFAULT_NUM_CTX,
 	OCR_DEFAULT_TEMPERATURE,
@@ -22,8 +22,8 @@ export interface RunOcrOptions {
 	 * base64 encoding — no network fetch. The paste/drop flow always has
 	 * this. URL-only callers (e.g. cross-device retry on a note that
 	 * already has the image URL but not the original File) fall through to
-	 * `downloadImageFromDropboxUrl(imageUrl)`, which routes via the
-	 * Dropbox SDK to side-step the www.dropbox.com CORS limitation.
+	 * `downloadImageFromUrl(imageUrl)`, which dispatches by host: Dropbox
+	 * URLs route via the SDK to side-step CORS; Vercel Blob URLs use plain fetch.
 	 */
 	imageBlob?: Blob;
 	bridgeUrl: string;
@@ -232,7 +232,7 @@ function normalizeHttpBase(bridgeUrl: string): string {
 
 async function loadImageB64(opts: RunOcrOptions): Promise<string | null> {
 	try {
-		const blob = opts.imageBlob ?? (await downloadImageFromDropboxUrl(opts.imageUrl));
+		const blob = opts.imageBlob ?? (await downloadImageFromUrl(opts.imageUrl));
 		return await imageBlobToBase64(blob);
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);

@@ -6,7 +6,7 @@ import {
 	passwordMatches,
 	verifyToken
 } from './auth.js';
-import { parseSshTarget, spawnForTarget, isLocalTarget, type SshTarget } from './pty.js';
+import { parseSshTarget, spawnForTarget, isLocalTarget, buildSshExecArgs, type SshTarget } from './pty.js';
 import { mkdirSync } from 'node:fs';
 import { unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -19,14 +19,30 @@ import { handleClaudeChat } from './claude.js';
 import { handleGpuStatus, handleGpuUnload } from './gpu.js';
 import { handleRemarkableWallpaper } from './remarkable.js';
 import { loadRemarkableHosts } from './remarkableHosts.js';
-import { SpectatorSession } from './spectatorSession.js';
+import { loadSshHosts, applySshAlias } from './sshHosts.js';
+import { SpectatorHubRegistry, type SpectatorSubscription } from './spectatorHub.js';
 import { transferImage, bracketedPaste } from './imageTransfer.js';
+import {
+	handleFileUpload,
+	handleFileDownload,
+	handleFileList,
+	handleFileDelete
+} from './files.js';
+import { spawn } from 'node:child_process';
+import { isAllowedKeyCode, buildKeyCommand } from './keyEvents.js';
 
 const PORT = Number(process.env.BRIDGE_PORT || 3000);
 const PASSWORD = requireEnv('BRIDGE_PASSWORD');
 const SECRET = requireEnv('BRIDGE_SECRET');
 const ALLOWED_ORIGIN = requireEnv('BRIDGE_ALLOWED_ORIGIN');
 const OCR_SERVICE_URL = requireEnv('OCR_SERVICE_URL');
+const BRIDGE_FILES_DIR = requireEnv('BRIDGE_FILES_DIR');
+const BRIDGE_PUBLIC_BASE_URL = requireEnv('BRIDGE_PUBLIC_BASE_URL');
+mkdirSync(BRIDGE_FILES_DIR, { recursive: true });
+if (!/^https?:\/\//.test(BRIDGE_PUBLIC_BASE_URL)) {
+	console.error('[term-bridge] BRIDGE_PUBLIC_BASE_URL must start with http:// or https://');
+	process.exit(1);
+}
 // CLAUDE_SERVICE_URL is optional — bridge boots without it and returns 503.
 const CLAUDE_SERVICE_URL = process.env.CLAUDE_SERVICE_URL ?? '';
 // Ollama runs on the desktop alongside ocr-service. The bridge reads this
@@ -36,9 +52,11 @@ const CLAUDE_SERVICE_URL = process.env.CLAUDE_SERVICE_URL ?? '';
 const OLLAMA_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
 const HOSTS_FILE = process.env.BRIDGE_HOSTS_FILE;
 const REMARKABLE_HOSTS_FILE = process.env.BRIDGE_REMARKABLE_HOSTS_FILE;
+const SSH_HOSTS_FILE = process.env.BRIDGE_SSH_HOSTS_FILE;
 
 loadHostsFile(HOSTS_FILE);
 loadRemarkableHosts(REMARKABLE_HOSTS_FILE);
+loadSshHosts(SSH_HOSTS_FILE);
 
 // ControlMaster 소켓이 사는 디렉터리. Unix 소켓 경로 길이 제한 때문에 /tmp 아래.
 const CTRL_DIR = '/tmp/tomboy-ctl';
@@ -148,6 +166,26 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 		return;
 	}
 
+	if (url === '/files' && req.method === 'POST') {
+		await handleFileUpload(req, res, SECRET, BRIDGE_FILES_DIR, BRIDGE_PUBLIC_BASE_URL);
+		return;
+	}
+
+	if (url === '/files' && req.method === 'GET') {
+		await handleFileList(req, res, SECRET, BRIDGE_FILES_DIR);
+		return;
+	}
+
+	if (url.startsWith('/files/') && req.method === 'GET') {
+		await handleFileDownload(req, res, BRIDGE_FILES_DIR);
+		return;
+	}
+
+	if (url.startsWith('/files/') && req.method === 'DELETE') {
+		await handleFileDelete(req, res, SECRET, BRIDGE_FILES_DIR);
+		return;
+	}
+
 	res.writeHead(404).end();
 }
 
@@ -155,8 +193,8 @@ function applyCors(req: IncomingMessage, res: ServerResponse): void {
 	const origin = req.headers.origin;
 	if (origin && originAllowed(origin)) {
 		res.setHeader('Access-Control-Allow-Origin', origin);
-		res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-		res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+		res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+		res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Filename');
 		res.setHeader('Vary', 'Origin');
 		// No `Allow-Credentials` — we no longer use cookies. The Bearer
 		// token travels in the Authorization header (HTTP) or in the first
@@ -190,18 +228,20 @@ function sleep(ms: number): Promise<void> {
 // --- WebSocket session ---
 
 interface ClientMsg {
-	type: 'connect' | 'data' | 'resize' | 'tmux-nav' | 'image';
+	type: 'connect' | 'data' | 'resize' | 'tmux-nav' | 'image' | 'subscribe-pane' | 'key';
 	target?: string;
 	token?: string;
 	cols?: number;
 	rows?: number;
 	d?: string;
-	mode?: 'shell' | 'spectate';
+	mode?: 'shell' | 'spectate' | 'keys';
 	session?: string;
 	action?: 'next-pane' | 'prev-pane' | 'next-window' | 'prev-window' | 'select-pane';
 	index?: number;
+	ordinal?: number;
 	mime?: string;
 	data?: string;
+	code?: number;
 }
 
 const TMUX_NAV_ACTIONS = new Set([
@@ -213,10 +253,13 @@ const TMUX_NAV_ACTIONS = new Set([
 
 function handleWs(ws: WebSocket): void {
 	let pty: ReturnType<typeof spawnForTarget> | null = null;
-	let spectator: SpectatorSession | null = null;
+	let subscription: SpectatorSubscription | null = null;
 	let connected = false;
 	let controlPath: string | null = null;
 	let sessionTarget: SshTarget | null = null;
+	let connectAlias: string | null = null;
+	let keysMode = false;
+	let keysReady = false;
 	const abortCtrl = new AbortController();
 	const authTimer = setTimeout(() => {
 		if (!connected) {
@@ -247,12 +290,15 @@ function handleWs(ws: WebSocket): void {
 				ws.close(1008, 'unauthorized');
 				return;
 			}
-			const target = parseSshTarget(String(msg.target ?? ''));
-			if (!target) {
+			const parsed = parseSshTarget(String(msg.target ?? ''));
+			if (!parsed) {
 				send({ type: 'error', message: 'invalid target' });
 				ws.close(1008, 'invalid target');
 				return;
 			}
+			const resolved = applySshAlias(parsed);
+			const target = resolved.target;
+			connectAlias = resolved.alias;
 			// Mark connected early so duplicate `connect` frames during WOL
 			// wait can't re-enter this branch.
 			connected = true;
@@ -266,6 +312,11 @@ function handleWs(ws: WebSocket): void {
 					return;
 				}
 				void startSpectator(target, session);
+				return;
+			}
+
+			if (msg.mode === 'keys') {
+				void startKeys(target);
 				return;
 			}
 
@@ -287,6 +338,27 @@ function handleWs(ws: WebSocket): void {
 			return;
 		}
 
+		if (msg.type === 'key') {
+			if (!keysReady || !controlPath || !sessionTarget) return;
+			if (!isAllowedKeyCode(msg.code)) {
+				send({
+					type: 'key-error',
+					code: typeof msg.code === 'number' ? msg.code : -1,
+					message: '허용되지 않은 키코드'
+				});
+				return;
+			}
+			const code = msg.code;
+			const target = sessionTarget;
+			const sock = controlPath;
+			void (async () => {
+				const r = await runSshExec(target, sock, buildKeyCommand(code), abortCtrl.signal);
+				if (r.code === 0) send({ type: 'key-ok', code });
+				else send({ type: 'key-error', code, message: r.stderr || `ssh exit ${r.code}` });
+			})();
+			return;
+		}
+
 		// Spectator mode: drop resize (bridge dictates size from tmux), but
 		// allow `data` frames so the mobile "보내기" popup can inject
 		// explicit keystrokes into the active pane via `send-keys -H`.
@@ -296,9 +368,9 @@ function handleWs(ws: WebSocket): void {
 		// on the desktop's pane grid which the mobile has no access to,
 		// and disturbing the desktop view for our scroll is worse than not
 		// scrolling at all.
-		if (spectator) {
+		if (subscription) {
 			if (msg.type === 'data' && typeof msg.d === 'string') {
-				spectator.sendInput(msg.d);
+				subscription.sendInput(msg.d);
 			} else if (msg.type === 'tmux-nav' && typeof msg.action === 'string') {
 				if (msg.action === 'select-pane') {
 					// Absolute jump to the Nth pane (1-based) of the current
@@ -308,10 +380,19 @@ function handleWs(ws: WebSocket): void {
 						Number.isInteger(msg.index) &&
 						msg.index >= 1
 					) {
-						spectator.selectPane(msg.index);
+						subscription.selectPane(msg.index);
 					}
 				} else if (TMUX_NAV_ACTIONS.has(msg.action)) {
-					spectator.tmuxNav(msg.action as Parameters<SpectatorSession['tmuxNav']>[0]);
+					subscription.tmuxNav(msg.action as Parameters<SpectatorSubscription['tmuxNav']>[0]);
+				}
+			} else if (msg.type === 'subscribe-pane') {
+				if (typeof msg.ordinal === 'number' && Number.isInteger(msg.ordinal)) {
+					if (msg.ordinal === 0) {
+						void subscription.unpin();
+					} else if (msg.ordinal >= 1) {
+						void subscription.pinOrdinal(msg.ordinal);
+					}
+					// else ignore (negative integers)
 				}
 			}
 			return;
@@ -342,11 +423,24 @@ function handleWs(ws: WebSocket): void {
 			try { pty.kill(); } catch { /* ignore */ }
 			pty = null;
 		}
-		if (spectator) {
-			try { spectator.close(); } catch { /* ignore */ }
-			spectator = null;
+		if (subscription) {
+			try { subscription.close(); } catch { /* ignore */ }
+			subscription = null;
 		}
 		if (controlPath) {
+			// keys 모드는 ControlPersist 마스터가 떠 있으므로 명시적으로 종료한다.
+			// (PTY 경로는 ControlPersist가 없어 PTY 종료 시 마스터도 사라진다.)
+			if (keysMode && sessionTarget) {
+				const host = sessionTarget.user
+					? `${sessionTarget.user}@${sessionTarget.host}`
+					: sessionTarget.host;
+				try {
+					const cm = spawn('ssh', ['-o', `ControlPath=${controlPath}`, '-O', 'exit', host], {
+						stdio: 'ignore'
+					});
+					cm.on('error', () => { /* best-effort */ });
+				} catch { /* best-effort */ }
+			}
 			// ssh 마스터가 죽으면 소켓도 사라지지만 best-effort로 정리.
 			unlink(controlPath).catch(() => { /* 이미 없음 */ });
 			controlPath = null;
@@ -355,10 +449,6 @@ function handleWs(ws: WebSocket): void {
 
 	async function startSpectator(target: SshTarget, session: string): Promise<void> {
 		sessionTarget = target;
-		// 원격 타깃만 ControlMaster — 로컬 셸 타깃은 ssh 자체가 없다.
-		if (!isLocalTarget(target)) {
-			controlPath = `${CTRL_DIR}/${randomUUID().slice(0, 8)}.sock`;
-		}
 		const wol = lookupWolTarget(target.host);
 		console.log(
 			`[term-bridge] spectate target=${target.user ?? ''}@${target.host}:${target.port ?? 22} session=${session}`
@@ -374,30 +464,28 @@ function handleWs(ws: WebSocket): void {
 			}
 		}
 		if (abortCtrl.signal.aborted) return;
-		try {
-			spectator = new SpectatorSession({
-				target,
-				session,
-				controlPath: controlPath ?? undefined,
-				callbacks: {
-					paneSwitch: (info) => send({ type: 'pane-switch', ...info }),
-					data: (d) => send({ type: 'data', d }),
-					paneResize: (info) => send({ type: 'pane-resize', ...info }),
-					error: (message) => send({ type: 'error', message }),
-					exit: (reason) => {
-						send({ type: 'exit', code: 0, reason });
-						try { ws.close(1000, reason ?? 'spectator exit'); } catch { /* ignore */ }
-					}
-				}
-			});
-		} catch (err) {
-			send({ type: 'error', message: `spectator spawn failed: ${(err as Error).message}` });
-			try { ws.close(1011, 'spectator spawn failed'); } catch { /* ignore */ }
+		subscription = SpectatorHubRegistry.subscribe(target, session, {
+			paneSwitch: (info) => send({ type: 'pane-switch', ...info }),
+			data: (d) => send({ type: 'data', d }),
+			paneResize: (info) => send({ type: 'pane-resize', ...info }),
+			paneUnavailable: (info) => send({ type: 'pane-unavailable', ...info }),
+			error: (message) => send({ type: 'error', message }),
+			exit: (reason) => {
+				send({ type: 'exit', code: 0, reason });
+				try { ws.close(1000, reason ?? 'spectator exit'); } catch { /* ignore */ }
+			}
+		}, { ctrlDir: CTRL_DIR });
+		// hub-owned socket — server.ts does NOT take ownership of controlPath.
+		if (abortCtrl.signal.aborted) {
+			subscription.close();
+			subscription = null;
 			return;
 		}
+		// Await bootstrap — swallow error, bootstrap failure already fires error callback.
+		await subscription.attach().catch(() => { /* bootstrap failure fires error callback */ });
 		if (abortCtrl.signal.aborted) {
-			spectator.close();
-			spectator = null;
+			subscription.close();
+			subscription = null;
 			return;
 		}
 		// PTY-ready signal — clients gate their UI on this. For spectator mode
@@ -413,7 +501,7 @@ function handleWs(ws: WebSocket): void {
 			controlPath = `${CTRL_DIR}/${randomUUID().slice(0, 8)}.sock`;
 		}
 		const wol = lookupWolTarget(target.host);
-		console.log(`[term-bridge] connect target=${target.user ?? ''}@${target.host}:${target.port ?? 22} wol=${wol ? wol.mac : 'none'}`);
+		console.log(`[term-bridge] connect target=${target.user ?? ''}@${target.host}:${target.port ?? 22} alias=${connectAlias ?? 'none'} wol=${wol ? wol.mac : 'none'}`);
 		if (wol) {
 			const ok = await wakeIfNeeded(target, wol, abortCtrl.signal, send);
 			if (!ok) {
@@ -425,6 +513,24 @@ function handleWs(ws: WebSocket): void {
 			}
 		}
 		if (abortCtrl.signal.aborted) return;
+		// 별칭(역터널) 타깃은 WoL이 없으므로 별도 도달성 체크 — 터널이
+		// 안 떠 있으면 raw connection-refused 대신 한국어 안내를 보낸다.
+		if (connectAlias && !isLocalTarget(target)) {
+			const reachable = await probePort(target.host, target.port ?? 22, {
+				timeoutMs: 1000,
+				signal: abortCtrl.signal
+			});
+			if (!reachable) {
+				if (!abortCtrl.signal.aborted) {
+					send({
+						type: 'error',
+						message: `'${connectAlias}' 터널이 연결되어 있지 않습니다 (폰이 깨어 있고 네트워크에 연결됐는지 확인하세요)`
+					});
+					try { ws.close(1011, 'tunnel down'); } catch { /* ignore */ }
+				}
+				return;
+			}
+		}
 		try {
 			pty = spawnForTarget(target, cols, rows, controlPath ?? undefined);
 		} catch (err) {
@@ -448,12 +554,55 @@ function handleWs(ws: WebSocket): void {
 		send({ type: 'ready' });
 	}
 
+	async function startKeys(target: SshTarget): Promise<void> {
+		keysMode = true;
+		sessionTarget = target;
+		// keys 모드는 원격 폰 타깃 전용 — 로컬 셸엔 input keyevent가 의미 없다.
+		if (isLocalTarget(target)) {
+			send({ type: 'error', message: 'keys 모드는 원격 폰 타깃 전용입니다' });
+			try { ws.close(1008, 'keys local'); } catch { /* ignore */ }
+			return;
+		}
+		controlPath = `${CTRL_DIR}/${randomUUID().slice(0, 8)}.sock`;
+		console.log(
+			`[term-bridge] keys target=${target.user ?? ''}@${target.host}:${target.port ?? 22} alias=${connectAlias ?? 'none'}`
+		);
+		// 별칭(역터널) 타깃 도달성 — 터널 끊김 시 raw 에러 대신 한국어 안내.
+		if (connectAlias) {
+			const reachable = await probePort(target.host, target.port ?? 22, {
+				timeoutMs: 1000,
+				signal: abortCtrl.signal
+			});
+			if (!reachable) {
+				if (!abortCtrl.signal.aborted) {
+					send({
+						type: 'error',
+						message: `'${connectAlias}' 터널이 연결되어 있지 않습니다 (폰이 깨어 있고 네트워크에 연결됐는지 확인하세요)`
+					});
+					try { ws.close(1011, 'tunnel down'); } catch { /* ignore */ }
+				}
+				return;
+			}
+		}
+		if (abortCtrl.signal.aborted) return;
+		// 프리웜: ControlMaster 마스터를 띄우고 인증을 미리 끝낸다 → 첫 키부터 저지연.
+		const warm = await runSshExec(target, controlPath, 'true', abortCtrl.signal);
+		if (abortCtrl.signal.aborted) return;
+		if (warm.code !== 0) {
+			send({ type: 'error', message: `폰 연결 실패: ${warm.stderr || 'ssh exit ' + warm.code}` });
+			try { ws.close(1011, 'keys prewarm failed'); } catch { /* ignore */ }
+			return;
+		}
+		keysReady = true;
+		send({ type: 'ready' });
+	}
+
 	/**
 	 * `image` 메시지 처리 — base64 디코딩 → 타깃 호스트로 전송 → PTY 또는
 	 * spectator 활성 패널에 경로를 bracketed-paste로 주입.
 	 *
 	 * - 셸 모드: pty.write(bracketedPaste(path) + ' ').
-	 * - 관전 모드: spectator.sendInput(bracketedPaste(path) + ' ') → tmux send-keys -H.
+	 * - 관전 모드: subscription.sendInput(bracketedPaste(path) + ' ') → tmux send-keys -H.
 	 * - 어느 쪽도 준비 안 된 race 상황: image-error 회신.
 	 *
 	 * 경로 뒤 공백 한 칸은 이미지를 연달아 붙여넣을 때 경로가 서로 붙지 않게 한다.
@@ -476,7 +625,7 @@ function handleWs(ws: WebSocket): void {
 		try {
 			const { remotePath } = await transferImage({
 				target: sessionTarget,
-				controlPath,
+				controlPath: controlPath ?? subscription?.controlPath ?? null,
 				mime,
 				bytes
 			});
@@ -485,8 +634,8 @@ function handleWs(ws: WebSocket): void {
 			if (pty) {
 				pty.write(paste);
 				sink = 'pty';
-			} else if (spectator?.hasActivePane()) {
-				spectator.sendInput(paste);
+			} else if (subscription?.hasActivePane()) {
+				subscription.sendInput(paste);
 				sink = 'spectator';
 			} else {
 				console.log(`[image] reject ${mime}: no active sink at inject time`);
@@ -535,6 +684,34 @@ async function wakeIfNeeded(
 		send({ type: 'data', d: '\x1b[2m연결 중...\x1b[0m\r\n' });
 	}
 	return ok;
+}
+
+/**
+ * 일회성 ssh exec — exit code와 stderr를 수확한다(키 이벤트 주입용).
+ * stdin 없음, stdout 무시, stderr만 캡처(상한 2KB). `error` 이벤트(ssh 미설치
+ * 등)는 code:-1로 정규화.
+ */
+function runSshExec(
+	target: SshTarget,
+	controlPath: string,
+	remoteCommand: string,
+	signal?: AbortSignal
+): Promise<{ code: number; stderr: string }> {
+	return new Promise((resolve) => {
+		const child = spawn('ssh', buildSshExecArgs(target, controlPath, remoteCommand), {
+			stdio: ['ignore', 'ignore', 'pipe'],
+			signal
+		});
+		let stderr = '';
+		child.stderr.on('data', (d: Buffer) => {
+			if (stderr.length < 2000) stderr += d.toString();
+		});
+		child.on('error', (err: NodeJS.ErrnoException) => {
+			if (err.code === 'ABORT_ERR') resolve({ code: -1, stderr: 'aborted' });
+			else resolve({ code: -1, stderr: err.message });
+		});
+		child.on('close', (code) => resolve({ code: code ?? -1, stderr: stderr.trim() }));
+	});
 }
 
 function clampSize(v: unknown, fallback: number): number {
