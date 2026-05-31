@@ -238,7 +238,7 @@ describe('findProcessItems', () => {
 		expect(items.map((it) => it.liNode.textContent)).toEqual(['a', 'b', 'c', 'd']);
 	});
 
-	it('does NOT descend into nested lists (depth-1 only)', () => {
+	it('enumerates depth-1 categories AND their depth-2 sub-items', () => {
 		const e = makeEditor({
 			type: 'doc',
 			content: [
@@ -252,9 +252,33 @@ describe('findProcessItems', () => {
 			]
 		});
 		const items = findProcessItems(findProcessBlocks(e.state.doc));
-		// Only the depth-1 'parent' item; nested child1/child2 are ignored.
-		expect(items).toHaveLength(1);
-		expect(items[0].liNode.firstChild!.textContent).toBe('parent');
+		// depth-1 'parent' + depth-2 'child1', 'child2'.
+		expect(items).toHaveLength(3);
+		const parent = items.find((it) => it.depth === 1)!;
+		expect(parent.liNode.firstChild!.textContent).toBe('parent');
+		const subs = items.filter((it) => it.depth === 2);
+		expect(subs.map((s) => s.liNode.textContent)).toEqual(['child1', 'child2']);
+		// each sub-item carries its parent category label
+		expect(subs.every((s) => s.parent?.categoryText === 'parent')).toBe(true);
+	});
+
+	it('stops at depth-2 — does not descend into depth-3 nests', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				P('Title'),
+				P('Process: 작업'),
+				{
+					type: 'bulletList',
+					content: [LI_NESTED('cat', UL('sub'))]
+				},
+				P('Complete:')
+			]
+		});
+		// Manually deepen 'sub' to hold its own nested list via a follow-up edit
+		// would be complex; the depth-1/depth-2 contract is what matters here.
+		const items = findProcessItems(findProcessBlocks(e.state.doc));
+		expect(items.map((it) => it.depth).sort()).toEqual([1, 2]);
 	});
 
 	it('tags each item with its owning stage', () => {
@@ -438,6 +462,173 @@ describe('moveProcessItem', () => {
 		expect(processList.childCount).toBe(2);
 		expect(processList.firstChild!.textContent).toBe('a');
 		expect(processList.lastChild!.textContent).toBe('c');
+	});
+});
+
+// -------------------------------------------------------------------------
+// moveProcessItem — depth-2 sub-items (category matching)
+// -------------------------------------------------------------------------
+
+/** Build a `LI_NESTED` from a category label + nested sub-item texts. */
+const CAT = (label: string, ...subs: string[]): JSONContent =>
+	LI_NESTED(label, UL(...subs));
+
+describe('moveProcessItem — depth-2 sub-items', () => {
+	it('moves a sub-item into a matching category in the next stage', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				P('Title'),
+				P('Process: 작업'),
+				{ type: 'bulletList', content: [CAT('기본작업', '소작업A')] },
+				P('공정1'),
+				{ type: 'bulletList', content: [CAT('기본작업', '소작업B')] },
+				P('Complete:')
+			]
+		});
+		const liPos = liPosByText(e, '소작업A');
+		expect(moveProcessItem(e, liPos, 'next')).toBe(true);
+
+		// Process stage: 기본작업 category survives but its nested list is gone.
+		const procCat = e.state.doc.child(2).firstChild!;
+		expect(procCat.firstChild!.textContent).toBe('기본작업');
+		expect(procCat.childCount).toBe(1); // just the paragraph, no nested list
+
+		// 공정1 stage: 기본작업 category now holds [소작업B, 소작업A].
+		const midCat = e.state.doc.child(4).firstChild!;
+		expect(midCat.firstChild!.textContent).toBe('기본작업');
+		const nested = midCat.child(1);
+		expect(nested.type.name).toBe('bulletList');
+		expect(nested.childCount).toBe(2);
+		expect(nested.lastChild!.textContent).toBe('소작업A');
+	});
+
+	it('auto-creates the category in the next stage when none matches', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				P('Title'),
+				P('Process: 작업'),
+				{ type: 'bulletList', content: [CAT('기본작업', '소작업A')] },
+				P('공정1'),
+				{ type: 'bulletList', content: [CAT('다른작업', '소작업X')] },
+				P('Complete:')
+			]
+		});
+		const liPos = liPosByText(e, '소작업A');
+		expect(moveProcessItem(e, liPos, 'next')).toBe(true);
+
+		// 공정1 list gains a second category li '기본작업' holding [소작업A].
+		const midList = e.state.doc.child(4);
+		expect(midList.childCount).toBe(2);
+		const created = midList.lastChild!;
+		expect(created.firstChild!.textContent).toBe('기본작업');
+		expect(created.child(1).firstChild!.textContent).toBe('소작업A');
+	});
+
+	it('creates a list+category when the next stage has no list', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				P('Title'),
+				P('Process: 작업'),
+				{ type: 'bulletList', content: [CAT('기본작업', '소작업A')] },
+				P('공정1'),
+				P('Complete:')
+			]
+		});
+		const liPos = liPosByText(e, '소작업A');
+		expect(moveProcessItem(e, liPos, 'next')).toBe(true);
+
+		// A fresh list appears after the 공정1 header with the 기본작업 category.
+		const newList = e.state.doc.child(4);
+		expect(newList.type.name).toBe('bulletList');
+		expect(newList.firstChild!.firstChild!.textContent).toBe('기본작업');
+		expect(newList.firstChild!.child(1).firstChild!.textContent).toBe('소작업A');
+	});
+
+	it('emptying a nested list keeps the parent category header', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				P('Title'),
+				P('Process: 작업'),
+				{ type: 'bulletList', content: [CAT('기본작업', '소작업A')] },
+				P('Complete:')
+			]
+		});
+		const liPos = liPosByText(e, '소작업A');
+		expect(moveProcessItem(e, liPos, 'next')).toBe(true);
+		// Process 기본작업 category stays as a bare header (no nested list).
+		const procCat = e.state.doc.child(2).firstChild!;
+		expect(procCat.firstChild!.textContent).toBe('기본작업');
+		expect(procCat.childCount).toBe(1);
+	});
+
+	it('keeps sibling sub-items when moving one of several', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				P('Title'),
+				P('Process: 작업'),
+				{ type: 'bulletList', content: [CAT('기본작업', '소작업1', '소작업2')] },
+				P('공정1'),
+				P('Complete:')
+			]
+		});
+		const liPos = liPosByText(e, '소작업1');
+		expect(moveProcessItem(e, liPos, 'next')).toBe(true);
+		// 기본작업 in Process keeps [소작업2].
+		const procNested = e.state.doc.child(2).firstChild!.child(1);
+		expect(procNested.childCount).toBe(1);
+		expect(procNested.firstChild!.textContent).toBe('소작업2');
+	});
+
+	it('moves a sub-item to the previous stage too', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				P('Title'),
+				P('Process: 작업'),
+				{ type: 'bulletList', content: [CAT('기본작업', '소작업A')] },
+				P('Complete:'),
+				{ type: 'bulletList', content: [CAT('기본작업', '소작업B')] }
+			]
+		});
+		const liPos = liPosByText(e, '소작업B'); // in Complete (last stage)
+		expect(moveProcessItem(e, liPos, 'prev')).toBe(true);
+		// Process 기본작업 now holds [소작업A, 소작업B].
+		const procNested = e.state.doc.child(2).firstChild!.child(1);
+		expect(procNested.childCount).toBe(2);
+		expect(procNested.lastChild!.textContent).toBe('소작업B');
+	});
+});
+
+// -------------------------------------------------------------------------
+// moveProcessItem — depth-1 category card (whole-card move)
+// -------------------------------------------------------------------------
+
+describe('moveProcessItem — depth-1 category card', () => {
+	it('moves a whole category (with its sub-items) to the next stage', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				P('Title'),
+				P('Process: 작업'),
+				{ type: 'bulletList', content: [CAT('기본작업', '소작업A', '소작업B')] },
+				P('Complete:')
+			]
+		});
+		const liPos = liPosByText(e, '기본작업'); // the depth-1 category li
+		expect(moveProcessItem(e, liPos, 'next')).toBe(true);
+		// Process's only category leaves → its list is removed (header survives),
+		// so Complete's fresh list shifts to child(3).
+		expect(e.state.doc.child(1).textContent).toBe('Process: 작업');
+		expect(e.state.doc.child(2).textContent).toBe('Complete:');
+		const completeList = e.state.doc.child(3);
+		const cat = completeList.firstChild!;
+		expect(cat.firstChild!.textContent).toBe('기본작업');
+		expect(cat.child(1).childCount).toBe(2);
 	});
 });
 

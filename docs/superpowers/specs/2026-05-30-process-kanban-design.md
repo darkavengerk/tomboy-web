@@ -98,8 +98,11 @@ export interface ProcessItemRef {
 - `findProcessItems(blocks)` → `ProcessItemRef[]` — depth-1 list items only.
 - Helper to resolve a stage's `next`/`prev` neighbor stage (or null at the ends).
 
-**Depth scope:** depth-1 (flat list per stage) only. TODO's depth-2 category nesting is
-intentionally **out of scope** — Process cards are flat.
+**Depth scope:** depth-1 (cards) **and** depth-2 (sub-items under a category), mirroring
+TODO. A depth-1 list item that holds a nested list acts as a **category**; its nested
+depth-2 items are sub-items. Both depths are enumerated as movable items. Anything
+deeper than depth-2 is left untouched. (Updated 2026-05-31 — depth-2 was originally out
+of scope; the wrapper-with-internal-TODO model brought it in.)
 
 ## Move semantics (`commands.ts`)
 
@@ -173,9 +176,28 @@ archiver changes.
   (ordered vs bullet).
 - `insertProcessBlock`: skeleton shape + placeholder selection.
 
+## Depth-2 move semantics (added 2026-05-31)
+
+A depth-2 sub-item move mirrors TODO's `buildDepth2Move`, with the target being the
+neighbor **stage** (not a paired region):
+
+1. Resolve target stage = `stage ± 1` (same out-of-bounds no-op as depth-1).
+2. Match the sub-item's parent category label against the target stage's depth-1 items.
+3. Insert plan:
+   - matching category with a nested list → append into that nested list;
+   - matching category without a nested list → create a nested list inside it;
+   - no matching category but stage has a list → append a new category li to the
+     stage's last list;
+   - listless stage → create a fresh list (after the header) holding the new category.
+4. Source removal is local: delete the sub-item, or its enclosing nested list when it was
+   the sole child. The **parent category header always survives** (it may become a bare
+   category with no sub-items), consistent with stages being permanent columns.
+
+A depth-1 card move is unchanged — the whole card (with any sub-items) moves to the
+neighbor stage and is appended verbatim (no category merge), matching TODO's depth-1.
+
 ## Out of scope (YAGNI)
 
-- depth-2 / nested categories.
-- Mobile Toolbar button (add later if wanted).
+- depth-3+ / deeper nesting.
 - Drag-and-drop reordering of stages or cards.
 - Any migration of existing notes.
