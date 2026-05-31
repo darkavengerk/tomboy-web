@@ -28,11 +28,19 @@ export function destroyChart(handle: ChartHandle | null): void {
 	if (handle) handle.destroy();
 }
 
-/** Render a red-toned inline error card with a Korean message. */
+/**
+ * Render a red-toned inline error card with a Korean message.
+ *
+ * Uses the container's own `ownerDocument` rather than the global `document`:
+ * the chart widget's render runs in a detached async task that may resolve
+ * after the editor (or, in tests, the jsdom environment) is torn down, when
+ * the global `document` is gone but the container node still holds a valid
+ * ownerDocument reference. This avoids a `document is not defined` rejection.
+ */
 export function renderErrorCard(container: HTMLElement, message: string): void {
 	container.innerHTML = '';
 	container.style.removeProperty('height');
-	const card = document.createElement('div');
+	const card = container.ownerDocument.createElement('div');
 	card.className = 'tomboy-chart-error';
 	card.textContent = `⚠ ${message}`;
 	container.appendChild(card);
