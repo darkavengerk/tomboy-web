@@ -2002,6 +2002,21 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 		line-height: 0;
 		color: #2563eb;
 		cursor: pointer;
+		position: relative;
+	}
+	/* 모바일 hit-area — 위첨자는 작아 탭이 어렵다. 보이지 않는 ::before 가
+	   상하 12px·좌우 8px 만큼 터치 영역을 넓힌다(pseudo 영역 탭도 sup 으로
+	   히트되어 plugin 의 closest('.tomboy-fn-ref') 가 잡는다). 데스크탑은
+	   hover 가 정밀하므로 손대지 않는다. */
+	@media (hover: none), (pointer: coarse) {
+		.tomboy-editor :global(.tomboy-fn-ref::before) {
+			content: '';
+			position: absolute;
+			top: -12px;
+			left: -8px;
+			right: -8px;
+			bottom: -12px;
+		}
 	}
 	/* 설명 마커(줄 맨 앞 [^N]) — 일반 크기. 작은 위첨자면 설명 시작이
 	   어색하므로 본문과 같은 크기·기준선으로 둔다. */
@@ -2028,6 +2043,10 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 		position: fixed;
 		z-index: 900;
 		max-width: 300px;
+		/* 길이 제한은 plugin 에서 글자수(데스크탑 전문 / 모바일 300자)로 두고,
+		   여기서는 뷰포트를 넘지 않게 높이만 막는다(모바일은 내부 스크롤 가능). */
+		max-height: 50vh;
+		overflow-y: auto;
 		padding: 0.5rem 0.625rem;
 		background: #ffffff;
 		border: 1px solid #d1d5db;
@@ -2041,11 +2060,6 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 		pointer-events: none;
 	}
 	:global(.tomboy-fn-preview-text) {
-		display: -webkit-box;
-		-webkit-line-clamp: 4;
-		line-clamp: 4;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
 		white-space: pre-wrap;
 		word-break: break-word;
 	}

@@ -13,6 +13,13 @@ import {
 if (!Element.prototype.scrollIntoView) {
 	Element.prototype.scrollIntoView = () => {};
 }
+// 키보드-올라온 케이스는 mousedown 을 PM 기본 동작에 넘기는데, PM 은
+// posAtCoords → document.elementFromPoint 를 호출한다. jsdom 미구현이라
+// null 반환 셰임으로 막는다(레이아웃 없음 = 좌표 히트 없음).
+if (!document.elementFromPoint) {
+	(document as Document & { elementFromPoint: () => Element | null }).elementFromPoint =
+		() => null;
+}
 
 let currentEditor: Editor | null = null;
 afterEach(() => {
@@ -287,5 +294,86 @@ describe('footnote 미리보기 — 데스크탑(hover)', () => {
 		expect(scroll).toHaveBeenCalled();
 		expect(document.querySelector('.tomboy-fn-preview')).toBeNull();
 		scroll.mockRestore();
+	});
+});
+
+describe('footnote 미리보기 — 글자수 제한', () => {
+	it('데스크탑 hover 는 120자 초과해도 전문을 표시한다', () => {
+		vi.useFakeTimers();
+		mockMatchMedia(false);
+		const long = '가'.repeat(200);
+		const e = makeEditor([
+			P('제목'),
+			P('본문 ', { fn: '7' }),
+			P({ fn: '7' }, ' ' + long)
+		]);
+		dispatchMouse(e, 'sup.tomboy-fn-ref', 'mouseover');
+		vi.advanceTimersByTime(120);
+		const body = document.querySelector('.tomboy-fn-preview-text');
+		expect(body).not.toBeNull();
+		// 말줄임(…) 없이 200자 그대로.
+		expect(body!.textContent).toBe(long);
+		expect(body!.textContent!.length).toBe(200);
+	});
+
+	it('모바일 탭은 300자로 말줄임한다', () => {
+		mockMatchMedia(true);
+		const long = '가'.repeat(400);
+		const e = makeEditor([
+			P('제목'),
+			P('본문 ', { fn: '7' }),
+			P({ fn: '7' }, ' ' + long)
+		]);
+		tapFootnote(e, 'sup.tomboy-fn-ref');
+		const body = document.querySelector('.tomboy-fn-preview-text');
+		expect(body).not.toBeNull();
+		expect(body!.textContent!.length).toBe(301); // 300자 + …
+		expect(body!.textContent!.endsWith('…')).toBe(true);
+	});
+});
+
+describe('footnote — 키보드 올라온 상태(모바일 편집 중)', () => {
+	it('에디터 포커스 중 참조 탭은 미리보기/이동 없이 기본 동작에 맡긴다', () => {
+		mockMatchMedia(true);
+		const scroll = vi.spyOn(Element.prototype, 'scrollIntoView');
+		const e = makeEditor([
+			P('제목'),
+			P('본문 ', { fn: '7' }),
+			P({ fn: '7' }, ' 설명 내용')
+		]);
+		// 키보드가 올라온 상태 = 에디터 포커스.
+		vi.spyOn(e.view, 'hasFocus').mockReturnValue(true);
+		const event = tapFootnote(e, 'sup.tomboy-fn-ref');
+		// 가로채지 않으므로 preventDefault 안 함(PM 기본 캐럿/선택 동작).
+		expect(event.defaultPrevented).toBe(false);
+		expect(document.querySelector('.tomboy-fn-preview')).toBeNull();
+		expect(scroll).not.toHaveBeenCalled();
+		scroll.mockRestore();
+	});
+
+	it('설명 마커도 포커스 중에는 이동하지 않는다', () => {
+		mockMatchMedia(true);
+		const scroll = vi.spyOn(Element.prototype, 'scrollIntoView');
+		const e = makeEditor([
+			P('제목'),
+			P('본문 ', { fn: '7' }),
+			P({ fn: '7' }, ' 설명')
+		]);
+		vi.spyOn(e.view, 'hasFocus').mockReturnValue(true);
+		tapFootnote(e, '.tomboy-fn-def');
+		expect(scroll).not.toHaveBeenCalled();
+		scroll.mockRestore();
+	});
+
+	it('포커스가 없으면(편집 아님) 평소대로 미리보기를 띄운다', () => {
+		mockMatchMedia(true);
+		const e = makeEditor([
+			P('제목'),
+			P('본문 ', { fn: '7' }),
+			P({ fn: '7' }, ' 설명 내용')
+		]);
+		vi.spyOn(e.view, 'hasFocus').mockReturnValue(false);
+		tapFootnote(e, 'sup.tomboy-fn-ref');
+		expect(document.querySelector('.tomboy-fn-preview')).not.toBeNull();
 	});
 });

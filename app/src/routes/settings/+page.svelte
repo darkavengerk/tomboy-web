@@ -1678,6 +1678,32 @@ https://www.dropbox.com/…/starting.png</pre>
 							마크는 그대로 살아남습니다.</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>각주 (<code>[^N]</code>) — 참조 ↔ 설명 점프 + 미리보기</summary>
+					<p class="info-text">
+						본문에 <code>[^1]</code> 처럼 입력하면 작은 위첨자 <strong>참조 마커</strong>가 됩니다.
+						같은 라벨을 줄 맨 앞에 둔 문단은 <strong>설명 마커</strong>(일반 크기)로, 참조와 설명이
+						서로 짝이 되어 클릭으로 오갑니다. <code>[^N]</code> 텍스트는 Tomboy XML에 그대로
+						보존됩니다.
+					</p>
+					<pre class="snippet">본문 중간에 각주를 답니다.[^1]
+
+[^1] 줄 맨 앞에 같은 라벨을 두면 이 문단이 설명이 됩니다.</pre>
+					<ul class="guide-list">
+						<li><strong>설명 마커</strong>(줄 맨 앞 <code>[^N]</code>) 클릭 — 데스크탑·모바일 모두
+							짝 참조로 즉시 스크롤 이동합니다.</li>
+						<li><strong>참조 마커</strong>(본문 속 위첨자) — <strong>데스크탑</strong>은 마우스를 올리면
+							설명 <strong>전문</strong>이 미리보기로 뜨고, 클릭하면 설명으로 이동합니다.</li>
+						<li><strong>모바일</strong>에서 참조를 탭하면 설명 미리보기(최대 300자)와 <strong>이동</strong>
+							버튼이 뜹니다. 버튼을 눌러야 이동하고, 바깥을 탭하거나 스크롤하면 닫힙니다.</li>
+						<li>위첨자는 작아 탭이 어려우므로 <strong>모바일에서는 터치 영역을 넓혀</strong> 두었습니다.</li>
+						<li>편집 중(<strong>키보드가 올라온 상태</strong>)에는 각주 탭이 미리보기·이동을 띄우지 않고
+							일반 커서 배치로 동작합니다 — 넓힌 터치 영역을 잘못 눌러 편집이 끊기지 않게 하기
+							위함입니다.</li>
+						<li>짝을 찾지 못한 각주는 “설명을 찾을 수 없습니다” 안내가 표시됩니다.</li>
+					</ul>
+				</details>
 			</section>
 
 			{:else if guideSubTab === 'env'}

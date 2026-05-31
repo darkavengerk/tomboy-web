@@ -8,7 +8,9 @@
  *  - 참조 마커(모바일): 탭 → 설명 미리보기 + "이동" 버튼(탭만으론 이동 안 함).
  *
  * mousedown 에서 가로채는 이유: 클릭으로 인한 PM 기본 selection 변경이
- * 모바일에서 키보드를 띄워 본문을 가리는 문제를 막기 위함.
+ * 모바일에서 키보드를 띄워 본문을 가리는 문제를 막기 위함. 단, 이미
+ * 키보드가 올라온(에디터 포커스) 모바일 편집 중에는 가로채지 않고 일반
+ * 캐럿 배치로 넘겨, 확대된 hit-area 오탭으로 미리보기가 튀지 않게 한다.
  */
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
@@ -114,7 +116,12 @@ export function createFootnotePlugin(
 		if (!st) return;
 		const partner = findFootnotePartner(st.matches, hit);
 		if (partner) {
-			const text = getDefinitionPreviewText(view.state.doc, partner);
+			// 데스크탑 hover 는 전문(제한 없음), 모바일 탭은 300자까지.
+			const text = getDefinitionPreviewText(
+				view.state.doc,
+				partner,
+				isTouch ? 300 : Infinity
+			);
 			preview.show(anchorEl, text, {
 				withJumpButton,
 				onJump: () => scrollToMatch(view, partner)
@@ -157,6 +164,10 @@ export function createFootnotePlugin(
 							? target.closest('.tomboy-fn-ref, .tomboy-fn-def')
 							: null;
 					if (!(fnEl instanceof HTMLElement)) return false;
+					// 모바일에서 키보드가 올라온(에디터 포커스) 상태면 각주 상호작용을
+					// 막지 않는다 — 확대된 hit-area 를 편집 중 오탭해 미리보기/이동이
+					// 튀는 것을 방지하고, 일반 캐럿 배치(편집)로 넘긴다.
+					if (isTouch && view.hasFocus()) return false;
 					event.preventDefault();
 					const st = footnotePluginKey.getState(view.state);
 					if (!st) return true;
