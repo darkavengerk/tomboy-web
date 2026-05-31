@@ -13,12 +13,59 @@ import {
 if (!Element.prototype.scrollIntoView) {
 	Element.prototype.scrollIntoView = () => {};
 }
+// 키보드-올라온 케이스는 mousedown 을 PM 기본 동작에 넘기는데, PM 은
+// posAtCoords → document.elementFromPoint 를 호출한다. jsdom 미구현이라
+// null 반환 셰임으로 막는다(레이아웃 없음 = 좌표 히트 없음).
+if (!document.elementFromPoint) {
+	(document as Document & { elementFromPoint: () => Element | null }).elementFromPoint =
+		() => null;
+}
 
 let currentEditor: Editor | null = null;
 afterEach(() => {
 	currentEditor?.destroy();
 	currentEditor = null;
+	vi.useRealTimers();
+	// 미리보기 팝오버는 document.body 에 붙으므로 잔해 제거.
+	document.querySelectorAll('.tomboy-fn-preview').forEach((el) => el.remove());
+	// matchMedia 목 해제 — 기본(데스크탑)은 jsdom 에 matchMedia 가 없는 상태.
+	(window as Window & { matchMedia?: typeof window.matchMedia }).matchMedia =
+		originalMatchMedia;
 });
+
+const originalMatchMedia = (
+	window as Window & { matchMedia?: typeof window.matchMedia }
+).matchMedia;
+
+/** isTouchDevice() 판정을 강제 — makeEditor(플러그인 생성) 전에 호출해야 한다. */
+function mockMatchMedia(matches: boolean): void {
+	(window as Window & { matchMedia?: typeof window.matchMedia }).matchMedia = ((
+		query: string
+	) => ({
+		matches,
+		media: query,
+		onchange: null,
+		addListener: () => {},
+		removeListener: () => {},
+		addEventListener: () => {},
+		removeEventListener: () => {},
+		dispatchEvent: () => false
+	})) as unknown as typeof window.matchMedia;
+}
+
+/** 각주 요소에 mouseover / mouseout 이벤트를 디스패치한다. */
+function dispatchMouse(
+	e: Editor,
+	selector: string,
+	type: 'mouseover' | 'mouseout',
+	relatedTarget: Element | null = null
+): void {
+	const el = e.view.dom.querySelector(selector);
+	if (!el) throw new Error(`footnote element not found: ${selector}`);
+	el.dispatchEvent(
+		new MouseEvent(type, { bubbles: true, cancelable: true, relatedTarget })
+	);
+}
 
 /**
  * 단락 빌더 — 문자열은 text 노드, `{ fn }` 객체는 footnoteMarker 노드.
@@ -134,5 +181,199 @@ describe('footnote plugin tap (mousedown)', () => {
 		]);
 		const event = tapFootnote(e, 'sup.tomboy-fn-ref');
 		expect(event.defaultPrevented).toBe(true);
+	});
+});
+
+describe('footnote 미리보기 — 모바일(탭)', () => {
+	it('참조 탭 → 이동하지 않고 미리보기 + 이동 버튼 표시', () => {
+		mockMatchMedia(true);
+		const scroll = vi.spyOn(Element.prototype, 'scrollIntoView');
+		const e = makeEditor([
+			P('제목'),
+			P('본문 ', { fn: '7' }),
+			P({ fn: '7' }, ' 설명 내용')
+		]);
+		tapFootnote(e, 'sup.tomboy-fn-ref');
+		const popover = document.querySelector('.tomboy-fn-preview');
+		expect(popover).not.toBeNull();
+		expect(popover!.textContent).toContain('설명 내용');
+		expect(document.querySelector('.tomboy-fn-preview-jump')).not.toBeNull();
+		// 탭만으로는 이동하지 않는다.
+		expect(scroll).not.toHaveBeenCalled();
+		scroll.mockRestore();
+	});
+
+	it('이동 버튼 탭 → scrollIntoView 호출 + 미리보기 닫힘', () => {
+		mockMatchMedia(true);
+		const scroll = vi.spyOn(Element.prototype, 'scrollIntoView');
+		const e = makeEditor([
+			P('제목'),
+			P('본문 ', { fn: '7' }),
+			P({ fn: '7' }, ' 설명 내용')
+		]);
+		tapFootnote(e, 'sup.tomboy-fn-ref');
+		const btn = document.querySelector(
+			'.tomboy-fn-preview-jump'
+		) as HTMLButtonElement;
+		btn.click();
+		expect(scroll).toHaveBeenCalled();
+		expect(document.querySelector('.tomboy-fn-preview')).toBeNull();
+		scroll.mockRestore();
+	});
+
+	it('짝 없는 참조 탭 → 안내 문구 + 버튼 없음 + onMissing 미호출', () => {
+		mockMatchMedia(true);
+		const onMissing = vi.fn();
+		const e = makeEditor([P('제목'), P('본문 ', { fn: '7' })], onMissing);
+		tapFootnote(e, 'sup.tomboy-fn-ref');
+		const popover = document.querySelector('.tomboy-fn-preview');
+		expect(popover).not.toBeNull();
+		expect(popover!.classList.contains('tomboy-fn-preview-missing')).toBe(true);
+		expect(document.querySelector('.tomboy-fn-preview-jump')).toBeNull();
+		expect(onMissing).not.toHaveBeenCalled();
+	});
+
+	it('설명 마커 탭은 모바일에서도 즉시 이동(미리보기 없음)', () => {
+		mockMatchMedia(true);
+		const scroll = vi.spyOn(Element.prototype, 'scrollIntoView');
+		const e = makeEditor([
+			P('제목'),
+			P('본문 ', { fn: '7' }),
+			P({ fn: '7' }, ' 설명')
+		]);
+		tapFootnote(e, '.tomboy-fn-def');
+		expect(scroll).toHaveBeenCalled();
+		expect(document.querySelector('.tomboy-fn-preview')).toBeNull();
+		scroll.mockRestore();
+	});
+});
+
+describe('footnote 미리보기 — 데스크탑(hover)', () => {
+	it('참조 hover → 120ms 후 버튼 없는 미리보기 표시', () => {
+		vi.useFakeTimers();
+		mockMatchMedia(false);
+		const e = makeEditor([
+			P('제목'),
+			P('본문 ', { fn: '7' }),
+			P({ fn: '7' }, ' 설명 내용')
+		]);
+		dispatchMouse(e, 'sup.tomboy-fn-ref', 'mouseover');
+		expect(document.querySelector('.tomboy-fn-preview')).toBeNull();
+		vi.advanceTimersByTime(120);
+		const popover = document.querySelector('.tomboy-fn-preview');
+		expect(popover).not.toBeNull();
+		expect(popover!.textContent).toContain('설명 내용');
+		expect(popover!.classList.contains('tomboy-fn-preview-static')).toBe(true);
+		expect(document.querySelector('.tomboy-fn-preview-jump')).toBeNull();
+	});
+
+	it('hover 후 mouseout(마커 밖) → 미리보기 닫힘', () => {
+		vi.useFakeTimers();
+		mockMatchMedia(false);
+		const e = makeEditor([
+			P('제목'),
+			P('본문 ', { fn: '7' }),
+			P({ fn: '7' }, ' 설명 내용')
+		]);
+		dispatchMouse(e, 'sup.tomboy-fn-ref', 'mouseover');
+		vi.advanceTimersByTime(120);
+		expect(document.querySelector('.tomboy-fn-preview')).not.toBeNull();
+		dispatchMouse(e, 'sup.tomboy-fn-ref', 'mouseout', e.view.dom);
+		expect(document.querySelector('.tomboy-fn-preview')).toBeNull();
+	});
+
+	it('데스크탑 참조 클릭은 미리보기 없이 즉시 이동', () => {
+		mockMatchMedia(false);
+		const scroll = vi.spyOn(Element.prototype, 'scrollIntoView');
+		const e = makeEditor([
+			P('제목'),
+			P('본문 ', { fn: '7' }),
+			P({ fn: '7' }, ' 설명')
+		]);
+		tapFootnote(e, 'sup.tomboy-fn-ref');
+		expect(scroll).toHaveBeenCalled();
+		expect(document.querySelector('.tomboy-fn-preview')).toBeNull();
+		scroll.mockRestore();
+	});
+});
+
+describe('footnote 미리보기 — 글자수 제한', () => {
+	it('데스크탑 hover 는 120자 초과해도 전문을 표시한다', () => {
+		vi.useFakeTimers();
+		mockMatchMedia(false);
+		const long = '가'.repeat(200);
+		const e = makeEditor([
+			P('제목'),
+			P('본문 ', { fn: '7' }),
+			P({ fn: '7' }, ' ' + long)
+		]);
+		dispatchMouse(e, 'sup.tomboy-fn-ref', 'mouseover');
+		vi.advanceTimersByTime(120);
+		const body = document.querySelector('.tomboy-fn-preview-text');
+		expect(body).not.toBeNull();
+		// 말줄임(…) 없이 200자 그대로.
+		expect(body!.textContent).toBe(long);
+		expect(body!.textContent!.length).toBe(200);
+	});
+
+	it('모바일 탭은 300자로 말줄임한다', () => {
+		mockMatchMedia(true);
+		const long = '가'.repeat(400);
+		const e = makeEditor([
+			P('제목'),
+			P('본문 ', { fn: '7' }),
+			P({ fn: '7' }, ' ' + long)
+		]);
+		tapFootnote(e, 'sup.tomboy-fn-ref');
+		const body = document.querySelector('.tomboy-fn-preview-text');
+		expect(body).not.toBeNull();
+		expect(body!.textContent!.length).toBe(301); // 300자 + …
+		expect(body!.textContent!.endsWith('…')).toBe(true);
+	});
+});
+
+describe('footnote — 키보드 올라온 상태(모바일 편집 중)', () => {
+	it('에디터 포커스 중 참조 탭은 미리보기/이동 없이 기본 동작에 맡긴다', () => {
+		mockMatchMedia(true);
+		const scroll = vi.spyOn(Element.prototype, 'scrollIntoView');
+		const e = makeEditor([
+			P('제목'),
+			P('본문 ', { fn: '7' }),
+			P({ fn: '7' }, ' 설명 내용')
+		]);
+		// 키보드가 올라온 상태 = 에디터 포커스.
+		vi.spyOn(e.view, 'hasFocus').mockReturnValue(true);
+		const event = tapFootnote(e, 'sup.tomboy-fn-ref');
+		// 가로채지 않으므로 preventDefault 안 함(PM 기본 캐럿/선택 동작).
+		expect(event.defaultPrevented).toBe(false);
+		expect(document.querySelector('.tomboy-fn-preview')).toBeNull();
+		expect(scroll).not.toHaveBeenCalled();
+		scroll.mockRestore();
+	});
+
+	it('설명 마커도 포커스 중에는 이동하지 않는다', () => {
+		mockMatchMedia(true);
+		const scroll = vi.spyOn(Element.prototype, 'scrollIntoView');
+		const e = makeEditor([
+			P('제목'),
+			P('본문 ', { fn: '7' }),
+			P({ fn: '7' }, ' 설명')
+		]);
+		vi.spyOn(e.view, 'hasFocus').mockReturnValue(true);
+		tapFootnote(e, '.tomboy-fn-def');
+		expect(scroll).not.toHaveBeenCalled();
+		scroll.mockRestore();
+	});
+
+	it('포커스가 없으면(편집 아님) 평소대로 미리보기를 띄운다', () => {
+		mockMatchMedia(true);
+		const e = makeEditor([
+			P('제목'),
+			P('본문 ', { fn: '7' }),
+			P({ fn: '7' }, ' 설명 내용')
+		]);
+		vi.spyOn(e.view, 'hasFocus').mockReturnValue(false);
+		tapFootnote(e, 'sup.tomboy-fn-ref');
+		expect(document.querySelector('.tomboy-fn-preview')).not.toBeNull();
 	});
 });

@@ -93,7 +93,10 @@ function splitFootnotesInText(
 
 // Inline-checkbox 패턴. `[ ]` (공백 1 개) 또는 `[x]` / `[X]`.
 // 좌우 텍스트는 mark 를 유지하고, 매치 자리에 atomic 노드를 삽입.
-const INLINE_CHECKBOX_SPLIT_RE = /\[([ xX])\]/g;
+// lookbehind/lookahead 로 `[[X]]` 안 `[X]` 는 건드리지 않음 — 체크리스트
+// 영역의 통째-li 마커 `[[X]] ` 를 보존하기 위함. (예: `[[X]] 우유` 는
+// 평문 텍스트로 split 통과 → applyChecklistMarkersOnParse 가 strip.)
+const INLINE_CHECKBOX_SPLIT_RE = /(?<!\[)\[([ xX])\](?!\])/g;
 
 /**
  * 텍스트 안의 [ ]/[x] 패턴을 inlineCheckbox 노드로 split.
@@ -127,6 +130,75 @@ function splitInlineCheckboxesInText(
 		const piece: JSONContent = { type: 'text', text: text.slice(last) };
 		if (marks) piece.marks = marks;
 		out.push(piece);
+	}
+	return out;
+}
+
+// Inline-radio 패턴. `( )` (공백 1 개) 또는 `(o)` / `(O)`.
+const INLINE_RADIO_SPLIT_RE = /\(([ oO])\)/g;
+
+/**
+ * 텍스트 안의 ( )/(o) 패턴을 inlineRadio 노드로 split.
+ * splitInlineCheckboxesInText 와 동일 구조 — atomic 노드는 mark 안
+ * 받음, 좌우 텍스트만 원본 mark 유지.
+ */
+function splitInlineRadiosInText(
+	text: string,
+	marks: InlineMark[] | undefined
+): JSONContent[] {
+	INLINE_RADIO_SPLIT_RE.lastIndex = 0;
+	const out: JSONContent[] = [];
+	let last = 0;
+	let m: RegExpExecArray | null;
+	while ((m = INLINE_RADIO_SPLIT_RE.exec(text)) !== null) {
+		if (m.index > last) {
+			const piece: JSONContent = { type: 'text', text: text.slice(last, m.index) };
+			if (marks) piece.marks = marks;
+			out.push(piece);
+		}
+		const selected = m[1] === 'o' || m[1] === 'O';
+		out.push({ type: 'inlineRadio', attrs: { selected } });
+		last = m.index + m[0].length;
+	}
+	if (last === 0) {
+		const piece: JSONContent = { type: 'text', text };
+		if (marks) piece.marks = marks;
+		return [piece];
+	}
+	if (last < text.length) {
+		const piece: JSONContent = { type: 'text', text: text.slice(last) };
+		if (marks) piece.marks = marks;
+		out.push(piece);
+	}
+	return out;
+}
+
+/**
+ * 3-pass inline 분할: footnote → checkbox → radio.
+ * 텍스트 한 조각을 받아 atomic 노드(footnoteMarker / inlineCheckbox /
+ * inlineRadio) 가 끼어든 inline 노드 배열을 돌려준다. 분할 후 텍스트는
+ * 원본 mark 를 유지하고 atomic 노드는 mark 를 받지 않는다.
+ *
+ * `parseBlocks` (일반 문단) 와 `parseListItem` (리스트 항목) 양쪽에서
+ * 호출되어 위치 무관 동일한 결과를 보장한다.
+ */
+function splitInlineMarkers(text: string, marks: InlineMark[] | undefined): JSONContent[] {
+	const fn = splitFootnotesInText(text, marks);
+	const cb: JSONContent[] = [];
+	for (const piece of fn) {
+		if (piece.type === 'text' && typeof piece.text === 'string') {
+			cb.push(...splitInlineCheckboxesInText(piece.text, piece.marks as InlineMark[] | undefined));
+		} else {
+			cb.push(piece);
+		}
+	}
+	const out: JSONContent[] = [];
+	for (const piece of cb) {
+		if (piece.type === 'text' && typeof piece.text === 'string') {
+			out.push(...splitInlineRadiosInText(piece.text, piece.marks as InlineMark[] | undefined));
+		} else {
+			out.push(piece);
+		}
 	}
 	return out;
 }
@@ -203,6 +275,7 @@ export function serializeContent(doc: JSONContent): string {
 					if (inline.type === 'hardBreak') return [];
 					if (inline.type === 'footnoteMarker') return [];
 					if (inline.type === 'inlineCheckbox') return [];
+					if (inline.type === 'inlineRadio') return [];
 				}
 				// Empty paragraph — keep scanning subsequent blocks.
 				continue;
@@ -281,6 +354,10 @@ export function serializeContent(doc: JSONContent): string {
 					// 모든 mark 닫고 [ ]/[x] emit. 다음 text 노드가 mark 를 다시 연다.
 					closeAll();
 					result += inline.attrs?.checked ? '[x]' : '[ ]';
+				} else if (inline.type === 'inlineRadio') {
+					// 모든 mark 닫고 ( )/(o) emit. 다음 text 노드가 mark 를 다시 연다.
+					closeAll();
+					result += inline.attrs?.selected ? '(o)' : '( )';
 				}
 			}
 			// 헤더 문단이면 영역 시작, 그 외 문단/헤딩이면 영역 종료.
@@ -423,17 +500,7 @@ function parseBlocks(container: Element): JSONContent[] {
 		for (const n of nodes) {
 			if (n.type === 'text' && typeof n.text === 'string') {
 				if (n.text.length === 0) continue;
-				// 1) 각주 split (footnoteMarker) → 2) 인라인 체크박스 split.
-				// 각주가 분리한 텍스트 조각 각각에 대해 체크박스 패턴을 다시 split.
-				const fnSplit = splitFootnotesInText(n.text, n.marks);
-				const split: JSONContent[] = [];
-				for (const piece of fnSplit) {
-					if (piece.type === 'text' && typeof piece.text === 'string') {
-						split.push(...splitInlineCheckboxesInText(piece.text, piece.marks));
-					} else {
-						split.push(piece);
-					}
-				}
+				const split = splitInlineMarkers(n.text, n.marks as InlineMark[] | undefined);
 				if (split.length === 1 && split[0].type === 'text') {
 					appendTextWithNewlines(split[0]);
 				} else {
@@ -667,7 +734,11 @@ function parseListItem(itemEl: Element): JSONContent {
 		if (child.nodeType === Node.TEXT_NODE) {
 			const text = (child.textContent ?? '').replace(/\n/g, '');
 			if (text.length > 0) {
-				inlineContent.push({ type: 'text', text });
+				// `parseBlocks` 와 동일하게 footnote / inlineCheckbox /
+				// inlineRadio 패턴을 atomic 노드로 split. 누락 시 리스트
+				// 항목 안의 `[x]` / `( )` 같은 마커가 로드 후 평문 텍스트로
+				// 남는다.
+				inlineContent.push(...splitInlineMarkers(text, undefined));
 			}
 		} else if (child.nodeType === Node.ELEMENT_NODE) {
 			const el = child as Element;
@@ -686,7 +757,16 @@ function parseListItem(itemEl: Element): JSONContent {
 				if (isPureNewline) {
 					pendingTrailingMarks = nodes[0].marks;
 				} else {
-					inlineContent.push(...nodes);
+					// Marked text(예: <bold>[x]</bold>) 안의 마커도 split.
+					for (const piece of nodes) {
+						if (piece.type === 'text' && typeof piece.text === 'string') {
+							inlineContent.push(
+								...splitInlineMarkers(piece.text, piece.marks as InlineMark[] | undefined)
+							);
+						} else {
+							inlineContent.push(piece);
+						}
+					}
 				}
 			}
 		}
@@ -786,6 +866,10 @@ function serializeInlineContent(content: JSONContent[]): string {
 			// 모든 mark 닫고 [ ]/[x] emit. 다음 text 노드가 mark 를 다시 연다.
 			closeAll();
 			result += node.attrs?.checked ? '[x]' : '[ ]';
+		} else if (node.type === 'inlineRadio') {
+			// 모든 mark 닫고 ( )/(o) emit. 다음 text 노드가 mark 를 다시 연다.
+			closeAll();
+			result += node.attrs?.selected ? '(o)' : '( )';
 		}
 	}
 
@@ -855,7 +939,8 @@ function serializeListItem(
 	if (checklist) {
 		// 체크리스트 영역 항목: 첫 문단 내용 앞에 마커 텍스트를 박는다.
 		// '[', ']', 공백, 'X' 는 XML 안전 문자라 이스케이프 불필요.
-		result += item.attrs?.checked ? '[X] ' : '[ ] ';
+		// `[[X]]` / `[[ ]]` 은 inline checkbox atom `[x]` 과 구분되는 문법.
+		result += item.attrs?.checked ? '[[X]] ' : '[[ ]] ';
 	}
 
 	const children = item.content ?? [];
@@ -976,12 +1061,18 @@ function getPlainText(node: JSONContent): string {
 	if (node.type === 'inlineCheckbox') {
 		return node.attrs?.checked ? '[x]' : '[ ]';
 	}
+	if (node.type === 'inlineRadio') {
+		return node.attrs?.selected ? '(o)' : '( )';
+	}
 	if (!node.content) return '';
 	return node.content.map(getPlainText).join('');
 }
 
-// 체크리스트 항목 마커: [ ] 미체크 / [X] 체크 (소문자 x 도 체크로 인정).
-const CHECKLIST_MARKER_RE = /^\[([ xX])\] /;
+// 체크리스트 항목 마커: [[ ]] 미체크 / [[X]] 체크 (소문자 x 도 체크로 인정).
+// inline checkbox atom `[x]` 과 구분되는 문법 — 영역 안 li 첫머리에서만
+// 의미를 가지며 통째 체크박스를 표현한다.
+const CHECKLIST_MARKER_RE = /^\[\[([ xX])\]\] /;
+const CHECKLIST_MARKER_LEN = 6; // '[[X]] '.length
 
 // 주의: 체크리스트 영역 그룹핑(헤더 + 그 직후 연속 bulletList)은 네 곳
 // 에서 각각 구현된다 — editor/checklist/regions.ts 의 findChecklistRegions
@@ -1032,7 +1123,7 @@ function stripChecklistMarkerInItem(li: JSONContent): void {
 			const m = CHECKLIST_MARKER_RE.exec(first.text);
 			if (m) {
 				checked = m[1] === 'x' || m[1] === 'X';
-				const rest = first.text.slice(4);
+				const rest = first.text.slice(CHECKLIST_MARKER_LEN);
 				if (rest.length === 0) {
 					para.content.shift();
 				} else {

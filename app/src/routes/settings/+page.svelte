@@ -99,6 +99,12 @@
 	type Tab = 'sync' | 'config' | 'share' | 'terminal' | 'notify' | 'guide' | 'shortcuts' | 'advanced' | 'claude';
 	let activeTab = $state<Tab>('sync');
 
+	// 가이드 탭 내부 sub-tab. 콘텐츠 양이 많아 카테고리별 분리.
+	// 새 노트 형식 / 에디터 블록 / 환경 요구사항을 추가할 때마다 해당 sub-tab 에
+	// guide-card 를 한 장 더 끼워 넣는다.
+	type GuideSubTab = 'notes' | 'editor' | 'env';
+	let guideSubTab = $state<GuideSubTab>('notes');
+
 	let authenticated = $state(false);
 	let syncStatus: SyncStatus = $state('idle');
 	let syncMessage = $state('');
@@ -868,6 +874,12 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 		{ id: 'advanced', label: '고급' },
 		{ id: 'claude', label: 'Claude' }
 	];
+
+	const guideSubTabs: { id: GuideSubTab; label: string }[] = [
+		{ id: 'notes', label: '노트 형식' },
+		{ id: 'editor', label: '에디터 블록' },
+		{ id: 'env', label: '환경 / 호환성' }
+	];
 </script>
 
 <div class="settings-page">
@@ -1515,10 +1527,25 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 			<section class="section">
 				<p class="info-text">
 					이 노트앱의 노트 형식 규칙과 브라우저/환경 요구사항을 정리한 페이지입니다. 새 기기에서
-					처음 쓸 때 한 번씩 훑어보세요.
+					처음 쓸 때 한 번씩 훑어보세요. 카테고리는 아래 탭으로 전환합니다.
 				</p>
 			</section>
 
+			<nav class="guide-subtabs" aria-label="가이드 카테고리">
+				{#each guideSubTabs as t (t.id)}
+					<button
+						type="button"
+						class="guide-subtab"
+						class:active={guideSubTab === t.id}
+						aria-current={guideSubTab === t.id ? 'page' : undefined}
+						onclick={() => (guideSubTab = t.id)}
+					>
+						{t.label}
+					</button>
+				{/each}
+			</nav>
+
+			{#if guideSubTab === 'notes'}
 			<section class="section">
 				<h2>구조화 노트 형식</h2>
 				<p class="info-text">
@@ -1636,6 +1663,7 @@ https://www.dropbox.com/…/starting.png</pre>
 				</details>
 			</section>
 
+			{:else if guideSubTab === 'editor'}
 			<section class="section">
 				<h2>에디터 본문 블록</h2>
 				<p class="info-text">
@@ -1677,8 +1705,120 @@ https://www.dropbox.com/…/starting.png</pre>
 							마크는 그대로 살아남습니다.</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>각주 (<code>[^N]</code>) — 참조 ↔ 설명 점프 + 미리보기</summary>
+					<p class="info-text">
+						본문에 <code>[^1]</code> 처럼 입력하면 작은 위첨자 <strong>참조 마커</strong>가 됩니다.
+						같은 라벨을 줄 맨 앞에 둔 문단은 <strong>설명 마커</strong>(일반 크기)로, 참조와 설명이
+						서로 짝이 되어 클릭으로 오갑니다. <code>[^N]</code> 텍스트는 Tomboy XML에 그대로
+						보존됩니다.
+					</p>
+					<pre class="snippet">본문 중간에 각주를 답니다.[^1]
+
+[^1] 줄 맨 앞에 같은 라벨을 두면 이 문단이 설명이 됩니다.</pre>
+					<ul class="guide-list">
+						<li><strong>설명 마커</strong>(줄 맨 앞 <code>[^N]</code>) 클릭 — 데스크탑·모바일 모두
+							짝 참조로 즉시 스크롤 이동합니다.</li>
+						<li><strong>참조 마커</strong>(본문 속 위첨자) — <strong>데스크탑</strong>은 마우스를 올리면
+							설명 <strong>전문</strong>이 미리보기로 뜨고, 클릭하면 설명으로 이동합니다.</li>
+						<li><strong>모바일</strong>에서 참조를 탭하면 설명 미리보기(최대 300자)와 <strong>이동</strong>
+							버튼이 뜹니다. 버튼을 눌러야 이동하고, 바깥을 탭하거나 스크롤하면 닫힙니다.</li>
+						<li>위첨자는 작아 탭이 어려우므로 <strong>모바일에서는 터치 영역을 넓혀</strong> 두었습니다.</li>
+						<li>편집 중(<strong>키보드가 올라온 상태</strong>)에는 각주 탭이 미리보기·이동을 띄우지 않고
+							일반 커서 배치로 동작합니다 — 넓힌 터치 영역을 잘못 눌러 편집이 끊기지 않게 하기
+							위함입니다.</li>
+						<li>짝을 찾지 못한 각주는 “설명을 찾을 수 없습니다” 안내가 표시됩니다.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
+					<summary>차트 — 데이터 노트를 그래프로</summary>
+					<p class="info-text">
+						표 데이터를 <strong>막대·선·영역·분산</strong> 그래프로 그립니다. 데이터는
+						<code>DATA::</code> 로 시작하는 별도 노트에 두고, 아무 노트에서나 차트 블록을
+						작성해 불러옵니다. 차트 블록 맨 앞 체크박스를 <strong>켜면([x]) 차트가 그려지고</strong>,
+						끄면([ ]) 설정 목록만 보입니다.
+					</p>
+					<pre class="snippet">DATA::매출
+```csv
+월, 매출, 비용
+1월, 100, 60
+2월, 120, 70
+```
+
+[x]Chart:bar 월별 매출
+  • DATA::매출
+  • y:매출, 비용
+  • [x]범례, 값표시</pre>
+					<ul class="guide-list">
+						<li><strong>데이터 노트</strong>: 제목을 <code>DATA::데이터제목</code> 으로 시작하고, 본문에
+							<code>```csv</code> / <code>```tsv</code> 펜스로 표를 넣습니다(여러 표 가능, 차트는 첫 표 사용).</li>
+						<li><strong>차트 블록</strong>: <code>[ ]Chart:종류 차트제목</code>. 종류는
+							<code>bar</code>(막대) · <code>line</code>(선) · <code>area</code>(영역) ·
+							<code>scatter</code>(분산).</li>
+						<li>블록 아래 <strong>첫 하위 항목 = 쓸 데이터 노트 제목</strong>(<code>DATA::…</code>).
+							이후 하위 항목에 옵션을 콤마로 나열합니다.</li>
+					</ul>
+					<p class="info-text">옵션 — 축 · 데이터</p>
+					<ul class="guide-list">
+						<li><code>x:열이름</code> — x축으로 쓸 열 지정</li>
+						<li><code>y:열1, 열2</code> — y축 값으로 쓸 열(여러 개 가능)</li>
+						<li><code>묶기:N</code> — 데이터를 N개 구간으로 묶어 집계(binning)</li>
+						<li><code>방식:평균|합계|최대|최소|개수</code> — 묶을 때 집계 방식(기본 평균)</li>
+						<li><strong>표시 범위</strong>(체크박스로 택1): <code>[x]all</code> 전체 ·
+							<code>[x]last:N</code> 마지막 N개 · <code>[x]first:N</code> 처음 N개</li>
+					</ul>
+					<p class="info-text">옵션 — 모양 · 라벨</p>
+					<ul class="guide-list">
+						<li><code>stacked</code> — 누적 그래프 / <code>곡선</code> — 선을 부드럽게(line·area)</li>
+						<li><code>점표시</code> · <code>점크기:N</code> — 데이터 점 표시 / 점 크기</li>
+						<li><code>색상:c1,c2</code> · <code>팔레트:이름</code> — 색 직접 지정 / 팔레트 선택</li>
+						<li><code>범례</code> · <code>값표시</code> — 범례 / 각 값 숫자 라벨 표시</li>
+						<li><code>x축:라벨</code> · <code>y축:라벨</code> — 축 제목</li>
+						<li><code>y최소:N</code> · <code>y최대:N</code> — y축 범위 고정 / <code>높이:N</code> — 차트 높이(px)</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
+					<summary>체크박스 · 라디오 · 체크리스트 영역</summary>
+					<p class="info-text">
+						본문 어디서나 마커 텍스트를 적으면 자동으로 위젯 노드로 바뀝니다.
+						세 가지 종류가 있고 각각 문법이 다릅니다.
+					</p>
+					<p class="info-text"><strong>1. 인라인 체크박스</strong> — <code>[ ]</code> / <code>[x]</code> /
+						<code>[X]</code> 를 본문 어디든 타이핑하면 그 자리에 작은 체크박스 위젯이 만들어집니다.
+						리스트 항목 안에서도 동작합니다.</p>
+					<pre class="snippet">[x] 아침 약 먹기 [ ] 빨래
+- 리스트 안에서도 [x] 됨</pre>
+					<p class="info-text"><strong>2. 인라인 라디오</strong> — <code>( )</code> / <code>(o)</code> /
+						<code>(O)</code>. 같은 문단에 여러 개가 있으면 한 개만 선택됩니다 (그룹 토글).</p>
+					<pre class="snippet">아침: (o) 빵 ( ) 밥 ( ) 면</pre>
+					<p class="info-text"><strong>3. 체크리스트 영역 (통째 체크박스)</strong> —
+						<code>체크리스트:</code> 로 시작하는 문단 바로 뒤에 오는 리스트는 각 항목 전체가
+						체크박스가 됩니다. 항목 앞에 <code>[[ ]]</code> / <code>[[X]]</code> (대괄호 두 겹)
+						마커가 붙어 저장됩니다. 인라인 <code>[x]</code> 와 의미가 달라 문법도 구분됩니다.</p>
+					<pre class="snippet">체크리스트:
+- [[X]] 우유
+- [[ ]] 빵
+- [[ ]] 잡지</pre>
+					<ul class="guide-list">
+						<li>인라인 체크박스 / 라디오는 <strong>제목 줄에선 동작하지 않습니다</strong>. 본문에서만
+							위젯으로 바뀝니다.</li>
+						<li>영역 헤더는 정확히 <code>체크리스트:</code> 로 <strong>시작</strong>해야 합니다
+							(<code>체크리스트: 장보기</code> 처럼 뒤에 부제목 가능). 헤더 직후 연속된 리스트들이
+							모두 영역이 됩니다.</li>
+						<li>영역 안 항목은 클릭으로 통째 체크 토글이 됩니다 — 마커 텍스트를 직접 지울 필요 없습니다.
+							저장 시 <code>[[X]] </code> / <code>[[ ]] </code> 가 자동으로 붙고, 다시 열면 통째
+							체크박스로 복원됩니다.</li>
+						<li>같은 항목 안에 인라인 <code>[x]</code> 도 함께 둘 수 있습니다 — 항목 자체는 통째 체크,
+							본문 일부에 추가 체크박스를 두는 식. 예: <code>[[X]] 1단계 [x] 첫 단추</code>.</li>
+						<li>영역 헤더 없이 <code>[[X]]</code> 만 적으면 평문 텍스트로 남습니다 (의미 없음).</li>
+					</ul>
+				</details>
 			</section>
 
+			{:else if guideSubTab === 'env'}
 			<section class="section">
 				<h2>환경 / 호환성 요구사항</h2>
 				<p class="info-text">이게 안 맞으면 해당 기능이 동작하지 않거나 깨져 보입니다.</p>
@@ -1735,6 +1875,7 @@ https://www.dropbox.com/…/starting.png</pre>
 					</ul>
 				</details>
 			</section>
+			{/if}
 
 		{:else if activeTab === 'shortcuts'}
 			<!-- ── 단축키 탭 ───────────────────────────────────────────────── -->
@@ -1764,7 +1905,8 @@ https://www.dropbox.com/…/starting.png</pre>
 					<tbody>
 						<tr><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>오늘 날짜 (<code>yyyy-mm-dd</code>) 삽입 — 브라우저 북마크 단축키 가로챔</td></tr>
 						<tr><td><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>현재 줄은 유지하고 아래에 빈 블록 추가</td></tr>
-						<tr><td><kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>TODO 블록 삽입</td></tr>
+						<tr><td><kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>TODO 블록 삽입 (2단계)</td></tr>
+						<tr><td><kbd>Alt</kbd>+<kbd>P</kbd></td><td>프로세스 블록 삽입 (멀티스테이지 칸반) — <kbd>Ctrl</kbd> 누른 채 아이템 hover 시 <strong>이전</strong>/<strong>다음</strong> 단계 이동 버튼</td></tr>
 						<tr><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>현재 줄(블록 또는 리스트 아이템) 통째로 삭제</td></tr>
 					</tbody>
 				</table>
@@ -2271,6 +2413,40 @@ https://www.dropbox.com/…/starting.png</pre>
 	}
 
 	/* ── 가이드 / 단축키 탭 ──────────────────────────────────────────── */
+
+	/* 가이드 탭 내부 카테고리 sub-nav. 메인 settings-tabs (밑줄 active) 와 시각적으로
+	   구분되도록 알약(pill) 형태로 디자인 — 메인 탭 vs 서브 탭 위계가 한 눈에 보임. */
+	.guide-subtabs {
+		display: flex;
+		gap: 6px;
+		flex-wrap: wrap;
+		margin-bottom: 20px;
+	}
+
+	.guide-subtab {
+		flex: 0 0 auto;
+		padding: 6px 14px;
+		border: 1px solid var(--color-border, #ccc);
+		background: transparent;
+		border-radius: 999px;
+		font-size: clamp(0.78rem, 2.2vw, 0.88rem);
+		color: var(--color-text-secondary, #777);
+		cursor: pointer;
+		transition: color 0.1s, border-color 0.1s, background 0.1s;
+		white-space: nowrap;
+	}
+
+	.guide-subtab:hover {
+		color: var(--color-text, #111);
+		border-color: var(--color-text-secondary, #777);
+	}
+
+	.guide-subtab.active {
+		background: var(--color-primary, #d05b10);
+		color: #fff;
+		border-color: var(--color-primary, #d05b10);
+		font-weight: 600;
+	}
 
 	.guide-card {
 		border: 1px solid var(--color-border, #e5e5e5);

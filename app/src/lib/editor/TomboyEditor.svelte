@@ -34,7 +34,9 @@
 		extractTitleText,
 	} from "./titleUniqueGuard.js";
 	import { createImagePreviewPlugin } from "./imagePreview/imagePreviewPlugin.js";
+	import { createFilePreviewPlugin } from "./filePreview/filePreviewPlugin.js";
 	import { createGeoMapPlugin } from "./geoMap/geoMapPlugin.js";
+import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 	import {
 		createSendListItemPlugin,
 		sendListItemPluginKey,
@@ -68,7 +70,12 @@
 		saveColumnWidths,
 	} from "./hrSplit/hrSplitStore.js";
 	import { extractImageFile } from "./imagePreview/extractImageFile.js";
+	import { extractAnyFile } from "./extractFile.js";
 	import { uploadTempImage } from "$lib/sync/tempImageUpload.js";
+	import {
+		uploadBridgeFile,
+		BridgeFileUploadError,
+	} from "$lib/sync/bridgeFileUpload.js";
 	import { pushToast, dismissToast } from "$lib/stores/toast.js";
 	import { Extension } from "@tiptap/core";
 	import { insertTodayDate } from "./insertDate.js";
@@ -86,12 +93,18 @@
 		insertTodoBlock,
 	} from "./todoRegion/index.js";
 	import {
+		TomboyProcessRegion,
+		moveProcessItem,
+		insertProcessBlock,
+	} from "./processRegion/index.js";
+	import {
 		TomboyChecklist,
 		toggleCheckboxAt,
 		insertChecklistBlock,
 	} from "./checklist/index.js";
 	import { FootnoteMarker, TomboyFootnoteExtension } from "./footnote/index.js";
 	import { TomboyInlineCheckbox } from './inlineCheckbox';
+	import { TomboyInlineRadio } from './inlineRadio';
 	import { TomboyBlockquote } from "./blockquote/index.js";
 	import { createFindPlugin, findPluginKey } from "./find/findPlugin.js";
 	import FindBar from "./find/FindBar.svelte";
@@ -419,7 +432,7 @@
 				Extension.create({
 					name: "tomboyImagePreview",
 					addProseMirrorPlugins() {
-						return [createImagePreviewPlugin()];
+						return [createImagePreviewPlugin(), createFilePreviewPlugin()];
 					},
 				}),
 				Extension.create({
@@ -432,6 +445,12 @@
 					name: "tomboyGeoMap",
 					addProseMirrorPlugins() {
 						return [createGeoMapPlugin()];
+					},
+				}),
+				Extension.create({
+					name: "tomboyChartBlock",
+					addProseMirrorPlugins() {
+						return [createChartBlockPlugin()];
 					},
 				}),
 				Extension.create({
@@ -524,6 +543,13 @@
 						moveTodoItem(ed, liPos, fromKind);
 					},
 				}),
+				TomboyProcessRegion.configure({
+					onMove: (liPos, direction) => {
+						const ed = editor;
+						if (!ed || ed.isDestroyed) return;
+						moveProcessItem(ed, liPos, direction);
+					},
+				}),
 				TomboyChecklist.configure({
 					onToggle: (liPos) => {
 						const ed = editor;
@@ -543,6 +569,7 @@
 					},
 				}),
 				...TomboyInlineCheckbox,
+				...TomboyInlineRadio,
 				TomboyBlockquote,
 				Extension.create({
 					name: "tomboyFind",
@@ -719,6 +746,12 @@
 							ed.chain().focus().insertFootnote().run();
 							return true;
 						}
+						// 'p' || 'P' — 프로세스(멀티스테이지 칸반) 블록 삽입.
+						if (event.key === "p" || event.key === "P") {
+							event.preventDefault();
+							insertProcessBlock(ed);
+							return true;
+						}
 					}
 
 					return false;
@@ -739,18 +772,34 @@
 					return false;
 				},
 				handlePaste: (_view, event) => {
-					const file = extractImageFile(event.clipboardData);
-					if (!file) return false;
-					event.preventDefault();
-					void uploadAndInsertImage(file);
-					return true;
+					const img = extractImageFile(event.clipboardData);
+					if (img) {
+						event.preventDefault();
+						void uploadAndInsertImage(img);
+						return true;
+					}
+					const any = extractAnyFile(event.clipboardData);
+					if (any && !any.isImage) {
+						event.preventDefault();
+						void uploadAndInsertFile(any.file);
+						return true;
+					}
+					return false;
 				},
 				handleDrop: (_view, event) => {
-					const file = extractImageFile(event.dataTransfer);
-					if (!file) return false;
-					event.preventDefault();
-					void uploadAndInsertImage(file);
-					return true;
+					const img = extractImageFile(event.dataTransfer);
+					if (img) {
+						event.preventDefault();
+						void uploadAndInsertImage(img);
+						return true;
+					}
+					const any = extractAnyFile(event.dataTransfer);
+					if (any && !any.isImage) {
+						event.preventDefault();
+						void uploadAndInsertFile(any.file);
+						return true;
+					}
+					return false;
 				},
 				// Override PM's default clipboard path so Ctrl+C / Ctrl+X and the
 				// browser-level right-click copy/cut menu items all produce
@@ -1164,6 +1213,44 @@
 			pushToast(`이미지 업로드 실패: ${msg}`, { kind: "error" });
 		}
 	}
+
+	/**
+	 * Upload a non-image file to the bridge and insert the resulting
+	 * download URL at the current cursor position. Wraps URL text in a
+	 * tomboyUrlLink mark so the `.note` XML round-trip writes `<link:url>`
+	 * (same path images take); the future filePreviewPlugin will render a
+	 * 📎-filename badge in place of the URL text.
+	 */
+	export async function uploadAndInsertFile(file: File): Promise<void> {
+		const ed = editor;
+		if (!ed) return;
+
+		const toastId = pushToast(`${file.name} 업로드 중…`, { timeoutMs: 0 });
+		try {
+			const result = await uploadBridgeFile(file);
+			dismissToast(toastId);
+			ed.chain()
+				.focus()
+				.insertContent({
+					type: "text",
+					text: result.url,
+					marks: [
+						{ type: "tomboyUrlLink", attrs: { href: result.url } },
+					],
+				})
+				.run();
+			pushToast(`${result.filename} 업로드 완료`);
+		} catch (err) {
+			dismissToast(toastId);
+			const msg =
+				err instanceof BridgeFileUploadError
+					? err.message
+					: err instanceof Error
+						? err.message
+						: String(err);
+			pushToast(`파일 업로드 실패: ${msg}`, { kind: "error" });
+		}
+	}
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1196,6 +1283,7 @@
 		y={ctxMenu.y}
 		onclose={() => (ctxMenu = null)}
 		{oninternallink}
+		onuploadfile={uploadAndInsertFile}
 	/>
 {/if}
 
@@ -1349,6 +1437,32 @@
 	   removes the whole URL, arrow keys skip across it. */
 	.tomboy-editor :global(.tomboy-image-url-hidden) {
 		display: none;
+	}
+
+	/* Bridge file-URL text is hidden so the 📎 badge alone represents the link.
+	   The URL stays in the doc verbatim for Tomboy XML round-trip. */
+	.tomboy-editor :global(.tomboy-file-url-hidden) {
+		display: none;
+	}
+
+	.tomboy-editor :global(.tomboy-file-badge) {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25em;
+		padding: 0.1em 0.5em;
+		margin: 0 0.15em;
+		background: #eef2f7;
+		border: 1px solid #d4dbe4;
+		border-radius: 4px;
+		color: #1565c0;
+		text-decoration: none;
+		font-size: 0.9em;
+		line-height: 1.3;
+		cursor: pointer;
+	}
+	.tomboy-editor :global(.tomboy-file-badge:hover) {
+		background: #e3eaf3;
+		text-decoration: underline;
 	}
 
 	.tomboy-editor :global(.tomboy-geo-map) {
@@ -1889,6 +2003,76 @@
 		}
 	}
 
+	/* 프로세스(멀티스테이지 칸반) 항목별 이전/다음 버튼. TODO 와 동일하게
+	   widget 데코로 각 li 안에 들어가며, 가시성은 (a) 창에서 Ctrl/Cmd 눌림
+	   = .tomboy-todo-ctrl-hold 클래스 + (b) 해당 li hover 로 게이트된다.
+	   첫 단계는 '다음'만, 마지막 단계는 '이전'만, 중간 단계는 둘 다. */
+	.tomboy-editor :global(li.tomboy-process-item) {
+		position: relative;
+		border-radius: 3px;
+		transition: background-color 0.1s;
+	}
+	.tomboy-editor.tomboy-todo-ctrl-hold
+		:global(li.tomboy-process-item:hover) {
+		background-color: rgba(21, 101, 192, 0.1);
+	}
+	.tomboy-editor :global(.tomboy-process-btns) {
+		position: absolute;
+		right: 0;
+		top: 0;
+		display: inline-flex;
+		gap: 4px;
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 0.1s;
+		z-index: 1;
+	}
+	.tomboy-editor :global(.tomboy-process-prev-btn),
+	.tomboy-editor :global(.tomboy-process-next-btn) {
+		padding: 2px 8px;
+		font-size: 0.75rem;
+		line-height: 1.3;
+		border: none;
+		border-radius: 3px;
+		cursor: pointer;
+		user-select: none;
+		color: #fff;
+	}
+	.tomboy-editor :global(.tomboy-process-prev-btn) {
+		background: #757575;
+	}
+	.tomboy-editor :global(.tomboy-process-prev-btn:hover) {
+		background: #555;
+	}
+	.tomboy-editor :global(.tomboy-process-next-btn) {
+		background: #1565c0;
+	}
+	.tomboy-editor :global(.tomboy-process-next-btn:hover) {
+		background: #0d47a1;
+	}
+	.tomboy-editor.tomboy-todo-ctrl-hold
+		:global(li.tomboy-process-item:hover > .tomboy-process-btns) {
+		opacity: 1;
+		pointer-events: auto;
+	}
+	/* 깊은(중첩) 항목 hover 시 부모 단계 항목의 버튼은 숨겨 한 행만 노출. */
+	.tomboy-editor.tomboy-todo-ctrl-hold
+		:global(
+			li.tomboy-process-item:has(li.tomboy-process-item:hover)
+				> .tomboy-process-btns
+		) {
+		opacity: 0;
+		pointer-events: none;
+	}
+	/* 터치 기기는 hover 가 없으므로 모바일 Ctrl 고정 시 hover 없이 노출. */
+	@media (hover: none), (pointer: coarse) {
+		.tomboy-editor.tomboy-todo-ctrl-hold
+			:global(li.tomboy-process-item .tomboy-process-btns) {
+			opacity: 1;
+			pointer-events: auto;
+		}
+	}
+
 	/* 체크리스트 영역 항목 — 불릿 대신 체크박스 위젯. checklist 플러그인이
 	   영역 안의 각 listItem 에 .tomboy-checkbox-item 노드 데코와 첫 문단
 	   시작 위치에 .tomboy-checkbox-box 위젯을 단다. */
@@ -1930,6 +2114,21 @@
 		line-height: 0;
 		color: #2563eb;
 		cursor: pointer;
+		position: relative;
+	}
+	/* 모바일 hit-area — 위첨자는 작아 탭이 어렵다. 보이지 않는 ::before 가
+	   상하 12px·좌우 8px 만큼 터치 영역을 넓힌다(pseudo 영역 탭도 sup 으로
+	   히트되어 plugin 의 closest('.tomboy-fn-ref') 가 잡는다). 데스크탑은
+	   hover 가 정밀하므로 손대지 않는다. */
+	@media (hover: none), (pointer: coarse) {
+		.tomboy-editor :global(.tomboy-fn-ref::before) {
+			content: '';
+			position: absolute;
+			top: -12px;
+			left: -8px;
+			right: -8px;
+			bottom: -12px;
+		}
 	}
 	/* 설명 마커(줄 맨 앞 [^N]) — 일반 크기. 작은 위첨자면 설명 시작이
 	   어색하므로 본문과 같은 크기·기준선으로 둔다. */
@@ -1948,6 +2147,48 @@
 		to {
 			background-color: transparent;
 		}
+	}
+
+	/* 각주 미리보기 팝오버 — document.body 에 붙어 전역 클래스로 스타일.
+	   데스크탑 hover 는 -static(pointer-events:none), 모바일 탭은 -jump 버튼 포함. */
+	:global(.tomboy-fn-preview) {
+		position: fixed;
+		z-index: 900;
+		max-width: 300px;
+		/* 길이 제한은 plugin 에서 글자수(데스크탑 전문 / 모바일 300자)로 두고,
+		   여기서는 뷰포트를 넘지 않게 높이만 막는다(모바일은 내부 스크롤 가능). */
+		max-height: 50vh;
+		overflow-y: auto;
+		padding: 0.5rem 0.625rem;
+		background: #ffffff;
+		border: 1px solid #d1d5db;
+		border-radius: 0.5rem;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+		font-size: 0.8125rem;
+		line-height: 1.4;
+		color: #1f2937;
+	}
+	:global(.tomboy-fn-preview-static) {
+		pointer-events: none;
+	}
+	:global(.tomboy-fn-preview-text) {
+		white-space: pre-wrap;
+		word-break: break-word;
+	}
+	:global(.tomboy-fn-preview-missing) {
+		color: #6b7280;
+		font-style: italic;
+	}
+	:global(.tomboy-fn-preview-jump) {
+		display: inline-block;
+		margin-top: 0.4rem;
+		padding: 0.25rem 0.6rem;
+		font-size: 0.8125rem;
+		color: #ffffff;
+		background: #2563eb;
+		border: none;
+		border-radius: 0.375rem;
+		cursor: pointer;
 	}
 
 	/* 인라인 체크박스 — TomboyInlineCheckbox 노드의 NodeView 가
@@ -1989,6 +2230,55 @@
 	}
 
 	.tomboy-editor :global(.tomboy-inline-checkbox:hover) {
+		border-color: var(--accent, #4a76d4);
+	}
+
+	/* 인라인 라디오 — TomboyInlineRadio 노드의 NodeView 가
+	   .tomboy-inline-radio span 을 렌더한다. 14px 원형, 모바일
+	   hit-area 는 ::before 가 24×24 px 확보. 같은 textblock 의 다른
+	   라디오와 상호 배타 (NodeView 클릭 핸들러). */
+	.tomboy-editor :global(.tomboy-inline-radio) {
+		display: inline-block;
+		width: 14px;
+		height: 14px;
+		border: 1px solid var(--text-muted, #888);
+		border-radius: 50%;
+		vertical-align: -2px;
+		margin: 0 2px;
+		cursor: pointer;
+		background: transparent;
+		user-select: none;
+		position: relative;
+		box-sizing: border-box;
+		transition: background-color 0.12s ease, border-color 0.12s ease;
+	}
+
+	.tomboy-editor :global(.tomboy-inline-radio::before) {
+		content: '';
+		position: absolute;
+		top: -5px;
+		left: -5px;
+		right: -5px;
+		bottom: -5px;
+	}
+
+	.tomboy-editor :global(.tomboy-inline-radio[data-selected='true']) {
+		border-color: var(--accent, #4a76d4);
+	}
+
+	.tomboy-editor :global(.tomboy-inline-radio[data-selected='true']::after) {
+		content: '';
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background-color: var(--accent, #4a76d4);
+		transform: translate(-50%, -50%);
+	}
+
+	.tomboy-editor :global(.tomboy-inline-radio:hover) {
 		border-color: var(--accent, #4a76d4);
 	}
 

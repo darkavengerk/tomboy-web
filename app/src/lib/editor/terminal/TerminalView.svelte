@@ -14,6 +14,7 @@
 	import { runConnectScript } from './connectAutoRun.js';
 	import {
 		accumulateTouchScroll,
+		computeAnchorRows,
 		computeScrollState,
 		INITIAL_SCROLL_STATE,
 		type SpectatorScrollState
@@ -373,12 +374,23 @@
 	 *   - `.xterm-mount` gets explicit width/height = natural dimensions
 	 *     and `transform: scale(s)` with `top left` origin. It renders
 	 *     visually at `naturalW * s × naturalH * s`.
-	 *   - `.xterm-stage` is sized at `naturalW * s × naturalH * s` —
+	 *   - `.xterm-stage` is sized at `naturalW * s × <stage_h>` —
 	 *     reserves the layout box so `.xterm-host`'s dimensions and
 	 *     `clientWidth` reflect the scaled footprint, preventing clipping
 	 *     of the transformed content.
 	 *
 	 * `min(host_w / naturalW, 1)` — width-fit, never scale up.
+	 *
+	 * Bottom-anchor for shell mode: when (1) we're rendering the live
+	 * main screen (not an alt-screen TUI) and (2) the user hasn't
+	 * scrolled into history, the stage height is set to
+	 * `n × cellH × scale` where `n` is the number of meaningful rows
+	 * (cursor + non-empty range). The host's `justify-content: flex-end`
+	 * anchors the shortened stage to the bottom, so cursor sits at the
+	 * bottom of the viewport — matching a real terminal feel. The mount
+	 * stays at natural height; stage's `overflow:hidden` clips the
+	 * trailing blank rows. For alt-screen TUIs or scrolled-up reading,
+	 * stage stays at full `naturalH × scale` so the entire pane shows.
 	 */
 	function applySpectatorFit(): void {
 		if (!isSpectator || !xtermContainer || !xtermStageEl || !xtermHostEl) return;
@@ -396,8 +408,39 @@
 		xtermContainer.style.transform = `scale(${scale})`;
 		// Stage: layout box at the scaled size so the host's scroll
 		// bounds reflect what the user actually sees.
+		const stageH = computeStageHeight(naturalH, scale);
 		xtermStageEl.style.width = `${naturalW * scale}px`;
-		xtermStageEl.style.height = `${naturalH * scale}px`;
+		xtermStageEl.style.height = `${stageH}px`;
+	}
+
+	/**
+	 * 셸 모드 + 라이브 맨 아래 고정일 때 콘텐츠 행 수만큼 stage 를 축소한다.
+	 * 그 외 (alt-screen TUI / 사용자가 스크롤백 위로 올린 상태) 는 전체 패널
+	 * 높이를 그대로 쓴다.
+	 *
+	 * `alternate` 판정은 xterm 내부 버퍼 타입을 직접 보기 때문에 (브릿지의
+	 * pane-switch.altScreen 스냅샷이 아닌) 같은 패널에서 vim 시작/종료처럼
+	 * DECSET 1049 토글이 일어나도 다음 데이터 콜백에서 즉시 반영된다.
+	 */
+	function computeStageHeight(naturalH: number, scale: number): number {
+		if (!term) return naturalH * scale;
+		const isAlt = term.buffer.active.type === 'alternate';
+		if (isAlt || !scrollState.atBottom) return naturalH * scale;
+		const R = term.rows;
+		if (R <= 0) return naturalH * scale;
+		const buf = term.buffer.active;
+		const viewportY = buf.viewportY;
+		const n = computeAnchorRows({
+			rows: R,
+			cursorY: buf.cursorY,
+			isRowEmpty: (row) => {
+				const line = buf.getLine(viewportY + row);
+				if (!line) return true;
+				return line.translateToString(true).trim().length === 0;
+			}
+		});
+		const cellH = naturalH / R;
+		return n * cellH * scale;
 	}
 
 	/** 관전 모드 스크롤 상태를 xterm 버퍼 좌표로부터 갱신한다. */
@@ -451,7 +494,7 @@
 	}
 
 	function onSpectatorTouchMove(e: TouchEvent): void {
-		if (touchLastY === null || !term || !xtermStageEl) return;
+		if (touchLastY === null || !term || !xtermContainer) return;
 		if (e.touches.length !== 1) {
 			touchLastY = null;
 			return;
@@ -459,7 +502,12 @@
 		const y = e.touches[0].clientY;
 		const deltaPx = y - touchLastY;
 		touchLastY = y;
-		const pxPerLine = xtermStageEl.clientHeight / term.rows;
+		// 한 줄당 화면 픽셀 = (스케일된 mount 높이) / term.rows.
+		// stage 는 셸 모드에서 콘텐츠 분량으로 축소되므로 stage.clientHeight 로
+		// 역산하면 안 된다 — mount 의 getBoundingClientRect 는 transform 을
+		// 반영한 실제 시각 픽셀이라 셀 높이의 진짜 값을 준다.
+		const mountRect = xtermContainer.getBoundingClientRect();
+		const pxPerLine = mountRect.height / term.rows;
 		const { lines, remainder } = accumulateTouchScroll(touchScrollRemainder, deltaPx, pxPerLine);
 		touchScrollRemainder = remainder;
 		// 손가락을 아래로 끌면 과거(위쪽) 출력이 드러나야 하므로 scrollLines 는 음수.
@@ -724,7 +772,13 @@
 			cursorBlink: true,
 			theme: { background: '#1e1e1e' },
 			scrollback: 5000,
-			convertEol: false
+			convertEol: false,
+			// 사용자가 스크롤백 위로 올려서 과거 출력을 읽는 중에 타자를 치면
+			// xterm 기본값은 viewport 를 강제로 맨 아래로 스냅한다. 관전 모드
+			// 데스크탑에서는 이게 "타자 칠 때마다 자동 스크롤 복귀" 로 체감되어
+			// 매우 거슬리므로 비활성. 셸 모드도 동일하게 끄는 게 일관적 — 사용자가
+			// 명시적으로 ↓ 인디케이터를 누르거나 맨 아래로 드래그하면 복귀한다.
+			scrollOnUserInput: false
 		});
 
 		// Spectator mode skips OSC 133 capture, history wiring, the
@@ -815,7 +869,12 @@
 		}
 
 		if (isSpectator) {
-			term.onScroll(() => recomputeScroll());
+			term.onScroll(() => {
+				recomputeScroll();
+				// scrollState.atBottom 가 바뀌면 stage 높이도 바뀌어야 한다
+				// (스크롤백 열람 → 전체 높이, 다시 라이브 → 콘텐츠 분량).
+				applySpectatorFit();
+			});
 		}
 
 		client = new TerminalWsClient({
@@ -828,7 +887,13 @@
 			onData: (chunk) => {
 				if (term) {
 					term.write(chunk, () => {
-						if (isSpectator) recomputeScroll();
+						if (isSpectator) {
+							recomputeScroll();
+							// 새 데이터로 cursor / 마지막 비어있지 않은 행이 바뀌었을 수
+							// 있으므로 stage 높이도 다시 계산. alt-screen 진입/종료
+							// (DECSET 1049) 토글도 여기서 반영된다.
+							applySpectatorFit();
+						}
 					});
 				}
 			},
@@ -994,7 +1059,10 @@
 			onData: (chunk) => {
 				if (term) {
 					term.write(chunk, () => {
-						if (isSpectator) recomputeScroll();
+						if (isSpectator) {
+							recomputeScroll();
+							applySpectatorFit();
+						}
 					});
 				}
 			},
@@ -1664,8 +1732,14 @@
 	   scroller. Horizontal is always hidden — width fit guarantees no
 	   horizontal overflow. */
 	.terminal-page.spectator .xterm-host {
-		/* Bottom-anchor the scaled pane: when it's taller than the host
-		   the TOP overflows and is clipped, keeping prompt/cursor visible. */
+		/* Bottom-anchor the stage to the host's bottom edge. In shell mode
+		   the stage is sized to the meaningful content rows
+		   (computeStageHeight → n × cellH × scale), so flex-end anchors
+		   the cursor row to the host bottom and the empty terminal-page
+		   background fills above. In alt-screen / scrolled-up mode the
+		   stage is full naturalH × scale; if it exceeds host height the
+		   TOP overflows and is clipped (standard "tall pane scrolled
+		   into the visible area" behavior). */
 		display: flex;
 		flex-direction: column;
 		justify-content: flex-end;
@@ -1685,8 +1759,13 @@
 		/* Keep the explicit scaled height — never let the flex parent
 		   shrink the stage. A taller-than-host pane must overflow the TOP
 		   (clipped), not compress; compression would desync the absolute
-		   .xterm-mount and the touch-scroll pxPerLine math. */
+		   .xterm-mount. */
 		flex-shrink: 0;
+		/* Stage 가 셸 모드에서 콘텐츠 분량(n × cellH × scale) 으로 축소되었을 때
+		   mount 의 자연 높이(R × cellH × scale) 가 stage 밖으로 (= 아래로)
+		   넘치는 부분을 잘라낸다. mount 의 0..n-1 행만 보이고 n..R-1 의 빈
+		   셀들은 stage 박스 바깥이 되어 paint 도 hit-test 도 안 된다. */
+		overflow: hidden;
 	}
 	.terminal-page.spectator .xterm-mount {
 		/* width / height / transform set inline by applySpectatorFit. */
