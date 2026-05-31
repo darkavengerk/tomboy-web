@@ -170,6 +170,36 @@ function splitInlineRadiosInText(
 	return out;
 }
 
+/**
+ * 3-pass inline 분할: footnote → checkbox → radio.
+ * 텍스트 한 조각을 받아 atomic 노드(footnoteMarker / inlineCheckbox /
+ * inlineRadio) 가 끼어든 inline 노드 배열을 돌려준다. 분할 후 텍스트는
+ * 원본 mark 를 유지하고 atomic 노드는 mark 를 받지 않는다.
+ *
+ * `parseBlocks` (일반 문단) 와 `parseListItem` (리스트 항목) 양쪽에서
+ * 호출되어 위치 무관 동일한 결과를 보장한다.
+ */
+function splitInlineMarkers(text: string, marks: InlineMark[] | undefined): JSONContent[] {
+	const fn = splitFootnotesInText(text, marks);
+	const cb: JSONContent[] = [];
+	for (const piece of fn) {
+		if (piece.type === 'text' && typeof piece.text === 'string') {
+			cb.push(...splitInlineCheckboxesInText(piece.text, piece.marks as InlineMark[] | undefined));
+		} else {
+			cb.push(piece);
+		}
+	}
+	const out: JSONContent[] = [];
+	for (const piece of cb) {
+		if (piece.type === 'text' && typeof piece.text === 'string') {
+			out.push(...splitInlineRadiosInText(piece.text, piece.marks as InlineMark[] | undefined));
+		} else {
+			out.push(piece);
+		}
+	}
+	return out;
+}
+
 // --- XML → ProseMirror JSON ---
 
 /**
@@ -467,27 +497,7 @@ function parseBlocks(container: Element): JSONContent[] {
 		for (const n of nodes) {
 			if (n.type === 'text' && typeof n.text === 'string') {
 				if (n.text.length === 0) continue;
-				// 3-pass inline split: 1) 각주 (footnoteMarker) → 2) 인라인
-				// 체크박스 → 3) 인라인 라디오. 패턴들이 서로 겹치지 않으므로
-				// 순서는 관례적이지만 일관성을 위해 footnote → checkbox → radio
-				// 순서를 유지한다.
-				const fnSplit = splitFootnotesInText(n.text, n.marks);
-				const cbSplit: JSONContent[] = [];
-				for (const piece of fnSplit) {
-					if (piece.type === 'text' && typeof piece.text === 'string') {
-						cbSplit.push(...splitInlineCheckboxesInText(piece.text, piece.marks));
-					} else {
-						cbSplit.push(piece);
-					}
-				}
-				const split: JSONContent[] = [];
-				for (const piece of cbSplit) {
-					if (piece.type === 'text' && typeof piece.text === 'string') {
-						split.push(...splitInlineRadiosInText(piece.text, piece.marks));
-					} else {
-						split.push(piece);
-					}
-				}
+				const split = splitInlineMarkers(n.text, n.marks as InlineMark[] | undefined);
 				if (split.length === 1 && split[0].type === 'text') {
 					appendTextWithNewlines(split[0]);
 				} else {
@@ -721,7 +731,11 @@ function parseListItem(itemEl: Element): JSONContent {
 		if (child.nodeType === Node.TEXT_NODE) {
 			const text = (child.textContent ?? '').replace(/\n/g, '');
 			if (text.length > 0) {
-				inlineContent.push({ type: 'text', text });
+				// `parseBlocks` 와 동일하게 footnote / inlineCheckbox /
+				// inlineRadio 패턴을 atomic 노드로 split. 누락 시 리스트
+				// 항목 안의 `[x]` / `( )` 같은 마커가 로드 후 평문 텍스트로
+				// 남는다.
+				inlineContent.push(...splitInlineMarkers(text, undefined));
 			}
 		} else if (child.nodeType === Node.ELEMENT_NODE) {
 			const el = child as Element;
@@ -740,7 +754,16 @@ function parseListItem(itemEl: Element): JSONContent {
 				if (isPureNewline) {
 					pendingTrailingMarks = nodes[0].marks;
 				} else {
-					inlineContent.push(...nodes);
+					// Marked text(예: <bold>[x]</bold>) 안의 마커도 split.
+					for (const piece of nodes) {
+						if (piece.type === 'text' && typeof piece.text === 'string') {
+							inlineContent.push(
+								...splitInlineMarkers(piece.text, piece.marks as InlineMark[] | undefined)
+							);
+						} else {
+							inlineContent.push(piece);
+						}
+					}
 				}
 			}
 		}
