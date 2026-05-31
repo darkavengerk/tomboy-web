@@ -2022,6 +2022,49 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 		}
 	}
 
+	/* 각주 미리보기 팝오버 — document.body 에 붙어 전역 클래스로 스타일.
+	   데스크탑 hover 는 -static(pointer-events:none), 모바일 탭은 -jump 버튼 포함. */
+	:global(.tomboy-fn-preview) {
+		position: fixed;
+		z-index: 900;
+		max-width: 300px;
+		padding: 0.5rem 0.625rem;
+		background: #ffffff;
+		border: 1px solid #d1d5db;
+		border-radius: 0.5rem;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+		font-size: 0.8125rem;
+		line-height: 1.4;
+		color: #1f2937;
+	}
+	:global(.tomboy-fn-preview-static) {
+		pointer-events: none;
+	}
+	:global(.tomboy-fn-preview-text) {
+		display: -webkit-box;
+		-webkit-line-clamp: 4;
+		line-clamp: 4;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+		white-space: pre-wrap;
+		word-break: break-word;
+	}
+	:global(.tomboy-fn-preview-missing) {
+		color: #6b7280;
+		font-style: italic;
+	}
+	:global(.tomboy-fn-preview-jump) {
+		display: inline-block;
+		margin-top: 0.4rem;
+		padding: 0.25rem 0.6rem;
+		font-size: 0.8125rem;
+		color: #ffffff;
+		background: #2563eb;
+		border: none;
+		border-radius: 0.375rem;
+		cursor: pointer;
+	}
+
 	/* 인라인 체크박스 — TomboyInlineCheckbox 노드의 NodeView 가
 	   .tomboy-inline-checkbox span 을 렌더한다. 14px 정사각형,
 	   모바일 hit-area 는 ::before 가 24×24 px 확보. */

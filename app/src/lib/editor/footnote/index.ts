@@ -12,7 +12,8 @@ import { pushToast } from '$lib/stores/toast.js';
 export {
 	findFootnoteMatches,
 	findFootnoteAt,
-	findFootnotePartner
+	findFootnotePartner,
+	getDefinitionPreviewText
 } from './footnotes.js';
 export type { FootnoteMatch } from './footnotes.js';
 export { footnotePluginKey };

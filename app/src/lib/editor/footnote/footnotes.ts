@@ -90,3 +90,21 @@ export function findFootnotePartner(
 	}
 	return found;
 }
+
+/**
+ * 설명 마커가 위치한 단락의 텍스트를 미리보기용으로 추출.
+ *
+ * footnoteMarker 는 atomic leaf 노드라 `textContent` 에 라벨을 기여하지
+ * 않는다 — 단락 텍스트는 이미 마커를 뺀 순수 설명 본문이다. trim 후
+ * `maxLen`(기본 120) 초과 시 … 로 말줄임한다.
+ */
+export function getDefinitionPreviewText(
+	doc: PMNode,
+	defMatch: FootnoteMatch,
+	maxLen = 120
+): string {
+	const block = doc.resolve(defMatch.from + 1).parent;
+	const stripped = block.textContent.trim();
+	if (stripped.length <= maxLen) return stripped;
+	return stripped.slice(0, maxLen) + '…';
+}
