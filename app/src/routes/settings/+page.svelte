@@ -1678,6 +1678,54 @@ https://www.dropbox.com/…/starting.png</pre>
 							마크는 그대로 살아남습니다.</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>차트 — 데이터 노트를 그래프로</summary>
+					<p class="info-text">
+						표 데이터를 <strong>막대·선·영역·분산</strong> 그래프로 그립니다. 데이터는
+						<code>DATA::</code> 로 시작하는 별도 노트에 두고, 아무 노트에서나 차트 블록을
+						작성해 불러옵니다. 차트 블록 맨 앞 체크박스를 <strong>켜면([x]) 차트가 그려지고</strong>,
+						끄면([ ]) 설정 목록만 보입니다.
+					</p>
+					<pre class="snippet">DATA::매출
+```csv
+월, 매출, 비용
+1월, 100, 60
+2월, 120, 70
+```
+
+[x]Chart:bar 월별 매출
+  • DATA::매출
+  • y:매출, 비용
+  • [x]범례, 값표시</pre>
+					<ul class="guide-list">
+						<li><strong>데이터 노트</strong>: 제목을 <code>DATA::데이터제목</code> 으로 시작하고, 본문에
+							<code>```csv</code> / <code>```tsv</code> 펜스로 표를 넣습니다(여러 표 가능, 차트는 첫 표 사용).</li>
+						<li><strong>차트 블록</strong>: <code>[ ]Chart:종류 차트제목</code>. 종류는
+							<code>bar</code>(막대) · <code>line</code>(선) · <code>area</code>(영역) ·
+							<code>scatter</code>(분산).</li>
+						<li>블록 아래 <strong>첫 하위 항목 = 쓸 데이터 노트 제목</strong>(<code>DATA::…</code>).
+							이후 하위 항목에 옵션을 콤마로 나열합니다.</li>
+					</ul>
+					<p class="info-text">옵션 — 축 · 데이터</p>
+					<ul class="guide-list">
+						<li><code>x:열이름</code> — x축으로 쓸 열 지정</li>
+						<li><code>y:열1, 열2</code> — y축 값으로 쓸 열(여러 개 가능)</li>
+						<li><code>묶기:N</code> — 데이터를 N개 구간으로 묶어 집계(binning)</li>
+						<li><code>방식:평균|합계|최대|최소|개수</code> — 묶을 때 집계 방식(기본 평균)</li>
+						<li><strong>표시 범위</strong>(체크박스로 택1): <code>[x]all</code> 전체 ·
+							<code>[x]last:N</code> 마지막 N개 · <code>[x]first:N</code> 처음 N개</li>
+					</ul>
+					<p class="info-text">옵션 — 모양 · 라벨</p>
+					<ul class="guide-list">
+						<li><code>stacked</code> — 누적 그래프 / <code>곡선</code> — 선을 부드럽게(line·area)</li>
+						<li><code>점표시</code> · <code>점크기:N</code> — 데이터 점 표시 / 점 크기</li>
+						<li><code>색상:c1,c2</code> · <code>팔레트:이름</code> — 색 직접 지정 / 팔레트 선택</li>
+						<li><code>범례</code> · <code>값표시</code> — 범례 / 각 값 숫자 라벨 표시</li>
+						<li><code>x축:라벨</code> · <code>y축:라벨</code> — 축 제목</li>
+						<li><code>y최소:N</code> · <code>y최대:N</code> — y축 범위 고정 / <code>높이:N</code> — 차트 높이(px)</li>
+					</ul>
+				</details>
 			</section>
 
 			{:else if guideSubTab === 'env'}
