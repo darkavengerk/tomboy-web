@@ -93,7 +93,10 @@ function splitFootnotesInText(
 
 // Inline-checkbox 패턴. `[ ]` (공백 1 개) 또는 `[x]` / `[X]`.
 // 좌우 텍스트는 mark 를 유지하고, 매치 자리에 atomic 노드를 삽입.
-const INLINE_CHECKBOX_SPLIT_RE = /\[([ xX])\]/g;
+// lookbehind/lookahead 로 `[[X]]` 안 `[X]` 는 건드리지 않음 — 체크리스트
+// 영역의 통째-li 마커 `[[X]] ` 를 보존하기 위함. (예: `[[X]] 우유` 는
+// 평문 텍스트로 split 통과 → applyChecklistMarkersOnParse 가 strip.)
+const INLINE_CHECKBOX_SPLIT_RE = /(?<!\[)\[([ xX])\](?!\])/g;
 
 /**
  * 텍스트 안의 [ ]/[x] 패턴을 inlineCheckbox 노드로 split.
@@ -936,7 +939,8 @@ function serializeListItem(
 	if (checklist) {
 		// 체크리스트 영역 항목: 첫 문단 내용 앞에 마커 텍스트를 박는다.
 		// '[', ']', 공백, 'X' 는 XML 안전 문자라 이스케이프 불필요.
-		result += item.attrs?.checked ? '[X] ' : '[ ] ';
+		// `[[X]]` / `[[ ]]` 은 inline checkbox atom `[x]` 과 구분되는 문법.
+		result += item.attrs?.checked ? '[[X]] ' : '[[ ]] ';
 	}
 
 	const children = item.content ?? [];
@@ -1064,8 +1068,11 @@ function getPlainText(node: JSONContent): string {
 	return node.content.map(getPlainText).join('');
 }
 
-// 체크리스트 항목 마커: [ ] 미체크 / [X] 체크 (소문자 x 도 체크로 인정).
-const CHECKLIST_MARKER_RE = /^\[([ xX])\] /;
+// 체크리스트 항목 마커: [[ ]] 미체크 / [[X]] 체크 (소문자 x 도 체크로 인정).
+// inline checkbox atom `[x]` 과 구분되는 문법 — 영역 안 li 첫머리에서만
+// 의미를 가지며 통째 체크박스를 표현한다.
+const CHECKLIST_MARKER_RE = /^\[\[([ xX])\]\] /;
+const CHECKLIST_MARKER_LEN = 6; // '[[X]] '.length
 
 // 주의: 체크리스트 영역 그룹핑(헤더 + 그 직후 연속 bulletList)은 네 곳
 // 에서 각각 구현된다 — editor/checklist/regions.ts 의 findChecklistRegions
@@ -1116,7 +1123,7 @@ function stripChecklistMarkerInItem(li: JSONContent): void {
 			const m = CHECKLIST_MARKER_RE.exec(first.text);
 			if (m) {
 				checked = m[1] === 'x' || m[1] === 'X';
-				const rest = first.text.slice(4);
+				const rest = first.text.slice(CHECKLIST_MARKER_LEN);
 				if (rest.length === 0) {
 					para.content.shift();
 				} else {

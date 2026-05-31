@@ -49,7 +49,9 @@ export const InlineCheckbox = Node.create({
 		const type = this.type;
 		return [
 			new InputRule({
-				find: /\[([ xX])\]$/,
+				// `[[X]]` (체크리스트 영역 통째 마커) 안 `[X]` 는 잡지 않음 —
+				// 좌측 `[` lookbehind 로 차단. archiver split 정규식과 정책 일치.
+				find: /(?<!\[)\[([ xX])\]$/,
 				handler: ({ state, range, match }) => {
 					const $from = state.doc.resolve(range.from);
 					// 제목 (top-level idx 0) 차단 — 각주와 동일.
@@ -100,7 +102,9 @@ export const InlineCheckbox = Node.create({
 	}
 });
 
-const CB_PASTE_RE = /\[([ xX])\]/g;
+// `[[X]]` 안 `[X]` 는 변환하지 않음 — 체크리스트 영역 통째 마커 보존.
+// archiver 의 INLINE_CHECKBOX_SPLIT_RE / InputRule find 와 동일 정책.
+const CB_PASTE_RE = /(?<!\[)\[([ xX])\](?!\])/g;
 
 function transformPastedSlice(slice: Slice, cbType: NodeType): Slice {
 	const newContent = transformFragment(slice.content, cbType);
