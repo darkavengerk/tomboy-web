@@ -36,6 +36,7 @@
 	import { createImagePreviewPlugin } from "./imagePreview/imagePreviewPlugin.js";
 	import { createFilePreviewPlugin } from "./filePreview/filePreviewPlugin.js";
 	import { createGeoMapPlugin } from "./geoMap/geoMapPlugin.js";
+import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 	import {
 		createSendListItemPlugin,
 		sendListItemPluginKey,
@@ -423,6 +424,12 @@
 					name: "tomboyGeoMap",
 					addProseMirrorPlugins() {
 						return [createGeoMapPlugin()];
+					},
+				}),
+				Extension.create({
+					name: "tomboyChartBlock",
+					addProseMirrorPlugins() {
+						return [createChartBlockPlugin()];
 					},
 				}),
 				Extension.create({
