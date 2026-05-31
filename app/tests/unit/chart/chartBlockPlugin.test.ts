@@ -1,3 +1,9 @@
+// Building a live Editor draws decorations, which invokes the chart widget's
+// render fn — and that reads the data note from IndexedDB (findNoteByTitle).
+// jsdom has no IndexedDB, so without this shim that read throws
+// `indexedDB is not defined`, surfacing as an unhandled rejection. Every other
+// IDB-touching unit test imports the same shim.
+import 'fake-indexeddb/auto';
 import { describe, it, expect, afterEach } from 'vitest';
 import { Editor, Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -15,9 +21,11 @@ import {
  * test that would have caught the original break where findChartRegions read
  * plain-JSON text nodes and never saw the `[x]` marker in the live editor.
  *
- * Note: building decorations only constructs Decoration.widget(pos, renderFn)
- * — renderFn (which would load Chart.js / hit IndexedDB) is not invoked until
- * the DOM renders, so this stays a pure, headless check.
+ * Note: creating a live Editor DOES draw decorations, so the widget's renderFn
+ * runs and asynchronously reads the data note from IndexedDB. These tests assert
+ * only on the DecorationSet (synchronous), but the async read still fires — hence
+ * the fake-indexeddb shim above. With no matching note it resolves to the error
+ * card; Chart.js itself is never constructed (no canvas in jsdom layout).
  */
 
 const ChartBlockTestExtension = Extension.create({
