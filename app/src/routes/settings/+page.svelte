@@ -1678,6 +1678,43 @@ https://www.dropbox.com/…/starting.png</pre>
 							마크는 그대로 살아남습니다.</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>체크박스 · 라디오 · 체크리스트 영역</summary>
+					<p class="info-text">
+						본문 어디서나 마커 텍스트를 적으면 자동으로 위젯 노드로 바뀝니다.
+						세 가지 종류가 있고 각각 문법이 다릅니다.
+					</p>
+					<p class="info-text"><strong>1. 인라인 체크박스</strong> — <code>[ ]</code> / <code>[x]</code> /
+						<code>[X]</code> 를 본문 어디든 타이핑하면 그 자리에 작은 체크박스 위젯이 만들어집니다.
+						리스트 항목 안에서도 동작합니다.</p>
+					<pre class="snippet">[x] 아침 약 먹기 [ ] 빨래
+- 리스트 안에서도 [x] 됨</pre>
+					<p class="info-text"><strong>2. 인라인 라디오</strong> — <code>( )</code> / <code>(o)</code> /
+						<code>(O)</code>. 같은 문단에 여러 개가 있으면 한 개만 선택됩니다 (그룹 토글).</p>
+					<pre class="snippet">아침: (o) 빵 ( ) 밥 ( ) 면</pre>
+					<p class="info-text"><strong>3. 체크리스트 영역 (통째 체크박스)</strong> —
+						<code>체크리스트:</code> 로 시작하는 문단 바로 뒤에 오는 리스트는 각 항목 전체가
+						체크박스가 됩니다. 항목 앞에 <code>[[ ]]</code> / <code>[[X]]</code> (대괄호 두 겹)
+						마커가 붙어 저장됩니다. 인라인 <code>[x]</code> 와 의미가 달라 문법도 구분됩니다.</p>
+					<pre class="snippet">체크리스트:
+- [[X]] 우유
+- [[ ]] 빵
+- [[ ]] 잡지</pre>
+					<ul class="guide-list">
+						<li>인라인 체크박스 / 라디오는 <strong>제목 줄에선 동작하지 않습니다</strong>. 본문에서만
+							위젯으로 바뀝니다.</li>
+						<li>영역 헤더는 정확히 <code>체크리스트:</code> 로 <strong>시작</strong>해야 합니다
+							(<code>체크리스트: 장보기</code> 처럼 뒤에 부제목 가능). 헤더 직후 연속된 리스트들이
+							모두 영역이 됩니다.</li>
+						<li>영역 안 항목은 클릭으로 통째 체크 토글이 됩니다 — 마커 텍스트를 직접 지울 필요 없습니다.
+							저장 시 <code>[[X]] </code> / <code>[[ ]] </code> 가 자동으로 붙고, 다시 열면 통째
+							체크박스로 복원됩니다.</li>
+						<li>같은 항목 안에 인라인 <code>[x]</code> 도 함께 둘 수 있습니다 — 항목 자체는 통째 체크,
+							본문 일부에 추가 체크박스를 두는 식. 예: <code>[[X]] 1단계 [x] 첫 단추</code>.</li>
+						<li>영역 헤더 없이 <code>[[X]]</code> 만 적으면 평문 텍스트로 남습니다 (의미 없음).</li>
+					</ul>
+				</details>
 			</section>
 
 			{:else if guideSubTab === 'env'}
