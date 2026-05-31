@@ -7,6 +7,7 @@
 	import { deleteCurrentLine } from './deleteLine.js';
 	import { ctrlEnterSplit } from './ctrlEnterSplit.js';
 	import { insertTodoBlock } from './todoRegion/index.js';
+	import { insertProcessBlock } from './processRegion/index.js';
 	import { sinkListItemOnly, liftListItemOnly, isInList } from './listItemDepth.js';
 	import { moveListItemUp, moveListItemDown } from './listItemReorder.js';
 
@@ -99,12 +100,16 @@
 		}
 	}
 
-	function runAlt(key: 'left' | 'right' | 'up' | 'down' | 'footnote') {
+	function runAlt(key: 'left' | 'right' | 'up' | 'down' | 'footnote' | 'process') {
 		const ed = editor;
 		if (!ed) return;
 		try {
 			if (key === 'footnote') {
 				ed.chain().focus().insertFootnote().run();
+				return;
+			}
+			if (key === 'process') {
+				insertProcessBlock(ed);
 				return;
 			}
 			if (key === 'right') {
@@ -255,6 +260,7 @@
 					<button class="key-btn" onclick={() => runAlt('down')} title="아래로 이동 (Alt+↓)">↓</button>
 					<button class="key-btn" onclick={() => runAlt('right')} title="들여쓰기 (Alt+→)">→</button>
 					<button class="key-btn" onclick={() => runAlt('footnote')} title="각주 (Alt+J)">J</button>
+					<button class="key-btn" onclick={() => runAlt('process')} title="프로세스 블록 (Alt+P)">P</button>
 				</div>
 			{/if}
 		</div>
