@@ -69,27 +69,29 @@ function renderChartWidget(region: ChartRegion): HTMLElement {
 	container.contentEditable = 'false';
 	let handle: ChartHandle | null = null;
 
+	// The whole body is guarded: any failure — IndexedDB I/O (findNoteByTitle),
+	// data-note parsing, transformData (throws on a missing column), or Chart.js
+	// construction (mountChart) — routes to the error card. Without this terminal
+	// catch a rejected I/O promise would escape as an unhandled rejection.
 	void (async () => {
-		const spec = parseChartBlock(region.headerText, region.configLines);
-		if (!spec || !spec.dataNoteTitle) {
-			renderErrorCard(container, '데이터 노트 제목(DATA::)이 필요합니다');
-			return;
-		}
-		// Snapshot the data note at mount time. Toggling / reopening the note
-		// rebuilds the widget (key changes), which re-reads fresh data.
-		const note = await findNoteByTitle(spec.dataNoteTitle);
-		if (!note) {
-			renderErrorCard(container, `데이터 노트 '${spec.dataNoteTitle}'를 찾을 수 없습니다`);
-			return;
-		}
-		const tables = parseDataNote(getNoteEditorContent(note));
-		if (tables.length === 0) {
-			renderErrorCard(container, '데이터 노트에 csv/tsv 블록이 없습니다');
-			return;
-		}
 		try {
-			// transformData throws on a missing column; mountChart (Chart.js) can
-			// also throw at construction — both route to the error card.
+			const spec = parseChartBlock(region.headerText, region.configLines);
+			if (!spec || !spec.dataNoteTitle) {
+				renderErrorCard(container, '데이터 노트 제목(DATA::)이 필요합니다');
+				return;
+			}
+			// Snapshot the data note at mount time. Toggling / reopening the note
+			// rebuilds the widget (key changes), which re-reads fresh data.
+			const note = await findNoteByTitle(spec.dataNoteTitle);
+			if (!note) {
+				renderErrorCard(container, `데이터 노트 '${spec.dataNoteTitle}'를 찾을 수 없습니다`);
+				return;
+			}
+			const tables = parseDataNote(getNoteEditorContent(note));
+			if (tables.length === 0) {
+				renderErrorCard(container, '데이터 노트에 csv/tsv 블록이 없습니다');
+				return;
+			}
 			const data = transformData(spec, tables[0]);
 			const config = buildChartConfig(spec, data);
 			handle = await mountChart(container, config, spec.height);
