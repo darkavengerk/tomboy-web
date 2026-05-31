@@ -90,6 +90,12 @@
 	type Tab = 'sync' | 'config' | 'share' | 'terminal' | 'notify' | 'guide' | 'shortcuts' | 'advanced';
 	let activeTab = $state<Tab>('sync');
 
+	// 가이드 탭 내부 sub-tab. 콘텐츠 양이 많아 카테고리별 분리.
+	// 새 노트 형식 / 에디터 블록 / 환경 요구사항을 추가할 때마다 해당 sub-tab 에
+	// guide-card 를 한 장 더 끼워 넣는다.
+	type GuideSubTab = 'notes' | 'editor' | 'env';
+	let guideSubTab = $state<GuideSubTab>('notes');
+
 	let authenticated = $state(false);
 	let syncStatus: SyncStatus = $state('idle');
 	let syncMessage = $state('');
@@ -841,6 +847,12 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 		{ id: 'shortcuts', label: '단축키' },
 		{ id: 'advanced', label: '고급' }
 	];
+
+	const guideSubTabs: { id: GuideSubTab; label: string }[] = [
+		{ id: 'notes', label: '노트 형식' },
+		{ id: 'editor', label: '에디터 블록' },
+		{ id: 'env', label: '환경 / 호환성' }
+	];
 </script>
 
 <div class="settings-page">
@@ -1488,10 +1500,25 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 			<section class="section">
 				<p class="info-text">
 					이 노트앱의 노트 형식 규칙과 브라우저/환경 요구사항을 정리한 페이지입니다. 새 기기에서
-					처음 쓸 때 한 번씩 훑어보세요.
+					처음 쓸 때 한 번씩 훑어보세요. 카테고리는 아래 탭으로 전환합니다.
 				</p>
 			</section>
 
+			<nav class="guide-subtabs" aria-label="가이드 카테고리">
+				{#each guideSubTabs as t (t.id)}
+					<button
+						type="button"
+						class="guide-subtab"
+						class:active={guideSubTab === t.id}
+						aria-current={guideSubTab === t.id ? 'page' : undefined}
+						onclick={() => (guideSubTab = t.id)}
+					>
+						{t.label}
+					</button>
+				{/each}
+			</nav>
+
+			{#if guideSubTab === 'notes'}
 			<section class="section">
 				<h2>구조화 노트 형식</h2>
 				<p class="info-text">
@@ -1609,6 +1636,7 @@ https://www.dropbox.com/…/starting.png</pre>
 				</details>
 			</section>
 
+			{:else if guideSubTab === 'editor'}
 			<section class="section">
 				<h2>에디터 본문 블록</h2>
 				<p class="info-text">
@@ -1652,6 +1680,7 @@ https://www.dropbox.com/…/starting.png</pre>
 				</details>
 			</section>
 
+			{:else if guideSubTab === 'env'}
 			<section class="section">
 				<h2>환경 / 호환성 요구사항</h2>
 				<p class="info-text">이게 안 맞으면 해당 기능이 동작하지 않거나 깨져 보입니다.</p>
@@ -1708,6 +1737,7 @@ https://www.dropbox.com/…/starting.png</pre>
 					</ul>
 				</details>
 			</section>
+			{/if}
 
 		{:else if activeTab === 'shortcuts'}
 			<!-- ── 단축키 탭 ───────────────────────────────────────────────── -->
@@ -2197,6 +2227,40 @@ https://www.dropbox.com/…/starting.png</pre>
 	}
 
 	/* ── 가이드 / 단축키 탭 ──────────────────────────────────────────── */
+
+	/* 가이드 탭 내부 카테고리 sub-nav. 메인 settings-tabs (밑줄 active) 와 시각적으로
+	   구분되도록 알약(pill) 형태로 디자인 — 메인 탭 vs 서브 탭 위계가 한 눈에 보임. */
+	.guide-subtabs {
+		display: flex;
+		gap: 6px;
+		flex-wrap: wrap;
+		margin-bottom: 20px;
+	}
+
+	.guide-subtab {
+		flex: 0 0 auto;
+		padding: 6px 14px;
+		border: 1px solid var(--color-border, #ccc);
+		background: transparent;
+		border-radius: 999px;
+		font-size: clamp(0.78rem, 2.2vw, 0.88rem);
+		color: var(--color-text-secondary, #777);
+		cursor: pointer;
+		transition: color 0.1s, border-color 0.1s, background 0.1s;
+		white-space: nowrap;
+	}
+
+	.guide-subtab:hover {
+		color: var(--color-text, #111);
+		border-color: var(--color-text-secondary, #777);
+	}
+
+	.guide-subtab.active {
+		background: var(--color-primary, #d05b10);
+		color: #fff;
+		border-color: var(--color-primary, #d05b10);
+		font-weight: 600;
+	}
 
 	.guide-card {
 		border: 1px solid var(--color-border, #e5e5e5);
