@@ -105,6 +105,7 @@ Home redirects to the user's home note (`core/home.ts`) or latest. Sleepnote red
 - **Mobile-first single-note-per-page** UI on `/note/[id]`. Avoid split views / desktop-only patterns there.
 - **All UI strings in Korean.** Match the existing tone.
 - **Responsive bars** (TopNav, 전체 filter bar) size with `clamp(min, Xvw, max)` for gaps/paddings/font sizes. Do not hardcode pixel values on those bars.
+- **User-facing features must be documented in 설정 → 가이드.** Whenever you add a new note format (e.g., terminal/schedule/sleep/diary/remarkable/OCR/chat note), a new editor inline block (e.g., CSV/TSV table, HR split, geo map, inline radio), or a new environment / compatibility requirement (e.g., Firefox flag, iOS PWA, permission flow), append a `<details class="guide-card">` to the appropriate sub-tab in `app/src/routes/settings/+page.svelte` (`guideSubTab`: `notes` / `editor` / `env`). The guide tab is the user's discovery surface — features that aren't there might as well not exist. Skill bodies, code comments, and PR descriptions do NOT substitute for this. Mirror the existing card pattern: short `<summary>`, one `<p class="info-text">` intro, optional `<pre class="snippet">`, then a `<ul class="guide-list">` with constraints / gotchas / link buttons to related tabs.
 
 ## Title uniqueness & rename cascade
 
