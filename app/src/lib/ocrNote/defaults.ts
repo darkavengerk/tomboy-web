@@ -17,6 +17,7 @@ export const OCR_SIGNATURE_RE = /^ocr:\/\/([A-Za-z0-9._:/-]+)\s*$/;
  *   - system:      override the translation step's system prompt.
  *   - temperature: model sampling temperature for the translation step.
  *   - num_ctx:     context size for the translation step.
+ *   - effort:      Claude 백엔드 reasoning effort. low|medium|high|xhigh|max.
  */
 export const OCR_HEADER_KEY_RE =
 	/^(translate|system|temperature|num_ctx|effort):\s*(.*)$/;
