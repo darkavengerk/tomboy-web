@@ -50,6 +50,8 @@ function runOne(
       settled = true;
       clearTimeout(timer);
       try { child.kill('SIGTERM'); } catch { /* already gone */ }
+      try { child.stdout?.destroy(); } catch { /* already gone */ }
+      try { child.stderr?.destroy(); } catch { /* already gone */ }
       reject(new Error(msg));
     };
     const timer = setTimeout(() => fail('타임아웃'), o.timeoutMs);
@@ -58,7 +60,7 @@ function runOne(
       if (size > o.maxOutputBytes) { fail('출력이 너무 큽니다'); return; }
       out += d.toString('utf8');
     });
-    child.stderr?.on('data', (d: Buffer) => { errOut += d.toString('utf8'); });
+    child.stderr?.on('data', (d: Buffer) => { if (errOut.length < 8192) errOut += d.toString('utf8'); });
     child.on('error', (e: Error) => fail(e.message));
     child.on('close', (code: number | null) => {
       if (settled) return;

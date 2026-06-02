@@ -31,6 +31,23 @@ const ENTRIES: CommandEntry[] = [
   { project: 'robotC', exec: ['python3', 'loc.py', '/repoB', '--csv-only'] }
 ];
 
+// Fake child that never emits 'close' — simulates a hung process.
+function hungChild() {
+  const child = new EventEmitter() as EventEmitter & {
+    stdout: Readable; stderr: Readable; kill: () => void;
+  };
+  // Readable.from([]) produces an ended stream but never emits 'close' on child.
+  child.stdout = Readable.from([]);
+  child.stderr = Readable.from([]);
+  child.kill = () => {};
+  // intentionally never emit 'close'
+  return child;
+}
+
+function hungSpawn() {
+  return ((_cmd: string, _args: string[], _opts: unknown) => hungChild()) as unknown as typeof import('node:child_process').spawn;
+}
+
 describe('runEntries', () => {
   it('collects stdout per project on success', async () => {
     const spawn = fakeSpawn({ '/repoA': { stdout: 'a,b\n1,2\n', code: 0 }, '/repoB': { stdout: 'c\n3\n', code: 0 } });
@@ -51,5 +68,14 @@ describe('runEntries', () => {
     const out = await runEntries(ENTRIES, { spawn, maxOutputBytes: 10 });
     expect(out.results).toEqual({ robotC: 'ok\n' });
     expect(out.errors.tomboy).toMatch(/너무 큽/);
+  });
+
+  it('errors a hung project with 타임아웃 and does not hang', async () => {
+    const oneEntry: CommandEntry[] = [
+      { project: 'tomboy', exec: ['python3', 'loc.py', '/repoA', '--csv-only'] }
+    ];
+    const out = await runEntries(oneEntry, { spawn: hungSpawn(), timeoutMs: 10 });
+    expect(out.errors.tomboy).toMatch(/타임아웃/);
+    expect(out.results).toEqual({});
   });
 });
