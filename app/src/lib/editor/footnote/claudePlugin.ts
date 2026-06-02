@@ -2,8 +2,11 @@ import { Plugin, PluginKey, type EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import type { ThinkingStep } from '$lib/chatNote/backends/claude.js';
 
-import { definitionsMatchingTrigger, locateDefinition } from './claudeFill.js';
-import { runFootnoteClaude } from './claudeFill.js';
+import {
+	definitionsMatchingTrigger,
+	locateDefinition,
+	runFootnoteClaude
+} from './claudeFill.js';
 
 export interface FootnoteClaudeState {
 	active: string[];
