@@ -11,10 +11,13 @@ const WALLPAPER_KEY = 'desktop:wallpaper';
 const VERSION = 3;
 const WORKSPACE_COUNT = 4;
 
-export type DesktopWindowKind = 'note' | 'settings';
+export type DesktopWindowKind = 'note' | 'settings' | 'admin';
 
 /** Singleton guid used for the settings window. */
 export const SETTINGS_WINDOW_GUID = '__settings__';
+
+/** Singleton guid used for the admin window. */
+export const ADMIN_WINDOW_GUID = '__admin__';
 
 export interface DesktopWindowState {
 	guid: string;
@@ -75,6 +78,10 @@ const DEFAULT_WIDTH = 560;
 const DEFAULT_HEIGHT = 520;
 const DEFAULT_SETTINGS_WIDTH = 460;
 const DEFAULT_SETTINGS_HEIGHT = 640;
+// Admin is a wide operator UI (sync dashboard, revision tables), so it
+// opens larger than the settings panel.
+const DEFAULT_ADMIN_WIDTH = 820;
+const DEFAULT_ADMIN_HEIGHT = 680;
 const MIN_WIDTH = 280;
 const MIN_HEIGHT = 240;
 // The SidePanel rail's width is user-resizable and persisted in
@@ -235,6 +242,9 @@ function cacheGeometry(ws: WorkspaceState, win: DesktopWindowState): void {
 function defaultGeometry(kind: DesktopWindowKind): GeometrySnapshot {
 	if (kind === 'settings') {
 		return centeredFor(DEFAULT_SETTINGS_WIDTH, DEFAULT_SETTINGS_HEIGHT);
+	}
+	if (kind === 'admin') {
+		return centeredFor(DEFAULT_ADMIN_WIDTH, DEFAULT_ADMIN_HEIGHT);
 	}
 	return centeredFor(DEFAULT_WIDTH, DEFAULT_HEIGHT);
 }
@@ -526,6 +536,31 @@ export const desktopSession = {
 		const win: DesktopWindowState = {
 			guid,
 			kind: 'settings',
+			x: geom.x,
+			y: geom.y,
+			width: geom.width,
+			height: geom.height,
+			z: ++ws.nextZ
+		};
+		ws.windows.push(win);
+		cacheGeometry(ws, win);
+		schedulePersist();
+	},
+
+	openAdmin(): void {
+		const ws = current();
+		const guid = ADMIN_WINDOW_GUID;
+		const existing = ws.windows.find((w) => w.guid === guid);
+		if (existing) {
+			bumpZ(ws, existing);
+			schedulePersist();
+			return;
+		}
+		const cached = ws.geometryByGuid[guid];
+		const geom = cached ?? defaultGeometry('admin');
+		const win: DesktopWindowState = {
+			guid,
+			kind: 'admin',
 			x: geom.x,
 			y: geom.y,
 			width: geom.width,

@@ -39,6 +39,7 @@
 		workspaceSummaries: Array<{ index: number; windowCount: number }>;
 		onopen: (guid: string) => void;
 		onopensettings: () => void;
+		onopenadmin: () => void;
 		onswitchworkspace: (index: number) => void;
 	}
 
@@ -48,6 +49,7 @@
 		workspaceSummaries,
 		onopen,
 		onopensettings,
+		onopenadmin,
 		onswitchworkspace
 	}: Props = $props();
 
@@ -253,6 +255,14 @@
 			title="설정"
 			aria-label="설정"
 		>설정</button>
+
+		<button
+			type="button"
+			class="rail-settings"
+			onclick={onopenadmin}
+			title="관리자"
+			aria-label="관리자"
+		>관리자</button>
 	</div>
 
 	<!--

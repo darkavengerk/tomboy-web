@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import NoteWindow from './NoteWindow.svelte';
 	import SettingsWindow from './SettingsWindow.svelte';
+	import AdminWindow from './AdminWindow.svelte';
 	import SidePanel from './SidePanel.svelte';
 	import {
 		desktopSession,
@@ -78,6 +79,10 @@
 
 	function handleOpenSettings() {
 		desktopSession.openSettings();
+	}
+
+	function handleOpenAdmin() {
+		desktopSession.openAdmin();
 	}
 
 	function handleSwitchWorkspace(index: number) {
@@ -254,6 +259,20 @@
 						onmove={handleMove}
 						onresize={handleResize}
 					/>
+				{:else if win.kind === 'admin'}
+					<AdminWindow
+						x={win.x}
+						y={win.y}
+						width={win.width}
+						height={win.height}
+						z={(win.pinned ? 1_000_000 : 0) + win.z}
+						pinned={win.pinned}
+						active={active}
+						onfocus={handleFocus}
+						onclose={handleClose}
+						onmove={handleMove}
+						onresize={handleResize}
+					/>
 				{:else}
 					<NoteWindow
 						guid={win.guid}
@@ -281,6 +300,7 @@
 		workspaceSummaries={desktopSession.workspaceSummaries}
 		onopen={handleOpen}
 		onopensettings={handleOpenSettings}
+		onopenadmin={handleOpenAdmin}
 		onswitchworkspace={handleSwitchWorkspace}
 	/>
 </div>
