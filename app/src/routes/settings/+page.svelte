@@ -1661,6 +1661,27 @@ https://www.dropbox.com/…/starting.png</pre>
 							<strong>"브릿지에 리마커블 설정이 없습니다"</strong>(503) 오류가 납니다.</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>자동화 노트 (자동화::)</summary>
+					<p class="info-text">
+						제목이 <code>자동화::&lt;명령&gt;</code> 인 노트는 「⟳ 실행」 버튼을 띄웁니다. 누르면
+						데스크탑에 등록된 스크립트가 실행되고, 결과(<code>{`{프로젝트명: CSV}`}</code>)로
+						<code>DATA::&lt;프로젝트명&gt;</code> 노트의 CSV 블록이 갱신됩니다(없으면 생성). 실행 내역은
+						이 노트에 리스트로 쌓입니다.
+					</p>
+					<pre class="snippet">자동화::loc-history
+
+⟳ 실행
+
+- 2026-06-02 15:30 — tomboy·robotC 갱신
+- 2026-06-01 09:12 — tomboy 갱신, robotC 실패(타임아웃)</pre>
+					<ul class="guide-list">
+						<li>실행할 스크립트·경로는 <strong>데스크탑 automation-service의 registry</strong>(<code>~/.config/tomboy-automation.json</code>)에만 정의됩니다. 노트는 명령 id만 보냅니다.</li>
+						<li>선행조건: 터미널 브릿지 설정 + 데스크탑 automation-service 실행(자세히는 <code>automation-service/deploy/README.md</code>).</li>
+						<li>결과의 각 프로젝트명마다 <code>DATA::</code> 노트를 찾아 갱신하므로, 한 번에 여러 데이터 노트를 갱신할 수 있습니다.</li>
+					</ul>
+				</details>
 			</section>
 
 			{:else if guideSubTab === 'editor'}
