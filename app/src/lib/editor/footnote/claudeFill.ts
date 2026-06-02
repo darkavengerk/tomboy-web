@@ -182,12 +182,29 @@ export async function runFootnoteClaude(
 		}
 	} catch (err) {
 		restore();
-		const msg =
-			err instanceof ClaudeChatError
-				? `Claude 오류: ${err.kind}`
-				: 'Claude 연결 실패';
-		pushToast(msg, { kind: 'error' });
+		pushToast(footnoteClaudeErrorMessage(err), { kind: 'error' });
 	} finally {
 		finish();
+	}
+}
+
+/** ClaudeChatError 종류를 한국어 사용자 메시지로 변환(UI 문자열 한국어 불변식). */
+function footnoteClaudeErrorMessage(err: unknown): string {
+	if (!(err instanceof ClaudeChatError)) return 'Claude 연결 실패';
+	switch (err.kind) {
+		case 'unauthorized':
+			return '인증 실패 — 설정에서 브릿지 재로그인';
+		case 'service_unavailable':
+			return '데스크탑 Claude 서비스 응답 없음';
+		case 'rate_limited':
+			return 'Claude 사용량 한도 도달. 잠시 후 재시도';
+		case 'cli_failed':
+			return 'claude 실행 실패';
+		case 'bad_request':
+			return '요청 형식 오류';
+		case 'payload_too_large':
+			return '노트가 너무 큼';
+		default:
+			return 'Claude 연결 실패. 재시도?';
 	}
 }
