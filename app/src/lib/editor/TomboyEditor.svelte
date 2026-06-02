@@ -63,6 +63,10 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 		createHrSplitPlugin,
 		hrSplitPluginKey,
 	} from "./hrSplit/hrSplitPlugin.js";
+	import {
+		createHrFoldPlugin,
+		hrFoldPluginKey,
+	} from "./hrSplit/hrFoldPlugin.js";
 	import { createLabeledDividerPlugin } from "./labeledDivider/labeledDividerPlugin.js";
 	import {
 		loadActiveOrdinals,
@@ -70,6 +74,10 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 		loadColumnWidths,
 		saveColumnWidths,
 	} from "./hrSplit/hrSplitStore.js";
+	import {
+		loadFoldedOrdinals,
+		saveFoldedOrdinals,
+	} from "./hrSplit/hrFoldStore.js";
 	import { extractImageFile } from "./imagePreview/extractImageFile.js";
 	import { extractAnyFile } from "./extractFile.js";
 	import { uploadTempImage } from "$lib/sync/tempImageUpload.js";
@@ -530,6 +538,20 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 					},
 				}),
 				Extension.create({
+					name: "tomboyHrFold",
+					addProseMirrorPlugins() {
+						return [
+							createHrFoldPlugin({
+								onChange: (folded) => {
+									// Same closure trick as hrSplit: persist under
+									// whichever guid is currently bound to the editor.
+									saveFoldedOrdinals(lastAppliedGuid, folded);
+								},
+							}),
+						];
+					},
+				}),
+				Extension.create({
 					name: "tomboyLabeledDivider",
 					addProseMirrorPlugins() {
 						return [createLabeledDividerPlugin()];
@@ -955,13 +977,18 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 			contentSyncSeeded = true;
 			lastAppliedContent = c;
 			lastAppliedGuid = g;
-			// Seed HR split state from localStorage for the initial note.
+			// Seed HR split + fold state from localStorage for the initial note.
 			{
 				const persistedWidths = loadColumnWidths(g);
 				ed.view.dispatch(
 					ed.state.tr.setMeta(hrSplitPluginKey, {
 						replace: Array.from(loadActiveOrdinals(g)),
 						...(persistedWidths ? { widths: persistedWidths } : {}),
+					}),
+				);
+				ed.view.dispatch(
+					ed.state.tr.setMeta(hrFoldPluginKey, {
+						replace: Array.from(loadFoldedOrdinals(g)),
 					}),
 				);
 			}
@@ -977,16 +1004,22 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 			type: "doc",
 			content: [{ type: "paragraph" }],
 		};
-		// Reseed HR split state for the freshly loaded note BEFORE swapping
-		// the doc. If we did it after, setContent's docChanged reconciliation
-		// would prune the OLD note's active ordinals against the NEW doc and
-		// then persist that mangled set under the new guid's storage key.
+		// Reseed HR split + fold state for the freshly loaded note BEFORE
+		// swapping the doc. If we did it after, setContent's docChanged
+		// reconciliation would prune the OLD note's active ordinals against
+		// the NEW doc and then persist that mangled set under the new guid's
+		// storage key.
 		{
 			const persistedWidths = loadColumnWidths(g);
 			ed.view.dispatch(
 				ed.state.tr.setMeta(hrSplitPluginKey, {
 					replace: Array.from(loadActiveOrdinals(g)),
 					...(persistedWidths ? { widths: persistedWidths } : {}),
+				}),
+			);
+			ed.view.dispatch(
+				ed.state.tr.setMeta(hrFoldPluginKey, {
+					replace: Array.from(loadFoldedOrdinals(g)),
 				}),
 			);
 		}
@@ -1604,6 +1637,56 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 			#888 calc(50% + 1px),
 			transparent calc(50% + 1px)
 		);
+	}
+
+	/* HR fold — 섹션 접기/펼치기.
+	   Each non-empty section's HR marker hosts a small +/− widget button
+	   (hrFoldPlugin). Clicking it folds the section below the HR: the
+	   first block is clamped to one visual line, the rest are hidden.
+	   Mutually exclusive with the split layout — while columns are
+	   active the fold plugin emits no decorations at all, and while any
+	   section is folded the split Ctrl+click toggle is ignored. */
+	.tomboy-editor :global(.tomboy-hr-fold-btn) {
+		position: absolute;
+		right: 0;
+		top: 50%;
+		transform: translateY(-50%);
+		width: 22px;
+		height: 22px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0;
+		border: 1px solid #c8c8c8;
+		border-radius: 50%;
+		background: #fff;
+		/* Explicit colour — the parent .tomboy-hr-marker hides its literal
+		   `---` text via `color: transparent`, which would otherwise be
+		   inherited by the button glyph. */
+		color: #888;
+		font-size: 15px;
+		line-height: 1;
+		cursor: pointer;
+		user-select: none;
+		opacity: 0.55;
+		z-index: 1;
+	}
+	.tomboy-editor :global(.tomboy-hr-fold-btn:hover) {
+		opacity: 1;
+		color: #333;
+		border-color: #999;
+	}
+	/* Folded section: first block clamped to a single visual line. */
+	.tomboy-editor :global(.tomboy-hr-fold-clamped) {
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 1;
+		line-clamp: 1;
+		overflow: hidden;
+	}
+	/* Folded section: remaining blocks fully hidden. */
+	.tomboy-editor :global(.tomboy-hr-fold-hidden) {
+		display: none;
 	}
 
 	/* Labeled divider — a divider line with embedded text. The literal

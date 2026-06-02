@@ -1,6 +1,6 @@
 ---
 name: tomboy-hrsplit
-description: Use when working on the editor's three-dash horizontal-rule / vertical-divider split-column feature (app/src/lib/editor/hrSplit/). Covers the placement model in assignColumns, the masonry-based layout invariants, the runtime divider-height sync via --hr-split-divider-height on view.dom, why per-column DOM wrapping is incompatible with ProseMirror, the Firefox-only browser support behind layout.css.grid-template-masonry-value.enabled, and the known dead ends.
+description: Use when working on the editor's three-dash horizontal-rule feature family (app/src/lib/editor/hrSplit/) — the vertical-divider split-column layout AND the section fold (접기) feature. Covers the placement model in assignColumns, the masonry-based layout invariants, the runtime divider-height sync via --hr-split-divider-height on view.dom, why per-column DOM wrapping is incompatible with ProseMirror, the Firefox-only browser support behind layout.css.grid-template-masonry-value.enabled, the known dead ends, the hrFoldPlugin section model (assignSections), and the split↔fold mutual exclusion.
 ---
 
 # HR split layout
@@ -22,9 +22,16 @@ The active set is persisted per-note GUID in `localStorage` via
 `hrSplitStore.ts`. It is **not** part of the `.note` XML and does not
 sync between devices.
 
+The same HR markers also drive the **section fold (접기)** feature — see
+the "HR fold" section below. The two features are mutually exclusive
+views over the same markers.
+
 ## File map
 
 - `app/src/lib/editor/hrSplit/`
+  - `pluginKeys.ts` — shared `hrSplitPluginKey` + `hrFoldPluginKey` and
+    their state types. Exists so the two plugins can read each other's
+    state for mutual exclusion without a circular import.
   - `assignColumns.ts` — pure column-assignment logic. Maps `BlockKind[]`
     + active set to `Placement[]` (header / block / h-line / v-divider)
     and emits inline `grid-column` styles + a `grid-template-columns`
@@ -32,16 +39,30 @@ sync between devices.
   - `hrSplitPlugin.ts` — ProseMirror plugin. Tracks `activeOrdinals` in
     plugin state, emits node decorations with the styles/classes from
     assignColumns, handles the Ctrl+click toggle, and owns the runtime
-    divider-height sync in its `view()` hook.
+    divider-height sync in its `view()` hook. Exports `describeTopLevel`
+    and `HEADER_COUNT` for the fold plugin.
   - `hrSplitStore.ts` — per-guid localStorage persistence of the active
     set.
-- `app/src/lib/editor/TomboyEditor.svelte` — wires the plugin up,
+  - `assignSections.ts` — pure section-assignment logic for the fold
+    feature. Maps `BlockKind[]` to `SectionRole[]` (outside / hr /
+    first / rest).
+  - `hrFoldPlugin.ts` — ProseMirror plugin. Tracks `folded` HR ordinals,
+    emits the +/− widget buttons inside HR markers and the
+    clamp/hide node decorations for folded sections.
+  - `hrFoldStore.ts` — per-guid localStorage persistence of the folded
+    set (`tomboy.hrFold.<guid>`).
+- `app/src/lib/editor/TomboyEditor.svelte` — wires both plugins up,
   hosts the CSS for `.tomboy-hr-marker`, `.tomboy-hr-split-active`,
-  `.tomboy-hr-split-divider`, and the `--hr-split-divider-height`
-  variable binding.
+  `.tomboy-hr-split-divider`, the `--hr-split-divider-height`
+  variable binding, and the fold classes (`.tomboy-hr-fold-btn`,
+  `.tomboy-hr-fold-clamped`, `.tomboy-hr-fold-hidden`).
 - `app/tests/unit/editor/hrSplitAssignColumns.test.ts` — placement
   algorithm + grid-style output tests.
 - `app/tests/unit/editor/hrSplitStore.test.ts` — persistence tests.
+- `app/tests/unit/editor/hrFoldSections.test.ts` — section model tests.
+- `app/tests/unit/editor/hrFoldStore.test.ts` — fold persistence tests.
+- `app/tests/unit/editor/hrFoldPlugin.test.ts` — fold plugin decoration
+  + mutual-exclusion tests (TipTap Editor based).
 
 ## Placement model (`assignColumns`)
 
@@ -213,6 +234,43 @@ is whether masonry is enabled — the symptoms (column 1 has a huge empty
 area at the bottom, divider is short or matches only the first row,
 etc.) all stem from the unsupported case.
 
+## HR fold (섹션 접기)
+
+Each post-header HR marker "owns" the content below it: section `k` runs
+from the block right after HR `k` to the next HR (or end of doc). The
+header area and anything above the first HR are not foldable.
+
+- Every **non-empty** section's HR marker hosts a small +/− widget
+  button (`.tomboy-hr-fold-btn`), absolutely positioned at the right end
+  of the HR line. Empty sections (HR followed by another HR / doc end)
+  get no button.
+- Folding a section adds `.tomboy-hr-fold-clamped` (line-clamp:1 +
+  ellipsis) to its **first** block and `.tomboy-hr-fold-hidden`
+  (display:none) to the **rest**.
+- Fold state is `folded: Set<number>` of HR ordinals (same post-header
+  ordinal space as the split), persisted per-guid in localStorage via
+  `hrFoldStore.ts` (`tomboy.hrFold.<guid>`). Never synced, never in the
+  `.note` XML.
+- Works on **mobile and desktop** (unlike the split, which is
+  desktop-only). No enabled gate.
+- Doc edits prune out-of-range fold ordinals, mirroring the split's
+  `reconcileActiveAgainstDoc`.
+- The widget button reads the live `EditorView` from `Decoration.widget`'s
+  toDOM callback to dispatch the toggle meta — no module-level state, so
+  multiple desktop editor windows can't cross-talk.
+
+### Split ↔ fold mutual exclusion
+
+| State | Behavior |
+|---|---|
+| Split active (`activeOrdinals.size > 0`) | Fold plugin emits **no decorations at all** — buttons gone, folded sections render expanded. Fold state preserved (inert). |
+| Folded sections (`folded.size > 0`) | Split's `handleClick` ignores Ctrl/Cmd+click — no new columns while content is hidden. |
+| Both non-empty (cross-seeded localStorage) | Split wins. Fold decorations return when the split is deactivated. |
+
+The exclusion exists because the split's grid placement assumes every
+block is visible: hidden blocks would land in wrong columns and corrupt
+the divider-height measurement.
+
 ## Invariants
 
 - **Children of `view.dom` are never wrapped.** A previous attempt
@@ -232,9 +290,12 @@ etc.) all stem from the unsupported case.
   flows independently and `grid-row` is meaningless / harmful.
 - **Divider height never lives on the divider element.** Always
   via the `--hr-split-divider-height` custom property on `view.dom`.
-- **Decorations only ever attach attributes, never structural changes.**
-  Headers, dividers, and blocks all get inline `grid-column` styles via
-  `Decoration.node`. No widget decorations, no NodeViews.
+- **Split decorations only ever attach attributes, never structural
+  changes.** Headers, dividers, and blocks all get inline `grid-column`
+  styles via `Decoration.node`. No widget decorations, no NodeViews.
+  (The **fold** plugin does use widget decorations for its +/− buttons,
+  but those are inline additions inside HR paragraphs — they never
+  restructure or wrap existing PM-owned DOM, which is what breaks PM.)
 - **Active set persistence is per-guid localStorage, never synced.**
   Sync would carry one device's split preference to another with a
   different screen size, which makes no sense.
@@ -268,8 +329,9 @@ etc.) all stem from the unsupported case.
 
 ## Configuration knobs
 
-- `HEADER_COUNT = 2` in `hrSplitPlugin.ts`. Bump only if the note
-  layout grows a third always-full-width row.
+- `HEADER_COUNT = 2` in `hrSplitPlugin.ts` (exported; shared by the
+  fold plugin so both features agree on the section/ordinal space).
+  Bump only if the note layout grows a third always-full-width row.
 - Divider track width is hard-coded to `12px` in CSS (`.tomboy-hr-split-divider`
   width + `column-gap`). Changing it requires updating the gap to match
   or the column tracks won't align with the visual gap.
@@ -283,5 +345,12 @@ verifies the `computeGridStyles` output is **`grid-column` only** (no
 `grid-row` leaks into the output strings — that's the invariant the
 masonry layout depends on).
 
+`hrFoldSections.test.ts` covers the section model (empty sections,
+trailing HRs, header boundaries); `hrFoldPlugin.test.ts` covers the
+decoration output and both directions of the split↔fold mutual
+exclusion using real TipTap Editor instances.
+
 No DOM-level test for the divider-height sync because it depends on
 real browser layout; verify manually in Firefox with masonry enabled.
+Fold clamp/hide rendering is CSS-only — verify manually via
+`npm run dev`.

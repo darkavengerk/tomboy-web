@@ -1835,6 +1835,39 @@ https://www.dropbox.com/…/starting.png</pre>
 							열 때는 커서가 자동으로 움직이지 않습니다.</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>수평선 (<code>---</code>) — 섹션 구분 · 접기 · 나란히 보기</summary>
+					<p class="info-text">
+						본문에 <code>---</code>(대시 3개 이상)만 있는 단락은 가로 구분선이 됩니다.
+						구분선 아래 내용은 하나의 <strong>섹션</strong>이 되어, 구분선 우측 끝의 작은
+						<code>−</code> / <code>+</code> 버튼으로 접거나 펼칠 수 있습니다.
+					</p>
+					<pre class="snippet">제목
+2026-06-02
+
+인트로 문단 (첫 수평선 위 — 접기 불가)
+---                          [−]
+섹션 첫 블록 (접으면 이 줄만 한 줄로 표시)
+나머지 내용은 접힌 동안 숨겨짐
+---                          [−]
+다음 섹션 …</pre>
+					<ul class="guide-list">
+						<li><strong>접기</strong> — <code>−</code> 버튼을 누르면 해당 섹션의 첫 블록만 한 줄로
+							클램프되어 보이고(말줄임표) 나머지 블록은 숨겨집니다. <code>+</code> 버튼으로 다시 펼칩니다.</li>
+						<li>섹션 = 구분선 바로 아래부터 다음 구분선(또는 노트 끝)까지. 첫 구분선 위 영역과
+							제목/날짜 줄은 접기 대상이 아닙니다.</li>
+						<li>접기 상태는 <strong>이 기기(브라우저)에만</strong> 저장됩니다 — 노트 내용과 동기화에는
+							영향이 없습니다.</li>
+						<li>모바일 · 데스크탑 모두 동작합니다.</li>
+						<li><strong>나란히 보기(세로 칼럼 분할)와는 동시에 쓸 수 없습니다</strong> — 칼럼 분할이
+							활성인 동안 접기 버튼이 숨겨지고, 접힌 섹션이 있는 동안 Ctrl+클릭 분할 토글이
+							무시됩니다. 분할 기능의 브라우저 요구사항은
+							<button type="button" class="link-btn" onclick={() => (guideSubTab = 'env')}>환경 탭</button>을 참고하세요.</li>
+						<li>숨겨진 내용도 전체 선택 · 복사 · 검색에는 그대로 포함됩니다 — 보기만 접힐 뿐 내용은
+							그대로 남아 있습니다.</li>
+					</ul>
+				</details>
 			</section>
 
 			{:else if guideSubTab === 'env'}

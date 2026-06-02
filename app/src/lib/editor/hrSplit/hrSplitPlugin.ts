@@ -1,4 +1,4 @@
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
@@ -8,13 +8,17 @@ import {
 	computeGridStyles,
 	type BlockKind
 } from './assignColumns.js';
+import {
+	hrSplitPluginKey,
+	hrFoldPluginKey,
+	type HrSplitPluginState
+} from './pluginKeys.js';
 
-interface PluginState {
-	activeOrdinals: Set<number>;
-	/** Per-column fr fractions, length = activeOrdinals.size + 1.
-	 *  Equal-width columns are stored as `[1, 1, ...]`. */
-	widths: number[];
-}
+/** Plugin state: active column dividers + per-column fr fractions.
+ *  Equal-width columns are stored as `[1, 1, ...]`. Shape defined in
+ *  pluginKeys.ts so the fold plugin can read it without a circular
+ *  import. */
+type PluginState = HrSplitPluginState;
 
 interface ToggleMeta {
 	toggle: number;
@@ -45,7 +49,7 @@ function isResize(m: Meta): m is ResizeMeta {
 	return Array.isArray((m as ResizeMeta).resize);
 }
 
-export const hrSplitPluginKey = new PluginKey<PluginState>('tomboyHrSplit');
+export { hrSplitPluginKey };
 
 export interface HrSplitOptions {
 	/** Fired after every state-changing transition with the new and previous
@@ -78,15 +82,16 @@ export function isDashParagraph(node: PMNode): boolean {
 
 /** Number of leading top-level children excluded from the split layout.
  *  These are the title (index 0) and the subtitle/date line (index 1),
- *  which always render full-width above the split area. */
-const HEADER_COUNT = 2;
+ *  which always render full-width above the split area. Shared with the
+ *  fold plugin so both features agree on the section/ordinal space. */
+export const HEADER_COUNT = 2;
 
 /** Lower bound on any single column's share of (left + right) when
  *  dragging the divider between them. Keeps a column from being dragged
  *  down to invisibility. */
 const MIN_COLUMN_FRACTION = 0.1;
 
-function describeTopLevel(doc: PMNode): {
+export function describeTopLevel(doc: PMNode): {
 	kinds: BlockKind[];
 	topLevelPositions: number[];
 } {
@@ -335,6 +340,12 @@ export function createHrSplitPlugin(options: HrSplitOptions = {}): Plugin {
 			handleClick(view, pos, event) {
 				if (options.enabled && !options.enabled()) return false;
 				if (!(event.ctrlKey || event.metaKey)) return false;
+				// Mutual exclusion with the fold feature: while any section is
+				// folded, hidden blocks would silently land in the wrong grid
+				// column, so the split toggle is disabled. The user unfolds
+				// first (the fold plugin's buttons stay visible).
+				const fold = hrFoldPluginKey.getState(view.state);
+				if (fold && fold.folded.size > 0) return false;
 				const doc = view.state.doc;
 				const topIdx = topLevelIndexAtPos(doc, pos);
 				if (topIdx < 0) return false;
