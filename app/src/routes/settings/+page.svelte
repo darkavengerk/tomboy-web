@@ -1868,6 +1868,39 @@ https://www.dropbox.com/…/starting.png</pre>
 							그대로 남아 있습니다.</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>프로세스 블록 — 멀티스테이지 칸반 (<code>Process:</code> … <code>Complete:</code>)</summary>
+					<p class="info-text">
+						<kbd>Alt</kbd>+<kbd>P</kbd> 로 삽입합니다. <code>Process:</code> 로 시작하는 문단부터
+						<code>Complete:</code> 문단까지가 한 블록이고, 사이의 문단들이 각각 <strong>단계(칸반
+						컬럼)</strong>가 됩니다. 단계 문단 뒤의 리스트가 그 단계의 아이템 목록입니다.
+					</p>
+					<pre class="snippet">Process: 회사 이전
+- 짐 싸기
+  - 책상 정리
+    - [[X]] 모니터 분리
+    - [[ ]] 서랍 비우기
+설치
+Complete:</pre>
+					<ul class="guide-list">
+						<li><kbd>Alt</kbd>+<kbd>P</kbd> 는 <code>Process: 작업 이름</code> + <code>Complete:</code>
+							두 줄만 삽입합니다 — 단계 문단과 아이템 리스트는 직접 타이핑하세요.</li>
+						<li><code>Complete:</code> 문단이 <strong>반드시 있어야</strong> 블록으로 인식됩니다. 없으면
+							전부 일반 문단입니다.</li>
+						<li><kbd>Ctrl</kbd>(또는 모바일 "Ctrl 고정")을 누른 채 아이템에 마우스를 올리면
+							<strong>이전</strong>/<strong>다음</strong> 버튼이 나타나 인접 단계로 이동합니다.</li>
+						<li><strong>깊이 1</strong> 아이템(카드)은 하위 항목까지 통째로 이동. <strong>깊이 2</strong>
+							아이템은 개별 이동 — 대상 단계에서 같은 카테고리 라벨을 찾아 들어가고, 없으면 자동
+							생성됩니다.</li>
+						<li><strong>깊이 3</strong> 아이템은 <strong>체크박스</strong>입니다 — 이동 버튼 대신 클릭으로
+							체크 토글. 개별로 보내기엔 너무 작은 세부 진행 단계 체크용. 저장 시
+							<code>[[ ]]</code> / <code>[[X]]</code> 마커가 자동으로 붙습니다 (체크리스트 영역과 같은
+							문법).</li>
+						<li>블록 안의 <strong>빈 줄</strong>이나 <code>---</code> 구분선은 무시됩니다 — 단계로 취급되지
+							않고, 아이템 이동도 다음에 보이는 실제 단계 문단 아래로 갑니다.</li>
+					</ul>
+				</details>
 			</section>
 
 			{:else if guideSubTab === 'env'}
@@ -1958,7 +1991,7 @@ https://www.dropbox.com/…/starting.png</pre>
 						<tr><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>오늘 날짜 (<code>yyyy-mm-dd</code>) 삽입 — 브라우저 북마크 단축키 가로챔</td></tr>
 						<tr><td><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>현재 줄은 유지하고 아래에 빈 블록 추가</td></tr>
 						<tr><td><kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>TODO 블록 삽입 (2단계)</td></tr>
-						<tr><td><kbd>Alt</kbd>+<kbd>P</kbd></td><td>프로세스 블록 삽입 (멀티스테이지 칸반) — <kbd>Ctrl</kbd> 누른 채 아이템 hover 시 <strong>이전</strong>/<strong>다음</strong> 단계 이동 버튼</td></tr>
+						<tr><td><kbd>Alt</kbd>+<kbd>P</kbd></td><td>프로세스 블록 삽입 (멀티스테이지 칸반) — <code>Process:</code> + <code>Complete:</code> 두 줄 삽입. <kbd>Ctrl</kbd> 누른 채 아이템 hover 시 <strong>이전</strong>/<strong>다음</strong> 단계 이동 버튼. 자세한 형식은 가이드 → 에디터 탭</td></tr>
 						<tr><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>현재 줄(블록 또는 리스트 아이템) 통째로 삭제</td></tr>
 					</tbody>
 				</table>

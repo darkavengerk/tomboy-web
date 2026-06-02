@@ -7,12 +7,18 @@
  *
  * First stage shows only "다음"; last stage shows only "이전"; middle stages
  * show both.
+ *
+ * Depth-3 items (nested under a depth-2 sub-item) get a whole-li checkbox
+ * instead of move buttons — same widget/CSS as the checklist region
+ * (`tomboy-checkbox-item` / `tomboy-checkbox-box`), toggling the listItem's
+ * `checked` attr via `onToggleCheck`.
  */
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
+import { buildCheckbox } from '../checklist/plugin.js';
 import {
 	findProcessBlocks,
 	findProcessItems,
@@ -22,6 +28,8 @@ import {
 export interface ProcessRegionPluginOptions {
 	/** Invoked when a stage-move button is clicked. */
 	onMove: (liPos: number, direction: ProcessMoveDirection) => void;
+	/** Invoked when a depth-3 checkbox is clicked. liPos = listItem 노드 위치. */
+	onToggleCheck: (liPos: number) => void;
 }
 
 export const processRegionPluginKey = new PluginKey<DecorationSet>('tomboyProcessRegion');
@@ -77,13 +85,41 @@ function buildButtonGroup(
 
 function buildDecorations(
 	doc: PMNode,
-	onMove: ProcessRegionPluginOptions['onMove']
+	onMove: ProcessRegionPluginOptions['onMove'],
+	onToggleCheck: ProcessRegionPluginOptions['onToggleCheck']
 ): DecorationSet {
 	const decos: Decoration[] = [];
 	const items = findProcessItems(findProcessBlocks(doc));
 	for (const it of items) {
 		const liPos = it.liPos;
 		const liEnd = liPos + it.liNode.nodeSize;
+
+		// Depth-3: whole-li checkbox (checklist 위젯/CSS 재사용), 이동 버튼 없음.
+		if (it.depth === 3) {
+			const first = it.liNode.firstChild;
+			if (!first || first.type.name !== 'paragraph') continue;
+			const checked = it.liNode.attrs?.checked === true;
+			decos.push(
+				Decoration.node(liPos, liEnd, {
+					class: checked
+						? 'tomboy-checkbox-item is-checked'
+						: 'tomboy-checkbox-item'
+				})
+			);
+			decos.push(
+				Decoration.widget(
+					liPos + 2,
+					(view, getPos) => buildCheckbox(view, getPos, checked, onToggleCheck),
+					{
+						side: -1,
+						ignoreSelection: true,
+						key: `tomboy-process-checkbox-${liPos}-${checked ? 'on' : 'off'}`
+					}
+				)
+			);
+			continue;
+		}
+
 		const showPrev = !it.stage.isFirst;
 		const showNext = !it.stage.isLast;
 		if (!showPrev && !showNext) continue; // single-stage block: nothing to move
@@ -110,11 +146,11 @@ export function createProcessRegionPlugin(
 		key: processRegionPluginKey,
 		state: {
 			init(_, state) {
-				return buildDecorations(state.doc, options.onMove);
+				return buildDecorations(state.doc, options.onMove, options.onToggleCheck);
 			},
 			apply(tr, prev, _old, newState) {
 				if (!tr.docChanged) return prev;
-				return buildDecorations(newState.doc, options.onMove);
+				return buildDecorations(newState.doc, options.onMove, options.onToggleCheck);
 			}
 		},
 		props: {
