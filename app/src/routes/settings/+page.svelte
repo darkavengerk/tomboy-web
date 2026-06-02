@@ -1636,6 +1636,25 @@ history:
 				</details>
 
 				<details class="guide-card">
+					<summary>OCR 노트 — 이미지 텍스트 추출 + 한국어 번역</summary>
+					<p class="info-text">
+						본문 첫 줄이 <code>ocr://claude</code> 또는 <code>ocr://got-ocr2</code> 시그니처면 이미지를
+						붙여넣을 때 자동으로 텍스트를 추출하고 한국어로 번역합니다. 결과는
+						<code>[원문]</code> / <code>[번역]</code> 두 블록으로 삽입됩니다.
+					</p>
+					<pre class="snippet">ocr://claude
+effort: high
+
+[이미지 붙여넣기]</pre>
+					<ul class="guide-list">
+						<li><strong>기본 백엔드는 Claude</strong> — 데스크탑 claude-service의 구독 OAuth 사용. 토큰당 추가 과금 없음.</li>
+						<li><strong>한 번 호출로 OCR + 한국어 번역</strong> 동시 처리. 결과는 <code>[원문]</code> / <code>[번역]</code> 두 블록.</li>
+						<li><strong>옵션 헤더</strong> — <code>model: claude-opus-4-7</code>, <code>effort: low|medium|high|xhigh|max</code>, <code>system: …</code>.</li>
+						<li><strong>기존 <code>ocr://got-ocr2</code> 노트도 계속 작동</strong>. ocr-service(GOT-OCR2) 경로가 살아 있음.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
 					<summary>리마커블 배경화면 노트 — 태블릿 화면 바꾸기</summary>
 					<p class="info-text">
 						본문 <strong>둘째 줄</strong>이 <code>remarkable://&lt;별칭&gt;</code> 시그니처면 노트
