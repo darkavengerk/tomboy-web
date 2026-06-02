@@ -6,7 +6,14 @@ import {
 	type ProcessRegionPluginOptions
 } from './plugin.js';
 
-export { findProcessBlocks, findProcessItems, findProcessItemAt } from './regions.js';
+export {
+	findProcessBlocks,
+	findProcessItems,
+	findProcessItemAt,
+	isProcessHeaderText,
+	isCompleteHeaderText,
+	isIgnorableProcessText
+} from './regions.js';
 export type {
 	ProcessBlock,
 	ProcessStage,
@@ -22,7 +29,8 @@ export const TomboyProcessRegion = Extension.create<ProcessRegionPluginOptions>(
 	name: 'tomboyProcessRegion',
 	addOptions() {
 		return {
-			onMove: () => {}
+			onMove: () => {},
+			onToggleCheck: () => {}
 		};
 	},
 	addProseMirrorPlugins() {

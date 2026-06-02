@@ -549,6 +549,12 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 						if (!ed || ed.isDestroyed) return;
 						moveProcessItem(ed, liPos, direction);
 					},
+					// depth-3 체크박스 항목 토글 — 체크리스트와 같은 attr 토글 재사용.
+					onToggleCheck: (liPos) => {
+						const ed = editor;
+						if (!ed || ed.isDestroyed) return;
+						toggleCheckboxAt(ed, liPos);
+					},
 				}),
 				TomboyChecklist.configure({
 					onToggle: (liPos) => {

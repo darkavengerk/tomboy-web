@@ -196,6 +196,66 @@ describe('findProcessBlocks', () => {
 		expect(findProcessBlocks(e.state.doc)).toHaveLength(0);
 	});
 
+	it('blank paragraphs between stages are not stages (no phantom column)', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				P('Title'),
+				P('Process: 작업'),
+				UL('a'),
+				P(''),
+				P('디자인'),
+				UL('b'),
+				P(''),
+				P('Complete:')
+			]
+		});
+		const blocks = findProcessBlocks(e.state.doc);
+		expect(blocks).toHaveLength(1);
+		// 빈 문단은 스테이지가 아니다: Process / 디자인 / Complete 만.
+		expect(blocks[0].stages).toHaveLength(3);
+		expect(blocks[0].stages.map((s) => s.lists.length)).toEqual([1, 1, 0]);
+	});
+
+	it('--- (dash) paragraphs between stages are not stages', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				P('Title'),
+				P('Process: 작업'),
+				UL('a'),
+				P('---'),
+				P('디자인'),
+				P('-----'),
+				P('Complete:')
+			]
+		});
+		const blocks = findProcessBlocks(e.state.doc);
+		expect(blocks).toHaveLength(1);
+		expect(blocks[0].stages).toHaveLength(3);
+	});
+
+	it('a list separated from its header by a blank/--- still belongs to that stage', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				P('Title'),
+				P('Process: 작업'),
+				UL('a'),
+				P('디자인'),
+				P(''),
+				P('---'),
+				UL('b'),
+				P('Complete:')
+			]
+		});
+		const blocks = findProcessBlocks(e.state.doc);
+		expect(blocks).toHaveLength(1);
+		const design = blocks[0].stages[1];
+		expect(design.lists).toHaveLength(1);
+		expect(design.lists[0].node.firstChild!.textContent).toBe('b');
+	});
+
 	it('finds two independent Process blocks', () => {
 		const e = makeEditor({
 			type: 'doc',
@@ -262,7 +322,12 @@ describe('findProcessItems', () => {
 		expect(subs.every((s) => s.parent?.categoryText === 'parent')).toBe(true);
 	});
 
-	it('stops at depth-2 — does not descend into depth-3 nests', () => {
+	it('enumerates depth-3 checkbox items under a depth-2 sub-item', () => {
+		// cat > sub > [step1, step2]
+		const subWithSteps: JSONContent = {
+			type: 'listItem',
+			content: [P('sub'), UL('step1', 'step2')]
+		};
 		const e = makeEditor({
 			type: 'doc',
 			content: [
@@ -270,15 +335,50 @@ describe('findProcessItems', () => {
 				P('Process: 작업'),
 				{
 					type: 'bulletList',
-					content: [LI_NESTED('cat', UL('sub'))]
+					content: [
+						LI_NESTED('cat', { type: 'bulletList', content: [subWithSteps] })
+					]
 				},
 				P('Complete:')
 			]
 		});
-		// Manually deepen 'sub' to hold its own nested list via a follow-up edit
-		// would be complex; the depth-1/depth-2 contract is what matters here.
 		const items = findProcessItems(findProcessBlocks(e.state.doc));
-		expect(items.map((it) => it.depth).sort()).toEqual([1, 2]);
+		expect(items.map((it) => it.depth).sort()).toEqual([1, 2, 3, 3]);
+		const d3 = items.filter((it) => it.depth === 3);
+		expect(d3.map((it) => it.liNode.textContent)).toEqual(['step1', 'step2']);
+		// depth-3 items are addressable by liPos (for checkbox toggle).
+		const step1 = findProcessItemAt(items, d3[0].liPos);
+		expect(step1?.depth).toBe(3);
+	});
+
+	it('does not descend past depth-3 (depth-4 is left untouched)', () => {
+		// cat > sub > step > detail — detail (depth-4) must NOT be enumerated.
+		const stepWithDetail: JSONContent = {
+			type: 'listItem',
+			content: [P('step'), UL('detail')]
+		};
+		const subWithStep: JSONContent = {
+			type: 'listItem',
+			content: [P('sub'), { type: 'bulletList', content: [stepWithDetail] }]
+		};
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				P('Title'),
+				P('Process: 작업'),
+				{
+					type: 'bulletList',
+					content: [
+						LI_NESTED('cat', { type: 'bulletList', content: [subWithStep] })
+					]
+				},
+				P('Complete:')
+			]
+		});
+		const items = findProcessItems(findProcessBlocks(e.state.doc));
+		expect(items.map((it) => it.depth).sort()).toEqual([1, 2, 3]);
+		const texts = items.map((it) => it.liNode.firstChild!.textContent);
+		expect(texts).not.toContain('detail');
 	});
 
 	it('tags each item with its owning stage', () => {
@@ -463,6 +563,81 @@ describe('moveProcessItem', () => {
 		expect(processList.firstChild!.textContent).toBe('a');
 		expect(processList.lastChild!.textContent).toBe('c');
 	});
+
+	it('moves past blank / --- paragraphs to the next REAL stage (no phantom landing)', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				P('Title'),
+				P('Process: 작업'),
+				UL('a'),
+				P(''),
+				P('---'),
+				P('디자인'),
+				P('Complete:')
+			]
+		});
+		const liPos = firstLiPosInList(e, 2); // 'a'
+		expect(moveProcessItem(e, liPos, 'next')).toBe(true);
+		// 'a' 는 빈 문단/--- 아래가 아니라 디자인 헤더 바로 아래에 생긴 리스트로 이동.
+		// 이동 후: Title, Process, (빈), ---, 디자인, [a], Complete
+		const doc = e.state.doc;
+		expect(doc.child(1).textContent).toBe('Process: 작업');
+		expect(doc.child(2).textContent).toBe('');
+		expect(doc.child(3).textContent).toBe('---');
+		expect(doc.child(4).textContent).toBe('디자인');
+		expect(doc.child(5).type.name).toBe('bulletList');
+		expect(doc.child(5).firstChild!.textContent).toBe('a');
+		expect(doc.child(6).textContent).toBe('Complete:');
+	});
+
+	it('blank paragraph after a stage header: moved item appends to that stage existing list', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				P('Title'),
+				P('Process: 작업'),
+				UL('a'),
+				P('디자인'),
+				P(''),
+				UL('b'),
+				P('Complete:')
+			]
+		});
+		const liPos = firstLiPosInList(e, 2); // 'a'
+		expect(moveProcessItem(e, liPos, 'next')).toBe(true);
+		// 디자인 스테이지의 기존 리스트(빈 문단 너머)에 append 된다.
+		const designList = e.state.doc.child(4);
+		expect(designList.type.name).toBe('bulletList');
+		expect(designList.childCount).toBe(2);
+		expect(designList.lastChild!.textContent).toBe('a');
+	});
+
+	it('depth-3 checkbox items are not movable', () => {
+		const subWithSteps: JSONContent = {
+			type: 'listItem',
+			content: [P('sub'), UL('step1')]
+		};
+		const e = makeEditor({
+			type: 'doc',
+			content: [
+				P('Title'),
+				P('Process: 작업'),
+				{
+					type: 'bulletList',
+					content: [
+						LI_NESTED('cat', { type: 'bulletList', content: [subWithSteps] })
+					]
+				},
+				P('공정1'),
+				P('Complete:')
+			]
+		});
+		const liPos = liPosByText(e, 'step1');
+		expect(moveProcessItem(e, liPos, 'next')).toBe(false);
+		// 문서는 그대로.
+		expect(liPosByText(e, 'step1')).toBe(liPos);
+	});
 });
 
 // -------------------------------------------------------------------------
@@ -637,7 +812,7 @@ describe('moveProcessItem — depth-1 category card', () => {
 // -------------------------------------------------------------------------
 
 describe('insertProcessBlock', () => {
-	it('inserts Process: + a starter list + Complete: after the caret block', () => {
+	it('inserts Process: + Complete: after the caret block (no starter list)', () => {
 		const e = makeEditor({
 			type: 'doc',
 			content: [P('Title'), P('Body text')]
@@ -645,11 +820,9 @@ describe('insertProcessBlock', () => {
 		const bodyStart = e.state.doc.child(0).nodeSize + 1;
 		e.commands.setTextSelection(bodyStart + 1);
 		insertProcessBlock(e);
-		expect(e.state.doc.childCount).toBe(5);
+		expect(e.state.doc.childCount).toBe(4);
 		expect(e.state.doc.child(2).textContent).toBe('Process: 작업 이름');
-		expect(e.state.doc.child(3).type.name).toBe('bulletList');
-		expect(e.state.doc.child(3).firstChild!.textContent).toBe('');
-		expect(e.state.doc.child(4).textContent).toBe('Complete:');
+		expect(e.state.doc.child(3).textContent).toBe('Complete:');
 	});
 
 	it('produces a doc that parses back into one Process block', () => {
@@ -674,11 +847,10 @@ describe('insertProcessBlock', () => {
 		const targetStart = e.state.doc.child(0).nodeSize + 1;
 		e.commands.setTextSelection(targetStart);
 		insertProcessBlock(e);
-		// empty paragraph at index 1 replaced by [Process, UL, Complete]
+		// empty paragraph at index 1 replaced by [Process, Complete]
 		expect(e.state.doc.child(1).textContent).toBe('Process: 작업 이름');
-		expect(e.state.doc.child(2).type.name).toBe('bulletList');
-		expect(e.state.doc.child(3).textContent).toBe('Complete:');
-		expect(e.state.doc.child(4).textContent).toBe('tail');
+		expect(e.state.doc.child(2).textContent).toBe('Complete:');
+		expect(e.state.doc.child(3).textContent).toBe('tail');
 	});
 
 	it('never replaces the title (index 0)', () => {

@@ -43,6 +43,8 @@ export function moveProcessItem(
 	const items = findProcessItems(blocks);
 	const item = findProcessItemAt(items, liPos);
 	if (!item) return false;
+	// Depth-3 checkbox items are not movable — they travel with their parent.
+	if (item.depth === 3) return false;
 
 	const stages = item.block.stages;
 	const targetIndex = direction === 'next' ? item.stage.index + 1 : item.stage.index - 1;
@@ -232,11 +234,12 @@ const PROCESS_PLACEHOLDER = '작업 이름';
 const PROCESS_HEADER = `Process: ${PROCESS_PLACEHOLDER}`;
 
 /**
- * Alt+P handler. Inserts a `Process: 작업 이름` paragraph + a starter
- * single-item bullet list + an (empty) `Complete:` paragraph after the
- * caret's top-level block, then selects the `작업 이름` placeholder so the
- * first keystroke renames the process. If the caret's block is an empty
- * non-title paragraph, that paragraph is replaced in place instead.
+ * Alt+P handler. Inserts a `Process: 작업 이름` paragraph + an (empty)
+ * `Complete:` paragraph after the caret's top-level block, then selects the
+ * `작업 이름` placeholder so the first keystroke renames the process. Stage
+ * headers and item lists are typed by the user — no starter list is inserted.
+ * If the caret's block is an empty non-title paragraph, that paragraph is
+ * replaced in place instead.
  */
 export function insertProcessBlock(editor: Editor): void {
 	const { state } = editor;
@@ -250,10 +253,8 @@ export function insertProcessBlock(editor: Editor): void {
 	const topEnd = $from.after(1);
 
 	const processPara = schema.nodes.paragraph.create(null, schema.text(PROCESS_HEADER));
-	const emptyLi = schema.nodes.listItem.create(null, schema.nodes.paragraph.create());
-	const starterList = schema.nodes.bulletList.create(null, emptyLi);
 	const completePara = schema.nodes.paragraph.create(null, schema.text('Complete:'));
-	const block = [processPara, starterList, completePara];
+	const block = [processPara, completePara];
 
 	const tr = state.tr;
 	const currentIsEmptyPara =
