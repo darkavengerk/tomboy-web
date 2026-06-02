@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { Slice, Fragment } from '@tiptap/pm/model';
-import { TomboyInlineRadio } from '../../../../src/lib/editor/inlineRadio';
+import { TomboyInlineRadio, insertInlineRadio } from '../../../../src/lib/editor/inlineRadio';
 import { TomboyInlineCheckbox } from '../../../../src/lib/editor/inlineCheckbox';
 
 function makeEditor(content: any = { type: 'doc', content: [{ type: 'paragraph' }] }) {
@@ -196,6 +196,54 @@ describe('inlineRadio paste transform', () => {
 			if (n.type.name === 'inlineRadio') hasRadio = true;
 		});
 		expect(hasRadio).toBe(false);
+		editor.destroy();
+	});
+});
+
+describe('insertInlineRadio (Alt+R 헬퍼)', () => {
+	it('inserts an unselected radio atom at the cursor in body', () => {
+		const editor = makeEditor({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{ type: 'paragraph', content: [{ type: 'text', text: '질문: ' }] }
+			]
+		});
+		editor.commands.setTextSelection(editor.state.doc.content.size);
+		const ok = insertInlineRadio(editor);
+		expect(ok).toBe(true);
+		const para = editor.state.doc.lastChild!;
+		expect(para.lastChild!.type.name).toBe('inlineRadio');
+		expect(para.lastChild!.attrs.selected).toBe(false);
+		editor.destroy();
+	});
+
+	it('places the cursor right after the inserted atom', () => {
+		const editor = makeEditor({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{ type: 'paragraph', content: [{ type: 'text', text: '답: ' }] }
+			]
+		});
+		editor.commands.setTextSelection(editor.state.doc.content.size);
+		const before = editor.state.selection.from;
+		insertInlineRadio(editor);
+		// atom 크기 1 → 커서는 삽입 위치 + 1
+		expect(editor.state.selection.from).toBe(before + 1);
+		editor.destroy();
+	});
+
+	it('refuses to insert in the title line (idx=0)', () => {
+		const editor = makeEditor({
+			type: 'doc',
+			content: [{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] }]
+		});
+		editor.commands.setTextSelection(3);
+		const before = editor.state.doc.toJSON();
+		const ok = insertInlineRadio(editor);
+		expect(ok).toBe(false);
+		expect(editor.state.doc.toJSON()).toEqual(before);
 		editor.destroy();
 	});
 });
