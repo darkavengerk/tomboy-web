@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
-import { TomboyInlineCheckbox } from '../../../../src/lib/editor/inlineCheckbox';
+import { TomboyInlineCheckbox, insertInlineCheckbox } from '../../../../src/lib/editor/inlineCheckbox';
 
 function makeEditor(content: any = { type: 'doc', content: [{ type: 'paragraph' }] }) {
 	return new Editor({
@@ -251,6 +251,54 @@ describe('inlineCheckbox paste transform', () => {
 			if (n.type.name === 'inlineCheckbox') hasCheckbox = true;
 		});
 		expect(hasCheckbox).toBe(true);
+		editor.destroy();
+	});
+});
+
+describe('insertInlineCheckbox (Alt+C 헬퍼)', () => {
+	it('inserts an unchecked checkbox atom at the cursor in body', () => {
+		const editor = makeEditor({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{ type: 'paragraph', content: [{ type: 'text', text: '할 일: ' }] }
+			]
+		});
+		editor.commands.setTextSelection(editor.state.doc.content.size);
+		const ok = insertInlineCheckbox(editor);
+		expect(ok).toBe(true);
+		const para = editor.state.doc.lastChild!;
+		expect(para.lastChild!.type.name).toBe('inlineCheckbox');
+		expect(para.lastChild!.attrs.checked).toBe(false);
+		editor.destroy();
+	});
+
+	it('places the cursor right after the inserted atom', () => {
+		const editor = makeEditor({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{ type: 'paragraph', content: [{ type: 'text', text: '할 일: ' }] }
+			]
+		});
+		editor.commands.setTextSelection(editor.state.doc.content.size);
+		const before = editor.state.selection.from;
+		insertInlineCheckbox(editor);
+		// atom 크기 1 → 커서는 삽입 위치 + 1
+		expect(editor.state.selection.from).toBe(before + 1);
+		editor.destroy();
+	});
+
+	it('refuses to insert in the title line (idx=0)', () => {
+		const editor = makeEditor({
+			type: 'doc',
+			content: [{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] }]
+		});
+		editor.commands.setTextSelection(3);
+		const before = editor.state.doc.toJSON();
+		const ok = insertInlineCheckbox(editor);
+		expect(ok).toBe(false);
+		expect(editor.state.doc.toJSON()).toEqual(before);
 		editor.destroy();
 	});
 });

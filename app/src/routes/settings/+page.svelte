@@ -1805,6 +1805,8 @@ https://www.dropbox.com/…/starting.png</pre>
 					<ul class="guide-list">
 						<li>인라인 체크박스 / 라디오는 <strong>제목 줄에선 동작하지 않습니다</strong>. 본문에서만
 							위젯으로 바뀝니다.</li>
+						<li>단축키 <kbd>Alt</kbd>+<kbd>C</kbd> (체크박스) / <kbd>Alt</kbd>+<kbd>R</kbd> (라디오)
+							로도 커서 위치에 삽입할 수 있습니다 — 단축키 탭 참고.</li>
 						<li>영역 헤더는 정확히 <code>체크리스트:</code> 로 <strong>시작</strong>해야 합니다
 							(<code>체크리스트: 장보기</code> 처럼 뒤에 부제목 가능). 헤더 직후 연속된 리스트들이
 							모두 영역이 됩니다.</li>
@@ -1994,6 +1996,8 @@ Complete:</pre>
 						<tr><td><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>현재 줄은 유지하고 아래에 빈 블록 추가</td></tr>
 						<tr><td><kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>TODO 블록 삽입 (2단계)</td></tr>
 						<tr><td><kbd>Alt</kbd>+<kbd>P</kbd></td><td>프로세스 블록 삽입 (멀티스테이지 칸반) — <code>Process:</code> + <code>Complete:</code> 두 줄 삽입. <kbd>Ctrl</kbd> 누른 채 아이템 hover 시 <strong>이전</strong>/<strong>다음</strong> 단계 이동 버튼. 자세한 형식은 가이드 → 에디터 탭</td></tr>
+						<tr><td><kbd>Alt</kbd>+<kbd>R</kbd></td><td>인라인 라디오 버튼 (<code>( )</code>) 삽입 — 클릭으로 선택/해제, 같은 줄의 라디오끼리 상호 배타. 제목 줄에서는 동작 안 함</td></tr>
+						<tr><td><kbd>Alt</kbd>+<kbd>C</kbd></td><td>인라인 체크박스 (<code>[ ]</code>) 삽입 — 클릭으로 체크/해제. 제목 줄에서는 동작 안 함</td></tr>
 						<tr><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>현재 줄(블록 또는 리스트 아이템) 통째로 삭제</td></tr>
 					</tbody>
 				</table>

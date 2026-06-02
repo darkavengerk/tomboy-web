@@ -112,8 +112,8 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 		insertChecklistBlock,
 	} from "./checklist/index.js";
 	import { FootnoteMarker, TomboyFootnoteExtension } from "./footnote/index.js";
-	import { TomboyInlineCheckbox } from './inlineCheckbox';
-	import { TomboyInlineRadio } from './inlineRadio';
+	import { TomboyInlineCheckbox, insertInlineCheckbox } from './inlineCheckbox';
+	import { TomboyInlineRadio, insertInlineRadio } from './inlineRadio';
 	import { TomboyBlockquote } from "./blockquote/index.js";
 	import { createFindPlugin, findPluginKey } from "./find/findPlugin.js";
 	import FindBar from "./find/FindBar.svelte";
@@ -768,17 +768,31 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 							}
 							return true;
 						}
-						// 'j' || 'J' — CapsLock 이 켜져 있으면 shift 없이도 event.key 가
-						// 대문자로 들어옴. 위 가드의 !event.shiftKey 는 CapsLock 을 차단하지 않음.
-						if (event.key === "j" || event.key === "J") {
+						// Alt+글자 조합은 event.code (물리 키) 로 판별 —
+						// event.key 는 macOS Option 특수문자(∆/π/®/ç),
+						// 한글 IME 자모, CapsLock 대문자에 따라 달라진다.
+						// 각주 삽입.
+						if (event.code === "KeyJ") {
 							event.preventDefault();
 							ed.chain().focus().insertFootnote().run();
 							return true;
 						}
-						// 'p' || 'P' — 프로세스(멀티스테이지 칸반) 블록 삽입.
-						if (event.key === "p" || event.key === "P") {
+						// 프로세스(멀티스테이지 칸반) 블록 삽입.
+						if (event.code === "KeyP") {
 							event.preventDefault();
 							insertProcessBlock(ed);
+							return true;
+						}
+						// 인라인 라디오 ( ) 삽입.
+						if (event.code === "KeyR") {
+							event.preventDefault();
+							insertInlineRadio(ed);
+							return true;
+						}
+						// 인라인 체크박스 [ ] 삽입.
+						if (event.code === "KeyC") {
+							event.preventDefault();
+							insertInlineCheckbox(ed);
 							return true;
 						}
 					}
