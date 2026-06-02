@@ -11,9 +11,12 @@
 ## 환경파일 `~/.config/automation-service.env`
     BRIDGE_SHARED_TOKEN=<브릿지 BRIDGE_SECRET과 동일>
     AUTOMATION_SERVICE_PORT=7843
-    AUTOMATION_CONFIG=%h/.config/tomboy-automation.json
+    AUTOMATION_CONFIG=/home/<you>/.config/tomboy-automation.json
     AUTOMATION_TIMEOUT_MS=30000
     AUTOMATION_MAX_OUTPUT_BYTES=5242880
+
+> **주의:** EnvironmentFile의 값은 리터럴로 읽힌다. `%h`(systemd 지시자)도 `$HOME`도 **확장되지 않는다**.
+> `AUTOMATION_CONFIG`를 생략하면 서버가 `process.env.HOME`을 이용해 `~/.config/tomboy-automation.json`을 기본값으로 사용한다.
 
 ## registry `~/.config/tomboy-automation.json`
     {
