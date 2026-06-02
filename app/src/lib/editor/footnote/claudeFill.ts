@@ -1,5 +1,17 @@
 import type { AnthropicMessage } from '$lib/chatNote/buildClaudeMessages.js';
 import type { Node as PMNode } from '@tiptap/pm/model';
+import type { EditorView } from '@tiptap/pm/view';
+import { sendClaude, ClaudeChatError } from '$lib/chatNote/backends/claude.js';
+import {
+	getDefaultTerminalBridge,
+	getTerminalBridgeToken
+} from '$lib/editor/terminal/bridgeSettings.js';
+import {
+	getClaudeDefaultModel,
+	getClaudeDefaultEffort
+} from '$lib/storage/appSettings.js';
+import { pushToast } from '$lib/stores/toast.js';
+import { markActive, markIdle, setFootnoteStep } from './claudePlugin.js';
 import { findFootnoteMatches, findFootnotePartner } from './footnotes.js';
 
 /** 각주 설명 작성용 시스템 프롬프트. 글자수는 소프트(프롬프트) 유도. */
@@ -85,5 +97,97 @@ export function buildFootnoteMessages(
 	return [{ role: 'user', content: [{ type: 'text', text: ask }] }];
 }
 
-// Task 4에서 본 구현으로 교체되는 임시 스텁 (claudePlugin 기본 fill 용 컴파일 통과).
-export function runFootnoteClaude(): void {}
+/** 정의 칸 마커 뒤 텍스트를 새 텍스트로 교체(라벨로 재탐색해 위치 드리프트 무시). */
+function replaceDefinitionText(view: EditorView, label: string, text: string): void {
+	const loc = locateDefinition(view.state.doc, label);
+	if (!loc) return;
+	const tr = view.state.tr;
+	if (loc.textTo > loc.textFrom) tr.delete(loc.textFrom, loc.textTo);
+	if (text) tr.insertText(text, loc.textFrom);
+	view.dispatch(tr);
+}
+
+/** 정의 칸 끝에 델타를 덧붙임(매 호출 재탐색). */
+function appendDefinitionText(view: EditorView, label: string, delta: string): void {
+	const loc = locateDefinition(view.state.doc, label);
+	if (!loc) return;
+	view.dispatch(view.state.tr.insertText(delta, loc.textTo));
+}
+
+/**
+ * 각주 @claude 채우기 오케스트레이터.
+ * 시작 → 잠금 + 원문 스냅샷 + 정의 비우기 → bridge 설정 →
+ * sendClaude 스트리밍 → 완료 trim / 실패·중단 복원.
+ */
+export async function runFootnoteClaude(
+	view: EditorView,
+	label: string,
+	instruction: string
+): Promise<void> {
+	const startLoc = locateDefinition(view.state.doc, label);
+	if (!startLoc) return;
+	const snapshot = startLoc.text;
+	const context = buildFootnoteContext(view.state.doc, label);
+
+	markActive(view, label);
+	replaceDefinitionText(view, label, ''); // 정의 비우기
+	setFootnoteStep(view, label, { kind: 'thinking', label: '생각 중…', body: '' });
+
+	const restore = () => {
+		replaceDefinitionText(view, label, stripTriggerForRestore(snapshot));
+	};
+	const finish = () => {
+		setFootnoteStep(view, label, null);
+		markIdle(view, label);
+	};
+
+	try {
+		const [bridge, token] = await Promise.all([
+			getDefaultTerminalBridge(),
+			getTerminalBridgeToken()
+		]);
+		if (!bridge || !token) {
+			restore();
+			pushToast('Claude 서비스에 연결할 수 없습니다 (브릿지 미설정)', {
+				kind: 'error'
+			});
+			return;
+		}
+		const [model, effort] = await Promise.all([
+			getClaudeDefaultModel(),
+			getClaudeDefaultEffort()
+		]);
+		const r = await sendClaude({
+			url: `${bridge}/claude/chat`,
+			token,
+			body: {
+				messages: buildFootnoteMessages(context, instruction),
+				system: FOOTNOTE_SYSTEM_PROMPT,
+				model: model || undefined,
+				effort
+			},
+			onToken: (delta) => appendDefinitionText(view, label, delta),
+			onStep: (step) => setFootnoteStep(view, label, step)
+		});
+		if (r.reason === 'abort') {
+			restore();
+		} else {
+			const loc = locateDefinition(view.state.doc, label);
+			const trimmed = (loc?.text ?? '').trim();
+			if (trimmed) replaceDefinitionText(view, label, trimmed);
+			else {
+				restore();
+				pushToast('Claude가 빈 응답을 보냈습니다', { kind: 'error' });
+			}
+		}
+	} catch (err) {
+		restore();
+		const msg =
+			err instanceof ClaudeChatError
+				? `Claude 오류: ${err.kind}`
+				: 'Claude 연결 실패';
+		pushToast(msg, { kind: 'error' });
+	} finally {
+		finish();
+	}
+}
