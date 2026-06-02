@@ -84,3 +84,6 @@ export function buildFootnoteMessages(
 		: `${context}\n\n[각주 요청] 위 맥락에 맞는 각주 설명을 작성해줘.`;
 	return [{ role: 'user', content: [{ type: 'text', text: ask }] }];
 }
+
+// Task 4에서 본 구현으로 교체되는 임시 스텁 (claudePlugin 기본 fill 용 컴파일 통과).
+export function runFootnoteClaude(): void {}
