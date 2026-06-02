@@ -19,7 +19,13 @@ export const checklistPluginKey = new PluginKey<DecorationSet>(
 	'tomboyChecklist'
 );
 
-function buildCheckbox(
+/**
+ * 통째-li 체크박스 위젯 DOM 생성. contentStart(liPos+2)에 위젯으로 놓이는
+ * 것을 전제로 클릭 시 liPos 를 역산해 onToggle 을 부른다. 체크리스트 영역
+ * 뿐 아니라 프로세스 블록의 depth-3 체크박스 항목(processRegion/plugin.ts)
+ * 도 같은 위젯/CSS 를 재사용한다.
+ */
+export function buildCheckbox(
 	view: EditorView,
 	getPos: () => number | undefined,
 	checked: boolean,

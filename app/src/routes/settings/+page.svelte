@@ -1816,6 +1816,93 @@ https://www.dropbox.com/…/starting.png</pre>
 						<li>영역 헤더 없이 <code>[[X]]</code> 만 적으면 평문 텍스트로 남습니다 (의미 없음).</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>새 노트 — 제목 선택 / 본문 커서 자동 배치</summary>
+					<p class="info-text">
+						노트를 새로 만들면 바로 타이핑을 시작할 수 있도록 커서가 자동으로 배치됩니다.
+						노트를 어떻게 만들었느냐에 따라 동작이 다릅니다.
+					</p>
+					<ul class="guide-list">
+						<li><strong>제목 없이 만든 새 노트</strong>(상단 <code>+</code> 버튼 등) — 제목이 현재
+							날짜·시각(<code>yyyy-mm-dd HH:mm</code>)으로 자동 생성되고, 그 <strong>제목 전체가
+							선택된 상태</strong>로 열립니다. 키를 한 번 누르면 자동 날짜가 통째로 지워지고 입력한
+							글자로 바뀝니다.</li>
+						<li><strong>제목이 정해진 채로 만든 노트</strong>(선택 영역 → 노트 추출, "오늘" 날짜
+							노트, 링크로 새 노트 생성 등) — 커서가 <strong>세 번째 줄</strong>(플레이스홀더
+							역할을 하는 둘째 줄 다음)에 놓여 바로 본문을 쓸 수 있습니다.</li>
+						<li>이 자동 배치는 <strong>노트를 새로 만들 때만</strong> 적용됩니다. 기존 노트를 다시
+							열 때는 커서가 자동으로 움직이지 않습니다.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
+					<summary>수평선 (<code>---</code>) — 섹션 구분 · 접기 · 나란히 보기</summary>
+					<p class="info-text">
+						본문에 <code>---</code>(대시 3개 이상)만 있는 단락은 가로 구분선이 됩니다.
+						구분선 아래 내용은 하나의 <strong>섹션</strong>이 되어, 구분선 우측 끝의 작은
+						<code>−</code> / <code>+</code> 버튼 또는 <strong>구분선 자체를 클릭</strong>해서
+						접거나 펼칠 수 있습니다.
+					</p>
+					<pre class="snippet">제목
+2026-06-02
+
+인트로 문단 (첫 수평선 위 — 접기 불가)
+---                          [−]
+섹션 첫 블록 (접으면 이 줄만 한 줄로 표시)
+나머지 내용은 접힌 동안 숨겨짐
+---                          [−]
+다음 섹션 …</pre>
+					<ul class="guide-list">
+						<li><strong>접기</strong> — <code>−</code> 버튼이나 구분선을 누르면 해당 섹션의 첫 블록만 한 줄로
+							클램프되어 보이고(말줄임표) 나머지 블록은 숨겨집니다. <code>+</code> 버튼 또는 구분선을
+							다시 눌러 펼칩니다.</li>
+						<li>섹션 = 구분선 바로 아래부터 다음 구분선(또는 노트 끝)까지. 첫 구분선 위 영역과
+							제목/날짜 줄은 접기 대상이 아닙니다.</li>
+						<li>접기 상태는 <strong>이 기기(브라우저)에만</strong> 저장됩니다 — 노트 내용과 동기화에는
+							영향이 없습니다.</li>
+						<li>모바일 · 데스크탑 모두 동작합니다.</li>
+						<li><strong>나란히 보기(세로 칼럼 분할)와는 동시에 쓸 수 없습니다</strong> — 칼럼 분할이
+							활성인 동안 접기 버튼이 숨겨지고, 접힌 섹션이 있는 동안 Ctrl+클릭 분할 토글이
+							무시됩니다. 분할 기능의 브라우저 요구사항은
+							<button type="button" class="link-btn" onclick={() => (guideSubTab = 'env')}>환경 탭</button>을 참고하세요.</li>
+						<li>숨겨진 내용도 전체 선택 · 복사 · 검색에는 그대로 포함됩니다 — 보기만 접힐 뿐 내용은
+							그대로 남아 있습니다.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
+					<summary>프로세스 블록 — 멀티스테이지 칸반 (<code>Process:</code> … <code>Complete:</code>)</summary>
+					<p class="info-text">
+						<kbd>Alt</kbd>+<kbd>P</kbd> 로 삽입합니다. <code>Process:</code> 로 시작하는 문단부터
+						<code>Complete:</code> 문단까지가 한 블록이고, 사이의 문단들이 각각 <strong>단계(칸반
+						컬럼)</strong>가 됩니다. 단계 문단 뒤의 리스트가 그 단계의 아이템 목록입니다.
+					</p>
+					<pre class="snippet">Process: 회사 이전
+- 짐 싸기
+  - 책상 정리
+    - [[X]] 모니터 분리
+    - [[ ]] 서랍 비우기
+설치
+Complete:</pre>
+					<ul class="guide-list">
+						<li><kbd>Alt</kbd>+<kbd>P</kbd> 는 <code>Process: 작업 이름</code> + <code>Complete:</code>
+							두 줄만 삽입합니다 — 단계 문단과 아이템 리스트는 직접 타이핑하세요.</li>
+						<li><code>Complete:</code> 문단이 <strong>반드시 있어야</strong> 블록으로 인식됩니다. 없으면
+							전부 일반 문단입니다.</li>
+						<li><kbd>Ctrl</kbd>(또는 모바일 "Ctrl 고정")을 누른 채 아이템에 마우스를 올리면
+							<strong>이전</strong>/<strong>다음</strong> 버튼이 나타나 인접 단계로 이동합니다.</li>
+						<li><strong>깊이 1</strong> 아이템(카드)은 하위 항목까지 통째로 이동. <strong>깊이 2</strong>
+							아이템은 개별 이동 — 대상 단계에서 같은 카테고리 라벨을 찾아 들어가고, 없으면 자동
+							생성됩니다.</li>
+						<li><strong>깊이 3</strong> 아이템은 <strong>체크박스</strong>입니다 — 이동 버튼 대신 클릭으로
+							체크 토글. 개별로 보내기엔 너무 작은 세부 진행 단계 체크용. 저장 시
+							<code>[[ ]]</code> / <code>[[X]]</code> 마커가 자동으로 붙습니다 (체크리스트 영역과 같은
+							문법).</li>
+						<li>블록 안의 <strong>빈 줄</strong>이나 <code>---</code> 구분선은 무시됩니다 — 단계로 취급되지
+							않고, 아이템 이동도 다음에 보이는 실제 단계 문단 아래로 갑니다.</li>
+					</ul>
+				</details>
 			</section>
 
 			{:else if guideSubTab === 'env'}
@@ -1906,7 +1993,7 @@ https://www.dropbox.com/…/starting.png</pre>
 						<tr><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>오늘 날짜 (<code>yyyy-mm-dd</code>) 삽입 — 브라우저 북마크 단축키 가로챔</td></tr>
 						<tr><td><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>현재 줄은 유지하고 아래에 빈 블록 추가</td></tr>
 						<tr><td><kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>TODO 블록 삽입 (2단계)</td></tr>
-						<tr><td><kbd>Alt</kbd>+<kbd>P</kbd></td><td>프로세스 블록 삽입 (멀티스테이지 칸반) — <kbd>Ctrl</kbd> 누른 채 아이템 hover 시 <strong>이전</strong>/<strong>다음</strong> 단계 이동 버튼</td></tr>
+						<tr><td><kbd>Alt</kbd>+<kbd>P</kbd></td><td>프로세스 블록 삽입 (멀티스테이지 칸반) — <code>Process:</code> + <code>Complete:</code> 두 줄 삽입. <kbd>Ctrl</kbd> 누른 채 아이템 hover 시 <strong>이전</strong>/<strong>다음</strong> 단계 이동 버튼. 자세한 형식은 가이드 → 에디터 탭</td></tr>
 						<tr><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>현재 줄(블록 또는 리스트 아이템) 통째로 삭제</td></tr>
 					</tbody>
 				</table>

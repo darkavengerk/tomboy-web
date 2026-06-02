@@ -27,6 +27,7 @@
 	} from "./clipboardPlainText.js";
 	import { ctrlEnterSplit } from "./ctrlEnterSplit.js";
 	import { createTitleProvider } from "./autoLink/titleProvider.js";
+	import { consumeNewNoteIntent } from "$lib/core/newNoteIntent.js";
 	import { autoLinkPluginKey } from "./autoLink/autoLinkPlugin.js";
 	import {
 		handleTitleBlur,
@@ -62,6 +63,10 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 		createHrSplitPlugin,
 		hrSplitPluginKey,
 	} from "./hrSplit/hrSplitPlugin.js";
+	import {
+		createHrFoldPlugin,
+		hrFoldPluginKey,
+	} from "./hrSplit/hrFoldPlugin.js";
 	import { createLabeledDividerPlugin } from "./labeledDivider/labeledDividerPlugin.js";
 	import {
 		loadActiveOrdinals,
@@ -69,6 +74,10 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 		loadColumnWidths,
 		saveColumnWidths,
 	} from "./hrSplit/hrSplitStore.js";
+	import {
+		loadFoldedOrdinals,
+		saveFoldedOrdinals,
+	} from "./hrSplit/hrFoldStore.js";
 	import { extractImageFile } from "./imagePreview/extractImageFile.js";
 	import { extractAnyFile } from "./extractFile.js";
 	import { uploadTempImage } from "$lib/sync/tempImageUpload.js";
@@ -529,6 +538,20 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 					},
 				}),
 				Extension.create({
+					name: "tomboyHrFold",
+					addProseMirrorPlugins() {
+						return [
+							createHrFoldPlugin({
+								onChange: (folded) => {
+									// Same closure trick as hrSplit: persist under
+									// whichever guid is currently bound to the editor.
+									saveFoldedOrdinals(lastAppliedGuid, folded);
+								},
+							}),
+						];
+					},
+				}),
+				Extension.create({
 					name: "tomboyLabeledDivider",
 					addProseMirrorPlugins() {
 						return [createLabeledDividerPlugin()];
@@ -548,6 +571,12 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 						const ed = editor;
 						if (!ed || ed.isDestroyed) return;
 						moveProcessItem(ed, liPos, direction);
+					},
+					// depth-3 체크박스 항목 토글 — 체크리스트와 같은 attr 토글 재사용.
+					onToggleCheck: (liPos) => {
+						const ed = editor;
+						if (!ed || ed.isDestroyed) return;
+						toggleCheckboxAt(ed, liPos);
 					},
 				}),
 				TomboyChecklist.configure({
@@ -899,6 +928,43 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 		};
 	});
 
+	// When a note was just *created* (not reopened), place the cursor for the
+	// user: select the auto-generated date title whole so one keystroke
+	// replaces it, or — for a note created with an explicit title — drop the
+	// cursor at the start of line 3 (the line after the line-2 placeholder) so
+	// they start writing the body. Consumed once per guid; reopened notes have
+	// no intent and keep the editor's default "no auto-focus" behaviour.
+	function applyNewNoteIntent(ed: Editor, guid: string | null): void {
+		if (!guid) return;
+		const intent = consumeNewNoteIntent(guid);
+		if (!intent) return;
+		// Defer until after the PM view has settled from setContent — moving
+		// the selection + focusing in the same tick races the DOM update on
+		// mobile (the keyboard pops before layout settles).
+		requestAnimationFrame(() => {
+			if (ed.isDestroyed) return;
+			const doc = ed.state.doc;
+			if (intent === "selectTitle") {
+				const first = doc.firstChild;
+				if (!first) return;
+				ed.chain()
+					.focus()
+					.setTextSelection({ from: 1, to: 1 + first.content.size })
+					.run();
+				return;
+			}
+			// bodyCursor: start of the 3rd top-level block. Fall back to the
+			// end of the doc if the note has fewer than 3 blocks.
+			if (doc.childCount >= 3) {
+				let pos = 0;
+				for (let i = 0; i < 2; i++) pos += doc.child(i).nodeSize;
+				ed.chain().focus().setTextSelection(pos + 1).run();
+			} else {
+				ed.chain().focus("end").run();
+			}
+		});
+	}
+
 	// Reactively swap the editor's document when the parent navigates to a
 	// different note (or otherwise hands us new content). Reusing the same
 	// TipTap instance across notes avoids the full
@@ -917,7 +983,7 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 			contentSyncSeeded = true;
 			lastAppliedContent = c;
 			lastAppliedGuid = g;
-			// Seed HR split state from localStorage for the initial note.
+			// Seed HR split + fold state from localStorage for the initial note.
 			{
 				const persistedWidths = loadColumnWidths(g);
 				ed.view.dispatch(
@@ -926,7 +992,13 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 						...(persistedWidths ? { widths: persistedWidths } : {}),
 					}),
 				);
+				ed.view.dispatch(
+					ed.state.tr.setMeta(hrFoldPluginKey, {
+						replace: Array.from(loadFoldedOrdinals(g)),
+					}),
+				);
 			}
+			applyNewNoteIntent(ed, g);
 			return;
 		}
 
@@ -938,16 +1010,22 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 			type: "doc",
 			content: [{ type: "paragraph" }],
 		};
-		// Reseed HR split state for the freshly loaded note BEFORE swapping
-		// the doc. If we did it after, setContent's docChanged reconciliation
-		// would prune the OLD note's active ordinals against the NEW doc and
-		// then persist that mangled set under the new guid's storage key.
+		// Reseed HR split + fold state for the freshly loaded note BEFORE
+		// swapping the doc. If we did it after, setContent's docChanged
+		// reconciliation would prune the OLD note's active ordinals against
+		// the NEW doc and then persist that mangled set under the new guid's
+		// storage key.
 		{
 			const persistedWidths = loadColumnWidths(g);
 			ed.view.dispatch(
 				ed.state.tr.setMeta(hrSplitPluginKey, {
 					replace: Array.from(loadActiveOrdinals(g)),
 					...(persistedWidths ? { widths: persistedWidths } : {}),
+				}),
+			);
+			ed.view.dispatch(
+				ed.state.tr.setMeta(hrFoldPluginKey, {
+					replace: Array.from(loadFoldedOrdinals(g)),
 				}),
 			);
 		}
@@ -981,6 +1059,8 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 			);
 		}
 		findQuery = "";
+
+		applyNewNoteIntent(ed, g);
 	});
 
 	// Toggle the "send list item" plugin's active flag whenever the parent's
@@ -1563,6 +1643,74 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 			#888 calc(50% + 1px),
 			transparent calc(50% + 1px)
 		);
+	}
+
+	/* HR fold — 섹션 접기/펼치기.
+	   Each non-empty section's HR marker hosts a small +/− widget button
+	   (hrFoldPlugin), and the HR line itself is plain-click toggleable
+	   (.tomboy-hr-fold-line). Folding a section clamps its first block to
+	   one visual line and hides the rest.
+	   Mutually exclusive with the split layout — while columns are
+	   active the fold plugin emits no decorations at all, and while any
+	   section is folded the split Ctrl+click toggle is ignored. */
+	.tomboy-editor :global(.tomboy-hr-fold-btn) {
+		position: absolute;
+		right: 0;
+		top: 50%;
+		transform: translateY(-50%);
+		width: 22px;
+		height: 22px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0;
+		border: 1.5px solid #777;
+		border-radius: 4px;
+		background: #fff;
+		/* Explicit colour — the parent .tomboy-hr-marker hides its literal
+		   `---` text via `color: transparent`, which would otherwise be
+		   inherited by the button glyph. */
+		color: #333;
+		font-size: 15px;
+		font-weight: 700;
+		line-height: 1;
+		cursor: pointer;
+		user-select: none;
+		opacity: 0.9;
+		z-index: 1;
+	}
+	.tomboy-editor :global(.tomboy-hr-fold-btn:hover) {
+		opacity: 1;
+		color: #000;
+		border-color: #444;
+		background: #f2f2f2;
+	}
+	/* Whole HR line is clickable to fold/unfold its section (plain click;
+	   Ctrl/Cmd+click stays the split toggle). Pointer cursor + hover
+	   thickening signal the affordance without any modifier key. */
+	.tomboy-editor :global(.tomboy-hr-marker.tomboy-hr-fold-line) {
+		cursor: pointer;
+	}
+	.tomboy-editor :global(.tomboy-hr-marker.tomboy-hr-fold-line:hover::before) {
+		background: linear-gradient(
+			to bottom,
+			transparent calc(50% - 1px),
+			#888 calc(50% - 1px),
+			#888 calc(50% + 1px),
+			transparent calc(50% + 1px)
+		);
+	}
+	/* Folded section: first block clamped to a single visual line. */
+	.tomboy-editor :global(.tomboy-hr-fold-clamped) {
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 1;
+		line-clamp: 1;
+		overflow: hidden;
+	}
+	/* Folded section: remaining blocks fully hidden. */
+	.tomboy-editor :global(.tomboy-hr-fold-hidden) {
+		display: none;
 	}
 
 	/* Labeled divider — a divider line with embedded text. The literal

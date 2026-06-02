@@ -21,6 +21,11 @@
 
 import type { JSONContent } from '@tiptap/core';
 import { isChecklistHeaderText } from '../editor/checklist/regions.js';
+import {
+	isProcessHeaderText,
+	isCompleteHeaderText,
+	isIgnorableProcessText
+} from '../editor/processRegion/regions.js';
 
 // Mark types that must NEVER span a paragraph boundary — a link or datetime
 // reference is a self-contained anchor, so `<link:internal>A\nB</link:internal>`
@@ -226,7 +231,8 @@ export function deserializeContent(xmlContent: string): JSONContent {
 		return { type: 'doc', content: [{ type: 'paragraph' }] };
 	}
 
-	applyChecklistMarkersOnParse(blocks);
+	const checklistLists = applyChecklistMarkersOnParse(blocks);
+	applyProcessMarkersOnParse(blocks, checklistLists);
 	return { type: 'doc', content: blocks };
 }
 
@@ -328,6 +334,10 @@ export function serializeContent(doc: JSONContent): string {
 	// 동안 유지되며, 헤더 아닌 문단/헤딩을 만나면 꺼진다.
 	let inChecklistRegion = false;
 
+	// 프로세스 블록(Process: … Complete:) 안 스테이지 리스트의 최상위 인덱스.
+	// 해당 리스트는 depth-3 항목에만 [[ ]] / [[X]] 마커를 붙인다.
+	const processStageLists = findProcessStageListIndices(nodes);
+
 	for (let i = 0; i < nodes.length; i++) {
 		const node = nodes[i];
 
@@ -337,6 +347,10 @@ export function serializeContent(doc: JSONContent): string {
 				node,
 				/*isTopLevel=*/ true,
 				inChecklistRegion
+					? MARKER_ALL_DEPTHS
+					: processStageLists.has(i)
+						? MARKER_PROCESS_DEPTH3
+						: MARKER_NONE
 			);
 			// 연속 리스트는 같은 영역 — inChecklistRegion 유지.
 		} else if (node.type === 'paragraph' || node.type === 'heading') {
@@ -891,6 +905,18 @@ function marksEqual(a: JSONContent, b: JSONContent): boolean {
 }
 
 /**
+ * 리스트 항목의 중첩 깊이(1 = 최상위 리스트의 li)별로 [[ ]] / [[X]] 통째
+ * 체크박스 마커를 붙일지 결정하는 술어.
+ */
+type MarkerDepthFn = (depth: number) => boolean;
+/** 마커 없음 (일반 리스트). */
+const MARKER_NONE: MarkerDepthFn = () => false;
+/** 모든 깊이에 마커 (체크리스트 영역). */
+const MARKER_ALL_DEPTHS: MarkerDepthFn = () => true;
+/** depth-3 에만 마커 (프로세스 블록 스테이지 리스트의 체크박스 항목). */
+const MARKER_PROCESS_DEPTH3: MarkerDepthFn = (depth) => depth === 3;
+
+/**
  * Serialize a bulletList node to Tomboy XML.
  *
  * `isTopLevel` indicates whether this list sits directly inside the
@@ -899,11 +925,14 @@ function marksEqual(a: JSONContent, b: JSONContent): boolean {
  * (the '\n' lives outside, as the block separator), whereas the last item of
  * a nested list DOES keep its trailing '\n' because it sits inside a
  * containing list-item.
+ *
+ * `markerAt` decides which nesting depths get whole-li checkbox markers.
  */
 function serializeBulletList(
 	node: JSONContent,
 	isTopLevel: boolean,
-	checklist: boolean
+	markerAt: MarkerDepthFn,
+	depth = 1
 ): string {
 	let result = '<list>';
 
@@ -912,7 +941,7 @@ function serializeBulletList(
 		const item = items[i];
 		if (item.type === 'listItem') {
 			const isLastTopLevel = isTopLevel && i === items.length - 1;
-			result += serializeListItem(item, isLastTopLevel, checklist);
+			result += serializeListItem(item, isLastTopLevel, markerAt, depth);
 		}
 	}
 
@@ -933,11 +962,12 @@ function serializeBulletList(
 function serializeListItem(
 	item: JSONContent,
 	isLastTopLevel: boolean,
-	checklist: boolean
+	markerAt: MarkerDepthFn,
+	depth: number
 ): string {
 	let result = '<list-item dir="ltr">';
-	if (checklist) {
-		// 체크리스트 영역 항목: 첫 문단 내용 앞에 마커 텍스트를 박는다.
+	if (markerAt(depth)) {
+		// 통째-체크박스 항목: 첫 문단 내용 앞에 마커 텍스트를 박는다.
 		// '[', ']', 공백, 'X' 는 XML 안전 문자라 이스케이프 불필요.
 		// `[[X]]` / `[[ ]]` 은 inline checkbox atom `[x]` 과 구분되는 문법.
 		result += item.attrs?.checked ? '[[X]] ' : '[[ ]] ';
@@ -972,7 +1002,8 @@ function serializeListItem(
 				result += serializeBulletList(
 					child,
 					/*isTopLevel=*/ false,
-					checklist
+					markerAt,
+					depth + 1
 				);
 			}
 		}
@@ -1081,11 +1112,23 @@ const CHECKLIST_MARKER_LEN = 6; // '[[X]] '.length
 // schedule/dateNoteSeed.ts 의 extractUncheckedFromDoc(시드 빌드 시 JSON).
 // 그룹핑 규칙을 바꾸면 네 곳을 함께 고쳐야 한다. (헤더 텍스트 자체는
 // regions.ts 의 isChecklistHeaderText 가 single source.)
+//
+// 프로세스 블록 그룹핑(Process: … Complete: + 스테이지 리스트)도 두 곳에서
+// 구현된다 — editor/processRegion/regions.ts 의 findProcessBlocks(라이브 PM
+// 노드)와 아래 findProcessStageListIndices(직렬화/역직렬화 공용 JSON). 규칙을
+// 바꾸면 함께 고칠 것. (헤더/무시 문단 판정은 regions.ts 의
+// isProcessHeaderText / isCompleteHeaderText / isIgnorableProcessText 가
+// single source.)
 /**
  * parseBlocks 결과를 후처리해 체크리스트 영역 항목의 마커를 떼고
  * `attrs.checked` 를 설정한다. 헤더 다음의 연속 리스트가 영역이다.
+ *
+ * 처리한 최상위 리스트 인덱스 Set 을 반환한다 — 프로세스 블록 후처리
+ * (applyProcessMarkersOnParse)가 같은 리스트를 중복 처리해 checked 를
+ * 덮어쓰지 않도록. (직렬화 쪽도 체크리스트 영역이 우선.)
  */
-function applyChecklistMarkersOnParse(blocks: JSONContent[]): void {
+function applyChecklistMarkersOnParse(blocks: JSONContent[]): Set<number> {
+	const processed = new Set<number>();
 	for (let i = 1; i < blocks.length; i++) {
 		const b = blocks[i];
 		if (b.type !== 'paragraph') continue;
@@ -1095,10 +1138,12 @@ function applyChecklistMarkersOnParse(blocks: JSONContent[]): void {
 		// 최상위 orderedList 는 존재하지 않으므로 bulletList 만 본다.
 		while (j < blocks.length && blocks[j].type === 'bulletList') {
 			stripChecklistMarkersInList(blocks[j]);
+			processed.add(j);
 			j++;
 		}
 		i = j - 1;
 	}
+	return processed;
 }
 
 function stripChecklistMarkersInList(listNode: JSONContent): void {
@@ -1133,4 +1178,110 @@ function stripChecklistMarkerInItem(li: JSONContent): void {
 		}
 	}
 	li.attrs = { ...(li.attrs ?? {}), checked };
+}
+
+// --- 프로세스 블록 depth-3 체크박스 마커 ---
+
+/** 최상위 블록이 리스트인지 (직렬화 쪽은 editor 문서라 orderedList 도 가능). */
+function isListJson(block: JSONContent): boolean {
+	return block.type === 'bulletList' || block.type === 'orderedList';
+}
+
+/** 최상위 블록이 무시 가능한 문단(빈 문단 / `---`)인지. */
+function isIgnorableParaJson(block: JSONContent): boolean {
+	return block.type === 'paragraph' && isIgnorableProcessText(getPlainText(block));
+}
+
+/**
+ * 프로세스 블록(Process: … Complete:)에 속한 최상위 리스트들의 인덱스를
+ * 찾는다. findProcessBlocks(PM 노드 버전)와 같은 규칙: 제목(0번) 제외,
+ * Complete: 터미널 필수, 빈 문단 / `---` 문단은 투명하게 무시.
+ */
+function findProcessStageListIndices(blocks: JSONContent[]): Set<number> {
+	const out = new Set<number>();
+	let i = 1; // 제목 건너뜀
+	while (i < blocks.length) {
+		const b = blocks[i];
+		if (b.type !== 'paragraph' || !isProcessHeaderText(getPlainText(b))) {
+			i++;
+			continue;
+		}
+
+		// Process: 헤더부터 Complete: 터미널까지 스테이지 리스트 수집 시도.
+		const listIndices: number[] = [];
+		let j = i;
+		let stageCount = 0;
+		let foundComplete = false;
+		while (j < blocks.length) {
+			const p = blocks[j];
+			if (p.type !== 'paragraph') break;
+			if (isIgnorableParaJson(p)) {
+				j++;
+				continue;
+			}
+			const text = getPlainText(p).trim();
+			// 다음 Process: 헤더는 다음 블록 소속.
+			if (stageCount > 0 && isProcessHeaderText(text)) break;
+			stageCount++;
+			const isComplete = isCompleteHeaderText(text);
+
+			// 이 스테이지의 리스트들 (무시 문단 건너뜀).
+			let k = j + 1;
+			while (k < blocks.length) {
+				const c = blocks[k];
+				if (isListJson(c)) {
+					listIndices.push(k);
+					k++;
+				} else if (isIgnorableParaJson(c)) {
+					k++;
+				} else {
+					break;
+				}
+			}
+			j = k;
+
+			if (isComplete) {
+				foundComplete = true;
+				break;
+			}
+		}
+
+		if (foundComplete && stageCount > 0) {
+			for (const idx of listIndices) out.add(idx);
+			i = j;
+		} else {
+			i++;
+		}
+	}
+	return out;
+}
+
+/**
+ * parseBlocks 결과를 후처리해 프로세스 블록 스테이지 리스트의 depth-3 항목
+ * 마커를 떼고 `attrs.checked` 를 설정한다. depth-1/2(카드·하부 항목)는
+ * 건드리지 않는다. `skip` 은 체크리스트 영역이 이미 처리한 리스트 인덱스
+ * (체크리스트가 우선 — 직렬화 쪽 inChecklistRegion 우선순위와 동일).
+ */
+function applyProcessMarkersOnParse(
+	blocks: JSONContent[],
+	skip: Set<number>
+): void {
+	const stageListIndices = findProcessStageListIndices(blocks);
+	for (const idx of stageListIndices) {
+		if (skip.has(idx)) continue;
+		stripProcessMarkersInList(blocks[idx], 1);
+	}
+}
+
+function stripProcessMarkersInList(listNode: JSONContent, depth: number): void {
+	for (const li of listNode.content ?? []) {
+		if (li.type !== 'listItem') continue;
+		if (depth === 3) stripChecklistMarkerInItem(li);
+		for (const child of li.content ?? []) {
+			// 중첩 <list> 는 parseList 가 항상 bulletList 로 만든다.
+			if (child.type === 'bulletList') {
+				stripProcessMarkersInList(child, depth + 1);
+			}
+		}
+	}
 }

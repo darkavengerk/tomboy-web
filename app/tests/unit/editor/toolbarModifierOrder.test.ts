@@ -12,7 +12,8 @@ afterEach(() => {
 
 /**
  * Returns the visible direct children of `.key-tray` in DOM order, each
- * mapped to a short tag for assertion convenience.
+ * mapped to a short tag for assertion convenience. The tray always holds the
+ * Ctrl/Alt toggles; the shortcut keys live in a separate `.key-drawer` row.
  */
 function trayLayout(container: HTMLElement): string[] {
 	const tray = container.querySelector('.key-tray');
@@ -23,35 +24,47 @@ function trayLayout(container: HTMLElement): string[] {
 			const label = el.querySelector('.mod-label')?.textContent?.trim() ?? '';
 			return `tog:${label}`;
 		}
-		if (el.classList.contains('key-row')) {
-			return `row:${el.getAttribute('aria-label') ?? ''}`;
-		}
 		return el.tagName.toLowerCase();
 	});
 }
 
-describe('Toolbar modifier tray order', () => {
-	it('둘 다 off — Ctrl 토글, Alt 토글 순서', () => {
+describe('Toolbar modifier tray', () => {
+	it('둘 다 off — 트레이엔 Ctrl·Alt 토글만, 단축키 행 없음', () => {
 		const { container } = render(Toolbar, { editor: null });
 		expect(trayLayout(container)).toEqual(['tog:Ctrl', 'tog:Alt']);
+		expect(container.querySelector('.key-drawer')).toBeNull();
 	});
 
-	it('Ctrl 잠금 — Ctrl 토글이 왼쪽, Ctrl 단축키가 오른쪽', () => {
+	it('Ctrl 잠금 — 토글은 트레이에 그대로, Ctrl 단축키 행이 별도로 표시', () => {
 		modKeys.toggleCtrlLock();
 		const { container } = render(Toolbar, { editor: null });
-		expect(trayLayout(container)).toEqual(['tog:Ctrl', 'row:Ctrl 단축키']);
+		// 토글은 잠금 여부와 무관하게 항상 트레이에 둘 다 남는다.
+		expect(trayLayout(container)).toEqual(['tog:Ctrl', 'tog:Alt']);
+		expect(
+			container.querySelector('.key-drawer[aria-label="Ctrl 단축키"]')
+		).not.toBeNull();
+		// Alt 행은 나오지 않는다.
+		expect(
+			container.querySelector('.key-drawer[aria-label="Alt 단축키"]')
+		).toBeNull();
 	});
 
-	it('Alt 잠금 — Alt 토글이 왼쪽, Alt 단축키가 오른쪽', () => {
+	it('Alt 잠금 — 토글은 트레이에 그대로, Alt 단축키 행이 별도로 표시', () => {
 		modKeys.toggleAltLock();
 		const { container } = render(Toolbar, { editor: null });
-		expect(trayLayout(container)).toEqual(['tog:Alt', 'row:Alt 단축키']);
+		expect(trayLayout(container)).toEqual(['tog:Ctrl', 'tog:Alt']);
+		expect(
+			container.querySelector('.key-drawer[aria-label="Alt 단축키"]')
+		).not.toBeNull();
+		expect(
+			container.querySelector('.key-drawer[aria-label="Ctrl 단축키"]')
+		).toBeNull();
 	});
 
-	it('Alt 잠금 — Alt-row 안에 ← ↑ ↓ → J P 6개 버튼이 순서대로', () => {
+	it('Alt 잠금 — Alt 단축키 행 안에 ← ↑ ↓ → J P 6개 버튼이 순서대로', () => {
 		modKeys.toggleAltLock();
 		const { container } = render(Toolbar, { editor: null });
-		const row = container.querySelector('.key-row[aria-label="Alt 단축키"]');
+		const row = container.querySelector('.key-drawer[aria-label="Alt 단축키"]');
 		expect(row).not.toBeNull();
 		const labels = Array.from(row!.querySelectorAll('button')).map(
 			(b) => b.textContent?.trim() ?? ''
