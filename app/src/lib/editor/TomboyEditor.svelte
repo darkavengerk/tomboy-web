@@ -112,6 +112,7 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 		insertChecklistBlock,
 	} from "./checklist/index.js";
 	import { FootnoteMarker, TomboyFootnoteExtension } from "./footnote/index.js";
+	import { createFootnoteClaudePlugin } from "./footnote/claudePlugin.js";
 	import { TomboyInlineCheckbox } from './inlineCheckbox';
 	import { TomboyInlineRadio } from './inlineRadio';
 	import { TomboyBlockquote } from "./blockquote/index.js";
@@ -505,6 +506,12 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 					name: "tomboyThinkingDisplay",
 					addProseMirrorPlugins() {
 						return [createThinkingDisplayPlugin()];
+					},
+				}),
+				Extension.create({
+					name: "tomboyFootnoteClaude",
+					addProseMirrorPlugins() {
+						return [createFootnoteClaudePlugin()];
 					},
 				}),
 				Extension.create({
