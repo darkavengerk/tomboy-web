@@ -1816,6 +1816,25 @@ https://www.dropbox.com/…/starting.png</pre>
 						<li>영역 헤더 없이 <code>[[X]]</code> 만 적으면 평문 텍스트로 남습니다 (의미 없음).</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>새 노트 — 제목 선택 / 본문 커서 자동 배치</summary>
+					<p class="info-text">
+						노트를 새로 만들면 바로 타이핑을 시작할 수 있도록 커서가 자동으로 배치됩니다.
+						노트를 어떻게 만들었느냐에 따라 동작이 다릅니다.
+					</p>
+					<ul class="guide-list">
+						<li><strong>제목 없이 만든 새 노트</strong>(상단 <code>+</code> 버튼 등) — 제목이 현재
+							날짜·시각(<code>yyyy-mm-dd HH:mm</code>)으로 자동 생성되고, 그 <strong>제목 전체가
+							선택된 상태</strong>로 열립니다. 키를 한 번 누르면 자동 날짜가 통째로 지워지고 입력한
+							글자로 바뀝니다.</li>
+						<li><strong>제목이 정해진 채로 만든 노트</strong>(선택 영역 → 노트 추출, "오늘" 날짜
+							노트, 링크로 새 노트 생성 등) — 커서가 <strong>세 번째 줄</strong>(플레이스홀더
+							역할을 하는 둘째 줄 다음)에 놓여 바로 본문을 쓸 수 있습니다.</li>
+						<li>이 자동 배치는 <strong>노트를 새로 만들 때만</strong> 적용됩니다. 기존 노트를 다시
+							열 때는 커서가 자동으로 움직이지 않습니다.</li>
+					</ul>
+				</details>
 			</section>
 
 			{:else if guideSubTab === 'env'}

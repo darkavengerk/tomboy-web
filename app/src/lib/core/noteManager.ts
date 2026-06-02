@@ -18,6 +18,7 @@ import { syncScheduleFromNote } from '$lib/schedule/syncSchedule.js';
 import { flushIfEnabled } from '$lib/schedule/flushScheduler.js';
 import { notifyNoteSaved } from '$lib/sync/firebase/orchestrator.js';
 import { buildDateNoteScheduleSeed } from '$lib/schedule/dateNoteSeed.js';
+import { setNewNoteIntent } from './newNoteIntent.js';
 import type { JSONContent } from '@tiptap/core';
 
 /** Format a Date as a plain `yyyy-mm-dd HH:mm` title — the default title
@@ -76,6 +77,11 @@ export async function createNote(initialTitle?: string): Promise<NoteData> {
 		}
 	}
 	await noteStore.putNote(note);
+	// Tell the editor how to place the cursor when it first loads this note.
+	// No initialTitle → the title is the auto-generated date, so select it
+	// whole (one keystroke replaces it). An explicit title was chosen by the
+	// caller → put the cursor in the body (line after the line-2 placeholder).
+	setNewNoteIntent(guid, initialTitle === undefined ? 'selectTitle' : 'bodyCursor');
 	// Push to Firestore even before the first edit. Otherwise a "create new
 	// note + drop a link to it from another note" workflow leaves the new
 	// note absent from Firestore — receiving devices see the link but

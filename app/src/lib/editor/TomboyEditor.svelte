@@ -27,6 +27,7 @@
 	} from "./clipboardPlainText.js";
 	import { ctrlEnterSplit } from "./ctrlEnterSplit.js";
 	import { createTitleProvider } from "./autoLink/titleProvider.js";
+	import { consumeNewNoteIntent } from "$lib/core/newNoteIntent.js";
 	import { autoLinkPluginKey } from "./autoLink/autoLinkPlugin.js";
 	import {
 		handleTitleBlur,
@@ -899,6 +900,43 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 		};
 	});
 
+	// When a note was just *created* (not reopened), place the cursor for the
+	// user: select the auto-generated date title whole so one keystroke
+	// replaces it, or — for a note created with an explicit title — drop the
+	// cursor at the start of line 3 (the line after the line-2 placeholder) so
+	// they start writing the body. Consumed once per guid; reopened notes have
+	// no intent and keep the editor's default "no auto-focus" behaviour.
+	function applyNewNoteIntent(ed: Editor, guid: string | null): void {
+		if (!guid) return;
+		const intent = consumeNewNoteIntent(guid);
+		if (!intent) return;
+		// Defer until after the PM view has settled from setContent — moving
+		// the selection + focusing in the same tick races the DOM update on
+		// mobile (the keyboard pops before layout settles).
+		requestAnimationFrame(() => {
+			if (ed.isDestroyed) return;
+			const doc = ed.state.doc;
+			if (intent === "selectTitle") {
+				const first = doc.firstChild;
+				if (!first) return;
+				ed.chain()
+					.focus()
+					.setTextSelection({ from: 1, to: 1 + first.content.size })
+					.run();
+				return;
+			}
+			// bodyCursor: start of the 3rd top-level block. Fall back to the
+			// end of the doc if the note has fewer than 3 blocks.
+			if (doc.childCount >= 3) {
+				let pos = 0;
+				for (let i = 0; i < 2; i++) pos += doc.child(i).nodeSize;
+				ed.chain().focus().setTextSelection(pos + 1).run();
+			} else {
+				ed.chain().focus("end").run();
+			}
+		});
+	}
+
 	// Reactively swap the editor's document when the parent navigates to a
 	// different note (or otherwise hands us new content). Reusing the same
 	// TipTap instance across notes avoids the full
@@ -927,6 +965,7 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 					}),
 				);
 			}
+			applyNewNoteIntent(ed, g);
 			return;
 		}
 
@@ -981,6 +1020,8 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 			);
 		}
 		findQuery = "";
+
+		applyNewNoteIntent(ed, g);
 	});
 
 	// Toggle the "send list item" plugin's active flag whenever the parent's
