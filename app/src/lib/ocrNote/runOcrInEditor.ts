@@ -44,7 +44,11 @@ export interface RunOcrResult {
 /**
  * Run OCR for one image URL and stream the result into the editor.
  *
- * Branches on `spec.legacy`:
+ * When `spec.backend === 'claude'`, delegates to `runClaude` (Claude vision
+ * via bridge `/claude/chat`). Image URL is passed as-is — claude-service
+ * fetches server-side, so no base64 encoding step.
+ *
+ * Otherwise (Ollama backend), branches on `spec.legacy`:
  *   - `legacy=false` (note has a `translate:` header): two-stage flow.
  *     Stage 1 POSTs the image to the bridge's `/ocr` proxy (single
  *     round-trip; ocr-service does the extraction). Result is rendered
