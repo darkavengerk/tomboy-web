@@ -93,3 +93,61 @@ def test_example_yaml_is_round_trippable():
     s = Config.example_yaml()
     cfg = load_config_from_string(s)
     assert cfg.tomboy.diary_notebook_name == "일기"
+
+
+def test_load_with_claude_backend():
+    yaml_text = VALID_YAML.replace(
+        """ocr:
+  backend: "local_vlm"
+  local_vlm:
+    model_id: "Qwen/Qwen2.5-VL-7B-Instruct"
+    quantization: "4bit"
+    max_new_tokens: 2048
+    system_prompt_path: "config/prompts/diary-ko.txt"
+""",
+        """ocr:
+  backend: "claude"
+  claude:
+    service_url: "http://localhost:7842"
+    service_token: "tok"
+    model: ""
+    effort: "high"
+    system_prompt_path: "config/prompts/diary-ko.txt"
+""",
+    )
+    cfg = load_config_from_string(yaml_text)
+    assert cfg.ocr.backend == "claude"
+    assert cfg.ocr.claude is not None
+    assert cfg.ocr.claude.service_url == "http://localhost:7842"
+    assert cfg.ocr.claude.service_token == "tok"
+    assert cfg.ocr.claude.model == ""
+    assert cfg.ocr.claude.effort == "high"
+    assert cfg.ocr.claude.system_prompt_path == "config/prompts/diary-ko.txt"
+    # local_vlm 서브섹션 없어도 OK
+    assert cfg.ocr.local_vlm is None
+
+
+def test_load_with_claude_backend_missing_subsection_fails():
+    yaml_text = VALID_YAML.replace(
+        """ocr:
+  backend: "local_vlm"
+  local_vlm:
+    model_id: "Qwen/Qwen2.5-VL-7B-Instruct"
+    quantization: "4bit"
+    max_new_tokens: 2048
+    system_prompt_path: "config/prompts/diary-ko.txt"
+""",
+        """ocr:
+  backend: "claude"
+""",
+    )
+    with pytest.raises(ConfigError):
+        load_config_from_string(yaml_text)
+
+
+def test_example_yaml_defaults_to_claude():
+    yaml_text = Config.example_yaml()
+    assert 'backend: "claude"' in yaml_text
+    assert "claude:" in yaml_text
+    assert "service_url:" in yaml_text
+    assert "local_vlm:" in yaml_text  # 두 섹션 모두 보존
