@@ -6,6 +6,8 @@ export function extractBearer(authHeader?: string): string {
 
 export function verifyToken(secret: string, token: string): boolean {
   if (!secret || !token) return false;
+  // Constant-time compare: not strictly needed for personal-use service,
+  // but cheap insurance.
   if (secret.length !== token.length) return false;
   let diff = 0;
   for (let i = 0; i < secret.length; i++) diff |= secret.charCodeAt(i) ^ token.charCodeAt(i);
