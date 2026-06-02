@@ -125,15 +125,18 @@ claude-service를 미러링한 소형 Fastify + Node 서비스.
   타임아웃(기본 30s)·출력 상한 초과·비정상 종료는 해당 project를 `errors`에 넣고 계속.
 - **스크립트 수정 불필요** — `~/loc-history.py`의 `--csv-only` 출력을 그대로 쓰고,
   project명은 config가 부여한다.
-- **배포**: Quadlet `automation-service/deploy/automation-service.container`. 비스트리밍이라
-  `PublishPort=7843:7843`(rootless OK), `Network=host` 불필요. 포트 7843은 claude-service(7842)·
-  ocr-service(8080)와 비충돌. env `~/.config/automation-service.env`:
+- **배포**: **systemd --user 서비스(컨테이너 아님)**. claude-service/ocr-service와 달리 이
+  서비스는 호스트의 `python3`/`git`을 **호스트 git 저장소**(`~/workspace/*`)와 `~/loc-history.py`에
+  대해 직접 실행하는 것이 본질이다. 컨테이너로 하면 모든 저장소 + 스크립트 마운트 + 툴체인
+  설치가 필요해 brittle하므로, 호스트에서 `node dist/server.js`로 직접 돌린다.
+  `automation-service/deploy/automation-service.service`(systemd --user 유닛) + `deploy/README.md`.
+  `0.0.0.0:7843` LAN 한정(포트 7843은 claude-service(7842)·ocr-service(8080)와 비충돌).
+  env `~/.config/automation-service.env`:
   - `BRIDGE_SHARED_TOKEN` (= `BRIDGE_SECRET`)
   - `AUTOMATION_SERVICE_PORT` (기본 7843)
   - `AUTOMATION_CONFIG` (registry 경로, 기본 `~/.config/tomboy-automation.json`)
   - `AUTOMATION_MAX_OUTPUT_BYTES`
   - `AUTOMATION_TIMEOUT_MS`
-- **deploy README** — claude-service/ocr-service 패턴대로 `automation-service/deploy/README.md`.
 
 ### (B) 브릿지: `bridge/src/automation.ts` (신규)
 

@@ -1,0 +1,76 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-02-data-note-automation.md",
+  "tasks": [
+    {
+      "id": 6,
+      "subject": "Task 1: automation-service 스캐폴드 + registry 로더",
+      "status": "pending",
+      "description": "automation-service 패키지 스캐폴드(package.json/tsconfig/auth.ts 복제) + registry.ts(parseRegistry/loadRegistry/lookupCommand) TDD.\n\n```json:metadata\n{\"files\": [\"automation-service/package.json\",\"automation-service/tsconfig.json\",\"automation-service/src/auth.ts\",\"automation-service/src/registry.ts\",\"automation-service/tests/registry.test.ts\"], \"verifyCommand\": \"cd automation-service && npm install && npm test\", \"acceptanceCriteria\": [\"npm test registry 통과\",\"유효 config 파싱/오류 throw\",\"lookupCommand hit/null\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 2: automation-service runner",
+      "status": "pending",
+      "blockedBy": [6],
+      "description": "spawn(셸 미경유) 러너: 타임아웃/출력상한/종료코드 처리, {results,errors} 집계.\n\n```json:metadata\n{\"files\": [\"automation-service/src/runner.ts\",\"automation-service/tests/runner.test.ts\"], \"verifyCommand\": \"cd automation-service && npm test\", \"acceptanceCriteria\": [\"성공 stdout 집계\",\"부분실패 errors 분리\",\"출력 상한 초과 처리\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 3: automation-service 서버 + 배포 유닛",
+      "status": "pending",
+      "blockedBy": [6, 7],
+      "description": "Fastify POST /run(Bearer→registry→runner) + systemd --user .service + README.\n\n```json:metadata\n{\"files\": [\"automation-service/src/server.ts\",\"automation-service/tests/server.test.ts\",\"automation-service/deploy/automation-service.service\",\"automation-service/deploy/README.md\"], \"verifyCommand\": \"cd automation-service && npm test\", \"acceptanceCriteria\": [\"401/400/unknown_command\",\"200 results\",\"systemd 유닛 호스트 실행\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 4: 브릿지 /automation/run 프록시",
+      "status": "pending",
+      "description": "ocr.ts 패턴 비스트리밍 프록시(handleAutomationRun) + server.ts 라우트/env.\n\n```json:metadata\n{\"files\": [\"bridge/src/automation.ts\",\"bridge/src/automation.test.ts\",\"bridge/src/server.ts\"], \"verifyCommand\": \"cd bridge && npm test && npm run build\", \"acceptanceCriteria\": [\"401/400\",\"503 not_configured\",\"re-Bearer 포워딩+패스스루\",\"503 unavailable\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 5: 앱 — parseAutomationNote",
+      "status": "pending",
+      "description": "자동화:: 제목 파서(parseAutomationTitle + parseAutomationNote).\n\n```json:metadata\n{\"files\": [\"app/src/lib/automation/parseAutomationNote.ts\",\"app/tests/unit/automation/parseAutomationNote.test.ts\"], \"verifyCommand\": \"cd app && npm test -- automation/parseAutomationNote\", \"acceptanceCriteria\": [\"commandId 추출\",\"라벨 첫토큰\",\"비자동화 null\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 6: 앱 — runAutomation 클라이언트",
+      "status": "pending",
+      "description": "브릿지 /automation/run 클라이언트 + STATUS_TO_KIND 에러 매핑.\n\n```json:metadata\n{\"files\": [\"app/src/lib/automation/runAutomation.ts\",\"app/tests/unit/automation/runAutomation.test.ts\"], \"verifyCommand\": \"cd app && npm test -- automation/runAutomation\", \"acceptanceCriteria\": [\"not_configured\",\"200 파싱\",\"상태코드 매핑\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 7: 앱 — findDataBlockRegion + csvToParagraphs",
+      "status": "pending",
+      "description": "JSONContent에서 첫 csv/tsv 펜스 인덱스 + CSV→단락 변환(순수).\n\n```json:metadata\n{\"files\": [\"app/src/lib/automation/findDataBlockRegion.ts\",\"app/tests/unit/automation/findDataBlockRegion.test.ts\"], \"verifyCommand\": \"cd app && npm test -- automation/findDataBlockRegion\", \"acceptanceCriteria\": [\"블록 인덱스\",\"unclosed/none null\",\"csvToParagraphs\"]}\n```"
+    },
+    {
+      "id": 13,
+      "subject": "Task 8: 앱 — applyDataNoteCsv",
+      "status": "pending",
+      "blockedBy": [12],
+      "description": "DATA::<project> 찾기/생성 + CSV 블록 교체/추가 + 저장 + reload. buildUpdatedDoc 순수함수.\n\n```json:metadata\n{\"files\": [\"app/src/lib/automation/applyDataNoteCsv.ts\",\"app/tests/unit/automation/applyDataNoteCsv.test.ts\"], \"verifyCommand\": \"cd app && npm test -- automation/applyDataNoteCsv\", \"acceptanceCriteria\": [\"기존 교체 updated\",\"없으면 생성 created\",\"블록없으면 추가\"]}\n```"
+    },
+    {
+      "id": 14,
+      "subject": "Task 9: 앱 — appendRunHistory",
+      "status": "pending",
+      "description": "자동화 노트 로그 리스트 prepend(라이브 view.dispatch) + 리스트 생성 + cap.\n\n```json:metadata\n{\"files\": [\"app/src/lib/automation/appendRunHistory.ts\",\"app/tests/unit/automation/appendRunHistory.test.ts\"], \"verifyCommand\": \"cd app && npm test -- automation/appendRunHistory\", \"acceptanceCriteria\": [\"리스트 생성\",\"prepend 최신\",\"cap 트림\"]}\n```"
+    },
+    {
+      "id": 15,
+      "subject": "Task 10: 앱 — 자동화 노트 플러그인 + 오케스트레이션 + 등록",
+      "status": "pending",
+      "blockedBy": [10, 11, 13, 14],
+      "description": "⟳ 실행 버튼 위젯 + 클릭 오케스트레이션(runAutomation→applyDataNoteCsv→appendRunHistory+토스트) + TomboyEditor 등록.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/automationNote/runAutomationButtonClick.ts\",\"app/src/lib/editor/automationNote/automationNotePlugin.ts\",\"app/tests/unit/automation/runAutomationButtonClick.test.ts\",\"app/src/lib/editor/TomboyEditor.svelte\"], \"verifyCommand\": \"cd app && npm test -- automation/runAutomationButtonClick && npm run check\", \"acceptanceCriteria\": [\"성공 적용+요약\",\"에러 토스트+로그\",\"부분실패 반영\",\"버튼 렌더\"]}\n```"
+    },
+    {
+      "id": 16,
+      "subject": "Task 11: 가이드 카드",
+      "status": "pending",
+      "description": "설정→가이드 notes 서브탭에 자동화:: 노트 카드 추가.\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"notes 탭 카드 추가\",\"예시/동작/선행조건 포함\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-02"
+}
