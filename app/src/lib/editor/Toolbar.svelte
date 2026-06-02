@@ -243,56 +243,50 @@
 		{/if}
 	</div>
 
+	{#if ctrlLocked}
+		<div class="key-drawer" role="toolbar" aria-label="Ctrl 단축키">
+			<button class="key-btn" onclick={() => runCtrl('Enter')} title="줄 분할 (Ctrl+Enter)">↵</button>
+			<button class="key-btn" onclick={() => runCtrl('d')} title="오늘 날짜 (Ctrl+D)">D</button>
+			<button class="key-btn" onclick={() => runCtrl('s')} title="취소선 (Ctrl+S)"><s>S</s></button>
+			<button class="key-btn" onclick={() => runCtrl('h')} title="하이라이트 (Ctrl+H)"><span class="key-hl">H</span></button>
+			<button class="key-btn" onclick={() => runCtrl('m')} title="모노스페이스 (Ctrl+M)"><code>M</code></button>
+			<button class="key-btn" onclick={() => runCtrl('o')} title="할 일 블록 (Ctrl+O)">O</button>
+			<button class="key-btn" onclick={() => runCtrl('k')} title="줄 삭제 (Ctrl+K)">K</button>
+		</div>
+	{:else if altLocked}
+		<div class="key-drawer" role="toolbar" aria-label="Alt 단축키">
+			<button class="key-btn" onclick={() => runAlt('left')} title="내어쓰기 (Alt+←)">←</button>
+			<button class="key-btn" onclick={() => runAlt('up')} title="위로 이동 (Alt+↑)">↑</button>
+			<button class="key-btn" onclick={() => runAlt('down')} title="아래로 이동 (Alt+↓)">↓</button>
+			<button class="key-btn" onclick={() => runAlt('right')} title="들여쓰기 (Alt+→)">→</button>
+			<button class="key-btn" onclick={() => runAlt('footnote')} title="각주 (Alt+J)">J</button>
+			<button class="key-btn" onclick={() => runAlt('process')} title="프로세스 블록 (Alt+P)">P</button>
+		</div>
+	{/if}
+
 	<div class="dock">
 		<div class="key-tray" role="group" aria-label="단축키 모드">
-			{#if !altLocked}
-				<button
-					class="mod-toggle"
-					class:active={ctrlLocked}
-					onclick={() => modKeys.toggleCtrlLock()}
-					title="Ctrl 고정 — 단축키 표시"
-					aria-pressed={ctrlLocked}
-				>
-					<span class="mod-label">Ctrl</span>
-					<span class="mod-dot" aria-hidden="true"></span>
-				</button>
-			{/if}
+			<button
+				class="mod-toggle"
+				class:active={ctrlLocked}
+				onclick={() => modKeys.toggleCtrlLock()}
+				title="Ctrl 고정 — 단축키 표시"
+				aria-pressed={ctrlLocked}
+			>
+				<span class="mod-label">Ctrl</span>
+				<span class="mod-dot" aria-hidden="true"></span>
+			</button>
 
-			{#if ctrlLocked}
-				<div class="key-row" aria-label="Ctrl 단축키">
-					<button class="key-btn" onclick={() => runCtrl('Enter')} title="줄 분할 (Ctrl+Enter)">↵</button>
-					<button class="key-btn" onclick={() => runCtrl('d')} title="오늘 날짜 (Ctrl+D)">D</button>
-					<button class="key-btn" onclick={() => runCtrl('s')} title="취소선 (Ctrl+S)"><s>S</s></button>
-					<button class="key-btn" onclick={() => runCtrl('h')} title="하이라이트 (Ctrl+H)"><span class="key-hl">H</span></button>
-					<button class="key-btn" onclick={() => runCtrl('m')} title="모노스페이스 (Ctrl+M)"><code>M</code></button>
-					<button class="key-btn" onclick={() => runCtrl('o')} title="할 일 블록 (Ctrl+O)">O</button>
-					<button class="key-btn" onclick={() => runCtrl('k')} title="줄 삭제 (Ctrl+K)">K</button>
-				</div>
-			{/if}
-
-			{#if !ctrlLocked}
-				<button
-					class="mod-toggle"
-					class:active={altLocked}
-					onclick={() => modKeys.toggleAltLock()}
-					title="Alt 고정 — 리스트 들여쓰기/순서 변경 단축키 표시"
-					aria-pressed={altLocked}
-				>
-					<span class="mod-label">Alt</span>
-					<span class="mod-dot" aria-hidden="true"></span>
-				</button>
-			{/if}
-
-			{#if altLocked}
-				<div class="key-row" aria-label="Alt 단축키">
-					<button class="key-btn" onclick={() => runAlt('left')} title="내어쓰기 (Alt+←)">←</button>
-					<button class="key-btn" onclick={() => runAlt('up')} title="위로 이동 (Alt+↑)">↑</button>
-					<button class="key-btn" onclick={() => runAlt('down')} title="아래로 이동 (Alt+↓)">↓</button>
-					<button class="key-btn" onclick={() => runAlt('right')} title="들여쓰기 (Alt+→)">→</button>
-					<button class="key-btn" onclick={() => runAlt('footnote')} title="각주 (Alt+J)">J</button>
-					<button class="key-btn" onclick={() => runAlt('process')} title="프로세스 블록 (Alt+P)">P</button>
-				</div>
-			{/if}
+			<button
+				class="mod-toggle"
+				class:active={altLocked}
+				onclick={() => modKeys.toggleAltLock()}
+				title="Alt 고정 — 리스트 들여쓰기/순서 변경 단축키 표시"
+				aria-pressed={altLocked}
+			>
+				<span class="mod-label">Alt</span>
+				<span class="mod-dot" aria-hidden="true"></span>
+			</button>
 		</div>
 
 		{#if onfind}
@@ -469,12 +463,17 @@
 		background: #ffec99;
 	}
 
-	.key-row {
+	/* Shortcut-key row, surfaced above the dock when Ctrl/Alt is locked —
+	   mirrors the 서식 format drawer pattern (own row, not inline in the dock). */
+	.key-drawer {
 		display: flex;
 		align-items: center;
 		gap: 2px;
-		flex: 1 1 auto;
-		min-width: 0;
+		padding: 6px 8px;
+		border-bottom: 1px solid #dee2e6;
+		background: #f8f9fa;
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
 	}
 
 	.key-btn {
@@ -561,6 +560,9 @@
 			border-radius: 4px;
 		}
 		.dock {
+			display: none;
+		}
+		.key-drawer {
 			display: none;
 		}
 	}
