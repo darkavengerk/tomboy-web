@@ -240,10 +240,16 @@ Each post-header HR marker "owns" the content below it: section `k` runs
 from the block right after HR `k` to the next HR (or end of doc). The
 header area and anything above the first HR are not foldable.
 
-- Every **non-empty** section's HR marker hosts a small +/− widget
-  button (`.tomboy-hr-fold-btn`), absolutely positioned at the right end
-  of the HR line. Empty sections (HR followed by another HR / doc end)
-  get no button.
+- Every **non-empty** section's HR marker hosts a small square +/−
+  widget button (`.tomboy-hr-fold-btn`), absolutely positioned at the
+  right end of the HR line. Empty sections (HR followed by another HR /
+  doc end) get no button.
+- **The HR line itself is also a toggle**: a plain (modifier-free) click
+  anywhere on a foldable HR marker folds/unfolds its section
+  (`handleClick` in hrFoldPlugin). Foldable HR markers carry the
+  `.tomboy-hr-fold-line` class decoration for cursor:pointer + hover
+  affordance. Ctrl/Cmd+click is never claimed — it stays the split
+  toggle gesture.
 - Folding a section adds `.tomboy-hr-fold-clamped` (line-clamp:1 +
   ellipsis) to its **first** block and `.tomboy-hr-fold-hidden`
   (display:none) to the **rest**.
@@ -263,7 +269,7 @@ header area and anything above the first HR are not foldable.
 
 | State | Behavior |
 |---|---|
-| Split active (`activeOrdinals.size > 0`) | Fold plugin emits **no decorations at all** — buttons gone, folded sections render expanded. Fold state preserved (inert). |
+| Split active (`activeOrdinals.size > 0`) | Fold plugin emits **no decorations at all** — buttons gone, folded sections render expanded — and its `handleClick` (line-click toggle) is ignored. Fold state preserved (inert). |
 | Folded sections (`folded.size > 0`) | Split's `handleClick` ignores Ctrl/Cmd+click — no new columns while content is hidden. |
 | Both non-empty (cross-seeded localStorage) | Split wins. Fold decorations return when the split is deactivated. |
 

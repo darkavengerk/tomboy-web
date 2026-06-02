@@ -3,7 +3,11 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import { assignSections } from './assignSections.js';
-import { describeTopLevel, HEADER_COUNT } from './hrSplitPlugin.js';
+import {
+	describeTopLevel,
+	topLevelIndexAtPos,
+	HEADER_COUNT
+} from './hrSplitPlugin.js';
 import {
 	hrFoldPluginKey,
 	hrSplitPluginKey,
@@ -43,6 +47,10 @@ export interface HrFoldOptions {
  * Section model: each post-header HR marker owns the blocks after it up
  * to the next HR (or end of doc). See assignSections.ts. Folding a
  * section clamps its first block to one visual line and hides the rest.
+ *
+ * Toggle gestures: the +/− widget button on the HR line, or a plain
+ * (modifier-free) click anywhere on the HR line itself (handleClick).
+ * Ctrl/Cmd+click stays reserved for the split toggle.
  *
  * Mutual exclusion with hrSplit (나란히 보기):
  * - While the split layout is active (any active column divider), this
@@ -90,6 +98,17 @@ function buildFoldDecorations(
 			if (r.sectionEmpty) continue;
 			const isFolded = folded.has(r.ord);
 			const ord = r.ord;
+			// Clickable-line affordance: the whole HR line toggles the fold
+			// (plain click, handled in handleClick below). The class only
+			// carries cursor/hover styling — PM merges it with the
+			// `tomboy-hr-marker` class the split plugin puts on the same node.
+			decos.push(
+				Decoration.node(from, from + node.nodeSize, {
+					class:
+						'tomboy-hr-fold-line' +
+						(isFolded ? ' tomboy-hr-fold-line-folded' : '')
+				})
+			);
 			// Widget button inside the HR marker paragraph (pos + 1 = just
 			// inside the block). The HR marker is never hidden or clamped,
 			// so the button can't be clipped by the fold CSS. The widget's
@@ -227,6 +246,30 @@ export function createHrFoldPlugin(options: HrFoldOptions = {}): Plugin {
 					return {};
 				}
 				return { class: 'tomboy-hr-fold-active' };
+			},
+			handleClick(view, pos, event) {
+				// Plain click on the HR line toggles the fold of its section.
+				// Ctrl/Cmd is the split-toggle gesture — never claim it here.
+				if (event.ctrlKey || event.metaKey) return false;
+				const s = hrFoldPluginKey.getState(view.state);
+				if (!s) return false;
+				// Mutual exclusion: fold is inert while the split layout is
+				// active (the HR line is a column divider then, and plain
+				// pointerdown on it starts a width drag).
+				const split = hrSplitPluginKey.getState(view.state);
+				if (split && split.activeOrdinals.size > 0) return false;
+				const doc = view.state.doc;
+				const topIdx = topLevelIndexAtPos(doc, pos);
+				if (topIdx < 0) return false;
+				const { kinds } = describeTopLevel(doc);
+				const { roles } = assignSections({ kinds, headerCount: HEADER_COUNT });
+				const r = roles[topIdx];
+				if (r.role !== 'hr' || r.sectionEmpty) return false;
+				event.preventDefault();
+				view.dispatch(
+					view.state.tr.setMeta(hrFoldPluginKey, { toggle: r.ord })
+				);
+				return true;
 			}
 		}
 	});

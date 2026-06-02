@@ -1822,7 +1822,8 @@ https://www.dropbox.com/…/starting.png</pre>
 					<p class="info-text">
 						본문에 <code>---</code>(대시 3개 이상)만 있는 단락은 가로 구분선이 됩니다.
 						구분선 아래 내용은 하나의 <strong>섹션</strong>이 되어, 구분선 우측 끝의 작은
-						<code>−</code> / <code>+</code> 버튼으로 접거나 펼칠 수 있습니다.
+						<code>−</code> / <code>+</code> 버튼 또는 <strong>구분선 자체를 클릭</strong>해서
+						접거나 펼칠 수 있습니다.
 					</p>
 					<pre class="snippet">제목
 2026-06-02
@@ -1834,8 +1835,9 @@ https://www.dropbox.com/…/starting.png</pre>
 ---                          [−]
 다음 섹션 …</pre>
 					<ul class="guide-list">
-						<li><strong>접기</strong> — <code>−</code> 버튼을 누르면 해당 섹션의 첫 블록만 한 줄로
-							클램프되어 보이고(말줄임표) 나머지 블록은 숨겨집니다. <code>+</code> 버튼으로 다시 펼칩니다.</li>
+						<li><strong>접기</strong> — <code>−</code> 버튼이나 구분선을 누르면 해당 섹션의 첫 블록만 한 줄로
+							클램프되어 보이고(말줄임표) 나머지 블록은 숨겨집니다. <code>+</code> 버튼 또는 구분선을
+							다시 눌러 펼칩니다.</li>
 						<li>섹션 = 구분선 바로 아래부터 다음 구분선(또는 노트 끝)까지. 첫 구분선 위 영역과
 							제목/날짜 줄은 접기 대상이 아닙니다.</li>
 						<li>접기 상태는 <strong>이 기기(브라우저)에만</strong> 저장됩니다 — 노트 내용과 동기화에는
