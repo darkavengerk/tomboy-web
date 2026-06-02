@@ -9,6 +9,7 @@ package is cheap and does not pull in any GPU stack.
 from __future__ import annotations
 
 from . import local_vlm  # noqa: F401  registers "local_vlm"
+from . import claude     # noqa: F401  registers "claude"
 from .base import OCRBackend, OCRResult, get_backend, list_backends, register_backend
 
 __all__ = [
