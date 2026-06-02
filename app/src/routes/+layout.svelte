@@ -2,6 +2,7 @@
 	import '../app.css';
 	import { onMount } from 'svelte';
 	import { afterNavigate, goto } from '$app/navigation';
+	import { browser } from '$app/environment';
 	import Toast from '$lib/components/Toast.svelte';
 	import ImageViewerModal from '$lib/components/ImageViewerModal.svelte';
 	import TopNav from '$lib/components/TopNav.svelte';
@@ -27,11 +28,27 @@
 
 	const isDesktopRoute = $derived(page.url.pathname.startsWith('/desktop'));
 	const isEmbedded = $derived(page.url.searchParams.get('embed') === '1');
+	// Desktop SettingsWindow/AdminWindow load app routes inside an <iframe>.
+	// `embed=1` is the explicit chromeless signal, but it's lost on internal
+	// client-side navigations (e.g. clicking the admin tabs jumps to
+	// `/admin/revisions` with no query), so detect *being framed* as well —
+	// it stays true for the whole iframe lifetime regardless of navigation.
+	const inIframe = browser && isFramed();
 	const isChromeless = $derived(
 		isDesktopRoute ||
 		isEmbedded ||
+		inIframe ||
 		page.url.pathname.startsWith('/welcome')
 	);
+
+	function isFramed(): boolean {
+		try {
+			return window.self !== window.top;
+		} catch {
+			// Cross-origin access to window.top throws — we're definitely framed.
+			return true;
+		}
+	}
 
 	let offline = $state(false);
 	let installPrompt: BeforeInstallPromptEvent | null = $state(null);
