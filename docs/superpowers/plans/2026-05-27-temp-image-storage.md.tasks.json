@@ -4,77 +4,97 @@
     {
       "id": 8,
       "subject": "Task 1: 토큰 저장 — appSettings 헬퍼 + 설정 UI",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** 사용자가 설정 페이지에서 이미지 서버 토큰을 입력·저장·삭제할 수 있다.\n\n**Files:**\n- Modify: `app/src/lib/storage/appSettings.ts`\n- Modify: `app/src/routes/settings/+page.svelte`\n- Test: `app/tests/unit/storage/imageStorageToken.test.ts`\n\n**Acceptance Criteria:**\n- [ ] `getImageStorageToken()` / `setImageStorageToken(s)` 헬퍼가 동작.\n- [ ] 설정 페이지에 \"이미지 서버 토큰\" 섹션이 있고 입력 → 저장 → 새로고침 후에도 유지.\n- [ ] 빈 문자열을 저장하면 `getImageStorageToken()`이 `''`를 리턴.\n\n**Verify:** `cd app && npm run test -- tests/unit/storage/imageStorageToken.test.ts` → 3 passed\n\n```json:metadata\n{\"files\": [\"app/src/lib/storage/appSettings.ts\", \"app/src/routes/settings/+page.svelte\", \"app/tests/unit/storage/imageStorageToken.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- tests/unit/storage/imageStorageToken.test.ts && npm run check\", \"acceptanceCriteria\": [\"getImageStorageToken/setImageStorageToken 헬퍼 동작\", \"설정 페이지 UI 입력→저장→재로드 후 유지\", \"빈 문자열도 정상 저장/조회\"]}\n```"
     },
     {
       "id": 9,
       "subject": "Task 2: 빌드 인프라 — adapter-vercel + @vercel/blob",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** SvelteKit 함수 라우트를 빌드할 수 있도록 adapter 교체. 기존 SPA 결과물은 동일하게 나와야 함.\n\n**Files:**\n- Modify: `app/svelte.config.js`\n- Modify: `app/package.json`\n- Modify: `app/vercel.json`\n- Create or Modify: `app/src/routes/+layout.ts`\n\n**Acceptance Criteria:**\n- [ ] `cd app && npm run build` 에러 없이 끝남.\n- [ ] `.vercel/output/static/_app/` 결과물 정상.\n- [ ] `.vercel/output/functions/` 디렉토리 존재.\n- [ ] `npm run dev` 정상 기동.\n\n**Verify:** `cd app && rm -rf .vercel && npm run build && ls .vercel/output/static/_app && ls -la .vercel/output/`\n\n```json:metadata\n{\"files\": [\"app/svelte.config.js\", \"app/package.json\", \"app/vercel.json\", \"app/src/routes/+layout.ts\"], \"verifyCommand\": \"cd app && rm -rf .vercel && npm run build && ls .vercel/output/static/_app && ls -la .vercel/output/\", \"acceptanceCriteria\": [\"npm run build 성공\", \".vercel/output/static에 SPA 결과물\", \".vercel/output/functions 디렉토리 생성\", \"npm run dev 정상 기동\"]}\n```"
     },
     {
       "id": 10,
       "subject": "Task 3: 서버 — /api/temp-image POST/DELETE + Bearer 헬퍼",
-      "status": "pending",
-      "blockedBy": [9],
+      "status": "completed",
+      "blockedBy": [
+        9
+      ],
       "description": "**Goal:** 토큰 발급(POST, handleUpload) + 삭제(DELETE) 엔드포인트 + 공통 Bearer 검증 헬퍼.\n\n**Files:**\n- Create: `app/src/routes/api/temp-image/_lib/auth.ts`\n- Create: `app/src/routes/api/temp-image/+server.ts`\n- Test: `app/tests/unit/api/tempImageAuth.test.ts`\n\n**Acceptance Criteria:**\n- [ ] `requireBearer`가 헤더 없음/스킴 불일치/토큰 불일치/일치/env 빈값에 대해 각각 정의된 동작.\n- [ ] POST가 Bearer 통과 시 `handleUpload` 결과 JSON 반환.\n- [ ] DELETE가 `?url=…`로 받아 `del(url)` 호출 후 204.\n- [ ] 모든 라우트 `export const prerender = false`.\n\n**Verify:** `cd app && npm run test -- tests/unit/api/tempImageAuth.test.ts && npm run build`\n\n```json:metadata\n{\"files\": [\"app/src/routes/api/temp-image/_lib/auth.ts\", \"app/src/routes/api/temp-image/+server.ts\", \"app/tests/unit/api/tempImageAuth.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- tests/unit/api/tempImageAuth.test.ts && npm run build\", \"acceptanceCriteria\": [\"requireBearer 5가지 시나리오 모두 정확\", \"POST가 토큰 발급 응답\", \"DELETE가 ?url= 으로 blob 삭제\", \"prerender=false\"]}\n```"
     },
     {
       "id": 11,
       "subject": "Task 4: 서버 — /api/temp-image/list GET",
-      "status": "pending",
-      "blockedBy": [10],
+      "status": "completed",
+      "blockedBy": [
+        10
+      ],
       "description": "**Goal:** Vercel `list({prefix:'temp-images/'})` 결과를 JSON으로 반환하는 GET 엔드포인트.\n\n**Files:**\n- Create: `app/src/routes/api/temp-image/list/+server.ts`\n\n**Acceptance Criteria:**\n- [ ] GET이 Bearer 통과 시 `{items:[{url,pathname,size,uploadedAt}], hasMore}` 반환.\n- [ ] `temp-images/` prefix만 나열.\n- [ ] `prerender=false`.\n\n**Verify:** `cd app && rm -rf .vercel && npm run build && ls .vercel/output/functions/api/temp-image/`\n\n```json:metadata\n{\"files\": [\"app/src/routes/api/temp-image/list/+server.ts\"], \"verifyCommand\": \"cd app && rm -rf .vercel && npm run build && ls .vercel/output/functions/api/temp-image/\", \"acceptanceCriteria\": [\"GET이 JSON 반환\", \"temp-images/ prefix 한정\", \"list.func 빌드 결과 생성\"]}\n```"
     },
     {
       "id": 12,
       "subject": "Task 5: 클라이언트 — tempImageUpload 모듈",
-      "status": "pending",
-      "blockedBy": [8, 10],
+      "status": "completed",
+      "blockedBy": [
+        8,
+        10
+      ],
       "description": "**Goal:** `uploadTempImage` / `deleteTempImage` / `listTempImages` 클라이언트 래퍼. 토큰 필수. POST는 `clientPayload`로 토큰 전달 (서버 측 보정 포함).\n\n**Files:**\n- Create: `app/src/lib/sync/tempImageUpload.ts`\n- Test: `app/tests/unit/sync/tempImageUpload.test.ts`\n- Modify: `app/src/routes/api/temp-image/+server.ts` (POST를 clientPayload 검증으로 변경)\n\n**Acceptance Criteria:**\n- [ ] 토큰 미설정 시 한국어 에러 throw.\n- [ ] `uploadTempImage`가 `temp-images/{uuid}.{ext}` pathname + clientPayload에 토큰 포함하여 `@vercel/blob/client.upload()` 호출.\n- [ ] `deleteTempImage`가 DELETE + Authorization 헤더.\n- [ ] `listTempImages`가 GET + JSON 파싱.\n\n**Verify:** `cd app && npm run test -- tests/unit/sync/tempImageUpload.test.ts && npm run check`\n\n```json:metadata\n{\"files\": [\"app/src/lib/sync/tempImageUpload.ts\", \"app/tests/unit/sync/tempImageUpload.test.ts\", \"app/src/routes/api/temp-image/+server.ts\"], \"verifyCommand\": \"cd app && npm run test -- tests/unit/sync/tempImageUpload.test.ts && npm run check\", \"acceptanceCriteria\": [\"토큰 미설정 시 한국어 에러\", \"temp-images/{uuid}.{ext} pathname 생성\", \"clientPayload에 토큰 포함\", \"DELETE/list는 Authorization 헤더\"]}\n```"
     },
     {
       "id": 13,
       "subject": "Task 6: paste를 uploadTempImage로 전환",
-      "status": "pending",
-      "blockedBy": [12],
+      "status": "completed",
+      "blockedBy": [
+        12
+      ],
       "description": "**Goal:** 에디터 이미지 paste가 Dropbox 대신 Vercel Blob에 업로드되도록 호출 한 줄 교체.\n\n**Files:**\n- Modify: `app/src/lib/editor/TomboyEditor.svelte:63` (import) + `:1088` (호출)\n\n**Acceptance Criteria:**\n- [ ] `uploadTempImage(file)`이 호출됨.\n- [ ] `uploadImageToDropbox`는 paste 경로에서 더 이상 import 안 됨.\n- [ ] `npm run check` 0 errors.\n\n**Verify:** `cd app && npm run check && grep -n 'uploadTempImage' src/lib/editor/TomboyEditor.svelte`\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/TomboyEditor.svelte\"], \"verifyCommand\": \"cd app && npm run check && grep -n 'uploadTempImage' src/lib/editor/TomboyEditor.svelte\", \"acceptanceCriteria\": [\"paste 호출이 uploadTempImage로 교체됨\", \"타입 체크 통과\", \"기존 테스트 회귀 없음\"]}\n```"
     },
     {
       "id": 14,
       "subject": "Task 7: OCR cross-device — downloadImageFromUrl 헬퍼",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** OCR retry 코드 경로가 Vercel/Dropbox URL 둘 다 가져올 수 있도록 host별 dispatch 헬퍼.\n\n**Files:**\n- Modify: `app/src/lib/sync/imageUpload.ts`\n- Modify: `app/src/lib/ocrNote/runOcrInEditor.ts:7`\n- Test: `app/tests/unit/sync/downloadImageFromUrl.test.ts`\n\n**Acceptance Criteria:**\n- [ ] Dropbox host → `downloadImageFromDropboxUrl` (기존 SDK 경로).\n- [ ] 그 외 → `fetch().blob()`.\n- [ ] non-2xx에서 throw.\n- [ ] runOcrInEditor가 새 헬퍼 사용.\n\n**Verify:** `cd app && npm run test -- tests/unit/sync/downloadImageFromUrl.test.ts && npm run check`\n\n```json:metadata\n{\"files\": [\"app/src/lib/sync/imageUpload.ts\", \"app/src/lib/ocrNote/runOcrInEditor.ts\", \"app/tests/unit/sync/downloadImageFromUrl.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- tests/unit/sync/downloadImageFromUrl.test.ts && npm run check\", \"acceptanceCriteria\": [\"host로 SDK/fetch 분기\", \"non-2xx에서 throw\", \"OCR 모듈이 새 헬퍼 사용\"]}\n```"
     },
     {
       "id": 15,
       "subject": "Task 8: 클라이언트 — imageInventory 모듈",
-      "status": "pending",
-      "blockedBy": [12],
+      "status": "completed",
+      "blockedBy": [
+        12
+      ],
       "description": "**Goal:** `classifyImageUrl` / `scanNotesForImages` / `loadImageInventory` — admin 그리드 데이터.\n\n**Files:**\n- Create: `app/src/lib/sync/imageInventory.ts`\n- Test: `app/tests/unit/sync/imageInventory.test.ts`\n\n**Acceptance Criteria:**\n- [ ] `classifyImageUrl`이 vercel/dropbox/external 정확.\n- [ ] `scanNotesForImages`가 `<link:url>` 안 이미지 URL을 추출하고 `usedIn` 노트별 집계 (중복 노트 dedupe).\n- [ ] `loadImageInventory`가 노트 스캔 ∪ Vercel list 합집합 + orphan 분류.\n- [ ] Vercel list 실패 시 partial 결과 + `listError` 반환 (throw 안 함).\n\n**Verify:** `cd app && npm run test -- tests/unit/sync/imageInventory.test.ts && npm run check`\n\n```json:metadata\n{\"files\": [\"app/src/lib/sync/imageInventory.ts\", \"app/tests/unit/sync/imageInventory.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- tests/unit/sync/imageInventory.test.ts && npm run check\", \"acceptanceCriteria\": [\"classifyImageUrl 분류 정확\", \"scanNotesForImages usedIn 집계\", \"loadImageInventory 합집합 + orphan\", \"list 실패 시 listError로 graceful\"]}\n```"
     },
     {
       "id": 16,
       "subject": "Task 9: 클라이언트 — imagePromotion 모듈",
-      "status": "pending",
-      "blockedBy": [12, 14],
+      "status": "completed",
+      "blockedBy": [
+        12,
+        14
+      ],
       "description": "**Goal:** `promoteImageToDropbox(tempUrl)` — fetch → Dropbox 업로드 → 노트 URL string-replace → emitNoteReload → Vercel delete. 단계별 실패에도 노트의 URL은 항상 살아있는 곳을 가리킴.\n\n**Files:**\n- Create: `app/src/lib/sync/imagePromotion.ts`\n- Test: `app/tests/unit/sync/imagePromotion.test.ts`\n\n**Acceptance Criteria:**\n- [ ] Happy path: dropboxUrl 리턴, 노트들의 URL string-replace됨, blob 삭제됨, emitNoteReload 호출됨.\n- [ ] step 1 (fetch) 실패: 모든 상태 무변경.\n- [ ] step 2 (Dropbox upload) 실패: 모든 상태 무변경.\n- [ ] step 4 (노트 일부 putNote 실패): 성공한 노트만 새 URL, blob 유지, partialFailure + failed guid.\n- [ ] step 6 (vercel delete) 실패: 노트 갱신 완료, blob 남음, vercelDeleteError 메시지.\n\n**Verify:** `cd app && npm run test -- tests/unit/sync/imagePromotion.test.ts && npm run check`\n\n```json:metadata\n{\"files\": [\"app/src/lib/sync/imagePromotion.ts\", \"app/tests/unit/sync/imagePromotion.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- tests/unit/sync/imagePromotion.test.ts && npm run check\", \"acceptanceCriteria\": [\"happy path 모든 단계 통과\", \"step 1 실패 시 무변경\", \"step 2 실패 시 무변경\", \"step 4 부분 실패 시 blob 유지\", \"step 6 실패 시 노트 갱신 완료 + 에러 캡처\"]}\n```"
     },
     {
       "id": 17,
       "subject": "Task 10: Admin /admin/images 페이지",
-      "status": "pending",
-      "blockedBy": [15, 16],
+      "status": "completed",
+      "blockedBy": [
+        15,
+        16
+      ],
       "description": "**Goal:** admin sub-nav에 \"이미지\" 탭 추가 + 인벤토리 그리드 UI + 승격/삭제 액션.\n\n**Files:**\n- Modify: `app/src/routes/admin/+layout.svelte`\n- Create: `app/src/routes/admin/images/+page.svelte`\n\n**Acceptance Criteria:**\n- [ ] sub-nav \"이미지\" 탭 추가 (GPU 다음, 도구 앞).\n- [ ] 페이지 로드 시 `loadImageInventory()` 호출 → 카드 그리드 렌더.\n- [ ] 각 카드: 썸네일 + storage badge + 오펀 badge + 사용 노트 링크 + (temp만) 액션 버튼.\n- [ ] \"Dropbox로 저장\" → `promoteImageToDropbox` + 결과별 토스트 분기.\n- [ ] \"삭제\" → usedIn>0이면 confirm → `deleteTempImage` → 새로고침.\n- [ ] `listError` 있으면 상단 경고 배너.\n\n**Verify:** `cd app && npm run check && npm run build`\n\n```json:metadata\n{\"files\": [\"app/src/routes/admin/+layout.svelte\", \"app/src/routes/admin/images/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check && npm run build\", \"acceptanceCriteria\": [\"sub-nav 탭 추가\", \"그리드 렌더 + badge + usedIn\", \"승격/삭제 액션 동작 + 결과별 토스트\", \"listError 배너\"]}\n```"
     },
     {
       "id": 18,
       "subject": "Task 11: CLAUDE.md 갱신 + 수동 검증",
-      "status": "pending",
-      "blockedBy": [13, 17],
+      "status": "completed",
+      "blockedBy": [
+        13,
+        17
+      ],
       "description": "**Goal:** 프로젝트 invariant 문구 수정 + 새 feature 섹션 추가 + 실제 흐름 수동 검증.\n\n**Files:**\n- Modify: `CLAUDE.md`\n- Modify: `app/README.md` (있으면)\n\n**Acceptance Criteria:**\n- [ ] \"No server runtime\" 문구가 `/api/temp-image/*` 단일 예외 명시로 수정.\n- [ ] \"## 이미지 임시 저장소 (Vercel Blob)\" 섹션 추가.\n- [ ] 수동 검증 체크리스트 통과: paste→Vercel URL, admin 인벤토리, 승격 후 Dropbox URL 교체, 삭제 후 노트 깨짐, 잘못된 토큰 시 401.\n\n**Verify:** Step 4 수동 체크리스트.\n\n```json:metadata\n{\"files\": [\"CLAUDE.md\", \"app/README.md\"], \"verifyCommand\": \"echo '수동 검증 — Step 4 체크리스트'\", \"acceptanceCriteria\": [\"No server runtime 문구 갱신\", \"이미지 임시 저장소 섹션 추가\", \"paste → Vercel URL 확인\", \"admin 그리드 렌더 확인\", \"승격 후 Dropbox URL 교체 확인\", \"잘못된 토큰 시 401 토스트 확인\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-05-27T00:00:00Z"
+  "lastUpdated": "2026-05-27T08:12:52Z"
 }
