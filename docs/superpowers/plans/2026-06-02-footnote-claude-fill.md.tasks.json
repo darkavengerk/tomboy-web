@@ -1,0 +1,47 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-02-footnote-claude-fill.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: 순수 헬퍼 — 트리거 파싱·시스템 프롬프트·메시지 빌드",
+      "status": "pending",
+      "description": "순수 함수 extractTrigger/stripTriggerForRestore/buildFootnoteMessages + FOOTNOTE_SYSTEM_PROMPT 상수를 claudeFill.ts에 생성. TDD.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/footnote/claudeFill.ts\", \"app/tests/unit/editor/footnote/claudeFillHelpers.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/footnote/claudeFillHelpers.test.ts\", \"acceptanceCriteria\": [\"extractTrigger 정상/경계/null\", \"stripTriggerForRestore 끝공백 제거\", \"buildFootnoteMessages 단일 user 메시지\", \"FOOTNOTE_SYSTEM_PROMPT 각주/300/한국어\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: doc 탐색 헬퍼 — 정의 위치·컨텍스트·트리거 스캔",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "locateDefinition/buildFootnoteContext/definitionsMatchingTrigger + DefLocation 인터페이스를 claudeFill.ts에 추가(findFootnoteMatches/findFootnotePartner 재사용). TDD with Editor doc.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/footnote/claudeFill.ts\", \"app/tests/unit/editor/footnote/claudeFillDoc.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/footnote/claudeFillDoc.test.ts\", \"acceptanceCriteria\": [\"locateDefinition 위치/null\", \"buildFootnoteContext 컷 경계\", \"참조 마커 없을 때 폴백\", \"definitionsMatchingTrigger 정의만\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: 트리거 플러그인 — 감지·잠금·생각 위젯",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "createFootnoteClaudePlugin(state reduce, view.update 트리거 감지 prev↔cur diff, decorations 위젯) + markActive/markIdle/setFootnoteStep + footnoteClaudeKey. claudeFill.ts에 임시 runFootnoteClaude 스텁(Task4에서 교체). TDD with fill spy.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/footnote/claudePlugin.ts\", \"app/src/lib/editor/footnote/claudeFill.ts\", \"app/tests/unit/editor/footnote/claudePlugin.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/footnote/claudePlugin.test.ts\", \"acceptanceCriteria\": [\"트리거 1회 발화\", \"active 잠금 중복 방지\", \"복원 텍스트 비발화\", \"메타 reduce\", \"생각 위젯 데코\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: 오케스트레이터 runFootnoteClaude — 스트리밍·mutate·복원",
+      "status": "pending",
+      "blockedBy": [3],
+      "description": "스텁 → 본 구현. runFootnoteClaude + replaceDefinitionText/appendDefinitionText(라벨 재탐색 위치 드리프트 무시; 순환 import 호출 시점만 사용). TDD with mocked sendClaude/bridgeSettings/appSettings/toast.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/footnote/claudeFill.ts\", \"app/tests/unit/editor/footnote/runFootnoteClaude.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/footnote/runFootnoteClaude.test.ts\", \"acceptanceCriteria\": [\"성공 시 답변 채움+잠금해제\", \"실패 시 원문 복원+토스트\", \"bridge 미설정 즉시 복원\", \"body system/model/effort/messages\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: 편집기 장착 + export 재노출",
+      "status": "pending",
+      "blockedBy": [4],
+      "description": "index.ts 재노출 + TomboyEditor.svelte에 tomboyFootnoteClaude Extension.create 장착. npm run check + 수동 검증.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/footnote/index.ts\", \"app/src/lib/editor/TomboyEditor.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"index.ts 재노출\", \"Extension 장착\", \"svelte-check 0 errors\", \"수동 스트리밍 동작\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: 가이드 카드 (설정 → 가이드 → 편집기)",
+      "status": "pending",
+      "blockedBy": [5],
+      "description": "설정 가이드 editor 탭에 '각주를 Claude로 채우기' guide-card 추가. npm run check.\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"editor 탭 guide-card 추가\", \"summary/info-text/snippet/guide-list\", \"제약 4종 명시\", \"svelte-check 통과\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-02"
+}
