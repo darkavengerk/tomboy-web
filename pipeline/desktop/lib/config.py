@@ -89,15 +89,42 @@ class LocalVlmConfig:
 
 
 @dataclass(frozen=True)
+class ClaudeConfig:
+    service_url: str
+    service_token: str
+    model: str  # 빈 문자열 = claude-service 기본값에 위임
+    effort: str
+    system_prompt_path: str
+
+    @classmethod
+    def from_dict(cls, d: dict) -> ClaudeConfig:
+        return cls(
+            service_url=_require(d, "service_url", "ocr.claude.service_url"),
+            service_token=_require(d, "service_token", "ocr.claude.service_token"),
+            model=d.get("model", ""),
+            effort=d.get("effort", "high"),
+            system_prompt_path=d.get(
+                "system_prompt_path", "config/prompts/diary-ko.txt"
+            ),
+        )
+
+
+@dataclass(frozen=True)
 class OcrConfig:
     backend: str
     local_vlm: LocalVlmConfig | None = None
+    claude: ClaudeConfig | None = None
 
     @classmethod
     def from_dict(cls, d: dict) -> OcrConfig:
         backend = _require(d, "backend", "ocr.backend")
         local_vlm = LocalVlmConfig.from_dict(d["local_vlm"]) if "local_vlm" in d else None
-        return cls(backend=backend, local_vlm=local_vlm)
+        claude = ClaudeConfig.from_dict(d["claude"]) if "claude" in d else None
+        if backend == "claude" and claude is None:
+            raise ConfigError("ocr.backend is 'claude' but ocr.claude subsection is missing")
+        if backend == "local_vlm" and local_vlm is None:
+            raise ConfigError("ocr.backend is 'local_vlm' but ocr.local_vlm subsection is missing")
+        return cls(backend=backend, local_vlm=local_vlm, claude=claude)
 
 
 @dataclass(frozen=True)
@@ -175,7 +202,16 @@ tomboy:
   title_format: "{date} 리마커블([{page_uuid}])"
 
 ocr:
-  backend: "local_vlm"
+  backend: "claude"
+  # claude-service (구독 OAuth 재사용) 경유. backend가 "claude"일 때만 사용.
+  claude:
+    service_url: "http://localhost:7842"
+    service_token: "REPLACE_ME"  # claude-service Bearer 토큰
+    model: ""                    # 빈 값 = claude-service 기본 모델
+    effort: "high"
+    system_prompt_path: "config/prompts/diary-ko.txt"
+  # 로컬 GPU(Qwen2.5-VL) 경로. backend가 "local_vlm"일 때만 사용.
+  # claude → local_vlm 전환은 위 backend 한 줄만 변경.
   local_vlm:
     model_id: "Qwen/Qwen2.5-VL-7B-Instruct"
     quantization: "4bit"

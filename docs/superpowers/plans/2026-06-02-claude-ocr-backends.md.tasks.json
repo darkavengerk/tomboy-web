@@ -1,0 +1,46 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-02-claude-ocr-backends.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: OCR 노트 — parseOcrNote에 Claude 백엔드 인식 + effort 헤더",
+      "status": "completed",
+      "description": "**Goal:** `ocr://claude` 또는 `ocr://claude-*` 시그니처를 `backend='claude'`로 분류하고 `effort:` 헤더를 파싱한다. 기존 `ocr://got-ocr2`/`ocr://qwen2.5vl:7b` 노트는 `backend='ollama'`로 유지.\n\n**Files:**\n- Modify: `app/src/lib/ocrNote/defaults.ts`\n- Modify: `app/src/lib/ocrNote/parseOcrNote.ts`\n- Test (modify): `app/tests/unit/ocrNote/parseOcrNote.test.ts`\n\n**Verify:** `cd app && npm run test -- src/lib/ocrNote/parseOcrNote && npm run check`\n\n```json:metadata\n{\"files\": [\"app/src/lib/ocrNote/defaults.ts\", \"app/src/lib/ocrNote/parseOcrNote.ts\", \"app/tests/unit/ocrNote/parseOcrNote.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- src/lib/ocrNote/parseOcrNote && npm run check\", \"acceptanceCriteria\": [\"ocr://claude → backend=claude, model=claude\", \"ocr://claude-opus-4-7 → backend=claude\", \"ocr://got-ocr2 → backend=ollama 회귀\", \"effort 헤더 파싱\", \"translate/temperature/num_ctx 헤더 무시\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: OCR 노트 — runClaude 실행 분기 (sendClaude 재사용)",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "**Goal:** `runOcrInEditor`에 `backend === 'claude'` 분기 추가, chatNote의 `sendClaude` 재사용. 스펙 deviation 명시.\n\n**Files:**\n- Modify: `app/src/lib/ocrNote/runOcrInEditor.ts`\n- Test (create): `app/tests/unit/ocrNote/runOcrInEditor.test.ts`\n\n**Verify:** `cd app && npm run test -- src/lib/ocrNote/runOcrInEditor && npm run check`\n\n```json:metadata\n{\"files\": [\"app/src/lib/ocrNote/runOcrInEditor.ts\", \"app/tests/unit/ocrNote/runOcrInEditor.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- src/lib/ocrNote/runOcrInEditor && npm run check\", \"acceptanceCriteria\": [\"sendClaude 호출, sendOcr/sendChat 호출 안 됨\", \"placeholder + 첫 delta 교체\", \"빈 응답 → [OCR 결과 없음]\", \"ClaudeChatError → [OCR 오류: …]\", \"abort/finally 처리\", \"image/url 콘텐츠 블록\", \"system/effort/model 디폴트 처리\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: OCR 노트 — 설정 가이드 카드 업데이트",
+      "status": "completed",
+      "blockedBy": [2],
+      "description": "**Goal:** 설정 → 가이드 → 노트 탭의 OCR 카드를 `ocr://claude` 권장으로 업데이트.\n\n**Files:**\n- Modify: `app/src/routes/settings/+page.svelte`\n\n**Verify:** 수동 — `cd app && npm run dev` → /settings → 가이드 → 노트 탭 → OCR 카드 확인\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"ocr://claude 시그니처 예시\", \"effort: high 명시\", \"ocr://got-ocr2 호환 안내\", \"build 통과\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: 일기 파이프라인 — ClaudeConfig + YAML 디폴트 변경",
+      "status": "completed",
+      "description": "**Goal:** `pipeline/desktop/lib/config.py`에 `ClaudeConfig` dataclass + `OcrConfig.claude` 필드. `_EXAMPLE_YAML` 기본 backend를 \"claude\"로.\n\n**Files:**\n- Modify: `pipeline/desktop/lib/config.py`\n- Test (modify): `pipeline/tests/lib/test_config.py`\n\n**Verify:** `cd pipeline && pytest tests/lib/test_config.py -v`\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/lib/config.py\", \"pipeline/tests/lib/test_config.py\"], \"verifyCommand\": \"cd pipeline && pytest tests/lib/test_config.py -v\", \"acceptanceCriteria\": [\"ClaudeConfig dataclass 5 필드\", \"backend=claude일 때 claude 서브섹션 필수\", \"_EXAMPLE_YAML 디폴트 claude\", \"local_vlm 회귀 없음\", \"claude 누락 시 ConfigError\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: 일기 파이프라인 — ClaudeBackend 클래스",
+      "status": "completed",
+      "blockedBy": [4],
+      "description": "**Goal:** `register_backend(\"claude\")` OCRBackend 구현. base64 이미지 → claude-service `/chat` POST → SSE 누적.\n\n**Files:**\n- Create: `pipeline/desktop/ocr_backends/claude.py`\n- Modify: `pipeline/desktop/ocr_backends/__init__.py`\n- Test (create): `pipeline/tests/desktop/ocr_backends/test_claude.py`\n\n**Verify:** `cd pipeline && pytest tests/desktop/ocr_backends/test_claude.py -v`\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/ocr_backends/claude.py\", \"pipeline/desktop/ocr_backends/__init__.py\", \"pipeline/tests/desktop/ocr_backends/test_claude.py\"], \"verifyCommand\": \"cd pipeline && pytest tests/desktop/ocr_backends/test_claude.py -v\", \"acceptanceCriteria\": [\"register_backend('claude')\", \"5 kwargs 생성자\", \"OCRResult 정상 반환\", \"401 즉시 raise\", \"503 1회 retry\", \"ConnectError/Timeout/SSE error 처리\", \"image/base64 + text body\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: 일기 파이프라인 — s3_ocr 백엔드 디스패치",
+      "status": "completed",
+      "blockedBy": [4, 5],
+      "description": "**Goal:** s3_ocr.py 하드코딩 가드 제거, backend별 디스패치(`_build_backend(cfg)` 추출).\n\n**Files:**\n- Modify: `pipeline/desktop/stages/s3_ocr.py`\n- Test: (위치 확인 후 결정)\n\n**Verify:** `cd pipeline && pytest tests/ -v -k 's3_ocr or run_pipeline or dispatch'`\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/stages/s3_ocr.py\"], \"verifyCommand\": \"cd pipeline && pytest tests/ -v -k 's3_ocr or run_pipeline or dispatch'\", \"acceptanceCriteria\": [\"local_vlm 라우팅\", \"claude 라우팅\", \"다른 backend 명시 에러\", \"기존 회귀 없음\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-02T15:55:00+09:00"
+}
