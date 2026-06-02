@@ -1,6 +1,7 @@
 import type { Editor } from '@tiptap/core';
 import type { Node as PMNode } from 'prosemirror-model';
 import { sendChat, LlmChatError, type ChatRequestBody } from '../chatNote/backends/ollama.js';
+import { sendClaude, ClaudeChatError, type ClaudeChatBody } from '../chatNote/backends/claude.js';
 import { sendOcr, OcrSendError } from './sendOcr.js';
 import { imageBlobToBase64 } from './imageToBase64.js';
 import { downloadImageFromUrl } from '../sync/imageUpload.js';
@@ -8,6 +9,8 @@ import {
 	OCR_DEFAULT_NUM_CTX,
 	OCR_DEFAULT_TEMPERATURE,
 	OCR_DEFAULT_TRANSLATE_MODEL,
+	OCR_CLAUDE_DEFAULT_EFFORT,
+	OCR_CLAUDE_SYSTEM_PROMPT,
 	buildTranslatePrompt
 } from './defaults.js';
 import type { OcrNoteSpec } from './parseOcrNote.js';
@@ -29,6 +32,8 @@ export interface RunOcrOptions {
 	bridgeUrl: string;
 	bridgeToken: string;
 	onStatus?: (msg: string) => void;
+	/** Optional AbortSignal — forwarded to the Claude SSE call in the claude backend path. */
+	signal?: AbortSignal;
 }
 
 export interface RunOcrResult {
@@ -58,6 +63,10 @@ export async function runOcrInEditor(opts: RunOcrOptions): Promise<RunOcrResult>
 
 	editor.setEditable(false);
 	try {
+		if (spec.backend === 'claude') {
+			return await runClaude(opts, httpBase);
+		}
+
 		opts.onStatus?.('이미지 처리 중…');
 		const imageB64 = await loadImageB64(opts);
 		if (imageB64 === null) {
@@ -71,6 +80,83 @@ export async function runOcrInEditor(opts: RunOcrOptions): Promise<RunOcrResult>
 		return await runTwoStage(opts, httpBase, imageB64);
 	} finally {
 		editor.setEditable(true);
+	}
+}
+
+async function runClaude(
+	opts: RunOcrOptions,
+	httpBase: string
+): Promise<RunOcrResult> {
+	const { editor, spec, bridgeToken } = opts;
+	opts.onStatus?.('OCR 분석 중…');
+	const placeholderPos = appendBlock(editor, '[원문]\nOCR 진행 중…');
+	let firstTokenSeen = false;
+	let accumulated = '';
+
+	const body: ClaudeChatBody = {
+		model: spec.model === 'claude' ? undefined : spec.model,
+		system: spec.system && spec.system.length > 0 ? spec.system : OCR_CLAUDE_SYSTEM_PROMPT,
+		effort: spec.options.effort ?? OCR_CLAUDE_DEFAULT_EFFORT,
+		messages: [
+			{
+				role: 'user',
+				content: [
+					{ type: 'image', source: { type: 'url', url: opts.imageUrl } },
+					{ type: 'text', text: '이 이미지의 텍스트를 추출하고 한국어로 번역해.' }
+				]
+			}
+		]
+	};
+
+	try {
+		const result = await sendClaude({
+			url: `${httpBase}/claude/chat`,
+			token: bridgeToken,
+			body,
+			onToken: (delta) => {
+				if (!firstTokenSeen) {
+					accumulated = delta;
+					firstTokenSeen = true;
+				} else {
+					accumulated += delta;
+				}
+				replaceBlockContent(editor, placeholderPos, accumulated);
+			},
+			signal: opts.signal
+		});
+		if (!firstTokenSeen) {
+			replaceBlockContent(editor, placeholderPos, '[OCR 결과 없음]');
+		}
+		return { reason: result.reason, text: accumulated };
+	} catch (err) {
+		const msg =
+			err instanceof ClaudeChatError ? formatClaudeError(err) : (err as Error).message;
+		replaceBlockContent(editor, placeholderPos, `[OCR 오류: ${msg}]`);
+		return { reason: 'error', text: '' };
+	}
+}
+
+function formatClaudeError(err: ClaudeChatError): string {
+	switch (err.kind) {
+		case 'unauthorized':
+			return '인증 실패 — 설정에서 브릿지 재로그인';
+		case 'service_unavailable':
+			return '데스크탑 Claude 서비스 응답 없음';
+		case 'rate_limited':
+			return '요청 한도 초과 — 잠시 후 재시도';
+		case 'cli_failed':
+			return `Claude CLI 실패${err.detail ? `: ${err.detail.slice(0, 80)}` : ''}`;
+		case 'payload_too_large':
+			return '이미지가 너무 큼';
+		case 'bad_request':
+			return `잘못된 요청${err.detail ? `: ${err.detail.slice(0, 80)}` : ''}`;
+		case 'upstream_error':
+			return '브릿지/서비스 응답 오류';
+		case 'stream_error':
+			return '스트림 중단';
+		case 'network':
+		default:
+			return '연결 실패';
 	}
 }
 
