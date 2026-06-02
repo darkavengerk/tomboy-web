@@ -34,6 +34,15 @@ describe('parseRegistry', () => {
     const bad = JSON.stringify({ commands: { x: [{ project: 'p', exec: [] }] } });
     expect(() => parseRegistry(bad)).toThrow(/exec/);
   });
+
+  it('throws when exec contains a non-string element', () => {
+    const bad = JSON.stringify({ commands: { x: [{ project: 'p', exec: ['ok', 123] }] } });
+    expect(() => parseRegistry(bad)).toThrow(/exec/);
+  });
+
+  it('throws when commands is an array', () => {
+    expect(() => parseRegistry(JSON.stringify({ commands: [] }))).toThrow(/commands/);
+  });
 });
 
 describe('lookupCommand', () => {

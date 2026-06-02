@@ -14,7 +14,7 @@ export function parseRegistry(raw: string): Registry {
     throw new Error('registry: missing "commands"');
   }
   const commandsIn = (data as { commands: unknown }).commands;
-  if (!commandsIn || typeof commandsIn !== 'object') {
+  if (!commandsIn || typeof commandsIn !== 'object' || Array.isArray(commandsIn)) {
     throw new Error('registry: "commands" must be an object');
   }
   const commands: Record<string, CommandEntry[]> = {};
