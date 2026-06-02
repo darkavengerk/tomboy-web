@@ -99,6 +99,7 @@ export function buildFootnoteMessages(
 
 /** 정의 칸 마커 뒤 텍스트를 새 텍스트로 교체(라벨로 재탐색해 위치 드리프트 무시). */
 function replaceDefinitionText(view: EditorView, label: string, text: string): void {
+	if (view.isDestroyed) return;
 	const loc = locateDefinition(view.state.doc, label);
 	if (!loc) return;
 	const tr = view.state.tr;
@@ -109,6 +110,7 @@ function replaceDefinitionText(view: EditorView, label: string, text: string): v
 
 /** 정의 칸 끝에 델타를 덧붙임(매 호출 재탐색). */
 function appendDefinitionText(view: EditorView, label: string, delta: string): void {
+	if (view.isDestroyed) return;
 	const loc = locateDefinition(view.state.doc, label);
 	if (!loc) return;
 	view.dispatch(view.state.tr.insertText(delta, loc.textTo));
@@ -129,7 +131,8 @@ export async function runFootnoteClaude(
 	const snapshot = startLoc.text;
 	const context = buildFootnoteContext(view.state.doc, label);
 
-	markActive(view, label);
+	const controller = new AbortController();
+	markActive(view, label, controller);
 	replaceDefinitionText(view, label, ''); // 정의 비우기
 	setFootnoteStep(view, label, { kind: 'thinking', label: '생각 중…', body: '' });
 
@@ -167,7 +170,8 @@ export async function runFootnoteClaude(
 				effort
 			},
 			onToken: (delta) => appendDefinitionText(view, label, delta),
-			onStep: (step) => setFootnoteStep(view, label, step)
+			onStep: (step) => setFootnoteStep(view, label, step),
+			signal: controller.signal
 		});
 		if (r.reason === 'abort') {
 			restore();

@@ -6,7 +6,8 @@ import { TomboyListItem } from '$lib/editor/extensions/TomboyListItem.js';
 import { TomboyFootnote } from '$lib/editor/footnote/index.js';
 import {
 	createFootnoteClaudePlugin,
-	footnoteClaudeKey
+	footnoteClaudeKey,
+	abortFootnoteFill
 } from '$lib/editor/footnote/claudePlugin.js';
 
 const sendClaudeMock = vi.fn();
@@ -142,5 +143,23 @@ describe('runFootnoteClaude', () => {
 		expect(sendClaudeMock).not.toHaveBeenCalled();
 		expect(toastMock).toHaveBeenCalledTimes(1);
 		expect(defText(e)).toBe('설명해줘 @claude');
+	});
+
+	it('중단(abort): signal 발화 시 원문 복원 + 잠금 해제', async () => {
+		sendClaudeMock.mockImplementation(
+			(opts: { signal?: AbortSignal }) =>
+				new Promise((resolve) => {
+					opts.signal?.addEventListener('abort', () =>
+						resolve({ reason: 'abort' })
+					);
+				})
+		);
+		const e = makeEditor();
+		const p = runFootnoteClaude(e.view, '1', '설명해줘');
+		await new Promise((r) => setTimeout(r, 0)); // sendClaude 호출까지 대기
+		abortFootnoteFill(e.view, '1');
+		await p;
+		expect(defText(e)).toBe('설명해줘 @claude');
+		expect(footnoteClaudeKey.getState(e.state)!.active).not.toContain('1');
 	});
 });
