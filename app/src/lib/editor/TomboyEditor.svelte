@@ -1647,8 +1647,9 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 
 	/* HR fold — 섹션 접기/펼치기.
 	   Each non-empty section's HR marker hosts a small +/− widget button
-	   (hrFoldPlugin). Clicking it folds the section below the HR: the
-	   first block is clamped to one visual line, the rest are hidden.
+	   (hrFoldPlugin), and the HR line itself is plain-click toggleable
+	   (.tomboy-hr-fold-line). Folding a section clamps its first block to
+	   one visual line and hides the rest.
 	   Mutually exclusive with the split layout — while columns are
 	   active the fold plugin emits no decorations at all, and while any
 	   section is folded the split Ctrl+click toggle is ignored. */
@@ -1663,24 +1664,41 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 		align-items: center;
 		justify-content: center;
 		padding: 0;
-		border: 1px solid #c8c8c8;
-		border-radius: 50%;
+		border: 1.5px solid #777;
+		border-radius: 4px;
 		background: #fff;
 		/* Explicit colour — the parent .tomboy-hr-marker hides its literal
 		   `---` text via `color: transparent`, which would otherwise be
 		   inherited by the button glyph. */
-		color: #888;
+		color: #333;
 		font-size: 15px;
+		font-weight: 700;
 		line-height: 1;
 		cursor: pointer;
 		user-select: none;
-		opacity: 0.55;
+		opacity: 0.9;
 		z-index: 1;
 	}
 	.tomboy-editor :global(.tomboy-hr-fold-btn:hover) {
 		opacity: 1;
-		color: #333;
-		border-color: #999;
+		color: #000;
+		border-color: #444;
+		background: #f2f2f2;
+	}
+	/* Whole HR line is clickable to fold/unfold its section (plain click;
+	   Ctrl/Cmd+click stays the split toggle). Pointer cursor + hover
+	   thickening signal the affordance without any modifier key. */
+	.tomboy-editor :global(.tomboy-hr-marker.tomboy-hr-fold-line) {
+		cursor: pointer;
+	}
+	.tomboy-editor :global(.tomboy-hr-marker.tomboy-hr-fold-line:hover::before) {
+		background: linear-gradient(
+			to bottom,
+			transparent calc(50% - 1px),
+			#888 calc(50% - 1px),
+			#888 calc(50% + 1px),
+			transparent calc(50% + 1px)
+		);
 	}
 	/* Folded section: first block clamped to a single visual line. */
 	.tomboy-editor :global(.tomboy-hr-fold-clamped) {

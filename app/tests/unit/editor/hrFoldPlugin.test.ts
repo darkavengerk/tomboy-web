@@ -119,6 +119,119 @@ describe('hrFoldPlugin — fold buttons', () => {
 		expect(dom.className).toContain('tomboy-hr-fold-btn');
 		expect(dom.textContent).toBe('−');
 	});
+
+	it('non-empty section HRs get the clickable-line class decoration', () => {
+		const ed = makeEditor();
+		// Both HRs own content → 2 line decorations.
+		expect(classDecos(ed, 'tomboy-hr-fold-line')).toHaveLength(2);
+	});
+
+	it('empty-section HR gets no clickable-line class', () => {
+		const ed = makeEditor(
+			'<p>제목</p><p>날짜</p><p>intro</p><p>---</p><p>content</p><p>---</p>'
+		);
+		expect(classDecos(ed, 'tomboy-hr-fold-line')).toHaveLength(1);
+	});
+});
+
+describe('hrFoldPlugin — plain click on the HR line toggles fold', () => {
+	type ClickHandler = (
+		this: unknown,
+		view: unknown,
+		pos: number,
+		event: MouseEvent
+	) => boolean;
+
+	function foldHandleClick(ed: Editor): {
+		plugin: unknown;
+		handleClick: ClickHandler;
+	} {
+		const plugin = hrFoldPluginKey.get(ed.state);
+		return {
+			plugin,
+			handleClick: plugin?.spec.props?.handleClick as ClickHandler
+		};
+	}
+
+	it('plain click on an HR line folds its section', () => {
+		const ed = makeEditor();
+		const { plugin, handleClick } = foldHandleClick(ed);
+		// HR ordinal 0 = top-level index 3.
+		const hrPos = topLevelPos(ed, 3) + 1;
+		const event = new MouseEvent('click');
+		const handled = handleClick.call(plugin, ed.view, hrPos, event);
+		expect(handled).toBe(true);
+		expect(Array.from(getFoldedOrdinals(ed.state))).toEqual([0]);
+	});
+
+	it('plain click again unfolds', () => {
+		const ed = makeEditor();
+		const { plugin, handleClick } = foldHandleClick(ed);
+		const hrPos = topLevelPos(ed, 3) + 1;
+		handleClick.call(plugin, ed.view, hrPos, new MouseEvent('click'));
+		handleClick.call(plugin, ed.view, hrPos, new MouseEvent('click'));
+		expect(getFoldedOrdinals(ed.state).size).toBe(0);
+	});
+
+	it('Ctrl/Cmd+click is not claimed (reserved for split toggle)', () => {
+		const ed = makeEditor();
+		const { plugin, handleClick } = foldHandleClick(ed);
+		const hrPos = topLevelPos(ed, 3) + 1;
+		expect(
+			handleClick.call(plugin, ed.view, hrPos, new MouseEvent('click', { ctrlKey: true }))
+		).toBe(false);
+		expect(
+			handleClick.call(plugin, ed.view, hrPos, new MouseEvent('click', { metaKey: true }))
+		).toBe(false);
+		expect(getFoldedOrdinals(ed.state).size).toBe(0);
+	});
+
+	it('click on a regular block does nothing', () => {
+		const ed = makeEditor();
+		const { plugin, handleClick } = foldHandleClick(ed);
+		// Index 4 = sec0 first (regular block).
+		const blockPos = topLevelPos(ed, 4) + 1;
+		const handled = handleClick.call(
+			plugin,
+			ed.view,
+			blockPos,
+			new MouseEvent('click')
+		);
+		expect(handled).toBe(false);
+		expect(getFoldedOrdinals(ed.state).size).toBe(0);
+	});
+
+	it('click on an empty-section HR does nothing', () => {
+		const ed = makeEditor(
+			'<p>제목</p><p>날짜</p><p>intro</p><p>---</p><p>content</p><p>---</p>'
+		);
+		const { plugin, handleClick } = foldHandleClick(ed);
+		// Trailing HR (index 5) owns nothing.
+		const hrPos = topLevelPos(ed, 5) + 1;
+		const handled = handleClick.call(
+			plugin,
+			ed.view,
+			hrPos,
+			new MouseEvent('click')
+		);
+		expect(handled).toBe(false);
+		expect(getFoldedOrdinals(ed.state).size).toBe(0);
+	});
+
+	it('split active → line click is ignored (fold inert)', () => {
+		const ed = makeEditor();
+		ed.view.dispatch(ed.state.tr.setMeta(hrSplitPluginKey, { toggle: 0 }));
+		const { plugin, handleClick } = foldHandleClick(ed);
+		const hrPos = topLevelPos(ed, 6) + 1;
+		const handled = handleClick.call(
+			plugin,
+			ed.view,
+			hrPos,
+			new MouseEvent('click')
+		);
+		expect(handled).toBe(false);
+		expect(getFoldedOrdinals(ed.state).size).toBe(0);
+	});
 });
 
 describe('hrFoldPlugin — folding a section', () => {
