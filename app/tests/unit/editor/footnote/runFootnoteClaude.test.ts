@@ -15,10 +15,14 @@ vi.mock('$lib/chatNote/backends/claude.js', async (orig) => {
 	const actual = await orig<typeof import('$lib/chatNote/backends/claude.js')>();
 	return { ...actual, sendClaude: (...a: unknown[]) => sendClaudeMock(...a) };
 });
-vi.mock('$lib/editor/terminal/bridgeSettings.js', () => ({
-	getDefaultTerminalBridge: vi.fn(async () => 'https://bridge.example'),
-	getTerminalBridgeToken: vi.fn(async () => 'tok')
-}));
+vi.mock('$lib/editor/terminal/bridgeSettings.js', async (orig) => {
+	const actual = await orig<typeof import('$lib/editor/terminal/bridgeSettings.js')>();
+	return {
+		...actual, // 실제 bridgeToHttpBase 정규화를 그대로 사용
+		getDefaultTerminalBridge: vi.fn(async () => 'wss://bridge.example/ws'),
+		getTerminalBridgeToken: vi.fn(async () => 'tok')
+	};
+});
 vi.mock('$lib/storage/appSettings.js', async (orig) => {
 	const actual = await orig<typeof import('$lib/storage/appSettings.js')>();
 	return {
@@ -114,7 +118,10 @@ describe('runFootnoteClaude', () => {
 		await runFootnoteClaude(e.view, '1', '설명해줘');
 		expect(defText(e)).toBe('답변 본문');
 		expect(footnoteClaudeKey.getState(e.state)!.active).not.toContain('1');
-		const body = (sendClaudeMock.mock.calls[0][0] as { body: never }).body as {
+		// wss://host/ws → https://host 로 정규화 후 /claude/chat 부착
+		const opts0 = sendClaudeMock.mock.calls[0][0] as { url: string; body: never };
+		expect(opts0.url).toBe('https://bridge.example/claude/chat');
+		const body = opts0.body as {
 			system: string;
 			model: string;
 			effort: string;

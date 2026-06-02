@@ -4,7 +4,8 @@ import type { EditorView } from '@tiptap/pm/view';
 import { sendClaude, ClaudeChatError } from '$lib/chatNote/backends/claude.js';
 import {
 	getDefaultTerminalBridge,
-	getTerminalBridgeToken
+	getTerminalBridgeToken,
+	bridgeToHttpBase
 } from '$lib/editor/terminal/bridgeSettings.js';
 import {
 	getClaudeDefaultModel,
@@ -160,8 +161,11 @@ export async function runFootnoteClaude(
 			getClaudeDefaultModel(),
 			getClaudeDefaultEffort()
 		]);
+		// bridge 는 보통 WebSocket URL(wss://host/ws)로 저장돼 있으므로
+		// HTTP base 로 정규화한 뒤 /claude/chat 을 붙인다(채팅 노트와 동일).
+		const httpBase = bridgeToHttpBase(bridge);
 		const r = await sendClaude({
-			url: `${bridge}/claude/chat`,
+			url: `${httpBase}/claude/chat`,
 			token,
 			body: {
 				messages: buildFootnoteMessages(context, instruction),
