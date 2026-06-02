@@ -2,10 +2,14 @@ import type { JSONContent } from '@tiptap/core';
 import {
 	OCR_SIGNATURE_RE,
 	OCR_HEADER_KEY_RE,
+	OCR_CLAUDE_VALID_EFFORTS,
+	isClaudeBackend,
 	type OcrHeaderKey
 } from './defaults.js';
 
 export interface OcrNoteSpec {
+	/** OCR 백엔드. 'claude'는 단일 호출, 'ollama'는 기존 두 단계/legacy 분기. */
+	backend: 'ollama' | 'claude';
 	/** OCR model (signature). For the post-split flow this is `got-ocr2`
 	 *  or whatever ocr-service exposes. For legacy notes it's an Ollama
 	 *  vision model id. */
@@ -21,6 +25,8 @@ export interface OcrNoteSpec {
 	options: {
 		temperature?: number;
 		num_ctx?: number;
+		/** Claude 백엔드 전용. low|medium|high|xhigh|max. */
+		effort?: string;
 	};
 }
 
@@ -70,6 +76,7 @@ export function parseOcrNote(doc: JSONContent | null | undefined): OcrNoteSpec |
 	}
 
 	const result: OcrNoteSpec = {
+		backend: isClaudeBackend(model) ? 'claude' : 'ollama',
 		model,
 		legacy: true,
 		options: {}
@@ -88,6 +95,11 @@ export function parseOcrNote(doc: JSONContent | null | undefined): OcrNoteSpec |
 			if (trimmed !== '') {
 				result.translateModel = trimmed;
 				result.legacy = false;
+			}
+		} else if (currentKey === 'effort') {
+			const trimmed = value.trim().toLowerCase();
+			if ((OCR_CLAUDE_VALID_EFFORTS as readonly string[]).includes(trimmed)) {
+				result.options.effort = trimmed;
 			}
 		} else {
 			const trimmed = value.trim();
