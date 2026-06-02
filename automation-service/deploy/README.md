@@ -30,6 +30,10 @@
     }
 `exec`는 셸을 거치지 않고 인자 배열로 실행된다. 경로/인자는 여기에만 존재(노트는 command id만 전달).
 
+> **동적 로딩:** 이 파일은 매 `/run` 요청마다 새로 읽힌다 — 명령을 추가/수정한 뒤
+> **서비스를 재시작할 필요가 없다**. 파일이 잘못된 JSON이면 그 요청만 503
+> `registry_error`로 실패하고(서비스는 죽지 않음), 고치면 다음 요청부터 정상 동작한다.
+
 ## 설치
     cp deploy/automation-service.service ~/.config/systemd/user/
     systemctl --user daemon-reload

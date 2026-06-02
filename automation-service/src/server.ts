@@ -7,7 +7,9 @@ const MAX_BYTES = Number(process.env.AUTOMATION_MAX_REQUEST_BYTES ?? 64 * 1024);
 
 export interface BuildServerOpts {
   sharedToken: string;
-  registry: Registry;
+  // A Registry resolves it once; a function is called per request so the
+  // registry file can be edited without restarting the service.
+  registry: Registry | (() => Registry);
   runnerOpts?: RunnerOpts;
 }
 
@@ -23,7 +25,16 @@ export function buildServer(opts: BuildServerOpts): FastifyInstance {
     if (!body || typeof body.command !== 'string' || !body.command) {
       return reply.code(400).send({ error: 'bad_request', detail: 'command required' });
     }
-    const entries = lookupCommand(opts.registry, body.command);
+    // Resolve the registry per request. If it's a loader and the file is
+    // missing/malformed (e.g. mid-edit), fail with 503 instead of crashing.
+    let registry: Registry;
+    try {
+      registry = typeof opts.registry === 'function' ? opts.registry() : opts.registry;
+    } catch (err) {
+      req.log.error({ err: (err as Error).message }, 'registry load failed');
+      return reply.code(503).send({ error: 'registry_error', detail: (err as Error).message });
+    }
+    const entries = lookupCommand(registry, body.command);
     if (!entries) {
       return reply.code(400).send({ error: 'unknown_command', detail: body.command });
     }
@@ -38,12 +49,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const sharedToken = process.env.BRIDGE_SHARED_TOKEN;
   if (!sharedToken) { console.error('BRIDGE_SHARED_TOKEN is required'); process.exit(1); }
   const configPath = process.env.AUTOMATION_CONFIG ?? `${process.env.HOME}/.config/tomboy-automation.json`;
-  const registry = loadRegistry(configPath);
+  // Fail fast at boot if the registry is unreadable, then read it fresh on
+  // every request so edits to the file take effect without a restart.
+  loadRegistry(configPath);
   const runnerOpts: RunnerOpts = {
     timeoutMs: Number(process.env.AUTOMATION_TIMEOUT_MS ?? 30_000),
     maxOutputBytes: Number(process.env.AUTOMATION_MAX_OUTPUT_BYTES ?? 5 * 1024 * 1024)
   };
   const port = Number(process.env.AUTOMATION_SERVICE_PORT ?? 7843);
-  const app = buildServer({ sharedToken, registry, runnerOpts });
+  const app = buildServer({ sharedToken, registry: () => loadRegistry(configPath), runnerOpts });
   app.listen({ port, host: '0.0.0.0' }).then(() => console.log(`automation-service on :${port}`));
 }

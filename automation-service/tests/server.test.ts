@@ -55,4 +55,45 @@ describe('POST /run', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ results: { tomboy: 'a,b\n1,2\n' }, errors: {} });
   });
+
+  it('reads the registry per request (no restart needed for edits)', async () => {
+    // A loader whose return value changes between requests simulates the
+    // operator editing tomboy-automation.json while the service runs.
+    let current = parseRegistry(JSON.stringify({ commands: {} }));
+    const dynApp = buildServer({
+      sharedToken: TOKEN,
+      registry: () => current,
+      runnerOpts: { spawn: fakeSpawn() }
+    });
+    const hdr = { authorization: `Bearer ${TOKEN}` };
+
+    // First: command not registered yet → 400 unknown_command.
+    const before = await dynApp.inject({ method: 'POST', url: '/run', headers: hdr, payload: { command: 'loc-history' } });
+    expect(before.statusCode).toBe(400);
+    expect(before.json().error).toBe('unknown_command');
+
+    // Operator edits the file → loader now returns the command.
+    current = parseRegistry(
+      JSON.stringify({ commands: { 'loc-history': [{ project: 'tomboy', exec: ['echo', 'x', '/repo'] }] } })
+    );
+
+    // Same running server, no rebuild: now succeeds.
+    const after = await dynApp.inject({ method: 'POST', url: '/run', headers: hdr, payload: { command: 'loc-history' } });
+    expect(after.statusCode).toBe(200);
+    expect(after.json()).toEqual({ results: { tomboy: 'a,b\n1,2\n' }, errors: {} });
+  });
+
+  it('503 registry_error when the loader throws (malformed file)', async () => {
+    const dynApp = buildServer({
+      sharedToken: TOKEN,
+      registry: () => { throw new Error('Unexpected token in JSON'); },
+      runnerOpts: { spawn: fakeSpawn() }
+    });
+    const res = await dynApp.inject({
+      method: 'POST', url: '/run',
+      headers: { authorization: `Bearer ${TOKEN}` }, payload: { command: 'loc-history' }
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error).toBe('registry_error');
+  });
 });
