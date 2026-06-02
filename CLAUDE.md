@@ -46,6 +46,7 @@ Most subsystems have dedicated skills — invoke via the `Skill` tool when worki
 | `tomboy-geomap` | `geo:` URL → inline Leaflet card | `lib/editor/geoMap/` |
 | `tomboy-ocr-note` | `ocr://` notes (GOT-OCR + translate) + `/admin/gpu` | `lib/ocrNote/`, `ocr-service/` |
 | `tomboy-imagecache` | IDB image cache + LRU + fetcher chain | `lib/imageCache/` |
+| `tomboy-dataautomation` | `자동화::` note ⟳ button → bridge → desktop runner → refresh `DATA::` chart-note CSV | `lib/automation/`, `lib/editor/automationNote/`, `bridge/src/automation.ts`, `automation-service/` |
 
 Two features have no dedicated skill yet and live inline below: **이미지 임시 저장소** (Vercel Blob) and **채팅 노트** (`llm://` + `claude://`).
 
