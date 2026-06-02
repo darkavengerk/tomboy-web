@@ -1733,6 +1733,22 @@ https://www.dropbox.com/…/starting.png</pre>
 				</details>
 
 				<details class="guide-card">
+					<summary>각주를 Claude로 채우기</summary>
+					<p class="info-text">
+						각주 설명 칸에 요청을 적고 <code>@claude</code> 뒤에 공백을 입력하면,
+						Claude가 본문 맥락을 읽어 그 각주 설명을 자동으로 채웁니다.
+					</p>
+					<pre class="snippet">좀 더 자세한 설명을 해줘 @claude </pre>
+					<ul class="guide-list">
+						<li>맥락은 <strong>본문 속 각주 참조 마커 위치까지</strong>만 전달됩니다(그 이후 본문·다른 각주는 제외).</li>
+						<li>각주답게 <strong>300자 이내</strong>로 간결하게 작성하도록 유도합니다.</li>
+						<li>데스크탑 <strong>claude-service</strong>가 켜져 있어야 합니다(채팅 노트와 동일 경로).</li>
+						<li>생성 중 생각 과정이 각주 옆에 잠깐 표시되고, 완료되면 답변만 남습니다.</li>
+						<li>실패하거나 중단하면 원래 요청 문구가 복원됩니다 — 끝 공백을 다시 입력해 재시도하세요.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
 					<summary>차트 — 데이터 노트를 그래프로</summary>
 					<p class="info-text">
 						표 데이터를 <strong>막대·선·영역·분산</strong> 그래프로 그립니다. 데이터는

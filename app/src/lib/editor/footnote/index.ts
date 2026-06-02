@@ -21,6 +21,15 @@ export type { FootnotePluginOptions, FootnotePluginState } from './plugin.js';
 export { buildInsertFootnoteTransaction } from './insertCommand.js';
 export type { InsertFootnoteResult } from './insertCommand.js';
 export { FootnoteMarker } from './node.js';
+export {
+	createFootnoteClaudePlugin,
+	footnoteClaudeKey,
+	setFootnoteStep,
+	markActive,
+	markIdle
+} from './claudePlugin.js';
+export type { FootnoteClaudeState, FootnoteClaudeOptions } from './claudePlugin.js';
+export { runFootnoteClaude } from './claudeFill.js';
 
 const ABORT_TOAST: Record<'in-title' | 'inside-existing-marker', string> = {
 	'in-title': '각주는 본문에서만 삽입할 수 있습니다',
