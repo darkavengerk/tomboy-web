@@ -1,0 +1,29 @@
+# tomboy-web automation-service — systemd --user unit (DESKTOP only).
+# NOT a container: runs host node so it can spawn host python3/git against
+# host git repos and ~/loc-history.py.
+#
+# Install (on the DESKTOP):
+#   1. cd automation-service && npm install && npm run build
+#   2. Create ~/.config/automation-service.env (see README).
+#   3. Create ~/.config/tomboy-automation.json registry (see README).
+#   4. cp deploy/automation-service.service ~/.config/systemd/user/
+#   5. systemctl --user daemon-reload && systemctl --user enable --now automation-service
+#   6. loginctl enable-linger $USER
+#
+# Listens on 0.0.0.0:7843 LAN ONLY. Bearer is the only auth; do not expose publicly.
+
+[Unit]
+Description=tomboy-web automation-service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/workspace/tomboy-web/automation-service
+ExecStart=/usr/bin/node %h/workspace/tomboy-web/automation-service/dist/server.js
+EnvironmentFile=%h/.config/automation-service.env
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
