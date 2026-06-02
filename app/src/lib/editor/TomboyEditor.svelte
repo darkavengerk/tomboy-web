@@ -38,6 +38,7 @@
 	import { createFilePreviewPlugin } from "./filePreview/filePreviewPlugin.js";
 	import { createGeoMapPlugin } from "./geoMap/geoMapPlugin.js";
 import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
+import { createAutomationNotePlugin } from "./automationNote/automationNotePlugin.js";
 	import {
 		createSendListItemPlugin,
 		sendListItemPluginKey,
@@ -461,6 +462,12 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 					name: "tomboyChartBlock",
 					addProseMirrorPlugins() {
 						return [createChartBlockPlugin()];
+					},
+				}),
+				Extension.create({
+					name: "tomboyAutomationNote",
+					addProseMirrorPlugins() {
+						return [createAutomationNotePlugin()];
 					},
 				}),
 				Extension.create({
