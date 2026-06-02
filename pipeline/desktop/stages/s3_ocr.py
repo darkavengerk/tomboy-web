@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
-from desktop.lib.config import load_config
+from desktop.lib.config import Config, load_config
 from desktop.lib.log import StageLogger
 from desktop.lib.pipeline_status import fetch_pending_reruns
 from desktop.lib.state import StateFile
@@ -73,6 +73,44 @@ def run_ocr(
     return processed
 
 
+def _build_backend(cfg: Config) -> OCRBackend:
+    """cfg.ocr.backend 값에 따라 적절한 OCRBackend 인스턴스를 반환한다.
+
+    OcrConfig.from_dict가 이미 backend 별 서브섹션 누락을 검증하므로
+    여기서는 cfg.ocr.{local_vlm,claude}가 None이 아님을 가정해도 안전.
+    그래도 방어적으로 한 번 더 확인한다 (config validation 변경에 강건).
+    """
+    name = cfg.ocr.backend
+    if name == "local_vlm":
+        if cfg.ocr.local_vlm is None:
+            raise RuntimeError(
+                "ocr.backend='local_vlm' but ocr.local_vlm subsection missing"
+            )
+        c = cfg.ocr.local_vlm
+        return get_backend(
+            "local_vlm",
+            model_id=c.model_id,
+            quantization=c.quantization,
+            max_new_tokens=c.max_new_tokens,
+            system_prompt_path=c.system_prompt_path,
+        )
+    if name == "claude":
+        if cfg.ocr.claude is None:
+            raise RuntimeError(
+                "ocr.backend='claude' but ocr.claude subsection missing"
+            )
+        c = cfg.ocr.claude
+        return get_backend(
+            "claude",
+            service_url=c.service_url,
+            service_token=c.service_token,
+            model=c.model,
+            effort=c.effort,
+            system_prompt_path=c.system_prompt_path,
+        )
+    raise RuntimeError(f"Unsupported OCR backend: {name!r}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", type=Path, default=Path("config/pipeline.yaml"))
@@ -91,17 +129,11 @@ def main(argv: list[str] | None = None) -> int:
     ocr_root = cfg.data_dir / "ocr"
     log = StageLogger("s3_ocr", cfg.data_dir)
 
-    if cfg.ocr.backend != "local_vlm" or cfg.ocr.local_vlm is None:
-        print(f"Unsupported OCR backend in config: {cfg.ocr.backend}", file=sys.stderr)
+    try:
+        backend = _build_backend(cfg)
+    except RuntimeError as e:
+        print(str(e), file=sys.stderr)
         return 1
-
-    backend = get_backend(
-        cfg.ocr.backend,
-        model_id=cfg.ocr.local_vlm.model_id,
-        quantization=cfg.ocr.local_vlm.quantization,
-        max_new_tokens=cfg.ocr.local_vlm.max_new_tokens,
-        system_prompt_path=cfg.ocr.local_vlm.system_prompt_path,
-    )
 
     rerun_uuids = fetch_pending_reruns(cfg, log)
     processed = run_ocr(
