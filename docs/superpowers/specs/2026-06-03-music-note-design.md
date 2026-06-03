@@ -147,10 +147,14 @@ export const musicPlayer = {
 
 - plugin state: doc 에서 `parseMusicNote` 로 트랙 `liPos` 목록 산출 →
   `DecorationSet`. `apply` 에서 `tr.docChanged` 면 재빌드.
-- **재생 중인 곡 마커**: `musicPlayer.currentTrack` 의 `liPos` 에 해당하는
-  `<li>` 에 node decoration 클래스(`music-track--playing`) 부여 → CSS 로
-  네이티브 마커 숨김 + 위젯 데코로 이퀄라이저/▶ 아이콘 삽입(content 시작
-  side:-1). 정지 시 마커 복귀.
+- **재생 중인 곡 마커**: plugin 은 **자기 fresh 파스의 `flatQueue`** 를
+  기준으로, `musicPlayer.currentIndex` 위치 트랙의 `liPos` 를 쓴다(스토어에
+  저장된 stale `liPos` 가 아니라 doc 변경 시마다 재계산된 값). 단 스토어
+  큐와 plugin 파스가 어긋날 수 있으므로(편집 중) **URL 매칭으로 보정**:
+  `currentTrack.url` 과 같은 url 의 트랙을 fresh `flatQueue` 에서 찾아 그
+  `liPos` 의 `<li>` 에 node decoration 클래스(`music-track--playing`) 부여
+  → CSS 로 네이티브 마커 숨김 + 위젯 데코로 이퀄라이저/▶ 아이콘 삽입
+  (content 시작 side:-1). 정지 시 마커 복귀.
 - **트랙별 컨트롤 (Ctrl-게이트)**: `modKeys.ctrl` 이 active 일 때만 각 트랙
   `<li>` 에 인라인 버튼 위젯(`side:1`) 노출. 버튼 = ▶(여기서부터 재생) →
   그 곡이 현재 재생 중이면 ⏸. 클릭 → `musicPlayer.play(queueIndex)`.
