@@ -1701,6 +1701,33 @@ https://www.dropbox.com/…/starting.png</pre>
 						<li>결과의 각 프로젝트명마다 <code>DATA::</code> 노트를 찾아 갱신하므로, 한 번에 여러 데이터 노트를 갱신할 수 있습니다.</li>
 					</ul>
 				</details>
+				<details class="guide-card">
+					<summary>음악 노트 — <code>음악::</code> 플레이리스트 재생</summary>
+					<p class="info-text">
+						제목을 <code>음악::제목</code> 으로 시작하면 음악 노트가 됩니다. 본문의
+						<code>플레이리스트: 설명</code> 줄 바로 다음 리스트의 아이템들이 트랙이 되고, 제목 아래
+						컨트롤 패널에서 재생/정지·이전/다음·탐색을 할 수 있습니다. 한 노트의 모든 플레이리스트는
+						문서 순서대로 이어 재생됩니다.
+					</p>
+					<pre class="snippet">음악::주말 플레이리스트
+
+플레이리스트: 아침
+&nbsp; - 곡 제목
+&nbsp; &nbsp; - https://example.com/song.mp3
+&nbsp; - https://example.com/another.mp3
+
+플레이리스트: 저녁
+&nbsp; - https://example.com/evening.mp3</pre>
+					<ul class="guide-list">
+						<li>아이템 2가지 형식: <strong>제목(깊이1) + URL(깊이2)</strong>, 또는 제목을 모르면
+							<strong>URL만(깊이1)</strong>.</li>
+						<li>재생 중인 곡은 리스트 마커 대신 재생 아이콘으로 표시됩니다.</li>
+						<li>각 트랙의 ▶ 버튼은 <strong>Ctrl 을 누른 채</strong> 노출됩니다 — 데스크탑은 Ctrl+마우스
+							오버, 모바일은 툴바의 <code>Ctrl</code> 버튼을 켠 뒤 탭.</li>
+						<li>현재는 <strong>직접 오디오 파일 URL</strong>(mp3 등 브라우저가 재생 가능한 링크)만
+							지원합니다. SUNO 플레이리스트 자동 채움은 향후 추가 예정입니다.</li>
+					</ul>
+				</details>
 			</section>
 
 			{:else if guideSubTab === 'editor'}
