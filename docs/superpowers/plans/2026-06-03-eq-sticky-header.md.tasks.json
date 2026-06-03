@@ -17,14 +17,14 @@
     {
       "id": 3,
       "subject": "Task 3: TomboyEditor 배선 + 마커 CSS",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1, 2],
       "description": "Modify app/src/lib/editor/TomboyEditor.svelte — register eqHeader plugin, seed state, mount StickyHeader, add .tomboy-eq-marker CSS. See plan Task 3.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/TomboyEditor.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"=== thick line\", \"mirror on scroll, hide at top\", \"click to top\", \"2+ topmost only\", \"mobile + NoteWindow\"]}\n```"
     },
     {
       "id": 4,
       "subject": "Task 4: 설정 가이드 카드",
-      "status": "pending",
+      "status": "completed",
       "description": "Modify app/src/routes/settings/+page.svelte — add === sticky-header guide-card to editor sub-tab. See plan Task 4.\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run dev\", \"acceptanceCriteria\": [\"guide-card in editor sub-tab\", \"follows pattern\", \"documents constraints\"]}\n```"
     }
   ],
