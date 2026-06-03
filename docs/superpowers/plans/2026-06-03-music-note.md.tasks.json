@@ -1,0 +1,54 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-03-music-note.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: parseMusicNote 순수 파서 + deriveName",
+      "status": "pending",
+      "description": "**Goal:** PMNode doc → MusicNote(감지·플레이리스트·flatQueue) 변환 순수 함수 + URL→표시명 헬퍼.\n\n**Files:**\n- Create: app/src/lib/music/parseMusicNote.ts\n- Test: app/tests/unit/music/parseMusicNote.test.ts\n\n**Verify:** cd app && npx vitest run tests/unit/music/parseMusicNote.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/music/parseMusicNote.ts\", \"app/tests/unit/music/parseMusicNote.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/music/parseMusicNote.test.ts\", \"acceptanceCriteria\": [\"음악:: 감지+name\", \"헤더 바로 다음 리스트만 트랙\", \"패턴 A/B + url 마크\", \"flatQueue 평탄화 + liPos\", \"deriveName\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: musicPlayer 전역 rune 스토어",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** 큐·현재곡·재생상태 + play/toggle/next/prev/seek/report 액션 스토어.\n\n**Files:**\n- Create: app/src/lib/music/musicPlayer.svelte.ts\n- Test: app/tests/unit/music/musicPlayer.test.ts\n\n**Verify:** cd app && npx vitest run tests/unit/music/musicPlayer.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/music/musicPlayer.svelte.ts\", \"app/tests/unit/music/musicPlayer.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/music/musicPlayer.test.ts\", \"acceptanceCriteria\": [\"setQueue 보존/리셋\", \"play/toggle\", \"next 끝 정지/prev seek0\", \"reportEnded/requestSeek\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: musicNotePlugin 데코레이션 + extension",
+      "status": "pending",
+      "blockedBy": [1, 2],
+      "description": "**Goal:** 재생중 마커 + Ctrl 게이트 트랙 버튼 ProseMirror 플러그인 + extension.\n\n**Files:**\n- Create: app/src/lib/editor/musicNote/musicNotePlugin.ts\n- Create: app/src/lib/editor/musicNote/index.ts\n- Test: app/tests/unit/music/musicNotePlugin.test.ts\n\n**Verify:** cd app && npx vitest run tests/unit/music/musicNotePlugin.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/musicNote/musicNotePlugin.ts\", \"app/src/lib/editor/musicNote/index.ts\", \"app/tests/unit/music/musicNotePlugin.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/music/musicNotePlugin.test.ts\", \"acceptanceCriteria\": [\"idle 0 데코\", \"재생중 node+eq\", \"ctrl on 트랙당 버튼 + onPlay\", \"비음악 null\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: MusicPlayerBar.svelte 컨트롤 패널 + audio",
+      "status": "pending",
+      "blockedBy": [1, 2],
+      "description": "**Goal:** sticky 컨트롤 패널 + 숨은 <audio> + 스토어 동기화 + 데코 갱신 nudge.\n\n**Files:**\n- Create: app/src/lib/editor/musicNote/MusicPlayerBar.svelte\n\n**Verify:** cd app && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/musicNote/MusicPlayerBar.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"재파싱→setQueue\", \"audio 동기화\", \"media report/error→next\", \"데코 nudge\", \"check 통과\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: TomboyEditor extension 등록 + 데코 CSS",
+      "status": "pending",
+      "blockedBy": [3],
+      "description": "**Goal:** tomboyMusicNote extension 등록 + 데코 클래스 전역 CSS.\n\n**Files:**\n- Modify: app/src/lib/editor/TomboyEditor.svelte\n\n**Verify:** cd app && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/TomboyEditor.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"extension 등록\", \"music 데코 CSS + eq 애니\", \"check 통과\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: /note/[id] + NoteWindow 에 MusicPlayerBar 마운트",
+      "status": "pending",
+      "blockedBy": [4, 5],
+      "description": "**Goal:** 음악 노트일 때 MusicPlayerBar 마운트 + isMusicNoteDoc 게이트 플래그.\n\n**Files:**\n- Modify: app/src/routes/note/[id]/+page.svelte\n- Modify: app/src/lib/desktop/NoteWindow.svelte\n\n**Verify:** cd app && npm run check; npm run dev 수동 시나리오\n\n```json:metadata\n{\"files\": [\"app/src/routes/note/[id]/+page.svelte\", \"app/src/lib/desktop/NoteWindow.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"route 바+재생/마커/Ctrl\", \"NoteWindow 동일\", \"비음악 미마운트\", \"check 통과\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: 설정 가이드 카드 추가",
+      "status": "pending",
+      "blockedBy": [6],
+      "description": "**Goal:** 설정 → 가이드 notes 탭에 음악 노트 guide-card 추가 (CLAUDE.md invariant).\n\n**Files:**\n- Modify: app/src/routes/settings/+page.svelte\n\n**Verify:** cd app && npm run check; npm run dev 가이드 탭 확인\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"notes 탭 guide-card\", \"포맷 예시+제약\", \"check 통과\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-03"
+}
