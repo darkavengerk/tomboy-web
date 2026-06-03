@@ -1,0 +1,32 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-03-eq-sticky-header.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: eqHeaderPlugin.ts — 마커 감지 + 데코레이션 + 통지",
+      "status": "completed",
+      "description": "Create app/src/lib/editor/eqHeader/eqHeaderPlugin.ts (isEqualsParagraph, findEqBoundary, createEqHeaderPlugin) + app/tests/unit/editor/eqHeaderBoundary.test.ts. TDD. See plan Task 1.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/eqHeader/eqHeaderPlugin.ts\", \"app/tests/unit/editor/eqHeaderBoundary.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- eqHeaderBoundary\", \"acceptanceCriteria\": [\"isEqualsParagraph true for 3+ equals\", \"findEqBoundary ignores index 0, first >=1, topmost, null\", \"decorations marker+active\", \"version + onChange\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: StickyHeader.svelte — 고정 미러 오버레이",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "Create app/src/lib/editor/eqHeader/StickyHeader.svelte — clone header DOM, fixed overlay, scroll-detect, show on scroll-past, click-to-top. See plan Task 2.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/eqHeader/StickyHeader.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"null boundary renders nothing\", \"auto-detect scroll container\", \"show only scrolled past\", \"fixed 40vh internal scroll\", \"click to top\", \"re-clone on change\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: TomboyEditor 배선 + 마커 CSS",
+      "status": "completed",
+      "blockedBy": [1, 2],
+      "description": "Modify app/src/lib/editor/TomboyEditor.svelte — register eqHeader plugin, seed state, mount StickyHeader, add .tomboy-eq-marker CSS. See plan Task 3.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/TomboyEditor.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"=== thick line\", \"mirror on scroll, hide at top\", \"click to top\", \"2+ topmost only\", \"mobile + NoteWindow\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: 설정 가이드 카드",
+      "status": "completed",
+      "description": "Modify app/src/routes/settings/+page.svelte — add === sticky-header guide-card to editor sub-tab. See plan Task 4.\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run dev\", \"acceptanceCriteria\": [\"guide-card in editor sub-tab\", \"follows pattern\", \"documents constraints\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-03"
+}
