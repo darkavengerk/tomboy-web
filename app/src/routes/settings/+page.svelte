@@ -1961,6 +1961,25 @@ Complete:</pre>
 							않고, 아이템 이동도 다음에 보이는 실제 단계 문단 아래로 갑니다.</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>=== 고정 헤더 — 위쪽을 상단에 고정</summary>
+					<p class="info-text">
+						한 라인에 단독으로 <code>===</code>(등호 3개 이상)를 두면 굵은 수평선이 그려지고,
+						그 선보다 <strong>위쪽 내용이 스크롤해도 항상 상단에 고정</strong>되는 헤더가 됩니다.
+						고정된 헤더를 누르면 문서 맨 위로 이동합니다.
+					</p>
+					<pre class="snippet">제목 라인
+===
+여기부터 본문 (스크롤 영역)</pre>
+					<ul class="guide-list">
+						<li><code>===</code>는 <strong>제목 바로 다음 줄부터</strong> 인식됩니다(제목 줄 자체는 마커가 아님).</li>
+						<li>한 문서에 <strong>하나만</strong> 적용됩니다. 두 개 이상이면 <strong>가장 위의 것만</strong> 고정 경계가 되고, 나머지는 그냥 굵은 선으로만 표시됩니다.</li>
+						<li>헤더가 길면 화면의 일정 높이(약 40%)까지만 보이고 내부에서 스크롤됩니다.</li>
+						<li>고정 헤더는 <strong>읽기 전용 미러</strong>입니다. 편집은 위로 스크롤해 원래 위치에서 하세요.</li>
+						<li><code>===</code>는 노트 내용에 그대로 저장됩니다(별도 토글·동기화 설정 없음).</li>
+					</ul>
+				</details>
 			</section>
 
 			{:else if guideSubTab === 'env'}
