@@ -1733,20 +1733,20 @@ import { createAutomationNotePlugin } from "./automationNote/automationNotePlugi
 		inset: 0;
 		background: linear-gradient(
 			to bottom,
-			transparent calc(50% - 2px),
-			#555 calc(50% - 2px),
-			#555 calc(50% + 2px),
-			transparent calc(50% + 2px)
+			transparent calc(50% - 1px),
+			#555 calc(50% - 1px),
+			#555 calc(50% + 1px),
+			transparent calc(50% + 1px)
 		);
 		pointer-events: none;
 	}
 	.tomboy-editor :global(.tomboy-eq-marker-active::before) {
 		background: linear-gradient(
 			to bottom,
-			transparent calc(50% - 2.5px),
-			#222 calc(50% - 2.5px),
-			#222 calc(50% + 2.5px),
-			transparent calc(50% + 2.5px)
+			transparent calc(50% - 1.25px),
+			#222 calc(50% - 1.25px),
+			#222 calc(50% + 1.25px),
+			transparent calc(50% + 1.25px)
 		);
 	}
 
