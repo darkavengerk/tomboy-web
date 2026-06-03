@@ -84,17 +84,21 @@ export function createEqHeaderPlugin(options: EqHeaderOptions = {}): Plugin<EqHe
 			}
 		},
 		view(view) {
+			// onChange is deferred via queueMicrotask (same as hrSplit/hrFold):
+			// it runs inside the PM dispatch cycle, and the host callback mutates
+			// external reactive state — deferring keeps any reaction that might
+			// dispatch a transaction out of the current (re-entrant-illegal) cycle.
 			// Emit once on mount so a note that already contains `===` shows the
 			// sticky header without waiting for an edit.
 			const init = eqHeaderPluginKey.getState(view.state);
-			if (init) options.onChange?.(init.boundary, init.version);
+			if (init) queueMicrotask(() => options.onChange?.(init.boundary, init.version));
 			return {
 				update(v, prevState) {
 					const cur = eqHeaderPluginKey.getState(v.state);
 					const old = eqHeaderPluginKey.getState(prevState);
 					if (!cur) return;
 					if (!old || cur.version !== old.version || cur.boundary !== old.boundary) {
-						options.onChange?.(cur.boundary, cur.version);
+						queueMicrotask(() => options.onChange?.(cur.boundary, cur.version));
 					}
 				}
 			};
