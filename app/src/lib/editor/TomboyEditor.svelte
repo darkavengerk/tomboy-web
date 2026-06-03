@@ -39,6 +39,7 @@
 	import { createGeoMapPlugin } from "./geoMap/geoMapPlugin.js";
 import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 import { createAutomationNotePlugin } from "./automationNote/automationNotePlugin.js";
+import { TomboyMusicNote } from "./musicNote/index.js";
 	import {
 		createSendListItemPlugin,
 		sendListItemPluginKey,
@@ -470,6 +471,7 @@ import { createAutomationNotePlugin } from "./automationNote/automationNotePlugi
 						return [createAutomationNotePlugin()];
 					},
 				}),
+				TomboyMusicNote,
 				Extension.create({
 					name: "tomboySendListItem",
 					addProseMirrorPlugins() {
@@ -1925,6 +1927,62 @@ import { createAutomationNotePlugin } from "./automationNote/automationNotePlugi
 	}
 	.tomboy-editor :global(.tomboy-send-li-btn:hover) {
 		background: #204a87;
+	}
+
+	.tomboy-editor :global(li.music-track--playing) {
+		list-style: none;
+		background: var(--accent-soft, #faf2f7);
+		border-radius: 6px;
+	}
+	.tomboy-editor :global(.music-track-eq) {
+		display: inline-flex;
+		gap: 2px;
+		align-items: flex-end;
+		height: 0.85em;
+		margin-right: 0.35em;
+		vertical-align: -0.1em;
+	}
+	.tomboy-editor :global(.music-track-eq i) {
+		width: 2.5px;
+		background: var(--accent, #a05);
+		border-radius: 1px;
+		animation: music-eq 1s ease-in-out infinite;
+	}
+	.tomboy-editor :global(.music-track-eq i:nth-child(1)) {
+		height: 45%;
+		animation-delay: 0s;
+	}
+	.tomboy-editor :global(.music-track-eq i:nth-child(2)) {
+		height: 100%;
+		animation-delay: 0.2s;
+	}
+	.tomboy-editor :global(.music-track-eq i:nth-child(3)) {
+		height: 65%;
+		animation-delay: 0.4s;
+	}
+	@keyframes music-eq {
+		0%,
+		100% {
+			transform: scaleY(0.5);
+		}
+		50% {
+			transform: scaleY(1);
+		}
+	}
+	.tomboy-editor :global(.tomboy-music-play-btn) {
+		float: right;
+		border: 1px solid var(--border, #e0e0dc);
+		border-radius: 6px;
+		background: var(--surface, #fff);
+		color: var(--text, #555);
+		font-size: 0.8em;
+		width: 1.8em;
+		height: 1.8em;
+		cursor: pointer;
+		margin-left: 0.4em;
+	}
+	.tomboy-editor :global(.tomboy-music-play-btn:hover) {
+		background: var(--accent-soft, #faf2f7);
 	}
 
 	/* Slip-note prev/next row. Both arrows ride on block 2's line; the
