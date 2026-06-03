@@ -60,6 +60,12 @@
 			clone
 				.querySelectorAll('[contenteditable]')
 				.forEach((el) => (el as HTMLElement).removeAttribute('contenteditable'));
+			// Force eager loading on cloned images — the mirror appears already
+			// scrolled into view, so `loading="lazy"` (set by imagePreviewPlugin)
+			// would otherwise show a blank frame until the clone enters view.
+			clone
+				.querySelectorAll('img[loading="lazy"]')
+				.forEach((el) => (el as HTMLImageElement).setAttribute('loading', 'eager'));
 			contentEl.appendChild(clone);
 		}
 		lastClonedVersion = version;
@@ -102,8 +108,7 @@
 	}
 
 	function scrollToTop() {
-		if (scrollTarget === window) window.scrollTo({ top: 0, behavior: 'smooth' });
-		else (scrollTarget as HTMLElement).scrollTo({ top: 0, behavior: 'smooth' });
+		(scrollTarget as Window | HTMLElement).scrollTo({ top: 0, behavior: 'smooth' });
 	}
 
 	let ro: ResizeObserver | null = null;
@@ -148,7 +153,9 @@
 			}
 		}}
 	>
-		<div class="tomboy-eq-sticky-content" bind:this={contentEl}></div>
+		<!-- Cloned header is a visual duplicate of the in-doc header; hide it
+		     from assistive tech so the content isn't announced twice. -->
+		<div class="tomboy-eq-sticky-content" bind:this={contentEl} aria-hidden="true"></div>
 	</div>
 {/if}
 
