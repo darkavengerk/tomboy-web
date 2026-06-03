@@ -4,13 +4,13 @@
     {
       "id": 1,
       "subject": "Task 1: eqHeaderPlugin.ts — 마커 감지 + 데코레이션 + 통지",
-      "status": "pending",
+      "status": "completed",
       "description": "Create app/src/lib/editor/eqHeader/eqHeaderPlugin.ts (isEqualsParagraph, findEqBoundary, createEqHeaderPlugin) + app/tests/unit/editor/eqHeaderBoundary.test.ts. TDD. See plan Task 1.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/eqHeader/eqHeaderPlugin.ts\", \"app/tests/unit/editor/eqHeaderBoundary.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- eqHeaderBoundary\", \"acceptanceCriteria\": [\"isEqualsParagraph true for 3+ equals\", \"findEqBoundary ignores index 0, first >=1, topmost, null\", \"decorations marker+active\", \"version + onChange\"]}\n```"
     },
     {
       "id": 2,
       "subject": "Task 2: StickyHeader.svelte — 고정 미러 오버레이",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "Create app/src/lib/editor/eqHeader/StickyHeader.svelte — clone header DOM, fixed overlay, scroll-detect, show on scroll-past, click-to-top. See plan Task 2.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/eqHeader/StickyHeader.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"null boundary renders nothing\", \"auto-detect scroll container\", \"show only scrolled past\", \"fixed 40vh internal scroll\", \"click to top\", \"re-clone on change\"]}\n```"
     },

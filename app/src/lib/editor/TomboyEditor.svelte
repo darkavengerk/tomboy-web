@@ -68,6 +68,11 @@ import { createAutomationNotePlugin } from "./automationNote/automationNotePlugi
 		createHrFoldPlugin,
 		hrFoldPluginKey,
 	} from "./hrSplit/hrFoldPlugin.js";
+	import {
+		createEqHeaderPlugin,
+		eqHeaderPluginKey,
+	} from "./eqHeader/eqHeaderPlugin.js";
+	import StickyHeader from "./eqHeader/StickyHeader.svelte";
 	import { createLabeledDividerPlugin } from "./labeledDivider/labeledDividerPlugin.js";
 	import {
 		loadActiveOrdinals,
@@ -265,6 +270,10 @@ import { createAutomationNotePlugin } from "./automationNote/automationNotePlugi
 
 	let editorElement: HTMLDivElement;
 	let editor: Editor | null = $state(null);
+	// `===` 고정 헤더: 경계(top-level 인덱스)와 doc 버전. eqHeaderPlugin 의
+	// onChange 가 갱신하고 StickyHeader 가 소비한다.
+	let eqBoundary = $state<number | null>(null);
+	let eqVersion = $state(0);
 	// --- In-note find ("Ctrl/Cmd+F") state ---
 	// findOpen drives the FindBar; findQuery is the controlled input value;
 	// findCount / findActiveIndex mirror the find plugin's state on every
@@ -546,6 +555,19 @@ import { createAutomationNotePlugin } from "./automationNote/automationNotePlugi
 											prev.size,
 										);
 									}
+								},
+							}),
+						];
+					},
+				}),
+				Extension.create({
+					name: "tomboyEqHeader",
+					addProseMirrorPlugins() {
+						return [
+							createEqHeaderPlugin({
+								onChange: (boundary, version) => {
+									eqBoundary = boundary;
+									eqVersion = version;
 								},
 							}),
 						];
@@ -873,6 +895,17 @@ import { createAutomationNotePlugin } from "./automationNote/automationNotePlugi
 		// Seed the title snapshot so the onUpdate latch-clearing compares
 		// against the current title rather than an empty string.
 		lastTitleSnapshot = extractTitleText(editor.state.doc).trim();
+
+		// Seed `===` boundary/version from the freshly-created plugin state so a
+		// note that already contains `===` shows the sticky header immediately,
+		// regardless of view()/onChange ordering.
+		{
+			const eqState = eqHeaderPluginKey.getState(editor.state);
+			if (eqState) {
+				eqBoundary = eqState.boundary;
+				eqVersion = eqState.version;
+			}
+		}
 
 		// Title uniqueness blur validator. Fires when the cursor transitions
 		// OUT of the first block (title line). The editor is reused across
@@ -1382,6 +1415,12 @@ import { createAutomationNotePlugin } from "./automationNote/automationNotePlugi
 		class:tomboy-todo-ctrl-hold={ctrlHeld}
 		oncontextmenu={handleContextMenu}
 	></div>
+	<StickyHeader
+		{editor}
+		editorEl={editorElement}
+		boundaryIndex={eqBoundary}
+		version={eqVersion}
+	/>
 </div>
 
 {#if ctxMenu && editor}
@@ -1670,6 +1709,41 @@ import { createAutomationNotePlugin } from "./automationNote/automationNotePlugi
 			#888 calc(50% - 1px),
 			#888 calc(50% + 1px),
 			transparent calc(50% + 1px)
+		);
+	}
+
+	/* `===` 단독 라인 → 굵은 수평선. `---`(.tomboy-hr-marker)보다 두껍고
+	   진하게. 인덱스 0(제목)은 데코레이션되지 않으므로 영향 없음. 첫 마커는
+	   고정 헤더 경계(.tomboy-eq-marker-active)이며 살짝 더 진하다. 미러
+	   오버레이 자체의 스타일은 StickyHeader.svelte 안에 있다. */
+	.tomboy-editor :global(.tomboy-eq-marker) {
+		position: relative;
+		color: transparent;
+		caret-color: #333;
+		min-height: 1.2em;
+		margin: 0.8em 0;
+		padding: 0;
+	}
+	.tomboy-editor :global(.tomboy-eq-marker::before) {
+		content: "";
+		position: absolute;
+		inset: 0;
+		background: linear-gradient(
+			to bottom,
+			transparent calc(50% - 2px),
+			#555 calc(50% - 2px),
+			#555 calc(50% + 2px),
+			transparent calc(50% + 2px)
+		);
+		pointer-events: none;
+	}
+	.tomboy-editor :global(.tomboy-eq-marker-active::before) {
+		background: linear-gradient(
+			to bottom,
+			transparent calc(50% - 2.5px),
+			#222 calc(50% - 2.5px),
+			#222 calc(50% + 2.5px),
+			transparent calc(50% + 2.5px)
 		);
 	}
 
