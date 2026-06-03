@@ -113,6 +113,7 @@
 					step="0.1"
 					value={musicPlayer.currentTime}
 					oninput={onSeekInput}
+					aria-label="탐색"
 				/>
 				<span class="t">{fmt(musicPlayer.duration)}</span>
 			</div>
@@ -191,14 +192,14 @@
 		flex: 1;
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: clamp(0.35rem, 1.4vw, 0.5rem);
 	}
 	.music-seek input[type='range'] {
 		flex: 1;
 		accent-color: var(--accent, #a05);
 	}
 	.music-seek .t {
-		font-size: 0.7rem;
+		font-size: clamp(0.62rem, 2.2vw, 0.7rem);
 		color: var(--text-muted, #888);
 		font-variant-numeric: tabular-nums;
 	}
