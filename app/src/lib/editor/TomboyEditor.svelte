@@ -1969,6 +1969,9 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 			transform: scaleY(1);
 		}
 	}
+	.tomboy-editor :global(.music-track-eq--paused i) {
+		animation-play-state: paused;
+	}
 	.tomboy-editor :global(.tomboy-music-play-btn) {
 		float: right;
 		border: 1px solid var(--border, #e0e0dc);

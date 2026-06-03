@@ -14,9 +14,9 @@ export interface BuildOpts {
 	onPlay: (index: number) => void;
 }
 
-function eqWidget(): HTMLElement {
+function eqWidget(playing: boolean): HTMLElement {
 	const span = document.createElement('span');
-	span.className = 'music-track-eq';
+	span.className = playing ? 'music-track-eq' : 'music-track-eq music-track-eq--paused';
 	span.contentEditable = 'false';
 	span.setAttribute('aria-hidden', 'true');
 	span.innerHTML = '<i></i><i></i><i></i>';
@@ -51,15 +51,13 @@ export function buildMusicDecorations(doc: PMNode, opts: BuildOpts): DecorationS
 			decos.push(
 				Decoration.node(track.liPos, track.liPos + li.nodeSize, { class: 'music-track--playing' })
 			);
-			if (opts.isPlaying) {
-				decos.push(
-					Decoration.widget(track.liPos + 1, eqWidget, {
-						side: -1,
-						key: `music-eq:${track.url}`,
-						ignoreSelection: true
-					})
-				);
-			}
+			decos.push(
+				Decoration.widget(track.liPos + 1, () => eqWidget(opts.isPlaying), {
+					side: -1,
+					key: `music-eq:${track.url}:${opts.isPlaying}`,
+					ignoreSelection: true
+				})
+			);
 		}
 
 		if (opts.ctrlActive) {

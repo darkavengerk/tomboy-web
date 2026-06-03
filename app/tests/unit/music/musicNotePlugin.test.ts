@@ -1,9 +1,11 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Editor, Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
+import type { DecorationSet } from '@tiptap/pm/view';
 import { TomboyUrlLink } from '$lib/editor/extensions/TomboyUrlLink.js';
 import { buildMusicDecorations, handleTrackButtonClick, createMusicNotePlugin, musicNotePluginKey } from '$lib/editor/musicNote/musicNotePlugin.js';
 import { musicPlayer, __resetMusicPlayer } from '$lib/music/musicPlayer.svelte.js';
+import { parseMusicNote } from '$lib/music/parseMusicNote.js';
 
 let ed: Editor | null = null;
 function doc(html: string) {
@@ -71,6 +73,12 @@ describe('buildMusicDecorations', () => {
 
 		__resetMusicPlayer(); // cleanup: don't leak store state
 	});
+
+	it('current track still gets node deco + eq widget when paused (cued)', () => {
+		const d = doc(TWO);
+		const set = buildMusicDecorations(d, { currentUrl: 'https://h/1.mp3', isPlaying: false, ctrlActive: false, onPlay: () => {} });
+		expect(set.find().length).toBe(2); // node deco + eq widget, even paused
+	});
 });
 
 describe('createMusicNotePlugin', () => {
@@ -93,5 +101,25 @@ describe('createMusicNotePlugin', () => {
 		const result = decorationsFn?.(ed2.state);
 		ed2.destroy();
 		expect(result).toBeNull();
+	});
+
+	it('createMusicNotePlugin decorations reflect live musicPlayer state', () => {
+		__resetMusicPlayer();
+		doc(TWO); // sets module-level `ed`
+		const state = ed!.state;
+		const plugin = createMusicNotePlugin();
+		const decoFn = plugin.props.decorations as (state: unknown) => DecorationSet | null;
+
+		// Set up queue with real liPos values from the parsed doc
+		musicPlayer.setQueue('g', parseMusicNote(state.doc).flatQueue);
+		musicPlayer.play(0);
+		expect(musicPlayer.isPlaying).toBe(true);
+
+		const result = decoFn.call(plugin, state) as DecorationSet | null;
+		expect(result).not.toBeNull();
+		// playing track 0 → node deco + eq widget = 2 (ctrlActive=false in jsdom)
+		expect(result!.find().length).toBe(2);
+
+		__resetMusicPlayer();
 	});
 });
