@@ -26,6 +26,11 @@ function isListNode(node: PMNode): boolean {
 	return node.type.name === 'bulletList' || node.type.name === 'orderedList';
 }
 
+/** prose 끝에 붙은 구두점 제거 — 마크 href 가 아닌 텍스트 매칭에만 적용. */
+function trimTrailingPunct(url: string): string {
+	return url.replace(/[.,;:!?)\]}'"]+$/, '');
+}
+
 /** node 안의 첫 http(s) URL — tomboyUrlLink/link 마크 href 우선, 없으면 본문 정규식. */
 function firstUrlInNode(node: PMNode): string | null {
 	let marked: string | null = null;
@@ -46,7 +51,7 @@ function firstUrlInNode(node: PMNode): string | null {
 	});
 	if (marked) return marked;
 	const m = URL_RE.exec(node.textContent);
-	return m ? m[0] : null;
+	return m ? trimTrailingPunct(m[0]) : null;
 }
 
 /** listItem 의 head 텍스트 = 첫 자식(문단) 텍스트, 중첩 리스트 제외. */
@@ -77,29 +82,35 @@ export function deriveName(url: string): string {
 
 function extractTrack(li: PMNode, liPos: number): MusicTrack | null {
 	const head = listItemHead(li);
-	// 패턴 B: head 자체가 URL
 	const headMatch = URL_RE.exec(head);
+
+	// 패턴 B: head 자체가 정확히 URL (bare URL line)
 	if (headMatch && headMatch[0] === head.trim()) {
-		const url = headMatch[0];
+		const url = trimTrailingPunct(headMatch[0]);
 		return { url, title: null, display: deriveName(url), liPos };
 	}
+
 	// 패턴 A: head = 제목, 중첩 리스트 첫 아이템에 URL
 	const nested = nestedListOf(li);
 	if (nested && nested.firstChild) {
 		const url = firstUrlInNode(nested.firstChild);
 		if (url) return { url, title: head || null, display: head || deriveName(url), liPos };
 	}
-	// head 자체에 URL 이 끼어있는 단일-깊이 케이스도 허용(패턴 B 변형)
-	if (headMatch) {
-		const url = headMatch[0];
-		return { url, title: null, display: deriveName(url), liPos };
-	}
-	// tomboyUrlLink mark href 도 별도로 탐색 (head 가 링크 텍스트인 경우)
+
+	// 패턴 C (신규): head 문단 자체에 마크/링크로 URL 이 포함된 경우 (link text = 제목)
+	// e.g. <li><p><a href="...">My Song</a></p></li>
 	const firstChild = li.firstChild;
 	if (firstChild) {
 		const url = firstUrlInNode(firstChild);
-		if (url) return { url, title: null, display: deriveName(url), liPos };
+		if (url) return { url, title: head || null, display: head || deriveName(url), liPos };
 	}
+
+	// 패턴 B 변형: head 안에 URL 이 끼어있는 단일-깊이 케이스
+	if (headMatch) {
+		const url = trimTrailingPunct(headMatch[0]);
+		return { url, title: null, display: deriveName(url), liPos };
+	}
+
 	return null;
 }
 

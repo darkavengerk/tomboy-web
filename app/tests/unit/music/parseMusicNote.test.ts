@@ -18,8 +18,9 @@ describe('parseMusicNote — detection', () => {
 		expect(note.name).toBe('주말');
 	});
 	it('음악:: with empty name still music', () => {
-		expect(parseMusicNote(makeEditor('<p>음악::</p>').state.doc).isMusic).toBe(true);
-		expect(parseMusicNote(makeEditor('<p>음악::</p>').state.doc).name).toBe('');
+		const emptyNote = parseMusicNote(makeEditor('<p>음악::</p>').state.doc);
+		expect(emptyNote.isMusic).toBe(true);
+		expect(emptyNote.name).toBe('');
 	});
 	it('non-music title', () => {
 		const note = parseMusicNote(makeEditor('<p>그냥 노트</p>').state.doc);
@@ -53,6 +54,8 @@ describe('parseMusicNote — track extraction', () => {
 			makeEditor('<p>음악::x</p><p>플레이리스트:</p><ul><li><p><a class="tomboy-link-url" href="https://h/c.mp3">노래</a></p></li></ul>').state.doc
 		);
 		expect(note.flatQueue[0].url).toBe('https://h/c.mp3');
+		expect(note.flatQueue[0].title).toBe('노래');
+		expect(note.flatQueue[0].display).toBe('노래');
 	});
 	it('skips non-URL items, ignores lists without a 플레이리스트 header', () => {
 		const note = parseMusicNote(
@@ -73,6 +76,20 @@ describe('parseMusicNote — track extraction', () => {
 			makeEditor('<p>음악::x</p><p>플레이리스트: a</p><p>끼어든 문단</p><ul><li><p>https://h/x.mp3</p></li></ul>').state.doc
 		);
 		expect(note.flatQueue).toHaveLength(0);
+	});
+	it('orderedList: track extracted from ol under 플레이리스트 header', () => {
+		const note = parseMusicNote(
+			makeEditor('<p>음악::x</p><p>플레이리스트: 테스트</p><ol><li><p>https://h/o.mp3</p></li></ol>').state.doc
+		);
+		expect(note.flatQueue).toHaveLength(1);
+		expect(note.flatQueue[0].url).toBe('https://h/o.mp3');
+	});
+	it('trailing punctuation stripped from URL in nested pattern-A item', () => {
+		const note = parseMusicNote(
+			makeEditor('<p>음악::x</p><p>플레이리스트: 구두점</p><ul><li><p>제목</p><ul><li><p>https://h/a.mp3).</p></li></ul></li></ul>').state.doc
+		);
+		expect(note.flatQueue).toHaveLength(1);
+		expect(note.flatQueue[0].url).toBe('https://h/a.mp3');
 	});
 });
 
