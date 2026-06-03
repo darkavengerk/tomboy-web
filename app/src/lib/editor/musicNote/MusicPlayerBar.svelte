@@ -43,15 +43,20 @@
 		return '';
 	});
 
-	// <audio> src 동기화.
+	// <audio> src 동기화. 트랙이 바뀌면(특히 자동 넘김) 새 src 로 재생을 이어준다.
 	$effect(() => {
 		const el = audioEl;
 		const url = track?.url ?? '';
 		if (!el) return;
-		if ((el.getAttribute('src') ?? '') !== url) {
-			if (url) el.src = url;
-			else el.removeAttribute('src');
+		if ((el.getAttribute('src') ?? '') === url) return;
+		if (!url) {
+			el.removeAttribute('src');
+			return;
 		}
+		el.src = url;
+		// 자동 넘김(reportEnded→next)은 isPlaying 을 계속 true 로 둔다 → 재생 동기화
+		// 이펙트가 다시 안 돈다. 새 src 는 일시정지로 로드되므로 여기서 직접 이어 재생.
+		if (untrack(() => musicPlayer.isPlaying)) void el.play().catch(() => {});
 	});
 	// 재생/일시정지 동기화.
 	$effect(() => {
