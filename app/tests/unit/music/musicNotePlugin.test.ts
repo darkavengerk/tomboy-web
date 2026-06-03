@@ -3,6 +3,7 @@ import { Editor, Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { TomboyUrlLink } from '$lib/editor/extensions/TomboyUrlLink.js';
 import { buildMusicDecorations, handleTrackButtonClick, createMusicNotePlugin, musicNotePluginKey } from '$lib/editor/musicNote/musicNotePlugin.js';
+import { musicPlayer, __resetMusicPlayer } from '$lib/music/musicPlayer.svelte.js';
 
 let ed: Editor | null = null;
 function doc(html: string) {
@@ -46,6 +47,29 @@ describe('buildMusicDecorations', () => {
 			false // isCurrent = false → calls onPlay
 		);
 		expect(called).toBe(0);
+	});
+
+	it('handleTrackButtonClick toggles (pauses) current track without calling onPlay', () => {
+		__resetMusicPlayer();
+		// Set up a queue and start playing track 0
+		musicPlayer.setQueue('test-guid', [
+			{ url: 'https://h/1.mp3', title: 'Track 1', display: 'Track 1', liPos: 0 },
+			{ url: 'https://h/2.mp3', title: 'Track 2', display: 'Track 2', liPos: 10 }
+		]);
+		musicPlayer.play(0);
+		expect(musicPlayer.isPlaying).toBe(true);
+
+		let onPlayCalled = false;
+		handleTrackButtonClick(
+			{ currentUrl: 'https://h/1.mp3', isPlaying: true, ctrlActive: true, onPlay: () => { onPlayCalled = true; } },
+			0,
+			true // isCurrent = true → toggle
+		);
+
+		expect(musicPlayer.isPlaying).toBe(false); // toggle paused it
+		expect(onPlayCalled).toBe(false); // onPlay must NOT be called
+
+		__resetMusicPlayer(); // cleanup: don't leak store state
 	});
 });
 
