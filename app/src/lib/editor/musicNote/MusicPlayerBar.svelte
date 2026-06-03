@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import type { Editor } from '@tiptap/core';
 	import { parseMusicNote } from '$lib/music/parseMusicNote.js';
 	import { musicPlayer } from '$lib/music/musicPlayer.svelte.js';
@@ -22,10 +23,12 @@
 	});
 
 	// doc 변경마다 재파싱 → 스토어 큐 갱신.
+	// setQueue 가 읽는 player $state(queue/currentIndex/activeNoteGuid)를 같은 이펙트에서
+	// 다시 쓰므로 untrack 으로 자기-구독을 끊는다. 의존성은 version(=doc 변경)뿐.
 	$effect(() => {
 		version; // subscribe
 		const note = parseMusicNote(editor.state.doc);
-		musicPlayer.setQueue(guid, note.flatQueue);
+		untrack(() => musicPlayer.setQueue(guid, note.flatQueue));
 	});
 
 	const track = $derived(musicPlayer.currentTrack);
