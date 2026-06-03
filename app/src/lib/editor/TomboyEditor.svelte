@@ -268,7 +268,10 @@ import { createAutomationNotePlugin } from "./automationNote/automationNotePlugi
 		| ((newCount: number, prevCount: number) => void)
 		| undefined = undefined;
 
-	let editorElement: HTMLDivElement;
+	// `$state` (not a plain `let`) because it's read reactively in the template
+	// — passed to <StickyHeader> as `editorEl`. bind:this assigns it once at
+	// mount; declaring it $state keeps svelte-check happy about that read.
+	let editorElement = $state<HTMLDivElement>()!;
 	let editor: Editor | null = $state(null);
 	// `===` 고정 헤더: 경계(top-level 인덱스)와 doc 버전. eqHeaderPlugin 의
 	// onChange 가 갱신하고 StickyHeader 가 소비한다.
