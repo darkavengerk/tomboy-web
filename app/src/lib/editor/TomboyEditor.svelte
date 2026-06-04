@@ -213,12 +213,15 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 		 *  without re-fetching the URL — Dropbox shared links block CORS
 		 *  `fetch()` even though `<img src>` works. */
 		onimageinserted?: (url: string, file: File) => void;
-		/** Keep the caret scrolled clear of a fixed bottom toolbar while
-		 *  typing. Only the mobile note route (/note/[id]) overlays such a
-		 *  toolbar, so it opts in; desktop windows leave it false and keep the
-		 *  browser's native scroll behaviour. Pairs with the page's
-		 *  `--toolbar-height` var + `scroll-padding-bottom`. */
+		/** Keep the caret scrolled clear of a floating bottom toolbar while
+		 *  typing. Surfaces that overlay such a toolbar opt in; others leave it
+		 *  false and keep the browser's native scroll behaviour. */
 		keepCursorVisible?: boolean;
+		/** Scroll model for `keepCursorVisible`. "window" (mobile /note/[id]):
+		 *  body scroll + fixed toolbar (`--toolbar-height`). "container"
+		 *  (desktop NoteWindow): the editor's own overflow parent + the 30px
+		 *  `--toolbar-h` strip. */
+		cursorVisibilityMode?: "window" | "container";
 	}
 
 	let {
@@ -248,6 +251,7 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 		noteFocused = true,
 		onimageinserted = () => {},
 		keepCursorVisible = false,
+		cursorVisibilityMode = "window",
 	}: Props = $props();
 
 	let ctxMenu = $state<{ x: number; y: number } | null>(null);
@@ -1005,10 +1009,11 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 			scheduleAutoLinkScan({ full: true });
 		});
 
-		// Keep the caret above the fixed bottom toolbar while typing (mobile
-		// note route opts in). No-op unless `--toolbar-height` is set on <html>.
+		// Keep the caret above the floating bottom toolbar while typing (mobile
+		// note route + desktop NoteWindow opt in). No-op unless the mode's
+		// toolbar var (--toolbar-height / --toolbar-h) is set.
 		const uninstallCursorVisibility = keepCursorVisible
-			? installCursorVisibility(editor)
+			? installCursorVisibility(editor, { mode: cursorVisibilityMode })
 			: () => {};
 
 		return () => {
