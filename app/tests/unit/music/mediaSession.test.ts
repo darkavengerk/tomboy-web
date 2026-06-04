@@ -126,6 +126,22 @@ describe('mediaSession.installMediaSession', () => {
 		expect(session.handlers['play']).toBeNull();
 		expect(session.handlers['seekto']).toBeNull();
 	});
+
+	it('uninstall resets the metadata cache so a later sync rebuilds', () => {
+		const uninstall = installMediaSession({
+			play() {},
+			pause() {},
+			next() {},
+			prev() {},
+			seekTo() {}
+		});
+		syncMediaSession({ metaInit: meta('a'), isPlaying: true, duration: 60, position: 0 });
+		expect(metaCtorCount).toBe(1);
+		uninstall();
+		// 같은 키지만 uninstall 이 캐시를 비웠으므로 다시 생성된다.
+		syncMediaSession({ metaInit: meta('a'), isPlaying: true, duration: 60, position: 0 });
+		expect(metaCtorCount).toBe(2);
+	});
 });
 
 describe('mediaSession — unsupported environment', () => {

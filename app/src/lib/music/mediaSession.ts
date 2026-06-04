@@ -97,15 +97,20 @@ export function syncMediaSession(state: SyncState): void {
 
 	const key = metaKey(state.metaInit);
 	if (key !== lastMetaKey) {
-		lastMetaKey = key;
 		try {
 			ms.metadata = state.metaInit ? new MediaMetadata(state.metaInit) : null;
+			lastMetaKey = key;
 		} catch {
 			/* 무시 */
 		}
 	}
 
-	ms.playbackState = state.metaInit ? (state.isPlaying ? 'playing' : 'paused') : 'none';
+	// playbackState 쓰기도 부분 구현 브라우저에서 throw 할 수 있어 가드.
+	try {
+		ms.playbackState = state.metaInit ? (state.isPlaying ? 'playing' : 'paused') : 'none';
+	} catch {
+		/* 무시 */
+	}
 
 	if (state.duration > 0 && Number.isFinite(state.duration)) {
 		const position = Math.max(0, Math.min(state.position, state.duration));
