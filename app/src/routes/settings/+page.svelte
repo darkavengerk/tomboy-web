@@ -1702,6 +1702,37 @@ https://www.dropbox.com/…/starting.png</pre>
 					</ul>
 				</details>
 				<details class="guide-card">
+					<summary>노트 수 자동화 (자동화::note-count)</summary>
+					<p class="info-text">
+						제목이 <code>자동화::note-count</code> 인 노트는 「⟳ 실행」을 누르면 <strong>브릿지 없이
+						브라우저에서 바로</strong> 현재 노트들을 셉니다. 생성일을 기준으로 <strong>주(ISO week) 단위
+						누적</strong>으로, 카테고리(노트북)별 개수를 <code>DATA::note-count</code> 노트에 CSV로 적고,
+						이를 라인차트로 그리는 <code>노트 수 추이</code> 차트 노트를 만듭니다(없을 때만 생성).
+					</p>
+					<pre class="snippet">자동화::note-count
+
+⟳ 실행
+
+- 2026-06-04 18:50 — DATA::note-count 생성, 노트 수 추이 차트 생성
+
+────────────
+DATA::note-count
+week,[0] Slip-Box,[1] 프로젝트A,[1] 프로젝트B
+2026-W20,12,8,3
+2026-W21,15,10,3</pre>
+					<ul class="guide-list">
+						<li>세는 카테고리: <code>[0] Slip-Box</code> 노트북과 <code>[1]</code> 로 시작하는 모든
+							노트북. 각 카테고리가 <strong>한 컬럼</strong>이 되고, 새 <code>[1]…</code> 노트북이
+							생기면 다음 실행 때 자동으로 컬럼이 늘어납니다.</li>
+						<li>값은 <strong>누적 총합</strong>입니다 — 그 주 시점까지 생성된(현재 남아 있는) 노트 개수.
+							삭제된 노트·템플릿은 제외됩니다.</li>
+						<li>로컬 전용이라 데스크탑 automation-service나 브릿지 설정이 필요 없습니다.</li>
+						<li>차트 노트는 처음 한 번만 생성됩니다. 차트는 데이터 노트를 실시간으로 읽으므로, 이후
+							실행은 <code>DATA::note-count</code> 만 갱신해도 차트가 따라 갱신됩니다(차트 설정을 직접
+							바꿔도 덮어쓰지 않음).</li>
+					</ul>
+				</details>
+				<details class="guide-card">
 					<summary>음악 노트 — <code>음악::</code> 플레이리스트 재생</summary>
 					<p class="info-text">
 						제목을 <code>음악::제목</code> 으로 시작하면 음악 노트가 됩니다. 본문의
