@@ -1,0 +1,37 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-04-background-music-playback.md",
+  "tasks": [
+    {
+      "id": 13,
+      "subject": "Task 1: mediaSession.ts 모듈",
+      "status": "completed",
+      "description": "**Goal:** navigator.mediaSession을 다루는 순수·테스트 가능한 모듈(룬 스토어 무관, 콜백/상태만 받음).\n\n**Files:**\n- Create: app/src/lib/music/mediaSession.ts\n- Test: app/tests/unit/music/mediaSession.test.ts\n\n**Acceptance Criteria:** buildMetadataInit 매핑 / syncMediaSession playbackState+diff+positionState guard / installMediaSession 핸들러+uninstall / 미지원 no-op.\n\n**Verify:** cd app && npx vitest run tests/unit/music/mediaSession.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/music/mediaSession.ts\", \"app/tests/unit/music/mediaSession.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/music/mediaSession.test.ts\", \"acceptanceCriteria\": [\"buildMetadataInit maps fields\", \"syncMediaSession playbackState playing/paused/none\", \"metadata rebuilt only on key change\", \"positionState skipped when duration<=0 and clamped when valid\", \"installMediaSession wires + uninstall clears handlers\", \"no-op when mediaSession unsupported\"]}\n```"
+    },
+    {
+      "id": 14,
+      "subject": "Task 2: musicPlayer.pause() 추가",
+      "status": "completed",
+      "description": "**Goal:** 인덱스를 바꾸지 않고 재생만 멈추는 pause()를 스토어에 추가.\n\n**Files:**\n- Modify: app/src/lib/music/musicPlayer.svelte.ts\n- Test: app/tests/unit/music/musicPlayer.test.ts\n\n**Acceptance Criteria:** pause()가 isPlaying=false, currentIndex 보존.\n\n**Verify:** cd app && npx vitest run tests/unit/music/musicPlayer.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/music/musicPlayer.svelte.ts\", \"app/tests/unit/music/musicPlayer.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/music/musicPlayer.test.ts\", \"acceptanceCriteria\": [\"pause() sets isPlaying false and keeps currentIndex\"]}\n```"
+    },
+    {
+      "id": 15,
+      "subject": "Task 3: MusicPlayerBar 배선 (프리로드 + Media Session)",
+      "status": "completed",
+      "blockedBy": [
+        13,
+        14
+      ],
+      "description": "**Goal:** 프리로드용 숨김 <audio> + Media Session 배선 $effect 3개(preload/install/sync).\n\n**Files:**\n- Modify: app/src/lib/editor/musicNote/MusicPlayerBar.svelte\n- Test: app/tests/unit/music/MusicPlayerBar.test.ts\n\n**Acceptance Criteria:** 마운트+play(0)→metadata(title a/artist 길/album 드라이브)+playbackState playing / 두 번째 audio가 다음 곡 데움, 마지막 곡 빈 값 / render 루프 없음+기존 자동넘김 통과.\n\n**Verify:** cd app && npx vitest run tests/unit/music/MusicPlayerBar.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/musicNote/MusicPlayerBar.svelte\", \"app/tests/unit/music/MusicPlayerBar.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/music/MusicPlayerBar.test.ts\", \"acceptanceCriteria\": [\"lock-screen metadata reflects current track (title a/artist 길/album 드라이브) and playbackState playing\", \"second audio preloads next track url, empty on last track\", \"render mounts without effect loop and existing auto-advance test passes\"]}\n```"
+    },
+    {
+      "id": 16,
+      "subject": "Task 4: 가이드 문서 (env 탭 카드)",
+      "status": "completed",
+      "blockedBy": [
+        15
+      ],
+      "description": "**Goal:** 설정→가이드→환경/호환성 env 탭에 백그라운드 재생 guide-card 추가(CLAUDE.md 필수).\n\n**Files:**\n- Modify: app/src/routes/settings/+page.svelte\n\n**Acceptance Criteria:** env 탭 guide-card 추가(PWA 설치 권장+iOS 미보장+Android 정상+오프라인 미지원) / npm run check 0 errors.\n\n**Verify:** cd app && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"env guide tab has background-playback guide-card\", \"card covers PWA install + iOS caveat + Android + no-offline\", \"npm run check 0 errors\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-04T05:20:45Z"
+}

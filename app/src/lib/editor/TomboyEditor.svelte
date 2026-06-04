@@ -2038,10 +2038,35 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 		background: #204a87;
 	}
 
-	.tomboy-editor :global(li.music-track--playing) {
+	/* 플레이리스트 모드 트랙 행 — 글머리표 대신 ♪/재생아이콘 + 곡 제목. */
+	.tomboy-editor :global(li.music-track) {
 		list-style: none;
+	}
+	.tomboy-editor :global(li.music-track--playing) {
 		background: var(--accent-soft, #faf2f7);
 		border-radius: 6px;
+	}
+	/* display 제목 위젯이 보여지는 동안 실제 URL/원문은 숨김(편집 시 데코 제거→복원). */
+	.tomboy-editor :global(.music-row-hide) {
+		display: none;
+	}
+	.tomboy-editor :global(.music-track-name) {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3em;
+	}
+	.tomboy-editor :global(.music-track-mark) {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 1.1em;
+		color: var(--accent, #a05);
+	}
+	.tomboy-editor :global(.music-track-mark .music-track-eq) {
+		margin-right: 0;
+	}
+	.tomboy-editor :global(.music-track-label) {
+		color: var(--text, #222);
 	}
 	.tomboy-editor :global(.music-track-eq) {
 		display: inline-flex;
