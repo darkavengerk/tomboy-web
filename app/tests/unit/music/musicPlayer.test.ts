@@ -72,4 +72,12 @@ describe('musicPlayer transport', () => {
 		expect(musicPlayer.currentTime).toBe(42);
 		expect(musicPlayer.seekToken).toBe(before + 1);
 	});
+	it('pause stops playback without changing the index', () => {
+		musicPlayer.setQueue('n1', [t('a'), t('b')]);
+		musicPlayer.play(1);
+		expect(musicPlayer.isPlaying).toBe(true);
+		musicPlayer.pause();
+		expect(musicPlayer.isPlaying).toBe(false);
+		expect(musicPlayer.currentIndex).toBe(1);
+	});
 });

@@ -78,6 +78,10 @@ export const musicPlayer = {
 		isPlaying = true;
 	},
 
+	pause(): void {
+		isPlaying = false;
+	},
+
 	toggle(): void {
 		if (currentIndex < 0) {
 			if (queue.length) this.play(0);
