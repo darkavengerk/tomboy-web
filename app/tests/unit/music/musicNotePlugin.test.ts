@@ -79,6 +79,27 @@ describe('buildMusicDecorations', () => {
 		const set = buildMusicDecorations(d, { currentUrl: 'https://h/1.mp3', isPlaying: false, ctrlActive: false, onPlay: () => {} });
 		expect(set.find().length).toBe(2); // node deco + eq widget, even paused
 	});
+
+	// Regression: the eq widget was anchored at liPos+1 — the <li>/<p> block boundary —
+	// so the inline <span> rendered on its OWN line above the title, adding a blank line.
+	// It must sit inside the paragraph (liPos+2), inline where the list bullet was.
+	it('eq widget is anchored inline inside the track paragraph, not at the block boundary', () => {
+		const d = doc(TWO);
+		const liPos = parseMusicNote(d).flatQueue[0].liPos;
+		const set = buildMusicDecorations(d, { currentUrl: 'https://h/1.mp3', isPlaying: true, ctrlActive: false, onPlay: () => {} });
+		// widget decorations are zero-width (from === to); the node deco spans the <li>.
+		const widget = set.find().find((x) => x.from === x.to);
+		expect(widget).toBeDefined();
+		expect(widget!.from).toBe(liPos + 2);
+	});
+
+	it('ctrl play-button widgets are anchored inline inside each track paragraph', () => {
+		const d = doc(TWO);
+		const tracks = parseMusicNote(d).flatQueue;
+		const set = buildMusicDecorations(d, { currentUrl: null, isPlaying: false, ctrlActive: true, onPlay: () => {} });
+		const widgetFroms = set.find().filter((x) => x.from === x.to).map((x) => x.from).sort((a, b) => a - b);
+		expect(widgetFroms).toEqual(tracks.map((t) => t.liPos + 2).sort((a, b) => a - b));
+	});
 });
 
 describe('createMusicNotePlugin', () => {
