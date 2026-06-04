@@ -3,12 +3,19 @@
 	import type { Editor } from '@tiptap/core';
 	import { parseMusicNote } from '$lib/music/parseMusicNote.js';
 	import { musicPlayer } from '$lib/music/musicPlayer.svelte.js';
+	import {
+		isMediaSessionSupported,
+		buildMetadataInit,
+		installMediaSession,
+		syncMediaSession
+	} from '$lib/music/mediaSession.js';
 	import { modKeys } from '$lib/desktop/modKeys.svelte.js';
 
 	type Props = { editor: Editor; guid: string };
 	let { editor, guid }: Props = $props();
 
 	let audioEl = $state<HTMLAudioElement | null>(null);
+	let preloadEl = $state<HTMLAudioElement | null>(null);
 	let version = $state(0);
 	let refreshN = 0;
 
@@ -34,14 +41,19 @@
 	const track = $derived(musicPlayer.currentTrack);
 	const playing = $derived(musicPlayer.isPlaying);
 
-	const label = $derived.by(() => {
+	// label/noteName 이 한 번의 doc 파싱(parsedNote)을 공유한다. version 의존은 parsedNote 에.
+	const parsedNote = $derived.by(() => {
 		version;
+		return parseMusicNote(editor.state.doc);
+	});
+	const label = $derived.by(() => {
 		const url = track?.url;
 		if (!url) return '';
-		const note = parseMusicNote(editor.state.doc);
-		for (const pl of note.playlists) if (pl.tracks.some((t) => t.url === url)) return pl.label;
+		for (const pl of parsedNote.playlists) if (pl.tracks.some((t) => t.url === url)) return pl.label;
 		return '';
 	});
+	const noteName = $derived(parsedNote.name);
+	const nextUrl = $derived(musicPlayer.queue[musicPlayer.currentIndex + 1]?.url ?? '');
 
 	// <audio> src 동기화. 트랙이 바뀌면(특히 자동 넘김) 새 src 로 재생을 이어준다.
 	$effect(() => {
@@ -81,6 +93,43 @@
 		const ed = editor;
 		if (!ed || ed.isDestroyed) return;
 		ed.view.dispatch(ed.state.tr.setMeta('musicRefresh', (refreshN = (refreshN + 1) | 0)));
+	});
+
+	// 다음 곡 미리 데우기 — preloadEl 은 절대 play() 하지 않는다(HTTP 캐시 워밍 전용).
+	// 잠금/백그라운드에서 자동 넘김 시 메인 <audio> src 교체가 캐시 적중으로 즉시 시작된다.
+	$effect(() => {
+		const el = preloadEl;
+		const url = nextUrl;
+		if (!el) return;
+		if ((el.getAttribute('src') ?? '') === url) return;
+		if (url) el.src = url;
+		else el.removeAttribute('src');
+	});
+	// 잠금화면 컨트롤 핸들러 등록(마운트 동안 1회). 핸들러는 호출 시점에 스토어를 읽으므로
+	// 여기서 currentIndex 등을 읽지 않는다 → 이 effect 는 재실행되지 않는다.
+	$effect(() => {
+		if (!isMediaSessionSupported()) return;
+		return installMediaSession({
+			play: () => musicPlayer.play(musicPlayer.currentIndex),
+			pause: () => musicPlayer.pause(),
+			next: () => musicPlayer.next(),
+			prev: () => musicPlayer.prev(),
+			seekTo: (t) => musicPlayer.requestSeek(t)
+		});
+	});
+	// 잠금화면 메타데이터·재생상태·위치 동기화. navigator 만 쓰므로 루프 위험 없음.
+	$effect(() => {
+		if (!isMediaSessionSupported()) return;
+		const t = track;
+		const metaInit = t
+			? buildMetadataInit({ trackDisplay: t.display, playlistLabel: label, noteName })
+			: null;
+		syncMediaSession({
+			metaInit,
+			isPlaying: musicPlayer.isPlaying,
+			duration: musicPlayer.duration,
+			position: musicPlayer.currentTime
+		});
 	});
 
 	function fmt(s: number): string {
@@ -136,6 +185,7 @@
 	onended={() => musicPlayer.reportEnded()}
 	onerror={() => musicPlayer.next()}
 ></audio>
+<audio bind:this={preloadEl} preload="auto" muted></audio>
 
 <style>
 	.music-bar {

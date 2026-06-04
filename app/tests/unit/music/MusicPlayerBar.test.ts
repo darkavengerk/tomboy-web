@@ -6,10 +6,14 @@ import StarterKit from '@tiptap/starter-kit';
 import { TomboyUrlLink } from '$lib/editor/extensions/TomboyUrlLink.js';
 import MusicPlayerBar from '$lib/editor/musicNote/MusicPlayerBar.svelte';
 import { musicPlayer, __resetMusicPlayer } from '$lib/music/musicPlayer.svelte.js';
+import { __resetMediaSession } from '$lib/music/mediaSession.js';
 
 // Records the src present on the element each time play() is invoked, so tests can
 // assert that auto-advance re-issues play() against the NEW track's src.
 let playSrcs: string[] = [];
+// Records lock-screen action handlers the component registers, so a test can fire them
+// and confirm they actually drive the player (i.e. the install effect is wired).
+const msHandlers: Record<string, ((d?: unknown) => void) | null> = {};
 
 // jsdom doesn't implement media playback — stub so effects can poke <audio> safely.
 beforeAll(() => {
@@ -21,6 +25,28 @@ beforeAll(() => {
 	});
 	def('pause', () => {});
 	def('load', () => {});
+	// Media Session: jsdom 미구현 → 기록형 stub.
+	Object.defineProperty(navigator, 'mediaSession', {
+		value: {
+			metadata: null as { title: string; artist: string; album: string } | null,
+			playbackState: 'none',
+			setActionHandler(action: string, handler: ((d?: unknown) => void) | null) {
+				msHandlers[action] = handler;
+			},
+			setPositionState() {}
+		},
+		configurable: true
+	});
+	(globalThis as unknown as { MediaMetadata: unknown }).MediaMetadata = class {
+		title: string;
+		artist: string;
+		album: string;
+		constructor(init: { title?: string; artist?: string; album?: string }) {
+			this.title = init.title ?? '';
+			this.artist = init.artist ?? '';
+			this.album = init.album ?? '';
+		}
+	};
 });
 
 let ed: Editor | null = null;
@@ -38,6 +64,12 @@ afterEach(() => {
 	ed?.destroy();
 	ed = null;
 	__resetMusicPlayer();
+	__resetMediaSession();
+	// 공유 stub 필드 초기화 — 테스트 간 metadata/playbackState 누수 방지.
+	const ms = navigator.mediaSession as unknown as { metadata: unknown; playbackState: string };
+	ms.metadata = null;
+	ms.playbackState = 'none';
+	for (const k of Object.keys(msHandlers)) delete msHandlers[k];
 });
 
 describe('MusicPlayerBar — mount (effect-loop regression)', () => {
@@ -107,5 +139,67 @@ describe('MusicPlayerBar — auto-advance keeps playing', () => {
 		expect(audio.getAttribute('src')).toBe('https://h/c.mp3');
 		expect(musicPlayer.isPlaying).toBe(false);
 		expect(playSrcs).toEqual([]);
+	});
+});
+
+describe('MusicPlayerBar — media session + preload', () => {
+	it('reflects the current track in lock-screen metadata and playback state', () => {
+		const editor = makeEditor(
+			'<p>음악::드라이브</p><p>플레이리스트: 길</p><ul><li><p>https://h/a.mp3</p></li><li><p>https://h/b.mp3</p></li></ul>'
+		);
+		render(MusicPlayerBar, { editor, guid: 'note-5' });
+		musicPlayer.play(0);
+		flushSync();
+		const ms = navigator.mediaSession as unknown as {
+			metadata: { title: string; artist: string; album: string } | null;
+			playbackState: string;
+		};
+		expect(ms.metadata?.title).toBe('a');
+		expect(ms.metadata?.artist).toBe('길');
+		expect(ms.metadata?.album).toBe('드라이브');
+		expect(ms.playbackState).toBe('playing');
+	});
+
+	it('warms the next track in a second <audio> element', () => {
+		const editor = makeEditor(
+			'<p>음악::드라이브</p><p>플레이리스트: 길</p><ul><li><p>https://h/a.mp3</p></li><li><p>https://h/b.mp3</p></li></ul>'
+		);
+		const { container } = render(MusicPlayerBar, { editor, guid: 'note-6' });
+		const audios = container.querySelectorAll('audio');
+		expect(audios.length).toBe(2);
+		musicPlayer.play(0);
+		flushSync();
+		expect(audios[1].getAttribute('src')).toBe('https://h/b.mp3');
+	});
+
+	it('clears the preload src on the last track', () => {
+		const editor = makeEditor(
+			'<p>음악::밤</p><p>플레이리스트: 끝</p><ul><li><p>https://h/c.mp3</p></li></ul>'
+		);
+		const { container } = render(MusicPlayerBar, { editor, guid: 'note-7' });
+		const audios = container.querySelectorAll('audio');
+		musicPlayer.play(0);
+		flushSync();
+		expect(audios[1].getAttribute('src')).toBeNull();
+	});
+
+	it('lock-screen play resumes (not restarts) and pause stops, via the wired handlers', () => {
+		const editor = makeEditor(
+			'<p>음악::드라이브</p><p>플레이리스트: 길</p><ul><li><p>https://h/a.mp3</p></li><li><p>https://h/b.mp3</p></li></ul>'
+		);
+		render(MusicPlayerBar, { editor, guid: 'note-8' });
+		musicPlayer.play(0);
+		musicPlayer.reportTime(5);
+		flushSync();
+		// 잠금화면 일시정지 버튼
+		msHandlers['pause']?.();
+		flushSync();
+		expect(musicPlayer.isPlaying).toBe(false);
+		// 잠금화면 재생 버튼 → 재개(재시작 아님): 위치(currentTime) 보존
+		msHandlers['play']?.();
+		flushSync();
+		expect(musicPlayer.isPlaying).toBe(true);
+		expect(musicPlayer.currentTime).toBe(5);
+		expect(musicPlayer.currentIndex).toBe(0);
 	});
 });
