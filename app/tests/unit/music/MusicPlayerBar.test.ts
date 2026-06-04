@@ -60,6 +60,10 @@ afterEach(() => {
 	ed = null;
 	__resetMusicPlayer();
 	__resetMediaSession();
+	// 공유 stub 필드 초기화 — 테스트 간 metadata/playbackState 누수 방지.
+	const ms = navigator.mediaSession as unknown as { metadata: unknown; playbackState: string };
+	ms.metadata = null;
+	ms.playbackState = 'none';
 });
 
 describe('MusicPlayerBar — mount (effect-loop regression)', () => {

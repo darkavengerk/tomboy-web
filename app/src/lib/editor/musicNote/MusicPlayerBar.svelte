@@ -41,18 +41,18 @@
 	const track = $derived(musicPlayer.currentTrack);
 	const playing = $derived(musicPlayer.isPlaying);
 
-	const label = $derived.by(() => {
+	// doc 를 한 번만 파싱해 label/noteName 가 공유한다(이중 파싱 방지). version 의존은 parsedNote 에.
+	const parsedNote = $derived.by(() => {
 		version;
+		return parseMusicNote(editor.state.doc);
+	});
+	const label = $derived.by(() => {
 		const url = track?.url;
 		if (!url) return '';
-		const note = parseMusicNote(editor.state.doc);
-		for (const pl of note.playlists) if (pl.tracks.some((t) => t.url === url)) return pl.label;
+		for (const pl of parsedNote.playlists) if (pl.tracks.some((t) => t.url === url)) return pl.label;
 		return '';
 	});
-	const noteName = $derived.by(() => {
-		version;
-		return parseMusicNote(editor.state.doc).name;
-	});
+	const noteName = $derived(parsedNote.name);
 	const nextUrl = $derived(musicPlayer.queue[musicPlayer.currentIndex + 1]?.url ?? '');
 
 	// <audio> src 동기화. 트랙이 바뀌면(특히 자동 넘김) 새 src 로 재생을 이어준다.
