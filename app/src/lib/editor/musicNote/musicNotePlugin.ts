@@ -47,12 +47,17 @@ export function buildMusicDecorations(doc: PMNode, opts: BuildOpts): DecorationS
 		if (!li || li.type.name !== 'listItem') return;
 		const isCurrent = opts.currentUrl !== null && track.url === opts.currentUrl;
 
+		// 인라인 위젯 앵커. liPos+1 은 <li>/<p> 블록 경계라 위젯이 제목 위 별도 줄에
+		// 렌더되어 빈 줄이 생긴다. 첫 문단(textblock) 안쪽(liPos+2)에 두어 글머리표
+		// 자리에 인라인으로 붙게 한다.
+		const inlinePos = li.firstChild?.isTextblock ? track.liPos + 2 : track.liPos + 1;
+
 		if (isCurrent) {
 			decos.push(
 				Decoration.node(track.liPos, track.liPos + li.nodeSize, { class: 'music-track--playing' })
 			);
 			decos.push(
-				Decoration.widget(track.liPos + 1, () => eqWidget(opts.isPlaying), {
+				Decoration.widget(inlinePos, () => eqWidget(opts.isPlaying), {
 					side: -1,
 					key: `music-eq:${track.url}:${opts.isPlaying}`,
 					ignoreSelection: true
@@ -64,7 +69,7 @@ export function buildMusicDecorations(doc: PMNode, opts: BuildOpts): DecorationS
 			const playingNow = isCurrent && opts.isPlaying;
 			decos.push(
 				Decoration.widget(
-					track.liPos + 1,
+					inlinePos,
 					() => {
 						const btn = document.createElement('button');
 						btn.type = 'button';
