@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { Editor } from "@tiptap/core";
+	import { installCursorVisibility } from "./keepCursorVisible.js";
 	import StarterKit from "@tiptap/starter-kit";
 	import Highlight from "@tiptap/extension-highlight";
 	import Placeholder from "@tiptap/extension-placeholder";
@@ -212,6 +213,12 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 		 *  without re-fetching the URL — Dropbox shared links block CORS
 		 *  `fetch()` even though `<img src>` works. */
 		onimageinserted?: (url: string, file: File) => void;
+		/** Keep the caret scrolled clear of a fixed bottom toolbar while
+		 *  typing. Only the mobile note route (/note/[id]) overlays such a
+		 *  toolbar, so it opts in; desktop windows leave it false and keep the
+		 *  browser's native scroll behaviour. Pairs with the page's
+		 *  `--toolbar-height` var + `scroll-padding-bottom`. */
+		keepCursorVisible?: boolean;
 	}
 
 	let {
@@ -240,6 +247,7 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 		onhrsplitchange,
 		noteFocused = true,
 		onimageinserted = () => {},
+		keepCursorVisible = false,
 	}: Props = $props();
 
 	let ctxMenu = $state<{ x: number; y: number } | null>(null);
@@ -669,6 +677,18 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 				scheduleAutoLinkScan();
 			},
 			editorProps: {
+				// When PM itself scrolls the selection into view (Enter, paste,
+				// commands), keep the caret clear of the fixed bottom toolbar.
+				// Static buffer ≈ toolbar dock height; plain character typing is
+				// scrolled by the browser natively and refined afterwards by
+				// installCursorVisibility(). No-op visual effect off the mobile
+				// route since nothing overlaps the caret there.
+				...(keepCursorVisible
+					? {
+							scrollMargin: { top: 8, right: 0, bottom: 60, left: 0 },
+							scrollThreshold: { top: 8, right: 0, bottom: 60, left: 0 },
+						}
+					: {}),
 				handleKeyDown: (_view, event) => {
 					const ed = editor;
 					if (!ed) return false;
@@ -985,7 +1005,14 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 			scheduleAutoLinkScan({ full: true });
 		});
 
+		// Keep the caret above the fixed bottom toolbar while typing (mobile
+		// note route opts in). No-op unless `--toolbar-height` is set on <html>.
+		const uninstallCursorVisibility = keepCursorVisible
+			? installCursorVisibility(editor)
+			: () => {};
+
 		return () => {
+			uninstallCursorVisibility();
 			uninstallModKeys();
 			cancelAutoLinkScan();
 			offChange();
