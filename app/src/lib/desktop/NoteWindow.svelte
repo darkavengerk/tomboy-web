@@ -587,9 +587,6 @@
 
 	function handleKeyDown(e: KeyboardEvent) {
 		if (e.key !== 'Escape') return;
-		// Alt+Esc is "reopen last closed note" — handled globally in
-		// DesktopWorkspace. Don't also close this window on that combo.
-		if (e.altKey) return;
 		// Let any overlay (notebook picker, editor/note context menu,
 		// action sheet) swallow Esc first. Those are rendered as siblings
 		// of .note-window at the component root, so they don't appear in
