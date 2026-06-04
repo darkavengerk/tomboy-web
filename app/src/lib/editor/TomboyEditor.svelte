@@ -491,7 +491,7 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 						return [createAutomationNotePlugin()];
 					},
 				}),
-				TomboyMusicNote,
+				TomboyMusicNote.configure({ getGuid: () => currentGuid ?? "" }),
 				Extension.create({
 					name: "tomboySendListItem",
 					addProseMirrorPlugins() {
@@ -2033,6 +2033,11 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 		background: #204a87;
 	}
 
+	/* 음악 노트 제목(첫 블록) 아래에, 떠 있는 컨트롤 패널 높이만큼 공간 확보.
+	   패널(MusicPlayerBar)이 --music-reserve 를 view.dom 에 설정한다. */
+	.tomboy-editor :global(.music-title-block) {
+		margin-bottom: var(--music-reserve, 0px);
+	}
 	/* 플레이리스트 모드 트랙 행 — 글머리표 대신 ♪/재생아이콘 + 곡 제목. */
 	.tomboy-editor :global(li.music-track) {
 		list-style: none;
