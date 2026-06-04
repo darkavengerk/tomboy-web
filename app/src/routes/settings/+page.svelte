@@ -2044,6 +2044,24 @@ Complete:</pre>
 				</details>
 
 				<details class="guide-card">
+					<summary>음악 노트 — 잠금화면 백그라운드 재생</summary>
+					<p class="info-text">
+						<code>음악::</code> 노트에서 재생하면 화면을 꺼도 재생이 이어지고, OS 잠금화면에
+						곡 정보와 재생/일시정지/이전/다음/탐색 컨트롤이 뜹니다. 한 곡이 끝나면 다음 곡을
+						미리 받아둔 덕에 잠금 상태에서도 끊김 없이 자동으로 넘어갑니다.
+					</p>
+					<ul class="guide-list">
+						<li><strong>홈 화면에 추가(PWA 설치)</strong>를 권장합니다 — 브라우저 탭보다 백그라운드
+							재생이 안정적입니다.</li>
+						<li><strong>Android</strong>: 잠금화면 컨트롤과 자동 넘김이 거의 네이티브처럼 동작합니다.</li>
+						<li><strong>iOS</strong>: 잠금 컨트롤과 단일 곡 재생은 안정적이나, 잠금 상태 자동 넘김은
+							iOS 버전에 따라 완벽히 보장되지는 않습니다(다음 곡이 안 넘어가면 한 번 깨워서
+							재생을 눌러주세요).</li>
+						<li>오프라인 저장은 아직 없습니다 — 곡은 네트워크에서 재생되며, 다음 곡만 미리 받아둡니다.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
 					<summary>알림 권한 — 일정 푸시</summary>
 					<p class="info-text">
 						브라우저의 알림 권한과 별개로, 이 앱에서 "알림 활성화"를 눌러야 FCM 토큰이 등록됩니다.
