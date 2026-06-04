@@ -21,6 +21,8 @@
 	import KeysView from '$lib/editor/keyRemote/KeysView.svelte';
 	import { parseKeysNote, type KeysNoteSpec } from '$lib/editor/keyRemote/parseKeysNote.js';
 	import ChatSendBar from '$lib/editor/chatNote/ChatSendBar.svelte';
+	import MusicPlayerBar from '$lib/editor/musicNote/MusicPlayerBar.svelte';
+	import { isMusicNoteDoc } from '$lib/music/parseMusicNote.js';
 	import RemarkableActionBar from '$lib/editor/remarkable/RemarkableActionBar.svelte';
 	import { parseOcrNote } from '$lib/ocrNote/parseOcrNote.js';
 	import { runOcrInEditor } from '$lib/ocrNote/runOcrInEditor.js';
@@ -125,6 +127,7 @@
 	let isHomeState = $state(false);
 	let isScrollBottomState = $state(false);
 	let isScheduleNote = $state(false);
+	let isMusicNote = $state(false);
 	let windowEl: HTMLDivElement | undefined = $state(undefined);
 	let terminalSpec: TerminalNoteSpec | null = $state.raw(null);
 	let terminalConnectMode = $state(false);
@@ -226,6 +229,7 @@
 			}
 			note = loaded;
 			editorContent = getNoteEditorContent(loaded);
+			isMusicNote = isMusicNoteDoc(editorContent as JSONContent);
 			terminalSpec = parseTerminalNote(editorContent);
 			terminalConnectMode = false;
 			keysSpec = parseKeysNote(editorContent);
@@ -329,6 +333,7 @@
 	});
 
 	function handleEditorChange(doc: JSONContent) {
+		isMusicNote = isMusicNoteDoc(doc);
 		pendingDoc = doc;
 		if (saveTimer) clearTimeout(saveTimer);
 		saveTimer = setTimeout(() => {
@@ -479,6 +484,7 @@
 		if (!fresh) return;
 		note = fresh;
 		editorContent = getNoteEditorContent(fresh);
+		isMusicNote = isMusicNoteDoc(editorContent as JSONContent);
 		terminalSpec = parseTerminalNote(editorContent);
 		if (!terminalSpec) terminalConnectMode = false;
 		keysSpec = parseKeysNote(editorContent);
@@ -911,6 +917,9 @@
 					onhrsplitchange={handleHrSplitChange}
 					onimageinserted={handleImageInserted}
 				/>
+				{#if editorComponent?.getEditor() && isMusicNote}
+					<MusicPlayerBar editor={editorComponent.getEditor()!} guid={guid} />
+				{/if}
 				{#if editorComponent?.getEditor() && llmBridgeUrl && llmBridgeToken}
 					<ChatSendBar
 						editor={editorComponent.getEditor()!}

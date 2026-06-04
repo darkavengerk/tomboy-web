@@ -78,19 +78,20 @@
 			visible = false;
 			return;
 		}
-		const dom = editor.view.dom as HTMLElement;
-		const markerEl = dom.children[boundaryIndex] as HTMLElement | undefined;
-		if (!markerEl) {
-			visible = false;
-			return;
-		}
-		const top =
+		// Pin as soon as the surface is scrolled at all — not only once the
+		// `===` line itself reaches the top. The fixed mirror has an opaque
+		// background and covers the same top region, so it sits over the
+		// still-visible real header without producing a visible duplicate.
+		const scrolled =
 			scrollTarget === window
-				? navOffset()
-				: (scrollTarget as HTMLElement).getBoundingClientRect().top;
-		const markerTop = markerEl.getBoundingClientRect().top;
-		const shouldShow = markerTop <= top + 0.5;
+				? window.scrollY
+				: (scrollTarget as HTMLElement).scrollTop;
+		const shouldShow = scrolled > 0;
 		if (shouldShow) {
+			const top =
+				scrollTarget === window
+					? navOffset()
+					: (scrollTarget as HTMLElement).getBoundingClientRect().top;
 			const er = editorEl.getBoundingClientRect();
 			pinTop = top;
 			pinLeft = er.left;
@@ -176,18 +177,77 @@
 	.tomboy-eq-sticky.visible {
 		display: block;
 	}
-	/* Cloned blocks are read-only; clicks bubble to the container (scroll-to-top). */
+	/* Cloned blocks are read-only; clicks bubble to the container (scroll-to-top).
+	   Base font matches `.tomboy-editor` (16px / 1.4) so the em-based rules
+	   below resolve to the same sizes as the live note. */
 	.tomboy-eq-sticky-content {
 		pointer-events: none;
 		font-size: 16px;
 		line-height: 1.4;
 		color: #222;
 	}
+
+	/* ── Note-content styling ──────────────────────────────────────────────
+	   The clones sit OUTSIDE `.tomboy-editor`, so its component-scoped
+	   `.tomboy-editor :global(.tiptap …)` rules don't reach them and the
+	   header would otherwise render as unstyled plain text. These mirror the
+	   header-relevant rules in TomboyEditor.svelte — keep them in sync if the
+	   note typography/marks there change. Bold/italic/strike render via the
+	   browser's default <strong>/<em>/<s> styling, so they need no rule. */
 	.tomboy-eq-sticky-content :global(p) {
-		margin: 0.2em 0;
+		margin: 0;
 	}
+	/* First paragraph = title */
+	.tomboy-eq-sticky-content :global(p:first-child) {
+		font-size: 1.4em;
+		font-weight: bold;
+		margin-bottom: -0.4em;
+	}
+	/* Second paragraph = subtitle slot: smaller, muted */
+	.tomboy-eq-sticky-content :global(p:nth-child(2)) {
+		font-size: 0.8em;
+		line-height: 2.4;
+		color: #666;
+		padding-left: 0.1em;
+	}
+	/* Tomboy size marks */
+	.tomboy-eq-sticky-content :global(.tomboy-size-huge) {
+		font-size: 1.6em;
+		font-weight: bold;
+	}
+	.tomboy-eq-sticky-content :global(.tomboy-size-large) {
+		font-size: 1.3em;
+	}
+	.tomboy-eq-sticky-content :global(.tomboy-size-small) {
+		font-size: 0.85em;
+	}
+	/* Monospace */
+	.tomboy-eq-sticky-content :global(.tomboy-monospace) {
+		font-family: monospace;
+		background: rgba(0, 0, 0, 0.06);
+		padding: 0.1em 0.3em;
+		border-radius: 3px;
+	}
+	/* Links */
+	.tomboy-eq-sticky-content :global(.tomboy-link-internal) {
+		color: #204a87;
+		text-decoration: underline;
+	}
+	.tomboy-eq-sticky-content :global(.tomboy-link-broken) {
+		color: #888;
+		text-decoration: line-through;
+	}
+	.tomboy-eq-sticky-content :global(.tomboy-link-url) {
+		color: #3465a4;
+		text-decoration: underline;
+	}
+	/* Inline image preview — width-capped, natural height (matches editor). */
 	.tomboy-eq-sticky-content :global(img) {
+		display: block;
 		max-width: 100%;
+		width: auto;
 		height: auto;
+		margin: 0.4em 0;
+		border-radius: 4px;
 	}
 </style>
