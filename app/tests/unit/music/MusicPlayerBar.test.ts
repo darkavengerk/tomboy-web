@@ -6,6 +6,7 @@ import StarterKit from '@tiptap/starter-kit';
 import { TomboyUrlLink } from '$lib/editor/extensions/TomboyUrlLink.js';
 import MusicPlayerBar from '$lib/editor/musicNote/MusicPlayerBar.svelte';
 import { musicPlayer, __resetMusicPlayer } from '$lib/music/musicPlayer.svelte.js';
+import { __resetMediaSession } from '$lib/music/mediaSession.js';
 
 // Records the src present on the element each time play() is invoked, so tests can
 // assert that auto-advance re-issues play() against the NEW track's src.
@@ -21,6 +22,26 @@ beforeAll(() => {
 	});
 	def('pause', () => {});
 	def('load', () => {});
+	// Media Session: jsdom 미구현 → 기록형 stub.
+	Object.defineProperty(navigator, 'mediaSession', {
+		value: {
+			metadata: null as { title: string; artist: string; album: string } | null,
+			playbackState: 'none',
+			setActionHandler() {},
+			setPositionState() {}
+		},
+		configurable: true
+	});
+	(globalThis as unknown as { MediaMetadata: unknown }).MediaMetadata = class {
+		title: string;
+		artist: string;
+		album: string;
+		constructor(init: { title?: string; artist?: string; album?: string }) {
+			this.title = init.title ?? '';
+			this.artist = init.artist ?? '';
+			this.album = init.album ?? '';
+		}
+	};
 });
 
 let ed: Editor | null = null;
@@ -38,6 +59,7 @@ afterEach(() => {
 	ed?.destroy();
 	ed = null;
 	__resetMusicPlayer();
+	__resetMediaSession();
 });
 
 describe('MusicPlayerBar — mount (effect-loop regression)', () => {
@@ -107,5 +129,47 @@ describe('MusicPlayerBar — auto-advance keeps playing', () => {
 		expect(audio.getAttribute('src')).toBe('https://h/c.mp3');
 		expect(musicPlayer.isPlaying).toBe(false);
 		expect(playSrcs).toEqual([]);
+	});
+});
+
+describe('MusicPlayerBar — media session + preload', () => {
+	it('reflects the current track in lock-screen metadata and playback state', () => {
+		const editor = makeEditor(
+			'<p>음악::드라이브</p><p>플레이리스트: 길</p><ul><li><p>https://h/a.mp3</p></li><li><p>https://h/b.mp3</p></li></ul>'
+		);
+		render(MusicPlayerBar, { editor, guid: 'note-5' });
+		musicPlayer.play(0);
+		flushSync();
+		const ms = navigator.mediaSession as unknown as {
+			metadata: { title: string; artist: string; album: string } | null;
+			playbackState: string;
+		};
+		expect(ms.metadata?.title).toBe('a');
+		expect(ms.metadata?.artist).toBe('길');
+		expect(ms.metadata?.album).toBe('드라이브');
+		expect(ms.playbackState).toBe('playing');
+	});
+
+	it('warms the next track in a second <audio> element', () => {
+		const editor = makeEditor(
+			'<p>음악::드라이브</p><p>플레이리스트: 길</p><ul><li><p>https://h/a.mp3</p></li><li><p>https://h/b.mp3</p></li></ul>'
+		);
+		const { container } = render(MusicPlayerBar, { editor, guid: 'note-6' });
+		const audios = container.querySelectorAll('audio');
+		expect(audios.length).toBe(2);
+		musicPlayer.play(0);
+		flushSync();
+		expect(audios[1].getAttribute('src')).toBe('https://h/b.mp3');
+	});
+
+	it('clears the preload src on the last track', () => {
+		const editor = makeEditor(
+			'<p>음악::밤</p><p>플레이리스트: 끝</p><ul><li><p>https://h/c.mp3</p></li></ul>'
+		);
+		const { container } = render(MusicPlayerBar, { editor, guid: 'note-7' });
+		const audios = container.querySelectorAll('audio');
+		musicPlayer.play(0);
+		flushSync();
+		expect(audios[1].getAttribute('src')).toBeNull();
 	});
 });
