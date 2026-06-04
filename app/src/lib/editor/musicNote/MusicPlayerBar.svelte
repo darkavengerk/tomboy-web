@@ -41,7 +41,7 @@
 	const track = $derived(musicPlayer.currentTrack);
 	const playing = $derived(musicPlayer.isPlaying);
 
-	// doc 를 한 번만 파싱해 label/noteName 가 공유한다(이중 파싱 방지). version 의존은 parsedNote 에.
+	// label/noteName 이 한 번의 doc 파싱(parsedNote)을 공유한다. version 의존은 parsedNote 에.
 	const parsedNote = $derived.by(() => {
 		version;
 		return parseMusicNote(editor.state.doc);

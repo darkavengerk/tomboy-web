@@ -11,6 +11,9 @@ import { __resetMediaSession } from '$lib/music/mediaSession.js';
 // Records the src present on the element each time play() is invoked, so tests can
 // assert that auto-advance re-issues play() against the NEW track's src.
 let playSrcs: string[] = [];
+// Records lock-screen action handlers the component registers, so a test can fire them
+// and confirm they actually drive the player (i.e. the install effect is wired).
+const msHandlers: Record<string, ((d?: unknown) => void) | null> = {};
 
 // jsdom doesn't implement media playback — stub so effects can poke <audio> safely.
 beforeAll(() => {
@@ -27,7 +30,9 @@ beforeAll(() => {
 		value: {
 			metadata: null as { title: string; artist: string; album: string } | null,
 			playbackState: 'none',
-			setActionHandler() {},
+			setActionHandler(action: string, handler: ((d?: unknown) => void) | null) {
+				msHandlers[action] = handler;
+			},
 			setPositionState() {}
 		},
 		configurable: true
@@ -64,6 +69,7 @@ afterEach(() => {
 	const ms = navigator.mediaSession as unknown as { metadata: unknown; playbackState: string };
 	ms.metadata = null;
 	ms.playbackState = 'none';
+	for (const k of Object.keys(msHandlers)) delete msHandlers[k];
 });
 
 describe('MusicPlayerBar — mount (effect-loop regression)', () => {
@@ -175,5 +181,25 @@ describe('MusicPlayerBar — media session + preload', () => {
 		musicPlayer.play(0);
 		flushSync();
 		expect(audios[1].getAttribute('src')).toBeNull();
+	});
+
+	it('lock-screen play resumes (not restarts) and pause stops, via the wired handlers', () => {
+		const editor = makeEditor(
+			'<p>음악::드라이브</p><p>플레이리스트: 길</p><ul><li><p>https://h/a.mp3</p></li><li><p>https://h/b.mp3</p></li></ul>'
+		);
+		render(MusicPlayerBar, { editor, guid: 'note-8' });
+		musicPlayer.play(0);
+		musicPlayer.reportTime(5);
+		flushSync();
+		// 잠금화면 일시정지 버튼
+		msHandlers['pause']?.();
+		flushSync();
+		expect(musicPlayer.isPlaying).toBe(false);
+		// 잠금화면 재생 버튼 → 재개(재시작 아님): 위치(currentTime) 보존
+		msHandlers['play']?.();
+		flushSync();
+		expect(musicPlayer.isPlaying).toBe(true);
+		expect(musicPlayer.currentTime).toBe(5);
+		expect(musicPlayer.currentIndex).toBe(0);
 	});
 });
