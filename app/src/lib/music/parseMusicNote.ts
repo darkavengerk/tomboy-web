@@ -126,7 +126,16 @@ export function parseMusicNote(doc: PMNode): MusicNote {
 		const blockType = block.type.name;
 		if (blockType === 'paragraph') {
 			const t = block.textContent.trim();
-			pendingLabel = t.startsWith(PLAYLIST_PREFIX) ? t.slice(PLAYLIST_PREFIX.length).trim() : null;
+			if (!t.startsWith(PLAYLIST_PREFIX)) {
+				pendingLabel = null;
+				return;
+			}
+			// 체크박스 토글: 헤더 앞 inlineCheckbox atom 의 checked 가 플레이리스트 모드 on/off.
+			// 체크박스 없음 = 레거시(항상 켜짐). 미체크 = 텍스트 모드(트랙 아님 → 큐/데코 제외).
+			// atom 은 textContent 에 기여하지 않으므로 위 prefix 매칭은 그대로 유효.
+			const first = block.firstChild;
+			const enabled = first?.type.name === 'inlineCheckbox' ? first.attrs.checked === true : true;
+			pendingLabel = enabled ? t.slice(PLAYLIST_PREFIX.length).trim() : null;
 			return;
 		}
 		if (isListNode(block) && pendingLabel !== null) {

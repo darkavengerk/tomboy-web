@@ -1704,24 +1704,32 @@ https://www.dropbox.com/…/starting.png</pre>
 				<details class="guide-card">
 					<summary>음악 노트 — <code>음악::</code> 플레이리스트 재생</summary>
 					<p class="info-text">
-						제목을 <code>음악::제목</code> 으로 시작하면 음악 노트가 됩니다. 본문의
-						<code>플레이리스트: 설명</code> 줄 바로 다음 리스트의 아이템들이 트랙이 되고, 제목 아래
-						컨트롤 패널에서 재생/정지·이전/다음·탐색을 할 수 있습니다. 한 노트의 모든 플레이리스트는
-						문서 순서대로 이어 재생됩니다.
+						제목을 <code>음악::제목</code> 으로 시작하면 음악 노트가 됩니다.
+						<code>플레이리스트: 설명</code> 줄 앞 체크박스를 <strong>체크</strong>하면
+						(<code>[x]플레이리스트: …</code>) 그 줄 바로 다음 리스트가 플레이리스트가 되어 곡
+						<strong>제목만</strong> 깔끔하게 보이고, 노트 <strong>상단</strong> 컨트롤 패널에서
+						재생/정지·이전/다음·탐색을 할 수 있습니다. 체크를 <strong>해제</strong>하면
+						(<code>[ ]플레이리스트: …</code>) 다시 일반 텍스트 목록으로 돌아갑니다. 한 노트의 켜진
+						플레이리스트는 문서 순서대로 이어 재생됩니다.
 					</p>
 					<pre class="snippet">음악::주말 플레이리스트
 
-플레이리스트: 아침
+[x]플레이리스트: 아침
 &nbsp; - 곡 제목
 &nbsp; &nbsp; - https://example.com/song.mp3
 &nbsp; - https://example.com/another.mp3
 
-플레이리스트: 저녁
+[ ]플레이리스트: 저녁  (체크 해제 → 그냥 텍스트)
 &nbsp; - https://example.com/evening.mp3</pre>
 					<ul class="guide-list">
+						<li><strong>체크박스 토글</strong>: 줄 앞에 <code>[x]</code> 를 입력하면 플레이리스트 모드,
+							<code>[ ]</code> 면 텍스트 모드. 체크박스 없는 <code>플레이리스트:</code> 줄은 켜진
+							것으로 봅니다.</li>
+						<li>플레이리스트 모드에선 URL이 숨고 곡 제목(없으면 파일명)만 보입니다 —
+							<strong>고치려면 그 줄에 커서를 두면</strong> 원래 URL이 다시 나타납니다.</li>
 						<li>아이템 2가지 형식: <strong>제목(깊이1) + URL(깊이2)</strong>, 또는 제목을 모르면
 							<strong>URL만(깊이1)</strong>.</li>
-						<li>재생 중인 곡은 리스트 마커 대신 재생 아이콘으로 표시됩니다.</li>
+						<li>재생 중인 곡은 리스트 마커 대신 재생 아이콘(이퀄라이저)으로 표시됩니다.</li>
 						<li>각 트랙의 ▶ 버튼은 <strong>Ctrl 을 누른 채</strong> 노출됩니다 — 데스크탑은 Ctrl+마우스
 							오버, 모바일은 툴바의 <code>Ctrl</code> 버튼을 켠 뒤 탭.</li>
 						<li>현재는 <strong>직접 오디오 파일 URL</strong>(mp3 등 브라우저가 재생 가능한 링크)만

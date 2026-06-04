@@ -894,6 +894,10 @@
 			{/key}
 		{:else}
 			{#if editorContent}
+				<!-- 재생 컨트롤은 창 본문 상단(제목 줄 위)에 고정 — 편집 영역을 가리지 않도록. -->
+				{#if editorComponent?.getEditor() && isMusicNote}
+					<MusicPlayerBar editor={editorComponent.getEditor()!} guid={guid} />
+				{/if}
 				<TomboyEditor
 					bind:this={editorComponent}
 					content={editorContent}
@@ -921,9 +925,6 @@
 					onhrsplitchange={handleHrSplitChange}
 					onimageinserted={handleImageInserted}
 				/>
-				{#if editorComponent?.getEditor() && isMusicNote}
-					<MusicPlayerBar editor={editorComponent.getEditor()!} guid={guid} />
-				{/if}
 				{#if editorComponent?.getEditor() && llmBridgeUrl && llmBridgeToken}
 					<ChatSendBar
 						editor={editorComponent.getEditor()!}
