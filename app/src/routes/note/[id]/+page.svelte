@@ -85,6 +85,32 @@
 	let isScheduleNoteState = $state(false);
 	let isMusicNote = $state(false);
 	let editorAreaEl: HTMLDivElement | undefined = $state(undefined);
+	let toolbarAreaEl: HTMLDivElement | undefined = $state(undefined);
+
+	// Publish the fixed toolbar's live height as `--toolbar-height` on <html>
+	// and reserve that strip via `scroll-padding-bottom`, so both the browser's
+	// native caret scroll-into-view and installCursorVisibility() keep the
+	// cursor clear of the toolbar (which overlays the bottom of the document
+	// scroll). Combined with `--keyboard-inset`, it also clears the on-screen
+	// keyboard. Cleared on unmount / when the toolbar isn't shown (terminal /
+	// keys views) so other routes are unaffected.
+	$effect(() => {
+		const el = toolbarAreaEl;
+		const root = document.documentElement;
+		if (!el) return;
+		root.style.scrollPaddingBottom =
+			"calc(var(--toolbar-height, 0px) + var(--keyboard-inset, 0px))";
+		const sync = () =>
+			root.style.setProperty("--toolbar-height", `${el.offsetHeight}px`);
+		sync();
+		const ro = new ResizeObserver(sync);
+		ro.observe(el);
+		return () => {
+			ro.disconnect();
+			root.style.removeProperty("--toolbar-height");
+			root.style.removeProperty("scroll-padding-bottom");
+		};
+	});
 	// Terminal-note state: detected at note load time. `terminalConnectMode`
 	// must be explicitly activated by the user (via the "접속" banner button)
 	// before TerminalView mounts and opens the WS connection.
@@ -761,6 +787,7 @@
 					ondatenavigate={handleInternalLink}
 					sendListItemActive={sendActive}
 					hrSplitEnabled={false}
+					keepCursorVisible={true}
 					onimageinserted={handleImageInserted}
 				/>
 				{#if editorComponent?.getEditor() && isMusicNote}
@@ -783,7 +810,7 @@
 	</div>
 
 	{#if !showTerminal && !showKeys}
-		<div class="toolbar-area">
+		<div class="toolbar-area" bind:this={toolbarAreaEl}>
 			<Toolbar
 				editor={getEditor()}
 				onextractnote={handleExtractNote}

@@ -587,6 +587,9 @@
 
 	function handleKeyDown(e: KeyboardEvent) {
 		if (e.key !== 'Escape') return;
+		// Alt+Esc is "reopen last closed note" — handled globally in
+		// DesktopWorkspace. Don't also close this window on that combo.
+		if (e.altKey) return;
 		// Let any overlay (notebook picker, editor/note context menu,
 		// action sheet) swallow Esc first. Those are rendered as siblings
 		// of .note-window at the component root, so they don't appear in
@@ -844,6 +847,7 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="title-bar"
+		class:focused={isFocused}
 		onpointerdown={startDrag}
 		onauxclick={handleTitleBarAuxClick}
 	>
@@ -1062,6 +1066,12 @@
 		user-select: none;
 		touch-action: none;
 		flex-shrink: 0;
+	}
+
+	/* Active (topmost) note gets the SidePanel's green accent so the user can
+	   tell at a glance which note has focus. */
+	.title-bar.focused {
+		background: #2d5a3d;
 	}
 
 	.title-bar:active {
