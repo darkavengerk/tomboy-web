@@ -1597,6 +1597,31 @@ history:
 				</details>
 
 				<details class="guide-card">
+					<summary>일정 노트 — 보내기 / 스킵 버튼 + 반복 마커</summary>
+					<p class="info-text">
+						일정 노트에서 <kbd>Ctrl</kbd>(모바일은 툴바의 <code>Ctrl</code> 고정)을 누르면 각
+						리스트 아이템 오른쪽에 <strong>스킵</strong>·<strong>보내기</strong> 버튼이 나타납니다.
+						<strong>보내기</strong>는 그 항목을 히스토리 노트로 옮기고, <strong>스킵</strong>은
+						히스토리로 보내는 단계를 건너뜁니다.
+					</p>
+					<pre class="snippet">5월
+&nbsp; - 25*(수) 가스점검      ← 월간 반복 (다음 달 25일)
+&nbsp; - 15(수*) 분리수거       ← 주간 반복 (+1주)
+&nbsp; - 8(금**) 격주 청소      ← 2주 반복 (+2주, * 개수 = 주)
+&nbsp; - 3(금) 등산            ← 마커 없음 (1회성)</pre>
+					<ul class="guide-list">
+						<li><strong>보내기</strong> — 항목을 히스토리 노트로 보냅니다. 반복 마커가 있으면
+							다음 주기 날짜로 복제본도 함께 만들어 둡니다.</li>
+						<li><strong>스킵</strong> — 마커 없는 1회성 항목은 <strong>그냥 삭제</strong>합니다.
+							반복 마커가 있으면 삭제·히스토리 이동 없이 <strong>다음 주기로 옮기기만</strong> 합니다.
+							(이번 주기를 거른다는 뜻)</li>
+						<li>반복 마커는 위치로 구분 — <code>25*(수)</code>처럼 <strong>일 번호 옆 *</strong>는
+							월간, <code>15(수*)</code>처럼 <strong>요일 뒤 *</strong>는 주간(<code>*</code> 개수 = 주).</li>
+						<li>보내기·스킵 모두 한 번의 <kbd>Ctrl</kbd>+<kbd>Z</kbd>로 되돌릴 수 있습니다.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
 					<summary>슬립노트 — 노트 체인 형식</summary>
 					<p class="info-text">
 						<code>[0] Slip-Box</code> 노트북 안의 노트들이 <code>이전</code> / <code>다음</code> 링크로
