@@ -77,6 +77,12 @@ describe('parseMusicNote — track extraction', () => {
 		expect(note.playlists.map((p) => p.label)).toEqual(['아침', '저녁']);
 		expect(note.flatQueue.map((t) => t.url)).toEqual(['https://h/1.mp3', 'https://h/2.mp3']);
 	});
+	it('각 트랙에 소속 플레이리스트 label 이 부착된다', () => {
+		const note = parseMusicNote(
+			makeEditor('<p>음악::x</p><p>플레이리스트: 아침</p><ul><li><p>https://h/1.mp3</p></li></ul><p>플레이리스트: 저녁</p><ul><li><p>https://h/2.mp3</p></li></ul>').state.doc
+		);
+		expect(note.flatQueue.map((t) => t.playlistLabel)).toEqual(['아침', '저녁']);
+	});
 	it('header immediately followed required (intervening paragraph resets)', () => {
 		const note = parseMusicNote(
 			makeEditor('<p>음악::x</p><p>플레이리스트: a</p><p>끼어든 문단</p><ul><li><p>https://h/x.mp3</p></li></ul>').state.doc

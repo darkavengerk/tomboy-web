@@ -10,6 +10,9 @@ export interface MusicTrack {
 	title: string | null;
 	display: string;
 	liPos: number; // listItem 시작 pos (데코레이션 anchor)
+	/** 소속 플레이리스트 label. 글로벌 오디오 엔진/미디어세션이 playlists 컨텍스트
+	 *  없이 현재 곡의 라벨(artist)을 알 수 있도록 트랙에 부착. */
+	playlistLabel?: string;
 }
 export interface MusicPlaylist {
 	label: string;
@@ -144,7 +147,10 @@ export function parseMusicNote(doc: PMNode): MusicNote {
 				if (li.type.name !== 'listItem') return;
 				const liPos = offset + 1 + liOffset; // 리스트 content 시작 = offset+1
 				const track = extractTrack(li, liPos);
-				if (track) tracks.push(track);
+				if (track) {
+					track.playlistLabel = pendingLabel ?? '';
+					tracks.push(track);
+				}
 			});
 			playlists.push({ label: pendingLabel, tracks });
 			pendingLabel = null;

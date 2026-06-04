@@ -1209,6 +1209,8 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
+		/* 음악 컨트롤 패널(absolute)의 offsetParent 기준. */
+		position: relative;
 	}
 
 	.body :global(.tomboy-editor-shell) {

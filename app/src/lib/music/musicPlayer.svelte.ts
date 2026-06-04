@@ -6,6 +6,7 @@ let isPlaying = $state(false);
 let currentTime = $state(0);
 let duration = $state(0);
 let activeNoteGuid = $state<string | null>(null);
+let activeNoteName = $state('');
 let seekToken = $state(0);
 let pendingSeekTime = $state(0);
 
@@ -22,6 +23,7 @@ export function __resetMusicPlayer(): void {
 	currentTime = 0;
 	duration = 0;
 	activeNoteGuid = null;
+	activeNoteName = '';
 	seekToken = 0;
 	pendingSeekTime = 0;
 }
@@ -51,13 +53,22 @@ export const musicPlayer = {
 	get currentTrack(): MusicTrack | null {
 		return queue[currentIndex] ?? null;
 	},
+	/** 현재 활성(재생/큐) 노트의 guid — 그 노트의 패널만 편집 시 큐를 재동기화. */
+	get activeNoteGuid(): string | null {
+		return activeNoteGuid;
+	},
+	/** 현재 활성 노트 이름 — 미디어세션 album. */
+	get activeNoteName(): string {
+		return activeNoteName;
+	},
 
 	/** doc 재파싱 결과를 반영. 같은 노트면 재생 중 url 로 index 보존. */
-	setQueue(noteGuid: string, tracks: MusicTrack[]): void {
+	setQueue(noteGuid: string, tracks: MusicTrack[], noteName = ''): void {
 		const sameNote = noteGuid === activeNoteGuid;
 		const prevUrl = sameNote ? (queue[currentIndex]?.url ?? null) : null;
 		queue = tracks;
 		activeNoteGuid = noteGuid;
+		activeNoteName = noteName;
 		let idx = prevUrl ? tracks.findIndex((t) => t.url === prevUrl) : -1;
 		if (idx === -1) {
 			idx = tracks.length ? 0 : -1;

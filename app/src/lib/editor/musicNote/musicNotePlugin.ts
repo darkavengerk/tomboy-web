@@ -65,9 +65,15 @@ export function handleTrackButtonClick(opts: BuildOpts, index: number, isCurrent
 }
 
 export function buildMusicDecorations(doc: PMNode, opts: BuildOpts): DecorationSet {
-	const { flatQueue } = parseMusicNote(doc);
-	if (flatQueue.length === 0) return DecorationSet.empty;
+	const { flatQueue, isMusic } = parseMusicNote(doc);
+	if (!isMusic) return DecorationSet.empty;
 	const decos: Decoration[] = [];
+
+	// 제목(첫 블록) 아래에 떠 있는 컨트롤 패널 자리 확보. 패널이 자기 높이를
+	// --music-reserve 로 알려주면 margin-bottom 으로 비운다(트랙 유무와 무관 —
+	// 빈 음악 노트에도 패널은 항상 뜬다).
+	const title = doc.firstChild;
+	if (title) decos.push(Decoration.node(0, title.nodeSize, { class: 'music-title-block' }));
 
 	flatQueue.forEach((track, index) => {
 		const li = doc.nodeAt(track.liPos);
@@ -151,18 +157,23 @@ export function buildMusicDecorations(doc: PMNode, opts: BuildOpts): DecorationS
 	return DecorationSet.create(doc, decos);
 }
 
-export function createMusicNotePlugin(): Plugin {
+export function createMusicNotePlugin(getGuid: () => string = () => ''): Plugin {
 	return new Plugin({
 		key: musicNotePluginKey,
 		props: {
 			decorations(state) {
-				const { isMusic } = parseMusicNote(state.doc);
-				if (!isMusic) return null;
+				const parsed = parseMusicNote(state.doc);
+				if (!parsed.isMusic) return null;
 				return buildMusicDecorations(state.doc, {
 					currentUrl: musicPlayer.currentTrack?.url ?? null,
 					isPlaying: musicPlayer.isPlaying,
 					ctrlActive: modKeys.ctrl,
-					onPlay: (index) => musicPlayer.play(index),
+					// 트랙 재생 = 이 노트를 활성 큐로 만들고 재생. 노트를 여는 것만으로는
+					// 큐가 바뀌지 않으므로(글로벌 now-playing 보존) 여기서 명시적으로 setQueue.
+					onPlay: (index) => {
+						musicPlayer.setQueue(getGuid(), parsed.flatQueue, parsed.name);
+						musicPlayer.play(index);
+					},
 					selFrom: state.selection.from,
 					selTo: state.selection.to
 				});

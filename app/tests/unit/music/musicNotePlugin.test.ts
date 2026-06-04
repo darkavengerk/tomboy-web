@@ -5,6 +5,7 @@ import type { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { TomboyUrlLink } from '$lib/editor/extensions/TomboyUrlLink.js';
 import { buildMusicDecorations, handleTrackButtonClick, createMusicNotePlugin } from '$lib/editor/musicNote/musicNotePlugin.js';
 import { musicPlayer, __resetMusicPlayer } from '$lib/music/musicPlayer.svelte.js';
+import { modKeys } from '$lib/desktop/modKeys.svelte.js';
 import { parseMusicNote } from '$lib/music/parseMusicNote.js';
 
 let ed: Editor | null = null;
@@ -176,5 +177,27 @@ describe('createMusicNotePlugin', () => {
 		const row0 = spans(result!).find((x) => x.from === tracks[0].liPos && cls(x)?.split(' ').includes('music-track'));
 		expect(cls(row0!)).toContain('music-track--playing');
 		__resetMusicPlayer();
+	});
+
+	it('Ctrl 트랙 ▶ 클릭 → 그 노트를 setQueue(guid,name)+play (노트를 활성 큐로)', () => {
+		__resetMusicPlayer();
+		modKeys.setCtrlLock(true);
+		try {
+			const plugin = createMusicNotePlugin(() => 'n1');
+			doc(TWO);
+			const state = ed!.state;
+			const tracks = parseMusicNote(state.doc).flatQueue;
+			const decoFn = plugin.props.decorations as (s: unknown) => DecorationSet | null;
+			const set = decoFn.call(plugin, state)!;
+			const btn = playButtons(set).find((w) => w.from === tracks[1].liPos + 2)!;
+			(widgetDom(btn) as HTMLButtonElement).click();
+			expect(musicPlayer.activeNoteGuid).toBe('n1');
+			expect(musicPlayer.queue.length).toBe(2);
+			expect(musicPlayer.currentTrack?.url).toBe('https://h/2.mp3');
+			expect(musicPlayer.isPlaying).toBe(true);
+		} finally {
+			modKeys.setCtrlLock(false);
+			__resetMusicPlayer();
+		}
 	});
 });
