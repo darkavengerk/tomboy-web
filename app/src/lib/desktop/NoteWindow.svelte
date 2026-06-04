@@ -919,6 +919,8 @@
 					ondatenavigate={handleDateNavigate}
 					noteFocused={isFocused}
 					onhrsplitchange={handleHrSplitChange}
+					keepCursorVisible={true}
+					cursorVisibilityMode="container"
 					onimageinserted={handleImageInserted}
 				/>
 				{#if editorComponent?.getEditor() && isMusicNote}
