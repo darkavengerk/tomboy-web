@@ -108,6 +108,12 @@ let currentWorkspaceIndex = $state(0);
 // means two consecutive requests for the same window still re-trigger.
 let focusRequest = $state<{ guid: string; token: number } | null>(null);
 let focusRequestCounter = 0;
+// Session-only stack of guids closed via closeWindow, most-recent last.
+// Alt+Esc pops this to undo an accidental Esc close. Not persisted (a
+// "recently" stack only makes sense within the live session) and not a
+// `$state` (no UI renders it). Reopen happens in the current workspace.
+const closedStack: string[] = [];
+const CLOSED_STACK_LIMIT = 50;
 let loaded = false;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -776,7 +782,17 @@ export const desktopSession = {
 		// Snapshot geometry at close so reopening restores the last-known pose
 		// even if no move/resize happened during this session.
 		cacheGeometry(ws, ws.windows[idx]);
+		const closedKind = ws.windows[idx].kind;
 		ws.windows.splice(idx, 1);
+		// Remember note closes so Alt+Esc can reopen the last one. Settings /
+		// admin are singletons reopened from the rail, so they're skipped.
+		// De-dupe to keep the most recent position when a guid is closed twice.
+		if (closedKind === 'note') {
+			const dup = closedStack.indexOf(guid);
+			if (dup >= 0) closedStack.splice(dup, 1);
+			closedStack.push(guid);
+			if (closedStack.length > CLOSED_STACK_LIMIT) closedStack.shift();
+		}
 		// Chain focus to the most-recently-focused remaining note so ESC can
 		// cascade closes. Raw z is already the focus-history stack (bumped by
 		// open/focus). Settings is skipped — it doesn't consume focusRequest.
@@ -787,6 +803,24 @@ export const desktopSession = {
 		}
 		if (next) focusRequest = { guid: next.guid, token: ++focusRequestCounter };
 		schedulePersist();
+	},
+
+	/**
+	 * Reopen the most recently closed note (Alt+Esc — undo an accidental Esc
+	 * close). Pops the closed-stack, skipping guids that are already open in
+	 * the current workspace or whose note has since been deleted, until a
+	 * reopenable one is found. No-op when the stack is exhausted.
+	 */
+	async reopenLastClosed(): Promise<void> {
+		while (closedStack.length > 0) {
+			const guid = closedStack.pop();
+			if (!guid) continue;
+			if (current().windows.some((w) => w.guid === guid)) continue;
+			const note = await getNote(guid);
+			if (!note || note.deleted) continue;
+			this.openWindow(guid);
+			return;
+		}
 	},
 
 	moveWindow(guid: string, x: number, y: number): void {
@@ -931,6 +965,7 @@ export const desktopSession = {
 		currentWorkspaceIndex = 0;
 		focusRequest = null;
 		focusRequestCounter = 0;
+		closedStack.length = 0;
 		loaded = false;
 		flushHooks.clear();
 		reloadHooks.clear();

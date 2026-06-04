@@ -2139,8 +2139,10 @@ Complete:</pre>
 						<tr><td><kbd>Ctrl</kbd>+<kbd>L</kbd></td><td>선택한 텍스트로 새 노트 만들기 (에디터 포커스 상태에서)</td></tr>
 						<tr><td><kbd>Ctrl</kbd>+<kbd>[</kbd></td><td>이전 날짜/슬립노트로 이동 (현재 창을 교체)</td></tr>
 						<tr><td><kbd>Ctrl</kbd>+<kbd>]</kbd></td><td>다음 날짜/슬립노트로 이동 (현재 창을 교체)</td></tr>
+						<tr><td><kbd>Ctrl</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd></td><td>활성 노트를 위/아래로 스크롤</td></tr>
 						<tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>←</kbd> / <kbd>→</kbd> / <kbd>↑</kbd> / <kbd>↓</kbd></td><td>인접 워크스페이스로 전환</td></tr>
 						<tr><td><kbd>Esc</kbd></td><td>활성 윈도우/모달 닫기</td></tr>
+						<tr><td><kbd>Alt</kbd>+<kbd>Esc</kbd></td><td>마지막으로 닫은 노트 다시 열기 (실수로 닫았을 때)</td></tr>
 					</tbody>
 				</table>
 			</section>

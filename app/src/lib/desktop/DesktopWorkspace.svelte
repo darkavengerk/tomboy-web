@@ -144,6 +144,35 @@
 			void handleCtrlL(text);
 			return;
 		}
+		// Alt+Esc — reopen the most recently closed note (undo an accidental
+		// Esc close). NoteWindow's own Esc handler bails on altKey, so this
+		// won't also close the focused window.
+		if (e.key === 'Escape' && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+			e.preventDefault();
+			void desktopSession.reopenLastClosed();
+			return;
+		}
+		// Ctrl/Cmd+ArrowUp / ArrowDown — scroll the active (topmost) note in
+		// that direction. Requires no Alt so it can't collide with the
+		// Ctrl+Alt+Arrow workspace switch below. stopPropagation keeps the
+		// combo away from TipTap's caret-movement handlers.
+		if (
+			(e.ctrlKey || e.metaKey) &&
+			!e.altKey &&
+			!e.shiftKey &&
+			(e.key === 'ArrowUp' || e.key === 'ArrowDown')
+		) {
+			const guid = desktopSession.focusedNoteGuid;
+			if (!guid) return;
+			const editor = desktopSession.getEditorForGuid(guid);
+			const el = editor?.view.dom.parentElement as HTMLElement | null | undefined;
+			if (!el) return;
+			e.preventDefault();
+			e.stopPropagation();
+			const step = Math.max(80, Math.round(el.clientHeight * 0.4));
+			el.scrollBy({ top: e.key === 'ArrowDown' ? step : -step, behavior: 'smooth' });
+			return;
+		}
 		// Ctrl+Alt+Arrow — switch workspace (no wrap-around).
 		if (e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey) {
 			const map: Record<string, 'left' | 'right' | 'up' | 'down'> = {
