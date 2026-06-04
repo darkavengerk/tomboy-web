@@ -45,7 +45,10 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 		createSendListItemPlugin,
 		sendListItemPluginKey,
 	} from "./sendListItem/sendListItemPlugin.js";
-	import { transferListItem } from "./sendListItem/transferListItem.js";
+	import {
+		transferListItem,
+		skipListItem,
+	} from "./sendListItem/transferListItem.js";
 	import {
 		createAutoWeekdayPlugin,
 		autoWeekdayPluginKey,
@@ -501,6 +504,11 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 									const ed = editor;
 									if (!ed) return;
 									void transferListItem(ed, liPos, liNode);
+								},
+								onSkip: (liPos, liNode) => {
+									const ed = editor;
+									if (!ed) return;
+									skipListItem(ed, liPos, liNode);
 								},
 							}),
 						];
@@ -1992,7 +2000,7 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 	   and room on the right for the floating button. */
 	.tomboy-editor :global(.tomboy-send-active li) {
 		position: relative;
-		padding-right: 4.2em;
+		padding-right: 7.2em;
 		list-style: none;
 		border-radius: 3px;
 		transition: background-color 0.1s;
@@ -2015,22 +2023,36 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 	.tomboy-editor :global(.tomboy-send-active li:has(li:hover)) {
 		background-color: transparent;
 	}
-	.tomboy-editor :global(.tomboy-send-li-btn) {
+	.tomboy-editor :global(.tomboy-send-li-actions) {
 		position: absolute;
 		right: 0;
 		top: 0;
+		display: flex;
+		gap: 4px;
+	}
+	.tomboy-editor :global(.tomboy-send-li-btn),
+	.tomboy-editor :global(.tomboy-skip-li-btn) {
 		padding: 2px 8px;
 		font-size: 0.75rem;
 		line-height: 1.3;
-		background: #3465a4;
 		color: #fff;
 		border: none;
 		border-radius: 3px;
 		cursor: pointer;
 		user-select: none;
 	}
+	.tomboy-editor :global(.tomboy-send-li-btn) {
+		background: #3465a4;
+	}
 	.tomboy-editor :global(.tomboy-send-li-btn:hover) {
 		background: #204a87;
+	}
+	/* 스킵 — 중립 회색(삭제/넘김). 보내기와 시각적으로 구분. */
+	.tomboy-editor :global(.tomboy-skip-li-btn) {
+		background: #888a85;
+	}
+	.tomboy-editor :global(.tomboy-skip-li-btn:hover) {
+		background: #555753;
 	}
 
 	.tomboy-editor :global(li.music-track--playing) {
