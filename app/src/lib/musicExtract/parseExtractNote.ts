@@ -87,7 +87,7 @@ function deriveTitle(url: string, linkText: string): string {
 	}
 }
 
-function resultOf(li: PMNode): ExtractResult {
+export function resultOf(li: PMNode): ExtractResult {
 	const nested = nestedListOf(li);
 	if (!nested) return { kind: 'pending' };
 	let result: ExtractResult = { kind: 'pending' };
