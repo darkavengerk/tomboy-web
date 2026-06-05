@@ -26,6 +26,11 @@ export interface ExtractNote {
 	items: ExtractItem[];
 }
 
+/** 제목 텍스트가 음악추출 노트 접두사로 시작하는지(싼 게이트 — 전체 파싱 불필요). */
+export function isExtractTitle(titleText: string): boolean {
+	return titleText.trim().startsWith(PREFIX);
+}
+
 function isListNode(node: PMNode): boolean {
 	return node.type.name === 'bulletList' || node.type.name === 'orderedList';
 }
@@ -108,7 +113,7 @@ export function resultOf(li: PMNode): ExtractResult {
 
 export function parseExtractNote(doc: PMNode): ExtractNote {
 	const title = doc.firstChild?.textContent.trim() ?? '';
-	const isExtract = title.startsWith(PREFIX);
+	const isExtract = isExtractTitle(title);
 	if (!isExtract) return { isExtract, items: [] };
 	const items: ExtractItem[] = [];
 	doc.forEach((block, offset) => {

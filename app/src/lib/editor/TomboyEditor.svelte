@@ -2124,7 +2124,7 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 		background: var(--accent-soft, #faf2f7);
 	}
 
-	:global(.tomboy-music-extract-run) {
+	.tomboy-editor :global(.tomboy-music-extract-run) {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.3em;
@@ -2137,7 +2137,7 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 		color: var(--accent, #a05);
 		cursor: pointer;
 	}
-	:global(.tomboy-music-extract-run:disabled) {
+	.tomboy-editor :global(.tomboy-music-extract-run:disabled) {
 		opacity: 0.6;
 		cursor: default;
 	}

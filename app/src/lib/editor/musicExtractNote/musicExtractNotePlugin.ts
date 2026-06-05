@@ -2,7 +2,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { parseExtractNote } from '$lib/musicExtract/parseExtractNote.js';
+import { isExtractTitle } from '$lib/musicExtract/parseExtractNote.js';
 import { runExtractButtonClick } from './runExtractButtonClick.js';
 
 export const musicExtractNotePluginKey = new PluginKey<DecorationSet>('tomboyMusicExtractNote');
@@ -31,12 +31,9 @@ function renderButton(view: EditorView): HTMLElement {
 
 function buildDecorations(doc: PMNode): DecorationSet {
 	const first = doc.firstChild;
-	if (!first || !parseExtractNote(doc).isExtract) return DecorationSet.empty;
+	if (!first || !isExtractTitle(first.textContent)) return DecorationSet.empty;
 	const headerEndPos = first.nodeSize - 1;
-	const widget = Decoration.widget(headerEndPos, (view) => renderButton(view), {
-		side: 1,
-		key: 'music-extract-run'
-	});
+	const widget = Decoration.widget(headerEndPos, (view) => renderButton(view), { side: 1, key: 'music-extract-run' });
 	return DecorationSet.create(doc, [widget]);
 }
 
