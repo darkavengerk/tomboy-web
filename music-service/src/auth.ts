@@ -1,4 +1,4 @@
-// keep in sync with automation-service/src/auth.ts (timing-safe bearer compare)
+// verifyToken/extractBearer kept in sync with automation-service/src/auth.ts
 
 /**
  * For test use: returns the token that verifyToken(secret, token) accepts.

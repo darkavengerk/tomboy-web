@@ -22,6 +22,7 @@ cd music-service && npm install && npm run build
 cp deploy/music-service.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now music-service.service
+loginctl enable-linger $USER
 systemctl --user status music-service.service
 ```
 

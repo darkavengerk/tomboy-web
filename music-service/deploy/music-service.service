@@ -1,11 +1,13 @@
 [Unit]
 Description=tomboy music-service (yt-dlp → mp3 → bridge)
 After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 # canonical 경로 필수: /home → /var/home 심볼릭링크가 entry 가드(import.meta.url)를
 # 깨뜨리므로 node + dist/server.js 모두 실제(/var/home) 경로로 지정.
+WorkingDirectory=/var/home/umayloveme/workspace/tomboy-web/music-service
 EnvironmentFile=%h/.config/music-service.env
 ExecStart=/var/home/umayloveme/.local/share/fnm/aliases/default/bin/node /var/home/umayloveme/workspace/tomboy-web/music-service/dist/server.js
 Restart=on-failure
