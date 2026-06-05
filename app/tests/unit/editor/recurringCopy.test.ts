@@ -296,10 +296,9 @@ describe('buildRecurredLiJson', () => {
 });
 
 describe('scheduleDayOf', () => {
-	it('파렌 있는/없는 일정에서 일 번호를 뽑는다', () => {
+	it('파렌 마커 형태(N(요일) / N*(요일))에서 일 번호를 뽑는다', () => {
 		expect(scheduleDayOf(li('16(토) 빨래'))).toBe(16);
 		expect(scheduleDayOf(li('3(수*) 화분'))).toBe(3);
-		expect(scheduleDayOf(li('16 빨래'))).toBe(16);
 		expect(scheduleDayOf(li('1*(수) 가스'))).toBe(1);
 	});
 
@@ -307,6 +306,18 @@ describe('scheduleDayOf', () => {
 		expect(scheduleDayOf(li('노트 열심히 만드는 달'))).toBeNull();
 		expect(scheduleDayOf(li('100 세자리'))).toBeNull();
 		expect(scheduleDayOf(li(''))).toBeNull();
+	});
+
+	it('숫자로 시작하는 평범한 텍스트는 null(파렌 마커가 아니므로 정렬 제외)', () => {
+		// 숫자와 `(`/`*(` 사이에 공백이 있거나 파렌이 없으면 일정 줄이 아니다.
+		expect(scheduleDayOf(li('1 단계 목표'))).toBeNull();
+		expect(scheduleDayOf(li('7 월 정리'))).toBeNull();
+		expect(scheduleDayOf(li('10 시 기상'))).toBeNull();
+		expect(scheduleDayOf(li('30 분 운동'))).toBeNull();
+		expect(scheduleDayOf(li('5 (오늘)'))).toBeNull();
+		expect(scheduleDayOf(li('12 (점심)'))).toBeNull();
+		// 파렌 없는 "16 빨래"도 평범한 텍스트와 구분 불가 → 정렬 제외(제자리 고정).
+		expect(scheduleDayOf(li('16 빨래'))).toBeNull();
 	});
 });
 
