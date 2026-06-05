@@ -1,4 +1,13 @@
 // keep in sync with automation-service/src/auth.ts (timing-safe bearer compare)
+
+/**
+ * For test use: returns the token that verifyToken(secret, token) accepts.
+ * In this simple scheme the token IS the shared secret (personal-use service).
+ */
+export function mintToken(secret: string): string {
+  return secret;
+}
+
 export function extractBearer(authHeader?: string): string {
   if (!authHeader) return '';
   const m = /^Bearer\s+(.+)$/i.exec(authHeader);
