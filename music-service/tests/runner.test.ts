@@ -42,4 +42,15 @@ describe('extract', () => {
 	it('yt-dlp 비정상 종료 → throw', async () => {
 		await expect(extract('https://yt/abc', deps({ spawn: fakeSpawn(1) as never }))).rejects.toThrow();
 	});
+	it('mp3 없이 종료(0) → no_output throw', async () => {
+		const noFileSpawn = (_cmd: string, _args: string[]) => {
+			const child = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; kill: () => void };
+			child.stdout = new EventEmitter();
+			child.stderr = new EventEmitter();
+			child.kill = () => {};
+			queueMicrotask(() => child.emit('close', 0));
+			return child as never;
+		};
+		await expect(extract('https://yt/abc', deps({ spawn: noFileSpawn as never }))).rejects.toThrow('no_output');
+	});
 });

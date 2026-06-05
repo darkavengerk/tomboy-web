@@ -10,6 +10,7 @@ export interface RunnerDeps {
 	bridgeFilesUrl: string;
 	sharedToken: string;
 	ytdlpPath?: string;
+	ffmpegPath?: string;
 	timeoutMs?: number;
 	maxFilesize?: string;
 	uploadFn?: (mp3: Buffer, filename: string) => Promise<string>;
@@ -24,7 +25,7 @@ export async function extract(source: string, deps: RunnerDeps): Promise<Extract
 		await runYtdlp(resolved.value, dir, deps);
 		const files = (await readdir(dir)).filter((f) => f.toLowerCase().endsWith('.mp3'));
 		if (files.length === 0) throw new Error('no_output');
-		const filename = files[0];
+		const filename = files.sort()[0];
 		const mp3 = await readFile(join(dir, filename));
 		const title = filename.replace(/\.mp3$/i, '');
 		const upload = deps.uploadFn ?? ((b, fn) => uploadToBridge(b, fn, deps.bridgeFilesUrl, deps.sharedToken));
@@ -43,10 +44,12 @@ function runYtdlp(arg: string, dir: string, deps: RunnerDeps): Promise<void> {
 	const args = [
 		'-x', '--audio-format', 'mp3', '--embed-metadata', '--embed-thumbnail',
 		'--no-playlist', '--no-exec', '--socket-timeout', '30',
-		'--max-filesize', maxFilesize, '-o', '%(title)s.%(ext)s', '--paths', dir, arg
+		'--max-filesize', maxFilesize,
+		...(deps.ffmpegPath ? ['--ffmpeg-location', deps.ffmpegPath] : []),
+		'-o', '%(title)s.%(ext)s', '--paths', dir, arg
 	];
 	return new Promise((resolve, reject) => {
-		const opts: SpawnOptions = { cwd: process.env.HOME, stdio: ['ignore', 'pipe', 'pipe'] };
+		const opts: SpawnOptions = { cwd: process.env.HOME, stdio: ['ignore', 'ignore', 'pipe'] };
 		const child = spawn(bin, args, opts);
 		let errOut = '';
 		let settled = false;

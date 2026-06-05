@@ -13,5 +13,6 @@ describe('resolveSource', () => {
 		expect(resolveSource('   ').kind).toBe('reject');
 		expect(resolveSource('-x --rm').kind).toBe('reject');
 		expect(resolveSource('file:///etc/passwd').kind).toBe('reject');
+		expect(resolveSource('data:text/plain,hi').kind).toBe('reject');
 	});
 });

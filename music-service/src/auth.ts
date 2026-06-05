@@ -1,3 +1,4 @@
+// keep in sync with automation-service/src/auth.ts (timing-safe bearer compare)
 export function extractBearer(authHeader?: string): string {
   if (!authHeader) return '';
   const m = /^Bearer\s+(.+)$/i.exec(authHeader);
