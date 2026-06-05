@@ -6,6 +6,11 @@ const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const RESULT_URL_RE = new RegExp(`/files/${UUID}/`, 'i');
 const HTTP_URL_RE = /https?:\/\/[^\s<>"']+/;
 
+/** prose 끝에 붙은 구두점 제거 — 마크 href 가 아닌 텍스트 매칭에만 적용. */
+function trimTrailingPunct(url: string): string {
+	return url.replace(/[.,;:!?)\]}'"]+$/, '');
+}
+
 export type ExtractResult =
 	| { kind: 'done'; url: string; title: string }
 	| { kind: 'error'; message: string }
@@ -50,7 +55,7 @@ function firstUrlAndText(node: PMNode): { url: string; text: string } | null {
 	});
 	if (out) return out;
 	const m = HTTP_URL_RE.exec(node.textContent);
-	return m ? { url: m[0], text: '' } : null;
+	return m ? { url: trimTrailingPunct(m[0]), text: '' } : null;
 }
 
 function headText(li: PMNode): string {
@@ -58,7 +63,12 @@ function headText(li: PMNode): string {
 	return first ? first.textContent.trim() : '';
 }
 
-function headSource(li: PMNode): string {
+/**
+ * 항목의 소스 식별자 = head 단락의 링크 href 우선, 없으면 head 텍스트(검색어).
+ * 이 값이 (1) yt-dlp 로 보내는 추출 대상이자 (2) writeExtractResult 의 매칭 키다.
+ * 사람이 보는 링크 텍스트는 일부러 버린다(소스 라인은 에디터가 입력 그대로 렌더).
+ */
+export function itemSource(li: PMNode): string {
 	const first = li.firstChild;
 	if (first) {
 		const u = firstUrlAndText(first);
@@ -105,7 +115,7 @@ export function parseExtractNote(doc: PMNode): ExtractNote {
 		if (!isListNode(block)) return;
 		block.forEach((li, liOffset) => {
 			if (li.type.name !== 'listItem') return;
-			const source = headSource(li);
+			const source = itemSource(li);
 			if (!source) return;
 			items.push({ source, result: resultOf(li), liPos: offset + 1 + liOffset });
 		});

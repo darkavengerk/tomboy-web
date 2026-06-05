@@ -47,6 +47,11 @@ describe('parseExtractNote', () => {
 		expect(pend.map((p) => p.source)).toEqual(['Artist - Title', 'https://www.youtube.com/watch?v=ccc']);
 	});
 
+	it('bare-text 소스 URL의 끝 구두점을 제거한다', () => {
+		const note = parseExtractNote(docFrom('<p>음악추출::x</p><ul><li><p>https://youtu.be/abc.</p></li></ul>'));
+		expect(note.items[0].source).toBe('https://youtu.be/abc');
+	});
+
 	it('isExtractNoteDoc는 JSON 첫 단락만 본다', () => {
 		expect(isExtractNoteDoc({ content: [{ type: 'paragraph', content: [{ type: 'text', text: '음악추출::x' }] }] })).toBe(true);
 		expect(isExtractNoteDoc({ content: [{ type: 'paragraph', content: [{ type: 'text', text: '음악::x' }] }] })).toBe(false);
