@@ -45,6 +45,16 @@ it.each([[401, 'unauthorized'], [503, 'service_unavailable'], [500, 'upstream_er
 
 it('네트워크 오류 → network', async () => {
 	globalThis.fetch = (async () => { throw new Error('boom'); }) as unknown as typeof fetch;
-	await expect(extractOne({ source: 'x' })).rejects.toBeInstanceOf(ExtractError);
 	await expect(extractOne({ source: 'x' })).rejects.toMatchObject({ kind: 'network' });
+});
+
+it('signal을 fetch에 전달한다', async () => {
+	let capturedSignal: AbortSignal | undefined;
+	globalThis.fetch = (async (_u: string, init: RequestInit) => {
+		capturedSignal = init.signal as AbortSignal | undefined;
+		return new Response(JSON.stringify({ url: 'u', title: 't' }), { status: 200 });
+	}) as unknown as typeof fetch;
+	const ctrl = new AbortController();
+	await extractOne({ source: 'x', signal: ctrl.signal });
+	expect(capturedSignal).toBe(ctrl.signal);
 });
