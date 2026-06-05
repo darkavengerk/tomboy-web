@@ -21,7 +21,7 @@ description: 음악추출:: 노트 — YouTube 영상을 데스크탑 yt-dlp로 
   다운로드가 이미 있어 `<audio src>`로 직접 재생. 새 저장 코드 없음.
 - **보안 경계는 automation보다 약하다** — 소스 문자열을 노트가 직접 보냄. `music-service`가
   shell 미경유 spawn + `resolveSource` allowlist(선두 `-`/비-http 스킴 거부, 검색어 `ytsearch1:`
-  강제) + `--no-playlist`/`--no-exec`/`--max-filesize`/타임아웃으로 완화.
+  강제) + `--no-playlist`/`--no-exec`/`--max-filesize`/`--socket-timeout`/타임아웃으로 완화.
 - **시스템 오류 시 중단** — not_configured/unauthorized/service_unavailable/network 는 한 항목에서
   나면 토스트만 띄우고 루프 중단(노트에 같은 에러 도배 방지). 항목별 오류(bad_request/upstream_error)만
   그 항목에 `❌` 기록하고 계속.
