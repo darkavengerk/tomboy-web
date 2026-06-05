@@ -41,12 +41,17 @@ export async function handleMusicExtract(
 		return;
 	}
 
+	// 백스톱 타임아웃 — music-service 자체 한도(MUSIC_TIMEOUT_MS, 기본 ~180s)보다 넉넉히 위로
+	// 잡아, 정상 추출은 절대 끊지 않고 '서비스가 멈춘' 경우에만 발동(소켓 누수 방지). 발동 시
+	// AbortError 가 아래 catch 로 떨어져 503 unavailable 로 응답.
+	const UPSTREAM_TIMEOUT_MS = 600_000;
 	let upstream: Response;
 	try {
 		upstream = await fetch(`${musicServiceUrl}/extract`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
-			body: JSON.stringify({ source })
+			body: JSON.stringify({ source }),
+			signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)
 		});
 	} catch (err) {
 		console.warn(`[term-bridge music] upstream error: ${(err as Error).message}`);

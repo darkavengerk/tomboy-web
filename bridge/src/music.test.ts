@@ -73,3 +73,21 @@ test('503 on upstream network error', async () => {
 	assert.equal(get().status, 503);
 	assert.match(get().body, /unavailable/);
 });
+
+test('400 on malformed JSON body (no upstream call)', async () => {
+	let called = false;
+	globalThis.fetch = (async () => { called = true; return new Response('{}'); }) as typeof fetch;
+	const { res, get } = mockRes();
+	await handleMusicExtract(mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, 'not-json'), res, SECRET, URL_);
+	assert.equal(get().status, 400);
+	assert.equal(called, false);
+});
+
+test('400 on whitespace-only source (no upstream call)', async () => {
+	let called = false;
+	globalThis.fetch = (async () => { called = true; return new Response('{}'); }) as typeof fetch;
+	const { res, get } = mockRes();
+	await handleMusicExtract(mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, { source: '   ' }), res, SECRET, URL_);
+	assert.equal(get().status, 400);
+	assert.equal(called, false);
+});
