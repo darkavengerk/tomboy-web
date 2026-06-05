@@ -127,14 +127,18 @@ no Pi bridge, no desktop service, no registry. `runAutomationButtonClick` checks
 bridge (so the `applyDataNoteCsv` splice path is reused verbatim) **plus** `charts: ChartNoteOptions[]`
 — chart notes to ensure exist.
 
-- `app/src/lib/automation/localCommands.ts` — registry `{ id → () => Promise<LocalCommandResult> }`
-  + `getLocalCommand(id)`. Currently one entry: **`note-count`**.
-- `app/src/lib/automation/noteCount.ts` — pure `computeNoteCountCsv(notes, now)`: buckets the
-  current note set by **creation week (ISO `GGGG-Www`, Mon-start)** and emits a **cumulative**
-  running total per category. Categories = notebooks `[0] Slip-Box` + every `[1]…` notebook,
-  Slip-Box column first then `[1]…` sorted, each its own column (new `[1]…` notebook → new column
-  next run). Commas in category labels are folded to spaces (CSV is bare `split(',')`). Deleted +
-  template notes already excluded by `getAllNotes()`.
+- `app/src/lib/automation/localCommands.ts` — `getLocalCommand(id)` resolves a handler. Two
+  note-count commands: **`note-count-yearly`** and **`note-count-monthly[-YYYY]`** (the optional
+  `-YYYY` suffix is parsed out; no suffix = current year). Each handler returns `{results, errors,
+  charts}`.
+- `app/src/lib/automation/noteCount.ts` — pure `computeYearlyCsv(notes, now)` /
+  `computeMonthlyCsv(notes, year, now)`. Emit per-period **DELTAS** (count of still-existing notes
+  whose creation date falls in that period — NOT cumulative). Yearly: rows earliest-year→current.
+  Monthly: rows Jan→Dec of `year`, but the current year stops at the current month. Categories =
+  notebooks `[0] Slip-Box` + every `[1]…` notebook, Slip-Box column first then `[1]…` sorted, each
+  its own column (new `[1]…` notebook → new column next run). Commas in labels folded to spaces (CSV
+  is bare `split(',')`). Deleted + template notes already excluded by `getAllNotes()`. Deletions
+  aren't tracked, so a period can only show growth.
 - `app/src/lib/automation/buildChartNote.ts` — `buildChartNoteDoc(opts)`: authors a chart note doc
   (title line + `[x] Chart:<type> <title>` header + config bulletList: `DATA::…`, `x:<col>`,
   optional `[x]곡선`). **`y:` omitted on purpose** so `transformData` auto-includes every numeric
@@ -145,8 +149,10 @@ bridge (so the `applyDataNoteCsv` splice path is reused verbatim) **plus** `char
   (`'created'` vs `'exists'`); never clobbers an existing chart note (user may have tweaked it, and
   the chart reads the DATA:: note live anyway). Same dual-channel reload as `applyDataNoteCsv`.
 
-`note-count` → DATA note `DATA::note-count`, chart note `노트 수 추이` (line chart). The user just
-creates a `자동화::note-count` note and presses ⟳ — nothing to deploy.
+Outputs: `note-count-yearly` → `DATA::note-count-yearly` + chart note `연도별 노트 수`;
+`note-count-monthly-2026` → `DATA::note-count-2026` + chart note `2026년 월별 노트 수` (both line,
+`x:year` / `x:month`). The user just creates a `자동화::note-count-yearly` (or `…-monthly[-YYYY]`)
+note and presses ⟳ — nothing to deploy.
 
 ## DATA:: chart note (the data sink — pre-existing)
 
