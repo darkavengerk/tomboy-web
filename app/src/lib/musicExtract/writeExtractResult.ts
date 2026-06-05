@@ -9,10 +9,13 @@ export type ResultPayload =
 function isList(node: PMNode): boolean {
 	return node.type.name === 'bulletList' || node.type.name === 'orderedList';
 }
-function linkText(schema: Schema, text: string, href: string) {
+// 결과 링크는 텍스트와 href 를 동일한 URL 로 둔다. .note(<link:url>)가 텍스트만 보존하고
+// href 를 textContent 에서 복원하므로(noteContentArchiver), 텍스트가 곧 URL이라야
+// 저장→재로드(드롭박스/리로드/동기화) 후에도 결과 URL이 살아남는다. 표시 제목은 파서가
+// 파일명에서 유도(deriveTitle). 다른 tomboyUrlLink 생산자(geo/image)와 동일 패턴.
+function urlChild(schema: Schema, url: string) {
 	const markType = schema.marks.tomboyUrlLink ?? schema.marks.link;
-	if (markType) return schema.text(text, [markType.create({ href })]);
-	return schema.text(`${text} ${href}`); // 마크 없으면 텍스트+URL 둘 다(파서가 URL 인식)
+	return markType ? schema.text(url, [markType.create({ href: url })]) : schema.text(url);
 }
 
 /** source 와 일치하고 아직 결과(=/files URL)가 없는 첫 top-level listItem 의 위치+노드. */
@@ -45,7 +48,7 @@ export function writeExtractResult(view: EditorView, source: string, payload: Re
 
 	const childPara =
 		payload.kind === 'done'
-			? paragraph.create(null, linkText(schema, payload.title || payload.url, payload.url))
+			? paragraph.create(null, urlChild(schema, payload.url))
 			: paragraph.create(null, schema.text(`❌ 실패: ${payload.message}`));
 	const childItem = listItem.create(null, childPara);
 

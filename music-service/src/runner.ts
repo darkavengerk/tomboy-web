@@ -3,6 +3,7 @@ import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resolveSource } from './validate.js';
+import { mintBridgeToken } from './bridgeToken.js';
 
 export interface ExtractOk { url: string; title: string; }
 export interface RunnerDeps {
@@ -77,7 +78,7 @@ async function uploadToBridge(mp3: Buffer, filename: string, base: string, token
 	const res = await fetch(`${base.replace(/\/$/, '')}/files`, {
 		method: 'POST',
 		headers: {
-			Authorization: `Bearer ${token}`,
+			Authorization: `Bearer ${mintBridgeToken(token)}`,
 			'Content-Type': 'audio/mpeg',
 			'X-Filename': encodeURIComponent(filename)
 		},
