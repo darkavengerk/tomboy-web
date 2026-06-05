@@ -41,6 +41,7 @@
 import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 import { createAutomationNotePlugin } from "./automationNote/automationNotePlugin.js";
 import { TomboyMusicNote } from "./musicNote/index.js";
+import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 	import {
 		createSendListItemPlugin,
 		sendListItemPluginKey,
@@ -499,6 +500,7 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 					},
 				}),
 				TomboyMusicNote.configure({ getGuid: () => currentGuid ?? "" }),
+				TomboyMusicExtractNote,
 				Extension.create({
 					name: "tomboySendListItem",
 					addProseMirrorPlugins() {
@@ -2147,6 +2149,24 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 	}
 	.tomboy-editor :global(.tomboy-music-play-btn:hover) {
 		background: var(--accent-soft, #faf2f7);
+	}
+
+	.tomboy-editor :global(.tomboy-music-extract-run) {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3em;
+		margin: 0.2rem 0 0.4rem;
+		padding: 0.25rem 0.7rem;
+		font-size: 0.85rem;
+		border: 1px solid var(--border, #ddd);
+		border-radius: 6px;
+		background: var(--surface, #fff);
+		color: var(--accent, #a05);
+		cursor: pointer;
+	}
+	.tomboy-editor :global(.tomboy-music-extract-run:disabled) {
+		opacity: 0.6;
+		cursor: default;
 	}
 
 	/* Slip-note prev/next row. Both arrows ride on block 2's line; the

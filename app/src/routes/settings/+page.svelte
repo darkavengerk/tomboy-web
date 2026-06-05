@@ -1807,6 +1807,29 @@ month,[0] Slip-Box,[1] 프로젝트A
 							지원합니다. SUNO 플레이리스트 자동 채움은 향후 추가 예정입니다.</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>음악추출:: — YouTube를 mp3로 모으기</summary>
+					<p class="info-text">
+						<code>음악추출::</code> 로 시작하는 노트는 작업대예요. 영상 URL이나 검색어를 리스트로
+						적고 <b>⟳ 진행</b>을 누르면, 데스크탑에서 mp3로 추출해 브릿지에 저장하고 그 주소를 항목
+						밑에 채워 줍니다. 추출된 곡은 일반 음악처럼 백그라운드·잠금화면 재생이 돼요.
+					</p>
+					<pre class="snippet">음악추출::내 라이브러리
+
+- https://www.youtube.com/watch?v=…
+- Artist - Title          (검색어도 가능)</pre>
+					<ul class="guide-list">
+						<li>⟳ 는 <b>결과가 아직 없는 항목만</b> 처리해요. 소스를 더 추가하고 다시 눌러도
+							이미 받은 곡은 건너뜁니다.</li>
+						<li>재생하려면 채워진 링크를 <code>음악::</code> 노트로 복사해 구성하세요(수동).</li>
+						<li>선행: 데스크탑 <code>music-service</code> 실행 + 브릿지 <code>MUSIC_SERVICE_URL</code>
+							설정. 브릿지 설정이 없으면 "브릿지 설정이 필요합니다", 데스크탑 서비스에 못 닿으면
+							"음악 추출 서비스에 연결할 수 없습니다" 안내가 떠요.</li>
+						<li>개인·자기 호스팅 도구입니다. <b>본인이 권리를 가진 콘텐츠</b>(내 업로드/CC/퍼블릭
+							도메인)에만 사용하세요.</li>
+					</ul>
+				</details>
 			</section>
 
 			{:else if guideSubTab === 'editor'}
