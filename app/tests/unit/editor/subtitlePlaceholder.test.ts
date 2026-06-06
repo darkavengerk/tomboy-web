@@ -106,6 +106,22 @@ describe('TomboySubtitlePlaceholder', () => {
 		expect(hasPlaceholderClass(editor)).toBe(false);
 	});
 
+	it('hides when the title contains "::" (automation/data notes)', () => {
+		const editor = makeEditor({
+			content: {
+				type: 'doc',
+				content: [
+					{ type: 'paragraph', content: [{ type: 'text', text: '자동화::제목' }] },
+					{ type: 'paragraph' },
+					{ type: 'paragraph' }
+				]
+			},
+			text: '2026-04-17'
+		});
+		editor.commands.setTextSelection(1);
+		expect(hasPlaceholderClass(editor)).toBe(false);
+	});
+
 	it('reappears after the user deletes the subtitle text', () => {
 		const editor = makeEditor({
 			content: {

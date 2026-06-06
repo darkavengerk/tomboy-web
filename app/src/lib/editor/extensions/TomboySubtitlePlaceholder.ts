@@ -9,6 +9,10 @@
  * Contrast with the built-in TipTap Placeholder extension, which shows
  * its hint only on the *current* empty node (the opposite of what we want
  * here — ours should hide when the cursor enters).
+ *
+ * Exception: notes whose title contains `::` (automation/data notes such as
+ * `자동화::제목` or `DATA::project`) use the second line as a log slot, so the
+ * placeholder is suppressed entirely for them.
  */
 
 import { Extension } from '@tiptap/core';
@@ -54,6 +58,11 @@ function buildDecorations(state: EditorState, text: string | null): DecorationSe
 
 	const doc = state.doc;
 	if (doc.childCount < 2) return DecorationSet.empty;
+
+	// `::` in the title marks automation-style notes (e.g. `자동화::제목`,
+	// `DATA::project`), whose second line is a real log slot, not a subtitle.
+	// Suppress the placeholder there so it never masks the log.
+	if (doc.child(0).textContent.includes('::')) return DecorationSet.empty;
 
 	const second = doc.child(1);
 	if (second.type.name !== 'paragraph') return DecorationSet.empty;
