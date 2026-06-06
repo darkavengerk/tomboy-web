@@ -9,7 +9,7 @@
     "start": "node dist/server.js",
     "dev": "tsc -p . --watch & node --watch dist/server.js",
     "deploy": "node scripts/deploy.mjs",
-    "test": "node --import tsx --test src/*.test.ts"
+    "test": "node --import tsx --test src/*.test.ts src/**/*.test.ts"
   },
   "dependencies": {
     "@types/node": "^22.0.0",
