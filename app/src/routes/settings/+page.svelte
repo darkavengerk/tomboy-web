@@ -1597,6 +1597,31 @@ history:
 				</details>
 
 				<details class="guide-card">
+					<summary>일정 노트 — 보내기 / 스킵 버튼 + 반복 마커</summary>
+					<p class="info-text">
+						일정 노트에서 <kbd>Ctrl</kbd>(모바일은 툴바의 <code>Ctrl</code> 고정)을 누르면 각
+						리스트 아이템 오른쪽에 <strong>스킵</strong>·<strong>보내기</strong> 버튼이 나타납니다.
+						<strong>보내기</strong>는 그 항목을 히스토리 노트로 옮기고, <strong>스킵</strong>은
+						히스토리로 보내는 단계를 건너뜁니다.
+					</p>
+					<pre class="snippet">5월
+&nbsp; - 25*(수) 가스점검      ← 월간 반복 (다음 달 25일)
+&nbsp; - 15(수*) 분리수거       ← 주간 반복 (+1주)
+&nbsp; - 8(금**) 격주 청소      ← 2주 반복 (+2주, * 개수 = 주)
+&nbsp; - 3(금) 등산            ← 마커 없음 (1회성)</pre>
+					<ul class="guide-list">
+						<li><strong>보내기</strong> — 항목을 히스토리 노트로 보냅니다. 반복 마커가 있으면
+							다음 주기 날짜로 복제본도 함께 만들어 둡니다.</li>
+						<li><strong>스킵</strong> — 마커 없는 1회성 항목은 <strong>그냥 삭제</strong>합니다.
+							반복 마커가 있으면 삭제·히스토리 이동 없이 <strong>다음 주기로 옮기기만</strong> 합니다.
+							(이번 주기를 거른다는 뜻)</li>
+						<li>반복 마커는 위치로 구분 — <code>25*(수)</code>처럼 <strong>일 번호 옆 *</strong>는
+							월간, <code>15(수*)</code>처럼 <strong>요일 뒤 *</strong>는 주간(<code>*</code> 개수 = 주).</li>
+						<li>보내기·스킵 모두 한 번의 <kbd>Ctrl</kbd>+<kbd>Z</kbd>로 되돌릴 수 있습니다.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
 					<summary>슬립노트 — 노트 체인 형식</summary>
 					<p class="info-text">
 						<code>[0] Slip-Box</code> 노트북 안의 노트들이 <code>이전</code> / <code>다음</code> 링크로
@@ -1702,30 +1727,107 @@ https://www.dropbox.com/…/starting.png</pre>
 					</ul>
 				</details>
 				<details class="guide-card">
+					<summary>노트 수 자동화 (자동화::note-count-…)</summary>
+					<p class="info-text">
+						생성일 기준으로 노트 <strong>증감(기간별 신규 생성 수)</strong>을 카테고리(노트북)별로 세는
+						<strong>로컬</strong> 자동화입니다. 「⟳ 실행」을 누르면 브릿지 없이 브라우저에서 바로 계산해
+						<code>DATA::…</code> 노트에 CSV로 적고, 라인차트 노트를 만듭니다(없을 때만 생성). 집계 단위에
+						따라 자동화가 2개입니다.
+					</p>
+					<pre class="snippet">자동화::note-count-yearly        ← 연도별
+자동화::note-count-monthly       ← 올해 월별
+자동화::note-count-monthly-2025  ← 특정 연도(2025) 월별
+
+⟳ 실행
+
+────────────
+DATA::note-count-yearly
+year,[0] Slip-Box,[1] 프로젝트A
+2024,40,12
+2025,55,9
+2026,18,3
+
+DATA::note-count-2026
+month,[0] Slip-Box,[1] 프로젝트A
+2026-01,12,2
+2026-02,3,0
+2026-03,5,1</pre>
+					<ul class="guide-list">
+						<li><strong>note-count-yearly</strong> → <code>DATA::note-count-yearly</code> + 「연도별 노트 수」
+							차트. 행 = 연도(가장 오래된 노트 연도 ~ 올해).</li>
+						<li><strong>note-count-monthly[-YYYY]</strong> → <code>DATA::note-count-&lt;연도&gt;</code> +
+							「&lt;연도&gt;년 월별 노트 수」 차트. 연도를 안 적으면 올해, <code>-2025</code> 처럼 붙이면 그
+							연도. 행 = 1월~12월(올해는 이번 달까지).</li>
+						<li>세는 카테고리: <code>[0] Slip-Box</code> 노트북과 <code>[1]</code> 로 시작하는 모든
+							노트북. 각 카테고리가 <strong>한 컬럼</strong>이 되고, 새 <code>[1]…</code> 노트북이
+							생기면 다음 실행 때 자동으로 컬럼이 늘어납니다.</li>
+						<li>값은 <strong>누적이 아니라 그 기간의 신규 생성 수</strong>입니다. 삭제된 노트·템플릿은
+							제외되며(삭제는 추적하지 않으므로 감소는 잡히지 않음), 로컬 전용이라 데스크탑
+							automation-service·브릿지 설정이 필요 없습니다.</li>
+						<li>차트 노트는 처음 한 번만 생성됩니다. 차트는 데이터 노트를 실시간으로 읽으므로 이후
+							실행은 <code>DATA::…</code> 만 갱신해도 차트가 따라 갱신됩니다(차트 설정을 직접 바꿔도
+							덮어쓰지 않음).</li>
+					</ul>
+				</details>
+				<details class="guide-card">
 					<summary>음악 노트 — <code>음악::</code> 플레이리스트 재생</summary>
 					<p class="info-text">
-						제목을 <code>음악::제목</code> 으로 시작하면 음악 노트가 됩니다. 본문의
-						<code>플레이리스트: 설명</code> 줄 바로 다음 리스트의 아이템들이 트랙이 되고, 제목 아래
-						컨트롤 패널에서 재생/정지·이전/다음·탐색을 할 수 있습니다. 한 노트의 모든 플레이리스트는
-						문서 순서대로 이어 재생됩니다.
+						제목을 <code>음악::제목</code> 으로 시작하면 음악 노트가 되고, <strong>제목 바로 아래</strong>에
+						재생 컨트롤 패널이 항상 표시됩니다(재생/정지·이전/다음·탐색). 패널은
+						<strong>플레이리스트 체크와 무관</strong>하게 뜹니다. <code>플레이리스트: 설명</code> 줄 앞
+						체크박스를 <strong>체크</strong>하면(<code>[x]플레이리스트: …</code>) 그 줄 다음 리스트가
+						플레이리스트가 되어 곡 <strong>제목만</strong> 깔끔하게 보이고, <strong>해제</strong>하면
+						(<code>[ ]플레이리스트: …</code>) 다시 일반 텍스트 목록으로 돌아갑니다. 한 노트의 켜진
+						플레이리스트는 문서 순서대로 이어 재생됩니다.
 					</p>
 					<pre class="snippet">음악::주말 플레이리스트
 
-플레이리스트: 아침
+[x]플레이리스트: 아침
 &nbsp; - 곡 제목
 &nbsp; &nbsp; - https://example.com/song.mp3
 &nbsp; - https://example.com/another.mp3
 
-플레이리스트: 저녁
+[ ]플레이리스트: 저녁  (체크 해제 → 그냥 텍스트)
 &nbsp; - https://example.com/evening.mp3</pre>
 					<ul class="guide-list">
+						<li><strong>체크박스 토글</strong>: 줄 앞에 <code>[x]</code> 를 입력하면 플레이리스트 모드,
+							<code>[ ]</code> 면 텍스트 모드. 체크박스 없는 <code>플레이리스트:</code> 줄은 켜진
+							것으로 봅니다.</li>
+						<li>플레이리스트 모드에선 URL이 숨고 곡 제목(없으면 파일명)만 보입니다 —
+							<strong>고치려면 그 줄에 커서를 두면</strong> 원래 URL이 다시 나타납니다.</li>
 						<li>아이템 2가지 형식: <strong>제목(깊이1) + URL(깊이2)</strong>, 또는 제목을 모르면
 							<strong>URL만(깊이1)</strong>.</li>
-						<li>재생 중인 곡은 리스트 마커 대신 재생 아이콘으로 표시됩니다.</li>
+						<li>재생 중인 곡은 리스트 마커 대신 재생 아이콘(이퀄라이저)으로 표시됩니다.</li>
+						<li><strong>재생은 전역에 하나</strong>입니다. 어느 노트에서 틀든, 열려 있는 모든 음악 노트의
+							패널이 <strong>같은 재생 곡</strong>을 표시합니다. 아무것도 재생 중이 아니면 패널은 지금 보는
+							노트의 첫 곡을 미리 보여주고, ▶ 로 그 노트를 시작합니다.</li>
 						<li>각 트랙의 ▶ 버튼은 <strong>Ctrl 을 누른 채</strong> 노출됩니다 — 데스크탑은 Ctrl+마우스
-							오버, 모바일은 툴바의 <code>Ctrl</code> 버튼을 켠 뒤 탭.</li>
+							오버, 모바일은 툴바의 <code>Ctrl</code> 버튼을 켠 뒤 탭. (재생 중 다른 노트를 틀 때 사용)</li>
 						<li>현재는 <strong>직접 오디오 파일 URL</strong>(mp3 등 브라우저가 재생 가능한 링크)만
 							지원합니다. SUNO 플레이리스트 자동 채움은 향후 추가 예정입니다.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
+					<summary>음악추출:: — YouTube를 mp3로 모으기</summary>
+					<p class="info-text">
+						<code>음악추출::</code> 로 시작하는 노트는 작업대예요. 영상 URL이나 검색어를 리스트로
+						적고 <b>⟳ 진행</b>을 누르면, 데스크탑에서 mp3로 추출해 브릿지에 저장하고 그 주소를 항목
+						밑에 채워 줍니다. 추출된 곡은 일반 음악처럼 백그라운드·잠금화면 재생이 돼요.
+					</p>
+					<pre class="snippet">음악추출::내 라이브러리
+
+- https://www.youtube.com/watch?v=…
+- Artist - Title          (검색어도 가능)</pre>
+					<ul class="guide-list">
+						<li>⟳ 는 <b>결과가 아직 없는 항목만</b> 처리해요. 소스를 더 추가하고 다시 눌러도
+							이미 받은 곡은 건너뜁니다.</li>
+						<li>재생하려면 채워진 링크를 <code>음악::</code> 노트로 복사해 구성하세요(수동).</li>
+						<li>선행: 데스크탑 <code>music-service</code> 실행 + 브릿지 <code>MUSIC_SERVICE_URL</code>
+							설정. 브릿지 설정이 없으면 "브릿지 설정이 필요합니다", 데스크탑 서비스에 못 닿으면
+							"음악 추출 서비스에 연결할 수 없습니다" 안내가 떠요.</li>
+						<li>개인·자기 호스팅 도구입니다. <b>본인이 권리를 가진 콘텐츠</b>(내 업로드/CC/퍼블릭
+							도메인)에만 사용하세요.</li>
 					</ul>
 				</details>
 			</section>
@@ -1820,8 +1922,9 @@ https://www.dropbox.com/…/starting.png</pre>
 					<p class="info-text">
 						표 데이터를 <strong>막대·선·영역·분산</strong> 그래프로 그립니다. 데이터는
 						<code>DATA::</code> 로 시작하는 별도 노트에 두고, 아무 노트에서나 차트 블록을
-						작성해 불러옵니다. 차트 블록 맨 앞 체크박스를 <strong>켜면([x]) 차트가 그려지고</strong>,
-						끄면([ ]) 설정 목록만 보입니다.
+						작성해 불러옵니다. 차트 블록 맨 앞 체크박스를 <strong>켜면([x]) 차트만 보이고</strong>
+						(제목 줄·설정 목록은 숨겨집니다), 다시 텍스트로 돌리려면 <strong>차트 좌측 상단의
+						체크박스</strong>를 끄면([ ]) 설정 목록이 펼쳐집니다.
 					</p>
 					<pre class="snippet">DATA::매출
 ```csv
@@ -2044,6 +2147,24 @@ Complete:</pre>
 				</details>
 
 				<details class="guide-card">
+					<summary>음악 노트 — 잠금화면 백그라운드 재생</summary>
+					<p class="info-text">
+						<code>음악::</code> 노트에서 재생하면 화면을 꺼도 재생이 이어지고, OS 잠금화면에
+						곡 정보와 재생/일시정지/이전/다음/탐색 컨트롤이 뜹니다. 한 곡이 끝나면 다음 곡을
+						미리 받아둔 덕에 잠금 상태에서도 끊김 없이 자동으로 넘어갑니다.
+					</p>
+					<ul class="guide-list">
+						<li><strong>홈 화면에 추가(PWA 설치)</strong>를 권장합니다 — 브라우저 탭보다 백그라운드
+							재생이 안정적입니다.</li>
+						<li><strong>Android</strong>: 잠금화면 컨트롤과 자동 넘김이 거의 네이티브처럼 동작합니다.</li>
+						<li><strong>iOS</strong>: 잠금 컨트롤과 단일 곡 재생은 안정적이나, 잠금 상태 자동 넘김은
+							iOS 버전에 따라 완벽히 보장되지는 않습니다(다음 곡이 안 넘어가면 한 번 깨워서
+							재생을 눌러주세요).</li>
+						<li>오프라인 저장은 아직 없습니다 — 곡은 네트워크에서 재생되며, 다음 곡만 미리 받아둡니다.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
 					<summary>알림 권한 — 일정 푸시</summary>
 					<p class="info-text">
 						브라우저의 알림 권한과 별개로, 이 앱에서 "알림 활성화"를 눌러야 FCM 토큰이 등록됩니다.
@@ -2142,7 +2263,7 @@ Complete:</pre>
 						<tr><td><kbd>Ctrl</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd></td><td>활성 노트를 위/아래로 스크롤</td></tr>
 						<tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>←</kbd> / <kbd>→</kbd> / <kbd>↑</kbd> / <kbd>↓</kbd></td><td>인접 워크스페이스로 전환</td></tr>
 						<tr><td><kbd>Esc</kbd></td><td>활성 윈도우/모달 닫기</td></tr>
-						<tr><td><kbd>Alt</kbd>+<kbd>Esc</kbd></td><td>마지막으로 닫은 노트 다시 열기 (실수로 닫았을 때)</td></tr>
+						<tr><td><kbd>Ctrl</kbd>+<kbd>`</kbd></td><td>마지막으로 닫은 노트 다시 열기 (실수로 닫았을 때)</td></tr>
 					</tbody>
 				</table>
 			</section>

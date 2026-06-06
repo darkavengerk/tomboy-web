@@ -17,6 +17,7 @@ import { handleRagSearch } from './rag.js';
 import { handleOcrProxy } from './ocr.js';
 import { handleClaudeChat } from './claude.js';
 import { handleAutomationRun } from './automation.js';
+import { handleMusicExtract } from './music.js';
 import { handleGpuStatus, handleGpuUnload } from './gpu.js';
 import { handleRemarkableWallpaper } from './remarkable.js';
 import { loadRemarkableHosts } from './remarkableHosts.js';
@@ -48,6 +49,8 @@ if (!/^https?:\/\//.test(BRIDGE_PUBLIC_BASE_URL)) {
 const CLAUDE_SERVICE_URL = process.env.CLAUDE_SERVICE_URL ?? '';
 // Optional — bridge boots without it and returns 503.
 const AUTOMATION_SERVICE_URL = process.env.AUTOMATION_SERVICE_URL ?? '';
+// Optional — bridge boots without it and returns 503.
+const MUSIC_SERVICE_URL = process.env.MUSIC_SERVICE_URL ?? '';
 // Ollama runs on the desktop alongside ocr-service. The bridge reads this
 // from env so deployments without an Ollama on `localhost:11434` (i.e.
 // remote-LAN Ollama) can override it. `llm.ts` reads the same env var
@@ -156,6 +159,11 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 
 	if (url === '/automation/run' && req.method === 'POST') {
 		await handleAutomationRun(req, res, SECRET, AUTOMATION_SERVICE_URL);
+		return;
+	}
+
+	if (url === '/music/extract' && req.method === 'POST') {
+		await handleMusicExtract(req, res, SECRET, MUSIC_SERVICE_URL);
 		return;
 	}
 

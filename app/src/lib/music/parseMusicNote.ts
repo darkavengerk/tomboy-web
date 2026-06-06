@@ -10,6 +10,9 @@ export interface MusicTrack {
 	title: string | null;
 	display: string;
 	liPos: number; // listItem 시작 pos (데코레이션 anchor)
+	/** 소속 플레이리스트 label. 글로벌 오디오 엔진/미디어세션이 playlists 컨텍스트
+	 *  없이 현재 곡의 라벨(artist)을 알 수 있도록 트랙에 부착. */
+	playlistLabel?: string;
 }
 export interface MusicPlaylist {
 	label: string;
@@ -126,7 +129,16 @@ export function parseMusicNote(doc: PMNode): MusicNote {
 		const blockType = block.type.name;
 		if (blockType === 'paragraph') {
 			const t = block.textContent.trim();
-			pendingLabel = t.startsWith(PLAYLIST_PREFIX) ? t.slice(PLAYLIST_PREFIX.length).trim() : null;
+			if (!t.startsWith(PLAYLIST_PREFIX)) {
+				pendingLabel = null;
+				return;
+			}
+			// 체크박스 토글: 헤더 앞 inlineCheckbox atom 의 checked 가 플레이리스트 모드 on/off.
+			// 체크박스 없음 = 레거시(항상 켜짐). 미체크 = 텍스트 모드(트랙 아님 → 큐/데코 제외).
+			// atom 은 textContent 에 기여하지 않으므로 위 prefix 매칭은 그대로 유효.
+			const first = block.firstChild;
+			const enabled = first?.type.name === 'inlineCheckbox' ? first.attrs.checked === true : true;
+			pendingLabel = enabled ? t.slice(PLAYLIST_PREFIX.length).trim() : null;
 			return;
 		}
 		if (isListNode(block) && pendingLabel !== null) {
@@ -135,7 +147,10 @@ export function parseMusicNote(doc: PMNode): MusicNote {
 				if (li.type.name !== 'listItem') return;
 				const liPos = offset + 1 + liOffset; // 리스트 content 시작 = offset+1
 				const track = extractTrack(li, liPos);
-				if (track) tracks.push(track);
+				if (track) {
+					track.playlistLabel = pendingLabel ?? '';
+					tracks.push(track);
+				}
 			});
 			playlists.push({ label: pendingLabel, tracks });
 			pendingLabel = null;

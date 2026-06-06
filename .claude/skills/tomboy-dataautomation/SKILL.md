@@ -118,6 +118,42 @@ counts source LOC by extension over **git-tracked files only** (so `.gitignore` 
 `--csv-only` emits bare CSV (no fence/header) — that's what the registry uses so
 `applyDataNoteCsv` can splice it straight in. The repo keeps a copy at `scripts/loc-history.py`.
 
+## Local commands (browser-side, NO bridge)
+
+Some commands compute their CSV entirely in the browser against the local IndexedDB —
+no Pi bridge, no desktop service, no registry. `runAutomationButtonClick` checks
+`getLocalCommand(commandId)` **first**; only ids absent from that registry fall through to
+`runAutomation` (the bridge). A local handler returns the same `{results, errors}` shape as the
+bridge (so the `applyDataNoteCsv` splice path is reused verbatim) **plus** `charts: ChartNoteOptions[]`
+— chart notes to ensure exist.
+
+- `app/src/lib/automation/localCommands.ts` — `getLocalCommand(id)` resolves a handler. Two
+  note-count commands: **`note-count-yearly`** and **`note-count-monthly[-YYYY]`** (the optional
+  `-YYYY` suffix is parsed out; no suffix = current year). Each handler returns `{results, errors,
+  charts}`.
+- `app/src/lib/automation/noteCount.ts` — pure `computeYearlyCsv(notes, now)` /
+  `computeMonthlyCsv(notes, year, now)`. Emit per-period **DELTAS** (count of still-existing notes
+  whose creation date falls in that period — NOT cumulative). Yearly: rows earliest-year→current.
+  Monthly: rows Jan→Dec of `year`, but the current year stops at the current month. Categories =
+  notebooks `[0] Slip-Box` + every `[1]…` notebook, Slip-Box column first then `[1]…` sorted, each
+  its own column (new `[1]…` notebook → new column next run). Commas in labels folded to spaces (CSV
+  is bare `split(',')`). Deleted + template notes already excluded by `getAllNotes()`. Deletions
+  aren't tracked, so a period can only show growth.
+- `app/src/lib/automation/buildChartNote.ts` — `buildChartNoteDoc(opts)`: authors a chart note doc
+  (title line + `[x] Chart:<type> <title>` header + config bulletList: `DATA::…`, `x:<col>`,
+  optional `[x]곡선`). **`y:` omitted on purpose** so `transformData` auto-includes every numeric
+  column — the chart never needs a structural rewrite when a category column appears. `[x]` is
+  written as literal text; the save→reload pipeline converts it to the inlineCheckbox atom (same
+  round-trip as a hand-typed chart header — see inlineCheckbox gotcha).
+- `app/src/lib/automation/applyChartNote.ts` — `applyChartNote(opts)`: **create-if-missing only**
+  (`'created'` vs `'exists'`); never clobbers an existing chart note (user may have tweaked it, and
+  the chart reads the DATA:: note live anyway). Same dual-channel reload as `applyDataNoteCsv`.
+
+Outputs: `note-count-yearly` → `DATA::note-count-yearly` + chart note `연도별 노트 수`;
+`note-count-monthly-2026` → `DATA::note-count-2026` + chart note `2026년 월별 노트 수` (both line,
+`x:year` / `x:month`). The user just creates a `자동화::note-count-yearly` (or `…-monthly[-YYYY]`)
+note and presses ⟳ — nothing to deploy.
+
 ## DATA:: chart note (the data sink — pre-existing)
 
 `DATA::<project>` notes render their first csv/tsv code-fence as a Chart.js chart via the
@@ -128,6 +164,12 @@ chart/table blocks use — keep CSV/TSV fence parsing consistent across all thre
 
 ## Invariants
 
+- **Local commands take precedence over the bridge.** `runAutomationButtonClick` resolves
+  `getLocalCommand(commandId)` first; a hit runs in-browser (no bridge/registry), a miss falls
+  through to `runAutomation`. So a registry command must never reuse a local id (e.g. `note-count`).
+- **Chart notes are create-if-missing, never clobbered.** `applyChartNote` only writes a new note
+  when absent; an existing chart note is left as-is (it reads the DATA:: note live, and the user may
+  have customized it). DATA:: notes, by contrast, are rewritten every run.
 - **Note header is the only config in the note.** The automation note carries just the
   command id (`자동화::<id>`). All paths/args/exclusions live in the desktop registry file —
   the note never transmits a path or shell string. Adding a project = edit the registry, not

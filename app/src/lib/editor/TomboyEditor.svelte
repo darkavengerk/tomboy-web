@@ -41,11 +41,15 @@
 import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 import { createAutomationNotePlugin } from "./automationNote/automationNotePlugin.js";
 import { TomboyMusicNote } from "./musicNote/index.js";
+import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 	import {
 		createSendListItemPlugin,
 		sendListItemPluginKey,
 	} from "./sendListItem/sendListItemPlugin.js";
-	import { transferListItem } from "./sendListItem/transferListItem.js";
+	import {
+		transferListItem,
+		skipListItem,
+	} from "./sendListItem/transferListItem.js";
 	import {
 		createAutoWeekdayPlugin,
 		autoWeekdayPluginKey,
@@ -213,12 +217,15 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 		 *  without re-fetching the URL — Dropbox shared links block CORS
 		 *  `fetch()` even though `<img src>` works. */
 		onimageinserted?: (url: string, file: File) => void;
-		/** Keep the caret scrolled clear of a fixed bottom toolbar while
-		 *  typing. Only the mobile note route (/note/[id]) overlays such a
-		 *  toolbar, so it opts in; desktop windows leave it false and keep the
-		 *  browser's native scroll behaviour. Pairs with the page's
-		 *  `--toolbar-height` var + `scroll-padding-bottom`. */
+		/** Keep the caret scrolled clear of a floating bottom toolbar while
+		 *  typing. Surfaces that overlay such a toolbar opt in; others leave it
+		 *  false and keep the browser's native scroll behaviour. */
 		keepCursorVisible?: boolean;
+		/** Scroll model for `keepCursorVisible`. "window" (mobile /note/[id]):
+		 *  body scroll + fixed toolbar (`--toolbar-height`). "container"
+		 *  (desktop NoteWindow): the editor's own overflow parent + the 30px
+		 *  `--toolbar-h` strip. */
+		cursorVisibilityMode?: "window" | "container";
 	}
 
 	let {
@@ -248,6 +255,7 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 		noteFocused = true,
 		onimageinserted = () => {},
 		keepCursorVisible = false,
+		cursorVisibilityMode = "window",
 	}: Props = $props();
 
 	let ctxMenu = $state<{ x: number; y: number } | null>(null);
@@ -491,7 +499,8 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 						return [createAutomationNotePlugin()];
 					},
 				}),
-				TomboyMusicNote,
+				TomboyMusicNote.configure({ getGuid: () => currentGuid ?? "" }),
+				TomboyMusicExtractNote,
 				Extension.create({
 					name: "tomboySendListItem",
 					addProseMirrorPlugins() {
@@ -501,6 +510,11 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 									const ed = editor;
 									if (!ed) return;
 									void transferListItem(ed, liPos, liNode);
+								},
+								onSkip: (liPos, liNode) => {
+									const ed = editor;
+									if (!ed) return;
+									skipListItem(ed, liPos, liNode);
 								},
 							}),
 						];
@@ -1005,10 +1019,11 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 			scheduleAutoLinkScan({ full: true });
 		});
 
-		// Keep the caret above the fixed bottom toolbar while typing (mobile
-		// note route opts in). No-op unless `--toolbar-height` is set on <html>.
+		// Keep the caret above the floating bottom toolbar while typing (mobile
+		// note route + desktop NoteWindow opt in). No-op unless the mode's
+		// toolbar var (--toolbar-height / --toolbar-h) is set.
 		const uninstallCursorVisibility = keepCursorVisible
-			? installCursorVisibility(editor)
+			? installCursorVisibility(editor, { mode: cursorVisibilityMode })
 			: () => {};
 
 		return () => {
@@ -1992,7 +2007,7 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 	   and room on the right for the floating button. */
 	.tomboy-editor :global(.tomboy-send-active li) {
 		position: relative;
-		padding-right: 4.2em;
+		padding-right: 7.2em;
 		list-style: none;
 		border-radius: 3px;
 		transition: background-color 0.1s;
@@ -2015,28 +2030,72 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 	.tomboy-editor :global(.tomboy-send-active li:has(li:hover)) {
 		background-color: transparent;
 	}
-	.tomboy-editor :global(.tomboy-send-li-btn) {
+	.tomboy-editor :global(.tomboy-send-li-actions) {
 		position: absolute;
 		right: 0;
 		top: 0;
+		display: flex;
+		gap: 4px;
+	}
+	.tomboy-editor :global(.tomboy-send-li-btn),
+	.tomboy-editor :global(.tomboy-skip-li-btn) {
 		padding: 2px 8px;
 		font-size: 0.75rem;
 		line-height: 1.3;
-		background: #3465a4;
 		color: #fff;
 		border: none;
 		border-radius: 3px;
 		cursor: pointer;
 		user-select: none;
 	}
+	.tomboy-editor :global(.tomboy-send-li-btn) {
+		background: #3465a4;
+	}
 	.tomboy-editor :global(.tomboy-send-li-btn:hover) {
 		background: #204a87;
 	}
+	/* 스킵 — 중립 회색(삭제/넘김). 보내기와 시각적으로 구분. */
+	.tomboy-editor :global(.tomboy-skip-li-btn) {
+		background: #888a85;
+	}
+	.tomboy-editor :global(.tomboy-skip-li-btn:hover) {
+		background: #555753;
+	}
 
-	.tomboy-editor :global(li.music-track--playing) {
+	/* 음악 노트 제목(첫 블록) 아래에, 떠 있는 컨트롤 패널 높이만큼 공간 확보.
+	   패널(MusicPlayerBar)이 --music-reserve 를 view.dom 에 설정한다. */
+	.tomboy-editor :global(.music-title-block) {
+		margin-bottom: var(--music-reserve, 0px);
+	}
+	/* 플레이리스트 모드 트랙 행 — 글머리표 대신 ♪/재생아이콘 + 곡 제목. */
+	.tomboy-editor :global(li.music-track) {
 		list-style: none;
+	}
+	.tomboy-editor :global(li.music-track--playing) {
 		background: var(--accent-soft, #faf2f7);
 		border-radius: 6px;
+	}
+	/* display 제목 위젯이 보여지는 동안 실제 URL/원문은 숨김(편집 시 데코 제거→복원). */
+	.tomboy-editor :global(.music-row-hide) {
+		display: none;
+	}
+	.tomboy-editor :global(.music-track-name) {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3em;
+	}
+	.tomboy-editor :global(.music-track-mark) {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 1.1em;
+		color: var(--accent, #a05);
+	}
+	.tomboy-editor :global(.music-track-mark .music-track-eq) {
+		margin-right: 0;
+	}
+	.tomboy-editor :global(.music-track-label) {
+		color: var(--text, #222);
 	}
 	.tomboy-editor :global(.music-track-eq) {
 		display: inline-flex;
@@ -2090,6 +2149,24 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 	}
 	.tomboy-editor :global(.tomboy-music-play-btn:hover) {
 		background: var(--accent-soft, #faf2f7);
+	}
+
+	.tomboy-editor :global(.tomboy-music-extract-run) {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3em;
+		margin: 0.2rem 0 0.4rem;
+		padding: 0.25rem 0.7rem;
+		font-size: 0.85rem;
+		border: 1px solid var(--border, #ddd);
+		border-radius: 6px;
+		background: var(--surface, #fff);
+		color: var(--accent, #a05);
+		cursor: pointer;
+	}
+	.tomboy-editor :global(.tomboy-music-extract-run:disabled) {
+		opacity: 0.6;
+		cursor: default;
 	}
 
 	/* Slip-note prev/next row. Both arrows ride on block 2's line; the

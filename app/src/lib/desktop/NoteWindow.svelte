@@ -587,9 +587,6 @@
 
 	function handleKeyDown(e: KeyboardEvent) {
 		if (e.key !== 'Escape') return;
-		// Alt+Esc is "reopen last closed note" — handled globally in
-		// DesktopWorkspace. Don't also close this window on that combo.
-		if (e.altKey) return;
 		// Let any overlay (notebook picker, editor/note context menu,
 		// action sheet) swallow Esc first. Those are rendered as siblings
 		// of .note-window at the component root, so they don't appear in
@@ -894,6 +891,10 @@
 			{/key}
 		{:else}
 			{#if editorContent}
+				<!-- 재생 컨트롤은 창 본문 상단(제목 줄 위)에 고정 — 편집 영역을 가리지 않도록. -->
+				{#if editorComponent?.getEditor() && isMusicNote}
+					<MusicPlayerBar editor={editorComponent.getEditor()!} guid={guid} />
+				{/if}
 				<TomboyEditor
 					bind:this={editorComponent}
 					content={editorContent}
@@ -919,11 +920,10 @@
 					ondatenavigate={handleDateNavigate}
 					noteFocused={isFocused}
 					onhrsplitchange={handleHrSplitChange}
+					keepCursorVisible={true}
+					cursorVisibilityMode="container"
 					onimageinserted={handleImageInserted}
 				/>
-				{#if editorComponent?.getEditor() && isMusicNote}
-					<MusicPlayerBar editor={editorComponent.getEditor()!} guid={guid} />
-				{/if}
 				{#if editorComponent?.getEditor() && llmBridgeUrl && llmBridgeToken}
 					<ChatSendBar
 						editor={editorComponent.getEditor()!}
@@ -1209,6 +1209,8 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
+		/* 음악 컨트롤 패널(absolute)의 offsetParent 기준. */
+		position: relative;
 	}
 
 	.body :global(.tomboy-editor-shell) {

@@ -12,6 +12,9 @@ export interface BuildOpts {
 	isPlaying: boolean;
 	ctrlActive: boolean;
 	onPlay: (index: number) => void;
+	/** 현재 선택(커서) 범위 — 트랙 li 안이면 그 트랙은 원문 노출(편집용). */
+	selFrom?: number;
+	selTo?: number;
 }
 
 function eqWidget(playing: boolean): HTMLElement {
@@ -20,6 +23,30 @@ function eqWidget(playing: boolean): HTMLElement {
 	span.contentEditable = 'false';
 	span.setAttribute('aria-hidden', 'true');
 	span.innerHTML = '<i></i><i></i><i></i>';
+	return span;
+}
+
+/**
+ * 플레이리스트 모드 트랙의 "제목만" 표시 위젯 — 글머리표 자리에 마커 + 곡 제목.
+ * 마커: 현재 트랙이면 이퀄라이저(재생/일시정지), 아니면 ♪.
+ * 실제 URL/원문 텍스트는 music-row-hide 데코로 숨겨지고, 이 위젯이 display 를 보여준다.
+ */
+function trackNameWidget(display: string, isCurrent: boolean, isPlaying: boolean): HTMLElement {
+	const span = document.createElement('span');
+	span.className = 'music-track-name';
+	span.contentEditable = 'false';
+	const mark = document.createElement('span');
+	mark.className = 'music-track-mark';
+	if (isCurrent) {
+		mark.appendChild(eqWidget(isPlaying));
+	} else {
+		mark.textContent = '♪';
+	}
+	span.appendChild(mark);
+	const label = document.createElement('span');
+	label.className = 'music-track-label';
+	label.textContent = display;
+	span.appendChild(label);
 	return span;
 }
 
@@ -38,23 +65,61 @@ export function handleTrackButtonClick(opts: BuildOpts, index: number, isCurrent
 }
 
 export function buildMusicDecorations(doc: PMNode, opts: BuildOpts): DecorationSet {
-	const { flatQueue } = parseMusicNote(doc);
-	if (flatQueue.length === 0) return DecorationSet.empty;
+	const { flatQueue, isMusic } = parseMusicNote(doc);
+	if (!isMusic) return DecorationSet.empty;
 	const decos: Decoration[] = [];
+
+	// 제목(첫 블록) 아래에 떠 있는 컨트롤 패널 자리 확보. 패널이 자기 높이를
+	// --music-reserve 로 알려주면 margin-bottom 으로 비운다(트랙 유무와 무관 —
+	// 빈 음악 노트에도 패널은 항상 뜬다).
+	const title = doc.firstChild;
+	if (title) decos.push(Decoration.node(0, title.nodeSize, { class: 'music-title-block' }));
 
 	flatQueue.forEach((track, index) => {
 		const li = doc.nodeAt(track.liPos);
 		if (!li || li.type.name !== 'listItem') return;
+		const liEnd = track.liPos + li.nodeSize;
 		const isCurrent = opts.currentUrl !== null && track.url === opts.currentUrl;
 
-		if (isCurrent) {
+		// 커서/선택이 이 트랙 li 안이면 "편집 중" — 원문(URL)을 그대로 노출하고
+		// 제목 위젯/숨김 데코를 생략해 자유롭게 고칠 수 있게 한다. PM 은 selection
+		// 변경마다 decorations 를 재계산하므로 진입/이탈 시 자동 토글된다.
+		const editing =
+			opts.selFrom != null && opts.selTo != null && opts.selTo > track.liPos && opts.selFrom < liEnd;
+
+		// 행 스타일(글머리표 제거 + 현재곡 강조)은 편집 중에도 유지.
+		decos.push(
+			Decoration.node(track.liPos, liEnd, {
+				class: isCurrent ? 'music-track music-track--playing' : 'music-track'
+			})
+		);
+
+		// 인라인 위젯 앵커. liPos+1 은 <li>/<p> 블록 경계라 위젯이 제목 위 별도 줄에
+		// 렌더되어 빈 줄이 생긴다. 첫 문단(textblock) 안쪽(liPos+2)에 두어 글머리표
+		// 자리에 인라인으로 붙게 한다.
+		const inlinePos = li.firstChild?.isTextblock ? track.liPos + 2 : track.liPos + 1;
+
+		if (!editing) {
+			// 원문 숨김: 첫 문단의 인라인 텍스트(URL 또는 제목) + 중첩 리스트(URL 서브아이템).
+			const first = li.firstChild;
+			if (first?.isTextblock && first.content.size > 0) {
+				const from = track.liPos + 2;
+				decos.push(Decoration.inline(from, from + first.content.size, { class: 'music-row-hide' }));
+			}
+			let childPos = track.liPos + 1;
+			li.forEach((child) => {
+				const name = child.type.name;
+				if (name === 'bulletList' || name === 'orderedList') {
+					decos.push(Decoration.node(childPos, childPos + child.nodeSize, { class: 'music-row-hide' }));
+				}
+				childPos += child.nodeSize;
+			});
+
+			// 제목 위젯(마커 + display).
 			decos.push(
-				Decoration.node(track.liPos, track.liPos + li.nodeSize, { class: 'music-track--playing' })
-			);
-			decos.push(
-				Decoration.widget(track.liPos + 1, () => eqWidget(opts.isPlaying), {
+				Decoration.widget(inlinePos, () => trackNameWidget(track.display, isCurrent, opts.isPlaying), {
 					side: -1,
-					key: `music-eq:${track.url}:${opts.isPlaying}`,
+					key: `music-name:${track.url}:${isCurrent}:${opts.isPlaying}`,
 					ignoreSelection: true
 				})
 			);
@@ -64,7 +129,7 @@ export function buildMusicDecorations(doc: PMNode, opts: BuildOpts): DecorationS
 			const playingNow = isCurrent && opts.isPlaying;
 			decos.push(
 				Decoration.widget(
-					track.liPos + 1,
+					inlinePos,
 					() => {
 						const btn = document.createElement('button');
 						btn.type = 'button';
@@ -92,18 +157,25 @@ export function buildMusicDecorations(doc: PMNode, opts: BuildOpts): DecorationS
 	return DecorationSet.create(doc, decos);
 }
 
-export function createMusicNotePlugin(): Plugin {
+export function createMusicNotePlugin(getGuid: () => string = () => ''): Plugin {
 	return new Plugin({
 		key: musicNotePluginKey,
 		props: {
 			decorations(state) {
-				const { isMusic } = parseMusicNote(state.doc);
-				if (!isMusic) return null;
+				const parsed = parseMusicNote(state.doc);
+				if (!parsed.isMusic) return null;
 				return buildMusicDecorations(state.doc, {
 					currentUrl: musicPlayer.currentTrack?.url ?? null,
 					isPlaying: musicPlayer.isPlaying,
 					ctrlActive: modKeys.ctrl,
-					onPlay: (index) => musicPlayer.play(index)
+					// 트랙 재생 = 이 노트를 활성 큐로 만들고 재생. 노트를 여는 것만으로는
+					// 큐가 바뀌지 않으므로(글로벌 now-playing 보존) 여기서 명시적으로 setQueue.
+					onPlay: (index) => {
+						musicPlayer.setQueue(getGuid(), parsed.flatQueue, parsed.name);
+						musicPlayer.play(index);
+					},
+					selFrom: state.selection.from,
+					selTo: state.selection.to
 				});
 			}
 		}
