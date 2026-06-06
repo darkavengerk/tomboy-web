@@ -92,13 +92,9 @@ button {
 	line-height: 0;
 	margin: 0;
 }
-/* Hide the header's own checkbox (the in-chart top-left toggle replaces it).
-   Scoped under .tomboy-editor to outrank the base `.tomboy-editor
-   .tomboy-inline-checkbox { display: inline-block }` rule (equal specificity
-   otherwise lets source order win and the checkbox leaks through). */
-.tomboy-editor .tomboy-chart-charted > .tomboy-inline-checkbox {
-	display: none;
-}
+/* NOTE: the header's own checkbox is hidden by a rule co-located with the base
+   `.tomboy-inline-checkbox` style in TomboyEditor.svelte — an app.css rule here
+   ties on specificity (Svelte adds a scope hash to `.tomboy-editor`) and loses. */
 /* Restore normal text metrics inside the chart widget child. */
 .tomboy-chart-charted > .tomboy-chart-widget {
 	font-size: 1rem;
