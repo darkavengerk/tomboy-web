@@ -1661,6 +1661,25 @@ history:
 				</details>
 
 				<details class="guide-card">
+					<summary>리마커블 수동 업로드 (<code>리마커블::</code>)</summary>
+					<p class="info-text">
+						5분 타이머 외에 사용자가 직접 트리거하는 리마커블 → 일기 OCR 경로입니다.
+						본문 첫 줄을 <code>리마커블::제목</code> 형식으로 시작하면 노트 상단에
+						"📥 업로드" 버튼이 나타납니다. 누르면 브릿지가 리마커블에 SSH 접속해 새 페이지를
+						가져오고 데스크탑 파이프라인을 즉시 호출합니다.
+					</p>
+					<pre class="snippet">리마커블::오늘 일기
+폴더: Diary</pre>
+					<ul class="guide-list">
+						<li><code>폴더:</code> 헤더 — 미지정 시 브릿지 기본값(보통 <code>Diary</code>).</li>
+						<li>같은 노트에서 여러 번 클릭 가능. 가져온 페이지마다 결과 노트 링크가 누적됩니다 (누적 로그).</li>
+						<li>이미 처리된 페이지는 inbox 상태로 식별되어 중복 호출에서 제외됩니다 — 새 페이지가 없으면 "0건"으로 표시됩니다.</li>
+						<li><strong>로컬 네트워크 전제</strong> — 외부망에서는 SSH 접속이 불가해 자동으로 실패합니다.</li>
+						<li>결과 노트는 기존 일기 파이프라인과 동일하게 자동 생성됩니다 (제목 형식 변경 없음).</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
 					<summary>OCR 노트 — 이미지 텍스트 추출 + 한국어 번역</summary>
 					<p class="info-text">
 						본문 첫 줄이 <code>ocr://claude</code> 또는 <code>ocr://got-ocr2</code> 시그니처면 이미지를
