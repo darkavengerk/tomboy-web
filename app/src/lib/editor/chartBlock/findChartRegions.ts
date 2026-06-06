@@ -19,6 +19,13 @@ import { parseChartHeader } from '../../chart/parseChartBlock.js';
 export interface ChartRegion {
 	/** Position just inside the end of the header paragraph — the widget anchor. */
 	headerEndPos: number;
+	/** Node range of the header paragraph itself. Lets the plugin hide the whole
+	 *  header (checkbox + redundant `Chart:… 제목` text) while a chart is shown. */
+	headerFrom: number;
+	headerTo: number;
+	/** Position of the header's `inlineCheckbox` atom, or undefined if (unexpectedly)
+	 *  the marker came from plain `[x]` text. Lets the in-chart toggle flip it off. */
+	checkboxPos?: number;
 	/** Reconstructed header text, including the `[x]`/`[ ]` checkbox marker. */
 	headerText: string;
 	checked: boolean;
@@ -46,6 +53,22 @@ function inlineText(node: PMNode): string {
 		}
 	});
 	return out;
+}
+
+/**
+ * Document position of the first `inlineCheckbox` atom inside `node`, given the
+ * node's start `offset`. Inline content starts at `offset + 1`; we walk children
+ * accumulating their `nodeSize`. Returns undefined if there's no atom (the
+ * marker came from literal `[x]` text — rare, only pre-archive raw input).
+ */
+function findCheckboxPos(node: PMNode, offset: number): number | undefined {
+	let pos = offset + 1;
+	let found: number | undefined;
+	node.forEach((child) => {
+		if (found === undefined && child.type.name === 'inlineCheckbox') found = pos;
+		pos += child.nodeSize;
+	});
+	return found;
 }
 
 const LIST_TYPES = new Set(['bulletList', 'orderedList']);
@@ -89,6 +112,9 @@ export function findChartRegions(doc: PMNode): ChartRegion[] {
 			// closing token (end of content) — a robust widget anchor that doesn't
 			// depend on counting inline characters.
 			headerEndPos: offset + node.nodeSize - 1,
+			headerFrom: offset,
+			headerTo: offset + node.nodeSize,
+			checkboxPos: findCheckboxPos(node, offset),
 			headerText: text,
 			checked: header.checked,
 			configLines,
