@@ -7,6 +7,8 @@
 	import ImageViewerModal from '$lib/components/ImageViewerModal.svelte';
 	import TopNav from '$lib/components/TopNav.svelte';
 	import { page, updated } from '$app/state';
+	import { version as buildVersion } from '$app/environment';
+	import { evaluateReload, type ReloadBudget } from '$lib/nav/reloadGuard.js';
 	import { createHistoryTracker } from '$lib/nav/history.js';
 	import { appMode, modeFromUrl } from '$lib/stores/appMode.svelte.js';
 	import { mode } from '$lib/stores/guestMode.svelte.js';
@@ -136,28 +138,70 @@
 	}
 
 	onMount(() => {
+		// ── 배포 직후 화이트스크린/무한새로고침 복구 ────────────────────────
+		// 새 빌드가 올라가면 옛 HTML 셸이 참조하던 해시 청크가 사라져
+		// lazy-import 가 실패하고 Vite 가 `vite:preloadError` 를 쏜다. 새 청크를
+		// 받으려면 한 번 새로고침해야 하지만, 새로고침이 가드를 지우면 무한
+		// 루프가 된다(과거 회귀의 원인: 가드를 onMount 에서 매번 지웠음).
+		//
+		// 그래서 리로드 예산은 (1) localStorage 에 저장돼 새로고침/앱 재시작을
+		// 가로질러 살아남고 (2) 빌드 버전($app/environment 의 version, 즉
+		// version.json 과 동일값)별로 키를 분리해 새 배포마다 예산이 리셋되며
+		// (3) 시간창 + 횟수 상한으로 반드시 수렴한다. 상한 초과 시 자동
+		// 새로고침을 멈추고 수동 복구를 안내한다. 저장소를 못 쓰면(시크릿 모드
+		// 등) 루프를 막을 방법이 없으므로 안전하게 자동 새로고침을 하지 않는다.
+		//
+		// 이 핸들러를 onMount 최상단에서 먼저 등록하고 저장소 접근을 모두
+		// try/catch 로 막아, 어떤 예외도 뒤따르는 초기화(이미지 fetcher·백링크
+		// 인덱스·동기화·FCM 등)를 멈추지 못하게 한다.
+		const RELOAD_KEY = `tomboy:preload-reload:${buildVersion}`;
+		const giveUpReload = () => {
+			pushToast('새 버전을 자동으로 불러오지 못했습니다. 앱을 완전히 종료한 뒤 다시 열어주세요.', {
+				kind: 'error',
+				timeoutMs: 0
+			});
+		};
+		const pullSwThenReload = () => {
+			// 새 SW 를 먼저 끌어와 옛 캐시를 비우게 한 뒤 새로고침. 실패/지연해도
+			// 1.5s 후 무조건 새로고침(온라인이면 SW network-first 가 새 셸을 받음).
+			let done = false;
+			const reload = () => { if (!done) { done = true; location.reload(); } };
+			try {
+				void navigator.serviceWorker?.getRegistration().then((reg) => reg?.update()).finally(reload);
+			} catch { reload(); }
+			setTimeout(reload, 1500);
+		};
+		const onPreloadError = (e: Event) => {
+			e.preventDefault();
+			let budget: ReloadBudget | null = null;
+			try {
+				const raw = localStorage.getItem(RELOAD_KEY);
+				budget = raw ? (JSON.parse(raw) as ReloadBudget) : null;
+			} catch {
+				// 저장소를 읽을 수 없음 — 루프를 막을 수 없으니 자동 새로고침 안 함.
+				giveUpReload();
+				return;
+			}
+			const { allow, next } = evaluateReload(budget, new Date().getTime());
+			try {
+				localStorage.setItem(RELOAD_KEY, JSON.stringify(next));
+			} catch {
+				giveUpReload();
+				return;
+			}
+			if (!allow) {
+				giveUpReload();
+				return;
+			}
+			pullSwThenReload();
+		};
+		window.addEventListener('vite:preloadError', onPreloadError);
+
 		offline = !navigator.onLine;
 		const goOffline = () => { offline = true; };
 		const goOnline = () => { offline = false; };
 		window.addEventListener('offline', goOffline);
 		window.addEventListener('online', goOnline);
-
-		// 배포 직후 새로고침 화이트스크린 복구.
-		// 새 빌드가 올라가면 옛 HTML 셸이 참조하던 해시 청크가 Vercel 에서
-		// 사라진다. 그 청크를 lazy-import 하다 실패하면 Vite 가
-		// `vite:preloadError` 를 쏜다 — 이때 한 번만 새로고침해 새 빌드의
-		// 청크를 받아오게 한다. (이 onMount 가 돌았다는 건 셸이 정상 부팅됐다는
-		// 뜻이므로 가드를 풀어, 다음 배포 때 다시 1회 리로드가 허용되게 한다.
-		// 셸 자체가 깨지면 onMount 가 안 돌아 가드가 남으므로 무한 새로고침 방지.)
-		const PRELOAD_RELOAD_KEY = 'tomboy:preload-reload';
-		sessionStorage.removeItem(PRELOAD_RELOAD_KEY);
-		const onPreloadError = (e: Event) => {
-			e.preventDefault();
-			if (sessionStorage.getItem(PRELOAD_RELOAD_KEY)) return;
-			sessionStorage.setItem(PRELOAD_RELOAD_KEY, '1');
-			location.reload();
-		};
-		window.addEventListener('vite:preloadError', onPreloadError);
 
 		const onInstallPrompt = (e: Event) => {
 			e.preventDefault();
@@ -240,13 +284,15 @@
 
 	// 새 배포 감지 안내 — version.pollInterval(svelte.config.js) 이 새 버전을
 	// 발견하면 updated.current 가 true 로 latch 된다. SvelteKit 은 이때부터
-	// 다음 내비게이션을 자동으로 풀 페이지 로드로 처리하지만(=새 청크 수신),
-	// 사용자가 그 사이 화이트스크린을 만나지 않도록 한 번만 토스트로 알린다.
+	// 다음 내비게이션을 자동으로 풀 페이지 로드로 처리하므로(=새 청크 수신)
+	// 사용자가 굳이 앱을 강제 종료/재시작할 필요가 없다. 그래서 "새로고침하라"
+	// 대신 "이동 시 자동 적용된다"고 안내해, 강제 재시작 → 무한새로고침 회귀를
+	// 부르던 행동을 줄인다. 한 번만 알린다.
 	let notifiedUpdate = false;
 	$effect(() => {
 		if (updated.current && !notifiedUpdate) {
 			notifiedUpdate = true;
-			pushToast('새 버전이 배포되었습니다. 새로고침하면 적용됩니다.', {
+			pushToast('새 버전이 있습니다. 화면을 이동하면 자동으로 적용됩니다.', {
 				kind: 'info',
 				timeoutMs: 8000
 			});
