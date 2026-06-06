@@ -1,0 +1,80 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-06-music-playlist-extract.md",
+  "tasks": [
+    {
+      "id": "36",
+      "subject": "Task 1: music-service enumerate() runner",
+      "status": "completed",
+      "description": "**Goal:** yt-dlp -J --flat-playlist 로 재생목록을 열거해 {label, entries, total, truncated} 를 반환하는 enumerate() 추가.\n\n**Files:** music-service/src/runner.ts, music-service/tests/runner.test.ts\n\n**Verify:** cd music-service && npm test -- runner\n\n```json:metadata\n{\"files\": [\"music-service/src/runner.ts\", \"music-service/tests/runner.test.ts\"], \"verifyCommand\": \"cd music-service && npm test -- runner\", \"acceptanceCriteria\": [\"enumerate parses label+entries (id->watch url)\", \"maxPlaylist slice + total/truncated\", \"empty_playlist / enumerate_parse / reject / nonzero-exit throw\", \"stdout fully consumed\"], \"planRef\": \"docs/superpowers/plans/2026-06-06-music-playlist-extract.md#task-1\"}\n```"
+    },
+    {
+      "id": "37",
+      "subject": "Task 2: music-service POST /enumerate endpoint",
+      "status": "completed",
+      "blockedBy": ["36"],
+      "description": "**Goal:** /extract 와 동일 인증·에러 규약으로 POST /enumerate 추가 + 부트 env 와이어링.\n\n**Files:** music-service/src/server.ts, music-service/tests/server.test.ts\n\n**Verify:** cd music-service && npm test -- server\n\n```json:metadata\n{\"files\": [\"music-service/src/server.ts\", \"music-service/tests/server.test.ts\"], \"verifyCommand\": \"cd music-service && npm test -- server\", \"acceptanceCriteria\": [\"401 no bearer / 400 no source / 200 result\", \"bad_source->400, 타임아웃->504, else->502\", \"enumerateFn injectable + MUSIC_MAX_PLAYLIST/MUSIC_ENUMERATE_TIMEOUT_MS wired\"], \"planRef\": \"docs/superpowers/plans/2026-06-06-music-playlist-extract.md#task-2\"}\n```"
+    },
+    {
+      "id": "38",
+      "subject": "Task 3: bridge /music/enumerate relay",
+      "status": "completed",
+      "blockedBy": ["37"],
+      "description": "**Goal:** 브릿지 POST /music/enumerate 추가 → music-service /enumerate 재-Bearer 릴레이. 공통 proxyMusic 추출.\n\n**Files:** bridge/src/music.ts, bridge/src/server.ts, bridge/src/music.test.ts\n\n**Verify:** cd bridge && node --test\n\n```json:metadata\n{\"files\": [\"bridge/src/music.ts\", \"bridge/src/server.ts\", \"bridge/src/music.test.ts\"], \"verifyCommand\": \"cd bridge && node --test\", \"acceptanceCriteria\": [\"enumerate 401/400/503-not_configured/503-unavailable\", \"forwards to /enumerate with re-Bearer + {source}\", \"existing handleMusicExtract tests still pass\"], \"planRef\": \"docs/superpowers/plans/2026-06-06-music-playlist-extract.md#task-3\"}\n```"
+    },
+    {
+      "id": "39",
+      "subject": "Task 4: app enumeratePlaylist() client",
+      "status": "completed",
+      "description": "**Goal:** 앱 extractClient.ts 에 브릿지 /music/enumerate 호출 enumeratePlaylist() 추가. ExtractError/STATUS_TO_KIND 재사용.\n\n**Files:** app/src/lib/musicExtract/extractClient.ts, app/tests/unit/musicExtract/extractClient.test.ts\n\n**Verify:** cd app && npm run test -- extractClient\n\n```json:metadata\n{\"files\": [\"app/src/lib/musicExtract/extractClient.ts\", \"app/tests/unit/musicExtract/extractClient.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- extractClient\", \"acceptanceCriteria\": [\"not_configured + no fetch\", \"parses result, posts to /music/enumerate with Bearer/{source}/signal\", \"status->kind mapping + network\", \"empty entries -> upstream_error\"], \"planRef\": \"docs/superpowers/plans/2026-06-06-music-playlist-extract.md#task-4\"}\n```"
+    },
+    {
+      "id": "40",
+      "subject": "Task 5: app parseExtractNote block-walk refactor",
+      "status": "completed",
+      "description": "**Goal:** parseExtractNote 를 블록 순회로 리팩터 → 일반 줄=재생목록 / 불릿=단일 곡 판별 유니온 ExtractItem.\n\n**Files:** app/src/lib/musicExtract/parseExtractNote.ts, app/tests/unit/musicExtract/parseExtractNote.test.ts\n\n**Verify:** cd app && npm run test -- parseExtractNote\n\n```json:metadata\n{\"files\": [\"app/src/lib/musicExtract/parseExtractNote.ts\", \"app/tests/unit/musicExtract/parseExtractNote.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- parseExtractNote\", \"acceptanceCriteria\": [\"ExtractItem single|playlist union\", \"text line list= URL -> playlist; next 플레이리스트: header -> done\", \"bullets -> single (exclude /files URL)\", \"header+result list not sources\", \"existing single tests pass; exports playlistSourceOf/isPlaylistHeaderText\"], \"planRef\": \"docs/superpowers/plans/2026-06-06-music-playlist-extract.md#task-5\"}\n```"
+    },
+    {
+      "id": "41",
+      "subject": "Task 6: app writePlaylistBlock",
+      "status": "completed",
+      "blockedBy": ["40"],
+      "description": "**Goal:** 성공 트랙 URL들을 소스 줄 아래에 음악:: 호환 [ ]플레이리스트: 헤더 + mp3 불릿 블록으로 삽입하는 writePlaylistBlock.\n\n**Files:** app/src/lib/musicExtract/writePlaylistBlock.ts (신규), app/src/lib/musicExtract/writeExtractResult.ts (urlChild export), app/tests/unit/musicExtract/writePlaylistBlock.test.ts\n\n**Verify:** cd app && npm run test -- writePlaylistBlock\n\n```json:metadata\n{\"files\": [\"app/src/lib/musicExtract/writePlaylistBlock.ts\", \"app/src/lib/musicExtract/writeExtractResult.ts\", \"app/tests/unit/musicExtract/writePlaylistBlock.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- writePlaylistBlock\", \"acceptanceCriteria\": [\"inserts [ ]checkbox header + mp3 bullets (text===href) below source\", \"inlineCheckbox-absent schema -> [ ] text fallback\", \"existing result header / no match / empty urls / destroyed view -> false\", \"parseMusicNote recognizes block when checked\"], \"planRef\": \"docs/superpowers/plans/2026-06-06-music-playlist-extract.md#task-6\"}\n```"
+    },
+    {
+      "id": "42",
+      "subject": "Task 7: app playlist block .note round-trip test",
+      "status": "completed",
+      "blockedBy": ["41"],
+      "description": "**Goal:** 생성 블록이 .note 직렬화→역직렬화 후 mp3 href·헤더·체크박스 보존 + 체크 시 parseMusicNote 트랙 인식 검증 (tomboyUrlLink href 유실 함정 방지).\n\n**Files:** app/tests/unit/musicExtract/playlistBlockRoundtrip.test.ts (신규)\n\n**Verify:** cd app && npm run test -- playlistBlockRoundtrip\n\n```json:metadata\n{\"files\": [\"app/tests/unit/musicExtract/playlistBlockRoundtrip.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- playlistBlockRoundtrip\", \"acceptanceCriteria\": [\"unchecked block round-trips: mp3 hrefs + 플레이리스트: header + inlineCheckbox preserved\", \"checked block round-trips -> parseMusicNote restores label+track urls\"], \"planRef\": \"docs/superpowers/plans/2026-06-06-music-playlist-extract.md#task-7\"}\n```"
+    },
+    {
+      "id": "43",
+      "subject": "Task 8: app runExtractButtonClick playlist branch",
+      "status": "completed",
+      "blockedBy": ["39", "40", "41"],
+      "description": "**Goal:** ⟳ 진행에서 single/playlist 분기 — 재생목록은 열거→곡별 추출→블록 삽입 + 요약 토스트(곡 수·재생목록 수·잘림).\n\n**Files:** app/src/lib/editor/musicExtractNote/runExtractButtonClick.ts, app/tests/unit/editor/musicExtractNote/runExtractButtonClick.test.ts\n\n**Verify:** cd app && npm run test -- runExtractButtonClick\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/musicExtractNote/runExtractButtonClick.ts\", \"app/tests/unit/editor/musicExtractNote/runExtractButtonClick.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- runExtractButtonClick\", \"acceptanceCriteria\": [\"single flow unchanged (extract/❌/systemic-stop)\", \"playlist: enumerate->sequential extract->writePlaylistBlock; per-track fail skipped; systemic stop\", \"summary toast: 재생목록 N개(M곡)/X곡 추출/Y곡 실패/상한 초과\", \"existing single-song tests still pass\"], \"planRef\": \"docs/superpowers/plans/2026-06-06-music-playlist-extract.md#task-8\"}\n```"
+    },
+    {
+      "id": "44",
+      "subject": "Task 9: settings guide card update",
+      "status": "completed",
+      "blockedBy": ["43"],
+      "description": "**Goal:** 설정 가이드(notes) 음악추출 카드에 재생목록 사용법(텍스트 줄 vs 불릿, 블록 복사, 상한 50, RD 믹스 동적) 추가.\n\n**Files:** app/src/routes/settings/+page.svelte\n\n**Verify:** cd app && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"playlist=plain line / single=bullet rule + copy [ ]플레이리스트: block to 음악:: note\", \"cap 50 + RD mix dynamic vs list=PL…/OLAK5uy…\", \"existing guide-card pattern kept\"], \"planRef\": \"docs/superpowers/plans/2026-06-06-music-playlist-extract.md#task-9\"}\n```"
+    },
+    {
+      "id": "45",
+      "subject": "Task 10: tomboy-musicextract SKILL.md update",
+      "status": "completed",
+      "blockedBy": ["43"],
+      "description": "**Goal:** tomboy-musicextract 스킬에 재생목록 열거 흐름·/music/enumerate 릴레이·블록 포맷·상한·멱등·재배포 규칙 추가.\n\n**Files:** .claude/skills/tomboy-musicextract/SKILL.md\n\n**Verify:** grep -n 'enumerate' .claude/skills/tomboy-musicextract/SKILL.md\n\n```json:metadata\n{\"files\": [\".claude/skills/tomboy-musicextract/SKILL.md\"], \"verifyCommand\": \"grep -n 'enumerate' .claude/skills/tomboy-musicextract/SKILL.md\", \"acceptanceCriteria\": [\"data flow: enumeratePlaylist->/music/enumerate->/enumerate->yt-dlp --flat-playlist\", \"output format + cap MUSIC_MAX_PLAYLIST=50 + idempotent skip + text-line/bullet rule\", \"redeploy note for bridge + music-service\"], \"planRef\": \"docs/superpowers/plans/2026-06-06-music-playlist-extract.md#task-10\"}\n```"
+    },
+    {
+      "id": "46",
+      "subject": "Task 11: deploy (coordinator/manual ops)",
+      "status": "pending",
+      "blockedBy": ["37", "38", "43"],
+      "description": "**Goal:** music-service + 브릿지 재배포로 /enumerate·/music/enumerate 라이브화. coordinator+사용자 실행(서브에이전트 아님).\n\n**Files:** (none — ops)\n\n**Verify:** systemctl --user status music-service active; 브릿지 POST /music/enumerate 가짜 소스에 4xx\n\n```json:metadata\n{\"files\": [], \"verifyCommand\": \"systemctl --user status music-service --no-pager | tail -3\", \"acceptanceCriteria\": [\"music-service rebuilt + restarted, :7844 active\", \"main pushed -> bridge rebuilt/restarted, /music/enumerate responds\", \"relay smoke check with safe fake source returns 4xx (not 404)\"], \"planRef\": \"docs/superpowers/plans/2026-06-06-music-playlist-extract.md#task-11\", \"opsTask\": true}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-06T11:30:00Z"
+}
