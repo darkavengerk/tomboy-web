@@ -71,10 +71,10 @@
     {
       "id": "46",
       "subject": "Task 11: deploy (coordinator/manual ops)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": ["37", "38", "43"],
       "description": "**Goal:** music-service + 브릿지 재배포로 /enumerate·/music/enumerate 라이브화. coordinator+사용자 실행(서브에이전트 아님).\n\n**Files:** (none — ops)\n\n**Verify:** systemctl --user status music-service active; 브릿지 POST /music/enumerate 가짜 소스에 4xx\n\n```json:metadata\n{\"files\": [], \"verifyCommand\": \"systemctl --user status music-service --no-pager | tail -3\", \"acceptanceCriteria\": [\"music-service rebuilt + restarted, :7844 active\", \"main pushed -> bridge rebuilt/restarted, /music/enumerate responds\", \"relay smoke check with safe fake source returns 4xx (not 404)\"], \"planRef\": \"docs/superpowers/plans/2026-06-06-music-playlist-extract.md#task-11\", \"opsTask\": true}\n```"
     }
   ],
-  "lastUpdated": "2026-06-06T11:30:00Z"
+  "lastUpdated": "2026-06-06T12:10:00Z"
 }
