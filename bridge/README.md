@@ -314,6 +314,20 @@ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:3000/health
 
 ---
 
+## 리마커블 업로드 라우트
+
+`POST /remarkable/upload` (SSE) — `리마커블::` 노트의 업로드 버튼이 호출.
+필수 환경 변수:
+
+- `REMARKABLE_SSH_HOST` — 리마커블 IP (LAN). 예: `192.168.219.112`
+- `REMARKABLE_SSH_USER` — 보통 `root`
+- `REMARKABLE_SSH_KEY_PATH` — 컨테이너 내부 경로. `~/.ssh/id_remarkable` 같은 키 마운트.
+- `REMARKABLE_NOTEBOOK_NAME` — 노트 헤더가 없을 때 사용할 기본 노트북 이름 (기본 `Diary`).
+- `REMARKABLE_INBOX_DIR` — Pi 측 diary inbox 절대 경로. 컨테이너 마운트 필수 (기본 `/home/diary-sync/diary/inbox`). 상태 인덱스는 `<REMARKABLE_INBOX_DIR>/state/index.json`에 저장된다.
+- `AUTOMATION_SERVICE_URL` — 기존 변수 재사용 (브릿지가 `pipeline-run` 명령 호출).
+
+---
+
 ## 리마커블 배경화면 (`/remarkable/wallpaper`)
 
 `remarkable://<별칭>` 시그니처 노트의 섹션별 이미지 링크를 reMarkable의
