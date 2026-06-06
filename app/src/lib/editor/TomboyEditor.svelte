@@ -2612,22 +2612,44 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 	}
 
 	/* 인라인 체크박스 — TomboyInlineCheckbox 노드의 NodeView 가
-	   .tomboy-inline-checkbox span 을 렌더한다. 14px 정사각형,
-	   모바일 hit-area 는 ::before 가 24×24 px 확보. */
+	   .tomboy-inline-checkbox span(내부에 인라인 SVG) 을 렌더한다.
+	   18px 둥근 사각형 외곽선, 체크 시 모서리 밖으로 살짝 솟는 V.
+	   색은 currentColor 로 그려 라이트/다크 글자색을 따른다(별도 색 없음).
+	   모바일 hit-area 는 ::before 가 28×28 px 확보. */
 	.tomboy-editor :global(.tomboy-inline-checkbox) {
 		display: inline-block;
-		width: 14px;
-		height: 14px;
-		border: 1px solid var(--text-muted, #888);
-		border-radius: 2px;
-		vertical-align: -2px;
+		width: 18px;
+		height: 18px;
+		vertical-align: -4px;
 		margin: 0 2px;
 		cursor: pointer;
-		background: transparent;
+		color: currentColor;
 		user-select: none;
 		position: relative;
 		box-sizing: border-box;
-		transition: background-color 0.12s ease, border-color 0.12s ease;
+	}
+
+	.tomboy-editor :global(.tomboy-inline-checkbox .tomboy-cb-svg) {
+		display: block;
+		width: 100%;
+		height: 100%;
+		overflow: visible; /* 모서리 밖으로 솟는 체크가 잘리지 않게 */
+	}
+
+	.tomboy-editor :global(.tomboy-inline-checkbox .tomboy-cb-box) {
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.1;
+		stroke-linejoin: round;
+	}
+
+	.tomboy-editor :global(.tomboy-inline-checkbox .tomboy-cb-check) {
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.4;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+		display: none;
 	}
 
 	/* 차트가 켜진 헤더(.tomboy-chart-charted)에선 헤더 자체의 인라인 체크박스를
@@ -2639,7 +2661,7 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 		display: none;
 	}
 
-	/* 모바일 hit-area — 보이지 않는 ::before 가 24x24 영역 확보. */
+	/* 모바일 hit-area — 보이지 않는 ::before 가 28x28 영역 확보. */
 	.tomboy-editor :global(.tomboy-inline-checkbox::before) {
 		content: '';
 		position: absolute;
@@ -2649,17 +2671,13 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 		bottom: -5px;
 	}
 
-	.tomboy-editor :global(.tomboy-inline-checkbox[data-checked='true']) {
-		background-color: var(--accent, #4a76d4);
-		border-color: var(--accent, #4a76d4);
-		background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='3 8 7 12 13 4'/></svg>");
-		background-size: 12px 12px;
-		background-position: center;
-		background-repeat: no-repeat;
+	/* 체크 상태: 모서리 밖으로 솟는 V 표시. */
+	.tomboy-editor :global(.tomboy-inline-checkbox[data-checked='true'] .tomboy-cb-check) {
+		display: inline;
 	}
 
 	.tomboy-editor :global(.tomboy-inline-checkbox:hover) {
-		border-color: var(--accent, #4a76d4);
+		opacity: 0.6;
 	}
 
 	/* 인라인 라디오 — TomboyInlineRadio 노드의 NodeView 가
