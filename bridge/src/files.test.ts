@@ -236,22 +236,21 @@ test('download: filename mismatch falls back to single file in UUID dir', async 
 		const r = get();
 		assert.equal(r.status, 200);
 		assert.equal(r.body.toString('utf8'), 'audio-bytes');
-		// mp3 is media → inline (iOS <audio> refuses attachment); name = on-disk NFC.
-		assert.equal(
-			r.headers['Content-Disposition'],
-			`inline; filename*=UTF-8''${encodeURIComponent(onDisk)}`
-		);
+		// mp3 is media → NO Content-Disposition at all (WebKit <audio> rejects
+		// the header's presence, treating the source as a download).
+		assert.equal(r.headers['Content-Disposition'], undefined);
 	} finally {
 		rmSync(dir, { recursive: true });
 	}
 });
 
-test('download: media → inline, documents → attachment', async () => {
+test('download: media → no Content-Disposition, documents → attachment', async () => {
 	const dir = mkdtempSync(join(tmpdir(), 'files-test-'));
 	try {
-		const cases: Array<[string, string]> = [
-			['song.mp3', 'inline'],
-			['clip.mp4', 'inline'],
+		// null = header must be absent (media); 'attachment' = present (documents).
+		const cases: Array<[string, string | null]> = [
+			['song.mp3', null],
+			['clip.mp4', null],
 			['doc.pdf', 'attachment'],
 			['data.zip', 'attachment'],
 			['notes.txt', 'attachment']
@@ -265,11 +264,15 @@ test('download: media → inline, documents → attachment', async () => {
 			const { res, get } = mockRes();
 			const req = mockReq({ method: 'GET', url: `/files/${uuid}/${fname}` });
 			await handleFileDownload(req, res, dir);
-			const disp = get().headers['Content-Disposition'] ?? '';
-			assert.ok(
-				disp.startsWith(`${expected}; `),
-				`${fname} expected ${expected}, got "${disp}"`
-			);
+			const disp = get().headers['Content-Disposition'];
+			if (expected === null) {
+				assert.equal(disp, undefined, `${fname} should have NO Content-Disposition`);
+			} else {
+				assert.ok(
+					(disp ?? '').startsWith(`${expected}; `),
+					`${fname} expected ${expected}, got "${disp}"`
+				);
+			}
 		}
 	} finally {
 		rmSync(dir, { recursive: true });
