@@ -82,10 +82,24 @@ button {
 	cursor: pointer;
 }
 
-/* Header line of a checked chart block — hidden because its `Chart:… 제목`
-   text duplicates the chart's own title. Revealed again when unchecked. */
-.tomboy-chart-header-hidden {
+/* Header paragraph of a checked chart block. Its own content (inline checkbox +
+   `Chart:… 제목` text) duplicates the chart's own title, so we COLLAPSE it to
+   zero height — but keep the paragraph itself in layout. display:none would drop
+   its grid cell under the hrSplit column layout and scramble the quadrants; the
+   chart widget is a child of this paragraph, so it must stay rendered too. */
+.tomboy-chart-charted {
+	font-size: 0;
+	line-height: 0;
+	margin: 0;
+}
+/* Hide the header's own checkbox (the in-chart top-left toggle replaces it). */
+.tomboy-chart-charted > .tomboy-inline-checkbox {
 	display: none;
+}
+/* Restore normal text metrics inside the chart widget child. */
+.tomboy-chart-charted > .tomboy-chart-widget {
+	font-size: 1rem;
+	line-height: normal;
 }
 
 /* Config list of a checked chart block — hidden while the chart shows.

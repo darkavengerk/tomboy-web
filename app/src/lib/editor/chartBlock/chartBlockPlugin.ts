@@ -6,16 +6,21 @@
  * nothing — the user just sees the raw config list.
  *
  * Checked layout: the chart's own title already names the data, so the header
- * paragraph (checkbox + redundant `Chart:… 제목` text) AND the config list are
- * both hidden — the user sees only the chart. To keep the chart toggleable back
- * to text, the chart widget paints its own checkbox at the top-left corner;
- * clicking it flips the underlying `inlineCheckbox` atom to unchecked, which
- * re-reveals the header + config and removes the chart.
+ * paragraph's own content (checkbox + redundant `Chart:… 제목` text) is COLLAPSED
+ * and the config list is HIDDEN — the user sees only the chart. The header
+ * paragraph itself stays a layout item (collapsed, not display:none) and the
+ * chart widget is anchored INSIDE it: this is load-bearing for the hrSplit
+ * column layout, which assigns a `grid-column` to each top-level node. A widget
+ * placed at a top-level boundary would become an unplaced direct grid child and
+ * scramble the quadrants; keeping it inside the header keeps it in the header's
+ * cell. To keep the chart toggleable back to text, the widget paints its own
+ * checkbox at the top-left corner; clicking it flips the underlying
+ * `inlineCheckbox` atom to unchecked, re-revealing the header + config.
  *
  * Toggling: the header's checkbox is an `inlineCheckbox` atom node. Its own
  * NodeView toggles `checked` on click when visible (unchecked state); when the
- * chart is shown the header is hidden, so the in-chart checkbox is the toggle.
- * Either way the doc change re-runs `apply` here, which rebuilds decorations.
+ * chart is shown the header content is collapsed, so the in-chart checkbox is
+ * the toggle. Either way the doc change re-runs `apply`, rebuilding decorations.
  *
  * Invariant: the document is never mutated by this plugin's STATE; the in-chart
  * checkbox dispatches its own transaction from the view (a user action).
@@ -45,10 +50,12 @@ function buildDecorations(doc: PMNode): DecorationSet {
 	for (const region of regions) {
 		if (!region.checked) continue; // unchecked → show config text, no widget
 
-		// The chart widget, anchored just AFTER the header paragraph (headerTo) so
-		// that hiding the header node below does not also hide the widget DOM.
+		// The chart widget, anchored just INSIDE the end of the header paragraph
+		// (headerEndPos) so it lives in the header's DOM — and therefore inside the
+		// header's hrSplit grid cell. Anchoring at a top-level boundary would make
+		// it an unplaced direct grid child and break the column layout.
 		decos.push(
-			Decoration.widget(region.headerTo, (view) => renderChartWidget(region, view), {
+			Decoration.widget(region.headerEndPos, (view) => renderChartWidget(region, view), {
 				side: 1,
 				// headerText carries the `[x]` marker + title; including it (plus the
 				// anchor pos) rebuilds the widget when the block's text changes.
@@ -56,11 +63,13 @@ function buildDecorations(doc: PMNode): DecorationSet {
 			})
 		);
 
-		// Hide the header line itself — its `Chart:… 제목` text duplicates the chart's
-		// own title. The in-chart checkbox (top-left) toggles the chart back off.
+		// Collapse the header's own content — its checkbox + `Chart:… 제목` text
+		// duplicate the chart's own title — WITHOUT removing the paragraph from
+		// layout (display:none would drop its grid cell under hrSplit and shift the
+		// quadrants). The chart widget, a child of this paragraph, stays visible.
 		decos.push(
 			Decoration.node(region.headerFrom, region.headerTo, {
-				class: 'tomboy-chart-header-hidden'
+				class: 'tomboy-chart-charted'
 			})
 		);
 
@@ -103,9 +112,9 @@ function renderChartWidget(region: ChartRegion, view: EditorView): HTMLElement {
 	container.contentEditable = 'false';
 
 	// Top-left checkbox overlaid on the chart — the only visible toggle now that
-	// the header is hidden. Checked = chart showing; unchecking turns it back to
-	// the editable header + config text. Lives outside `chartHost` so the async
-	// mount/error render (which clears chartHost) never wipes it.
+	// the header content is collapsed. Checked = chart showing; unchecking turns
+	// it back to the editable header + config text. Lives outside `chartHost` so
+	// the async mount/error render (which clears chartHost) never wipes it.
 	const toggle = document.createElement('input');
 	toggle.type = 'checkbox';
 	toggle.checked = true;
