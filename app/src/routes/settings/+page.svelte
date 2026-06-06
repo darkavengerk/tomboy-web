@@ -1749,12 +1749,20 @@ https://www.dropbox.com/…/starting.png</pre>
 					</p>
 					<pre class="snippet">음악추출::내 라이브러리
 
-- https://www.youtube.com/watch?v=…
-- Artist - Title          (검색어도 가능)</pre>
+- https://www.youtube.com/watch?v=…      (단일 곡: 불릿)
+- Artist - Title                         (검색어도 가능)
+https://www.youtube.com/playlist?list=…  (재생목록: 일반 줄)</pre>
 					<ul class="guide-list">
 						<li>⟳ 는 <b>결과가 아직 없는 항목만</b> 처리해요. 소스를 더 추가하고 다시 눌러도
 							이미 받은 곡은 건너뜁니다.</li>
 						<li>재생하려면 채워진 링크를 <code>음악::</code> 노트로 복사해 구성하세요(수동).</li>
+						<li><b>재생목록/믹스</b>는 <b>불릿이 아닌 일반 텍스트 줄</b>에 URL을 적으세요. ⟳ 를 누르면
+							전체 곡을 추출해 그 줄 <b>바로 아래</b>에 <code>[ ]플레이리스트: …</code> 블록(헤더+곡 목록)을
+							만들어 줍니다. 그 블록을 통째로 복사해 <code>음악::</code> 노트에 붙이고 체크박스를 켜면 재생돼요.</li>
+						<li>재생목록은 한 번에 <b>최대 50곡</b>까지 받고, 초과하면 앞 50곡만 받은 뒤 안내해요.</li>
+						<li>유튜브 자동 <b>믹스(<code>RD…</code>)</b>는 접속할 때마다 곡이 조금씩 바뀌고 개수도 제한적이에요.
+							한 가수 곡을 확실히 모으려면 정규 재생목록(<code>list=PL…</code> 또는 앨범
+							<code>OLAK5uy…</code>)이 안정적입니다.</li>
 						<li>선행: 데스크탑 <code>music-service</code> 실행 + 브릿지 <code>MUSIC_SERVICE_URL</code>
 							설정. 브릿지 설정이 없으면 "브릿지 설정이 필요합니다", 데스크탑 서비스에 못 닿으면
 							"음악 추출 서비스에 연결할 수 없습니다" 안내가 떠요.</li>
