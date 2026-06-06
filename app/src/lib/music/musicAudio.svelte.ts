@@ -7,12 +7,15 @@
 // <audio> 를 DOM 에 붙이지 않고 new Audio() 로 만든다(재생에 DOM 부착 불필요).
 import { untrack } from 'svelte';
 import { musicPlayer } from './musicPlayer.svelte.js';
+import { pushToast } from '$lib/stores/toast.js';
 import {
 	isMediaSessionSupported,
 	buildMetadataInit,
 	installMediaSession,
 	syncMediaSession
 } from './mediaSession.js';
+
+const MEDIA_ERR_NAMES = ['', 'ABORTED', 'NETWORK', 'DECODE', 'SRC_NOT_SUPPORTED'];
 
 let audioEl: HTMLAudioElement | null = null;
 let preloadEl: HTMLAudioElement | null = null;
@@ -67,7 +70,25 @@ export function installMusicAudio(): () => void {
 	const onTime = () => musicPlayer.reportTime(audio.currentTime || 0);
 	const onMeta = () => musicPlayer.reportDuration(audio.duration || 0);
 	const onEnded = () => musicPlayer.reportEnded();
-	const onError = () => musicPlayer.next();
+	const onError = () => {
+		// 자동 스킵 전에 "왜" 를 노출 — 모바일은 콘솔을 못 보므로 토스트로.
+		// (조용히 next() 하면 곡이 그냥 사라져 디버그가 불가능.)
+		const e = audio.error;
+		const code = e?.code ?? 0;
+		const name = MEDIA_ERR_NAMES[code] ?? `code${code}`;
+		const src = audio.currentSrc || audio.getAttribute('src') || '';
+		const tail = src.replace(/^https?:\/\/[^/]+/, '').slice(-72);
+		console.error('[music] audio error', {
+			code,
+			name,
+			message: e?.message,
+			networkState: audio.networkState,
+			readyState: audio.readyState,
+			src
+		});
+		pushToast(`재생 실패 ⟨${name}⟩ ${tail}`, { kind: 'error', timeoutMs: 9000 });
+		musicPlayer.next();
+	};
 	audio.addEventListener('timeupdate', onTime);
 	audio.addEventListener('loadedmetadata', onMeta);
 	audio.addEventListener('ended', onEnded);

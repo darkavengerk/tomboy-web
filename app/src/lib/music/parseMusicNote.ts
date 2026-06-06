@@ -3,7 +3,12 @@ import type { JSONContent } from '@tiptap/core';
 
 const TITLE_PREFIX = '음악::';
 const PLAYLIST_PREFIX = '플레이리스트:';
-const URL_RE = /https?:\/\/[^\s<>"']+/;
+// NOTE: do NOT exclude the single quote (') — bridge `/files` URLs embed the
+// raw filename via JS encodeURIComponent, which leaves `'` literal (e.g.
+// "…'Snapping'….mp3"). Excluding it truncated the URL mid-path, so the bare-URL
+// branch failed and the track fell back to showing the raw URL as its title.
+// trimTrailingPunct still strips a trailing quote.
+const URL_RE = /https?:\/\/[^\s<>"]+/;
 
 export interface MusicTrack {
 	url: string;

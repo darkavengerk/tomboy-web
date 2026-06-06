@@ -1605,6 +1605,8 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 	.tomboy-editor :global(.tomboy-link-url) {
 		color: #3465a4;
 		text-decoration: underline;
+		/* 공백 없는 긴 URL도 줄바꿈되게(가로 스크롤 방지). */
+		overflow-wrap: anywhere;
 	}
 
 	/* Inline image preview widget (decoration; not part of the doc). The
@@ -2046,6 +2048,10 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 	.tomboy-editor :global(li.music-track) {
 		list-style: none;
 		position: relative; /* ▶ 버튼(absolute) 의 기준 — 행마다 자기 li 우측에 고정 */
+		/* 편집 중(데코 해제)엔 인코딩된 긴 URL(%20 투성이, 공백 없는 한 토큰)이
+		   그대로 노출된다 — 안 깨지면 음악노트만 가로 스크롤. 강제 줄바꿈. */
+		overflow-wrap: anywhere;
+		word-break: break-word;
 	}
 	/* ctrl 노출 시에만 우측 버튼 자리 확보(텍스트가 버튼 밑으로 안 들어가게). */
 	.tomboy-editor :global(li.music-track--ctrl) {
