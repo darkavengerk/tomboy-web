@@ -1555,8 +1555,10 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 		margin-bottom: -0.4em;
 	}
 
-	/* Second paragraph (body top) = subtitle slot: smaller, muted */
-	.tomboy-editor :global(.tiptap > p:nth-child(2)) {
+	/* Second paragraph (body top) = subtitle slot: smaller, muted.
+	   Suppressed for `::` notes — the tomboySubtitlePlaceholder plugin tags the
+	   root with `.tomboy-no-subtitle` (see subtitleSlot.ts). */
+	.tomboy-editor :global(.tiptap:not(.tomboy-no-subtitle) > p:nth-child(2)) {
 		font-size: 0.8em;
 		line-height: 2.4;
 		color: #666;
