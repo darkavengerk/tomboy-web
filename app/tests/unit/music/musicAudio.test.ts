@@ -161,28 +161,39 @@ describe('musicAudio 엔진 — 단일 오디오', () => {
 		expect(playSrcs).toEqual([]);
 	});
 
-	// iOS 는 audio.src 에 리터럴 ' ( ) ! * 가 있으면 SRC_NOT_SUPPORTED 로 거부.
-	// 브릿지 /files URL 은 이 문자가 그대로 남아 폰에서만 전부 스킵됐다(A/B 확인).
-	it("재생 시 ' 같은 sub-delim 은 인코딩해서 audio.src 로 넘긴다", () => {
-		musicPlayer.setQueue('g', [T("https://h/files/u/CHUNG 'Snapping' (live).mp3", 'x')], 'pl');
+	// WebKit 은 파일명에서 온 일부 문자가 src URL 에 있으면 SRC_NOT_SUPPORTED 로 거부
+	// (FF/Chrome 은 같은 URL 재생). 브릿지 URL 은 깨끗한 고정 파일명으로 다시 써서 넘긴다.
+	it('재생 시 브릿지 URL 은 깨끗한 파일명으로 다시 써서 audio.src 로 넘긴다', () => {
+		const u = '737140b8-2cca-40c1-b2bf-a901e5999a6f';
+		musicPlayer.setQueue(
+			'g',
+			[T(`https://br.test/files/${u}/CHUNG 'Snapping' (live).mp3`, 'x')],
+			'pl'
+		);
 		musicPlayer.play(0);
 		resumePlaybackFromGesture();
-		expect(playSrcs.at(-1)).toBe('https://h/files/u/CHUNG %27Snapping%27 %28live%29.mp3');
+		expect(playSrcs.at(-1)).toBe(`https://br.test/files/${u}/audio.mp3`);
 		expect(__musicAudioForTest().audio?.getAttribute('src')).toBe(
-			'https://h/files/u/CHUNG %27Snapping%27 %28live%29.mp3'
+			`https://br.test/files/${u}/audio.mp3`
 		);
 	});
 });
 
 describe('toPlayableSrc', () => {
-	it("encodes iOS-hostile sub-delims ' ( ) ! *", () => {
-		expect(toPlayableSrc("https://h/f/a'b(c)d!e*f.mp3")).toBe(
-			'https://h/f/a%27b%28c%29d%21e%2Af.mp3'
+	const U = '737140b8-2cca-40c1-b2bf-a901e5999a6f';
+	it('rewrites bridge /files/<uuid>/<name> to a clean fixed filename (any char)', () => {
+		expect(toPlayableSrc(`https://br.test/files/${U}/CHUNG 'Snapping' (live)!.mp3`)).toBe(
+			`https://br.test/files/${U}/audio.mp3`
 		);
 	});
-	it('leaves existing %XX escapes and normal chars untouched (no double-encode)', () => {
-		expect(toPlayableSrc('https://h/f/a%20b-c_d.%ED%95%9C.mp3')).toBe(
-			'https://h/f/a%20b-c_d.%ED%95%9C.mp3'
+	it('preserves the original extension', () => {
+		expect(toPlayableSrc(`https://br.test/files/${U}/x(y).m4a`)).toBe(
+			`https://br.test/files/${U}/audio.m4a`
+		);
+	});
+	it('leaves non-bridge URLs untouched (internet direct links)', () => {
+		expect(toPlayableSrc("https://cdn.example.com/a/b'c (d).mp3")).toBe(
+			"https://cdn.example.com/a/b'c (d).mp3"
 		);
 	});
 });
