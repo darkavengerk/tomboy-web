@@ -17,6 +17,21 @@ import {
 
 const MEDIA_ERR_NAMES = ['', 'ABORTED', 'NETWORK', 'DECODE', 'SRC_NOT_SUPPORTED'];
 
+/**
+ * iOS Safari 는 audio.src URL 에 리터럴로 남은 일부 sub-delim 문자(' ( ) ! *)를
+ * 거부한다 → MEDIA_ERR_SRC_NOT_SUPPORTED 로 곡이 스킵된다. 브릿지 /files URL 은
+ * 파일명을 JS encodeURIComponent 로 넣는데, 이 함수는 이 문자들을 인코딩하지 않아
+ * 그대로 남는다(예: …'Snapping'…, …(아이유)…). 데스크탑은 허용하지만 iOS 는 재생
+ * 거부. 그래서 audio.src 로 넘기기 직전에 퍼센트 인코딩한다.
+ *
+ * 안전: 이 5개 문자는 기존 %XX 이스케이프 안에 등장하지 않아 이중 인코딩이 없다.
+ * 브릿지는 받은 %27 등을 디코드해 동일 파일을 서빙하므로(또는 UUID 단일파일
+ * 폴백) 노트에 저장된 URL 은 손대지 않아도 된다. (A/B 폰 테스트로 확인됨.)
+ */
+export function toPlayableSrc(url: string): string {
+	return url.replace(/['()!*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+}
+
 let audioEl: HTMLAudioElement | null = null;
 let preloadEl: HTMLAudioElement | null = null;
 let teardown: (() => void) | null = null;
@@ -47,7 +62,8 @@ export function resumePlaybackFromGesture(): void {
 	if (!audio) return;
 	const url = musicPlayer.currentTrack?.url ?? '';
 	if (!url) return;
-	if ((audio.getAttribute('src') ?? '') !== url) audio.src = url;
+	const src = toPlayableSrc(url);
+	if ((audio.getAttribute('src') ?? '') !== src) audio.src = src;
 	void audio.play().catch(() => {});
 }
 
@@ -98,12 +114,13 @@ export function installMusicAudio(): () => void {
 		// src 동기화. 트랙이 바뀌면(특히 자동 넘김) 새 src 로 재생을 이어준다.
 		$effect(() => {
 			const url = musicPlayer.currentTrack?.url ?? '';
-			if ((audio.getAttribute('src') ?? '') === url) return;
-			if (!url) {
+			const src = url ? toPlayableSrc(url) : '';
+			if ((audio.getAttribute('src') ?? '') === src) return;
+			if (!src) {
 				audio.removeAttribute('src');
 				return;
 			}
-			audio.src = url;
+			audio.src = src;
 			// 자동 넘김은 isPlaying 을 true 로 둔 채 src 만 바꾼다 → 여기서 직접 이어 재생.
 			if (untrack(() => musicPlayer.isPlaying)) void audio.play().catch(() => {});
 		});
@@ -121,8 +138,9 @@ export function installMusicAudio(): () => void {
 		// 다음 곡 프리로드 — preload 는 절대 play 하지 않는다(HTTP 캐시 워밍 전용).
 		$effect(() => {
 			const url = musicPlayer.queue[musicPlayer.currentIndex + 1]?.url ?? '';
-			if ((preload.getAttribute('src') ?? '') === url) return;
-			if (url) preload.src = url;
+			const src = url ? toPlayableSrc(url) : '';
+			if ((preload.getAttribute('src') ?? '') === src) return;
+			if (src) preload.src = src;
 			else preload.removeAttribute('src');
 		});
 		// 잠금화면 메타데이터·재생상태·위치 동기화.
