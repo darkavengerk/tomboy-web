@@ -6,7 +6,7 @@
 	import Toast from '$lib/components/Toast.svelte';
 	import ImageViewerModal from '$lib/components/ImageViewerModal.svelte';
 	import TopNav from '$lib/components/TopNav.svelte';
-	import { page } from '$app/state';
+	import { page, updated } from '$app/state';
 	import { createHistoryTracker } from '$lib/nav/history.js';
 	import { appMode, modeFromUrl } from '$lib/stores/appMode.svelte.js';
 	import { mode } from '$lib/stores/guestMode.svelte.js';
@@ -142,6 +142,23 @@
 		window.addEventListener('offline', goOffline);
 		window.addEventListener('online', goOnline);
 
+		// 배포 직후 새로고침 화이트스크린 복구.
+		// 새 빌드가 올라가면 옛 HTML 셸이 참조하던 해시 청크가 Vercel 에서
+		// 사라진다. 그 청크를 lazy-import 하다 실패하면 Vite 가
+		// `vite:preloadError` 를 쏜다 — 이때 한 번만 새로고침해 새 빌드의
+		// 청크를 받아오게 한다. (이 onMount 가 돌았다는 건 셸이 정상 부팅됐다는
+		// 뜻이므로 가드를 풀어, 다음 배포 때 다시 1회 리로드가 허용되게 한다.
+		// 셸 자체가 깨지면 onMount 가 안 돌아 가드가 남으므로 무한 새로고침 방지.)
+		const PRELOAD_RELOAD_KEY = 'tomboy:preload-reload';
+		sessionStorage.removeItem(PRELOAD_RELOAD_KEY);
+		const onPreloadError = (e: Event) => {
+			e.preventDefault();
+			if (sessionStorage.getItem(PRELOAD_RELOAD_KEY)) return;
+			sessionStorage.setItem(PRELOAD_RELOAD_KEY, '1');
+			location.reload();
+		};
+		window.addEventListener('vite:preloadError', onPreloadError);
+
 		const onInstallPrompt = (e: Event) => {
 			e.preventDefault();
 			installPrompt = e as BeforeInstallPromptEvent;
@@ -211,6 +228,7 @@
 		return () => {
 			window.removeEventListener('offline', goOffline);
 			window.removeEventListener('online', goOnline);
+			window.removeEventListener('vite:preloadError', onPreloadError);
 			window.removeEventListener('beforeinstallprompt', onInstallPrompt);
 			window.removeEventListener('keydown', swallowAlt);
 			window.removeEventListener('keyup', swallowAlt);
@@ -218,6 +236,21 @@
 			unsubFcm?.();
 			uninstallMusicAudio();
 		};
+	});
+
+	// 새 배포 감지 안내 — version.pollInterval(svelte.config.js) 이 새 버전을
+	// 발견하면 updated.current 가 true 로 latch 된다. SvelteKit 은 이때부터
+	// 다음 내비게이션을 자동으로 풀 페이지 로드로 처리하지만(=새 청크 수신),
+	// 사용자가 그 사이 화이트스크린을 만나지 않도록 한 번만 토스트로 알린다.
+	let notifiedUpdate = false;
+	$effect(() => {
+		if (updated.current && !notifiedUpdate) {
+			notifiedUpdate = true;
+			pushToast('새 버전이 배포되었습니다. 새로고침하면 적용됩니다.', {
+				kind: 'info',
+				timeoutMs: 8000
+			});
+		}
 	});
 
 	async function handleInstall() {
