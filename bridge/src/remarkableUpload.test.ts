@@ -6,7 +6,8 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
-import { handleRemarkableUpload } from './remarkableUpload.js';
+import { homedir } from 'node:os';
+import { handleRemarkableUpload, expandHome } from './remarkableUpload.js';
 import { mintToken } from './auth.js';
 
 const SECRET = 'test-secret';
@@ -22,6 +23,7 @@ function mockReq(headers: Record<string, string>, body: object | string): Incomi
 function mockRes() {
   const writes: string[] = [];
   let status = 0;
+  let flushed = false;
   const headers: Record<string, string> = {};
   const res = {
     writeHead: (s: number, h?: Record<string, string>) => {
@@ -29,12 +31,13 @@ function mockRes() {
       Object.assign(headers, h ?? {});
       return res;
     },
+    flushHeaders: () => { flushed = true; },
     write: (b: string) => writes.push(b),
     end: (b?: string) => {
       if (b) writes.push(b);
     }
   } as unknown as ServerResponse;
-  return { res, get: () => ({ status, headers, body: writes.join('') }) };
+  return { res, get: () => ({ status, headers, body: writes.join(''), flushed }) };
 }
 
 const realFetch = globalThis.fetch;
@@ -178,5 +181,54 @@ test('automation failure emits automation_unreachable but keeps inbox', async ()
   const idx = JSON.parse(
     readFileSync(`${inboxDir}/state/index.json`, 'utf8')
   );
+  assert.ok(idx['uuid-B']);
+});
+
+test('flushHeaders is called after writeHead 200', async () => {
+  const inboxDir = mkdtempSync(join(tmpdir(), 'inbox-'));
+  globalThis.fetch = (async () =>
+    new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+  const { res, get } = mockRes();
+  await handleRemarkableUpload(
+    mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, { notebook: 'Diary' }),
+    res,
+    {
+      secret: SECRET,
+      ssh: { host: 'h', user: 'u', keyPath: 'k' },
+      inboxDir,
+      defaultNotebook: 'Diary',
+      automationServiceUrl: 'http://auto.test',
+      fetchDump: async () => DUMP,
+      rsync: async () => {}
+    }
+  );
+  assert.equal(get().flushed, true);
+});
+
+test('expandHome expands ~ in inboxDir', async () => {
+  const inboxDir = mkdtempSync(join(tmpdir(), 'inbox-'));
+  globalThis.fetch = (async () =>
+    new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+  const { res } = mockRes();
+  const stateFiles: string[] = [];
+  await handleRemarkableUpload(
+    mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, { notebook: 'Diary' }),
+    res,
+    {
+      secret: SECRET,
+      ssh: { host: 'h', user: 'u', keyPath: 'k' },
+      // use an absolute path that we can verify via expandHome directly
+      inboxDir,
+      defaultNotebook: 'Diary',
+      automationServiceUrl: 'http://auto.test',
+      fetchDump: async () => DUMP,
+      rsync: async (uuid) => { stateFiles.push(uuid); }
+    }
+  );
+  // Verify expandHome itself works correctly for tilde paths
+  assert.equal(expandHome('~'), homedir());
+  assert.equal(expandHome('~/foo/bar'), join(homedir(), 'foo/bar'));
+  // Verify state was written under the real inboxDir (not a literal ~/... path)
+  const idx = JSON.parse(readFileSync(`${inboxDir}/state/index.json`, 'utf8'));
   assert.ok(idx['uuid-B']);
 });

@@ -54,3 +54,24 @@ test('fetchMetadataDump uses injected spawn and returns stdout', async () => {
   assert.equal(calls[0].cmd, 'ssh');
   assert.ok(calls[0].args.includes('root@rmrk.local'));
 });
+
+test('runCapture rejects when stdout exceeds the cap', async () => {
+  const { EventEmitter } = await import('node:events');
+  // Use maxStdoutBytes=32 via fetchMetadataDump opts, emit 64 bytes
+  const bigChunk = Buffer.alloc(64, 'x');
+  const fakeSpawn = ((cmd: string, args: string[]) => {
+    void cmd; void args;
+    const child: any = new EventEmitter();
+    child.stdout = Readable.from([bigChunk]);
+    child.stderr = Readable.from([]);
+    setImmediate(() => child.emit('close', 0));
+    return child;
+  }) as any;
+  await assert.rejects(
+    () => fetchMetadataDump(
+      { host: 'rmrk.local', user: 'root', keyPath: '/tmp/key' },
+      { spawn: fakeSpawn, maxStdoutBytes: 32 }
+    ),
+    /stdout exceeded 32 bytes/
+  );
+});

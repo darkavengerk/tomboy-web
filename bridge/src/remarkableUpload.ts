@@ -12,7 +12,8 @@ import {
   updateInboxIndex,
   diffNewUuids
 } from './remarkable/inbox.js';
-import { join } from 'node:path';
+import { join, resolve as pathResolve } from 'node:path';
+import { homedir } from 'node:os';
 
 interface RunBody {
   notebook?: unknown;
@@ -36,6 +37,12 @@ type ErrorKind =
   | 'rsync_failed'
   | 'automation_unreachable'
   | 'internal';
+
+export function expandHome(p: string): string {
+  if (p.startsWith('~/')) return pathResolve(homedir(), p.slice(2));
+  if (p === '~') return homedir();
+  return pathResolve(p);
+}
 
 function epochToDate(ms: number): string {
   if (!ms) return new Date().toISOString().slice(0, 10);
@@ -103,6 +110,9 @@ export async function handleRemarkableUpload(
     'Cache-Control': 'no-cache',
     Connection: 'keep-alive'
   });
+  res.flushHeaders();
+
+  const resolvedInboxDir = expandHome(deps.inboxDir);
 
   const emitError = (kind: ErrorKind, message?: string) => {
     sendEvent(res, 'error', { kind, message });
@@ -110,7 +120,7 @@ export async function handleRemarkableUpload(
   };
 
   const fetchDump = deps.fetchDump ?? ((cfg) => defaultFetchDump(cfg));
-  const rsyncFn = deps.rsync ?? ((uuid) => defaultRsync(deps.ssh, uuid, deps.inboxDir));
+  const rsyncFn = deps.rsync ?? ((uuid) => defaultRsync(deps.ssh, uuid, resolvedInboxDir));
 
   // ssh_connect + list_pages
   sendEvent(res, 'status', { step: 'ssh_connect' });
@@ -128,7 +138,7 @@ export async function handleRemarkableUpload(
     return;
   }
   const pages = listPagesInNotebook(meta, notebookUuid);
-  const stateDir = join(deps.inboxDir, 'state');
+  const stateDir = join(resolvedInboxDir, 'state');
   const inboxIdx = readInboxIndex(stateDir);
   const newUuids = diffNewUuids(pages.map((p) => p.uuid), inboxIdx);
   sendEvent(res, 'status', {
