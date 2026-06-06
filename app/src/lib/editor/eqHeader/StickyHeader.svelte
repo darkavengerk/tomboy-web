@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Editor } from '@tiptap/core';
 	import { onMount } from 'svelte';
+	import { NO_SUBTITLE_CLASS, suppressesSubtitle } from '../subtitleSlot.js';
 
 	interface Props {
 		/** Live editor (DOM source for cloning). */
@@ -68,6 +69,9 @@
 				.forEach((el) => (el as HTMLImageElement).setAttribute('loading', 'eager'));
 			contentEl.appendChild(clone);
 		}
+		// Mirror the editor's subtitle-slot rule onto the clone (it lives outside
+		// `.tomboy-editor`, so the root class doesn't reach it) — see subtitleSlot.ts.
+		contentEl.classList.toggle(NO_SUBTITLE_CLASS, suppressesSubtitle(editor.view.state.doc));
 		lastClonedVersion = version;
 		lastClonedBoundary = boundaryIndex;
 	}
@@ -203,8 +207,9 @@
 		font-weight: bold;
 		margin-bottom: -0.4em;
 	}
-	/* Second paragraph = subtitle slot: smaller, muted */
-	.tomboy-eq-sticky-content :global(p:nth-child(2)) {
+	/* Second paragraph = subtitle slot: smaller, muted.
+	   Suppressed for `::` notes via `.tomboy-no-subtitle` (see subtitleSlot.ts). */
+	.tomboy-eq-sticky-content:not(.tomboy-no-subtitle) :global(p:nth-child(2)) {
 		font-size: 0.8em;
 		line-height: 2.4;
 		color: #666;

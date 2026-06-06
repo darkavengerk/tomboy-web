@@ -122,6 +122,34 @@ describe('TomboySubtitlePlaceholder', () => {
 		expect(hasPlaceholderClass(editor)).toBe(false);
 	});
 
+	it('tags the editor root with tomboy-no-subtitle for "::" titles', () => {
+		const editor = makeEditor({
+			content: {
+				type: 'doc',
+				content: [
+					{ type: 'paragraph', content: [{ type: 'text', text: '자동화::제목' }] },
+					{ type: 'paragraph' }
+				]
+			},
+			text: '2026-04-17'
+		});
+		expect(editor.view.dom.classList.contains('tomboy-no-subtitle')).toBe(true);
+	});
+
+	it('does NOT tag the root for ordinary titles', () => {
+		const editor = makeEditor({
+			content: {
+				type: 'doc',
+				content: [
+					{ type: 'paragraph', content: [{ type: 'text', text: '보통 제목' }] },
+					{ type: 'paragraph' }
+				]
+			},
+			text: '2026-04-17'
+		});
+		expect(editor.view.dom.classList.contains('tomboy-no-subtitle')).toBe(false);
+	});
+
 	it('reappears after the user deletes the subtitle text', () => {
 		const editor = makeEditor({
 			content: {
