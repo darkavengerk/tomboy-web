@@ -36,7 +36,6 @@
 		extractTitleText,
 	} from "./titleUniqueGuard.js";
 	import { createImagePreviewPlugin } from "./imagePreview/imagePreviewPlugin.js";
-	import { createFilePreviewPlugin } from "./filePreview/filePreviewPlugin.js";
 	import { createGeoMapPlugin } from "./geoMap/geoMapPlugin.js";
 import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 import { createAutomationNotePlugin } from "./automationNote/automationNotePlugin.js";
@@ -472,7 +471,7 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 				Extension.create({
 					name: "tomboyImagePreview",
 					addProseMirrorPlugins() {
-						return [createImagePreviewPlugin(), createFilePreviewPlugin()];
+						return [createImagePreviewPlugin()];
 					},
 				}),
 				Extension.create({
@@ -1406,8 +1405,8 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 	 * Upload a non-image file to the bridge and insert the resulting
 	 * download URL at the current cursor position. Wraps URL text in a
 	 * tomboyUrlLink mark so the `.note` XML round-trip writes `<link:url>`
-	 * (same path images take); the future filePreviewPlugin will render a
-	 * 📎-filename badge in place of the URL text.
+	 * (same path images take). The URL is shown verbatim as a plain
+	 * clickable link — copyable and pasteable into 음악:: notes.
 	 */
 	export async function uploadAndInsertFile(file: File): Promise<void> {
 		const ed = editor;
@@ -1633,32 +1632,6 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 	   removes the whole URL, arrow keys skip across it. */
 	.tomboy-editor :global(.tomboy-image-url-hidden) {
 		display: none;
-	}
-
-	/* Bridge file-URL text is hidden so the 📎 badge alone represents the link.
-	   The URL stays in the doc verbatim for Tomboy XML round-trip. */
-	.tomboy-editor :global(.tomboy-file-url-hidden) {
-		display: none;
-	}
-
-	.tomboy-editor :global(.tomboy-file-badge) {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.25em;
-		padding: 0.1em 0.5em;
-		margin: 0 0.15em;
-		background: #eef2f7;
-		border: 1px solid #d4dbe4;
-		border-radius: 4px;
-		color: #1565c0;
-		text-decoration: none;
-		font-size: 0.9em;
-		line-height: 1.3;
-		cursor: pointer;
-	}
-	.tomboy-editor :global(.tomboy-file-badge:hover) {
-		background: #e3eaf3;
-		text-decoration: underline;
 	}
 
 	.tomboy-editor :global(.tomboy-geo-map) {

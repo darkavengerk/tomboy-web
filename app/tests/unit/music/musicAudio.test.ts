@@ -2,7 +2,11 @@ import { describe, it, expect, afterEach, beforeAll, beforeEach } from 'vitest';
 import { flushSync } from 'svelte';
 import { musicPlayer, __resetMusicPlayer } from '$lib/music/musicPlayer.svelte.js';
 import { __resetMediaSession } from '$lib/music/mediaSession.js';
-import { installMusicAudio, __musicAudioForTest } from '$lib/music/musicAudio.svelte.js';
+import {
+	installMusicAudio,
+	__musicAudioForTest,
+	resumePlaybackFromGesture
+} from '$lib/music/musicAudio.svelte.js';
 import type { MusicTrack } from '$lib/music/parseMusicNote.js';
 
 // jsdom 은 미디어 재생 미구현 → 기록형 stub.
@@ -137,5 +141,22 @@ describe('musicAudio 엔진 — 단일 오디오', () => {
 	it('중복 설치해도 같은 teardown(이중 오디오 방지)', () => {
 		const again = installMusicAudio();
 		expect(again).toBe(uninstall);
+	});
+
+	// 모바일 자동재생 차단 회피 — 재생은 반드시 제스처와 같은 동기 구간에서 시작돼야
+	// 한다. resumePlaybackFromGesture 는 effect(flushSync) 를 기다리지 않고 그 자리에서
+	// src 를 맞추고 play() 한다.
+	it('resumePlaybackFromGesture — effect 대기 없이 현재 트랙을 즉시 play', () => {
+		musicPlayer.setQueue('g', [T('https://h/a.mp3', 'a')], '드라이브');
+		musicPlayer.play(0);
+		// flushSync 하지 않음 = 제스처 안(아직 effect 미실행) 시뮬레이션.
+		expect(playSrcs).toEqual([]);
+		resumePlaybackFromGesture();
+		expect(playSrcs.at(-1)).toBe('https://h/a.mp3');
+	});
+
+	it('resumePlaybackFromGesture — 재생할 트랙이 없으면 no-op', () => {
+		resumePlaybackFromGesture();
+		expect(playSrcs).toEqual([]);
 	});
 });

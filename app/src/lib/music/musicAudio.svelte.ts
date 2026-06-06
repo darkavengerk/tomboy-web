@@ -27,6 +27,28 @@ export function __musicAudioForTest(): {
 }
 
 /**
+ * 사용자 제스처(탭/클릭) 안에서 동기적으로 호출해야 하는 재생 시작 훅.
+ *
+ * 모바일 브라우저(특히 iOS Safari)는 오디오 재생을 "사용자 제스처와 같은 동기
+ * 실행 구간"에서 시작할 때만 허용한다. 스토어 상태(isPlaying)만 바꾸고 실제
+ * play() 를 $effect 에서 한 틱 뒤에 호출하면 제스처 밖이라 차단되어 — 재생
+ * 버튼을 눌러도 소리가 안 나고 0:00 에 멈춰 보인다(데스크탑은 허용해서 동작).
+ *
+ * 그래서 재생 버튼 onclick(=제스처) 에서 스토어를 갱신한 직후 이 함수를 동기로
+ * 호출한다. 현재 트랙 src 를 즉시 맞추고 그 자리에서 play() 를 호출해 엘리먼트를
+ * 잠금 해제하면, 이후 자동 넘김(onEnded→next)의 effect-기반 play() 도 통과한다.
+ * 멱등 — src 가 이미 맞으면 다시 설정하지 않고, 재생 중이면 play() 는 no-op.
+ */
+export function resumePlaybackFromGesture(): void {
+	const audio = audioEl;
+	if (!audio) return;
+	const url = musicPlayer.currentTrack?.url ?? '';
+	if (!url) return;
+	if ((audio.getAttribute('src') ?? '') !== url) audio.src = url;
+	void audio.play().catch(() => {});
+}
+
+/**
  * 전역 오디오 엔진 설치. 반환값은 uninstall.
  * 싱글톤 — 중복 호출 시 기존 teardown 을 그대로 돌려준다(이중 오디오 방지).
  */

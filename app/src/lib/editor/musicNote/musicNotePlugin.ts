@@ -3,6 +3,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { parseMusicNote } from '$lib/music/parseMusicNote.js';
 import { musicPlayer } from '$lib/music/musicPlayer.svelte.js';
+import { resumePlaybackFromGesture } from '$lib/music/musicAudio.svelte.js';
 import { modKeys } from '$lib/desktop/modKeys.svelte.js';
 
 export const musicNotePluginKey = new PluginKey('tomboyMusicNote');
@@ -137,14 +138,21 @@ export function buildMusicDecorations(doc: PMNode, opts: BuildOpts): DecorationS
 						btn.contentEditable = 'false';
 						btn.setAttribute('data-no-drag', '');
 						btn.textContent = playingNow ? '⏸' : '▶';
-						btn.addEventListener('mousedown', (e) => {
+						// pointerdown 까지 막아야 터치에서 탭이 contenteditable 로
+						// 새어 캐럿이 잡히고 키보드가 뜨는 걸 막는다(mousedown 만으론
+						// 모바일에서 포커스를 못 막음).
+						const swallow = (e: Event) => {
 							e.preventDefault();
 							e.stopPropagation();
-						});
+						};
+						btn.addEventListener('pointerdown', swallow);
+						btn.addEventListener('mousedown', swallow);
 						btn.addEventListener('click', (e) => {
 							e.preventDefault();
 							e.stopPropagation();
 							handleTrackButtonClick(opts, index, isCurrent);
+							// 제스처 안에서 동기 재생 — 모바일 자동재생 차단 회피.
+							if (musicPlayer.isPlaying) resumePlaybackFromGesture();
 						});
 						return btn;
 					},
