@@ -251,6 +251,48 @@ function recurredToastMessage(spec: RecurrenceSpec): string {
 	return `보냈습니다. ${spec.weeks}주 뒤에도 추가했어요.`;
 }
 
+function skippedToastMessage(spec: RecurrenceSpec): string {
+	if (spec.kind === 'monthly') return '건너뛰었습니다. 다음 달로 옮겼어요.';
+	if (spec.weeks === 1) return '건너뛰었습니다. 다음 주로 옮겼어요.';
+	return `건너뛰었습니다. ${spec.weeks}주 뒤로 옮겼어요.`;
+}
+
+/**
+ * Skip a list item — like 보내기 but WITHOUT writing to the history note.
+ *
+ *   - 마커 없는 항목 → 그냥 삭제한다.
+ *   - 반복 마커 있는 항목(`25*(수)` 월간 / `25(수**)` 주간) → 히스토리로 보내는
+ *     단계만 건너뛰고, 다음 주기 날짜로 복제본을 옮긴다(원본 삭제 + 목표 월 섹션
+ *     삽입). 보내기와 동일한 소스측 편집(`applySourceSideEdits`)을 재사용하되
+ *     destination 쓰기만 생략하므로, 단일 트랜잭션 = 한 번의 Ctrl+Z로 되돌릴 수 있다.
+ *
+ * destination 쓰기가 없어 동기다 — 비동기 윈도우(원본 위치 변동) 자체가 없다.
+ */
+export function skipListItem(sourceEditor: Editor, liPos: number, liNode: PMNode): void {
+	if (sourceEditor.isDestroyed) return;
+	const originalFingerprint = JSON.stringify(liNode.toJSON());
+	const expectedSize = liNode.nodeSize;
+	const parsed = parsePrefix(liNode.firstChild?.textContent ?? '');
+	const spec = parsed ? recurrenceFromParse(parsed) : null;
+
+	const outcome = applySourceSideEdits(
+		sourceEditor,
+		liPos,
+		originalFingerprint,
+		expectedSize,
+		spec
+	);
+	if (outcome.status === 'recurred') {
+		pushToast(skippedToastMessage(outcome.spec));
+	} else if (outcome.status === 'sent') {
+		pushToast('삭제했습니다.');
+	} else {
+		pushToast('원본 위치가 바뀌어 건너뛰지 못했습니다. 수동으로 정리하세요.', {
+			kind: 'error'
+		});
+	}
+}
+
 /**
  * Transfer a list item from the source editor to the destination note.
  *

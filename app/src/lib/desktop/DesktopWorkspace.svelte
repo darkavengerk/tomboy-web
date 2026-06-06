@@ -144,10 +144,12 @@
 			void handleCtrlL(text);
 			return;
 		}
-		// Alt+Esc — reopen the most recently closed note (undo an accidental
-		// Esc close). NoteWindow's own Esc handler bails on altKey, so this
-		// won't also close the focused window.
-		if (e.key === 'Escape' && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+		// Ctrl/Cmd+` — reopen the most recently closed note (undo an accidental
+		// Esc close). Alt+Esc was the original binding but Linux/GNOME window
+		// managers grab Alt+Esc at the OS level (direct window switch) before
+		// the page ever sees it, so it can't be preventDefault'd. Ctrl+` has no
+		// OS / browser / TipTap binding, so it reaches us cleanly.
+		if (e.key === '`' && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
 			e.preventDefault();
 			void desktopSession.reopenLastClosed();
 			return;

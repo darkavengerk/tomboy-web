@@ -756,6 +756,11 @@
 			{/key}
 		{:else}
 			{#if editorContent}
+				<!-- 재생 컨트롤은 노트 상단(제목 줄 위)에 고정 — 하단 편집 툴바를
+				     가리지 않도록. editorComponent 가 바인딩된 뒤에야 렌더된다. -->
+				{#if editorComponent?.getEditor() && isMusicNote}
+					<MusicPlayerBar editor={editorComponent.getEditor()!} guid={noteId ?? ''} />
+				{/if}
 				<!--
 					No {#key noteId} — TomboyEditor stays mounted across note
 					navigations and reacts to `content` / `currentGuid` prop
@@ -790,9 +795,6 @@
 					keepCursorVisible={true}
 					onimageinserted={handleImageInserted}
 				/>
-				{#if editorComponent?.getEditor() && isMusicNote}
-					<MusicPlayerBar editor={editorComponent.getEditor()!} guid={noteId ?? ''} />
-				{/if}
 				{#if editorComponent?.getEditor() && llmBridgeUrl && llmBridgeToken}
 					<ChatSendBar
 						editor={editorComponent.getEditor()!}
@@ -891,7 +893,9 @@
 		justify-content: flex-end;
 		gap: 4px;
 		padding: 4px;
-		z-index: 5;
+		/* 음악 노트 상단 고정 재생바(z-index:5) 위로 떠야 노트북/메뉴 칩이
+		   가려지지 않는다. */
+		z-index: 6;
 		pointer-events: none;
 		opacity: 0.35;
 		transition: opacity 0.2s;
