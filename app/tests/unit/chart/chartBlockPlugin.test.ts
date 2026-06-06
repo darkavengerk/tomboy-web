@@ -107,7 +107,7 @@ describe('chartBlockPlugin decorations', () => {
 		expect(hasWidget).toBe(false);
 	});
 
-	it('hides the header line when the chart is checked', () => {
+	it('collapses the header line (without dropping it from layout) when checked', () => {
 		const editor = makeEditor({
 			type: 'doc',
 			content: [
@@ -116,10 +116,12 @@ describe('chartBlockPlugin decorations', () => {
 				ul(li(textPara('DATA::데이터')))
 			]
 		});
-		const hideHeader = decorationsOf(editor).find(
-			(d) => (d as any).type?.attrs?.class === 'tomboy-chart-header-hidden'
+		// A node decoration carrying the collapse class covers the header — NOT
+		// display:none, so the paragraph stays a grid item under hrSplit.
+		const charted = decorationsOf(editor).find(
+			(d) => (d as any).type?.attrs?.class === 'tomboy-chart-charted'
 		);
-		expect(hideHeader).toBeDefined();
+		expect(charted).toBeDefined();
 	});
 
 	it('renders a checked in-chart toggle that flips the header off', () => {

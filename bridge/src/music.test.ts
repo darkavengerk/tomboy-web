@@ -2,7 +2,7 @@ import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
-import { handleMusicExtract } from './music.js';
+import { handleMusicExtract, handleMusicEnumerate } from './music.js';
 import { mintToken } from './auth.js';
 
 const SECRET = 'test-secret';
@@ -88,6 +88,71 @@ test('400 on whitespace-only source (no upstream call)', async () => {
 	globalThis.fetch = (async () => { called = true; return new Response('{}'); }) as typeof fetch;
 	const { res, get } = mockRes();
 	await handleMusicExtract(mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, { source: '   ' }), res, SECRET, URL_);
+	assert.equal(get().status, 400);
+	assert.equal(called, false);
+});
+
+test('enumerate: 401 without Bearer', async () => {
+	const { res, get } = mockRes();
+	await handleMusicEnumerate(mockReq({}, { source: 'x' }), res, SECRET, URL_);
+	assert.equal(get().status, 401);
+});
+
+test('enumerate: 503 when service url not configured', async () => {
+	const { res, get } = mockRes();
+	await handleMusicEnumerate(mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, { source: 'x' }), res, SECRET, '');
+	assert.equal(get().status, 503);
+	assert.match(get().body, /not_configured/);
+});
+
+test('enumerate: forwards to /enumerate with re-Bearer and pipes response', async () => {
+	let calledUrl = '', calledAuth = '', calledBody = '';
+	globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+		calledUrl = String(url);
+		calledAuth = ((init?.headers ?? {}) as Record<string, string>)['Authorization'] ?? '';
+		calledBody = typeof init?.body === 'string' ? init.body : '';
+		return new Response(JSON.stringify({ label: 'L', entries: [{ url: 'https://yt/1', title: 'a' }], total: 1, truncated: false }), { status: 200, headers: { 'content-type': 'application/json' } });
+	}) as typeof fetch;
+	const { res, get } = mockRes();
+	await handleMusicEnumerate(mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, { source: 'https://yt/p?list=PL' }), res, SECRET, URL_);
+	assert.equal(get().status, 200);
+	assert.equal(calledUrl, 'http://music.test/enumerate');
+	assert.equal(calledAuth, `Bearer ${SECRET}`);
+	assert.deepEqual(JSON.parse(calledBody), { source: 'https://yt/p?list=PL' });
+	assert.match(get().body, /entries/);
+});
+
+test('enumerate: 503 on upstream network error', async () => {
+	globalThis.fetch = (async () => { throw new Error('ECONNREFUSED'); }) as typeof fetch;
+	const { res, get } = mockRes();
+	await handleMusicEnumerate(mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, { source: 'x' }), res, SECRET, URL_);
+	assert.equal(get().status, 503);
+	assert.match(get().body, /unavailable/);
+});
+
+test('enumerate: 400 on missing source (no upstream call)', async () => {
+	let called = false;
+	globalThis.fetch = (async () => { called = true; return new Response('{}'); }) as typeof fetch;
+	const { res, get } = mockRes();
+	await handleMusicEnumerate(mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, {}), res, SECRET, URL_);
+	assert.equal(get().status, 400);
+	assert.equal(called, false);
+});
+
+test('enumerate: 400 on malformed JSON body (no upstream call)', async () => {
+	let called = false;
+	globalThis.fetch = (async () => { called = true; return new Response('{}'); }) as typeof fetch;
+	const { res, get } = mockRes();
+	await handleMusicEnumerate(mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, 'not-json'), res, SECRET, URL_);
+	assert.equal(get().status, 400);
+	assert.equal(called, false);
+});
+
+test('enumerate: 400 on whitespace-only source (no upstream call)', async () => {
+	let called = false;
+	globalThis.fetch = (async () => { called = true; return new Response('{}'); }) as typeof fetch;
+	const { res, get } = mockRes();
+	await handleMusicEnumerate(mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, { source: '   ' }), res, SECRET, URL_);
 	assert.equal(get().status, 400);
 	assert.equal(called, false);
 });

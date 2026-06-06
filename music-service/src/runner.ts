@@ -74,6 +74,90 @@ function runYtdlp(arg: string, dir: string, deps: RunnerDeps): Promise<void> {
 	});
 }
 
+export interface PlaylistEntry { url: string; title: string; }
+export interface EnumerateOk { label: string; entries: PlaylistEntry[]; total: number; truncated: boolean; }
+export interface EnumerateDeps {
+	spawn?: typeof nodeSpawn;
+	ytdlpPath?: string;
+	timeoutMs?: number;
+	maxPlaylist?: number;
+}
+
+interface RawEntry { id?: unknown; url?: unknown; title?: unknown; }
+interface PlaylistJson { title?: unknown; entries?: unknown; }
+
+function entryToTrack(e: unknown): PlaylistEntry | null {
+	if (!e || typeof e !== 'object') return null;
+	const r = e as RawEntry;
+	const title = typeof r.title === 'string' && r.title.trim() ? r.title.trim() : '';
+	const id = typeof r.id === 'string' && r.id ? r.id : '';
+	if (id) return { url: `https://www.youtube.com/watch?v=${id}`, title: title || id };
+	if (typeof r.url === 'string' && r.url) {
+		const full = /^https?:\/\//i.test(r.url) ? r.url : `https://www.youtube.com/watch?v=${r.url}`;
+		// title 폴백: watch?v= 파라미터 추출, 없으면 원 url 그대로.
+		let fallback = r.url;
+		try { fallback = new URL(full).searchParams.get('v') ?? r.url; } catch { /* non-parseable */ }
+		return { url: full, title: title || fallback };
+	}
+	return null;
+}
+
+export async function enumerate(source: string, deps: EnumerateDeps): Promise<EnumerateOk> {
+	const resolved = resolveSource(source);
+	if (resolved.kind === 'reject') throw new Error(`bad_source:${resolved.reason}`);
+	// 열거는 재생목록 URL 전용 — 검색어(ytsearch1:)는 단일 검색이라 의미 없음.
+	if (resolved.kind === 'search') throw new Error('bad_source:not_a_url');
+	const max = deps.maxPlaylist ?? 50;
+	const json = await runYtdlpJson(resolved.value, deps);
+	let parsed: PlaylistJson;
+	try {
+		parsed = JSON.parse(json) as PlaylistJson;
+	} catch {
+		throw new Error('bad_source:enumerate_parse');
+	}
+	const label = typeof parsed.title === 'string' && parsed.title.trim() ? parsed.title.trim() : '재생목록';
+	const raw = Array.isArray(parsed.entries) ? parsed.entries : [];
+	const all = raw.map(entryToTrack).filter((e): e is PlaylistEntry => e !== null);
+	// 0개 = 파싱 가능한 엔트리 없음(빈 재생목록) 또는 yt-dlp 가 단일 영상 JSON(entries 없음)을 반환한 경우.
+	if (all.length === 0) throw new Error('bad_source:empty_playlist');
+	const total = all.length;
+	const entries = all.slice(0, max);
+	return { label, entries, total, truncated: total > max };
+}
+
+function runYtdlpJson(arg: string, deps: EnumerateDeps): Promise<string> {
+	const spawn = deps.spawn ?? nodeSpawn;
+	const bin = deps.ytdlpPath ?? 'yt-dlp';
+	const timeoutMs = deps.timeoutMs ?? 60_000;
+	const args = ['-J', '--flat-playlist', '--yes-playlist', '--no-warnings', '--socket-timeout', '30', arg];
+	return new Promise((resolve, reject) => {
+		const opts: SpawnOptions = { cwd: process.env.HOME, stdio: ['ignore', 'pipe', 'pipe'] };
+		const child = spawn(bin, args, opts);
+		let out = '';
+		let errOut = '';
+		let settled = false;
+		const fail = (msg: string) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			try { child.kill('SIGTERM'); } catch { /* gone */ }
+			reject(new Error(msg));
+		};
+		const timer = setTimeout(() => fail('타임아웃'), timeoutMs);
+		// stdout 은 반드시 끝까지 소비(flat-playlist JSON; 50곡이면 수십 KB 수준).
+		child.stdout?.on('data', (d: Buffer) => { out += d.toString('utf8'); });
+		child.stderr?.on('data', (d: Buffer) => { if (errOut.length < 8192) errOut += d.toString('utf8'); });
+		child.on('error', (e: Error) => fail(e.message));
+		child.on('close', (code: number | null) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			if (code === 0) resolve(out);
+			else reject(new Error(errOut.trim().slice(0, 200) || `종료 코드 ${code}`));
+		});
+	});
+}
+
 async function uploadToBridge(mp3: Buffer, filename: string, base: string, token: string): Promise<string> {
 	const res = await fetch(`${base.replace(/\/$/, '')}/files`, {
 		method: 'POST',
