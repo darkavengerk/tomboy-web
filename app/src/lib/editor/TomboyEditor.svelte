@@ -2628,6 +2628,15 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 		transition: background-color 0.12s ease, border-color 0.12s ease;
 	}
 
+	/* 차트가 켜진 헤더(.tomboy-chart-charted)에선 헤더 자체의 인라인 체크박스를
+	   숨긴다 — 차트 좌상단 토글이 그 역할을 대체. base 체크박스 규칙과 같은
+	   컴포넌트·같은 스코프에 둬야 specificity(스코프 해시 + 추가 클래스 = 0,4,0)와
+	   소스 순서 모두에서 위 inline-block 규칙을 확실히 이긴다. app.css에서 같은
+	   규칙을 쓰면 스코프 해시가 빠져 동점이 되어 밀린다. */
+	.tomboy-editor :global(.tomboy-chart-charted > .tomboy-inline-checkbox) {
+		display: none;
+	}
+
 	/* 모바일 hit-area — 보이지 않는 ::before 가 24x24 영역 확보. */
 	.tomboy-editor :global(.tomboy-inline-checkbox::before) {
 		content: '';
