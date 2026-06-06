@@ -86,42 +86,62 @@ export async function uploadRemarkable(
     throw new RemarkableUploadError('internal', 'no body');
   }
 
-  return await consumeSse(res.body, opts.onStatus);
+  return await consumeSse(res.body, opts.onStatus, opts.signal);
 }
 
 async function consumeSse(
   body: ReadableStream<Uint8Array>,
-  onStatus?: (s: RemarkableUploadStatus) => void
+  onStatus?: (s: RemarkableUploadStatus) => void,
+  signal?: AbortSignal
 ): Promise<RemarkableUploadResult> {
   const reader = body.getReader();
   const dec = new TextDecoder();
   let buf = '';
   let done: RemarkableUploadResult | null = null;
-  let err: RemarkableUploadError | null = null;
 
-  while (true) {
-    const { value, done: streamDone } = await reader.read();
-    if (value) buf += dec.decode(value, { stream: true });
+  // Cancel the reader if the caller aborts mid-stream (mirrors ollama.ts pattern).
+  const onAbort = () => reader.cancel();
+  signal?.addEventListener('abort', onAbort, { once: true });
+
+  try {
     while (true) {
-      const sep = buf.indexOf('\n\n');
-      if (sep === -1) break;
-      const frame = buf.slice(0, sep);
-      buf = buf.slice(sep + 2);
-      const parsed = parseFrame(frame);
-      if (!parsed) continue;
-      if (parsed.event === 'status') {
-        onStatus?.(parsed.data as RemarkableUploadStatus);
-      } else if (parsed.event === 'done') {
-        done = parsed.data as RemarkableUploadResult;
-      } else if (parsed.event === 'error') {
-        const e = parsed.data as { kind?: string; message?: string };
-        const kind = (e.kind as RemarkableUploadErrorKind) ?? 'internal';
-        err = new RemarkableUploadError(kind, e.message);
+      const { value, done: streamDone } = await reader.read();
+      if (value) {
+        // Normalize CRLF so frame splitting on '\n\n' works regardless of
+        // whether the server sends LF-only or CRLF line endings.
+        buf += dec.decode(value, { stream: true }).replace(/\r\n/g, '\n');
       }
+      while (true) {
+        const sep = buf.indexOf('\n\n');
+        if (sep === -1) break;
+        const frame = buf.slice(0, sep);
+        buf = buf.slice(sep + 2);
+        const parsed = parseFrame(frame);
+        if (!parsed) continue;
+        if (parsed.event === 'status') {
+          onStatus?.(parsed.data as RemarkableUploadStatus);
+        } else if (parsed.event === 'done') {
+          done = parsed.data as RemarkableUploadResult;
+        } else if (parsed.event === 'error') {
+          const e = parsed.data as { kind?: string; message?: string };
+          const kind = (e.kind as RemarkableUploadErrorKind) ?? 'internal';
+          // Cancel the reader immediately — don't wait for stream close.
+          reader.cancel();
+          throw new RemarkableUploadError(kind, e.message);
+        }
+      }
+      if (streamDone) break;
+      // If aborted, reader.cancel() has already been called via the listener;
+      // the next read will return done=true so the loop exits naturally.
+      if (signal?.aborted) break;
     }
-    if (streamDone) break;
+  } finally {
+    signal?.removeEventListener('abort', onAbort);
   }
-  if (err) throw err;
+
+  if (signal?.aborted) {
+    throw new RemarkableUploadError('network', 'aborted');
+  }
   if (!done) throw new RemarkableUploadError('internal', 'stream ended without done');
   return done;
 }

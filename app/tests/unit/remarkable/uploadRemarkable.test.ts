@@ -164,3 +164,76 @@ it('includes pages array with uuid and date in done payload', async () => {
   const out = await uploadRemarkable({});
   expect(out.pages).toEqual([{ uuid: 'abc-123', date: '2026-05-01' }]);
 });
+
+it('parses status events when frames are CRLF-separated', async () => {
+  // Simulate a server that uses \r\n line endings (Node http module default).
+  const enc = new TextEncoder();
+  const crlfBody = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(enc.encode('event: status\r\ndata: {"step":"ssh_connect"}\r\n\r\n'));
+      controller.enqueue(
+        enc.encode(
+          'event: done\r\ndata: {"notebook":"Diary","pages":[{"uuid":"u1","date":"2026-06-06"}]}\r\n\r\n'
+        )
+      );
+      controller.close();
+    }
+  });
+  globalThis.fetch = (async () =>
+    new Response(crlfBody, {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' }
+    })) as typeof fetch;
+  const statuses: unknown[] = [];
+  const out = await uploadRemarkable({ notebook: 'Diary', onStatus: (s) => statuses.push(s) });
+  expect(statuses).toEqual([{ step: 'ssh_connect' }]);
+  expect(out.notebook).toBe('Diary');
+});
+
+it('cancels reader and throws on error event without waiting for stream close', async () => {
+  const enc = new TextEncoder();
+  // After the error frame, pull() never resolves — simulates a server that
+  // keeps the connection open after emitting an error event.
+  const hangingBody = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(
+        enc.encode('event: error\ndata: {"kind":"ssh_connect_failed","message":"timeout"}\n\n')
+      );
+      // Do NOT close — pull hangs indefinitely.
+    }
+  });
+  globalThis.fetch = (async () =>
+    new Response(hangingBody, {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' }
+    })) as typeof fetch;
+
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('timed out waiting for error throw')), 500)
+  );
+  await expect(
+    Promise.race([uploadRemarkable({ notebook: 'Diary' }), timeout])
+  ).rejects.toMatchObject({ kind: 'ssh_connect_failed', detail: 'timeout' });
+});
+
+it('aborts mid-stream and throws network/aborted', async () => {
+  const ac = new AbortController();
+  const enc = new TextEncoder();
+  const pausedBody = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(enc.encode('event: status\ndata: {"step":"ssh_connect"}\n\n'));
+      // Further data never arrives — we abort from outside instead.
+    }
+  });
+  globalThis.fetch = (async () =>
+    new Response(pausedBody, {
+      status: 200,
+      headers: { 'content-type': 'text/event-stream' }
+    })) as typeof fetch;
+
+  const promise = uploadRemarkable({ notebook: 'Diary', signal: ac.signal });
+  // Abort after a tick so the SSE loop has started reading.
+  await Promise.resolve();
+  ac.abort();
+  await expect(promise).rejects.toMatchObject({ kind: 'network', detail: 'aborted' });
+});
