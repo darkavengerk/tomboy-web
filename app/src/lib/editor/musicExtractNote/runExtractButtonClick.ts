@@ -1,5 +1,5 @@
 import type { EditorView } from '@tiptap/pm/view';
-import { parseExtractNote, pendingItems } from '$lib/musicExtract/parseExtractNote.js';
+import { parseExtractNote, pendingItems, type SingleItem } from '$lib/musicExtract/parseExtractNote.js';
 import { extractOne, ExtractError, type ExtractErrorKind } from '$lib/musicExtract/extractClient.js';
 import { writeExtractResult } from '$lib/musicExtract/writeExtractResult.js';
 import { pushToast } from '$lib/stores/toast.js';
@@ -25,7 +25,10 @@ const SYSTEMIC: ReadonlySet<ExtractErrorKind> = new Set<ExtractErrorKind>([
 
 /** ⟳ 진행: 대기(신규+실패) 항목을 순차 추출해 결과를 노트에 기록. */
 export async function runExtractButtonClick(view: EditorView): Promise<void> {
-	const pending = pendingItems(parseExtractNote(view.state.doc));
+	// TODO(Task 8): 재생목록(playlist) 분기 추가 시 이 필터 제거. 그 전까지는 단일 곡만 처리.
+	const pending = pendingItems(parseExtractNote(view.state.doc)).filter(
+		(it): it is SingleItem => it.kind === 'single'
+	);
 	if (pending.length === 0) {
 		pushToast('추출할 항목이 없습니다', { kind: 'info' });
 		return;

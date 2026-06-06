@@ -10,7 +10,7 @@ vi.mock('$lib/musicExtract/extractClient.js', async () => {
 	return { ...actual, extractOne: (...a: unknown[]) => extractSpy(...a) };
 });
 import { runExtractButtonClick } from '$lib/editor/musicExtractNote/runExtractButtonClick.js';
-import { parseExtractNote } from '$lib/musicExtract/parseExtractNote.js';
+import { parseExtractNote, type SingleItem } from '$lib/musicExtract/parseExtractNote.js';
 import { ExtractError } from '$lib/musicExtract/extractClient.js';
 
 const UUID = 'ab12cd34-5678-49ab-8cde-0123456789ab';
@@ -32,8 +32,8 @@ describe('runExtractButtonClick', () => {
 		await runExtractButtonClick(ed.view);
 		expect(extractSpy).toHaveBeenCalledTimes(2);
 		const note = parseExtractNote(ed.state.doc);
-		expect(note.items[1].result).toMatchObject({ kind: 'done', title: 'Ok' });
-		expect(note.items[2].result.kind).toBe('error');
+		expect((note.items[1] as SingleItem).result).toMatchObject({ kind: 'done', title: 'Ok' });
+		expect((note.items[2] as SingleItem).result.kind).toBe('error');
 		expect(toastSpy).toHaveBeenCalledWith(expect.stringContaining('1곡 추출'), expect.anything());
 		ed.destroy();
 	});
@@ -62,7 +62,7 @@ describe('runExtractButtonClick', () => {
 		expect(extractSpy).toHaveBeenCalledTimes(1); // 첫 항목에서 중단
 		expect(toastSpy).toHaveBeenCalledWith('브릿지 설정이 필요합니다', { kind: 'error' });
 		const note = parseExtractNote(ed.state.doc);
-		expect(note.items.every((i) => i.result.kind === 'pending')).toBe(true); // 노트에 에러 미기록
+		expect(note.items.every((i) => i.kind === 'single' && i.result.kind === 'pending')).toBe(true); // 노트에 에러 미기록
 		ed.destroy();
 	});
 });
