@@ -69,4 +69,24 @@ describe('parseRemarkableUploadNote', () => {
 			notebook: undefined
 		});
 	});
+	it('handles hardBreak inside header paragraph', () => {
+		const d: JSONContent = {
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '리마커블::오늘 일기' }] },
+				{
+					type: 'paragraph',
+					content: [
+						{ type: 'text', text: '폴더:' },
+						{ type: 'hardBreak' },
+						{ type: 'text', text: ' Diary' }
+					]
+				}
+			]
+		};
+		expect(parseRemarkableUploadNote(d)).toEqual({
+			isRemarkableNote: true,
+			notebook: 'Diary'
+		});
+	});
 });

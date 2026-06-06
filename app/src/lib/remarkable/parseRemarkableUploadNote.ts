@@ -13,7 +13,12 @@ export function parseRemarkableUploadTitle(titleText: string): boolean {
 
 function paragraphText(node: JSONContent | undefined): string {
 	if (!node?.content) return '';
-	return node.content.map((c) => (c.type === 'text' ? (c.text ?? '') : '')).join('');
+	let out = '';
+	for (const c of node.content) {
+		if (c.type === 'text') out += c.text ?? '';
+		else if (c.type === 'hardBreak') out += '\n';
+	}
+	return out;
 }
 
 export interface RemarkableUploadNoteSpec {
