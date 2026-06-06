@@ -110,6 +110,10 @@ function prependLines(view: EditorView, hasHeader: boolean, lines: string[]): vo
   view.dispatch(tr);
 }
 
+function setEditable(view: EditorView, editable: boolean): void {
+  view.setProps({ editable: () => editable });
+}
+
 /** 📥 업로드 버튼 클릭 처리. Swallows all errors — displays them as inline placeholder text. */
 export async function runRemarkableUpload(
   view: EditorView,
@@ -125,6 +129,7 @@ export async function runRemarkableUpload(
     /* doc not available — proceed without placeholder */
   }
 
+  setEditable(view, false);
   try {
     const result = await uploadRemarkable({
       notebook: spec.notebook,
@@ -139,9 +144,14 @@ export async function runRemarkableUpload(
     pushToast(`${result.notebook} ${result.pages.length}건 업로드`, { kind: 'info' });
   } catch (err) {
     if (view.isDestroyed) return;
+    if (!(err instanceof RemarkableUploadError)) {
+      console.error('[remarkable]', err);
+    }
     const kind = err instanceof RemarkableUploadError ? err.kind : 'internal';
     const msg = KIND_MESSAGES[kind as RemarkableUploadErrorKind] ?? '알 수 없는 오류';
     if (placeholderPos >= 0) replacePlaceholder(view, placeholderPos, `[업로드 오류: ${msg}]`);
     pushToast(msg, { kind: 'error' });
+  } finally {
+    setEditable(view, true);
   }
 }

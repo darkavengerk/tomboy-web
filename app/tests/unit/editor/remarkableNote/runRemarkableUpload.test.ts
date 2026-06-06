@@ -20,6 +20,16 @@ import { uploadRemarkable, RemarkableUploadError } from '$lib/remarkable/uploadR
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => vi.restoreAllMocks());
 
+/** Minimal EditorView stub. Includes setProps so setEditable() works. */
+function makeMinimalView() {
+  return {
+    isDestroyed: false,
+    state: {},
+    dispatch: vi.fn(),
+    setProps: vi.fn()
+  } as unknown as EditorView;
+}
+
 describe('formatLogLines', () => {
   it('formats header + per-page lines', () => {
     const now = new Date('2026-06-06T11:23:00');
@@ -59,7 +69,7 @@ describe('runRemarkableUpload (callbacks)', () => {
     (uploadRemarkable as ReturnType<typeof vi.fn>).mockResolvedValue({
       notebook: 'Diary', pages: []
     });
-    const view = { isDestroyed: false, state: {}, dispatch: vi.fn() } as unknown as EditorView;
+    const view = makeMinimalView();
     await runRemarkableUpload(view, { isRemarkableNote: true, notebook: 'Diary' });
     expect(uploadRemarkable).toHaveBeenCalledWith(
       expect.objectContaining({ notebook: 'Diary' })
@@ -70,7 +80,7 @@ describe('runRemarkableUpload (callbacks)', () => {
     (uploadRemarkable as ReturnType<typeof vi.fn>).mockResolvedValue({
       notebook: 'default', pages: []
     });
-    const view = { isDestroyed: false, state: {}, dispatch: vi.fn() } as unknown as EditorView;
+    const view = makeMinimalView();
     await runRemarkableUpload(view, { isRemarkableNote: true, notebook: undefined });
     expect(uploadRemarkable).toHaveBeenCalledWith(
       expect.objectContaining({ notebook: undefined })
@@ -81,7 +91,7 @@ describe('runRemarkableUpload (callbacks)', () => {
     (uploadRemarkable as ReturnType<typeof vi.fn>).mockRejectedValue(
       new (RemarkableUploadError as any)('ssh_connect_failed', 'timeout')
     );
-    const view = { isDestroyed: false, state: {}, dispatch: vi.fn() } as unknown as EditorView;
+    const view = makeMinimalView();
     await expect(
       runRemarkableUpload(view, { isRemarkableNote: true, notebook: undefined })
     ).resolves.toBeUndefined();
@@ -91,10 +101,47 @@ describe('runRemarkableUpload (callbacks)', () => {
     (uploadRemarkable as ReturnType<typeof vi.fn>).mockRejectedValue(
       new (RemarkableUploadError as any)('network', 'failed')
     );
-    const view = { isDestroyed: false, state: {}, dispatch: vi.fn() } as unknown as EditorView;
+    const view = makeMinimalView();
     await expect(
       runRemarkableUpload(view, { isRemarkableNote: true, notebook: 'Diary' })
     ).resolves.toBeUndefined();
+  });
+});
+
+describe('setEditable during upload', () => {
+  function makeView() {
+    const setPropsCalls: Array<{ editable?: boolean }> = [];
+    return {
+      isDestroyed: false,
+      state: {},
+      dispatch: vi.fn(),
+      setProps: vi.fn((p: { editable?: () => boolean }) => {
+        setPropsCalls.push({ editable: p.editable?.() });
+      }),
+      _setPropsCalls: setPropsCalls
+    };
+  }
+
+  it('disables and re-enables editor during upload', async () => {
+    (uploadRemarkable as ReturnType<typeof vi.fn>).mockResolvedValue({
+      notebook: 'Diary', pages: []
+    });
+    const view = makeView();
+    await runRemarkableUpload(view as unknown as EditorView, { isRemarkableNote: true, notebook: 'Diary' });
+    expect(view._setPropsCalls).toHaveLength(2);
+    expect(view._setPropsCalls[0].editable).toBe(false);
+    expect(view._setPropsCalls[1].editable).toBe(true);
+  });
+
+  it('re-enables editor when uploadRemarkable throws', async () => {
+    (uploadRemarkable as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new (RemarkableUploadError as any)('ssh_connect_failed', 'timeout')
+    );
+    const view = makeView();
+    await runRemarkableUpload(view as unknown as EditorView, { isRemarkableNote: true, notebook: 'Diary' });
+    expect(view._setPropsCalls).toHaveLength(2);
+    expect(view._setPropsCalls[0].editable).toBe(false);
+    expect(view._setPropsCalls[1].editable).toBe(true);
   });
 });
 
@@ -117,7 +164,7 @@ describe('Korean error mappings', () => {
       (uploadRemarkable as ReturnType<typeof vi.fn>).mockRejectedValue(
         new (RemarkableUploadError as any)(kind)
       );
-      const view = { isDestroyed: false, state: {}, dispatch: vi.fn() } as unknown as EditorView;
+      const view = makeMinimalView();
       await runRemarkableUpload(view, { isRemarkableNote: true, notebook: 'Diary' });
       expect(pushToast).toHaveBeenCalledWith(expectedMsg, expect.objectContaining({ kind: 'error' }));
     });
