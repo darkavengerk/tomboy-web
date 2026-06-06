@@ -5,52 +5,52 @@
     {
       "id": 28,
       "subject": "Task 1: parseExtractNote 파서",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** `음악추출::` 노트 doc(PMNode)을 항목 리스트(소스/결과/위치)로 파싱하고 미완료 항목을 골라내는 순수 함수를 만든다.\n\n**Files:**\n- Create: `app/src/lib/musicExtract/parseExtractNote.ts`\n- Test: `app/tests/unit/musicExtract/parseExtractNote.test.ts`\n\n**Acceptance Criteria:**\n- 음악추출:: 제목→isExtract:true, 아니면 false+빈 items\n- listItem→{source,result,liPos}; source=head href 우선 없으면 텍스트\n- 자식 /files/<uuid>/ URL→done, ❌ 시작→error, 그 외→pending\n- pendingItems = result.kind!=='done' (신규+실패)\n- isExtractNoteDoc(json) = 첫 단락만 보고 boolean\n\n**Verify:** `cd app && npm run test -- parseExtractNote`\n\n```json:metadata\n{\"files\": [\"app/src/lib/musicExtract/parseExtractNote.ts\", \"app/tests/unit/musicExtract/parseExtractNote.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- parseExtractNote\", \"acceptanceCriteria\": [\"음악추출:: 제목 → isExtract:true, 아니면 false+빈 items\", \"listItem → {source,result,liPos}; source=head href 우선 없으면 텍스트\", \"자식 /files/<uuid>/ URL→done, ❌ 시작→error, 그 외→pending\", \"pendingItems = result.kind!=='done' (신규+실패)\", \"isExtractNoteDoc(json) = 첫 단락만 보고 boolean\"]}\n```"
     },
     {
       "id": 29,
       "subject": "Task 2: extractClient (앱→브릿지 호출)",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** `POST /music/extract`로 소스 1건을 보내 {url,title}를 받고, 상태코드를 에러 종류로 매핑하는 클라이언트를 만든다.\n\n**Files:**\n- Create: `app/src/lib/musicExtract/extractClient.ts`\n- Test: `app/tests/unit/musicExtract/extractClient.test.ts`\n\n**Acceptance Criteria:**\n- 미설정→ExtractError('not_configured'), fetch 미호출\n- 성공 {url,title} 파싱, url 없으면 upstream_error\n- 401/503/>=500/그외 → unauthorized/service_unavailable/upstream_error/bad_request\n- 네트워크 throw→network, signal 전달\n\n**Verify:** `cd app && npm run test -- extractClient`\n\n```json:metadata\n{\"files\": [\"app/src/lib/musicExtract/extractClient.ts\", \"app/tests/unit/musicExtract/extractClient.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- extractClient\", \"acceptanceCriteria\": [\"미설정→ExtractError('not_configured'), fetch 미호출\", \"성공 {url,title} 파싱, url 없으면 upstream_error\", \"401/503/>=500/그외 → unauthorized/service_unavailable/upstream_error/bad_request\", \"네트워크 throw→network, signal 전달\"]}\n```"
     },
     {
       "id": 30,
       "subject": "Task 3: writeExtractResult (라이브 write-back)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [28],
       "description": "**Goal:** 열린 에디터에서 source 헤드를 가진 첫 미완료 top-level listItem 밑에 결과(성공 링크 또는 ❌ 텍스트)를 자식으로 기록한다.\n\n**Files:**\n- Create: `app/src/lib/musicExtract/writeExtractResult.ts`\n- Test: `app/tests/unit/musicExtract/writeExtractResult.test.ts`\n\n**Acceptance Criteria:**\n- 대기 항목에 성공 링크 자식 추가(텍스트=title)\n- 실패 → ❌ 실패: msg 텍스트 자식\n- 기존 ❌ 자식 → 성공 링크로 교체\n- 이미 done 자식은 건드리지 않음\n- view.isDestroyed → no-op\n\n**Verify:** `cd app && npm run test -- writeExtractResult`\n\n```json:metadata\n{\"files\": [\"app/src/lib/musicExtract/writeExtractResult.ts\", \"app/tests/unit/musicExtract/writeExtractResult.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- writeExtractResult\", \"acceptanceCriteria\": [\"대기 항목에 성공 링크 자식 추가(텍스트=title)\", \"실패 → ❌ 실패: msg 텍스트 자식\", \"기존 ❌ 자식 → 성공 링크로 교체\", \"이미 done 자식은 건드리지 않음\", \"view.isDestroyed → no-op\"]}\n```"
     },
     {
       "id": 31,
       "subject": "Task 4: 에디터 플러그인 + ⟳ 진행 버튼 + 클릭 루프",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [28, 29, 30],
       "description": "**Goal:** `음악추출::` 노트를 감지해 제목 아래 ⟳ 진행 버튼을 띄우고, 클릭 시 대기 항목을 순차 추출해 결과를 노트에 채운 뒤 Extension을 TomboyEditor에 등록한다.\n\n**Files:**\n- Create: `app/src/lib/editor/musicExtractNote/{musicExtractNotePlugin,runExtractButtonClick,index}.ts`\n- Modify: `app/src/lib/editor/TomboyEditor.svelte`\n- Test: `app/tests/unit/editor/musicExtractNote/{musicExtractNotePlugin,runExtractButtonClick}.test.ts`\n\n**Acceptance Criteria:**\n- 음악추출 노트→⟳ 진행 버튼 1개, 일반 노트→0개\n- 클릭 핸들러 pendingItems만 순차 extractOne→writeExtractResult\n- 부분 실패 N곡 추출,M곡 실패 토스트; 대기0→안내 토스트\n- TomboyMusicExtractNote가 TomboyEditor extensions에 등록\n\n**Verify:** `cd app && npm run test -- musicExtractNote && npm run check`\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/musicExtractNote/musicExtractNotePlugin.ts\", \"app/src/lib/editor/musicExtractNote/runExtractButtonClick.ts\", \"app/src/lib/editor/musicExtractNote/index.ts\", \"app/src/lib/editor/TomboyEditor.svelte\", \"app/tests/unit/editor/musicExtractNote/musicExtractNotePlugin.test.ts\", \"app/tests/unit/editor/musicExtractNote/runExtractButtonClick.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- musicExtractNote && npm run check\", \"acceptanceCriteria\": [\"음악추출 노트→⟳ 진행 버튼 1개, 일반 노트→0개\", \"클릭 핸들러 pendingItems만 순차 extractOne→writeExtractResult\", \"부분 실패 N곡 추출,M곡 실패 토스트; 대기0→안내 토스트\", \"TomboyMusicExtractNote가 TomboyEditor extensions에 등록\"]}\n```"
     },
     {
       "id": 32,
       "subject": "Task 5: 브릿지 /music/extract relay",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** 앱의 POST /music/extract를 Bearer 검증 후 데스크탑 music-service로 재프록시하는 비스트리밍 relay를 추가한다.\n\n**Files:**\n- Create: `bridge/src/music.ts`\n- Modify: `bridge/src/server.ts`\n- Test: `bridge/src/music.test.ts`\n\n**Acceptance Criteria:**\n- Bearer 없음→401 fetch 미호출\n- source 없음→400 fetch 미호출\n- MUSIC_SERVICE_URL 빈값→503 music_service_not_configured\n- 정상→/extract로 Bearer<SECRET>+{source} 전송 패스스루\n- 업스트림 네트워크 오류→503 music_service_unavailable\n\n**Verify:** `cd bridge && npm test`\n\n```json:metadata\n{\"files\": [\"bridge/src/music.ts\", \"bridge/src/music.test.ts\", \"bridge/src/server.ts\"], \"verifyCommand\": \"cd bridge && npm test\", \"acceptanceCriteria\": [\"Bearer 없음→401 fetch 미호출\", \"source 없음→400 fetch 미호출\", \"MUSIC_SERVICE_URL 빈값→503 music_service_not_configured\", \"정상→/extract로 Bearer<SECRET>+{source} 전송 패스스루\", \"업스트림 네트워크 오류→503 music_service_unavailable\"]}\n```"
     },
     {
       "id": 33,
       "subject": "Task 6: music-service 소스 검증 + 러너",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** source를 검증(allowlist + ytsearch1:)하고 yt-dlp로 mp3를 추출해 브릿지 /files에 업로드한 뒤 {url,title}를 반환하는 코어 로직을 만든다.\n\n**Files:**\n- Create: `music-service/src/{validate,runner,auth}.ts`\n- Create: `music-service/tests/{validate,runner}.test.ts`\n- Create: `music-service/{package.json,tsconfig.json}`\n\n**Acceptance Criteria:**\n- resolveSource: http→url, 텍스트→ytsearch1:, 빈/-시작/file:→reject\n- extract: spawn이 --paths에 mp3→업로드→{url,title(파일명-.mp3)}\n- spawn≠0→throw, mp3없음→no_output, 타임아웃→throw\n- uploadToBridge POST /files Bearer+audio/mpeg+X-Filename→{url}\n\n**Verify:** `cd music-service && npm test`\n\n```json:metadata\n{\"files\": [\"music-service/package.json\", \"music-service/tsconfig.json\", \"music-service/src/validate.ts\", \"music-service/src/runner.ts\", \"music-service/src/auth.ts\", \"music-service/tests/validate.test.ts\", \"music-service/tests/runner.test.ts\"], \"verifyCommand\": \"cd music-service && npm test\", \"acceptanceCriteria\": [\"resolveSource: http→url, 텍스트→ytsearch1:, 빈/-시작/file:→reject\", \"extract: spawn이 --paths에 mp3→업로드→{url,title(파일명-.mp3)}\", \"spawn≠0→throw, mp3없음→no_output, 타임아웃→throw\", \"uploadToBridge POST /files Bearer+audio/mpeg+X-Filename→{url}\"]}\n```"
     },
     {
       "id": 34,
       "subject": "Task 7: music-service 서버 + 패키징 + 배포",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [33],
       "description": "**Goal:** /extract Fastify 엔드포인트(인증 + 에러 코드 매핑)와 boot, systemd 배포 파일을 추가해 서비스를 실행 가능하게 만든다.\n\n**Files:**\n- Create: `music-service/src/server.ts`\n- Create: `music-service/deploy/{music-service.service,README.md}`\n- Test: `music-service/tests/server.test.ts`\n\n**Acceptance Criteria:**\n- /extract Bearer없음→401, source없음→400, 정상→200 {url,title}\n- bad_source→400, 타임아웃→504, 기타→502\n- boot: BRIDGE_SHARED_TOKEN·BRIDGE_FILES_URL 없으면 종료\n- deploy .service+README systemd --user + canonical /var/home 함정 명시\n\n**Verify:** `cd music-service && npm test && npm run build`\n\n```json:metadata\n{\"files\": [\"music-service/src/server.ts\", \"music-service/tests/server.test.ts\", \"music-service/deploy/music-service.service\", \"music-service/deploy/README.md\"], \"verifyCommand\": \"cd music-service && npm test && npm run build\", \"acceptanceCriteria\": [\"/extract Bearer없음→401, source없음→400, 정상→200 {url,title}\", \"bad_source→400, 타임아웃→504, 기타→502\", \"boot: BRIDGE_SHARED_TOKEN·BRIDGE_FILES_URL 없으면 종료\", \"deploy .service+README systemd --user + canonical /var/home 함정 명시\"]}\n```"
     },
     {
       "id": 35,
       "subject": "Task 8: 가이드 카드 + 스킬 + CLAUDE.md 색인",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [31, 34],
       "description": "**Goal:** 사용자 발견 surface(설정→가이드)에 음악추출:: 카드를 추가하고, tomboy-musicextract 스킬과 CLAUDE.md 색인을 등록한다.\n\n**Files:**\n- Modify: `app/src/routes/settings/+page.svelte`\n- Create: `.claude/skills/tomboy-musicextract/SKILL.md`\n- Modify: `CLAUDE.md`\n\n**Acceptance Criteria:**\n- 설정→가이드(notes) guide-card: 사용법/멱등/선행조건/권리 전제/수동 재생\n- .claude/skills/tomboy-musicextract/SKILL.md 생성(불변식 포함)\n- CLAUDE.md 스킬 색인에 tomboy-musicextract 행\n- npm run check 0 errors\n\n**Verify:** `cd app && npm run check`\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\", \".claude/skills/tomboy-musicextract/SKILL.md\", \"CLAUDE.md\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"설정→가이드(notes) guide-card: 사용법/멱등/선행조건/권리 전제/수동 재생\", \".claude/skills/tomboy-musicextract/SKILL.md 생성(불변식 포함)\", \"CLAUDE.md 스킬 색인에 tomboy-musicextract 행\", \"npm run check 0 errors\"]}\n```"
     }

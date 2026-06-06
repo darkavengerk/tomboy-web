@@ -17,7 +17,7 @@ import { handleRagSearch } from './rag.js';
 import { handleOcrProxy } from './ocr.js';
 import { handleClaudeChat } from './claude.js';
 import { handleAutomationRun } from './automation.js';
-import { handleMusicExtract } from './music.js';
+import { handleMusicExtract, handleMusicEnumerate } from './music.js';
 import { handleGpuStatus, handleGpuUnload } from './gpu.js';
 import { handleRemarkableWallpaper } from './remarkable.js';
 import { loadRemarkableHosts } from './remarkableHosts.js';
@@ -164,6 +164,11 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 
 	if (url === '/music/extract' && req.method === 'POST') {
 		await handleMusicExtract(req, res, SECRET, MUSIC_SERVICE_URL);
+		return;
+	}
+
+	if (url === '/music/enumerate' && req.method === 'POST') {
+		await handleMusicEnumerate(req, res, SECRET, MUSIC_SERVICE_URL);
 		return;
 	}
 

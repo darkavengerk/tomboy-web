@@ -13,7 +13,7 @@ function isList(node: PMNode): boolean {
 // href 를 textContent 에서 복원하므로(noteContentArchiver), 텍스트가 곧 URL이라야
 // 저장→재로드(드롭박스/리로드/동기화) 후에도 결과 URL이 살아남는다. 표시 제목은 파서가
 // 파일명에서 유도(deriveTitle). 다른 tomboyUrlLink 생산자(geo/image)와 동일 패턴.
-function urlChild(schema: Schema, url: string) {
+export function urlChild(schema: Schema, url: string) {
 	const markType = schema.marks.tomboyUrlLink ?? schema.marks.link;
 	return markType ? schema.text(url, [markType.create({ href: url })]) : schema.text(url);
 }
