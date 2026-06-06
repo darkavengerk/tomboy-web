@@ -107,6 +107,39 @@ describe('chartBlockPlugin decorations', () => {
 		expect(hasWidget).toBe(false);
 	});
 
+	it('hides the header line when the chart is checked', () => {
+		const editor = makeEditor({
+			type: 'doc',
+			content: [
+				textPara('제목'),
+				cbPara(true, ' Chart:bar 매출'),
+				ul(li(textPara('DATA::데이터')))
+			]
+		});
+		const hideHeader = decorationsOf(editor).find(
+			(d) => (d as any).type?.attrs?.class === 'tomboy-chart-header-hidden'
+		);
+		expect(hideHeader).toBeDefined();
+	});
+
+	it('renders a checked in-chart toggle that flips the header off', () => {
+		const editor = makeEditor({
+			type: 'doc',
+			content: [textPara('제목'), cbPara(true, ' Chart:bar 매출')]
+		});
+		const toggle = editor.view.dom.querySelector('.tomboy-chart-toggle') as HTMLInputElement;
+		expect(toggle).toBeTruthy();
+		expect(toggle.checked).toBe(true);
+
+		// Unchecking the in-chart toggle flips the underlying inlineCheckbox, so
+		// the chart widget disappears (header + config become editable text again).
+		toggle.checked = false;
+		toggle.dispatchEvent(new Event('change'));
+		expect(
+			decorationsOf(editor).some((d) => d.spec?.key?.toString().startsWith('chart:'))
+		).toBe(false);
+	});
+
 	it('hides the config list when the chart is checked', () => {
 		const editor = makeEditor({
 			type: 'doc',

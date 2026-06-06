@@ -129,6 +129,20 @@ describe('findChartRegions (live editor with inlineCheckbox atoms)', () => {
 		expect(region.headerEndPos).toBeGreaterThan(0);
 	});
 
+	it('exposes the header node range and the checkbox position', () => {
+		const editor = makeDoc({
+			type: 'doc',
+			content: [textPara('t'), cbPara(true, ' Chart:bar X')]
+		});
+		const region = findChartRegions(editor.state.doc)[0];
+		// headerTo is just past the paragraph; the range brackets headerEndPos.
+		expect(region.headerFrom).toBeLessThan(region.headerEndPos);
+		expect(region.headerTo).toBe(region.headerEndPos + 1);
+		// The checkbox is the header's first inline child → an inlineCheckbox atom.
+		expect(region.checkboxPos).toBeDefined();
+		expect(editor.state.doc.nodeAt(region.checkboxPos!)?.type.name).toBe('inlineCheckbox');
+	});
+
 	it('ignores an invalid chart type (pie)', () => {
 		const editor = makeDoc({
 			type: 'doc',

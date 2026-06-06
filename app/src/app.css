@@ -60,12 +60,36 @@ button {
 	font-size: 0.9em;
 }
 .tomboy-chart-widget {
+	position: relative; /* anchor for the top-left toggle */
 	margin: 8px 0;
 	max-width: 100%;
 }
 
+/* The chart/error render target inside the widget. */
+.tomboy-chart-host {
+	max-width: 100%;
+}
+
+/* In-chart toggle — the only visible control once the header is hidden.
+   Sits over the chart's top-left corner; unchecking turns the chart back
+   into the editable header + config text. */
+.tomboy-chart-toggle {
+	position: absolute;
+	top: 6px;
+	left: 6px;
+	z-index: 2;
+	margin: 0;
+	cursor: pointer;
+}
+
+/* Header line of a checked chart block — hidden because its `Chart:… 제목`
+   text duplicates the chart's own title. Revealed again when unchecked. */
+.tomboy-chart-header-hidden {
+	display: none;
+}
+
 /* Config list of a checked chart block — hidden while the chart shows.
-   Uncheck the header checkbox to reveal and edit the settings again. */
+   Uncheck the in-chart checkbox to reveal and edit the settings again. */
 .tomboy-chart-config-hidden {
 	display: none;
 }
