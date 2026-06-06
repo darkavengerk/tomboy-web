@@ -89,11 +89,11 @@ export function buildMusicDecorations(doc: PMNode, opts: BuildOpts): DecorationS
 			opts.selFrom != null && opts.selTo != null && opts.selTo > track.liPos && opts.selFrom < liEnd;
 
 		// 행 스타일(글머리표 제거 + 현재곡 강조)은 편집 중에도 유지.
-		decos.push(
-			Decoration.node(track.liPos, liEnd, {
-				class: isCurrent ? 'music-track music-track--playing' : 'music-track'
-			})
-		);
+		// ctrl 일 때만 우측에 ▶ 버튼이 떠 텍스트가 underlap 안 되게 패딩 확보.
+		const rowClasses = ['music-track'];
+		if (isCurrent) rowClasses.push('music-track--playing');
+		if (opts.ctrlActive) rowClasses.push('music-track--ctrl');
+		decos.push(Decoration.node(track.liPos, liEnd, { class: rowClasses.join(' ') }));
 
 		// 인라인 위젯 앵커. liPos+1 은 <li>/<p> 블록 경계라 위젯이 제목 위 별도 줄에
 		// 렌더되어 빈 줄이 생긴다. 첫 문단(textblock) 안쪽(liPos+2)에 두어 글머리표

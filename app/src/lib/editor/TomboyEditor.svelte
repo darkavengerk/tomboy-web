@@ -2045,6 +2045,11 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 	/* 플레이리스트 모드 트랙 행 — 글머리표 대신 ♪/재생아이콘 + 곡 제목. */
 	.tomboy-editor :global(li.music-track) {
 		list-style: none;
+		position: relative; /* ▶ 버튼(absolute) 의 기준 — 행마다 자기 li 우측에 고정 */
+	}
+	/* ctrl 노출 시에만 우측 버튼 자리 확보(텍스트가 버튼 밑으로 안 들어가게). */
+	.tomboy-editor :global(li.music-track--ctrl) {
+		padding-right: 2.6em;
 	}
 	.tomboy-editor :global(li.music-track--playing) {
 		background: var(--accent-soft, #faf2f7);
@@ -2111,7 +2116,11 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 		animation-play-state: paused;
 	}
 	.tomboy-editor :global(.tomboy-music-play-btn) {
-		float: right;
+		/* float 대신 절대배치 — float 는 짧은 행끼리 겹쳐 계단식으로 쌓이고
+		   누적 폭이 음악노트만 가로 스크롤을 유발했다. li 우측에 고정. */
+		position: absolute;
+		right: 0.2em;
+		top: 0.1em;
 		border: 1px solid var(--border, #e0e0dc);
 		border-radius: 6px;
 		background: var(--surface, #fff);
@@ -2120,7 +2129,10 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 		width: 1.8em;
 		height: 1.8em;
 		cursor: pointer;
-		margin-left: 0.4em;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0;
 	}
 	.tomboy-editor :global(.tomboy-music-play-btn:hover) {
 		background: var(--accent-soft, #faf2f7);

@@ -236,11 +236,41 @@ test('download: filename mismatch falls back to single file in UUID dir', async 
 		const r = get();
 		assert.equal(r.status, 200);
 		assert.equal(r.body.toString('utf8'), 'audio-bytes');
-		// Content-Disposition uses the on-disk NFC name.
+		// mp3 is media → inline (iOS <audio> refuses attachment); name = on-disk NFC.
 		assert.equal(
 			r.headers['Content-Disposition'],
-			`attachment; filename*=UTF-8''${encodeURIComponent(onDisk)}`
+			`inline; filename*=UTF-8''${encodeURIComponent(onDisk)}`
 		);
+	} finally {
+		rmSync(dir, { recursive: true });
+	}
+});
+
+test('download: media → inline, documents → attachment', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'files-test-'));
+	try {
+		const cases: Array<[string, string]> = [
+			['song.mp3', 'inline'],
+			['clip.mp4', 'inline'],
+			['doc.pdf', 'attachment'],
+			['data.zip', 'attachment'],
+			['notes.txt', 'attachment']
+		];
+		for (const [fname, expected] of cases) {
+			const uuid = '11111111-2222-3333-4444-555555555555';
+			const udir = join(dir, uuid);
+			rmSync(udir, { recursive: true, force: true });
+			mkdirSync(udir, { recursive: true });
+			writeFileSync(join(udir, fname), 'x');
+			const { res, get } = mockRes();
+			const req = mockReq({ method: 'GET', url: `/files/${uuid}/${fname}` });
+			await handleFileDownload(req, res, dir);
+			const disp = get().headers['Content-Disposition'] ?? '';
+			assert.ok(
+				disp.startsWith(`${expected}; `),
+				`${fname} expected ${expected}, got "${disp}"`
+			);
+		}
 	} finally {
 		rmSync(dir, { recursive: true });
 	}
