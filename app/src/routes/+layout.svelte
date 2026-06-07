@@ -366,6 +366,11 @@
 		display: flex;
 		flex-direction: column;
 		min-height: 100dvh;
+		/* TopNav 높이를 자식들에게 노출 — 페이지(=body)가 스크롤되는 모바일에서
+		   sticky 음악 재생바가 nav 아래에 고정되도록 top offset 으로 쓴다.
+		   값은 TopNav.svelte 의 height 와 byte-identical 해야 한다. desktop
+		   (.chromeless)엔 .app-shell 이 없어 이 var 가 없으니 음악바는 0 으로 폴백. */
+		--topnav-height: calc(clamp(44px, 11vw, 52px) + var(--safe-area-top, 0px));
 	}
 
 	/* desktop route (multi-window) 와 embedded 모드는 페이지 scroll 이

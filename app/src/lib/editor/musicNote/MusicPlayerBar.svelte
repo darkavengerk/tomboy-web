@@ -169,10 +169,13 @@
 <style>
 	.music-bar {
 		/* 노트 최상단(제목 위)에 고정되는 컨트롤 배너 — 텍스트 영역과 별개 컴포넌트라
-		   클릭해도 에디터 캐럿이 활성화되지 않는다. 스크롤해도 sticky 로 따라온다
-		   (모바일: 페이지 스크롤 기준 / 데스크탑: 비스크롤 .body 안에선 최상단 고정). */
+		   클릭해도 에디터 캐럿이 활성화되지 않는다. 스크롤해도 sticky 로 따라온다.
+		   모바일은 body 가 스크롤되고 상단에 sticky TopNav 가 있으므로 top:0 으로
+		   고정하면 nav 뒤로 숨어버린다 → --topnav-height 만큼 내려 nav 바로 아래에
+		   고정. 데스크탑(.chromeless)엔 그 var 가 없어 0 으로 폴백, 내부 스크롤
+		   컨테이너 최상단에 고정된다. */
 		position: sticky;
-		top: 0;
+		top: var(--topnav-height, 0px);
 		z-index: 5;
 		flex: 0 0 auto;
 		background: var(--surface, #fff);
