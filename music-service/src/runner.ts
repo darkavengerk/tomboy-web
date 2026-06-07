@@ -43,7 +43,14 @@ function runYtdlp(arg: string, dir: string, deps: RunnerDeps): Promise<void> {
 	const timeoutMs = deps.timeoutMs ?? 180_000;
 	const maxFilesize = deps.maxFilesize ?? '40M';
 	const args = [
-		'-x', '--audio-format', 'mp3', '--embed-metadata', '--embed-thumbnail',
+		// NOTE: NO `--embed-thumbnail`. yt-dlp embeds the cover as an APIC frame at
+		// the FRONT of the ID3v2 tag, pushing the first MPEG sync frame deep into
+		// the file. WebKit (Safari / all iOS browsers) sniffs only the leading bytes
+		// of an <audio> source; if it hits the big cover blob before the sync frame
+		// it gives up with MEDIA_ERR_SRC_NOT_SUPPORTED — while Chrome/Firefox buffer
+		// past it. Result: bridge songs "just skip" on the phone. `--embed-metadata`
+		// (small ID3 text frames) is fine and kept.
+		'-x', '--audio-format', 'mp3', '--embed-metadata',
 		'--no-playlist', '--no-exec', '--socket-timeout', '30',
 		'--max-filesize', maxFilesize,
 		...(deps.ffmpegPath ? ['--ffmpeg-location', deps.ffmpegPath] : []),

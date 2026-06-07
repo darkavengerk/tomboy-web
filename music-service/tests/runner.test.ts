@@ -36,6 +36,16 @@ describe('extract', () => {
 		expect(out).toEqual({ url: 'http://bridge/files/uuid/Song.mp3', title: 'Song' });
 		expect(d.uploadFn).toHaveBeenCalledOnce();
 	});
+	it('yt-dlp 인자에 --embed-thumbnail 없음(WebKit 재생 실패 방지), --embed-metadata 유지', async () => {
+		let captured: string[] = [];
+		const recordingSpawn = (cmd: string, args: string[]) => {
+			captured = args;
+			return fakeSpawn(0)(cmd, args);
+		};
+		await extract('https://yt/abc', deps({ spawn: recordingSpawn as never }));
+		expect(captured).not.toContain('--embed-thumbnail');
+		expect(captured).toContain('--embed-metadata');
+	});
 	it('reject 소스는 bad_source throw', async () => {
 		await expect(extract('-x', deps())).rejects.toThrow(/bad_source/);
 	});
