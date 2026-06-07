@@ -333,6 +333,7 @@
 		onopensettings={handleOpenSettings}
 		onopenadmin={handleOpenAdmin}
 		onswitchworkspace={handleSwitchWorkspace}
+		onspread={() => {}}
 	/>
 </div>
 
