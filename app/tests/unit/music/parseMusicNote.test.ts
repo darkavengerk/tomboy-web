@@ -46,6 +46,20 @@ describe('parseMusicNote — track extraction', () => {
 		expect(note.flatQueue[0].display).toBe('b');
 		expect(note.flatQueue[0].liPos).toBeGreaterThan(0);
 	});
+	it("pattern B: bridge URL with literal ' is not truncated; display is decoded name", () => {
+		// encodeURIComponent leaves ' literal, so bridge mp3 URLs really contain it.
+		// The URL must survive whole, and the row must show the decoded filename —
+		// not fall through to displaying the raw URL as the title.
+		const url =
+			"https://h/files/11111111-2222-3333-4444-555555555555/CHUNG%20HA%20'Snapping'%20Official.mp3";
+		const note = parseMusicNote(
+			makeEditor(`<p>음악::x</p><p>플레이리스트: 아침</p><ul><li><p>${url}</p></li></ul>`).state.doc
+		);
+		expect(note.flatQueue).toHaveLength(1);
+		expect(note.flatQueue[0].url).toBe(url);
+		expect(note.flatQueue[0].title).toBeNull();
+		expect(note.flatQueue[0].display).toBe("CHUNG HA 'Snapping' Official");
+	});
 	it('pattern A: depth-1 title + depth-2 URL', () => {
 		const note = parseMusicNote(
 			makeEditor('<p>음악::x</p><p>플레이리스트: 아침</p><ul><li><p>Song A</p><ul><li><p>https://h/a.mp3</p></li></ul></li></ul>').state.doc

@@ -4,7 +4,10 @@ import type { JSONContent } from '@tiptap/core';
 const PREFIX = '음악추출::';
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const RESULT_URL_RE = new RegExp(`/files/${UUID}/`, 'i');
-const HTTP_URL_RE = /https?:\/\/[^\s<>"']+/;
+// 단일 따옴표(')를 제외하지 않는다 — 브릿지 /files URL 은 파일명을 JS
+// encodeURIComponent 로 넣어 '가 리터럴로 남는다(…'Snapping'….mp3). 제외하면
+// URL 이 중간에서 잘린다.
+const HTTP_URL_RE = /https?:\/\/[^\s<>"]+/;
 // 재생목록 URL: youtube list= 또는 /playlist? 포함.
 const PLAYLIST_URL_RE = /[?&]list=|\/playlist\?/i;
 // 생성된 결과 헤더 '플레이리스트:'. inlineCheckbox atom 은 textContent 에 안 나오므로

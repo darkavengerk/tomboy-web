@@ -7,12 +7,35 @@
 // <audio> 를 DOM 에 붙이지 않고 new Audio() 로 만든다(재생에 DOM 부착 불필요).
 import { untrack } from 'svelte';
 import { musicPlayer } from './musicPlayer.svelte.js';
+import { pushToast } from '$lib/stores/toast.js';
 import {
 	isMediaSessionSupported,
 	buildMetadataInit,
 	installMediaSession,
 	syncMediaSession
 } from './mediaSession.js';
+
+const MEDIA_ERR_NAMES = ['', 'ABORTED', 'NETWORK', 'DECODE', 'SRC_NOT_SUPPORTED'];
+
+// 브릿지 다운로드 URL — `/files/<uuid>/<파일명>`. UUID 는 8-4-4-4-12.
+const BRIDGE_FILE_RE = /^(https?:\/\/[^/]+\/files\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\/(.+)$/;
+
+/**
+ * WebKit(Safari·iOS)는 `<audio>` src URL 에 파일명에서 온 일부 문자가 그대로
+ * 있으면 MEDIA_ERR_SRC_NOT_SUPPORTED 로 재생을 거부한다 — 같은 URL 이 Firefox·
+ * Chrome 에서는 재생되는데 Safari 만 실패하는 것으로 확인됨(WebKit URL 엄격성).
+ * 어떤 문자가 문제인지에 의존하지 않으려고, **브릿지 URL 은 깨끗한 고정 파일명으로
+ * 다시 쓴다**. 브릿지는 UUID 폴더의 단일 파일을 파일명과 무관하게 서빙하므로
+ * `/files/<uuid>/audio.<ext>` 로 바꿔도 같은 바이트가 온다(206 확인). 노트에
+ * 저장된 원본 URL 은 건드리지 않으니 마이그레이션·재추출 불필요.
+ * 브릿지가 아닌 URL(인터넷 직링크 등)은 그대로 둔다.
+ */
+export function toPlayableSrc(url: string): string {
+	const m = BRIDGE_FILE_RE.exec(url);
+	if (!m) return url;
+	const ext = m[2].match(/\.[a-zA-Z0-9]{1,8}$/)?.[0] ?? '.mp3';
+	return `${m[1]}/audio${ext}`;
+}
 
 let audioEl: HTMLAudioElement | null = null;
 let preloadEl: HTMLAudioElement | null = null;
@@ -24,6 +47,29 @@ export function __musicAudioForTest(): {
 	preload: HTMLAudioElement | null;
 } {
 	return { audio: audioEl, preload: preloadEl };
+}
+
+/**
+ * 사용자 제스처(탭/클릭) 안에서 동기적으로 호출해야 하는 재생 시작 훅.
+ *
+ * 모바일 브라우저(특히 iOS Safari)는 오디오 재생을 "사용자 제스처와 같은 동기
+ * 실행 구간"에서 시작할 때만 허용한다. 스토어 상태(isPlaying)만 바꾸고 실제
+ * play() 를 $effect 에서 한 틱 뒤에 호출하면 제스처 밖이라 차단되어 — 재생
+ * 버튼을 눌러도 소리가 안 나고 0:00 에 멈춰 보인다(데스크탑은 허용해서 동작).
+ *
+ * 그래서 재생 버튼 onclick(=제스처) 에서 스토어를 갱신한 직후 이 함수를 동기로
+ * 호출한다. 현재 트랙 src 를 즉시 맞추고 그 자리에서 play() 를 호출해 엘리먼트를
+ * 잠금 해제하면, 이후 자동 넘김(onEnded→next)의 effect-기반 play() 도 통과한다.
+ * 멱등 — src 가 이미 맞으면 다시 설정하지 않고, 재생 중이면 play() 는 no-op.
+ */
+export function resumePlaybackFromGesture(): void {
+	const audio = audioEl;
+	if (!audio) return;
+	const url = musicPlayer.currentTrack?.url ?? '';
+	if (!url) return;
+	const src = toPlayableSrc(url);
+	if ((audio.getAttribute('src') ?? '') !== src) audio.src = src;
+	void audio.play().catch(() => {});
 }
 
 /**
@@ -45,7 +91,25 @@ export function installMusicAudio(): () => void {
 	const onTime = () => musicPlayer.reportTime(audio.currentTime || 0);
 	const onMeta = () => musicPlayer.reportDuration(audio.duration || 0);
 	const onEnded = () => musicPlayer.reportEnded();
-	const onError = () => musicPlayer.next();
+	const onError = () => {
+		// 자동 스킵 전에 "왜" 를 노출 — 모바일은 콘솔을 못 보므로 토스트로.
+		// (조용히 next() 하면 곡이 그냥 사라져 디버그가 불가능.)
+		const e = audio.error;
+		const code = e?.code ?? 0;
+		const name = MEDIA_ERR_NAMES[code] ?? `code${code}`;
+		const src = audio.currentSrc || audio.getAttribute('src') || '';
+		const tail = src.replace(/^https?:\/\/[^/]+/, '').slice(-72);
+		console.error('[music] audio error', {
+			code,
+			name,
+			message: e?.message,
+			networkState: audio.networkState,
+			readyState: audio.readyState,
+			src
+		});
+		pushToast(`재생 실패 ⟨${name}⟩ ${tail}`, { kind: 'error', timeoutMs: 9000 });
+		musicPlayer.next();
+	};
 	audio.addEventListener('timeupdate', onTime);
 	audio.addEventListener('loadedmetadata', onMeta);
 	audio.addEventListener('ended', onEnded);
@@ -55,12 +119,13 @@ export function installMusicAudio(): () => void {
 		// src 동기화. 트랙이 바뀌면(특히 자동 넘김) 새 src 로 재생을 이어준다.
 		$effect(() => {
 			const url = musicPlayer.currentTrack?.url ?? '';
-			if ((audio.getAttribute('src') ?? '') === url) return;
-			if (!url) {
+			const src = url ? toPlayableSrc(url) : '';
+			if ((audio.getAttribute('src') ?? '') === src) return;
+			if (!src) {
 				audio.removeAttribute('src');
 				return;
 			}
-			audio.src = url;
+			audio.src = src;
 			// 자동 넘김은 isPlaying 을 true 로 둔 채 src 만 바꾼다 → 여기서 직접 이어 재생.
 			if (untrack(() => musicPlayer.isPlaying)) void audio.play().catch(() => {});
 		});
@@ -78,8 +143,9 @@ export function installMusicAudio(): () => void {
 		// 다음 곡 프리로드 — preload 는 절대 play 하지 않는다(HTTP 캐시 워밍 전용).
 		$effect(() => {
 			const url = musicPlayer.queue[musicPlayer.currentIndex + 1]?.url ?? '';
-			if ((preload.getAttribute('src') ?? '') === url) return;
-			if (url) preload.src = url;
+			const src = url ? toPlayableSrc(url) : '';
+			if ((preload.getAttribute('src') ?? '') === src) return;
+			if (src) preload.src = src;
 			else preload.removeAttribute('src');
 		});
 		// 잠금화면 메타데이터·재생상태·위치 동기화.

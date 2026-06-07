@@ -36,7 +36,6 @@
 		extractTitleText,
 	} from "./titleUniqueGuard.js";
 	import { createImagePreviewPlugin } from "./imagePreview/imagePreviewPlugin.js";
-	import { createFilePreviewPlugin } from "./filePreview/filePreviewPlugin.js";
 	import { createGeoMapPlugin } from "./geoMap/geoMapPlugin.js";
 import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 import { createAutomationNotePlugin } from "./automationNote/automationNotePlugin.js";
@@ -472,7 +471,7 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 				Extension.create({
 					name: "tomboyImagePreview",
 					addProseMirrorPlugins() {
-						return [createImagePreviewPlugin(), createFilePreviewPlugin()];
+						return [createImagePreviewPlugin()];
 					},
 				}),
 				Extension.create({
@@ -1406,8 +1405,8 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 	 * Upload a non-image file to the bridge and insert the resulting
 	 * download URL at the current cursor position. Wraps URL text in a
 	 * tomboyUrlLink mark so the `.note` XML round-trip writes `<link:url>`
-	 * (same path images take); the future filePreviewPlugin will render a
-	 * 📎-filename badge in place of the URL text.
+	 * (same path images take). The URL is shown verbatim as a plain
+	 * clickable link — copyable and pasteable into 음악:: notes.
 	 */
 	export async function uploadAndInsertFile(file: File): Promise<void> {
 		const ed = editor;
@@ -1606,6 +1605,8 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 	.tomboy-editor :global(.tomboy-link-url) {
 		color: #3465a4;
 		text-decoration: underline;
+		/* 공백 없는 긴 URL도 줄바꿈되게(가로 스크롤 방지). */
+		overflow-wrap: anywhere;
 	}
 
 	/* Inline image preview widget (decoration; not part of the doc). The
@@ -1633,32 +1634,6 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 	   removes the whole URL, arrow keys skip across it. */
 	.tomboy-editor :global(.tomboy-image-url-hidden) {
 		display: none;
-	}
-
-	/* Bridge file-URL text is hidden so the 📎 badge alone represents the link.
-	   The URL stays in the doc verbatim for Tomboy XML round-trip. */
-	.tomboy-editor :global(.tomboy-file-url-hidden) {
-		display: none;
-	}
-
-	.tomboy-editor :global(.tomboy-file-badge) {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.25em;
-		padding: 0.1em 0.5em;
-		margin: 0 0.15em;
-		background: #eef2f7;
-		border: 1px solid #d4dbe4;
-		border-radius: 4px;
-		color: #1565c0;
-		text-decoration: none;
-		font-size: 0.9em;
-		line-height: 1.3;
-		cursor: pointer;
-	}
-	.tomboy-editor :global(.tomboy-file-badge:hover) {
-		background: #e3eaf3;
-		text-decoration: underline;
 	}
 
 	.tomboy-editor :global(.tomboy-geo-map) {
@@ -2072,6 +2047,15 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 	/* 플레이리스트 모드 트랙 행 — 글머리표 대신 ♪/재생아이콘 + 곡 제목. */
 	.tomboy-editor :global(li.music-track) {
 		list-style: none;
+		position: relative; /* ▶ 버튼(absolute) 의 기준 — 행마다 자기 li 우측에 고정 */
+		/* 편집 중(데코 해제)엔 인코딩된 긴 URL(%20 투성이, 공백 없는 한 토큰)이
+		   그대로 노출된다 — 안 깨지면 음악노트만 가로 스크롤. 강제 줄바꿈. */
+		overflow-wrap: anywhere;
+		word-break: break-word;
+	}
+	/* ctrl 노출 시에만 우측 버튼 자리 확보(텍스트가 버튼 밑으로 안 들어가게). */
+	.tomboy-editor :global(li.music-track--ctrl) {
+		padding-right: 2.6em;
 	}
 	.tomboy-editor :global(li.music-track--playing) {
 		background: var(--accent-soft, #faf2f7);
@@ -2138,7 +2122,11 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 		animation-play-state: paused;
 	}
 	.tomboy-editor :global(.tomboy-music-play-btn) {
-		float: right;
+		/* float 대신 절대배치 — float 는 짧은 행끼리 겹쳐 계단식으로 쌓이고
+		   누적 폭이 음악노트만 가로 스크롤을 유발했다. li 우측에 고정. */
+		position: absolute;
+		right: 0.2em;
+		top: 0.1em;
 		border: 1px solid var(--border, #e0e0dc);
 		border-radius: 6px;
 		background: var(--surface, #fff);
@@ -2147,7 +2135,10 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 		width: 1.8em;
 		height: 1.8em;
 		cursor: pointer;
-		margin-left: 0.4em;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0;
 	}
 	.tomboy-editor :global(.tomboy-music-play-btn:hover) {
 		background: var(--accent-soft, #faf2f7);
@@ -2612,22 +2603,44 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 	}
 
 	/* 인라인 체크박스 — TomboyInlineCheckbox 노드의 NodeView 가
-	   .tomboy-inline-checkbox span 을 렌더한다. 14px 정사각형,
-	   모바일 hit-area 는 ::before 가 24×24 px 확보. */
+	   .tomboy-inline-checkbox span(내부에 인라인 SVG) 을 렌더한다.
+	   18px 둥근 사각형 외곽선, 체크 시 모서리 밖으로 살짝 솟는 V.
+	   색은 currentColor 로 그려 라이트/다크 글자색을 따른다(별도 색 없음).
+	   모바일 hit-area 는 ::before 가 28×28 px 확보. */
 	.tomboy-editor :global(.tomboy-inline-checkbox) {
 		display: inline-block;
-		width: 14px;
-		height: 14px;
-		border: 1px solid var(--text-muted, #888);
-		border-radius: 2px;
-		vertical-align: -2px;
+		width: 18px;
+		height: 18px;
+		vertical-align: -4px;
 		margin: 0 2px;
 		cursor: pointer;
-		background: transparent;
+		color: currentColor;
 		user-select: none;
 		position: relative;
 		box-sizing: border-box;
-		transition: background-color 0.12s ease, border-color 0.12s ease;
+	}
+
+	.tomboy-editor :global(.tomboy-inline-checkbox .tomboy-cb-svg) {
+		display: block;
+		width: 100%;
+		height: 100%;
+		overflow: visible; /* 모서리 밖으로 솟는 체크가 잘리지 않게 */
+	}
+
+	.tomboy-editor :global(.tomboy-inline-checkbox .tomboy-cb-box) {
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.1;
+		stroke-linejoin: round;
+	}
+
+	.tomboy-editor :global(.tomboy-inline-checkbox .tomboy-cb-check) {
+		fill: none;
+		stroke: currentColor;
+		stroke-width: 1.4;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+		display: none;
 	}
 
 	/* 차트가 켜진 헤더(.tomboy-chart-charted)에선 헤더 자체의 인라인 체크박스를
@@ -2639,7 +2652,7 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 		display: none;
 	}
 
-	/* 모바일 hit-area — 보이지 않는 ::before 가 24x24 영역 확보. */
+	/* 모바일 hit-area — 보이지 않는 ::before 가 28x28 영역 확보. */
 	.tomboy-editor :global(.tomboy-inline-checkbox::before) {
 		content: '';
 		position: absolute;
@@ -2649,17 +2662,13 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 		bottom: -5px;
 	}
 
-	.tomboy-editor :global(.tomboy-inline-checkbox[data-checked='true']) {
-		background-color: var(--accent, #4a76d4);
-		border-color: var(--accent, #4a76d4);
-		background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><polyline points='3 8 7 12 13 4'/></svg>");
-		background-size: 12px 12px;
-		background-position: center;
-		background-repeat: no-repeat;
+	/* 체크 상태: 모서리 밖으로 솟는 V 표시. */
+	.tomboy-editor :global(.tomboy-inline-checkbox[data-checked='true'] .tomboy-cb-check) {
+		display: inline;
 	}
 
 	.tomboy-editor :global(.tomboy-inline-checkbox:hover) {
-		border-color: var(--accent, #4a76d4);
+		opacity: 0.6;
 	}
 
 	/* 인라인 라디오 — TomboyInlineRadio 노드의 NodeView 가

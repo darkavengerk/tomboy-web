@@ -3,6 +3,7 @@
 	import type { Editor } from '@tiptap/core';
 	import { parseMusicNote } from '$lib/music/parseMusicNote.js';
 	import { musicPlayer } from '$lib/music/musicPlayer.svelte.js';
+	import { resumePlaybackFromGesture } from '$lib/music/musicAudio.svelte.js';
 	import { modKeys } from '$lib/desktop/modKeys.svelte.js';
 
 	// 순수 뷰. 오디오 재생은 전역 엔진(musicAudio.svelte.ts, +layout 설치)이 단일
@@ -104,6 +105,18 @@
 	function onMainBtn() {
 		if (isGlobalActive) musicPlayer.toggle();
 		else startLocal();
+		// 모바일 재생 잠금 해제: 제스처(이 onclick) 안에서 동기로 play() 해야 한다.
+		// 스토어만 갱신하고 $effect 에 맡기면 제스처 밖이라 iOS 가 차단한다.
+		if (musicPlayer.isPlaying) resumePlaybackFromGesture();
+	}
+	// prev/next 도 같은 제스처 규칙 — 일시정지 상태에서 곡만 바꿔도 재생을 이어준다.
+	function onPrev() {
+		musicPlayer.prev();
+		if (musicPlayer.isPlaying) resumePlaybackFromGesture();
+	}
+	function onNext() {
+		musicPlayer.next();
+		if (musicPlayer.isPlaying) resumePlaybackFromGesture();
 	}
 
 	function fmt(s: number): string {
@@ -127,7 +140,7 @@
 		<div class="music-btns">
 			<button
 				type="button"
-				onclick={() => musicPlayer.prev()}
+				onclick={onPrev}
 				disabled={!isGlobalActive}
 				aria-label="이전">⏮</button
 			>
@@ -141,7 +154,7 @@
 			>
 			<button
 				type="button"
-				onclick={() => musicPlayer.next()}
+				onclick={onNext}
 				disabled={!isGlobalActive}
 				aria-label="다음">⏭</button
 			>

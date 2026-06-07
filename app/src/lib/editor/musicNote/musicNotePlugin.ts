@@ -3,6 +3,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { parseMusicNote } from '$lib/music/parseMusicNote.js';
 import { musicPlayer } from '$lib/music/musicPlayer.svelte.js';
+import { resumePlaybackFromGesture } from '$lib/music/musicAudio.svelte.js';
 import { modKeys } from '$lib/desktop/modKeys.svelte.js';
 
 export const musicNotePluginKey = new PluginKey('tomboyMusicNote');
@@ -88,11 +89,11 @@ export function buildMusicDecorations(doc: PMNode, opts: BuildOpts): DecorationS
 			opts.selFrom != null && opts.selTo != null && opts.selTo > track.liPos && opts.selFrom < liEnd;
 
 		// 행 스타일(글머리표 제거 + 현재곡 강조)은 편집 중에도 유지.
-		decos.push(
-			Decoration.node(track.liPos, liEnd, {
-				class: isCurrent ? 'music-track music-track--playing' : 'music-track'
-			})
-		);
+		// ctrl 일 때만 우측에 ▶ 버튼이 떠 텍스트가 underlap 안 되게 패딩 확보.
+		const rowClasses = ['music-track'];
+		if (isCurrent) rowClasses.push('music-track--playing');
+		if (opts.ctrlActive) rowClasses.push('music-track--ctrl');
+		decos.push(Decoration.node(track.liPos, liEnd, { class: rowClasses.join(' ') }));
 
 		// 인라인 위젯 앵커. liPos+1 은 <li>/<p> 블록 경계라 위젯이 제목 위 별도 줄에
 		// 렌더되어 빈 줄이 생긴다. 첫 문단(textblock) 안쪽(liPos+2)에 두어 글머리표
@@ -137,14 +138,21 @@ export function buildMusicDecorations(doc: PMNode, opts: BuildOpts): DecorationS
 						btn.contentEditable = 'false';
 						btn.setAttribute('data-no-drag', '');
 						btn.textContent = playingNow ? '⏸' : '▶';
-						btn.addEventListener('mousedown', (e) => {
+						// pointerdown 까지 막아야 터치에서 탭이 contenteditable 로
+						// 새어 캐럿이 잡히고 키보드가 뜨는 걸 막는다(mousedown 만으론
+						// 모바일에서 포커스를 못 막음).
+						const swallow = (e: Event) => {
 							e.preventDefault();
 							e.stopPropagation();
-						});
+						};
+						btn.addEventListener('pointerdown', swallow);
+						btn.addEventListener('mousedown', swallow);
 						btn.addEventListener('click', (e) => {
 							e.preventDefault();
 							e.stopPropagation();
 							handleTrackButtonClick(opts, index, isCurrent);
+							// 제스처 안에서 동기 재생 — 모바일 자동재생 차단 회피.
+							if (musicPlayer.isPlaying) resumePlaybackFromGesture();
 						});
 						return btn;
 					},
