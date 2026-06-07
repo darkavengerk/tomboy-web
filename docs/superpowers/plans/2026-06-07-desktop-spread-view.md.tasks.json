@@ -1,0 +1,68 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-07-desktop-spread-view.md",
+  "tasks": [
+    {
+      "id": 10,
+      "subject": "Task 10: packShelves 순수 패커",
+      "status": "pending",
+      "description": "**Goal:** 실제 크기를 유지하며 입력 순서를 보존하는 First-Fit 선반 패킹 순수 함수.\n\n**Files:**\n- Create: app/src/lib/desktop/spreadView/packShelves.ts\n- Test: app/tests/unit/desktop/packShelves.test.ts\n\n**Acceptance Criteria:**\n- [ ] packShelves(boxes, containerWidth, gap) → { placed, totalHeight }\n- [ ] 좌측 정렬, 입력 순서 보존(높이 정렬 안 함)\n- [ ] 폭>containerWidth 클램프, gap 간격, 빈 입력→totalHeight 0\n- [ ] 모든 테스트 통과\n\n**Verify:** cd app && npm run test -- packShelves → PASS\n\n**Steps:** TDD: 6케이스 실패테스트 → 구현 → PASS → 커밋. 전체 코드는 plan 문서 Task 10.\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/spreadView/packShelves.ts\", \"app/tests/unit/desktop/packShelves.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- packShelves\", \"acceptanceCriteria\": [\"first-fit shelf left-aligned\", \"input order preserved\", \"width clamp + gap + empty input\", \"tests pass\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 11: spreadView 상태 모듈",
+      "status": "pending",
+      "description": "**Goal:** 펼쳐보기 열림 여부를 담는 휘발성 룬 상태 모듈.\n\n**Files:**\n- Create: app/src/lib/desktop/spreadView/spreadView.svelte.ts\n- Test: app/tests/unit/desktop/spreadView.test.ts\n\n**Acceptance Criteria:**\n- [ ] spreadView.isOpen 게터\n- [ ] open()/close()/toggle()\n- [ ] 비영속 세션 싱글턴\n\n**Verify:** cd app && npm run test -- spreadView → PASS\n\n**Steps:** TDD: toggle 테스트 → let open=$state(false)+메서드 → PASS → 커밋. 전체 코드는 plan 문서 Task 11.\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/spreadView/spreadView.svelte.ts\", \"app/tests/unit/desktop/spreadView.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- spreadView\", \"acceptanceCriteria\": [\"isOpen getter\", \"open/close/toggle\", \"non-persisted singleton\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 12: 스냅샷 소스 등록부 (+NoteWindow)",
+      "status": "pending",
+      "description": "**Goal:** 창이 자기 콘텐츠 DOM과 제목을 등록해 오버레이가 동기적으로 읽어 카드를 만들 수 있게 한다.\n\n**Files:**\n- Modify: app/src/lib/desktop/session.svelte.ts\n- Modify: app/src/lib/desktop/NoteWindow.svelte\n- Test: app/tests/unit/desktop/snapshotSource.test.ts\n\n**Acceptance Criteria:**\n- [ ] registerSnapshotSource(guid, fn) → 해제 함수\n- [ ] desktopSession.getSnapshotSource(guid) 결과/null\n- [ ] NoteWindow onMount {title, el} 등록(에디터 view.dom 또는 bodyEl), unmount 해제\n- [ ] 기존 동작 무변경\n\n**Verify:** cd app && npm run test -- snapshotSource && npm run check\n\n**Steps:** TDD: 등록/조회/해제 테스트 → session Map 등록부+타입+getter+_reset → NoteWindow import/bind/onMount 등록 → 커밋. 전체 코드는 plan 문서 Task 12.\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/session.svelte.ts\", \"app/src/lib/desktop/NoteWindow.svelte\", \"app/tests/unit/desktop/snapshotSource.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- snapshotSource && npm run check\", \"acceptanceCriteria\": [\"register/get/unregister source\", \"NoteWindow registers {title,el}\", \"no existing-behavior change\"]}\n```"
+    },
+    {
+      "id": 13,
+      "subject": "Task 13: SpreadScrollbar 커스텀 스크롤바",
+      "status": "pending",
+      "description": "**Goal:** 오른쪽 크고 두꺼운 커스텀 세로 스크롤바 — 스크롤 컨테이너 바인딩, 드래그로 scrollTop 제어(Firefox 폭 제약 우회).\n\n**Files:**\n- Create: app/src/lib/desktop/spreadView/SpreadScrollbar.svelte\n\n**Acceptance Criteria:**\n- [ ] thumb 높이=clientHeight/scrollHeight, 위치=scrollTop 비율\n- [ ] thumb 드래그→target.scrollTop\n- [ ] 트랙 클릭→페이지 이동\n- [ ] 스크롤 불필요시 숨김\n\n**Verify:** cd app && npm run check → 0 errors; 수동: npm run dev\n\n**Steps:** target prop + scroll/ResizeObserver 동기화 $effect + thumb 드래그 + 트랙 paging → check → 커밋. UI는 수동 검증. 전체 코드는 plan 문서 Task 13.\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/spreadView/SpreadScrollbar.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"thumb from metrics\", \"drag sets scrollTop\", \"track click pages\", \"hidden when not scrollable\"]}\n```"
+    },
+    {
+      "id": 14,
+      "subject": "Task 14: SpreadOverlay 오버레이",
+      "status": "pending",
+      "blockedBy": [
+        10,
+        11,
+        12,
+        13
+      ],
+      "description": "**Goal:** 현재 워크스페이스 노트 창을 수집·정렬·패킹해 실제크기 카드로 렌더하고 2채널 스크롤·클릭 점프·Esc 종료를 묶는 핵심 컴포넌트.\n\n**Files:**\n- Create: app/src/lib/desktop/spreadView/SpreadOverlay.svelte\n- Test: app/tests/unit/desktop/SpreadOverlay.test.ts\n\n**Acceptance Criteria:**\n- [ ] 현재 워크스페이스 note 창만 row-major(y→x) 정렬\n- [ ] getSnapshotSource cloneNode 카드(pointer-events:none), 없으면 폴백\n- [ ] packShelves 좌표 absolute, height=totalHeight\n- [ ] 카드 overflow-y:auto+overscroll-behavior:contain, 네이티브 스크롤바 숨김\n- [ ] SpreadScrollbar 호스팅, 카드 클릭→close()+focusWindow, Esc capture\n- [ ] 스모크 테스트 통과\n\n**Verify:** cd app && npm run test -- SpreadOverlay && npm run check\n\n**Steps:** TDD: session/spreadView vi.mock + ResizeObserver 스텁 스모크(3케이스) → 구현 → PASS → check → 커밋. 전체 코드는 plan 문서 Task 14.\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/spreadView/SpreadOverlay.svelte\", \"app/tests/unit/desktop/SpreadOverlay.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- SpreadOverlay && npm run check\", \"acceptanceCriteria\": [\"row-major note windows\", \"cloneNode cards + fallback\", \"packShelves layout\", \"two-channel scroll\", \"click-jump + Esc capture\", \"smoke passes\"]}\n```"
+    },
+    {
+      "id": 15,
+      "subject": "Task 15: DesktopWorkspace 배선 (F4 + 마운트)",
+      "status": "pending",
+      "blockedBy": [
+        11,
+        14,
+        16
+      ],
+      "description": "**Goal:** 오버레이를 마운트하고 F4 토글 + SidePanel onspread를 연결한다.\n\n**Files:**\n- Modify: app/src/lib/desktop/DesktopWorkspace.svelte\n\n**Acceptance Criteria:**\n- [ ] {#if spreadView.isOpen}<SpreadOverlay/>{/if} 마운트\n- [ ] onKey: 수정자 없는 F4→preventDefault, 열려있거나 노트 있을 때 toggle()\n- [ ] SidePanel에 onspread+spreadDisabled 전달\n\n**Verify:** cd app && npm run check → 0 errors; 수동: npm run dev (F4)\n\n**Steps:** import → hasNoteWindows $derived+handleSpread → onKey F4 분기 → SidePanel props → 조건부 오버레이 마운트 → check → 커밋. 전체 코드는 plan 문서 Task 15.\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/DesktopWorkspace.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"conditional overlay mount\", \"F4 toggle + guard\", \"pass onspread + spreadDisabled\"]}\n```"
+    },
+    {
+      "id": 16,
+      "subject": "Task 16: SidePanel 펼쳐보기 버튼",
+      "status": "pending",
+      "blockedBy": [
+        11
+      ],
+      "description": "**Goal:** 레일에 펼쳐보기 버튼을 추가하고 노트 창이 0개면 비활성화한다.\n\n**Files:**\n- Modify: app/src/lib/desktop/SidePanel.svelte\n\n**Acceptance Criteria:**\n- [ ] onspread + spreadDisabled? props\n- [ ] 레일 펼쳐보기 버튼(rail-settings 패턴)\n- [ ] spreadDisabled면 disabled+흐리게\n\n**Verify:** cd app && npm run check → 0 errors; 수동: npm run dev\n\n**Steps:** Props+구조분해에 추가 → 관리자 버튼 뒤 펼쳐보기 버튼 → :disabled 스타일 → check → 커밋. 전체 코드는 plan 문서 Task 16.\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/SidePanel.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"onspread + spreadDisabled props\", \"펼쳐보기 rail button\", \"disabled+dimmed when spreadDisabled\"]}\n```"
+    },
+    {
+      "id": 17,
+      "subject": "Task 17: 설정 → 가이드 카드",
+      "status": "pending",
+      "description": "**Goal:** 설정 → 가이드(환경/호환성)에 펼쳐보기 안내 카드를 추가한다(CLAUDE.md 불변식).\n\n**Files:**\n- Modify: app/src/routes/settings/+page.svelte\n\n**Acceptance Criteria:**\n- [ ] env 서브탭에 <details class=guide-card>(summary+info-text+guide-list)\n- [ ] F4/2채널 스크롤/현재 워크스페이스·노트만/읽기전용+클릭 이동/지도 한계 기재\n\n**Verify:** cd app && npm run check → 0 errors; 수동: npm run dev\n\n**Steps:** env 인트로와 Firefox 카드 사이에 <details> 삽입 → check → 커밋. 전체 마크업은 plan 문서 Task 17.\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"guide-card in env subtab\", \"documents F4/2-channel/scope/read-only/map limit\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-07"
+}
