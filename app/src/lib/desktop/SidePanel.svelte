@@ -41,6 +41,8 @@
 		onopensettings: () => void;
 		onopenadmin: () => void;
 		onswitchworkspace: (index: number) => void;
+		onspread: () => void;
+		spreadDisabled?: boolean;
 	}
 
 	let {
@@ -50,7 +52,9 @@
 		onopen,
 		onopensettings,
 		onopenadmin,
-		onswitchworkspace
+		onswitchworkspace,
+		onspread,
+		spreadDisabled = false
 	}: Props = $props();
 
 	let allNotes: NoteData[] = $state(getCachedNotes() ?? []);
@@ -263,6 +267,15 @@
 			title="관리자"
 			aria-label="관리자"
 		>관리자</button>
+
+		<button
+			type="button"
+			class="rail-settings rail-spread"
+			onclick={onspread}
+			disabled={spreadDisabled}
+			title="펼쳐보기 (F4)"
+			aria-label="펼쳐보기"
+		>펼쳐보기</button>
 	</div>
 
 	<!--
@@ -659,6 +672,12 @@
 	.rail-settings:hover {
 		background: #232323;
 		color: #fff;
+	}
+
+	.rail-settings:disabled {
+		opacity: 0.4;
+		cursor: default;
+		pointer-events: none;
 	}
 
 	/* Anchor variant for the graph link — mirrors rail-settings styling so

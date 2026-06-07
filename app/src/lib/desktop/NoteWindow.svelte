@@ -53,6 +53,7 @@
 		DESKTOP_WINDOW_MIN_HEIGHT,
 		registerFlushHook,
 		registerReloadHook,
+		registerSnapshotSource,
 		desktopSession
 	} from './session.svelte.js';
 	import { modKeys } from './modKeys.svelte.js';
@@ -121,6 +122,7 @@
 	let saving = $state(false);
 	let editorContent: JSONContent | undefined = $state.raw(undefined);
 	let editorComponent: TomboyEditor | undefined = $state(undefined);
+	let bodyEl: HTMLDivElement | undefined;
 	let menuAnchor = $state<{ right: number; bottom: number } | null>(null);
 	let xmlViewerOpen = $state(false);
 	let notebookNames = $state<string[]>([]);
@@ -315,6 +317,20 @@
 		const editor = ec.getEditor();
 		if (!editor) return;
 		const off = desktopSession.registerEditor(guid, editor);
+		return off;
+	});
+
+	// Register a snapshot source (gated on `active`, mirroring the editor
+	// registry) so 펼쳐보기 can clone this window's live content into a
+	// read-only card. Clones the `.tomboy-editor` wrapper — not the inner
+	// ProseMirror DOM — so the component-scoped Tomboy content styles apply to
+	// the clone. Terminal/loading windows fall back to the window body.
+	$effect(() => {
+		if (!active) return;
+		const off = registerSnapshotSource(guid, () => ({
+			title: note?.title?.trim() || '제목 없음',
+			el: getEditor()?.view.dom.closest<HTMLElement>('.tomboy-editor') ?? bodyEl ?? null
+		}));
 		return off;
 	});
 
@@ -870,7 +886,7 @@
 		>✕</button>
 	</div>
 
-	<div class="body" class:terminal-edit={(!!terminalSpec && !showTerminal) || (!!keysSpec && !showKeys)}>
+	<div bind:this={bodyEl} class="body" class:terminal-edit={(!!terminalSpec && !showTerminal) || (!!keysSpec && !showKeys)}>
 		{#if loading}
 			<div class="loading">로딩 중...</div>
 		{:else if showTerminal && terminalSpec}

@@ -12,6 +12,8 @@
 	import { sidePanelLayout } from './sidePanelLayout.svelte.js';
 	import { installModKeyListeners } from './modKeys.svelte.js';
 	import { extractNoteGuidFromText, openNoteByGuid } from './openByClipboard.js';
+	import SpreadOverlay from './spreadView/SpreadOverlay.svelte';
+	import { spreadView } from './spreadView/spreadView.svelte.js';
 	import { createNote } from '$lib/core/noteManager.js';
 	import {
 		parseSlipNeighbors,
@@ -89,6 +91,12 @@
 		void desktopSession.switchWorkspace(index);
 	}
 
+	const hasNoteWindows = $derived(desktopSession.windows.some((w) => w.kind === 'note'));
+
+	function handleSpread() {
+		if (hasNoteWindows) spreadView.open();
+	}
+
 	// --- Keyboard shortcuts ---------------------------------------------
 
 	async function handleCtrlL(title: string) {
@@ -126,6 +134,20 @@
 	}
 
 	function onKey(e: KeyboardEvent) {
+		// F4 — toggle 펼쳐보기 (spread view). No modifiers. preventDefault so
+		// no browser/OS default fires. Opens only when at least one note window
+		// exists; always closable.
+		if (
+			e.key === 'F4' &&
+			!e.ctrlKey &&
+			!e.altKey &&
+			!e.metaKey &&
+			!e.shiftKey
+		) {
+			e.preventDefault();
+			if (spreadView.isOpen || hasNoteWindows) spreadView.toggle();
+			return;
+		}
 		// Ctrl+L (or Cmd+L on macOS) without other modifiers — new note from selection.
 		if (
 			e.key.toLowerCase() === 'l' &&
@@ -333,7 +355,12 @@
 		onopensettings={handleOpenSettings}
 		onopenadmin={handleOpenAdmin}
 		onswitchworkspace={handleSwitchWorkspace}
+		onspread={handleSpread}
+		spreadDisabled={!hasNoteWindows}
 	/>
+	{#if spreadView.isOpen}
+		<SpreadOverlay />
+	{/if}
 </div>
 
 <style>

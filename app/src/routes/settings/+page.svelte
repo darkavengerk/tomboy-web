@@ -2149,6 +2149,22 @@ Complete:</pre>
 				<h2>환경 / 호환성 요구사항</h2>
 				<p class="info-text">이게 안 맞으면 해당 기능이 동작하지 않거나 깨져 보입니다.</p>
 
+				<details class="guide-card">
+					<summary>데스크탑 — 펼쳐보기로 열린 노트 한눈에 보기</summary>
+					<p class="info-text">
+						데스크탑 작업공간에서 노트 창이 여러 개 겹쳐 잘 안 보일 때
+						<strong>F4</strong>(또는 왼쪽 레일의 <strong>펼쳐보기</strong> 버튼)를 누르면,
+						현재 작업공간에 열린 노트들이 실제 크기 그대로 겹치지 않게 정렬되어 한 화면에
+						펼쳐집니다. 다시 F4나 Esc로 닫습니다.
+					</p>
+					<ul class="guide-list">
+						<li>오른쪽의 큰 스크롤바로 전체를 위아래로 훑어보고, 마우스 휠은 커서가 놓인 개별 노트의 내용을 스크롤합니다.</li>
+						<li>읽기 전용입니다. 노트를 클릭하면 펼쳐보기가 닫히고 그 노트 창으로 이동합니다.</li>
+						<li>현재 작업공간에 열린 노트만 대상입니다(설정/관리자 창과 다른 작업공간은 제외).</li>
+						<li>지도 같은 일부 임베드는 미리보기에서 빈칸으로 보일 수 있습니다 — 클릭해 열면 정상입니다.</li>
+					</ul>
+				</details>
+
 				<details class="guide-card" open>
 					<summary>Firefox — 세로 칼럼 분할 활성화</summary>
 					<p class="info-text">
