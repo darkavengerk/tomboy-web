@@ -39,6 +39,7 @@
 	import { createGeoMapPlugin } from "./geoMap/geoMapPlugin.js";
 import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 import { createAutomationNotePlugin } from "./automationNote/automationNotePlugin.js";
+import { createRemarkableNotePlugin } from "./remarkableNote/remarkableNotePlugin.js";
 import { TomboyMusicNote } from "./musicNote/index.js";
 import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 	import {
@@ -496,6 +497,12 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 					name: "tomboyAutomationNote",
 					addProseMirrorPlugins() {
 						return [createAutomationNotePlugin()];
+					},
+				}),
+				Extension.create({
+					name: "tomboyRemarkableNote",
+					addProseMirrorPlugins() {
+						return [createRemarkableNotePlugin()];
 					},
 				}),
 				TomboyMusicNote.configure({ getGuid: () => currentGuid ?? "" }),

@@ -102,6 +102,17 @@ Environment=BRIDGE_SSH_HOSTS_FILE=/etc/term-bridge/ssh-hosts.json
 # path otherwise, silently breaking the bind mount.
 Volume=%h/.local/share/term-bridge/files:/var/lib/term-bridge/files:rw,z
 Environment=BRIDGE_FILES_DIR=/var/lib/term-bridge/files
+# 리마커블 수동 업로드 inbox — `리마커블::` 노트가 호출하는 /remarkable/upload
+# 가 rsync로 적재. 호스트 경로는 기존 diary 동기화 데몬과 공유 (diary-sync
+# 사용자 소유). 컨테이너의 node 사용자(=호스트의 keep-id 사용자)가
+# 쓸 수 있도록 사전에 ACL 설정 필요:
+#   sudo setfacl -m u:<host-user>:x /home/diary-sync
+#   sudo setfacl -m u:<host-user>:x /home/diary-sync/diary
+#   sudo setfacl -m u:<host-user>:rwx /home/diary-sync/diary/inbox
+#   sudo setfacl -d -m u:<host-user>:rwx /home/diary-sync/diary/inbox
+# 호스트 경로가 다른 환경이면 이 줄을 편집.
+Volume=/home/diary-sync/diary/inbox:/var/lib/term-bridge/remarkable-inbox:rw,z
+Environment=REMARKABLE_INBOX_DIR=/var/lib/term-bridge/remarkable-inbox
 # Public URL the bridge returns to clients in upload responses. Must be
 # the Caddy-fronted HTTPS hostname.
 # Set in ~/.config/term-bridge.env: BRIDGE_PUBLIC_BASE_URL=https://term.example.com

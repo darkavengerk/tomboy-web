@@ -1,0 +1,51 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-06-remarkable-manual-upload.md",
+  "tasks": [
+    {
+      "id": 21,
+      "subject": "Task 1: 노트 시그니처 파서",
+      "status": "completed",
+      "description": "**Goal:** `리마커블::<제목>` 시그니처 + `폴더: <이름>` 헤더를 파싱하는 순수 함수.\n\n**Files:**\n- Create: `app/src/lib/remarkable/parseRemarkableNote.ts`\n- Create: `app/tests/unit/remarkable/parseRemarkableNote.test.ts`\n\n**Acceptance Criteria:**\n- 리마커블::오늘 일기 → notebook=undefined\n- 폴더: Diary 헤더 인식\n- 리마커블:: (빈 제목) → null\n- 다른 시그니처 → null\n- 빈 폴더 헤더 무시\n- 비-헤더 위치 폴더: 무시\n\n**Verify:** `cd app && npm run test -- remarkable/parseRemarkableNote && npm run check`\n\n```json:metadata\n{\"files\":[\"app/src/lib/remarkable/parseRemarkableNote.ts\",\"app/tests/unit/remarkable/parseRemarkableNote.test.ts\"],\"verifyCommand\":\"cd app && npm run test -- remarkable/parseRemarkableNote && npm run check\",\"acceptanceCriteria\":[\"리마커블::오늘 일기 → notebook=undefined\",\"폴더: Diary 헤더 인식\",\"리마커블:: (빈 제목) → null\",\"다른 시그니처 → null\",\"빈 폴더 헤더 무시\",\"비-헤더 위치의 폴더: 무시\"]}\n```"
+    },
+    {
+      "id": 22,
+      "subject": "Task 2: 브릿지 호출 + SSE 클라이언트",
+      "status": "completed",
+      "blockedBy": [21],
+      "description": "**Goal:** POST {bridgeUrl}/remarkable/upload SSE 스트림 파싱. status/done/error 분기.\n\n**Files:**\n- Create: `app/src/lib/remarkable/uploadRemarkable.ts`\n- Create: `app/tests/unit/remarkable/uploadRemarkable.test.ts`\n\n**Acceptance Criteria:**\n- not_configured throw\n- status 이벤트 onStatus 호출\n- done resolve\n- error 이벤트 throw\n- 401→unauthorized, 5xx→upstream_error, network→network\n- signal forward\n- notebook undefined 시 body 생략\n\n**Verify:** `cd app && npm run test -- remarkable/uploadRemarkable && npm run check`\n\n```json:metadata\n{\"files\":[\"app/src/lib/remarkable/uploadRemarkable.ts\",\"app/tests/unit/remarkable/uploadRemarkable.test.ts\"],\"verifyCommand\":\"cd app && npm run test -- remarkable/uploadRemarkable && npm run check\",\"acceptanceCriteria\":[\"not_configured throw\",\"status 이벤트 onStatus 호출\",\"done resolve\",\"error 이벤트 throw\",\"401→unauthorized\",\"5xx→upstream_error\",\"signal forward\",\"notebook undefined 시 body 생략\"]}\n```"
+    },
+    {
+      "id": 23,
+      "subject": "Task 3: 에디터 위젯 + 클릭 핸들러 + 등록",
+      "status": "completed",
+      "blockedBy": [21, 22],
+      "description": "**Goal:** TipTap plugin이 시그니처 노트 첫 단락 직후에 '📥 업로드' 위젯 렌더. 클릭 시 uploadRemarkable 호출 + 본문에 placeholder/로그 라인.\n\n**Files:**\n- Create: `app/src/lib/editor/remarkableNote/remarkableNotePlugin.ts`\n- Create: `app/src/lib/editor/remarkableNote/runRemarkableUpload.ts`\n- Create: `app/tests/unit/editor/remarkableNote/runRemarkableUpload.test.ts`\n- Modify: `app/src/lib/editor/TomboyEditor.svelte`\n\n**Acceptance Criteria:**\n- 위젯 렌더(시그니처 노트만)\n- 클릭→uploadRemarkable 호출\n- placeholder 단계별 교체\n- done 시 헤더 + 링크 라인 prepend\n- 에러 시 placeholder→오류 메시지\n- 제목 포맷 `{date} 리마커블([{uuid}])`\n\n**Verify:** `cd app && npm run test -- editor/remarkableNote && npm run check`\n\n```json:metadata\n{\"files\":[\"app/src/lib/editor/remarkableNote/remarkableNotePlugin.ts\",\"app/src/lib/editor/remarkableNote/runRemarkableUpload.ts\",\"app/tests/unit/editor/remarkableNote/runRemarkableUpload.test.ts\",\"app/src/lib/editor/TomboyEditor.svelte\"],\"verifyCommand\":\"cd app && npm run test -- editor/remarkableNote && npm run check\",\"acceptanceCriteria\":[\"위젯 렌더(시그니처 노트만)\",\"클릭→uploadRemarkable 호출\",\"placeholder 단계별 교체\",\"done시 헤더+링크 라인 prepend\",\"에러시 placeholder→오류 메시지\",\"제목 포맷 {date} 리마커블([{uuid}])\"]}\n```"
+    },
+    {
+      "id": 24,
+      "subject": "Task 4: 브릿지 라우트 + SSH/inbox 헬퍼",
+      "status": "completed",
+      "description": "**Goal:** /remarkable/upload SSE 라우트 + 리마커블 SSH metadata 페치 + Pi inbox 적재 + automation-service 호출.\n\n**Files:**\n- Create: `bridge/src/remarkable/ssh.ts`, `inbox.ts`\n- Create: `bridge/src/remarkableUpload.ts`\n- Create: `bridge/src/remarkable.test.ts`, `remarkable/ssh.test.ts`, `inbox.test.ts`\n- Modify: `bridge/src/server.ts`\n- Modify: `bridge/README.md`\n\n**Acceptance Criteria:**\n- 401 without Bearer\n- SSE 200 text/event-stream\n- status step 순서 ssh_connect→list_pages→rsync_pages→trigger_pipeline→done\n- defaultNotebook fallback\n- metadata dump → parent 매칭으로 페이지 UUID\n- diff로 새 UUID만 rsync + index 갱신\n- lastModified epoch→YYYY-MM-DD\n- notebook_not_found emit\n- automation_unreachable emit + inbox 유지\n\n**Verify:** `cd bridge && node --test src/remarkable*.test.ts src/remarkable/*.test.ts`\n\n```json:metadata\n{\"files\":[\"bridge/src/remarkable/ssh.ts\",\"bridge/src/remarkable/inbox.ts\",\"bridge/src/remarkableUpload.ts\",\"bridge/src/remarkable.test.ts\",\"bridge/src/remarkable/ssh.test.ts\",\"bridge/src/remarkable/inbox.test.ts\",\"bridge/src/server.ts\",\"bridge/README.md\"],\"verifyCommand\":\"cd bridge && node --test src/remarkable*.test.ts src/remarkable/*.test.ts\",\"acceptanceCriteria\":[\"401 without Bearer\",\"SSE 200\",\"status/done emit\",\"notebook_not_found emit\",\"defaultNotebook fallback\",\"automation_unreachable + inbox 유지\",\"epoch→YYYY-MM-DD\"]}\n```"
+    },
+    {
+      "id": 25,
+      "subject": "Task 5: automation-service pipeline-run 명령 등록",
+      "status": "completed",
+      "description": "**Goal:** ~/.config/tomboy-automation.json registry에 pipeline-run 항목 추가. 코드 0줄. registry는 매 요청 재읽힘.\n\n**Files:**\n- Modify: `~/.config/tomboy-automation.json` (runtime, 미커밋)\n- Modify: `automation-service/deploy/README.md` (문서)\n\n**Acceptance Criteria:**\n- registry pipeline-run 추가\n- 200 응답 `{\"results\":{\"pipeline\":\"\"},\"errors\":{}}`\n- systemctl start journal 등장\n- unknown_command 회귀 없음\n- 문서 1단락 추가\n\n**Verify:** `curl -s -X POST -H \"Authorization: Bearer $BRIDGE_SHARED_TOKEN\" -H \"Content-Type: application/json\" -d '{\"command\":\"pipeline-run\"}' http://localhost:7843/run | grep -q '\\\"results\\\":{\\\"pipeline\\\"'`\n\n```json:metadata\n{\"files\":[\"automation-service/deploy/README.md\"],\"verifyCommand\":\"curl -s -X POST -H \\\"Authorization: Bearer $BRIDGE_SHARED_TOKEN\\\" -H \\\"Content-Type: application/json\\\" -d '{\\\"command\\\":\\\"pipeline-run\\\"}' http://localhost:7843/run | grep -q '\\\"results\\\":{\\\"pipeline\\\"'\",\"acceptanceCriteria\":[\"registry pipeline-run 추가\",\"200 응답\",\"systemctl start journal 등장\",\"unknown_command 회귀 없음\",\"문서 1단락 추가\"]}\n```"
+    },
+    {
+      "id": 26,
+      "subject": "Task 6: 가이드 카드 추가",
+      "status": "completed",
+      "description": "**Goal:** 설정→가이드→노트 서브탭에 details.guide-card 추가 (CLAUDE.md 의무).\n\n**Files:**\n- Modify: `app/src/routes/settings/+page.svelte`\n\n**Acceptance Criteria:**\n- 가이드→노트 탭에 카드 등장\n- 시그니처 + 헤더 예시\n- 누적 로그 + 로컬 네트워크 명시\n- svelte-check 통과\n\n**Verify:** `cd app && npm run check` + 브라우저 수동 검증\n\n```json:metadata\n{\"files\":[\"app/src/routes/settings/+page.svelte\"],\"verifyCommand\":\"cd app && npm run check\",\"acceptanceCriteria\":[\"가이드→노트 탭 카드 등장\",\"시그니처 + 헤더 예시\",\"누적 로그 + 로컬 네트워크 명시\",\"svelte-check 통과\"]}\n```"
+    },
+    {
+      "id": 27,
+      "subject": "Task 7: 통합 검증",
+      "status": "pending",
+      "blockedBy": [23, 24, 25, 26],
+      "description": "**Goal:** end-to-end 수동 검증 — 리마커블 + 브릿지 + 데스크탑 파이프라인 살아있는 상태에서.\n\n**Files:** none\n\n**Acceptance Criteria:**\n- 리마커블 페이지 작성\n- 리마커블:: 노트에 위젯 등장\n- placeholder→로그 라인\n- claude-service shape=user[image,text]\n- s3_ocr:1 pages OCR'd\n- 결과 노트 등장 + broken-link 해소\n- 중복 클릭 0건 표시\n\n**Verify:** 수동\n\n```json:metadata\n{\"files\":[],\"verifyCommand\":\"manual\",\"acceptanceCriteria\":[\"리마커블 페이지 작성\",\"리마커블:: 노트에 위젯 등장\",\"placeholder→로그 라인\",\"claude-service shape=user[image,text]\",\"s3_ocr:1 pages OCR'd\",\"결과 노트 등장 + broken-link 해소\",\"중복 클릭 0건 표시\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-06T13:45:00+09:00"
+}

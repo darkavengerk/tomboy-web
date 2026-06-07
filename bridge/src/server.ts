@@ -17,6 +17,7 @@ import { handleRagSearch } from './rag.js';
 import { handleOcrProxy } from './ocr.js';
 import { handleClaudeChat } from './claude.js';
 import { handleAutomationRun } from './automation.js';
+import { handleRemarkableUpload } from './remarkableUpload.js';
 import { handleMusicExtract, handleMusicEnumerate } from './music.js';
 import { handleGpuStatus, handleGpuUnload } from './gpu.js';
 import { handleRemarkableWallpaper } from './remarkable.js';
@@ -159,6 +160,21 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 
 	if (url === '/automation/run' && req.method === 'POST') {
 		await handleAutomationRun(req, res, SECRET, AUTOMATION_SERVICE_URL);
+		return;
+	}
+
+	if (url === '/remarkable/upload' && req.method === 'POST') {
+		await handleRemarkableUpload(req, res, {
+			secret: SECRET,
+			ssh: {
+				host: process.env.REMARKABLE_SSH_HOST ?? '',
+				user: process.env.REMARKABLE_SSH_USER ?? 'root',
+				keyPath: process.env.REMARKABLE_SSH_KEY_PATH ?? ''
+			},
+			inboxDir: process.env.REMARKABLE_INBOX_DIR ?? '/home/diary-sync/diary/inbox',
+			defaultNotebook: process.env.REMARKABLE_NOTEBOOK_NAME ?? 'Diary',
+			automationServiceUrl: AUTOMATION_SERVICE_URL
+		});
 		return;
 	}
 

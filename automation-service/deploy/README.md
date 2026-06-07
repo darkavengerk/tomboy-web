@@ -43,3 +43,15 @@
 ## 브릿지 연결
 브릿지의 `~/.config/term-bridge.env`에:
     AUTOMATION_SERVICE_URL=http://<desktop-LAN-IP>:7843
+
+## `pipeline-run` (리마커블 수동 업로드)
+리마커블 수동 업로드(`리마커블::` 노트)가 호출. `desktop-pipeline.service`를 즉시 트리거한다 (5분 timer cycle 외 추가 진입점). registry는 매 요청 재읽힘이므로 항목 추가 후 서비스 재시작 불필요.
+
+`~/.config/tomboy-automation.json`에 등록:
+
+    "pipeline-run": [
+      { "project": "pipeline",
+        "exec": ["systemctl", "--user", "start", "desktop-pipeline.service"] }
+    ]
+
+`systemctl start`는 즉시 리턴하므로 응답은 빈 문자열 `{"results":{"pipeline":""},"errors":{}}`. 실제 OCR 진행은 systemd journal로 확인.
