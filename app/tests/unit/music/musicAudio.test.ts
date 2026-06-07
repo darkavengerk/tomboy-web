@@ -5,8 +5,7 @@ import { __resetMediaSession } from '$lib/music/mediaSession.js';
 import {
 	installMusicAudio,
 	__musicAudioForTest,
-	resumePlaybackFromGesture,
-	toPlayableSrc
+	resumePlaybackFromGesture
 } from '$lib/music/musicAudio.svelte.js';
 import type { MusicTrack } from '$lib/music/parseMusicNote.js';
 
@@ -188,39 +187,15 @@ describe('musicAudio 엔진 — 단일 오디오', () => {
 		expect(musicPlayer.isPlaying).toBe(true);
 	});
 
-	// WebKit 은 파일명에서 온 일부 문자가 src URL 에 있으면 SRC_NOT_SUPPORTED 로 거부
-	// (FF/Chrome 은 같은 URL 재생). 브릿지 URL 은 깨끗한 고정 파일명으로 다시 써서 넘긴다.
-	it('재생 시 브릿지 URL 은 깨끗한 파일명으로 다시 써서 audio.src 로 넘긴다', () => {
+	// 재생 src 는 노트의 원본 URL 을 그대로 넘긴다(URL 재작성 없음 — 브릿지 곡 재생
+	// 실패의 진짜 원인은 URL 이 아니라 임베디드 커버였고, music-service 에서 제거됨).
+	it('재생 시 트랙 url 을 그대로 audio.src 로 넘긴다(재작성 없음)', () => {
 		const u = '737140b8-2cca-40c1-b2bf-a901e5999a6f';
-		musicPlayer.setQueue(
-			'g',
-			[T(`https://br.test/files/${u}/CHUNG 'Snapping' (live).mp3`, 'x')],
-			'pl'
-		);
+		const url = `https://br.test/files/${u}/CHUNG 'Snapping' (live).mp3`;
+		musicPlayer.setQueue('g', [T(url, 'x')], 'pl');
 		musicPlayer.play(0);
 		resumePlaybackFromGesture();
-		expect(playSrcs.at(-1)).toBe(`https://br.test/files/${u}/audio.mp3`);
-		expect(__musicAudioForTest().audio?.getAttribute('src')).toBe(
-			`https://br.test/files/${u}/audio.mp3`
-		);
-	});
-});
-
-describe('toPlayableSrc', () => {
-	const U = '737140b8-2cca-40c1-b2bf-a901e5999a6f';
-	it('rewrites bridge /files/<uuid>/<name> to a clean fixed filename (any char)', () => {
-		expect(toPlayableSrc(`https://br.test/files/${U}/CHUNG 'Snapping' (live)!.mp3`)).toBe(
-			`https://br.test/files/${U}/audio.mp3`
-		);
-	});
-	it('preserves the original extension', () => {
-		expect(toPlayableSrc(`https://br.test/files/${U}/x(y).m4a`)).toBe(
-			`https://br.test/files/${U}/audio.m4a`
-		);
-	});
-	it('leaves non-bridge URLs untouched (internet direct links)', () => {
-		expect(toPlayableSrc("https://cdn.example.com/a/b'c (d).mp3")).toBe(
-			"https://cdn.example.com/a/b'c (d).mp3"
-		);
+		expect(playSrcs.at(-1)).toBe(url);
+		expect(__musicAudioForTest().audio?.getAttribute('src')).toBe(url);
 	});
 });
