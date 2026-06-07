@@ -121,6 +121,31 @@ const flushHooks = new Map<string, () => Promise<void> | void>();
 const reloadHooks = new Map<string, () => Promise<void> | void>();
 const editorRegistry = new Map<string, Editor>();
 
+/** Read-only snapshot descriptor a window exposes for 펼쳐보기 (spread view). */
+export interface SpreadSnapshot {
+	/** Note title for the card header. */
+	title: string;
+	/** Live content element to clone into the read-only card, or null. */
+	el: HTMLElement | null;
+}
+
+const snapshotSources = new Map<string, () => SpreadSnapshot | null>();
+
+/**
+ * A note window registers a snapshot source so 펼쳐보기 can build a read-only
+ * card from the window's live content (the ProseMirror DOM for editor notes, or
+ * the window body for terminal/loading windows). Returns an unregister fn.
+ */
+export function registerSnapshotSource(
+	guid: string,
+	fn: () => SpreadSnapshot | null
+): () => void {
+	snapshotSources.set(guid, fn);
+	return () => {
+		if (snapshotSources.get(guid) === fn) snapshotSources.delete(guid);
+	};
+}
+
 // --- Flush hooks ---------------------------------------------------------
 
 export function registerFlushHook(guid: string, fn: () => Promise<void> | void): () => void {
@@ -945,6 +970,11 @@ export const desktopSession = {
 		return editorRegistry.get(guid) ?? null;
 	},
 
+	/** Resolve the snapshot (title + clonable element) for an open window. */
+	getSnapshotSource(guid: string): SpreadSnapshot | null {
+		return snapshotSources.get(guid)?.() ?? null;
+	},
+
 	/**
 	 * Return the (guid, editor) pair whose Tiptap instance currently owns focus.
 	 * Used by the Ctrl+L handler to read the active selection.
@@ -970,6 +1000,7 @@ export const desktopSession = {
 		flushHooks.clear();
 		reloadHooks.clear();
 		editorRegistry.clear();
+		snapshotSources.clear();
 		if (persistTimer) {
 			clearTimeout(persistTimer);
 			persistTimer = null;

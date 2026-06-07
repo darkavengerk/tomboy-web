@@ -53,6 +53,7 @@
 		DESKTOP_WINDOW_MIN_HEIGHT,
 		registerFlushHook,
 		registerReloadHook,
+		registerSnapshotSource,
 		desktopSession
 	} from './session.svelte.js';
 	import { modKeys } from './modKeys.svelte.js';
@@ -121,6 +122,7 @@
 	let saving = $state(false);
 	let editorContent: JSONContent | undefined = $state.raw(undefined);
 	let editorComponent: TomboyEditor | undefined = $state(undefined);
+	let bodyEl: HTMLDivElement | undefined;
 	let menuAnchor = $state<{ right: number; bottom: number } | null>(null);
 	let xmlViewerOpen = $state(false);
 	let notebookNames = $state<string[]>([]);
@@ -262,6 +264,15 @@
 		// and pick up neighbor-field updates the op wrote to IDB.
 		const unregisterReload = registerReloadHook(guid, () => externalReload());
 
+		// Register a snapshot source so 펼쳐보기 can clone this window's live
+		// content into a read-only card. Editor notes expose the ProseMirror
+		// root (clean, full-height, no inner scroll); other kinds fall back to
+		// the window body.
+		const unregisterSnapshot = registerSnapshotSource(guid, () => ({
+			title: note?.title?.trim() || '제목 없음',
+			el: getEditor()?.view.dom ?? bodyEl ?? null
+		}));
+
 		dateTitleProvider = createTitleProvider();
 		void Promise.all([
 			dateTitleProvider.refresh(),
@@ -273,6 +284,7 @@
 		return () => {
 			unregisterFlush();
 			unregisterReload();
+			unregisterSnapshot();
 			offDateChange();
 			offSlipChange();
 			dateTitleProvider?.dispose();
@@ -870,7 +882,7 @@
 		>✕</button>
 	</div>
 
-	<div class="body" class:terminal-edit={(!!terminalSpec && !showTerminal) || (!!keysSpec && !showKeys)}>
+	<div bind:this={bodyEl} class="body" class:terminal-edit={(!!terminalSpec && !showTerminal) || (!!keysSpec && !showKeys)}>
 		{#if loading}
 			<div class="loading">로딩 중...</div>
 		{:else if showTerminal && terminalSpec}
