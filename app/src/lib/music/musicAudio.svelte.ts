@@ -88,6 +88,13 @@ export function installMusicAudio(): () => void {
 	audioEl = audio;
 	preloadEl = preload;
 
+	// iOS 자동재생 잠금 추적. 사용자 제스처로 재생이 한 번이라도 *실제로* 시작되면
+	// ('playing' 이벤트) 엘리먼트가 풀려 이후 프로그램적 play() 가 허용된다. 그 전까지는
+	// 제스처 밖 play() 가 차단된다. onError 의 자동 스킵 여부를 이 플래그로 가른다.
+	let unlocked = false;
+	const onPlaying = () => {
+		unlocked = true;
+	};
 	const onTime = () => musicPlayer.reportTime(audio.currentTime || 0);
 	const onMeta = () => musicPlayer.reportDuration(audio.duration || 0);
 	const onEnded = () => musicPlayer.reportEnded();
@@ -108,8 +115,14 @@ export function installMusicAudio(): () => void {
 			src
 		});
 		pushToast(`재생 실패 ⟨${name}⟩ ${tail}`, { kind: 'error', timeoutMs: 9000 });
-		musicPlayer.next();
+		// 큐 연쇄 붕괴 방지: 엘리먼트가 아직 잠겨 있으면(제스처 재생 성공 전) 자동
+		// 스킵하지 않는다. iOS 에서 첫 곡이 에러나면 next() → 다음 곡 play() 도 제스처
+		// 밖이라 막히고, 그게 또 에러로 보여 줄줄이 스킵되며 큐 전체가 무너진다(첫 곡
+		// 실패 → "전부 그냥 스킵"). 잠금 해제 후의 에러만 죽은 링크 스킵으로 안전하게 넘긴다.
+		if (unlocked) musicPlayer.next();
+		else musicPlayer.pause();
 	};
+	audio.addEventListener('playing', onPlaying);
 	audio.addEventListener('timeupdate', onTime);
 	audio.addEventListener('loadedmetadata', onMeta);
 	audio.addEventListener('ended', onEnded);
@@ -183,6 +196,7 @@ export function installMusicAudio(): () => void {
 		stop();
 		uninstallMs();
 		audio.pause();
+		audio.removeEventListener('playing', onPlaying);
 		audio.removeEventListener('timeupdate', onTime);
 		audio.removeEventListener('loadedmetadata', onMeta);
 		audio.removeEventListener('ended', onEnded);

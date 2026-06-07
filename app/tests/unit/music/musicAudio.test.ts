@@ -161,6 +161,33 @@ describe('musicAudio 엔진 — 단일 오디오', () => {
 		expect(playSrcs).toEqual([]);
 	});
 
+	// iOS 자동재생 잠금: 제스처로 한 번도 재생 못 한 상태에서 에러가 나면 자동 스킵하면
+	// 안 된다(다음 곡 play() 도 막혀 큐 전체가 줄줄이 무너짐). 멈추고 에러만 노출.
+	it('잠금 상태(playing 전) 에러 → 자동 스킵 안 하고 멈춤(큐 연쇄 붕괴 방지)', () => {
+		musicPlayer.setQueue('g', [T('https://h/a.mp3', 'a'), T('https://h/b.mp3', 'b')], 'pl');
+		musicPlayer.play(0);
+		flushSync();
+		const audio = __musicAudioForTest().audio!;
+		audio.dispatchEvent(new Event('error'));
+		flushSync();
+		expect(musicPlayer.currentIndex).toBe(0); // 다음 곡으로 안 넘어감
+		expect(musicPlayer.isPlaying).toBe(false); // 멈춤
+	});
+
+	// 한 곡이라도 제스처로 재생되어 엘리먼트가 풀리면(playing) 이후 에러는 죽은 링크
+	// 스킵으로 안전 — 정상 곡 재생 중 깨진 곡을 만나면 다음으로 넘어가야 한다.
+	it('잠금 해제 후(playing) 에러 → 다음 곡으로 스킵', () => {
+		musicPlayer.setQueue('g', [T('https://h/a.mp3', 'a'), T('https://h/b.mp3', 'b')], 'pl');
+		musicPlayer.play(0);
+		flushSync();
+		const audio = __musicAudioForTest().audio!;
+		audio.dispatchEvent(new Event('playing')); // 잠금 해제
+		audio.dispatchEvent(new Event('error'));
+		flushSync();
+		expect(musicPlayer.currentIndex).toBe(1); // 죽은 링크 스킵
+		expect(musicPlayer.isPlaying).toBe(true);
+	});
+
 	// WebKit 은 파일명에서 온 일부 문자가 src URL 에 있으면 SRC_NOT_SUPPORTED 로 거부
 	// (FF/Chrome 은 같은 URL 재생). 브릿지 URL 은 깨끗한 고정 파일명으로 다시 써서 넘긴다.
 	it('재생 시 브릿지 URL 은 깨끗한 파일명으로 다시 써서 audio.src 로 넘긴다', () => {

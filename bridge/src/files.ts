@@ -204,22 +204,25 @@ export async function handleFileDownload(
 
 	const stat = statSync(dest);
 	const contentType = contentTypeFor(actualFilename);
-	// iOS Safari refuses to play an <audio>/<video> source whose response
-	// carries `Content-Disposition: attachment` — it treats it as a download
-	// and fires MEDIA_ERR_SRC_NOT_SUPPORTED (desktop browsers ignore the header
-	// for media loads). Bridge-stored mp3s in 음악:: notes were skipping for
-	// exactly this reason while internet-hosted tracks (no attachment) played.
-	// Serve media `inline`; keep `attachment` for documents so link clicks
-	// still download them.
-	const isInlineType = contentType.startsWith('audio/') || contentType.startsWith('video/');
-	const disposition = isInlineType ? 'inline' : 'attachment';
+	// WebKit (Safari + every iOS browser) refuses to play an <audio>/<video>
+	// source whose response carries ANY `Content-Disposition` header (even
+	// `inline`): it treats it as a download, not inline media, and fires
+	// MEDIA_ERR_SRC_NOT_SUPPORTED. Chrome/Firefox ignore the header for media
+	// loads, which is why the same bridge URL played there but not in Safari.
+	// `attachment→inline` was not enough — the header's mere presence trips it.
+	// So omit Content-Disposition entirely for audio/video; keep `attachment`
+	// for documents so link clicks still download them.
+	const isMedia = contentType.startsWith('audio/') || contentType.startsWith('video/');
 	const baseHeaders: Record<string, string> = {
 		'Content-Type': contentType,
-		'Content-Disposition': `${disposition}; filename*=UTF-8''${encodeURIComponent(actualFilename)}`,
 		'Cache-Control': 'public, max-age=31536000, immutable',
 		'Accept-Ranges': 'bytes',
 		ETag: `"${uuid}"`
 	};
+	if (!isMedia) {
+		baseHeaders['Content-Disposition'] =
+			`attachment; filename*=UTF-8''${encodeURIComponent(actualFilename)}`;
+	}
 
 	// iOS Safari's download manager probes with a Range request and
 	// stalls if the server returns 200 instead of 206. Same for any
