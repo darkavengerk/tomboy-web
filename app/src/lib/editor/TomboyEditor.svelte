@@ -2046,23 +2046,18 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 		background: #555753;
 	}
 
-	/* 음악 노트 제목(첫 블록) 아래에, 떠 있는 컨트롤 패널 높이만큼 공간 확보.
-	   패널(MusicPlayerBar)이 --music-reserve 를 view.dom 에 설정한다. */
-	.tomboy-editor :global(.music-title-block) {
-		margin-bottom: var(--music-reserve, 0px);
-	}
-	/* 플레이리스트 모드 트랙 행 — 글머리표 대신 ♪/재생아이콘 + 곡 제목. */
+	/* 플레이리스트 모드 트랙 행 — 글머리표 대신 ♪/재생아이콘 + 곡 제목. 체크 모드에선
+	   li 가 contenteditable=false 라 행 전체가 재생 버튼(커서 진입 불가). */
 	.tomboy-editor :global(li.music-track) {
 		list-style: none;
-		position: relative; /* ▶ 버튼(absolute) 의 기준 — 행마다 자기 li 우측에 고정 */
-		/* 편집 중(데코 해제)엔 인코딩된 긴 URL(%20 투성이, 공백 없는 한 토큰)이
+		position: relative;
+		/* 편집 중(체크 해제, 데코 없음)엔 인코딩된 긴 URL(%20 투성이, 공백 없는 한 토큰)이
 		   그대로 노출된다 — 안 깨지면 음악노트만 가로 스크롤. 강제 줄바꿈. */
 		overflow-wrap: anywhere;
 		word-break: break-word;
 	}
-	/* ctrl 노출 시에만 우측 버튼 자리 확보(텍스트가 버튼 밑으로 안 들어가게). */
-	.tomboy-editor :global(li.music-track--ctrl) {
-		padding-right: 2.6em;
+	.tomboy-editor :global(li.music-track--play) {
+		cursor: pointer;
 	}
 	.tomboy-editor :global(li.music-track--playing) {
 		background: var(--accent-soft, #faf2f7);
@@ -2073,9 +2068,13 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 		display: none;
 	}
 	.tomboy-editor :global(.music-track-name) {
-		display: inline-flex;
+		/* 행 전체를 덮어 어디를 탭해도 재생되게 — display 텍스트 한 줄만큼 폭 확보. */
+		display: flex;
 		align-items: center;
 		gap: 0.3em;
+		width: 100%;
+		cursor: pointer;
+		padding: 0.1em 0;
 	}
 	.tomboy-editor :global(.music-track-mark) {
 		display: inline-flex;
@@ -2128,26 +2127,30 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 	.tomboy-editor :global(.music-track-eq--paused i) {
 		animation-play-state: paused;
 	}
-	.tomboy-editor :global(.tomboy-music-play-btn) {
-		/* float 대신 절대배치 — float 는 짧은 행끼리 겹쳐 계단식으로 쌓이고
-		   누적 폭이 음악노트만 가로 스크롤을 유발했다. li 우측에 고정. */
+	/* 플레이리스트 헤더('플레이리스트:' 줄) — 우측 ▶(전체 재생) 절대배치 기준. */
+	.tomboy-editor :global(p.music-pl-header) {
+		position: relative;
+		padding-right: 2.4em;
+	}
+	.tomboy-editor :global(.music-pl-play-btn) {
+		/* 헤더 우측에 고정 — float 는 짧은 줄끼리 겹쳐 계단식으로 쌓이므로 절대배치. */
 		position: absolute;
 		right: 0.2em;
-		top: 0.1em;
+		top: 0;
 		border: 1px solid var(--border, #e0e0dc);
 		border-radius: 6px;
 		background: var(--surface, #fff);
-		color: var(--text, #555);
+		color: var(--accent, #a05);
 		font-size: 0.8em;
-		width: 1.8em;
-		height: 1.8em;
+		width: 1.9em;
+		height: 1.9em;
 		cursor: pointer;
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		padding: 0;
 	}
-	.tomboy-editor :global(.tomboy-music-play-btn:hover) {
+	.tomboy-editor :global(.music-pl-play-btn:hover) {
 		background: var(--accent-soft, #faf2f7);
 	}
 

@@ -21,6 +21,8 @@ export interface MusicTrack {
 }
 export interface MusicPlaylist {
 	label: string;
+	/** 헤더(`플레이리스트:` 문단)의 doc 시작 pos — 헤더 우측 ▶(전체 재생) 버튼 앵커. */
+	headerPos: number;
 	tracks: MusicTrack[];
 }
 export interface MusicNote {
@@ -130,6 +132,7 @@ export function parseMusicNote(doc: PMNode): MusicNote {
 	if (!isMusic) return { isMusic, name, playlists, flatQueue: [] };
 
 	let pendingLabel: string | null = null;
+	let pendingHeaderPos = -1;
 	doc.forEach((block, offset) => {
 		const blockType = block.type.name;
 		if (blockType === 'paragraph') {
@@ -144,6 +147,7 @@ export function parseMusicNote(doc: PMNode): MusicNote {
 			const first = block.firstChild;
 			const enabled = first?.type.name === 'inlineCheckbox' ? first.attrs.checked === true : true;
 			pendingLabel = enabled ? t.slice(PLAYLIST_PREFIX.length).trim() : null;
+			pendingHeaderPos = enabled ? offset : -1;
 			return;
 		}
 		if (isListNode(block) && pendingLabel !== null) {
@@ -157,11 +161,13 @@ export function parseMusicNote(doc: PMNode): MusicNote {
 					tracks.push(track);
 				}
 			});
-			playlists.push({ label: pendingLabel, tracks });
+			playlists.push({ label: pendingLabel, headerPos: pendingHeaderPos, tracks });
 			pendingLabel = null;
+			pendingHeaderPos = -1;
 			return;
 		}
 		pendingLabel = null;
+		pendingHeaderPos = -1;
 	});
 
 	const flatQueue = playlists.flatMap((p) => p.tracks);

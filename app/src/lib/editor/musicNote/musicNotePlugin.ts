@@ -4,18 +4,14 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { parseMusicNote } from '$lib/music/parseMusicNote.js';
 import { musicPlayer } from '$lib/music/musicPlayer.svelte.js';
 import { resumePlaybackFromGesture } from '$lib/music/musicAudio.svelte.js';
-import { modKeys } from '$lib/desktop/modKeys.svelte.js';
 
 export const musicNotePluginKey = new PluginKey('tomboyMusicNote');
 
 export interface BuildOpts {
 	currentUrl: string | null;
 	isPlaying: boolean;
-	ctrlActive: boolean;
+	/** 트랙 재생 — index 는 flatQueue 기준. (헤더 ▶ 는 그 플레이리스트 첫 트랙 index 로 호출.) */
 	onPlay: (index: number) => void;
-	/** 현재 선택(커서) 범위 — 트랙 li 안이면 그 트랙은 원문 노출(편집용). */
-	selFrom?: number;
-	selTo?: number;
 }
 
 function eqWidget(playing: boolean): HTMLElement {
@@ -27,15 +23,57 @@ function eqWidget(playing: boolean): HTMLElement {
 	return span;
 }
 
+/** pointerdown+mousedown+click 을 모두 삼켜 탭이 contenteditable 로 새지 않게 한다.
+ *  (mousedown 만으론 모바일에서 캐럿/키보드를 못 막는다 — pointerdown 까지 필요.) */
+function swallowGesture(el: HTMLElement, onClick: () => void): void {
+	const swallow = (e: Event) => {
+		e.preventDefault();
+		e.stopPropagation();
+	};
+	el.addEventListener('pointerdown', swallow);
+	el.addEventListener('mousedown', swallow);
+	el.addEventListener('click', (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		onClick();
+		// 제스처 안에서 동기 재생 — 모바일 자동재생 차단 회피.
+		if (musicPlayer.isPlaying) resumePlaybackFromGesture();
+	});
+}
+
 /**
- * 플레이리스트 모드 트랙의 "제목만" 표시 위젯 — 글머리표 자리에 마커 + 곡 제목.
- * 마커: 현재 트랙이면 이퀄라이저(재생/일시정지), 아니면 ♪.
- * 실제 URL/원문 텍스트는 music-row-hide 데코로 숨겨지고, 이 위젯이 display 를 보여준다.
+ * Pure logic for what tapping a track row should do.
+ * - 현재 곡이면 재생/일시정지 토글.
+ * - 아니면 onPlay(index) 로 그 곡 재생.
+ * Extracted so it can be unit-tested without touching DOM or PM internals.
  */
-function trackNameWidget(display: string, isCurrent: boolean, isPlaying: boolean): HTMLElement {
+export function handleTrackButtonClick(opts: BuildOpts, index: number, isCurrent: boolean): void {
+	if (isCurrent) {
+		musicPlayer.toggle();
+	} else {
+		opts.onPlay(index);
+	}
+}
+
+/**
+ * 플레이리스트 모드 트랙 행 전체를 덮는 "재생 버튼" 위젯 — 글머리표 자리에 마커 + 곡 제목.
+ * 행 어디를 탭해도 재생되도록 행 폭을 채운다(CSS). 마커: 현재 트랙이면 이퀄라이저, 아니면 ♪.
+ * 실제 URL/원문 텍스트는 music-row-hide 데코로 숨고, 이 위젯이 display 를 보여준다.
+ * 체크 모드에선 li 가 contenteditable=false 라 빈 영역을 탭해도 캐럿이 잡히지 않는다.
+ */
+function trackRowButton(
+	opts: BuildOpts,
+	display: string,
+	index: number,
+	isCurrent: boolean,
+	isPlaying: boolean
+): HTMLElement {
 	const span = document.createElement('span');
 	span.className = 'music-track-name';
 	span.contentEditable = 'false';
+	span.setAttribute('role', 'button');
+	span.setAttribute('tabindex', '0');
+	span.setAttribute('aria-label', `${display} 재생`);
 	const mark = document.createElement('span');
 	mark.className = 'music-track-mark';
 	if (isCurrent) {
@@ -48,59 +86,72 @@ function trackNameWidget(display: string, isCurrent: boolean, isPlaying: boolean
 	label.className = 'music-track-label';
 	label.textContent = display;
 	span.appendChild(label);
+	swallowGesture(span, () => handleTrackButtonClick(opts, index, isCurrent));
 	return span;
 }
 
-/**
- * Pure logic for what clicking a track play button should do.
- * Extracted so it can be unit-tested without touching DOM or PM internals.
- * - If the track is already current (isCurrent), toggle playback.
- * - Otherwise, invoke onPlay(index).
- */
-export function handleTrackButtonClick(opts: BuildOpts, index: number, isCurrent: boolean): void {
-	if (isCurrent) {
-		musicPlayer.toggle();
-	} else {
-		opts.onPlay(index);
-	}
+/** 플레이리스트 헤더 우측 ▶ — 그 플레이리스트를 첫 곡부터 재생. */
+function playlistPlayButton(opts: BuildOpts, startIndex: number): HTMLElement {
+	const btn = document.createElement('button');
+	btn.type = 'button';
+	btn.className = 'music-pl-play-btn';
+	btn.contentEditable = 'false';
+	btn.setAttribute('data-no-drag', '');
+	btn.setAttribute('aria-label', '플레이리스트 재생');
+	btn.textContent = '▶';
+	swallowGesture(btn, () => opts.onPlay(startIndex));
+	return btn;
 }
 
 export function buildMusicDecorations(doc: PMNode, opts: BuildOpts): DecorationSet {
-	const { flatQueue, isMusic } = parseMusicNote(doc);
-	if (!isMusic) return DecorationSet.empty;
+	const parsed = parseMusicNote(doc);
+	if (!parsed.isMusic) return DecorationSet.empty;
 	const decos: Decoration[] = [];
 
-	// 제목(첫 블록) 아래에 떠 있는 컨트롤 패널 자리 확보. 패널이 자기 높이를
-	// --music-reserve 로 알려주면 margin-bottom 으로 비운다(트랙 유무와 무관 —
-	// 빈 음악 노트에도 패널은 항상 뜬다).
-	const title = doc.firstChild;
-	if (title) decos.push(Decoration.node(0, title.nodeSize, { class: 'music-title-block' }));
+	// flatQueue 인덱스를 플레이리스트 순서대로 따라가며 데코를 만든다.
+	let flatIndex = 0;
+	for (const pl of parsed.playlists) {
+		const firstIndex = flatIndex;
 
-	flatQueue.forEach((track, index) => {
-		const li = doc.nodeAt(track.liPos);
-		if (!li || li.type.name !== 'listItem') return;
-		const liEnd = track.liPos + li.nodeSize;
-		const isCurrent = opts.currentUrl !== null && track.url === opts.currentUrl;
+		// 헤더 우측 ▶(전체 재생) — 곡이 하나라도 있을 때만.
+		if (pl.tracks.length > 0 && pl.headerPos >= 0) {
+			const header = doc.nodeAt(pl.headerPos);
+			if (header && header.isTextblock) {
+				// 헤더 문단을 relative 로 만들어 우측 절대배치 버튼의 기준을 잡는다.
+				decos.push(
+					Decoration.node(pl.headerPos, pl.headerPos + header.nodeSize, { class: 'music-pl-header' })
+				);
+				// 문단 끝 인라인 위치에 위젯(절대배치라 시각 위치는 CSS 가 결정).
+				const anchor = pl.headerPos + header.nodeSize - 1;
+				decos.push(
+					Decoration.widget(anchor, () => playlistPlayButton(opts, firstIndex), {
+						side: 1,
+						key: `music-pl-play:${pl.headerPos}:${firstIndex}`,
+						ignoreSelection: true
+					})
+				);
+			}
+		}
 
-		// 커서/선택이 이 트랙 li 안이면 "편집 중" — 원문(URL)을 그대로 노출하고
-		// 제목 위젯/숨김 데코를 생략해 자유롭게 고칠 수 있게 한다. PM 은 selection
-		// 변경마다 decorations 를 재계산하므로 진입/이탈 시 자동 토글된다.
-		const editing =
-			opts.selFrom != null && opts.selTo != null && opts.selTo > track.liPos && opts.selFrom < liEnd;
+		for (const track of pl.tracks) {
+			const index = flatIndex++;
+			const li = doc.nodeAt(track.liPos);
+			if (!li || li.type.name !== 'listItem') continue;
+			const liEnd = track.liPos + li.nodeSize;
+			const isCurrent = opts.currentUrl !== null && track.url === opts.currentUrl;
 
-		// 행 스타일(글머리표 제거 + 현재곡 강조)은 편집 중에도 유지.
-		// ctrl 일 때만 우측에 ▶ 버튼이 떠 텍스트가 underlap 안 되게 패딩 확보.
-		const rowClasses = ['music-track'];
-		if (isCurrent) rowClasses.push('music-track--playing');
-		if (opts.ctrlActive) rowClasses.push('music-track--ctrl');
-		decos.push(Decoration.node(track.liPos, liEnd, { class: rowClasses.join(' ') }));
+			// 행: 글머리표 제거 + 현재곡 강조 + 비편집(contenteditable=false). 체크 모드에선
+			// 곡 행에 커서가 갈 수 없고 탭하면 재생된다 — 편집은 체크박스를 끄면(텍스트 모드,
+			// 데코 자체가 사라짐) 가능. 빈 영역 탭도 캐럿이 안 잡히게 li 전체를 비편집으로.
+			const rowClasses = ['music-track', 'music-track--play'];
+			if (isCurrent) rowClasses.push('music-track--playing');
+			decos.push(
+				Decoration.node(track.liPos, liEnd, {
+					class: rowClasses.join(' '),
+					contenteditable: 'false'
+				})
+			);
 
-		// 인라인 위젯 앵커. liPos+1 은 <li>/<p> 블록 경계라 위젯이 제목 위 별도 줄에
-		// 렌더되어 빈 줄이 생긴다. 첫 문단(textblock) 안쪽(liPos+2)에 두어 글머리표
-		// 자리에 인라인으로 붙게 한다.
-		const inlinePos = li.firstChild?.isTextblock ? track.liPos + 2 : track.liPos + 1;
-
-		if (!editing) {
 			// 원문 숨김: 첫 문단의 인라인 텍스트(URL 또는 제목) + 중첩 리스트(URL 서브아이템).
 			const first = li.firstChild;
 			if (first?.isTextblock && first.content.size > 0) {
@@ -111,56 +162,29 @@ export function buildMusicDecorations(doc: PMNode, opts: BuildOpts): DecorationS
 			li.forEach((child) => {
 				const name = child.type.name;
 				if (name === 'bulletList' || name === 'orderedList') {
-					decos.push(Decoration.node(childPos, childPos + child.nodeSize, { class: 'music-row-hide' }));
+					decos.push(
+						Decoration.node(childPos, childPos + child.nodeSize, { class: 'music-row-hide' })
+					);
 				}
 				childPos += child.nodeSize;
 			});
 
-			// 제목 위젯(마커 + display).
-			decos.push(
-				Decoration.widget(inlinePos, () => trackNameWidget(track.display, isCurrent, opts.isPlaying), {
-					side: -1,
-					key: `music-name:${track.url}:${isCurrent}:${opts.isPlaying}`,
-					ignoreSelection: true
-				})
-			);
-		}
-
-		if (opts.ctrlActive) {
-			const playingNow = isCurrent && opts.isPlaying;
+			// 인라인 위젯 앵커. liPos+1 은 <li>/<p> 경계라 위젯이 별도 줄로 렌더돼 빈 줄이
+			// 생긴다. 첫 문단(textblock) 안쪽(liPos+2)에 두어 글머리표 자리에 붙게 한다.
+			const inlinePos = li.firstChild?.isTextblock ? track.liPos + 2 : track.liPos + 1;
 			decos.push(
 				Decoration.widget(
 					inlinePos,
-					() => {
-						const btn = document.createElement('button');
-						btn.type = 'button';
-						btn.className = 'tomboy-music-play-btn';
-						btn.contentEditable = 'false';
-						btn.setAttribute('data-no-drag', '');
-						btn.textContent = playingNow ? '⏸' : '▶';
-						// pointerdown 까지 막아야 터치에서 탭이 contenteditable 로
-						// 새어 캐럿이 잡히고 키보드가 뜨는 걸 막는다(mousedown 만으론
-						// 모바일에서 포커스를 못 막음).
-						const swallow = (e: Event) => {
-							e.preventDefault();
-							e.stopPropagation();
-						};
-						btn.addEventListener('pointerdown', swallow);
-						btn.addEventListener('mousedown', swallow);
-						btn.addEventListener('click', (e) => {
-							e.preventDefault();
-							e.stopPropagation();
-							handleTrackButtonClick(opts, index, isCurrent);
-							// 제스처 안에서 동기 재생 — 모바일 자동재생 차단 회피.
-							if (musicPlayer.isPlaying) resumePlaybackFromGesture();
-						});
-						return btn;
-					},
-					{ side: -1, key: `music-play:${index}:${playingNow}`, ignoreSelection: true }
+					() => trackRowButton(opts, track.display, index, isCurrent, opts.isPlaying),
+					{
+						side: -1,
+						key: `music-name:${track.url}:${isCurrent}:${opts.isPlaying}`,
+						ignoreSelection: true
+					}
 				)
 			);
 		}
-	});
+	}
 
 	return DecorationSet.create(doc, decos);
 }
@@ -175,15 +199,12 @@ export function createMusicNotePlugin(getGuid: () => string = () => ''): Plugin 
 				return buildMusicDecorations(state.doc, {
 					currentUrl: musicPlayer.currentTrack?.url ?? null,
 					isPlaying: musicPlayer.isPlaying,
-					ctrlActive: modKeys.ctrl,
-					// 트랙 재생 = 이 노트를 활성 큐로 만들고 재생. 노트를 여는 것만으로는
+					// 트랙/플레이리스트 재생 = 이 노트를 활성 큐로 만들고 재생. 노트를 여는 것만으론
 					// 큐가 바뀌지 않으므로(글로벌 now-playing 보존) 여기서 명시적으로 setQueue.
 					onPlay: (index) => {
 						musicPlayer.setQueue(getGuid(), parsed.flatQueue, parsed.name);
 						musicPlayer.play(index);
-					},
-					selFrom: state.selection.from,
-					selTo: state.selection.to
+					}
 				});
 			}
 		}
