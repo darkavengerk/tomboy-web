@@ -91,6 +91,17 @@ describe('parseMusicNote — track extraction', () => {
 		expect(note.playlists.map((p) => p.label)).toEqual(['아침', '저녁']);
 		expect(note.flatQueue.map((t) => t.url)).toEqual(['https://h/1.mp3', 'https://h/2.mp3']);
 	});
+	it('각 플레이리스트에 헤더 문단 pos(headerPos) 가 부착된다', () => {
+		const doc = makeEditor(
+			'<p>음악::x</p><p>플레이리스트: 아침</p><ul><li><p>https://h/1.mp3</p></li></ul>'
+		).state.doc;
+		const note = parseMusicNote(doc);
+		const hp = note.playlists[0].headerPos;
+		// headerPos 가 가리키는 노드는 '플레이리스트:' 로 시작하는 문단이어야 한다.
+		const header = doc.nodeAt(hp);
+		expect(header?.type.name).toBe('paragraph');
+		expect(header?.textContent.trim().startsWith('플레이리스트:')).toBe(true);
+	});
 	it('각 트랙에 소속 플레이리스트 label 이 부착된다', () => {
 		const note = parseMusicNote(
 			makeEditor('<p>음악::x</p><p>플레이리스트: 아침</p><ul><li><p>https://h/1.mp3</p></li></ul><p>플레이리스트: 저녁</p><ul><li><p>https://h/2.mp3</p></li></ul>').state.doc
