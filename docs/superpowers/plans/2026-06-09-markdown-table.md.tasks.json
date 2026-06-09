@@ -4,55 +4,55 @@
     {
       "id": 1,
       "subject": "Task 1: 마크다운 파싱 프리미티브 (parseTable.ts)",
-      "status": "pending",
+      "status": "completed",
       "description": "Add TableFormat 'markdown' + Alignment, isSeparatorRow/parseAlignments/stripOuterPipeInlines/markdownRowLayout/cellCharRanges, markdown branches in parseTableRows/parseInlineCells. Tests in parseTableMarkdown.test.ts. Verify: cd app && npm run test -- parseTable"
     },
     {
       "id": 2,
       "subject": "Task 2: 마크다운 영역 탐지 (findTableRegions.ts)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "Add align?/separatorParaRange? to TableRegion; findMarkdownTableRegions(doc) with fencedParaIndices exclusion. Tests in findMarkdownTableRegions.test.ts. Verify: cd app && npm run test -- findMarkdownTableRegions findTableRegions"
     },
     {
       "id": 3,
       "subject": "Task 3: 마크다운 셀 편집 범위 (cellEdit.ts)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1, 2],
       "description": "Rewrite findCellEditRange to delegate to cellCharRanges (all formats); markdown outer-pipe support, csv/tsv unchanged. Tests in cellEditMarkdown.test.ts. Verify: cd app && npm run test -- cellEdit tableBlockPlugin"
     },
     {
       "id": 4,
       "subject": "Task 4: 마크다운 행/열 구조 편집 (tableOps.ts)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1, 2],
       "description": "markdown branches in appendRowOp/appendColOp/deleteColOp with separator-row sync. Tests in tableOpsMarkdown.test.ts. Verify: cd app && npm run test -- tableOps"
     },
     {
       "id": 5,
       "subject": "Task 5: 플러그인 통합 — region 병합 + 정렬 렌더 (tableBlockPlugin.ts)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [2, 3, 4],
       "description": "rebuildState merges fence + markdown regions; fillCell applies region.align text-align; regionContentHash folds in align. Tests in tableBlockMarkdown.test.ts. Verify: cd app && npm run test -- tableBlock tableCellRender"
     },
     {
       "id": 6,
       "subject": "Task 6: Alt+T 빈 표 삽입 (insertTable.ts + TomboyEditor.svelte)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [2],
       "description": "Create insertTable.ts (empty 2x2 markdown table); wire Alt+KeyT in TomboyEditor.svelte. Tests in insertTable.test.ts. Verify: cd app && npm run test -- insertTable && npm run check"
     },
     {
       "id": 7,
       "subject": "Task 7: 가이드 카드 (설정 → 가이드 → 에디터)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [5, 6],
       "description": "Add markdown table guide-card to settings/+page.svelte editor subtab. Verify: cd app && npm run check"
     },
     {
       "id": 8,
       "subject": "Task 8: 전체 회귀 + 수동 검증",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [5, 6, 7],
       "description": "Full test suite + check + dev manual verification. Verify: cd app && npm run test && npm run check"
     }
