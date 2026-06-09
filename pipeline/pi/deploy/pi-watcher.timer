@@ -1,9 +1,13 @@
 [Unit]
-Description=Run pi-watcher every 5 minutes
+Description=Run pi-watcher every 1 minute
+# rM diary-push.timer가 1분 주기로 inbox에 rsync 한다. inbox watcher가
+# 5분 주기면 가필이 인덱스에 최대 5분 지연으로 보여 s1의 mtime-기반
+# 재처리가 그만큼 늦어진다. 디바이스-측 사이클과 맞춘다. scan_inbox는
+# `glob *.metadata + stat` 한 사이클이라 1분 주기여도 사실상 무비용.
 
 [Timer]
 OnBootSec=30s
-OnUnitActiveSec=5min
+OnUnitActiveSec=1min
 Unit=pi-watcher.service
 
 [Install]
