@@ -40,6 +40,7 @@ function makeFakeEditor({ empty, caretBottom, focused = true }: FakeOpts) {
 }
 
 let scrollBy: ReturnType<typeof vi.fn>;
+let vvListeners: string[];
 
 beforeEach(() => {
 	scrollBy = vi.fn();
@@ -56,13 +57,15 @@ beforeEach(() => {
 		getPropertyValue: (name: string) =>
 			name === "--toolbar-height" ? "60px" : "",
 	}));
-	vi.stubGlobal("visualViewport", { offsetTop: 0, height: 800 });
-	(window as unknown as { visualViewport: unknown }).visualViewport = {
+	vvListeners = [];
+	const vv = {
 		offsetTop: 0,
 		height: 800,
-		addEventListener: () => {},
+		addEventListener: (type: string) => vvListeners.push(type),
 		removeEventListener: () => {},
 	};
+	vi.stubGlobal("visualViewport", vv);
+	(window as unknown as { visualViewport: unknown }).visualViewport = vv;
 });
 
 afterEach(() => {
@@ -93,5 +96,16 @@ describe("installCursorVisibility — selection-mode regression", () => {
 		installCursorVisibility(editor, { mode: "window" });
 		editor.fire("selectionUpdate");
 		expect(scrollBy).not.toHaveBeenCalled();
+	});
+
+	it("does NOT subscribe to visualViewport scroll/resize (would fight the user's own scrolling)", () => {
+		// A viewport scroll never moves the caret. Re-asserting the caret into
+		// view on every scroll tick traps the user at the caret — scrolling up
+		// (keyboard open) snaps back down, and selection drags oscillate against
+		// the OS auto-scroll. The feature must be edit-driven only.
+		const editor = makeFakeEditor({ empty: true, caretBottom: 790 });
+		installCursorVisibility(editor, { mode: "window" });
+		expect(vvListeners).not.toContain("scroll");
+		expect(vvListeners).not.toContain("resize");
 	});
 });
