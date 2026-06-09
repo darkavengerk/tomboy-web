@@ -23,4 +23,8 @@ describe('sunoImportPlugin', () => {
 		make(`<p>딴 노트</p><p>SUNO:${SUNO}</p>`);
 		expect(btnCount()).toBe(0);
 	});
+	it('미가져온 두 줄 → 버튼 두 개', () => {
+		make(`<p>음악::x</p><p>SUNO:${SUNO}</p><p>SUNO:${SUNO}2</p>`);
+		expect(btnCount()).toBe(2);
+	});
 });

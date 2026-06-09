@@ -40,7 +40,7 @@ function buildDecorations(doc: PMNode): DecorationSet {
 	const decos = lines.map((l) => {
 		const node = doc.nodeAt(l.paraPos);
 		const end = l.paraPos + (node?.nodeSize ?? 2) - 1; // 단락 textblock 내부 끝
-		return Decoration.widget(end, (view) => renderButton(view, l.url), { side: 1, key: `suno-import:${l.url}` });
+		return Decoration.widget(end, (view) => renderButton(view, l.url), { side: 1, key: `suno-import:${l.paraPos}:${l.url}` });
 	});
 	return DecorationSet.create(doc, decos);
 }
