@@ -7,9 +7,6 @@ import {
 export type RemarkableUploadErrorKind =
   | 'not_configured'
   | 'unauthorized'
-  | 'ssh_connect_failed'
-  | 'notebook_not_found'
-  | 'rsync_failed'
   | 'automation_unreachable'
   | 'upstream_error'
   | 'network'
@@ -22,20 +19,11 @@ export class RemarkableUploadError extends Error {
 }
 
 export interface RemarkableUploadStatus {
-  step: 'ssh_connect' | 'list_pages' | 'rsync_pages' | 'trigger_pipeline';
-  notebook?: string;
-  total?: number;
-  new?: number;
-}
-
-export interface RemarkableUploadPage {
-  uuid: string;
-  date: string; // YYYY-MM-DD
+  step: 'trigger_pipeline';
 }
 
 export interface RemarkableUploadResult {
   notebook: string;
-  pages: RemarkableUploadPage[];
 }
 
 export interface RemarkableUploadOpts {

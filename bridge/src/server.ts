@@ -166,13 +166,6 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 	if (url === '/remarkable/upload' && req.method === 'POST') {
 		await handleRemarkableUpload(req, res, {
 			secret: SECRET,
-			ssh: {
-				host: process.env.REMARKABLE_SSH_HOST ?? '',
-				user: process.env.REMARKABLE_SSH_USER ?? 'root',
-				keyPath: process.env.REMARKABLE_SSH_KEY_PATH ?? ''
-			},
-			inboxDir: process.env.REMARKABLE_INBOX_DIR ?? '/home/diary-sync/diary/inbox',
-			defaultNotebook: process.env.REMARKABLE_NOTEBOOK_NAME ?? 'Diary',
 			automationServiceUrl: AUTOMATION_SERVICE_URL
 		});
 		return;
