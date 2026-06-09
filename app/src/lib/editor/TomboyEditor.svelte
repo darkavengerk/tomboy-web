@@ -41,6 +41,7 @@ import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 import { createAutomationNotePlugin } from "./automationNote/automationNotePlugin.js";
 import { TomboyMusicNote } from "./musicNote/index.js";
 import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
+import { TomboySunoImport } from "./sunoNote/index.js";
 	import {
 		createSendListItemPlugin,
 		sendListItemPluginKey,
@@ -500,6 +501,7 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 				}),
 				TomboyMusicNote.configure({ getGuid: () => currentGuid ?? "" }),
 				TomboyMusicExtractNote,
+				TomboySunoImport,
 				Extension.create({
 					name: "tomboySendListItem",
 					addProseMirrorPlugins() {
@@ -2158,6 +2160,24 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 		cursor: pointer;
 	}
 	.tomboy-editor :global(.tomboy-music-extract-run:disabled) {
+		opacity: 0.6;
+		cursor: default;
+	}
+	.tomboy-editor :global(.tomboy-suno-import) {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3em;
+		margin-left: 0.5em;
+		padding: 0.1rem 0.55rem;
+		font-size: 0.8rem;
+		vertical-align: middle;
+		border: 1px solid var(--border, #ddd);
+		border-radius: 6px;
+		background: var(--surface, #fff);
+		color: var(--accent, #a05);
+		cursor: pointer;
+	}
+	.tomboy-editor :global(.tomboy-suno-import:disabled) {
 		opacity: 0.6;
 		cursor: default;
 	}
