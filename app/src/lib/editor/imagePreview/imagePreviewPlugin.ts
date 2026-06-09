@@ -24,6 +24,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { isImageUrl } from './isImageUrl.js';
 import { imageViewer } from '$lib/stores/imageViewer.svelte.js';
+import { imageActionMenu } from '$lib/stores/imageActionMenu.svelte.js';
 import * as pool from '../../imageCache/objectUrlPool.js';
 import * as imageCache from '../../imageCache/imageCache.js';
 
@@ -158,13 +159,69 @@ export function renderImagePreview(rangeOrHref: ImageUrlRange | string): HTMLEle
 		e.preventDefault();
 	});
 
+	// A long-press (mobile) that fired the action menu also synthesizes a
+	// click on touchend — suppress that one click so the viewer doesn't also
+	// pop open behind the menu.
+	let suppressNextClick = false;
+
 	// Tap / click opens a full-screen image viewer modal (see
 	// lib/components/ImageViewerModal.svelte mounted at the app root).
 	img.addEventListener('click', (e) => {
 		e.preventDefault();
 		e.stopPropagation();
+		if (suppressNextClick) {
+			suppressNextClick = false;
+			return;
+		}
 		imageViewer.open(range.href);
 	});
+
+	// Right-click (desktop) → image action menu (이미지 복사 / 주소 복사).
+	img.addEventListener('contextmenu', (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		imageActionMenu.open(e.clientX, e.clientY, range.href);
+	});
+
+	// Long-press (mobile) → same action menu. Native touch devices don't have
+	// a reliable contextmenu event, so detect a ~500ms press with little
+	// movement and open the menu at the touch point.
+	let pressTimer: ReturnType<typeof setTimeout> | null = null;
+	let startX = 0;
+	let startY = 0;
+	const LONG_PRESS_MS = 500;
+	const MOVE_CANCEL_PX = 10;
+
+	const cancelPress = () => {
+		if (pressTimer !== null) {
+			clearTimeout(pressTimer);
+			pressTimer = null;
+		}
+	};
+
+	img.addEventListener('touchstart', (e) => {
+		const t = e.touches[0];
+		if (!t) return;
+		startX = t.clientX;
+		startY = t.clientY;
+		cancelPress();
+		pressTimer = setTimeout(() => {
+			pressTimer = null;
+			suppressNextClick = true;
+			imageActionMenu.open(startX, startY, range.href);
+		}, LONG_PRESS_MS);
+	}, { passive: true });
+
+	img.addEventListener('touchmove', (e) => {
+		const t = e.touches[0];
+		if (!t) return;
+		if (Math.abs(t.clientX - startX) > MOVE_CANCEL_PX || Math.abs(t.clientY - startY) > MOVE_CANCEL_PX) {
+			cancelPress();
+		}
+	}, { passive: true });
+
+	img.addEventListener('touchend', cancelPress);
+	img.addEventListener('touchcancel', cancelPress);
 
 	return img;
 }
