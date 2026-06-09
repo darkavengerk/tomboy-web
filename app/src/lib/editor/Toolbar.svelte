@@ -82,6 +82,12 @@
 		if (!drawerOpen) showSizeMenu = false;
 	}
 
+	// Ctrl+Z (undo) surfaced as a dock button — mobile has no physical Ctrl.
+	// Operates on view state, so we don't focus (avoids raising the keyboard).
+	function undo() {
+		editor?.commands.undo();
+	}
+
 	// --- Mobile shortcut palette helpers ---
 	// When the mobile Ctrl-lock or Alt-lock is on, the dock surfaces the
 	// available shortcut keys as tappable buttons. Each button calls the
@@ -288,6 +294,18 @@
 				<span class="mod-dot" aria-hidden="true"></span>
 			</button>
 		</div>
+
+		<button
+			class="undo-toggle"
+			onclick={undo}
+			title="실행 취소 (Ctrl+Z)"
+			aria-label="실행 취소"
+		>
+			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<path d="M3 7v6h6" />
+				<path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+			</svg>
+		</button>
 
 		{#if onfind}
 			<button
@@ -571,7 +589,8 @@
 		color: #495057;
 	}
 
-	.find-toggle {
+	.find-toggle,
+	.undo-toggle {
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
@@ -586,7 +605,8 @@
 		-webkit-tap-highlight-color: transparent;
 	}
 
-	.find-toggle:active {
+	.find-toggle:active,
+	.undo-toggle:active {
 		background: #dee2e6;
 	}
 </style>
