@@ -4,48 +4,48 @@
     {
       "id": 1,
       "subject": "Task 1: 브릿지 Suno fetch + parse (bridge/src/suno.ts)",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Suno 공개 재생목록 URL → { label, tracks:[{url,title}], total, truncated }. JSON API 1차 + HTML 임베드 JSON 2차 폴백, 주입형 fetch.\n\n**Files:** Create bridge/src/suno.ts, bridge/src/suno.test.ts\n\n**Verify:** cd bridge && npm test\n\n```json:metadata\n{\"files\": [\"bridge/src/suno.ts\", \"bridge/src/suno.test.ts\"], \"verifyCommand\": \"cd bridge && npm test\", \"acceptanceCriteria\": [\"id 추출 + bad_request throw\", \"JSON API 클립 매핑 + label\", \"HTML 폴백 audio_url/title 추출\", \"maxPlaylist 잘림 truncated\", \"비-http audio_url 제외\"]}\n```"
     },
     {
       "id": 2,
       "subject": "Task 2: 브릿지 /music/suno 라우트 + 핸들러",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "**Goal:** POST /music/suno (Bearer) → body {url} 검증 후 fetchSunoPlaylist 호출, 200 JSON 응답. 데스크탑 미경유.\n\n**Files:** Modify bridge/src/music.ts (handleSunoPlaylist), bridge/src/server.ts (route + SUNO_MAX_PLAYLIST), bridge/src/music.test.ts\n\n**Verify:** cd bridge && npm test\n\n```json:metadata\n{\"files\": [\"bridge/src/music.ts\", \"bridge/src/server.ts\", \"bridge/src/music.test.ts\"], \"verifyCommand\": \"cd bridge && npm test\", \"acceptanceCriteria\": [\"401 no Bearer / 400 missing url no-fetch\", \"200 returns fetchSunoPlaylist result\", \"bad_request→400 else→502\"]}\n```"
     },
     {
       "id": 3,
       "subject": "Task 3: parseSunoLine.ts — SUNO: 줄 탐지",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** 음악:: 노트 doc에서 SUNO:<url> 단락 → { url, paraPos, alreadyImported }.\n\n**Files:** Create app/src/lib/music/parseSunoLine.ts, app/tests/unit/music/parseSunoLine.test.ts\n\n**Verify:** cd app && npx vitest run tests/unit/music/parseSunoLine.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/music/parseSunoLine.ts\", \"app/tests/unit/music/parseSunoLine.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/music/parseSunoLine.test.ts\", \"acceptanceCriteria\": [\"url 추출 대소문자/공백 허용\", \"다음 블록 헤더→alreadyImported\", \"비-음악 노트 빈 배열\", \"matchSunoLine 재사용\"]}\n```"
     },
     {
       "id": 4,
       "subject": "Task 4: writeSunoPlaylistBlock.ts — 패턴 A 블록 삽입",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** SUNO: 줄 아래에 [x]플레이리스트: 헤더 + 패턴 A(제목+중첩 URL) 트랙 리스트 삽입.\n\n**Files:** Create app/src/lib/music/writeSunoPlaylistBlock.ts, app/tests/unit/music/writeSunoPlaylistBlock.test.ts, app/tests/unit/music/sunoBlockRoundtrip.test.ts\n\n**Verify:** cd app && npx vitest run tests/unit/music/writeSunoPlaylistBlock.test.ts tests/unit/music/sunoBlockRoundtrip.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/music/writeSunoPlaylistBlock.ts\", \"app/tests/unit/music/writeSunoPlaylistBlock.test.ts\", \"app/tests/unit/music/sunoBlockRoundtrip.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/music/writeSunoPlaylistBlock.test.ts tests/unit/music/sunoBlockRoundtrip.test.ts\", \"acceptanceCriteria\": [\"헤더 checked:true + label\", \"패턴A 제목+중첩 URL\", \"parseMusicNote display=제목 url=audio_url\", \"라운드트립 href 보존\", \"빈/파괴/이미헤더 false\"]}\n```"
     },
     {
       "id": 5,
       "subject": "Task 5: sunoClient.ts — 브릿지 /music/suno 클라이언트",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** fetchSunoPlaylist({url}) → POST /music/suno, SunoError kind, 빈 tracks는 empty.\n\n**Files:** Create app/src/lib/music/sunoClient.ts, app/tests/unit/music/sunoClient.test.ts\n\n**Verify:** cd app && npx vitest run tests/unit/music/sunoClient.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/music/sunoClient.ts\", \"app/tests/unit/music/sunoClient.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/music/sunoClient.test.ts\", \"acceptanceCriteria\": [\"not_configured 미설정\", \"status→kind 매핑 + network\", \"빈 tracks→empty\", \"정상 매핑 + 불량 필터\"]}\n```"
     },
     {
       "id": 6,
       "subject": "Task 6: sunoNote 플러그인 + 클릭 핸들러 + 에디터 등록 + CSS",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [3, 4, 5],
       "description": "**Goal:** 음악:: 노트 미가져온 SUNO: 줄 우측 가져오기 버튼 → fetch→write+토스트. TomboySunoImport 등록.\n\n**Files:** Create app/src/lib/editor/sunoNote/{sunoImportPlugin,runSunoImportClick,index}.ts; Modify app/src/lib/editor/TomboyEditor.svelte; Test app/tests/unit/music/sunoImportPlugin.test.ts\n\n**Verify:** cd app && npx vitest run tests/unit/music/sunoImportPlugin.test.ts && cd app && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/sunoNote/sunoImportPlugin.ts\", \"app/src/lib/editor/sunoNote/runSunoImportClick.ts\", \"app/src/lib/editor/sunoNote/index.ts\", \"app/src/lib/editor/TomboyEditor.svelte\", \"app/tests/unit/music/sunoImportPlugin.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/music/sunoImportPlugin.test.ts && cd app && npm run check\", \"acceptanceCriteria\": [\"미가져온 줄 1버튼 / 이미·비음악 0\", \"click→fetch→write+한국어 토스트\", \"TomboySunoImport 등록\", \"pointerdown/mousedown swallow\"]}\n```"
     },
     {
       "id": 7,
       "subject": "Task 7: 설정 가이드 카드 갱신",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [6],
       "description": "**Goal:** 음악 노트 가이드 카드의 'SUNO 향후 추가 예정' 문구를 실제 사용법으로 교체.\n\n**Files:** Modify app/src/routes/settings/+page.svelte:1806-1807\n\n**Verify:** cd app && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"SUNO:<url> + 가져오기 사용법 노출\", \"직접링크/삭제시 재생불가/브릿지 선행/재가져오기/100곡\", \"npm run check 통과\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-06-09"
+  "lastUpdated": "2026-06-10"
 }
