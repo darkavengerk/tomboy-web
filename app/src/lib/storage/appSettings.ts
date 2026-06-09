@@ -216,3 +216,63 @@ export async function getClaudeDefaultEffort(): Promise<string> {
 export async function setClaudeDefaultEffort(value: string): Promise<void> {
 	await setSetting(CLAUDE_DEFAULT_EFFORT, value);
 }
+
+// ── reMarkable send-PDF defaults ──────────────────────────────────────
+//
+// 노트 → 리마커블 PDF 송출 시 사용할 별칭별 기본 폴더. folderName 은 사용자
+// 표시 라벨, folderUuid 는 브릿지가 `.metadata` 스캔으로 찾아준 캐시 값.
+// 폴더 이동/이름 변경으로 uuid 가 stale 해지면 송출 시 브릿지가 folderName
+// 으로 재해석한다. 별칭이 둘 이상일 수 있어 Record<alias, …> 모양으로 저장.
+
+const REMARKABLE_SEND_DEFAULTS = 'remarkableSendDefaults';
+
+export interface RemarkableSendDefault {
+	folderName: string;
+	folderUuid: string;
+}
+
+function sanitizeRemarkableSendDefault(v: unknown): RemarkableSendDefault | null {
+	if (!v || typeof v !== 'object') return null;
+	const r = v as Record<string, unknown>;
+	if (typeof r.folderName !== 'string' || typeof r.folderUuid !== 'string') return null;
+	return { folderName: r.folderName, folderUuid: r.folderUuid };
+}
+
+export async function getRemarkableSendDefault(
+	alias: string
+): Promise<RemarkableSendDefault | undefined> {
+	const all = await getSetting<Record<string, unknown>>(REMARKABLE_SEND_DEFAULTS);
+	if (!all || typeof all !== 'object') return undefined;
+	const entry = sanitizeRemarkableSendDefault(all[alias]);
+	return entry ?? undefined;
+}
+
+export async function setRemarkableSendDefault(
+	alias: string,
+	value: RemarkableSendDefault
+): Promise<void> {
+	const existing =
+		(await getSetting<Record<string, unknown>>(REMARKABLE_SEND_DEFAULTS)) ?? {};
+	existing[alias] = { folderName: value.folderName, folderUuid: value.folderUuid };
+	await setSetting(REMARKABLE_SEND_DEFAULTS, existing);
+}
+
+export async function clearRemarkableSendDefault(alias: string): Promise<void> {
+	const existing =
+		(await getSetting<Record<string, unknown>>(REMARKABLE_SEND_DEFAULTS)) ?? {};
+	delete existing[alias];
+	await setSetting(REMARKABLE_SEND_DEFAULTS, existing);
+}
+
+export async function getAllRemarkableSendDefaults(): Promise<
+	Record<string, RemarkableSendDefault>
+> {
+	const all = await getSetting<Record<string, unknown>>(REMARKABLE_SEND_DEFAULTS);
+	if (!all || typeof all !== 'object') return {};
+	const out: Record<string, RemarkableSendDefault> = {};
+	for (const [alias, raw] of Object.entries(all)) {
+		const entry = sanitizeRemarkableSendDefault(raw);
+		if (entry) out[alias] = entry;
+	}
+	return out;
+}

@@ -24,6 +24,7 @@
 	import MusicPlayerBar from '$lib/editor/musicNote/MusicPlayerBar.svelte';
 	import { isMusicNoteDoc } from '$lib/music/parseMusicNote.js';
 	import RemarkableActionBar from '$lib/editor/remarkable/RemarkableActionBar.svelte';
+	import SendToRemarkableModal from '$lib/remarkable/SendToRemarkableModal.svelte';
 	import { parseOcrNote } from '$lib/ocrNote/parseOcrNote.js';
 	import { runOcrInEditor } from '$lib/ocrNote/runOcrInEditor.js';
 	import {
@@ -123,6 +124,7 @@
 	let editorComponent: TomboyEditor | undefined = $state(undefined);
 	let menuAnchor = $state<{ right: number; bottom: number } | null>(null);
 	let xmlViewerOpen = $state(false);
+	let sendRemarkableOpen = $state(false);
 	let notebookNames = $state<string[]>([]);
 	let isHomeState = $state(false);
 	let isScrollBottomState = $state(false);
@@ -923,6 +925,7 @@
 					keepCursorVisible={true}
 					cursorVisibilityMode="container"
 					onimageinserted={handleImageInserted}
+					onsendremarkable={() => (sendRemarkableOpen = true)}
 				/>
 				{#if editorComponent?.getEditor() && llmBridgeUrl && llmBridgeToken}
 					<ChatSendBar
@@ -1027,6 +1030,13 @@
 		title={note.title}
 		xml={note.xmlContent}
 		onclose={() => (xmlViewerOpen = false)}
+	/>
+{/if}
+
+{#if sendRemarkableOpen && note}
+	<SendToRemarkableModal
+		rootGuid={note.guid}
+		onclose={() => (sendRemarkableOpen = false)}
 	/>
 {/if}
 

@@ -8,6 +8,9 @@
 		"build": "vite build",
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
+		"prefetch:fonts": "node scripts/prefetch-fonts.mjs",
+		"predev": "npm run prefetch:fonts",
+		"prebuild": "npm run prefetch:fonts",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"test": "vitest run",
@@ -54,6 +57,7 @@
 		"idb": "^8.0.3",
 		"jszip": "^3.10.1",
 		"leaflet": "^1.9.4",
+		"pdfmake": "^0.2.23",
 		"three": "^0.183.2",
 		"three-spritetext": "^1.10.0"
 	}

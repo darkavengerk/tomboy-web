@@ -21,6 +21,8 @@ import { handleRemarkableUpload } from './remarkableUpload.js';
 import { handleMusicExtract, handleMusicEnumerate } from './music.js';
 import { handleGpuStatus, handleGpuUnload } from './gpu.js';
 import { handleRemarkableWallpaper } from './remarkable.js';
+import { handleRemarkableFolders } from './remarkableFolders.js';
+import { handleRemarkableSendPdf } from './remarkableSendPdf.js';
 import { loadRemarkableHosts } from './remarkableHosts.js';
 import { loadSshHosts, applySshAlias } from './sshHosts.js';
 import { SpectatorHubRegistry, type SpectatorSubscription } from './spectatorHub.js';
@@ -193,6 +195,16 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 
 	if (url === '/remarkable/wallpaper' && req.method === 'POST') {
 		await handleRemarkableWallpaper(req, res, SECRET);
+		return;
+	}
+
+	if (url.startsWith('/remarkable/folders') && req.method === 'GET') {
+		await handleRemarkableFolders(req, res, SECRET);
+		return;
+	}
+
+	if (url === '/remarkable/send-pdf' && req.method === 'POST') {
+		await handleRemarkableSendPdf(req, res, SECRET);
 		return;
 	}
 

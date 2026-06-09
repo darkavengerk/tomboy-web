@@ -145,6 +145,9 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 		oninternallink?: (target: string) => void;
 		currentGuid?: string | null;
 		enableContextMenu?: boolean;
+		/** 컨텍스트 메뉴에 "리마커블로 보내기" 항목을 보이게 한다. 부모가 핸들러를
+		 *  넘기지 않으면 항목 자체가 사라진다 — 데스크탑 노트 윈도우만 켠다. */
+		onsendremarkable?: () => void;
 		/** Tomboy ISO creation date of the current note — used to render the
 		 *  "yyyy-mm-dd" placeholder on the empty second line. */
 		createDate?: string | null;
@@ -257,6 +260,7 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 		onimageinserted = () => {},
 		keepCursorVisible = false,
 		cursorVisibilityMode = "window",
+		onsendremarkable,
 	}: Props = $props();
 
 	let ctxMenu = $state<{ x: number; y: number } | null>(null);
@@ -1485,6 +1489,7 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 		onclose={() => (ctxMenu = null)}
 		{oninternallink}
 		onuploadfile={uploadAndInsertFile}
+		{onsendremarkable}
 	/>
 {/if}
 
