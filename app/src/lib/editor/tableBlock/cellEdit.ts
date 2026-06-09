@@ -17,6 +17,7 @@
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { TableRegion } from './findTableRegions.js';
+import { cellCharRanges } from './parseTable.js';
 
 export interface CellRange {
 	from: number;
@@ -27,15 +28,18 @@ export interface CellRange {
  * Locate the absolute doc-position range for editing cell `(rowIdx,
  * colIdx)` of `region`. Returns null if either index is out of bounds.
  *
- * Returned range:
- *  - CSV: trimmed (leading/trailing whitespace within the cell are
- *    excluded so re-typing replaces only the meaningful text).
+ * The per-cell content math is delegated to `cellCharRanges` (the single
+ * source of truth shared with column-delete), then offset into absolute
+ * doc positions via the paragraph's `textFrom`. That yields:
+ *  - CSV / markdown: trimmed (leading/trailing whitespace within the cell
+ *    are excluded so re-typing replaces only the meaningful text).
  *  - TSV: untrimmed (whitespace is data).
  *
- * For a fully-whitespace CSV cell we return a zero-width range whose
- * `from === to` lands right after the previous separator's whitespace
- * — i.e. the spot the user wants the caret to appear when they
- * double-click an empty cell.
+ * For a fully-whitespace CSV/markdown cell we return a zero-width range
+ * whose `from === to` lands right after the previous separator's
+ * whitespace — i.e. the spot the user wants the caret to appear when they
+ * double-click an empty cell. Markdown additionally strips its outer
+ * pipes inside `cellCharRanges`.
  */
 export function findCellEditRange(
 	doc: PMNode,
@@ -46,37 +50,10 @@ export function findCellEditRange(
 	const para = region.bodyParaRanges[rowIdx];
 	if (!para) return null;
 	const text = doc.textBetween(para.textFrom, para.textTo, '');
-	const sep = region.format === 'csv' ? ',' : '\t';
-	const cells = text.split(sep);
-	if (colIdx < 0 || colIdx >= cells.length) return null;
-
-	let charOffset = 0;
-	for (let i = 0; i < colIdx; i++) {
-		charOffset += cells[i].length + sep.length;
-	}
-	let cellStart = charOffset;
-	let cellEnd = charOffset + cells[colIdx].length;
-
-	if (region.format === 'csv') {
-		const cell = cells[colIdx];
-		const leading = cell.length - cell.replace(/^\s+/, '').length;
-		const trailingTrimmed = cell.replace(/\s+$/, '');
-		const trailing = cell.length - trailingTrimmed.length;
-		// All-whitespace cell collapses to a zero-width range at the
-		// "logical" caret slot (just after the leading whitespace).
-		if (trailingTrimmed.length === 0) {
-			cellStart = charOffset + leading;
-			cellEnd = cellStart;
-		} else {
-			cellStart = charOffset + leading;
-			cellEnd = charOffset + cell.length - trailing;
-		}
-	}
-
-	return {
-		from: para.textFrom + cellStart,
-		to: para.textFrom + cellEnd
-	};
+	const ranges = cellCharRanges(text, region.format);
+	if (colIdx < 0 || colIdx >= ranges.length) return null;
+	const { start, end } = ranges[colIdx];
+	return { from: para.textFrom + start, to: para.textFrom + end };
 }
 
 /**
