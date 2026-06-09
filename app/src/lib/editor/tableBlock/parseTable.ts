@@ -17,7 +17,15 @@
 
 import type { JSONContent } from '@tiptap/core';
 
-export type TableFormat = 'csv' | 'tsv';
+export type TableFormat = 'csv' | 'tsv' | 'markdown';
+export type Alignment = 'left' | 'center' | 'right' | null;
+
+/** Cell separator character for a format. Markdown uses the pipe. */
+function sepFor(format: TableFormat): string {
+	if (format === 'csv') return ',';
+	if (format === 'tsv') return '\t';
+	return '|';
+}
 
 /**
  * If `line` is an opening table fence (` ```csv ` or ` ```tsv `, with the
@@ -59,11 +67,15 @@ export function isFenceClose(line: string): boolean {
  * loses data.
  */
 export function parseTableRows(lines: string[], format: TableFormat): string[][] {
-	const sep = format === 'csv' ? ',' : '\t';
+	const sep = sepFor(format);
 	const out: string[][] = [];
 	for (const raw of lines) {
 		if (isBlankRow(raw, sep)) continue;
-		if (format === 'csv') {
+		if (format === 'markdown') {
+			if (isSeparatorRow(raw)) continue;
+			const inner = raw.trim().replace(/^\|/, '').replace(/\|$/, '');
+			out.push(inner.split('|').map((c) => c.trim()));
+		} else if (format === 'csv') {
 			out.push(raw.split(',').map((c) => c.trim()));
 		} else {
 			out.push(raw.split('\t'));
@@ -170,7 +182,7 @@ export function parseInlineCells(
 	format: TableFormat
 ): JSONContent[][][] {
 	const rows: JSONContent[][][] = [];
-	const sep = format === 'csv' ? ',' : '\t';
+	const sep = sepFor(format);
 	for (const para of bodyParagraphs) {
 		const inlines = para.content ?? [];
 		const plain = inlines
@@ -178,8 +190,153 @@ export function parseInlineCells(
 			.map((n) => n.text ?? '')
 			.join('');
 		if (isBlankRow(plain, sep)) continue;
-		const cells = splitInlinesByChar(inlines, sep);
-		rows.push(format === 'csv' ? cells.map((c) => trimInlines(c)) : cells);
+		if (format === 'markdown') {
+			if (isSeparatorRow(plain)) continue;
+			const stripped = stripOuterPipeInlines(inlines);
+			const cells = splitInlinesByChar(stripped, '|');
+			rows.push(cells.map((c) => trimInlines(c)));
+		} else {
+			const cells = splitInlinesByChar(inlines, sep);
+			rows.push(format === 'csv' ? cells.map((c) => trimInlines(c)) : cells);
+		}
 	}
 	return rows;
+}
+
+/**
+ * A markdown separator row (` | --- | :--: | ` etc.) — the row that turns a
+ * pipe-delimited line into a real table. Each cell must be `:?-+:?` after
+ * outer-pipe stripping, AND the raw line must contain at least one `|`. The
+ * pipe requirement is load-bearing: it disambiguates from the `hrSplit`
+ * feature, where a bare `---` line means a vertical column divider.
+ */
+export function isSeparatorRow(line: string): boolean {
+	if (!line.includes('|')) return false;
+	const inner = line.trim().replace(/^\|/, '').replace(/\|$/, '');
+	const cells = inner.split('|').map((c) => c.trim());
+	if (cells.length === 0) return false;
+	return cells.every((c) => /^:?-+:?$/.test(c));
+}
+
+/** Parse per-column alignment from a markdown separator row. */
+export function parseAlignments(line: string): Alignment[] {
+	const inner = line.trim().replace(/^\|/, '').replace(/\|$/, '');
+	return inner.split('|').map((raw) => {
+		const c = raw.trim();
+		const left = c.startsWith(':');
+		const right = c.endsWith(':');
+		if (left && right) return 'center';
+		if (right) return 'right';
+		if (left) return 'left';
+		return null;
+	});
+}
+
+/**
+ * Drop exactly one leading and one trailing `|` from an inline-node array
+ * (GFM optional outer pipes), preserving marks. Inner spacing is left for
+ * per-cell `trimInlines` to handle.
+ */
+export function stripOuterPipeInlines(inlines: JSONContent[]): JSONContent[] {
+	const out = inlines.map((n) => ({ ...n }));
+	for (let i = 0; i < out.length; i++) {
+		const n = out[i];
+		if (n.type !== 'text' || typeof n.text !== 'string') break;
+		if (n.text.trim().length === 0) continue;
+		n.text = n.text.replace(/^(\s*)\|/, '$1');
+		break;
+	}
+	for (let i = out.length - 1; i >= 0; i--) {
+		const n = out[i];
+		if (n.type !== 'text' || typeof n.text !== 'string') break;
+		if (n.text.trim().length === 0) continue;
+		n.text = n.text.replace(/\|(\s*)$/, '$1');
+		break;
+	}
+	return out;
+}
+
+export interface MarkdownRowLayout {
+	hasLead: boolean;
+	hasTrail: boolean;
+	/** Raw (untrimmed) inter-pipe chunk bounds in the original text. */
+	cells: { start: number; end: number }[];
+}
+
+/**
+ * Locate the raw cell chunks of a markdown row in `text` coordinates,
+ * reporting whether outer pipes are present. Used by cell-range and
+ * column-op math so the pipe bookkeeping lives in one place.
+ */
+export function markdownRowLayout(text: string): MarkdownRowLayout {
+	const leadWs = text.length - text.replace(/^\s+/, '').length;
+	const trailWs = text.length - text.replace(/\s+$/, '').length;
+	let i = leadWs;
+	let j = text.length - trailWs;
+	let hasLead = false;
+	let hasTrail = false;
+	if (i < j && text[i] === '|') {
+		hasLead = true;
+		i++;
+	}
+	if (j > i && text[j - 1] === '|') {
+		hasTrail = true;
+		j--;
+	}
+	const cells: { start: number; end: number }[] = [];
+	let cellStart = i;
+	for (let k = i; k < j; k++) {
+		if (text[k] === '|') {
+			cells.push({ start: cellStart, end: k });
+			cellStart = k + 1;
+		}
+	}
+	cells.push({ start: cellStart, end: j });
+	return { hasLead, hasTrail, cells };
+}
+
+/**
+ * Per-cell editable-content ranges in `text` coordinates for a row of the
+ * given format. Single source of truth for cell-edit and column-delete math.
+ *
+ *  - tsv: full inter-tab chunk, untrimmed.
+ *  - csv / markdown: trimmed content; an all-whitespace cell collapses to a
+ *    zero-width range at its logical caret slot (after leading whitespace).
+ *  - markdown additionally strips outer pipes via `markdownRowLayout`.
+ */
+export function cellCharRanges(
+	text: string,
+	format: TableFormat
+): { start: number; end: number }[] {
+	if (format === 'markdown') {
+		const layout = markdownRowLayout(text);
+		return layout.cells.map(({ start, end }) => {
+			const raw = text.slice(start, end);
+			const lead = raw.length - raw.replace(/^\s+/, '').length;
+			const trimmed = raw.trim();
+			if (trimmed.length === 0) {
+				return { start: start + lead, end: start + lead };
+			}
+			return { start: start + lead, end: start + lead + trimmed.length };
+		});
+	}
+	const sep = sepFor(format);
+	const parts = text.split(sep);
+	const out: { start: number; end: number }[] = [];
+	let offset = 0;
+	for (const cell of parts) {
+		if (format === 'tsv') {
+			out.push({ start: offset, end: offset + cell.length });
+		} else {
+			const lead = cell.length - cell.replace(/^\s+/, '').length;
+			const trimmed = cell.trim();
+			if (trimmed.length === 0) {
+				out.push({ start: offset + lead, end: offset + lead });
+			} else {
+				out.push({ start: offset + lead, end: offset + lead + trimmed.length });
+			}
+		}
+		offset += cell.length + sep.length;
+	}
+	return out;
 }

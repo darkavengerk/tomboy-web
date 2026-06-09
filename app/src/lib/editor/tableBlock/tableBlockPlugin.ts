@@ -33,7 +33,7 @@ import {
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { Editor, JSONContent } from '@tiptap/core';
-import { findTableRegions, type TableRegion } from './findTableRegions.js';
+import { findTableRegions, findMarkdownTableRegions, type TableRegion } from './findTableRegions.js';
 import { renderInlinesToDom } from './renderInlines.js';
 import { commitCellEdit, findCellEditRange } from './cellEdit.js';
 import {
@@ -85,7 +85,9 @@ function rebuildState(
 	prevEditing: CellEditTarget | null,
 	ctrlHeld: boolean
 ): PluginState {
-	const regions = findTableRegions(doc);
+	const regions = [...findTableRegions(doc), ...findMarkdownTableRegions(doc)].sort(
+		(a, b) => a.openFromPos - b.openFromPos
+	);
 	const validOpens = new Set(regions.map((r) => r.openFromPos));
 	const uncheckedOpens = new Set<number>();
 	for (const p of prevUnchecked) {
@@ -128,6 +130,12 @@ function regionContentHash(region: TableRegion): string {
 			h = (h ^ 0x1f) >>> 0; // cell-end marker
 		}
 		h = (h ^ 0xff) >>> 0; // row-end marker
+	}
+	if (region.align) {
+		for (const a of region.align) {
+			h = (h ^ (a ? a.charCodeAt(0) : 0x2d)) >>> 0;
+			h = Math.imul(h, 16777619) >>> 0;
+		}
 	}
 	return h.toString(36);
 }
@@ -414,6 +422,8 @@ function fillCell(
 ): void {
 	host.setAttribute('data-table-block-row', String(rowIdx));
 	host.setAttribute('data-table-block-col', String(colIdx));
+	const align = region.align?.[colIdx];
+	if (align) host.style.textAlign = align;
 	const isEditing =
 		!!editingHere &&
 		editingHere.rowIdx === rowIdx &&

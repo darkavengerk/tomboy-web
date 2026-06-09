@@ -1908,6 +1908,39 @@ https://www.youtube.com/playlist?list=…  (재생목록: 일반 줄)</pre>
 				</details>
 
 				<details class="guide-card">
+					<summary>표 (마크다운) — 본문 안의 GFM 표</summary>
+					<p class="info-text">
+						GitHub 마크다운 표 문법을 그대로 씁니다. 펜스 없이, 헤더 줄 바로 아래에
+						<strong>구분선 줄</strong>(<code>| --- | --- |</code>)이 있으면 자동으로 표로
+						렌더됩니다. 원본 텍스트는 보존되어 Tomboy XML로 라운드트립됩니다.
+					</p>
+					<pre class="snippet">| 헤더1 | 헤더2 | 헤더3 |
+| :--- | :--: | ---: |
+| 가 | 나 | 다 |
+| 라 | 마 | 바 |</pre>
+					<ul class="guide-list">
+						<li><strong>구분선 줄 필수</strong>: 헤더 다음 줄이 <code>| --- |</code> 형태여야 표로
+							인식됩니다. 구분선이 없으면 일반 문단으로 보입니다.</li>
+						<li><strong>정렬</strong>: 구분선에 콜론을 붙여 열을 정렬합니다 —
+							<code>:---</code>(왼쪽), <code>:--:</code>(가운데), <code>--:</code>(오른쪽).</li>
+						<li><strong>바깥 파이프는 선택</strong>: <code>| a | b |</code>와 <code>a | b</code> 모두
+							인식되며, 셀 양끝 공백은 트림됩니다.</li>
+						<li><kbd>Alt</kbd>+<kbd>T</kbd> — 커서 위치에 빈 2×2 표를 삽입합니다.</li>
+						<li>셀 안의 <strong>굵게 · 기울임 · 링크</strong> 등 마크는 보존됩니다.</li>
+						<li>⚠️ <strong><code>---</code> 한 줄만</strong> 있으면 표가 아니라
+							<strong>세로 분할선(HR 분할)</strong>입니다. 표 구분선은 반드시 파이프를
+							포함해야 합니다.</li>
+					</ul>
+					<p class="info-text">조작 (CSV/TSV 표와 동일):</p>
+					<ul class="guide-list">
+						<li>표 좌측 상단 체크박스 — 켜면 표 렌더, 끄면 원본 마크다운으로 펼쳐 직접 편집.</li>
+						<li><kbd>Ctrl</kbd>/<kbd>Cmd</kbd>을 누르고 있으면 행/열 추가 + 버튼과 삭제 X 버튼이
+							나타납니다. 열을 추가·삭제하면 구분선 줄도 함께 맞춰집니다.</li>
+						<li>셀 더블 클릭 — 해당 셀만 인라인 편집.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
 					<summary>각주 (<code>[^N]</code>) — 참조 ↔ 설명 점프 + 미리보기</summary>
 					<p class="info-text">
 						본문에 <code>[^1]</code> 처럼 입력하면 작은 위첨자 <strong>참조 마커</strong>가 됩니다.

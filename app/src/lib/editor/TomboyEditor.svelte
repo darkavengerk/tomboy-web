@@ -101,6 +101,7 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 	import { pushToast, dismissToast } from "$lib/stores/toast.js";
 	import { Extension } from "@tiptap/core";
 	import { insertTodayDate } from "./insertDate.js";
+	import { insertTable } from "./insertTable.js";
 	import { deleteCurrentLine } from "./deleteLine.js";
 	import { insertTabAtCursor } from "./insertTab.js";
 	import {
@@ -875,6 +876,12 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 						if (event.code === "KeyC") {
 							event.preventDefault();
 							insertInlineCheckbox(ed);
+							return true;
+						}
+						// 빈 마크다운 표 삽입.
+						if (event.code === "KeyT") {
+							event.preventDefault();
+							insertTable(ed);
 							return true;
 						}
 					}
