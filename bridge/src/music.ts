@@ -1,7 +1,9 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { extractBearer, verifyToken } from './auth.js';
+import { fetchSunoPlaylist } from './suno.js';
 
 interface MusicBody { source?: unknown; }
+interface SunoBody { url?: unknown; }
 
 /** POST /music/extract → desktop music-service /extract (yt-dlp 다운로드, 느림).
  *  600 s 백스톱 — music-service 자체 한도(MUSIC_TIMEOUT_MS, 기본 ~180 s)보다 넉넉히 위로 잡아
@@ -70,6 +72,45 @@ async function proxyMusic(
 	const text = await upstream.text();
 	res.writeHead(upstream.status, { 'Content-Type': upstream.headers.get('content-type') ?? 'application/json' });
 	res.end(text);
+}
+
+/** POST /music/suno → 브릿지가 직접 Suno 공개 재생목록을 읽어 트랙 목록 반환(데스크탑 미경유). */
+export async function handleSunoPlaylist(req: IncomingMessage, res: ServerResponse, secret: string, maxPlaylist = 100): Promise<void> {
+	const token = extractBearer(req.headers.authorization);
+	if (!verifyToken(secret, token)) {
+		res.writeHead(401, { 'Content-Type': 'application/json' });
+		res.end(JSON.stringify({ error: 'unauthorized' }));
+		return;
+	}
+	let body: SunoBody;
+	try {
+		body = (await readJson(req)) as SunoBody;
+	} catch {
+		res.writeHead(400, { 'Content-Type': 'application/json' });
+		res.end(JSON.stringify({ error: 'bad_json' }));
+		return;
+	}
+	const url = typeof body.url === 'string' ? body.url.trim() : '';
+	if (!url) {
+		res.writeHead(400, { 'Content-Type': 'application/json' });
+		res.end(JSON.stringify({ error: 'bad_request', detail: 'missing_url' }));
+		return;
+	}
+	try {
+		const result = await fetchSunoPlaylist(url, { maxPlaylist });
+		res.writeHead(200, { 'Content-Type': 'application/json' });
+		res.end(JSON.stringify(result));
+	} catch (err) {
+		const msg = (err as Error).message ?? '';
+		if (msg.startsWith('bad_request')) {
+			res.writeHead(400, { 'Content-Type': 'application/json' });
+			res.end(JSON.stringify({ error: 'bad_request' }));
+			return;
+		}
+		console.warn(`[term-bridge suno] error: ${msg}`);
+		res.writeHead(502, { 'Content-Type': 'application/json' });
+		res.end(JSON.stringify({ error: 'upstream_error' }));
+	}
 }
 
 async function readJson(req: IncomingMessage): Promise<unknown> {
