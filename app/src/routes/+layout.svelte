@@ -5,6 +5,7 @@
 	import { browser } from '$app/environment';
 	import Toast from '$lib/components/Toast.svelte';
 	import ImageViewerModal from '$lib/components/ImageViewerModal.svelte';
+	import ImageActionMenu from '$lib/components/ImageActionMenu.svelte';
 	import TopNav from '$lib/components/TopNav.svelte';
 	import { page, updated } from '$app/state';
 	import { version as buildVersion } from '$app/environment';
@@ -324,6 +325,7 @@
 	</div>
 	<Toast />
 	<ImageViewerModal />
+	<ImageActionMenu />
 {:else}
 	{#if offline}
 		<div class="offline-banner" role="alert">
@@ -354,6 +356,7 @@
 	</div>
 	<Toast />
 	<ImageViewerModal />
+	<ImageActionMenu />
 {/if}
 
 <style>

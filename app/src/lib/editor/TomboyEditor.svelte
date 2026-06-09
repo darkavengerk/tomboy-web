@@ -1633,6 +1633,11 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 		border-radius: 4px;
 		background: rgba(0, 0, 0, 0.04);
 		cursor: pointer;
+		/* Long-press opens our own image action menu (이미지 복사 / 주소 복사);
+		   suppress iOS's native callout so it doesn't fight the gesture. */
+		-webkit-touch-callout: none;
+		user-select: none;
+		-webkit-user-select: none;
 	}
 
 	/* Image-URL text is hidden so the image alone represents the link.

@@ -2156,6 +2156,25 @@ Complete:</pre>
 						<li><code>===</code>는 노트 내용에 그대로 저장됩니다(별도 토글·동기화 설정 없음).</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>이미지 복사 — 우클릭 / 길게 누르기</summary>
+					<p class="info-text">
+						노트 본문에 표시된 이미지를 클립보드로 복사합니다. 복사한 이미지는 다른 앱이나
+						웹·PC에 그대로 붙여넣을 수 있습니다(일반적인 이미지 복사와 동일).
+					</p>
+					<ul class="guide-list">
+						<li><strong>데스크탑</strong>: 이미지 위에서 <strong>우클릭</strong> → 메뉴.</li>
+						<li><strong>모바일</strong>: 이미지를 <strong>길게 누르면</strong>(약 0.5초) 메뉴가 뜹니다.</li>
+						<li>메뉴 항목 — <strong>이미지 복사</strong>(이미지 바이트를 클립보드로),
+							<strong>이미지 주소 복사</strong>(이미지 URL 텍스트만).</li>
+						<li>이미지를 <strong>탭/클릭</strong>하면 기존처럼 전체화면 뷰어가 열립니다. 뷰어 우측
+							상단의 <strong>복사 · 주소</strong> 버튼으로도 복사할 수 있고, 뷰어 안에서도
+							우클릭이 동작합니다.</li>
+						<li>복사할 바이트는 <button type="button" class="link-btn" onclick={() => (activeTab = 'config')}>설정 탭의 이미지 캐시</button>에서
+							가져오므로, 한 번 열어본 적 있는 이미지는 네트워크 없이 즉시 복사됩니다.</li>
+					</ul>
+				</details>
 			</section>
 
 			{:else if guideSubTab === 'env'}

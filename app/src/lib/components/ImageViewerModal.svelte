@@ -4,6 +4,8 @@
 	import { startPointerDrag, type Geometry } from '$lib/desktop/dragResize.js';
 	import ResizeHandles from '$lib/desktop/ResizeHandles.svelte';
 	import { portal } from '$lib/utils/portal.js';
+	import { imageActionMenu } from '$lib/stores/imageActionMenu.svelte.js';
+	import { copyImageToClipboard, copyImageUrlToClipboard } from '$lib/editor/imageActions/copyImage.js';
 
 	const src = $derived(imageViewer.src);
 
@@ -209,6 +211,23 @@
 	function onBackdropPointerDown(e: PointerEvent) {
 		if (e.target === e.currentTarget) close();
 	}
+
+	function onFrameContextMenu(e: MouseEvent) {
+		if (src === null) return;
+		e.preventDefault();
+		e.stopPropagation();
+		imageActionMenu.open(e.clientX, e.clientY, src);
+	}
+
+	function copyImage(e: MouseEvent) {
+		e.stopPropagation();
+		if (src !== null) copyImageToClipboard(src);
+	}
+
+	function copyUrl(e: MouseEvent) {
+		e.stopPropagation();
+		if (src !== null) copyImageUrlToClipboard(src);
+	}
 </script>
 
 {#if src}
@@ -236,6 +255,7 @@
 				ontouchend={onTouchEnd}
 				ontouchcancel={onTouchEnd}
 				onpointerdown={startPan}
+				oncontextmenu={onFrameContextMenu}
 			>
 				<img class="viewer-image" {src} alt="" draggable="false" />
 				<ResizeHandles
@@ -243,14 +263,11 @@
 					min={{ width: MIN_SIZE, height: MIN_SIZE }}
 					onresize={(g) => (frame = clampedFrame(g))}
 				/>
-				<button
-					class="viewer-close"
-					onclick={close}
-					onpointerdown={(e) => e.stopPropagation()}
-					aria-label="닫기"
-				>
-					✕
-				</button>
+				<div class="viewer-toolbar" onpointerdown={(e) => e.stopPropagation()}>
+					<button class="viewer-tool" onclick={copyImage} aria-label="이미지 복사">복사</button>
+					<button class="viewer-tool" onclick={copyUrl} aria-label="이미지 주소 복사">주소</button>
+					<button class="viewer-close" onclick={close} aria-label="닫기">✕</button>
+				</div>
 			</div>
 		{/if}
 	</div>
@@ -295,10 +312,29 @@
 		-webkit-user-drag: none;
 	}
 
-	.viewer-close {
+	.viewer-toolbar {
 		position: absolute;
 		top: 6px;
 		right: 6px;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		z-index: 20;
+	}
+
+	.viewer-tool {
+		height: 32px;
+		padding: 0 12px;
+		border: none;
+		border-radius: 16px;
+		background: rgba(0, 0, 0, 0.55);
+		color: #fff;
+		font-size: 0.85rem;
+		line-height: 1;
+		cursor: pointer;
+	}
+
+	.viewer-close {
 		width: 32px;
 		height: 32px;
 		border: none;
@@ -308,9 +344,9 @@
 		font-size: 1rem;
 		line-height: 1;
 		cursor: pointer;
-		z-index: 20;
 	}
 
+	.viewer-tool:hover,
 	.viewer-close:hover {
 		background: rgba(0, 0, 0, 0.8);
 	}
