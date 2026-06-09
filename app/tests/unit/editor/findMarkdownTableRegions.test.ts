@@ -82,4 +82,19 @@ describe('findMarkdownTableRegions', () => {
 		]);
 		expect(findMarkdownTableRegions(ed.state.doc)).toHaveLength(2);
 	});
+
+	it('separates two adjacent tables with NO blank line between them', () => {
+		const ed = makeEditor([
+			'| a | b |',
+			'| --- | --- |',
+			'| 1 | 2 |',
+			'| c | d |',
+			'| --- | --- |',
+			'| 3 | 4 |'
+		]);
+		const r = findMarkdownTableRegions(ed.state.doc);
+		expect(r).toHaveLength(2);
+		expect(r[0].rows).toEqual([['a', 'b'], ['1', '2']]);
+		expect(r[1].rows).toEqual([['c', 'd'], ['3', '4']]);
+	});
 });

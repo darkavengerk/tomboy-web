@@ -95,6 +95,26 @@ function collectTopLevelParagraphs(doc: PMNode): ParaInfo[] {
 	return out;
 }
 
+/**
+ * Scan forward from an opening-fence paragraph at index `i` for its matching
+ * close. Returns the index `j` of the close fence (or where the scan stopped)
+ * and whether a close was found. Shared by `findTableRegions` and
+ * `fencedParaIndices` so the two stay in lockstep on fence boundaries.
+ */
+function scanFencedRegion(paras: ParaInfo[], i: number): { j: number; foundClose: boolean } {
+	let j = i + 1;
+	let foundClose = false;
+	while (j < paras.length) {
+		if (isFenceClose(paras[j].text)) {
+			foundClose = true;
+			break;
+		}
+		if (detectFenceFormat(paras[j].text) !== null) break;
+		j++;
+	}
+	return { j, foundClose };
+}
+
 export function findTableRegions(doc: PMNode): TableRegion[] {
 	const paras = collectTopLevelParagraphs(doc);
 	const regions: TableRegion[] = [];
@@ -110,16 +130,7 @@ export function findTableRegions(doc: PMNode): TableRegion[] {
 		// not let its scan walk past a sibling open and steal that sibling's
 		// close — otherwise two stacked tables would merge into one. Resume
 		// the outer loop at j so the sibling open gets a clean scan.
-		let j = i + 1;
-		let foundClose = false;
-		while (j < paras.length) {
-			if (isFenceClose(paras[j].text)) {
-				foundClose = true;
-				break;
-			}
-			if (detectFenceFormat(paras[j].text) !== null) break;
-			j++;
-		}
+		const { j, foundClose } = scanFencedRegion(paras, i);
 		if (!foundClose) {
 			i = Math.max(j, i + 1);
 			continue;
@@ -169,16 +180,7 @@ function fencedParaIndices(paras: ParaInfo[]): Set<number> {
 			i++;
 			continue;
 		}
-		let j = i + 1;
-		let foundClose = false;
-		while (j < paras.length) {
-			if (isFenceClose(paras[j].text)) {
-				foundClose = true;
-				break;
-			}
-			if (detectFenceFormat(paras[j].text) !== null) break;
-			j++;
-		}
+		const { j, foundClose } = scanFencedRegion(paras, i);
 		if (!foundClose) {
 			i = Math.max(j, i + 1);
 			continue;
@@ -213,7 +215,7 @@ export function findMarkdownTableRegions(doc: PMNode): TableRegion[] {
 			header.text.includes('|') &&
 			!isSeparatorRow(header.text) &&
 			header.text.trim().length > 0 &&
-			sepP &&
+			!!sepP &&
 			!fenced.has(sepP.idx) &&
 			isSeparatorRow(sepP.text);
 		if (!isHeader) {
@@ -226,7 +228,8 @@ export function findMarkdownTableRegions(doc: PMNode): TableRegion[] {
 			!fenced.has(paras[j].idx) &&
 			paras[j].text.includes('|') &&
 			!isSeparatorRow(paras[j].text) &&
-			paras[j].text.trim().length > 0
+			paras[j].text.trim().length > 0 &&
+			!(paras[j + 1] && isSeparatorRow(paras[j + 1].text))
 		) {
 			j++;
 		}
