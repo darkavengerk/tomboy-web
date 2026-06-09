@@ -2,7 +2,7 @@ import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
-import { handleMusicExtract, handleMusicEnumerate } from './music.js';
+import { handleMusicExtract, handleMusicEnumerate, handleSunoPlaylist } from './music.js';
 import { mintToken } from './auth.js';
 
 const SECRET = 'test-secret';
@@ -155,4 +155,40 @@ test('enumerate: 400 on whitespace-only source (no upstream call)', async () => 
 	await handleMusicEnumerate(mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, { source: '   ' }), res, SECRET, URL_);
 	assert.equal(get().status, 400);
 	assert.equal(called, false);
+});
+
+test('suno: 401 without Bearer', async () => {
+	const { res, get } = mockRes();
+	await handleSunoPlaylist(mockReq({}, { url: 'https://suno.com/playlist/x' }), res, SECRET);
+	assert.equal(get().status, 401);
+});
+
+test('suno: 400 on missing url (no fetch)', async () => {
+	let called = false;
+	globalThis.fetch = (async () => { called = true; return new Response('{}'); }) as typeof fetch;
+	const { res, get } = mockRes();
+	await handleSunoPlaylist(mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, {}), res, SECRET);
+	assert.equal(get().status, 400);
+	assert.equal(called, false);
+});
+
+test('suno: 200 returns tracks from fetchSunoPlaylist', async () => {
+	globalThis.fetch = (async (input: string | URL | Request) => {
+		const u = String(input);
+		if (u.includes('/api/playlist/PL-okay/?page=1'))
+			return new Response(JSON.stringify({ name: 'M', num_total_results: 1, playlist_clips: [{ clip: { audio_url: 'https://cdn1.suno.ai/a.mp3', title: 'A' } }] }), { status: 200 });
+		return new Response(JSON.stringify({ playlist_clips: [] }), { status: 200 });
+	}) as typeof fetch;
+	const { res, get } = mockRes();
+	await handleSunoPlaylist(mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, { url: 'https://suno.com/playlist/PL-okay' }), res, SECRET);
+	assert.equal(get().status, 200);
+	const body = JSON.parse(get().body);
+	assert.equal(body.label, 'M');
+	assert.deepEqual(body.tracks, [{ url: 'https://cdn1.suno.ai/a.mp3', title: 'A' }]);
+});
+
+test('suno: 400 on bad playlist url', async () => {
+	const { res, get } = mockRes();
+	await handleSunoPlaylist(mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, { url: 'https://suno.com/song/x' }), res, SECRET);
+	assert.equal(get().status, 400);
 });

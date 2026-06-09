@@ -1808,7 +1808,9 @@ month,[0] Slip-Box,[1] 프로젝트A
 &nbsp; - https://example.com/another.mp3
 
 [ ]플레이리스트: 저녁  (체크 해제 → 그냥 텍스트)
-&nbsp; - https://example.com/evening.mp3</pre>
+&nbsp; - https://example.com/evening.mp3
+
+SUNO:https://suno.com/playlist/&lt;id&gt;  (가져오기 → 플레이리스트 블록)</pre>
 					<ul class="guide-list">
 						<li><strong>체크박스 토글</strong>: 줄 앞에 <code>[x]</code> 를 입력하면 플레이리스트 모드,
 							<code>[ ]</code> 면 텍스트 모드. 체크박스 없는 <code>플레이리스트:</code> 줄은 켜진
@@ -1827,8 +1829,14 @@ month,[0] Slip-Box,[1] 프로젝트A
 						<li><strong>재생은 전역에 하나</strong>입니다. 어느 노트에서 틀든, 열려 있는 모든 음악 노트의
 							배너가 <strong>같은 재생 곡</strong>을 표시합니다. 아무것도 재생 중이 아니면 배너는 지금 보는
 							노트의 첫 곡을 미리 보여주고, ▶ 로 그 노트를 시작합니다.</li>
-						<li>현재는 <strong>직접 오디오 파일 URL</strong>(mp3 등 브라우저가 재생 가능한 링크)만
-							지원합니다. SUNO 플레이리스트 자동 채움은 향후 추가 예정입니다.</li>
+						<li><strong>직접 오디오 파일 URL</strong>(mp3 등 브라우저가 재생 가능한 링크)을 재생합니다.</li>
+						<li><strong>SUNO 재생목록 가져오기</strong>: <code>SUNO:&lt;재생목록 URL&gt;</code> 줄을 쓰면
+							우측에 <b>가져오기</b> 버튼이 떠요. 누르면 Suno 공개 재생목록을 읽어 그 줄 <b>바로 아래</b>에
+							<code>[x]플레이리스트: …</code> 블록(곡 제목 + 직접 재생 URL)을 만들어 바로 재생됩니다.</li>
+						<li>Suno 곡은 <b>다운로드 없이 직접 링크</b>합니다 — 빠르고 데스크탑 서비스가 필요 없지만,
+							Suno 에서 곡을 내리면 재생이 안 될 수 있어요. 선행: 브릿지 설정(터미널 탭).</li>
+						<li>이미 가져온 줄은 버튼이 사라져요. <b>다시 가져오려면</b> 아래 플레이리스트 블록을 지우면
+							버튼이 다시 떠요. 한 번에 최대 100곡.</li>
 					</ul>
 				</details>
 
