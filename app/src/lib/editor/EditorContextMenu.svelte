@@ -19,9 +19,10 @@
 		onclose: () => void;
 		oninternallink?: (target: string) => void;
 		onuploadfile?: (file: File) => void;
+		onsendremarkable?: () => void;
 	}
 
-	let { editor, x, y, onclose, oninternallink, onuploadfile }: Props = $props();
+	let { editor, x, y, onclose, oninternallink, onuploadfile, onsendremarkable }: Props = $props();
 
 	let formatSubmenuOpen = $state(false);
 
@@ -238,6 +239,16 @@
 	{#if linkInfo}
 		<div class="sep"></div>
 		<button class="item" onclick={doOpenLink}>링크 열기</button>
+	{/if}
+	{#if onsendremarkable}
+		<div class="sep"></div>
+		<button
+			class="item"
+			onclick={() => {
+				close();
+				onsendremarkable?.();
+			}}>리마커블로 보내기</button
+		>
 	{/if}
 </div>
 

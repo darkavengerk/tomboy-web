@@ -95,8 +95,9 @@
 		setClaudeDefaultEffort
 	} from '$lib/storage/appSettings.js';
 	import { CLAUDE_VALID_EFFORTS } from '$lib/chatNote/defaults.js';
+	import RemarkableSendSettings from '$lib/remarkable/RemarkableSendSettings.svelte';
 
-	type Tab = 'sync' | 'config' | 'share' | 'terminal' | 'notify' | 'guide' | 'shortcuts' | 'advanced' | 'claude';
+	type Tab = 'sync' | 'config' | 'share' | 'terminal' | 'notify' | 'guide' | 'shortcuts' | 'advanced' | 'claude' | 'remarkable';
 	let activeTab = $state<Tab>('sync');
 
 	// 가이드 탭 내부 sub-tab. 콘텐츠 양이 많아 카테고리별 분리.
@@ -872,7 +873,8 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 		{ id: 'guide', label: '가이드' },
 		{ id: 'shortcuts', label: '단축키' },
 		{ id: 'advanced', label: '고급' },
-		{ id: 'claude', label: 'Claude' }
+		{ id: 'claude', label: 'Claude' },
+		{ id: 'remarkable', label: '리마커블' }
 	];
 
 	const guideSubTabs: { id: GuideSubTab; label: string }[] = [
@@ -1699,6 +1701,32 @@ effort: high
 				</details>
 
 				<details class="guide-card">
+					<summary>노트 → 리마커블 PDF 송출 (컨텍스트 메뉴)</summary>
+					<p class="info-text">
+						데스크탑 노트 윈도우에서 우클릭 → "리마커블로 보내기" 를 누르면 현재 노트를
+						PDF 로 변환해 리마커블의 지정 폴더에 떨굽니다. 마크다운 형식(볼드/이태릭/리스트/
+						내부링크)은 그대로 유지되며, 본문 안 내부 링크는 PDF 안 다른 섹션으로 점프하는
+						클릭형 하이퍼링크로 변환됩니다.
+					</p>
+					<ul class="guide-list">
+						<li><strong>링크 깊이 옵션</strong> — 0 (이 노트만) / 1 (직접 링크된 노트까지) /
+							2 / 3. 같은 노트가 여러 경로로 연결되어 있어도 한 번만 포함됩니다(dedup).</li>
+						<li><strong>기본 폴더</strong> — <button type="button" class="link-btn" onclick={() => (activeTab = 'remarkable')}>설정 → 리마커블 탭</button>
+							에서 별칭별로 한 번 지정. 매 송출 시 자동으로 채워지고, 모달에서 별칭만
+							바꾸면 즉시 다른 별칭으로 보냅니다.</li>
+						<li><strong>한글 폰트</strong> — NanumGothic (OFL). <code>npm run prefetch:fonts</code>
+							가 빌드 시 자동으로 받아 <code>static/fonts/</code> 에 채우며, 클라이언트는
+							첫 송출 때 한 번 fetch → IDB 캐시. 이후 송출에 추가 네트워크 부담 없음.</li>
+						<li><strong>이미지</strong> — v1 에서 본문 이미지는 PDF 에 들어가지 않습니다 (텍스트
+							중심 메모를 빠르게 빼내는 데 초점). 후속 업데이트 예정.</li>
+						<li><strong>전제</strong> — 브릿지가 reMarkable 호스트와 SSH 접속 가능해야 합니다
+							(<code>remarkable.json</code> 등록 + 키 + <code>known_hosts</code>). 송출 시 브릿지가
+							<code>{`/home/root/.local/share/remarkable/xochitl/`}</code> 에 PDF + 메타를 떨구고
+							<code>systemctl restart xochitl</code> 로 즉시 표시되게 합니다.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
 					<summary>리마커블 배경화면 노트 — 태블릿 화면 바꾸기</summary>
 					<p class="info-text">
 						본문 <strong>둘째 줄</strong>이 <code>remarkable://&lt;별칭&gt;</code> 시그니처면 노트
@@ -2503,6 +2531,9 @@ Complete:</pre>
 					</button>
 				</div>
 			</section>
+		{:else if activeTab === 'remarkable'}
+			<!-- ── 리마커블 탭 ───────────────────────────────────────────── -->
+			<RemarkableSendSettings />
 		{/if}
 	</main>
 </div>
