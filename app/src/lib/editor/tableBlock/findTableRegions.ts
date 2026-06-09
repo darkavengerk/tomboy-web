@@ -15,8 +15,11 @@ import {
 	detectFenceFormat,
 	isBlankRow,
 	isFenceClose,
+	isSeparatorRow,
+	parseAlignments,
 	parseTableRows,
 	parseInlineCells,
+	type Alignment,
 	type TableFormat
 } from './parseTable.js';
 
@@ -59,6 +62,11 @@ export interface TableRegion {
 	closeToPos: number;
 	/** The opening-fence paragraph's plain-text content, useful for diagnostics. */
 	openLine: string;
+	/** Per-column alignment (markdown only; undefined for csv/tsv). */
+	align?: Alignment[];
+	/** The `| --- |` separator paragraph (markdown only) — column ops keep
+	 *  it in sync with the data rows. Not part of `bodyParaRanges`. */
+	separatorParaRange?: BodyParaRange;
 }
 
 interface ParaInfo {
@@ -144,6 +152,103 @@ export function findTableRegions(doc: PMNode): TableRegion[] {
 			openLine: paras[i].text
 		});
 		i = j + 1;
+	}
+	return regions;
+}
+
+/**
+ * Paragraph indices that fall INSIDE a ` ```csv ` / ` ```tsv ` fenced region
+ * (inclusive of the fence lines). Markdown detection skips these so the two
+ * table features never claim the same paragraphs.
+ */
+function fencedParaIndices(paras: ParaInfo[]): Set<number> {
+	const inside = new Set<number>();
+	let i = 0;
+	while (i < paras.length) {
+		if (!detectFenceFormat(paras[i].text)) {
+			i++;
+			continue;
+		}
+		let j = i + 1;
+		let foundClose = false;
+		while (j < paras.length) {
+			if (isFenceClose(paras[j].text)) {
+				foundClose = true;
+				break;
+			}
+			if (detectFenceFormat(paras[j].text) !== null) break;
+			j++;
+		}
+		if (!foundClose) {
+			i = Math.max(j, i + 1);
+			continue;
+		}
+		for (let k = i; k <= j; k++) inside.add(paras[k].idx);
+		i = j + 1;
+	}
+	return inside;
+}
+
+function bodyRange(p: ParaInfo): BodyParaRange {
+	return { from: p.from, to: p.to, textFrom: p.from + 1, textTo: p.to - 1 };
+}
+
+/**
+ * Native GFM markdown tables: a header paragraph containing `|`, immediately
+ * followed by a separator row (`| --- |`), then zero or more data paragraphs
+ * containing `|`. No fences. The separator row is tracked separately and is
+ * NOT part of `cells` / `rows` / `bodyParaRanges`, so row indices keep the
+ * `0 = header, 1+ = data` meaning shared with the csv/tsv engine.
+ */
+export function findMarkdownTableRegions(doc: PMNode): TableRegion[] {
+	const paras = collectTopLevelParagraphs(doc);
+	const fenced = fencedParaIndices(paras);
+	const regions: TableRegion[] = [];
+	let i = 0;
+	while (i < paras.length) {
+		const header = paras[i];
+		const sepP = paras[i + 1];
+		const isHeader =
+			!fenced.has(header.idx) &&
+			header.text.includes('|') &&
+			!isSeparatorRow(header.text) &&
+			header.text.trim().length > 0 &&
+			sepP &&
+			!fenced.has(sepP.idx) &&
+			isSeparatorRow(sepP.text);
+		if (!isHeader) {
+			i++;
+			continue;
+		}
+		let j = i + 2;
+		while (
+			j < paras.length &&
+			!fenced.has(paras[j].idx) &&
+			paras[j].text.includes('|') &&
+			!isSeparatorRow(paras[j].text) &&
+			paras[j].text.trim().length > 0
+		) {
+			j++;
+		}
+		const dataParas = paras.slice(i + 2, j);
+		const contentParas = [header, ...dataParas];
+		const lines = contentParas.map((p) => p.text);
+		const json = contentParas.map((p) => p.json);
+		const lastData = dataParas.length > 0 ? dataParas[dataParas.length - 1] : sepP;
+		regions.push({
+			format: 'markdown',
+			rows: parseTableRows(lines, 'markdown'),
+			cells: parseInlineCells(json, 'markdown'),
+			bodyParaRanges: contentParas.map(bodyRange),
+			separatorParaRange: bodyRange(sepP),
+			align: parseAlignments(sepP.text),
+			openParaIdx: header.idx,
+			closeParaIdx: lastData.idx,
+			openFromPos: header.from,
+			closeToPos: lastData.to,
+			openLine: header.text
+		});
+		i = j;
 	}
 	return regions;
 }
