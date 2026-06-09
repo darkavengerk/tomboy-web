@@ -17,6 +17,7 @@
 
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import type { TableRegion } from './findTableRegions.js';
+import { markdownRowLayout } from './parseTable.js';
 
 /**
  * Delete the body paragraph at `rowIdx`. Removes the entire paragraph
@@ -44,6 +45,36 @@ export function deleteColOp(
 	colIdx: number
 ): Transaction | null {
 	if (colIdx < 0) return null;
+	if (region.format === 'markdown') {
+		const tr = state.tr;
+		let touched = false;
+		const targets = [...region.bodyParaRanges];
+		if (region.separatorParaRange) targets.push(region.separatorParaRange);
+		targets.sort((a, b) => a.from - b.from);
+		// Reverse order so earlier deletions don't invalidate later positions.
+		for (let r = targets.length - 1; r >= 0; r--) {
+			const para = targets[r];
+			const text = state.doc.textBetween(para.textFrom, para.textTo, '');
+			const layout = markdownRowLayout(text);
+			if (colIdx >= layout.cells.length) continue;
+			let startChar: number;
+			let endChar: number;
+			if (colIdx > 0) {
+				// the '|' before this cell sits at the previous cell's `end`.
+				startChar = layout.cells[colIdx - 1].end;
+				endChar = layout.cells[colIdx].end;
+			} else if (layout.cells.length > 1) {
+				startChar = layout.cells[0].start;
+				endChar = layout.cells[1].start; // include the '|' after cell 0
+			} else {
+				startChar = layout.cells[0].start;
+				endChar = layout.cells[0].end;
+			}
+			tr.delete(para.textFrom + startChar, para.textFrom + endChar);
+			touched = true;
+		}
+		return touched ? tr : null;
+	}
 	const sep = region.format === 'csv' ? ',' : '\t';
 	const tr = state.tr;
 	let touched = false;
@@ -89,6 +120,18 @@ export function appendRowOp(
 	state: EditorState,
 	region: TableRegion
 ): Transaction {
+	if (region.format === 'markdown') {
+		const colCount = Math.max(1, region.cells.reduce((m, r) => Math.max(m, r.length), 0));
+		const text = '|' + '  |'.repeat(colCount); // 2 cols → "|  |  |"
+		const insertAt =
+			region.bodyParaRanges.length > 0
+				? region.bodyParaRanges[region.bodyParaRanges.length - 1].to
+				: (region.separatorParaRange?.to ?? region.openFromPos + 1);
+		const tr = state.tr;
+		const para = state.schema.nodes.paragraph.create(null, state.schema.text(text));
+		tr.insert(insertAt, para);
+		return tr;
+	}
 	const sep = region.format === 'csv' ? ', ' : '\t';
 	const colCount = Math.max(
 		1,
@@ -118,6 +161,30 @@ export function appendColOp(
 	state: EditorState,
 	region: TableRegion
 ): Transaction {
+	if (region.format === 'markdown') {
+		const tr = state.tr;
+		const targets = [...region.bodyParaRanges];
+		if (region.separatorParaRange) targets.push(region.separatorParaRange);
+		targets.sort((a, b) => a.from - b.from);
+		// Reverse order so earlier insert positions stay valid.
+		for (let r = targets.length - 1; r >= 0; r--) {
+			const para = targets[r];
+			const text = state.doc.textBetween(para.textFrom, para.textTo, '');
+			const isSep =
+				region.separatorParaRange !== undefined &&
+				para.from === region.separatorParaRange.from;
+			const layout = markdownRowLayout(text);
+			const ins = isSep
+				? layout.hasTrail
+					? ' --- |'
+					: ' | --- |'
+				: layout.hasTrail
+					? '  |'
+					: ' |  |';
+			tr.insertText(ins, para.textTo);
+		}
+		return tr;
+	}
 	const sep = region.format === 'csv' ? ', ' : '\t';
 	const tr = state.tr;
 	for (let r = region.bodyParaRanges.length - 1; r >= 0; r--) {
