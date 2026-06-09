@@ -13,6 +13,10 @@
  *  - Append operations always insert empty cells. CSV emits ", " between
  *    cells (a single space after the comma) to match the convention used
  *    elsewhere in the parser; TSV uses a single tab.
+ *  - Markdown-format regions additionally keep the `| --- |` separator row
+ *    column-synced on column add/remove. Note that markdown's
+ *    `bodyParaRanges` includes the header row (index 0), so row inserts must
+ *    account for the separator that sits between the header and any data rows.
  */
 
 import type { EditorState, Transaction } from '@tiptap/pm/state';
@@ -123,10 +127,15 @@ export function appendRowOp(
 	if (region.format === 'markdown') {
 		const colCount = Math.max(1, region.cells.reduce((m, r) => Math.max(m, r.length), 0));
 		const text = '|' + '  |'.repeat(colCount); // 2 cols → "|  |  |"
-		const insertAt =
+		// bodyParaRanges always includes the header for markdown, so use the
+		// max of (last content row, separator) — when there are no data rows
+		// the separator sits below the header and must win.
+		const lastBody =
 			region.bodyParaRanges.length > 0
 				? region.bodyParaRanges[region.bodyParaRanges.length - 1].to
-				: (region.separatorParaRange?.to ?? region.openFromPos + 1);
+				: region.openFromPos + 1;
+		const sepTo = region.separatorParaRange?.to ?? 0;
+		const insertAt = Math.max(lastBody, sepTo);
 		const tr = state.tr;
 		const para = state.schema.nodes.paragraph.create(null, state.schema.text(text));
 		tr.insert(insertAt, para);

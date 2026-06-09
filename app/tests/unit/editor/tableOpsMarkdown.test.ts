@@ -29,6 +29,13 @@ describe('tableOps — markdown', () => {
 		expect(lines(ed)).toEqual(['| a | b |', '| --- | --- |', '| 1 | 2 |', '|  |  |']);
 	});
 
+	it('appendRow on a header-only table inserts below the separator', () => {
+		const ed = makeEditor(['| a | b |', '| --- | --- |']);
+		const region = findMarkdownTableRegions(ed.state.doc)[0];
+		ed.view.dispatch(appendRowOp(ed.state, region));
+		expect(lines(ed)).toEqual(['| a | b |', '| --- | --- |', '|  |  |']);
+	});
+
 	it('appendCol adds a cell to every data row AND the separator', () => {
 		const ed = makeEditor(['| a | b |', '| --- | --- |', '| 1 | 2 |']);
 		const region = findMarkdownTableRegions(ed.state.doc)[0];
