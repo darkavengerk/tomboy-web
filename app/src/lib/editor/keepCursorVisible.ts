@@ -6,8 +6,10 @@ import type { Editor } from "@tiptap/core";
 // and the browser's native "scroll the caret into view" only guarantees the
 // caret reaches the bottom EDGE of the scroll area — exactly the strip the
 // toolbar covers — so a caret on the last visible line ends up hidden until
-// the user scrolls by hand. This watches selection / typing / keyboard /
-// viewport changes and nudges just enough that the caret clears the toolbar.
+// the user scrolls by hand. This watches caret-moving edits (typing /
+// selection / taps) and nudges just enough that the caret clears the toolbar.
+// It deliberately does NOT react to viewport scroll/resize events — doing so
+// would fight the user's own scrolling (see the listener block below).
 //
 //   mode "window"  — mobile note route (/note/[id]). The whole *document*
 //     scrolls and a `position: fixed` toolbar rides above the keyboard.
@@ -107,15 +109,21 @@ export function installCursorVisibility(
 		frame = requestAnimationFrame(check);
 	};
 
+	// Edit-driven triggers ONLY. We must NOT react to viewport events
+	// (`visualViewport` "scroll"/"resize"): those fire while the *user* scrolls
+	// the page (and while the OS auto-scrolls during a text-selection drag, or
+	// the URL bar shows/hides). Reacting to them re-asserts the caret into view
+	// on every scroll tick, so the user can't scroll away from the caret — the
+	// page snaps back down, and during selection it oscillates against the OS's
+	// own scroll. selectionchange/selectionUpdate already cover real caret moves
+	// (taps, arrow keys, typing); a viewport scroll never moves the caret, so we
+	// have no reason to recompute on it.
 	editor.on("selectionUpdate", schedule);
 	editor.on("update", schedule);
 	editor.on("focus", schedule);
 	// Native caret moves (taps, arrow keys) don't always fire a TipTap
 	// transaction, but the document-level selectionchange does.
 	document.addEventListener("selectionchange", schedule);
-	// Keyboard show/hide and viewport shifts change the limit (window mode).
-	vv?.addEventListener("resize", schedule);
-	vv?.addEventListener("scroll", schedule);
 
 	return () => {
 		if (frame) cancelAnimationFrame(frame);
@@ -123,7 +131,5 @@ export function installCursorVisibility(
 		editor.off("update", schedule);
 		editor.off("focus", schedule);
 		document.removeEventListener("selectionchange", schedule);
-		vv?.removeEventListener("resize", schedule);
-		vv?.removeEventListener("scroll", schedule);
 	};
 }
