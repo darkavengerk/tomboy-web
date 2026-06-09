@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { desktopSession } from '$lib/desktop/session.svelte.js';
 	import { spreadView } from '$lib/desktop/spreadView/spreadView.svelte.js';
-	import { packShelves, type Box } from '$lib/desktop/spreadView/packShelves.js';
+	import { packMaxRects, type Box } from '$lib/desktop/spreadView/packMaxRects.js';
 	import SpreadScrollbar from '$lib/desktop/spreadView/SpreadScrollbar.svelte';
 
 	const GAP = 16;
@@ -21,7 +21,7 @@
 
 	const layout = $derived.by(() => {
 		const boxes: Box[] = noteWindows.map((w) => ({ guid: w.guid, w: w.width, h: w.height }));
-		return packShelves(boxes, containerWidth, GAP);
+		return packMaxRects(boxes, containerWidth, GAP);
 	});
 
 	function measure() {
