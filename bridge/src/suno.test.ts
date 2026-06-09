@@ -14,7 +14,7 @@ const JSON_PAGE = JSON.stringify({
 function fetchStub(map: Record<string, { ok: boolean; status?: number; body: string }>): typeof fetch {
 	return (async (input: string | URL | Request) => {
 		const url = String(input);
-		const hit = Object.entries(map).find(([k]) => url.includes(k));
+		const hit = Object.entries(map).sort((a, b) => b[0].length - a[0].length).find(([k]) => url.includes(k));
 		if (!hit) return new Response('', { status: 404 });
 		const { ok, status, body } = hit[1];
 		return new Response(body, { status: status ?? (ok ? 200 : 500) });
@@ -57,4 +57,13 @@ test('maxPlaylist 초과 시 잘림', async () => {
 	});
 	assert.equal(res.tracks.length, 1);
 	assert.equal(res.truncated, true);
+});
+
+test('HTML 폴백: total은 트랙 수, truncated=false', async () => {
+	const html = `<script>self.__next_f.push([1,"{\\"title\\":\\"H\\",\\"audio_url\\":\\"https://cdn1.suno.ai/h.mp3\\"}"])</script>`;
+	const res = await fetchSunoPlaylist('https://suno.com/playlist/PL-h2ab', {
+		fetch: fetchStub({ '/api/playlist/PL-h2ab/?page=1': { ok: false, status: 401, body: '{}' }, 'suno.com/playlist/PL-h2ab': { ok: true, body: html } })
+	});
+	assert.equal(res.total, 1);
+	assert.equal(res.truncated, false);
 });

@@ -12,7 +12,7 @@ export function extractPlaylistId(playlistUrl: string): string | null {
 	let u: URL;
 	try { u = new URL(playlistUrl); } catch { return null; }
 	if (!/(^|\.)suno\.(com|ai)$/i.test(u.hostname)) return null;
-	const m = u.pathname.match(/\/playlist\/([A-Za-z0-9-]{6,})/);
+	const m = u.pathname.match(/\/playlist\/([A-Za-z0-9_-]{6,})/);
 	return m ? m[1] : null;
 }
 
@@ -63,17 +63,20 @@ async function fetchViaJson(
 
 /** RSC/__NEXT_DATA__ HTML 에서 audio_url+title 쌍 추출. 이스케이프된 따옴표(\")를 먼저 펴서 평탄화. */
 export function parseClipsFromHtml(html: string): SunoTrack[] {
+	// ~600 chars back-scans a typical clip object for its title without crossing into the prior clip.
+	// NB: the title regex uses [^"]*, so a title containing a literal " (after unescaping) is captured only up to that quote.
+	const TITLE_WINDOW = 600;
 	const flat = html.replace(/\\u002[fF]/g, '/').replace(/\\\//g, '/').replace(/\\"/g, '"');
 	const tracks: SunoTrack[] = [];
 	const seen = new Set<string>();
-	const re = /"audio_url"\s*:\s*"(https?:\/\/[^"]+?\.mp3[^"]*)"/gi;
+	const re = /"audio_url"\s*:\s*"(https?:\/\/[^"]+)"/gi;
 	let m: RegExpExecArray | null;
 	while ((m = re.exec(flat)) !== null) {
 		const url = m[1];
 		if (seen.has(url)) continue;
 		seen.add(url);
 		// 같은 클립 객체 안의 title — audio_url 앞쪽 가까운 범위에서 마지막 title 채택.
-		const windowStr = flat.slice(Math.max(0, m.index - 600), m.index);
+		const windowStr = flat.slice(Math.max(0, m.index - TITLE_WINDOW), m.index);
 		const tm = /"title"\s*:\s*"([^"]*)"/g;
 		let title = '';
 		let t: RegExpExecArray | null;
@@ -95,9 +98,8 @@ async function fetchViaHtml(
 	const html = await res.text();
 	const tracks = parseClipsFromHtml(html);
 	if (tracks.length === 0) return null;
-	const nameMatch =
-		html.replace(/\\"/g, '"').match(/"playlist"[^{]*\{[^}]*"name"\s*:\s*"([^"]+)"/) ??
-		html.match(/<title>([^<]+)<\/title>/i);
+	const unescaped = html.replace(/\\"/g, '"');
+	const nameMatch = unescaped.match(/"name"\s*:\s*"([^"]+)"/) ?? html.match(/<title>([^<]+)<\/title>/i);
 	const label = nameMatch?.[1]?.trim() || '재생목록';
 	return { label, tracks, total: tracks.length };
 }
