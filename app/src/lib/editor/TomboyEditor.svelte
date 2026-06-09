@@ -2,6 +2,7 @@
 	import { onMount } from "svelte";
 	import { Editor } from "@tiptap/core";
 	import { installCursorVisibility } from "./keepCursorVisible.js";
+	import { applyCommandModeKeyboard } from "./commandModeKeyboard.js";
 	import StarterKit from "@tiptap/starter-kit";
 	import Highlight from "@tiptap/extension-highlight";
 	import Placeholder from "@tiptap/extension-placeholder";
@@ -1033,6 +1034,17 @@ import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 			titleProvider.dispose();
 			editor?.destroy();
 		};
+	});
+
+	// Mobile "명령 모드": while a Ctrl/Alt lock toggle is on, tapping the note to
+	// position the caret must not raise the keyboard (the user is about to fire a
+	// shortcut button, not type). See applyCommandModeKeyboard for the rationale.
+	// Reads only runes + mutates the DOM — no $state write, so no update loop.
+	$effect(() => {
+		const locked = modKeys.ctrlLocked || modKeys.altLocked;
+		const view = editor?.view;
+		if (!view || view.isDestroyed) return;
+		applyCommandModeKeyboard(view, locked);
 	});
 
 	// When a note was just *created* (not reopened), place the cursor for the

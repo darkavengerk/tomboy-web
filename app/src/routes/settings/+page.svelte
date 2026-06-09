@@ -2118,6 +2118,26 @@ Complete:</pre>
 						<li><code>===</code>는 노트 내용에 그대로 저장됩니다(별도 토글·동기화 설정 없음).</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>모바일 <code>Ctrl</code> / <code>Alt</code> 고정 — 키보드 없이 단축키</summary>
+					<p class="info-text">
+						모바일 하단 툴바의 <code>Ctrl</code> · <code>Alt</code> 버튼을 켜면 단축키 키패드가
+						열려 데스크탑 단축키를 탭으로 쓸 수 있습니다(예: <kbd>Ctrl</kbd>+<kbd>D</kbd> 오늘 날짜,
+						<kbd>Alt</kbd>+<kbd>→</kbd> 들여쓰기). 둘은 서로 배타적이라 하나를 켜면 다른 하나는 꺼집니다.
+					</p>
+					<ul class="guide-list">
+						<li><strong>고정이 켜진 동안에는 노트를 탭해도 키보드가 올라오지 않습니다.</strong> 글자가
+							아니라 단축키를 누르려는 상태이므로, 커서 위치만 잡고 키보드는 띄우지 않습니다.</li>
+						<li>이미 키보드가 올라온 채로 고정을 켜면 키보드가 곧바로 내려갑니다 — 매번 손으로
+							내릴 필요가 없습니다.</li>
+						<li>커서 위치는 그대로 유지되므로, 원하는 곳을 탭해 커서를 옮긴 뒤 단축키 버튼을 누르면
+							그 위치에 적용됩니다.</li>
+						<li>다시 글자를 입력하려면 <code>Ctrl</code> / <code>Alt</code> 고정을 끄세요 — 키보드가
+							정상적으로 돌아옵니다.</li>
+						<li>전체 단축키 목록은 <strong>단축키</strong> 탭을 참고하세요.</li>
+					</ul>
+				</details>
 			</section>
 
 			{:else if guideSubTab === 'env'}
