@@ -58,6 +58,13 @@ export function installCursorVisibility(
 		// background selectionchange could scroll the page out from under the
 		// user (and a desktop window only shows its toolbar while focused).
 		if (!view.hasFocus()) return;
+		// Only act on a collapsed typing caret. A non-empty range means the
+		// user is in native text-selection mode (mobile long-press handles /
+		// magnifier), where the OS auto-scrolls to keep the selection handle
+		// visible. Nudging here fights that scroll and produces a jumpy
+		// snap-to-bottom / oscillation. Selection collapses again the moment
+		// the user types, so the typing case is unaffected.
+		if (!view.state.selection.empty) return;
 
 		let caret: { bottom: number };
 		try {
