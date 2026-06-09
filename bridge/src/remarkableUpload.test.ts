@@ -2,12 +2,7 @@ import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { handleRemarkableUpload, expandHome } from './remarkableUpload.js';
+import { handleRemarkableUpload } from './remarkableUpload.js';
 import { mintToken } from './auth.js';
 
 const SECRET = 'test-secret';
@@ -45,119 +40,81 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
-// epoch 1780740000000 = 2026-06-06T10:00:00.000Z
-const DUMP = [
-  '===uuid-A.metadata===',
-  JSON.stringify({ type: 'CollectionType', visibleName: 'Diary', parent: '' }),
-  '===uuid-B.metadata===',
-  JSON.stringify({
-    type: 'DocumentType',
-    visibleName: 'p1',
-    parent: 'uuid-A',
-    lastModified: '1780740000000'
-  })
-].join('\n');
-
 test('401 without Bearer', async () => {
   const { res, get } = mockRes();
   await handleRemarkableUpload(
     mockReq({}, { notebook: 'Diary' }),
     res,
-    {
-      secret: SECRET,
-      ssh: { host: 'h', user: 'u', keyPath: 'k' },
-      inboxDir: '/tmp/inbox',
-      defaultNotebook: 'Diary',
-      automationServiceUrl: 'http://auto.test',
-      fetchDump: async () => DUMP,
-      rsync: async () => {}
-    }
+    { secret: SECRET, automationServiceUrl: 'http://auto.test' }
   );
   assert.equal(get().status, 401);
 });
 
-test('SSE 200 + status/done events on happy path', async () => {
-  const inboxDir = mkdtempSync(join(tmpdir(), 'inbox-'));
+test('503 when automation-service URL is missing', async () => {
+  const { res, get } = mockRes();
+  await handleRemarkableUpload(
+    mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, { notebook: 'Diary' }),
+    res,
+    { secret: SECRET, automationServiceUrl: '' }
+  );
+  assert.equal(get().status, 503);
+});
+
+test('SSE 200 + trigger_pipeline + done on happy path', async () => {
   let automationCalled = false;
-  globalThis.fetch = (async () => {
+  let upstreamBody: string | null = null;
+  globalThis.fetch = (async (_url, init) => {
     automationCalled = true;
+    upstreamBody = (init as RequestInit | undefined)?.body as string;
     return new Response(JSON.stringify({ results: {}, errors: {} }), {
       status: 200,
       headers: { 'content-type': 'application/json' }
     });
   }) as typeof fetch;
   const { res, get } = mockRes();
-  const rsyncCalls: string[] = [];
   await handleRemarkableUpload(
     mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, { notebook: 'Diary' }),
     res,
-    {
-      secret: SECRET,
-      ssh: { host: 'h', user: 'u', keyPath: 'k' },
-      inboxDir,
-      defaultNotebook: 'Diary',
-      automationServiceUrl: 'http://auto.test',
-      fetchDump: async () => DUMP,
-      rsync: async (uuid) => {
-        rsyncCalls.push(uuid);
-      }
-    }
+    { secret: SECRET, automationServiceUrl: 'http://auto.test' }
   );
-  const { status, headers, body } = get();
+  const { status, headers, body, flushed } = get();
   assert.equal(status, 200);
   const ct = headers['Content-Type'] ?? headers['content-type'];
   assert.match(ct, /text\/event-stream/);
-  assert.match(body, /event: status\ndata: \{"step":"ssh_connect"\}/);
-  assert.match(body, /event: status\ndata: \{"step":"list_pages"/);
-  assert.match(body, /event: done\ndata: \{"notebook":"Diary"/);
-  assert.match(body, /"uuid":"uuid-B"/);
-  assert.match(body, /"date":"2026-06-06"/);
-  assert.deepEqual(rsyncCalls, ['uuid-B']);
+  assert.equal(flushed, true);
+  assert.match(body, /event: status\ndata: \{"step":"trigger_pipeline"\}/);
+  assert.match(body, /event: done\ndata: \{"notebook":"Diary"\}/);
   assert.equal(automationCalled, true);
+  // Verifies the bridge issues `pipeline-run` to automation-service.
+  assert.ok(upstreamBody);
+  assert.match(upstreamBody!, /"command":"pipeline-run"/);
 });
 
-test('error event on notebook_not_found', async () => {
-  const inboxDir = mkdtempSync(join(tmpdir(), 'inbox-'));
-  const { res, get } = mockRes();
-  await handleRemarkableUpload(
-    mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, { notebook: 'Missing' }),
-    res,
-    {
-      secret: SECRET,
-      ssh: { host: 'h', user: 'u', keyPath: 'k' },
-      inboxDir,
-      defaultNotebook: 'Diary',
-      automationServiceUrl: 'http://auto.test',
-      fetchDump: async () => DUMP,
-      rsync: async () => {}
-    }
-  );
-  assert.match(get().body, /event: error\ndata: \{"kind":"notebook_not_found"/);
-});
-
-test('uses defaultNotebook when body omits notebook', async () => {
-  const inboxDir = mkdtempSync(join(tmpdir(), 'inbox-'));
+test('uses empty notebook when body omits notebook', async () => {
   globalThis.fetch = (async () =>
     new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
   const { res, get } = mockRes();
   await handleRemarkableUpload(
     mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, {}),
     res,
-    {
-      secret: SECRET,
-      ssh: { host: 'h', user: 'u', keyPath: 'k' },
-      inboxDir,
-      defaultNotebook: 'Diary',
-      automationServiceUrl: 'http://auto.test',
-      fetchDump: async () => DUMP,
-      rsync: async () => {}
-    }
+    { secret: SECRET, automationServiceUrl: 'http://auto.test' }
   );
-  assert.match(get().body, /"notebook":"Diary"/);
+  assert.match(get().body, /event: done\ndata: \{"notebook":""\}/);
 });
 
-test('automation failure emits automation_unreachable but keeps inbox', async () => {
-  const inboxDir = mkdtempSync(join(tmpdir(), 'inbox-'));
+test('automation upstream non-2xx emits automation_unreachable', async () => {
+  globalThis.fetch = (async () =>
+    new Response('boom', { status: 502 })) as typeof fetch;
+  const { res, get } = mockRes();
+  await handleRemarkableUpload(
+    mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, { notebook: 'Diary' }),
+    res,
+    { secret: SECRET, automationServiceUrl: 'http://auto.test' }
+  );
+  assert.match(get().body, /event: error\ndata: \{"kind":"automation_unreachable","message":"status 502"\}/);
+});
+
+test('automation fetch throw emits automation_unreachable', async () => {
   globalThis.fetch = (async () => {
     throw new Error('ECONNREFUSED');
   }) as typeof fetch;
@@ -165,70 +122,17 @@ test('automation failure emits automation_unreachable but keeps inbox', async ()
   await handleRemarkableUpload(
     mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, { notebook: 'Diary' }),
     res,
-    {
-      secret: SECRET,
-      ssh: { host: 'h', user: 'u', keyPath: 'k' },
-      inboxDir,
-      defaultNotebook: 'Diary',
-      automationServiceUrl: 'http://auto.test',
-      fetchDump: async () => DUMP,
-      rsync: async () => {}
-    }
+    { secret: SECRET, automationServiceUrl: 'http://auto.test' }
   );
-  const { body } = get();
-  assert.match(body, /event: error\ndata: \{"kind":"automation_unreachable"/);
-  // inbox index should still have the new uuid
-  const idx = JSON.parse(
-    readFileSync(`${inboxDir}/state/index.json`, 'utf8')
-  );
-  assert.ok(idx['uuid-B']);
+  assert.match(get().body, /event: error\ndata: \{"kind":"automation_unreachable","message":"ECONNREFUSED"\}/);
 });
 
-test('flushHeaders is called after writeHead 200', async () => {
-  const inboxDir = mkdtempSync(join(tmpdir(), 'inbox-'));
-  globalThis.fetch = (async () =>
-    new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+test('bad JSON body returns 400', async () => {
   const { res, get } = mockRes();
   await handleRemarkableUpload(
-    mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, { notebook: 'Diary' }),
+    mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, '{not json'),
     res,
-    {
-      secret: SECRET,
-      ssh: { host: 'h', user: 'u', keyPath: 'k' },
-      inboxDir,
-      defaultNotebook: 'Diary',
-      automationServiceUrl: 'http://auto.test',
-      fetchDump: async () => DUMP,
-      rsync: async () => {}
-    }
+    { secret: SECRET, automationServiceUrl: 'http://auto.test' }
   );
-  assert.equal(get().flushed, true);
-});
-
-test('expandHome expands ~ in inboxDir', async () => {
-  const inboxDir = mkdtempSync(join(tmpdir(), 'inbox-'));
-  globalThis.fetch = (async () =>
-    new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
-  const { res } = mockRes();
-  const stateFiles: string[] = [];
-  await handleRemarkableUpload(
-    mockReq({ authorization: `Bearer ${mintToken(SECRET)}` }, { notebook: 'Diary' }),
-    res,
-    {
-      secret: SECRET,
-      ssh: { host: 'h', user: 'u', keyPath: 'k' },
-      // use an absolute path that we can verify via expandHome directly
-      inboxDir,
-      defaultNotebook: 'Diary',
-      automationServiceUrl: 'http://auto.test',
-      fetchDump: async () => DUMP,
-      rsync: async (uuid) => { stateFiles.push(uuid); }
-    }
-  );
-  // Verify expandHome itself works correctly for tilde paths
-  assert.equal(expandHome('~'), homedir());
-  assert.equal(expandHome('~/foo/bar'), join(homedir(), 'foo/bar'));
-  // Verify state was written under the real inboxDir (not a literal ~/... path)
-  const idx = JSON.parse(readFileSync(`${inboxDir}/state/index.json`, 'utf8'));
-  assert.ok(idx['uuid-B']);
+  assert.equal(get().status, 400);
 });

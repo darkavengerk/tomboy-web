@@ -96,6 +96,100 @@ def test_fetch_continues_after_per_uuid_error(tmp_path: Path, stub_log):
     assert not state.contains("bad")
 
 
+def test_fetch_re_fetches_when_inbox_mtime_newer(tmp_path: Path, stub_log):
+    # 펜 가필로 rM이 같은 UUID의 .rm을 다시 rsync → Pi inbox index의 mtime이
+    # 데스크탑이 마지막에 본 source_mtime보다 커진다. 그러면 그 페이지는
+    # 다시 흘려보내야 한다.
+    raw_root = tmp_path / "raw"
+    raw_root.mkdir()
+    state = StateFile(tmp_path / "state" / "fetched.json")
+    state.write({"abc-1": {"fetched_at": "old", "source_mtime": 100}})
+
+    transport = FakeTransport(
+        index={"abc-1": {"received_at": "now", "mtime": 200, "present": True}},
+        files={"abc-1": {"abc-1.rm": b"EDITED"}},
+    )
+
+    fetched = fetch(raw_root=raw_root, state=state, log=stub_log, transport=transport)
+
+    assert fetched == ["abc-1"]
+    assert (raw_root / "abc-1" / "abc-1.rm").read_bytes() == b"EDITED"
+    assert state.get("abc-1")["source_mtime"] == 200
+
+
+def test_fetch_clears_downstream_states_when_mtime_newer(tmp_path: Path, stub_log):
+    # Cascade: s1이 재fetch를 결정하면 s2/s3/s4 state에서도 그 UUID 엔트리를
+    # 지워야 다음 사이클에 정상 재처리된다. 안 지우면 OCR/Firestore는
+    # contains() 가드에 막혀 영원히 스킵된다.
+    raw_root = tmp_path / "raw"
+    raw_root.mkdir()
+    state = StateFile(tmp_path / "state" / "fetched.json")
+    state.write({"abc-1": {"fetched_at": "old", "source_mtime": 100}})
+
+    prepared = StateFile(tmp_path / "state" / "prepared.json")
+    prepared.write({"abc-1": {"prepared_at": "old"}, "other": {"prepared_at": "old"}})
+    ocr_done = StateFile(tmp_path / "state" / "ocr-done.json")
+    ocr_done.write({"abc-1": {"ocr_at": "old"}})
+    written = StateFile(tmp_path / "state" / "written.json")
+    written.write({"abc-1": {"written_at": "old"}})
+
+    transport = FakeTransport(
+        index={"abc-1": {"received_at": "now", "mtime": 200, "present": True}},
+        files={"abc-1": {"abc-1.rm": b"X"}},
+    )
+
+    fetched = fetch(
+        raw_root=raw_root,
+        state=state,
+        log=stub_log,
+        transport=transport,
+        downstream_states=[prepared, ocr_done, written],
+    )
+
+    assert fetched == ["abc-1"]
+    assert not prepared.contains("abc-1")
+    assert not ocr_done.contains("abc-1")
+    assert not written.contains("abc-1")
+    # 다른 UUID는 건드리지 않는다
+    assert prepared.contains("other")
+
+
+def test_fetch_skips_when_inbox_mtime_same_or_older(tmp_path: Path, stub_log):
+    # mtime이 같거나 더 오래면(시계 역행 등) 재fetch하지 않는다 — 평소 동작 그대로.
+    raw_root = tmp_path / "raw"
+    raw_root.mkdir()
+    state = StateFile(tmp_path / "state" / "fetched.json")
+    state.write({"abc-1": {"fetched_at": "old", "source_mtime": 100}})
+
+    transport = FakeTransport(
+        index={"abc-1": {"received_at": "now", "mtime": 100, "present": True}},
+        files={"abc-1": {"abc-1.rm": b"X"}},
+    )
+
+    fetched = fetch(raw_root=raw_root, state=state, log=stub_log, transport=transport)
+
+    assert fetched == []
+    assert not (raw_root / "abc-1").exists()
+
+
+def test_fetch_skips_when_source_mtime_missing(tmp_path: Path, stub_log):
+    # 레거시 fetched.json: source_mtime 없음. 비교 못 하면 그냥 skip — 매 사이클
+    # 재처리하면 비용 폭발하고 동작도 의도와 다르다.
+    raw_root = tmp_path / "raw"
+    raw_root.mkdir()
+    state = StateFile(tmp_path / "state" / "fetched.json")
+    state.write({"abc-1": {"fetched_at": "old"}})  # no source_mtime
+
+    transport = FakeTransport(
+        index={"abc-1": {"received_at": "now", "mtime": 200, "present": True}},
+        files={"abc-1": {"abc-1.rm": b"X"}},
+    )
+
+    fetched = fetch(raw_root=raw_root, state=state, log=stub_log, transport=transport)
+
+    assert fetched == []
+
+
 def test_force_re_fetches(tmp_path: Path, stub_log):
     raw_root = tmp_path / "raw"
     raw_root.mkdir()

@@ -13,10 +13,7 @@ import type { RemarkableUploadNoteSpec } from '$lib/remarkable/parseRemarkableUp
 const KIND_MESSAGES: Record<RemarkableUploadErrorKind, string> = {
   not_configured: '브릿지 설정이 필요합니다',
   unauthorized: '인증 실패 — 설정에서 브릿지 재로그인',
-  ssh_connect_failed: '리마커블 연결 실패 — 같은 네트워크인지 확인',
-  notebook_not_found: '폴더를 찾을 수 없습니다',
-  rsync_failed: '페이지 복사 실패',
-  automation_unreachable: '데스크탑 파이프라인 트리거 실패 — 5분 내 자동 처리됩니다',
+  automation_unreachable: '데스크탑 파이프라인 트리거 실패 — 1분 내 자동 처리됩니다',
   upstream_error: '브릿지/서비스 응답 오류',
   network: '연결 실패',
   internal: '알 수 없는 오류'
@@ -32,29 +29,19 @@ function dateStamp(d: Date): string {
 
 /**
  * Pure helper: formats upload result into log lines for prepending to the note body.
- * Header line: `YYYY-MM-DD HH:mm — {notebook}, {N}건`
- * Per page:    `  → [[{date} 리마커블([{uuid}])]]`
- * Title format is byte-identical to pipeline.yaml tomboy.title_format.
+ * Single line: `YYYY-MM-DD HH:mm — {notebook} 트리거됨`
+ *
+ * rM → Pi inbox 동기화는 리마커블 위 1분 cron이 자동 처리하므로 페이지 단위
+ * 로그는 더 이상 만들지 않는다. 이 줄은 "사용자가 즉시 트리거를 눌렀다"는
+ * 사실만 기록한다.
  */
 export function formatLogLines(now: Date, result: RemarkableUploadResult): string[] {
-  const header = `${dateStamp(now)} — ${result.notebook}, ${result.pages.length}건`;
-  const links = result.pages.map(
-    (p) => `  → [[${p.date} 리마커블([${p.uuid}])]]`
-  );
-  return [header, ...links];
+  const label = result.notebook || '리마커블';
+  return [`${dateStamp(now)} — ${label} 트리거됨`];
 }
 
-function statusMessage(s: RemarkableUploadStatus): string {
-  switch (s.step) {
-    case 'ssh_connect':
-      return '리마커블 접속 중…';
-    case 'list_pages':
-      return `${s.notebook ?? ''} 페이지 ${s.new ?? 0}건 가져오는 중…`;
-    case 'rsync_pages':
-      return '페이지 복사 중…';
-    case 'trigger_pipeline':
-      return '파이프라인 트리거…';
-  }
+function statusMessage(_s: RemarkableUploadStatus): string {
+  return '파이프라인 트리거 중…';
 }
 
 /**
@@ -124,7 +111,7 @@ export async function runRemarkableUpload(
   // Guard: view.state.doc may be absent in test environments.
   let placeholderPos = -1;
   try {
-    placeholderPos = insertPlaceholder(view, hasHeader, '리마커블 접속 중…');
+    placeholderPos = insertPlaceholder(view, hasHeader, '파이프라인 트리거 중…');
   } catch {
     /* doc not available — proceed without placeholder */
   }
@@ -141,7 +128,7 @@ export async function runRemarkableUpload(
     if (view.isDestroyed) return;
     if (placeholderPos >= 0) removePlaceholder(view, placeholderPos);
     prependLines(view, hasHeader, formatLogLines(new Date(), result));
-    pushToast(`${result.notebook} ${result.pages.length}건 업로드`, { kind: 'info' });
+    pushToast(`${result.notebook || '리마커블'} 트리거됨`, { kind: 'info' });
   } catch (err) {
     if (view.isDestroyed) return;
     if (!(err instanceof RemarkableUploadError)) {

@@ -50,11 +50,10 @@ it('throws not_configured when bridge is missing', async () => {
   });
 });
 
-it('parses status events and resolves with done payload', async () => {
+it('parses trigger_pipeline status + done payload', async () => {
   const frames = [
-    'event: status\ndata: {"step":"ssh_connect"}\n\n',
-    'event: status\ndata: {"step":"list_pages","notebook":"Diary","total":3,"new":2}\n\n',
-    'event: done\ndata: {"notebook":"Diary","pages":[{"uuid":"u1","date":"2026-06-06"},{"uuid":"u2","date":"2026-06-06"}]}\n\n'
+    'event: status\ndata: {"step":"trigger_pipeline"}\n\n',
+    'event: done\ndata: {"notebook":"Diary"}\n\n'
   ];
   globalThis.fetch = (async () =>
     new Response(sseBody(frames), {
@@ -66,17 +65,8 @@ it('parses status events and resolves with done payload', async () => {
     notebook: 'Diary',
     onStatus: (s) => statuses.push(s)
   });
-  expect(statuses).toEqual([
-    { step: 'ssh_connect' },
-    { step: 'list_pages', notebook: 'Diary', total: 3, new: 2 }
-  ]);
-  expect(out).toEqual({
-    notebook: 'Diary',
-    pages: [
-      { uuid: 'u1', date: '2026-06-06' },
-      { uuid: 'u2', date: '2026-06-06' }
-    ]
-  });
+  expect(statuses).toEqual([{ step: 'trigger_pipeline' }]);
+  expect(out).toEqual({ notebook: 'Diary' });
 });
 
 it('maps 401 to unauthorized', async () => {
@@ -90,9 +80,9 @@ it('maps 401 to unauthorized', async () => {
   });
 });
 
-it('throws on error event', async () => {
+it('throws on automation_unreachable error event', async () => {
   const frames = [
-    'event: error\ndata: {"kind":"ssh_connect_failed","message":"timeout"}\n\n'
+    'event: error\ndata: {"kind":"automation_unreachable","message":"ECONNREFUSED"}\n\n'
   ];
   globalThis.fetch = (async () =>
     new Response(sseBody(frames), {
@@ -100,8 +90,8 @@ it('throws on error event', async () => {
       headers: { 'content-type': 'text/event-stream' }
     })) as typeof fetch;
   await expect(uploadRemarkable({ notebook: 'Diary' })).rejects.toMatchObject({
-    kind: 'ssh_connect_failed',
-    detail: 'timeout'
+    kind: 'automation_unreachable',
+    detail: 'ECONNREFUSED'
   });
 });
 
@@ -144,7 +134,7 @@ it('omits notebook from body when undefined', async () => {
   globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
     bodyText = typeof init?.body === 'string' ? init.body : '';
     return new Response(
-      sseBody(['event: done\ndata: {"notebook":"Diary","pages":[]}\n\n']),
+      sseBody(['event: done\ndata: {"notebook":""}\n\n']),
       { status: 200, headers: { 'content-type': 'text/event-stream' } }
     );
   }) as typeof fetch;
@@ -152,30 +142,13 @@ it('omits notebook from body when undefined', async () => {
   expect(JSON.parse(bodyText)).toEqual({});
 });
 
-it('includes pages array with uuid and date in done payload', async () => {
-  const frames = [
-    'event: done\ndata: {"notebook":"Workout","pages":[{"uuid":"abc-123","date":"2026-05-01"}]}\n\n'
-  ];
-  globalThis.fetch = (async () =>
-    new Response(sseBody(frames), {
-      status: 200,
-      headers: { 'content-type': 'text/event-stream' }
-    })) as typeof fetch;
-  const out = await uploadRemarkable({});
-  expect(out.pages).toEqual([{ uuid: 'abc-123', date: '2026-05-01' }]);
-});
-
 it('parses status events when frames are CRLF-separated', async () => {
   // Simulate a server that uses \r\n line endings (Node http module default).
   const enc = new TextEncoder();
   const crlfBody = new ReadableStream<Uint8Array>({
     start(controller) {
-      controller.enqueue(enc.encode('event: status\r\ndata: {"step":"ssh_connect"}\r\n\r\n'));
-      controller.enqueue(
-        enc.encode(
-          'event: done\r\ndata: {"notebook":"Diary","pages":[{"uuid":"u1","date":"2026-06-06"}]}\r\n\r\n'
-        )
-      );
+      controller.enqueue(enc.encode('event: status\r\ndata: {"step":"trigger_pipeline"}\r\n\r\n'));
+      controller.enqueue(enc.encode('event: done\r\ndata: {"notebook":"Diary"}\r\n\r\n'));
       controller.close();
     }
   });
@@ -186,7 +159,7 @@ it('parses status events when frames are CRLF-separated', async () => {
     })) as typeof fetch;
   const statuses: unknown[] = [];
   const out = await uploadRemarkable({ notebook: 'Diary', onStatus: (s) => statuses.push(s) });
-  expect(statuses).toEqual([{ step: 'ssh_connect' }]);
+  expect(statuses).toEqual([{ step: 'trigger_pipeline' }]);
   expect(out.notebook).toBe('Diary');
 });
 
@@ -197,7 +170,7 @@ it('cancels reader and throws on error event without waiting for stream close', 
   const hangingBody = new ReadableStream<Uint8Array>({
     start(controller) {
       controller.enqueue(
-        enc.encode('event: error\ndata: {"kind":"ssh_connect_failed","message":"timeout"}\n\n')
+        enc.encode('event: error\ndata: {"kind":"automation_unreachable","message":"timeout"}\n\n')
       );
       // Do NOT close — pull hangs indefinitely.
     }
@@ -213,7 +186,7 @@ it('cancels reader and throws on error event without waiting for stream close', 
   );
   await expect(
     Promise.race([uploadRemarkable({ notebook: 'Diary' }), timeout])
-  ).rejects.toMatchObject({ kind: 'ssh_connect_failed', detail: 'timeout' });
+  ).rejects.toMatchObject({ kind: 'automation_unreachable', detail: 'timeout' });
 });
 
 it('aborts mid-stream and throws network/aborted', async () => {
@@ -221,7 +194,7 @@ it('aborts mid-stream and throws network/aborted', async () => {
   const enc = new TextEncoder();
   const pausedBody = new ReadableStream<Uint8Array>({
     start(controller) {
-      controller.enqueue(enc.encode('event: status\ndata: {"step":"ssh_connect"}\n\n'));
+      controller.enqueue(enc.encode('event: status\ndata: {"step":"trigger_pipeline"}\n\n'));
       // Further data never arrives — we abort from outside instead.
     }
   });
