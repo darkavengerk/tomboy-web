@@ -6,6 +6,7 @@ import StarterKit from '@tiptap/starter-kit';
 import { TomboyUrlLink } from '$lib/editor/extensions/TomboyUrlLink.js';
 import MusicPlayerBar from '$lib/editor/musicNote/MusicPlayerBar.svelte';
 import { musicPlayer, __resetMusicPlayer } from '$lib/music/musicPlayer.svelte.js';
+import { __resetMusicProgress } from '$lib/music/musicProgress.js';
 import type { MusicTrack } from '$lib/music/parseMusicNote.js';
 
 let ed: Editor | null = null;
@@ -30,6 +31,7 @@ afterEach(() => {
 	ed?.destroy();
 	ed = null;
 	__resetMusicPlayer();
+	__resetMusicProgress();
 });
 
 describe('MusicPlayerBar — 순수 뷰 (글로벌 now-playing + idle 미리보기)', () => {
@@ -58,21 +60,17 @@ describe('MusicPlayerBar — 순수 뷰 (글로벌 now-playing + idle 미리보�
 		expect(container.querySelector('.music-now')?.textContent).toContain('재생 중');
 	});
 
-	it('다른 노트가 재생 중이면, 이 노트 패널도 글로벌 재생 곡을 표시', () => {
+	it('다른 노트가 재생 중이어도, 이 노트 패널은 자기 노트(로컬 첫 곡)를 표시', () => {
 		__resetMusicPlayer();
-		musicPlayer.setQueue('other', [T('https://h/z.mp3', '젭', '밤')], '다른노트');
-		musicPlayer.play(0);
+		__resetMusicProgress();
+		musicPlayer.playNote('other', [T('https://h/z.mp3', '젭', '밤')], '다른노트');
 		const editor = makeEditor(ONE); // 이 노트의 로컬 첫 곡은 'a'
 		const { container } = render(MusicPlayerBar, { editor, guid: 'this' });
 		flushSync();
-		// 로컬 'a' 가 아니라 글로벌 '젭' 을 표시.
-		expect(container.querySelector('.music-now b')?.textContent).toBe('젭');
-		expect(container.querySelector('.music-pl')?.textContent).toBe('밤');
-		// 글로벌 재생 중이므로 이전/다음 활성.
-		expect((container.querySelector('button[aria-label="이전"]') as HTMLButtonElement).disabled).toBe(false);
-		// 비활성 노트는 큐를 건드리지 않음.
+		expect(container.querySelector('.music-now b')?.textContent).toBe('a');
+		expect(container.querySelector('.music-now')?.textContent).toContain('대기');
+		expect((container.querySelector('button[aria-label="이전"]') as HTMLButtonElement).disabled).toBe(true);
 		expect(musicPlayer.activeNoteGuid).toBe('other');
-		expect(musicPlayer.queue.length).toBe(1);
 	});
 
 	it('활성 노트를 편집하면 큐가 재동기화된다', () => {

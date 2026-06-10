@@ -4,6 +4,7 @@
 	import { parseMusicNote } from '$lib/music/parseMusicNote.js';
 	import { musicPlayer } from '$lib/music/musicPlayer.svelte.js';
 	import { resumePlaybackFromGesture } from '$lib/music/musicAudio.svelte.js';
+	import { loadProgress } from '$lib/music/musicProgress.js';
 
 	// 순수 뷰. 오디오 재생은 전역 엔진(musicAudio.svelte.ts, +layout 설치)이 단일
 	// <audio> 로 담당한다. 이 컴포넌트는 musicPlayer(싱글톤)를 읽어 표시/조작만 한다.
@@ -13,6 +14,13 @@
 
 	let version = $state(0);
 	let refreshN = 0;
+
+	function fmt(s: number): string {
+		if (!Number.isFinite(s) || s < 0) s = 0;
+		const m = Math.floor(s / 60);
+		const sec = Math.floor(s % 60);
+		return `${m}:${sec.toString().padStart(2, '0')}`;
+	}
 
 	const onUpdate = () => {
 		version = (version + 1) | 0;
@@ -52,14 +60,32 @@
 		ed.view.dispatch(ed.state.tr.setMeta('musicRefresh', (refreshN = (refreshN + 1) | 0)));
 	});
 
-	// 표시 대상: 글로벌 현재 곡(재생/일시정지 중) 우선, 없으면 이 노트의 첫 곡 미리보기.
-	const globalTrack = $derived(musicPlayer.currentTrack);
+	// 이 노트가 활성(현재 재생) 노트인가.
+	const isThisActive = $derived(musicPlayer.activeNoteGuid === guid);
+	// 비활성 노트면 이 노트의 기억된 위치(트랙+초)를 찾는다. version 으로 doc 변경에 반응.
+	const remembered = $derived.by(() => {
+		version;
+		if (isThisActive) return null;
+		const e = loadProgress(guid);
+		if (!e) return null;
+		const tr = parsedNote.flatQueue.find((t) => t.url === e.trackUrl);
+		return tr ? { track: tr, time: e.currentTime } : null;
+	});
 	const localFirst = $derived(parsedNote.flatQueue[0] ?? null);
-	const isGlobalActive = $derived(globalTrack !== null);
-	const shown = $derived(globalTrack ?? localFirst);
-	const playing = $derived(musicPlayer.isPlaying);
+	const shown = $derived(isThisActive ? musicPlayer.currentTrack : (remembered?.track ?? localFirst));
+	const playing = $derived(isThisActive && musicPlayer.isPlaying);
 	const label = $derived(shown?.playlistLabel ?? '');
-	const statusText = $derived(isGlobalActive ? (playing ? '재생 중' : '일시정지') : '대기');
+	const statusText = $derived(
+		isThisActive
+			? playing
+				? '재생 중'
+				: '일시정지'
+			: remembered
+				? `이어듣기 ${fmt(remembered.time)}`
+				: '대기'
+	);
+	// 탐색/이전/다음은 라이브(활성 노트)에서만. 비활성은 ▶ 로 이어 재생 후 활성화.
+	const seekTime = $derived(isThisActive ? musicPlayer.currentTime : (remembered?.time ?? 0));
 
 	const repeat = $derived(musicPlayer.repeat);
 	const shuffle = $derived(musicPlayer.shuffle);
@@ -67,17 +93,15 @@
 		repeat === 'one' ? '한 곡 반복' : repeat === 'all' ? '전체 반복' : '반복 없음'
 	);
 
-	function startLocal() {
-		const note = parsedNote;
-		if (note.flatQueue.length === 0) return;
-		musicPlayer.setQueue(guid, note.flatQueue, note.name);
-		musicPlayer.play(0);
-	}
 	function onMainBtn() {
-		if (isGlobalActive) musicPlayer.toggle();
-		else startLocal();
-		// 모바일 재생 잠금 해제: 제스처(이 onclick) 안에서 동기로 play() 해야 한다.
-		// 스토어만 갱신하고 $effect 에 맡기면 제스처 밖이라 iOS 가 차단한다.
+		if (isThisActive) {
+			musicPlayer.toggle();
+		} else {
+			const note = parsedNote;
+			if (note.flatQueue.length === 0) return;
+			musicPlayer.playNote(guid, note.flatQueue, note.name);
+		}
+		// 모바일 재생 잠금 해제: 제스처(이 onclick) 안에서 동기로 play().
 		if (musicPlayer.isPlaying) resumePlaybackFromGesture();
 	}
 	// prev/next 도 같은 제스처 규칙 — 일시정지 상태에서 곡만 바꿔도 재생을 이어준다.
@@ -90,12 +114,6 @@
 		if (musicPlayer.isPlaying) resumePlaybackFromGesture();
 	}
 
-	function fmt(s: number): string {
-		if (!Number.isFinite(s) || s < 0) s = 0;
-		const m = Math.floor(s / 60);
-		const sec = Math.floor(s % 60);
-		return `${m}:${sec.toString().padStart(2, '0')}`;
-	}
 	function onSeekInput(e: Event) {
 		musicPlayer.requestSeek(Number((e.currentTarget as HTMLInputElement).value));
 	}
@@ -112,21 +130,21 @@
 			<button
 				type="button"
 				onclick={onPrev}
-				disabled={!isGlobalActive}
+				disabled={!isThisActive}
 				aria-label="이전">⏮</button
 			>
 			<button
 				type="button"
 				class="main"
 				onclick={onMainBtn}
-				disabled={!isGlobalActive && !shown}
-				aria-label={isGlobalActive && playing ? '일시정지' : '재생'}
-				>{isGlobalActive && playing ? '⏸' : '▶'}</button
+				disabled={!shown}
+				aria-label={playing ? '일시정지' : '재생'}
+				>{playing ? '⏸' : '▶'}</button
 			>
 			<button
 				type="button"
 				onclick={onNext}
-				disabled={!isGlobalActive}
+				disabled={!isThisActive}
 				aria-label="다음">⏭</button
 			>
 		</div>
@@ -150,18 +168,18 @@
 			>
 		</div>
 		<div class="music-seek">
-			<span class="t">{fmt(musicPlayer.currentTime)}</span>
+			<span class="t">{fmt(seekTime)}</span>
 			<input
 				type="range"
 				min="0"
-				max={Math.max(1, musicPlayer.duration)}
+				max={Math.max(1, isThisActive ? musicPlayer.duration : 1)}
 				step="0.1"
-				value={musicPlayer.currentTime}
+				value={seekTime}
 				oninput={onSeekInput}
-				disabled={!isGlobalActive}
+				disabled={!isThisActive}
 				aria-label="탐색"
 			/>
-			<span class="t">{fmt(musicPlayer.duration)}</span>
+			<span class="t">{fmt(isThisActive ? musicPlayer.duration : 0)}</span>
 		</div>
 	</div>
 </div>
