@@ -158,6 +158,16 @@ describe('handleClipboardCopy', () => {
 		const { text } = dispatchClipboardEvent(editor, 'copy');
 		expect(text).toBe('');
 	});
+
+	it('embeds the exact-restore payload (data-tomboy-slice + data-pm-slice) in text/html', () => {
+		const editor = makeEditor(docJson(p('a'), p(''), p('b')));
+		editor.commands.selectAll();
+		const { html } = dispatchClipboardEvent(editor, 'copy');
+		expect(html).toContain('data-tomboy-slice');
+		// PM 의 sliceData 정규식 /^(\d+) (\d+)(?: -(\d+))? (.*)/ 에 맞아야
+		// maxOpen 재계산을 건너뛴다 — 빈 컨텍스트 "[]" 포함 형식 고정.
+		expect(html).toMatch(/data-pm-slice="\d+ \d+ \[\]"/);
+	});
 });
 
 describe('handleClipboardCut', () => {
