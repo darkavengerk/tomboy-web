@@ -1,10 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { musicPlayer, __resetMusicPlayer } from '$lib/music/musicPlayer.svelte.js';
+import { __resetMusicProgress } from '$lib/music/musicProgress.js';
 import type { MusicTrack } from '$lib/music/parseMusicNote.js';
 
 const t = (url: string): MusicTrack => ({ url, title: null, display: url, liPos: 0 });
 
-beforeEach(() => __resetMusicPlayer());
+beforeEach(() => {
+	__resetMusicPlayer();
+	__resetMusicProgress();
+});
 
 describe('musicPlayer.setQueue', () => {
 	it('starts at index 0 paused for a fresh note', () => {
@@ -194,5 +198,59 @@ describe('musicPlayer 랜덤 섞기(shuffle)', () => {
 		expect(musicPlayer.isPlaying).toBe(true);
 		musicPlayer.next(); // 끝 넘어감
 		expect(musicPlayer.isPlaying).toBe(false);
+	});
+});
+
+describe('musicPlayer 노트별 이어듣기', () => {
+	it('다른 노트로 갔다 돌아오면 트랙+위치를 복원해 이어 재생', () => {
+		musicPlayer.playNote('A', [t('a'), t('b')]);
+		musicPlayer.play(1); // 트랙 b
+		musicPlayer.reportTime(33);
+		musicPlayer.playNote('B', [t('c')]); // B 로 전환(A@b:33 저장)
+		expect(musicPlayer.activeNoteGuid).toBe('B');
+		musicPlayer.playNote('A', [t('a'), t('b')]); // A 로 복귀
+		expect(musicPlayer.currentIndex).toBe(1);
+		expect(musicPlayer.currentTrack?.url).toBe('b');
+		expect(musicPlayer.currentTime).toBeCloseTo(33, 0);
+		expect(musicPlayer.resumeAt).toBeCloseTo(33, 0);
+		expect(musicPlayer.isPlaying).toBe(true);
+	});
+
+	it('stop: 정지+활성 해제, 진행위치는 보존', () => {
+		musicPlayer.playNote('A', [t('a')]);
+		musicPlayer.reportTime(12);
+		musicPlayer.stop();
+		expect(musicPlayer.isPlaying).toBe(false);
+		expect(musicPlayer.activeNoteGuid).toBeNull();
+		expect(musicPlayer.queue.length).toBe(0);
+		musicPlayer.playNote('A', [t('a')]);
+		expect(musicPlayer.currentTime).toBeCloseTo(12, 0);
+	});
+
+	it('명시적 play(index) 는 복원을 버리고 그 트랙을 0:00 부터', () => {
+		musicPlayer.playNote('A', [t('a'), t('b')]);
+		musicPlayer.play(1);
+		musicPlayer.reportTime(20);
+		musicPlayer.playNote('B', [t('c')]);
+		musicPlayer.setQueue('A', [t('a'), t('b')]);
+		musicPlayer.play(0);
+		expect(musicPlayer.currentIndex).toBe(0);
+		expect(musicPlayer.currentTime).toBe(0);
+		expect(musicPlayer.resumeAt).toBe(0);
+	});
+
+	it('resume 후 play(index) 는 resumeAt 도 비운다(다른 트랙에 stale seek 방지)', () => {
+		// A 에 저장 위치를 만들고
+		musicPlayer.playNote('A', [t('a'), t('b')]);
+		musicPlayer.play(1);
+		musicPlayer.reportTime(40);
+		musicPlayer.playNote('B', [t('c')]);
+		// A 로 복귀 → resume 이 resumeAt 을 40 으로 승격
+		musicPlayer.playNote('A', [t('a'), t('b')]);
+		expect(musicPlayer.resumeAt).toBeCloseTo(40, 0);
+		// 엔진이 소비하기 전에 사용자가 트랙 0 을 명시적으로 클릭하면 resumeAt 이 비워져야 한다
+		musicPlayer.play(0);
+		expect(musicPlayer.resumeAt).toBe(0);
+		expect(musicPlayer.currentTime).toBe(0);
 	});
 });

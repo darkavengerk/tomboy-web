@@ -120,6 +120,27 @@ export function installMusicAudio(): () => void {
 			// 자동 넘김은 isPlaying 을 true 로 둔 채 src 만 바꾼다 → 여기서 직접 이어 재생.
 			if (untrack(() => musicPlayer.isPlaying)) void audio.play().catch(() => {});
 		});
+		// 이어듣기 seek. resumeAt(>0)이 설정되면 — 노트 전환으로 src 가 바뀌든(메타데이터
+		// 로드 후) 같은 트랙 url 이라 src 가 그대로든(이미 로드됨 → 즉시) — 저장 위치로
+		// 정확히 한 번 이동한다. src 효과의 early-return(같은 url)에 갇히지 않도록 별도 효과로
+		// 둔다. resumeAt 변화에만 반응하며 takeResumeAt() 으로 1회 소비한다.
+		$effect(() => {
+			const at = musicPlayer.resumeAt;
+			if (at <= 0) return;
+			const apply = () => {
+				const tgt = musicPlayer.takeResumeAt();
+				if (tgt > 0) audio.currentTime = tgt;
+			};
+			if (audio.readyState >= 1 /* HAVE_METADATA: 같은 트랙 이어듣기 → 즉시 */) {
+				apply();
+			} else {
+				const onMetaSeek = () => {
+					apply();
+					audio.removeEventListener('loadedmetadata', onMetaSeek);
+				};
+				audio.addEventListener('loadedmetadata', onMetaSeek);
+			}
+		});
 		// 재생/일시정지.
 		$effect(() => {
 			if (musicPlayer.isPlaying) void audio.play().catch(() => {});
