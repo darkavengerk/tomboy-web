@@ -71,11 +71,11 @@
 	.img-ctx-backdrop {
 		position: fixed;
 		inset: 0;
-		z-index: 2100;
+		z-index: var(--z-popover);
 	}
 	.img-ctx-menu {
 		position: fixed;
-		z-index: 2101;
+		z-index: var(--z-popover);
 		background: #fff;
 		color: #111;
 		border: 1px solid #d0d7de;

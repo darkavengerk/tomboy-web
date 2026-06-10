@@ -2667,7 +2667,7 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 	   데스크탑 hover 는 -static(pointer-events:none), 모바일 탭은 -jump 버튼 포함. */
 	:global(.tomboy-fn-preview) {
 		position: fixed;
-		z-index: 900;
+		z-index: var(--z-menu);
 		max-width: 300px;
 		/* 길이 제한은 plugin 에서 글자수(데스크탑 전문 / 모바일 300자)로 두고,
 		   여기서는 뷰포트를 넘지 않게 높이만 막는다(모바일은 내부 스크롤 가능). */

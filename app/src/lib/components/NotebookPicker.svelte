@@ -80,7 +80,7 @@
 		position: fixed;
 		inset: 0;
 		background: rgba(0, 0, 0, 0.4);
-		z-index: 200;
+		z-index: var(--z-sheet);
 	}
 
 	.picker {
@@ -91,7 +91,7 @@
 		background: var(--color-bg, #fff);
 		border-radius: 16px 16px 0 0;
 		padding-bottom: calc(24px + var(--safe-area-bottom, 0px));
-		z-index: 201;
+		z-index: var(--z-sheet);
 		box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.15);
 		max-height: 70vh;
 		display: flex;

@@ -371,7 +371,7 @@
 		display: flex;
 		flex-direction: row;
 		color: #eee;
-		z-index: 100000;
+		z-index: var(--z-nav);
 		/* The side-panel box spans the full expanded width so .main can
 		   occupy its eventual position when revealed. But we don't want the
 		   full box to capture hover — only the visible rail should. Setting

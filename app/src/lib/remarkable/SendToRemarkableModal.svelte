@@ -288,15 +288,18 @@
 		position: fixed;
 		inset: 0;
 		background: rgba(0, 0, 0, 0.45);
-		/* Above pinned NoteWindow (1_000_000 + z) and SpreadOverlay (2_000_000). */
-		z-index: 2500000;
+		/* 이 모달은 NoteWindow(.note-window) 안에 마운트되어 그 stacking context 에
+		   갇히므로, 실제로는 같은 창 안의 콘텐츠 위로만 뜬다(데스크탑 밴드를 못 넘는다).
+		   따라서 창-내부 기준의 모달 tier 면 충분하다. 창 밖으로 띄우려면 use:portal 필요.
+		   CLAUDE.md "z-index 레이어 규약". */
+		z-index: var(--z-modal);
 	}
 	.rm-modal {
 		position: fixed;
 		top: 50%;
 		left: 50%;
 		transform: translate(-50%, -50%);
-		z-index: 2500001;
+		z-index: var(--z-modal);
 		background: #fff;
 		color: #111;
 		border-radius: 8px;

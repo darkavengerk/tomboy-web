@@ -7,7 +7,8 @@
 	import {
 		desktopSession,
 		loadWallpaper,
-		setWallpaper
+		setWallpaper,
+		DESKTOP_PINNED_Z
 	} from './session.svelte.js';
 	import { sidePanelLayout } from './sidePanelLayout.svelte.js';
 	import { installModKeyListeners } from './modKeys.svelte.js';
@@ -304,7 +305,7 @@
 						y={win.y}
 						width={win.width}
 						height={win.height}
-						z={(win.pinned ? 1_000_000 : 0) + win.z}
+						z={(win.pinned ? DESKTOP_PINNED_Z : 0) + win.z}
 						pinned={win.pinned}
 						active={active}
 						onfocus={handleFocus}
@@ -318,7 +319,7 @@
 						y={win.y}
 						width={win.width}
 						height={win.height}
-						z={(win.pinned ? 1_000_000 : 0) + win.z}
+						z={(win.pinned ? DESKTOP_PINNED_Z : 0) + win.z}
 						pinned={win.pinned}
 						active={active}
 						onfocus={handleFocus}
@@ -333,7 +334,7 @@
 						y={win.y}
 						width={win.width}
 						height={win.height}
-						z={(win.pinned ? 1_000_000 : 0) + win.z}
+						z={(win.pinned ? DESKTOP_PINNED_Z : 0) + win.z}
 						pinned={win.pinned}
 						active={active}
 						onfocus={handleFocus}

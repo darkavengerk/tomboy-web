@@ -231,7 +231,7 @@
 		   기준 컨테이너가 없으므로 영향 없음 (그냥 일반 block 처럼 동작). */
 		position: sticky;
 		top: 0;
-		z-index: 20;
+		z-index: var(--z-nav);
 	}
 
 	/* 모드별 테마 색상 */
@@ -314,7 +314,7 @@
 		position: fixed;
 		inset: 0;
 		background: rgba(0, 0, 0, 0.4);
-		z-index: 200;
+		z-index: var(--z-sheet);
 	}
 
 	.sheet {
@@ -324,7 +324,7 @@
 		right: 0;
 		background: var(--color-bg, #fff);
 		border-radius: 16px 16px 0 0;
-		z-index: 201;
+		z-index: var(--z-sheet);
 		max-height: 70vh;
 		display: flex;
 		flex-direction: column;

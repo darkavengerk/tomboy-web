@@ -256,11 +256,11 @@
 	.ctx-backdrop {
 		position: fixed;
 		inset: 0;
-		z-index: 400;
+		z-index: var(--z-menu);
 	}
 	.ctx-menu {
 		position: fixed;
-		z-index: 401;
+		z-index: var(--z-menu);
 		background: #fff;
 		color: #111;
 		border: 1px solid #d0d7de;
@@ -306,7 +306,8 @@
 		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
 		min-width: 140px;
 		padding: 4px;
-		z-index: 402;
+		/* 로컬: .ctx-menu(var(--z-menu)) 가 stacking context 라 형제 항목 위로만 뜨면 됨 */
+		z-index: 1;
 	}
 	.sep {
 		height: 1px;

@@ -48,14 +48,14 @@
 		position: fixed;
 		inset: 0;
 		background: rgba(0, 0, 0, 0.45);
-		z-index: 400;
+		z-index: var(--z-modal);
 	}
 	.dialog {
 		position: fixed;
 		top: 50%;
 		left: 50%;
 		transform: translate(-50%, -50%);
-		z-index: 401;
+		z-index: var(--z-modal);
 		background: var(--color-bg, #fff);
 		color: var(--color-text, #111);
 		border-radius: 8px;
