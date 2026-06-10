@@ -203,7 +203,7 @@ function runSshWithStdin(
 			stdio: [stdin ? 'pipe' : 'ignore', 'ignore', 'pipe']
 		});
 		let stderr = '';
-		child.stderr.on('data', (d) => {
+		child.stderr?.on('data', (d) => {
 			stderr += d.toString();
 		});
 		child.on('error', (err) => reject(err));
