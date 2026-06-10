@@ -168,11 +168,11 @@
 	.ctx-backdrop {
 		position: fixed;
 		inset: 0;
-		z-index: 300;
+		z-index: var(--z-menu);
 	}
 	.ctx-menu {
 		position: fixed;
-		z-index: 301;
+		z-index: var(--z-menu);
 		background: #fff;
 		color: #111;
 		border: 1px solid #d0d7de;

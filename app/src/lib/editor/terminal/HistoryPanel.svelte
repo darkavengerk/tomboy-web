@@ -331,7 +331,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 1px;
-		z-index: 100;
+		z-index: var(--z-menu);
 		min-width: 100px;
 	}
 	.menu button {

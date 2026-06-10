@@ -11,6 +11,17 @@ const WALLPAPER_KEY = 'desktop:wallpaper';
 const VERSION = 3;
 const WORKSPACE_COUNT = 4;
 
+/**
+ * 데스크탑 윈도우 z 모델 (CLAUDE.md "z-index 레이어 규약" 참고):
+ * 각 윈도우의 z 는 `++nextZ` 로 단조 증가(포커스/열기마다 상승)하고, pinned 윈도우는
+ * 렌더 시 z 에 DESKTOP_PINNED_Z 를 더해 항상 비고정 윈도우 위에 둔다. 이 값들은 모두
+ * `.canvas`(position:fixed) stacking context **안에서만** 의미가 있다 — 바깥의 `--z-*`
+ * 토큰(예: SidePanel=--z-nav, SpreadOverlay=--z-modal)과 숫자로 직접 비교되지 않고,
+ * `.canvas` 의 형제 DOM 순서가 밴드 위아래를 결정한다. 따라서 이 오프셋이 아무리 커도
+ * 윈도우 스택은 `.canvas` 밖으로 새어 나가지 않는다.
+ */
+export const DESKTOP_PINNED_Z = 1_000_000;
+
 export type DesktopWindowKind = 'note' | 'settings' | 'admin';
 
 /** Singleton guid used for the settings window. */

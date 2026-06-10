@@ -411,7 +411,7 @@
 		top: 0;
 		left: 0;
 		right: 0;
-		z-index: 1000;
+		z-index: var(--z-banner);
 	}
 
 	.install-banner {
@@ -426,7 +426,7 @@
 		bottom: 0;
 		left: 0;
 		right: 0;
-		z-index: 1000;
+		z-index: var(--z-banner);
 		padding-bottom: calc(8px + var(--safe-area-bottom));
 	}
 

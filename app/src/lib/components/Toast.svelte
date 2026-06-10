@@ -21,7 +21,7 @@
 		align-items: center;
 		gap: 6px;
 		pointer-events: none;
-		z-index: 1000;
+		z-index: var(--z-toast);
 	}
 
 	.toast {

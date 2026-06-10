@@ -167,7 +167,7 @@
 <style>
 	.tomboy-eq-sticky {
 		position: fixed;
-		z-index: 15; /* below TopNav (20), above editor content */
+		z-index: var(--z-sticky); /* below TopNav (--z-nav), above editor content */
 		display: none;
 		max-height: 40vh;
 		overflow-y: auto;

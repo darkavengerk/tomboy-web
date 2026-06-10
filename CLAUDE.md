@@ -146,6 +146,31 @@ await desktopSession.reloadWindows(affectedGuids);   // force IDB reload everywh
 - Event props lowercase: `onchange`, `onclick`, `oninternallink`.
 - `bind:this={ref}` returns instance; expose methods with `export function` inside `<script>`.
 
+## z-index 레이어 규약
+
+Single source of truth: the `--z-*` token scale in `app/src/app.css` `:root`. Tiers are 100 apart so there's room to wedge between without renumbering. **Never hardcode a competing z-index; never bump a number to "win" — pick the right tier or add one to the scale.**
+
+| Token | Value | Owns |
+|---|---|---|
+| `--z-sticky` | 100 | fixed/sticky in-page chrome that scrolls **under** the nav (eq `StickyHeader`) |
+| `--z-nav` | 200 | primary nav chrome — mobile `TopNav`, desktop `SidePanel` rail |
+| `--z-sheet` | 300 | bottom-sheets & dropdowns (`NotebookPicker`, TopNav favorites, `/notes` sort, mobile `NoteActionSheet`) |
+| `--z-menu` | 400 | context menus & hover popovers (`NoteContextMenu`, `EditorContextMenu`, footnote preview, terminal `HistoryPanel`) |
+| `--z-banner` | 500 | app status banners (offline / install prompt, in `+layout.svelte`) |
+| `--z-toast` | 600 | transient toasts — deliberately **above** banners |
+| `--z-modal` | 700 | modal dialogs (`ImageViewerModal`, `NoteXmlViewer`, terminal send-overlay, `SendToRemarkableModal`, desktop `SpreadOverlay`) |
+| `--z-popover` | 800 | popover opened **on top of** a modal (`ImageActionMenu` over the image viewer) |
+
+**The decision rule — tokenize only root-level competitors.** Use a `--z-*` token **iff** the element competes at the document/layout root, i.e. it is either:
+1. portaled/`appendChild`'d to `<body>` (`lib/utils/portal.ts`, or manual `document.body.appendChild` — `EditorContextMenu`, `footnote/preview.ts`, `tableBlockPlugin.ts`), **or**
+2. `position:fixed` and **not** nested inside an ancestor stacking context.
+
+Everything else keeps a **small hand-picked int (0–20)** and stays **untokenized**: local stacking contexts (editor widget buttons, labeled-divider `::before`/label pair under `isolation:isolate`, image-frame toolbar, graph/codegraph HUDs, spread-overlay close button) and **in-page furniture** (music bar, meta chips, FABs, bottom toolbar, find-bar, chat send pill). These only need to beat sibling/editor content and sit below `--z-sticky`; converting them to tokens is noise and can break intra-context order. A scrim+panel pair shares **one** tier — the panel is a **later DOM sibling**, so it paints on top at equal z (don't add `+1`).
+
+**Stacking-context gotcha (load-bearing):** a value only competes inside its nearest stacking-context ancestor (created by `position`+`z-index`, `transform`, `opacity<1`, `isolation:isolate`, `filter`, …). So `z-index:20` on the image-frame toolbar never fights `TopNav`'s `--z-nav`; and a modal mounted **inside** a desktop `NoteWindow` (`.note-window` is `position:absolute`+inline-z → its own context) is **trapped** there — `SendToRemarkableModal`/`TerminalView` send-overlay cover only in-window content regardless of their token. To truly clear the desktop bands a modal must `use:portal` to `<body>`.
+
+**Desktop workspace is its own band system** (`lib/desktop/`), documented at `DESKTOP_PINNED_Z` in `session.svelte.ts`. Windows live inside `.canvas` (`position:fixed`, **no** z-index → `z:auto`): each window's `z = ++nextZ` (rises on focus), pinned windows add `DESKTOP_PINNED_Z`. That whole stack is sealed inside `.canvas`, so it never numerically meets the `--z-*` tokens — `.canvas`'s **sibling DOM order** under `.desktop-root` is what puts `SidePanel` (`--z-nav`) and `SpreadOverlay` (`--z-modal`) above it. Keep window z dynamic; never give windows a static tier.
+
 ## Editor shortcuts & UX
 
 - **Ctrl/Cmd+D** — insert `yyyy-mm-dd` wrapped in `tomboyDatetime` mark (Tomboy `<datetime>` round-trip preserved); mark unset right after so subsequent typing is plain (`lib/editor/insertDate.ts`). Browser bookmark shortcut suppressed.

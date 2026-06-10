@@ -9,6 +9,23 @@
 	--color-danger: #dc3545;
 	--safe-area-top: env(safe-area-inset-top, 0px);
 	--safe-area-bottom: env(safe-area-inset-bottom, 0px);
+
+	/* ── z-index 레이어 규약 ────────────────────────────────────────────────
+	   문서/레이아웃 루트에서 "경쟁하는" 요소에만 쓴다: stacking context 에
+	   안 갇힌 position:fixed, 또는 <body> 로 portal/append 된 노드
+	   (lib/utils/portal.ts). 각 tier 는 100 간격. scrim 과 그 panel 은 같은
+	   tier 를 공유하고, panel 이 DOM 상 뒤에 와서 위에 그려진다.
+	   로컬 stacking context / 페이지 가구(음악바·FAB·툴바·find-bar·에디터
+	   위젯 버튼 등)는 토큰화하지 말 것 — 작은 정수(0~20)를 그대로 둔다.
+	   전체 규칙: CLAUDE.md "z-index 레이어 규약". */
+	--z-sticky: 100;  /* nav 아래로 스크롤되는 고정 페이지 크롬 (eq StickyHeader) */
+	--z-nav: 200;     /* 1차 내비 크롬 — 모바일 TopNav, 데스크탑 SidePanel 레일 */
+	--z-sheet: 300;   /* 바텀시트·드롭다운 (노트북/즐겨찾기/정렬/모바일 노트액션) */
+	--z-menu: 400;    /* 컨텍스트 메뉴·hover 팝오버 (노트액션·우클릭·각주미리보기·히스토리) */
+	--z-banner: 500;  /* 앱 상태 배너 (오프라인 / 설치 안내) */
+	--z-toast: 600;   /* 일시 토스트 — 배너 위 */
+	--z-modal: 700;   /* 모달 다이얼로그 (이미지뷰어·XML뷰어·터미널전송·리마커블·펼쳐보기) */
+	--z-popover: 800; /* 모달 위에 뜨는 팝오버 (이미지뷰어 위 이미지 액션메뉴) */
 }
 
 *,

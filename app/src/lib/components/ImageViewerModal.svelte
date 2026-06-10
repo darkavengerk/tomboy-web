@@ -278,7 +278,7 @@
 		position: fixed;
 		inset: 0;
 		background: rgba(0, 0, 0, 0.72);
-		z-index: 2000;
+		z-index: var(--z-modal);
 		overflow: hidden;
 		touch-action: none;
 	}

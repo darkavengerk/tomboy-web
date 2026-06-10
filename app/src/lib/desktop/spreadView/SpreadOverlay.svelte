@@ -130,8 +130,10 @@
 	.spread-overlay {
 		position: fixed;
 		inset: 0;
-		/* Above pinned windows (1_000_000 + raw z in DesktopWorkspace). */
-		z-index: 2000000;
+		/* 데스크탑 최상위 밴드. `.canvas`(윈도우 스택) 의 형제로, --z-modal 만으로도
+		   pinned 윈도우 포함 전체 윈도우 스택 위에 그려진다 — 윈도우 z(+DESKTOP_PINNED_Z)는
+		   .canvas 안에 갇혀 있어 이 값과 경쟁하지 않는다. CLAUDE.md "z-index 레이어 규약". */
+		z-index: var(--z-modal);
 		background: rgba(10, 10, 12, 0.92);
 	}
 	.spread-scroll {
