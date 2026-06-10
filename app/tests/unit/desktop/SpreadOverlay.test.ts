@@ -11,9 +11,10 @@ class RO {
 
 // vi.mock is hoisted above all `const` declarations, so mocks that reference
 // outer variables must use vi.hoisted() to avoid TDZ errors.
-const { focusWindow, close } = vi.hoisted(() => ({
+const { focusWindow, close, closeWindow } = vi.hoisted(() => ({
 	focusWindow: vi.fn(),
-	close: vi.fn()
+	close: vi.fn(),
+	closeWindow: vi.fn()
 }));
 
 let fakeWindows: Array<{ guid: string; kind: string; x: number; y: number; width: number; height: number }> = [];
@@ -25,7 +26,8 @@ vi.mock('$lib/desktop/session.svelte.js', () => ({
 			return fakeWindows;
 		},
 		getSnapshotSource: (g: string) => sources[g] ?? null,
-		focusWindow
+		focusWindow,
+		closeWindow
 	}
 }));
 vi.mock('$lib/desktop/spreadView/spreadView.svelte.js', () => ({
@@ -44,6 +46,7 @@ import SpreadOverlay from '$lib/desktop/spreadView/SpreadOverlay.svelte';
 beforeEach(() => {
 	focusWindow.mockClear();
 	close.mockClear();
+	closeWindow.mockClear();
 	const a = document.createElement('div');
 	a.textContent = 'note one body';
 	const b = document.createElement('div');
@@ -78,5 +81,14 @@ describe('SpreadOverlay', () => {
 		render(SpreadOverlay);
 		await fireEvent.keyDown(window, { key: 'Escape' });
 		expect(close).toHaveBeenCalled();
+	});
+
+	it('per-card ✕ closes that note window without jumping or closing the overlay', async () => {
+		const { getByLabelText } = render(SpreadOverlay);
+		await fireEvent.click(getByLabelText('Note A 닫기'));
+		expect(closeWindow).toHaveBeenCalledWith('a');
+		// stopPropagation: the card's jumpTo (focus + overlay close) must not fire.
+		expect(focusWindow).not.toHaveBeenCalled();
+		expect(close).not.toHaveBeenCalled();
 	});
 });
