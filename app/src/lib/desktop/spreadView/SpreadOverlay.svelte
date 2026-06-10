@@ -1,7 +1,9 @@
 <script lang="ts">
+	import { dev } from '$app/environment';
 	import { desktopSession } from '$lib/desktop/session.svelte.js';
 	import { spreadView } from '$lib/desktop/spreadView/spreadView.svelte.js';
-	import { packMaxRects, type Box } from '$lib/desktop/spreadView/packMaxRects.js';
+	import { type Box } from '$lib/desktop/spreadView/packMaxRects.js';
+	import { selectDenseLayout } from '$lib/desktop/spreadView/denseSpread.js';
 	import SpreadScrollbar from '$lib/desktop/spreadView/SpreadScrollbar.svelte';
 
 	const GAP = 16;
@@ -19,9 +21,22 @@
 			.sort((a, b) => a.y - b.y || a.x - b.x)
 	);
 
+	// Overlap-allowed dense layout: notes register a few px smaller so the packer
+	// tucks them tighter, then render at real size (→ neighbours overlap by the
+	// chosen shrink − GAP). Top-left content stays visible; hover lifts a card.
 	const layout = $derived.by(() => {
 		const boxes: Box[] = noteWindows.map((w) => ({ guid: w.guid, w: w.width, h: w.height }));
-		return packMaxRects(boxes, containerWidth, GAP);
+		return selectDenseLayout(boxes, containerWidth, GAP);
+	});
+
+	// Dev-only: surface the per-level packing heights + the auto-chosen shrink so
+	// the "의미있는 축소" selection is verifiable against the real workspace.
+	$effect(() => {
+		if (!dev) return;
+		const m = layout.metrics
+			.map((x) => `s=${x.shrink}:H=${Math.round(x.height)}(−${Math.round(x.reclaim * 100)}%)`)
+			.join('  ');
+		console.log(`[spread] chosen shrink=${layout.shrink}px  ${m}`);
 	});
 
 	function measure() {
@@ -53,6 +68,14 @@
 	function jumpTo(guid: string) {
 		spreadView.close();
 		desktopSession.focusWindow(guid);
+	}
+
+	// Per-card ✕ — actually close the underlying note window (not just hide the
+	// card). The derived noteWindows drops it and the layout repacks; the overlay
+	// stays open. stopPropagation so the card's jumpTo doesn't also fire.
+	function closeCard(e: MouseEvent, guid: string) {
+		e.stopPropagation();
+		void desktopSession.closeWindow(guid);
 	}
 
 	function titleFor(guid: string): string {
@@ -114,8 +137,18 @@
 					tabindex="0"
 					title={titleFor(p.guid)}
 					onclick={() => jumpTo(p.guid)}
-					onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && jumpTo(p.guid)}
+					onkeydown={(e) =>
+						e.target === e.currentTarget &&
+						(e.key === 'Enter' || e.key === ' ') &&
+						jumpTo(p.guid)}
 				>
+					<button
+						type="button"
+						class="spread-card-close"
+						onclick={(e) => closeCard(e, p.guid)}
+						aria-label={`${titleFor(p.guid)} 닫기`}
+						title="노트 닫기"
+					>✕</button>
 					<div class="spread-card-title">{titleFor(p.guid)}</div>
 					<div class="spread-card-body" use:snapshot={p.guid}></div>
 				</div>
@@ -165,8 +198,43 @@
 		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
 		cursor: pointer;
 	}
-	.spread-card:hover {
+	.spread-card:hover,
+	.spread-card:focus-within {
 		outline: 2px solid #4c8dff;
+		/* Cards overlap (real size spills past the packed footprint). Lift the
+		   hovered/focused one above its neighbours so it shows in full and its
+		   ✕ is clickable. Beats the default DOM-order stacking (0). */
+		z-index: 10;
+	}
+	.spread-card-close {
+		position: absolute;
+		top: 4px;
+		right: 4px;
+		z-index: 2;
+		width: 22px;
+		height: 22px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0;
+		border: none;
+		border-radius: 50%;
+		background: rgba(0, 0, 0, 0.45);
+		color: #fff;
+		font-size: 0.8rem;
+		line-height: 1;
+		cursor: pointer;
+		/* Reveal on hover/focus of the card to keep the preview clean. */
+		opacity: 0;
+		transition: opacity 0.1s;
+	}
+	.spread-card:hover .spread-card-close,
+	.spread-card:focus-within .spread-card-close,
+	.spread-card-close:focus-visible {
+		opacity: 1;
+	}
+	.spread-card-close:hover {
+		background: rgba(220, 53, 69, 0.9);
 	}
 	.spread-card-title {
 		flex-shrink: 0;
