@@ -63,6 +63,22 @@ describe('extract', () => {
 		};
 		await expect(extract('https://yt/abc', deps({ spawn: noFileSpawn as never }))).rejects.toThrow('no_output');
 	});
+	it('max-filesize 초과(stdout 마커 + mp3 없이 종료 0) → too_large throw', async () => {
+		// yt-dlp 는 --max-filesize 초과 시 stdout 에 "larger than max-filesize ... Aborting."
+		// 를 찍고 종료코드 0 으로 끝낸다(파일 미생성). no_output 으로 뭉뚱그리지 말고 too_large 로.
+		const overSpawn = (_cmd: string, _args: string[]) => {
+			const child = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; kill: () => void };
+			child.stdout = new EventEmitter();
+			child.stderr = new EventEmitter();
+			child.kill = () => {};
+			queueMicrotask(() => {
+				child.stdout.emit('data', Buffer.from('[download] File is larger than max-filesize (51308665 bytes > 41943040 bytes). Aborting.\n', 'utf8'));
+				child.emit('close', 0);
+			});
+			return child as never;
+		};
+		await expect(extract('https://yt/abc', deps({ spawn: overSpawn as never }))).rejects.toThrow('too_large');
+	});
 });
 
 // stdout 으로 JSON 을 흘리고 종료코드로 닫는 가짜 spawn.

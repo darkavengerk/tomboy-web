@@ -57,10 +57,15 @@ function runYtdlp(arg: string, dir: string, deps: RunnerDeps): Promise<void> {
 		'-o', '%(title)s.%(ext)s', '--paths', dir, arg
 	];
 	return new Promise((resolve, reject) => {
-		const opts: SpawnOptions = { cwd: process.env.HOME, stdio: ['ignore', 'ignore', 'pipe'] };
+		// stdout 도 캡처: yt-dlp 는 --max-filesize 초과 시 "larger than max-filesize ...
+		// Aborting." 을 stdout 에 찍고 종료코드 0 으로 끝낸다(파일 미생성). 이를 잡아
+		// no_output(일반 502) 이 아니라 too_large(413)로 분류하기 위함.
+		const opts: SpawnOptions = { cwd: process.env.HOME, stdio: ['ignore', 'pipe', 'pipe'] };
 		const child = spawn(bin, args, opts);
 		let errOut = '';
+		let tooLarge = false;
 		let settled = false;
+		const scan = (s: string) => { if (s.includes('larger than max-filesize')) tooLarge = true; };
 		const fail = (msg: string) => {
 			if (settled) return;
 			settled = true;
@@ -69,12 +74,14 @@ function runYtdlp(arg: string, dir: string, deps: RunnerDeps): Promise<void> {
 			reject(new Error(msg));
 		};
 		const timer = setTimeout(() => fail('타임아웃'), timeoutMs);
-		child.stderr?.on('data', (d: Buffer) => { if (errOut.length < 8192) errOut += d.toString('utf8'); });
+		child.stdout?.on('data', (d: Buffer) => scan(d.toString('utf8')));
+		child.stderr?.on('data', (d: Buffer) => { const s = d.toString('utf8'); scan(s); if (errOut.length < 8192) errOut += s; });
 		child.on('error', (e: Error) => fail(e.message));
 		child.on('close', (code: number | null) => {
 			if (settled) return;
 			settled = true;
 			clearTimeout(timer);
+			if (tooLarge) return reject(new Error('too_large'));
 			if (code === 0) resolve();
 			else reject(new Error(errOut.trim().slice(0, 200) || `종료 코드 ${code}`));
 		});

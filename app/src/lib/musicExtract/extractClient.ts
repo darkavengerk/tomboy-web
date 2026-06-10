@@ -8,6 +8,7 @@ export type ExtractErrorKind =
 	| 'not_configured'
 	| 'unauthorized'
 	| 'service_unavailable'
+	| 'too_large'
 	| 'bad_request'
 	| 'upstream_error'
 	| 'network';
@@ -25,6 +26,7 @@ export interface ExtractOk {
 
 const STATUS_TO_KIND: Record<number, ExtractErrorKind> = {
 	401: 'unauthorized',
+	413: 'too_large',
 	503: 'service_unavailable'
 };
 
