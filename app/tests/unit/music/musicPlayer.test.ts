@@ -238,4 +238,19 @@ describe('musicPlayer 노트별 이어듣기', () => {
 		expect(musicPlayer.currentTime).toBe(0);
 		expect(musicPlayer.resumeAt).toBe(0);
 	});
+
+	it('resume 후 play(index) 는 resumeAt 도 비운다(다른 트랙에 stale seek 방지)', () => {
+		// A 에 저장 위치를 만들고
+		musicPlayer.playNote('A', [t('a'), t('b')]);
+		musicPlayer.play(1);
+		musicPlayer.reportTime(40);
+		musicPlayer.playNote('B', [t('c')]);
+		// A 로 복귀 → resume 이 resumeAt 을 40 으로 승격
+		musicPlayer.playNote('A', [t('a'), t('b')]);
+		expect(musicPlayer.resumeAt).toBeCloseTo(40, 0);
+		// 엔진이 소비하기 전에 사용자가 트랙 0 을 명시적으로 클릭하면 resumeAt 이 비워져야 한다
+		musicPlayer.play(0);
+		expect(musicPlayer.resumeAt).toBe(0);
+		expect(musicPlayer.currentTime).toBe(0);
+	});
 });

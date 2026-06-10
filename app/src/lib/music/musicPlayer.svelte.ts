@@ -231,6 +231,7 @@ export const musicPlayer = {
 	play(index: number): void {
 		if (queue.length === 0) return;
 		pendingRestore = 0;
+		resumeAt = 0;
 		const i = clampIndex(index);
 		if (i !== currentIndex) {
 			currentIndex = i;
