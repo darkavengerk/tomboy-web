@@ -2185,6 +2185,50 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		background: var(--accent-soft, #faf2f7);
 	}
 
+	/* 곡 행 우측 편집 도구(▲▼ 순서 · ⧉ 복사 · 🗑 삭제). 기본 숨김이고 Ctrl(⌘)을
+	   누르는 동안만(.music-ctrl-held 가 ProseMirror 루트에 붙음) 노출. li.music-track
+	   이 position:relative 라 우측 절대배치 기준이 된다. */
+	.tomboy-editor :global(.music-track-tools) {
+		position: absolute;
+		right: 0.2em;
+		top: 50%;
+		transform: translateY(-50%);
+		display: none;
+		gap: 0.1em;
+		align-items: center;
+		background: var(--surface, #fff);
+		border: 1px solid var(--border, #e0e0dc);
+		border-radius: 7px;
+		padding: 0.1em 0.2em;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+		z-index: 3;
+	}
+	.tomboy-editor :global(.music-ctrl-held .music-track-tools) {
+		display: inline-flex;
+	}
+	.tomboy-editor :global(.music-track-tool) {
+		border: none;
+		background: transparent;
+		color: var(--text, #444);
+		font-size: 0.78em;
+		line-height: 1;
+		width: 1.7em;
+		height: 1.7em;
+		cursor: pointer;
+		border-radius: 5px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0;
+	}
+	.tomboy-editor :global(.music-track-tool:hover:not(:disabled)) {
+		background: var(--accent-soft, #faf2f7);
+	}
+	.tomboy-editor :global(.music-track-tool:disabled) {
+		opacity: 0.3;
+		cursor: default;
+	}
+
 	.tomboy-editor :global(.tomboy-music-extract-run) {
 		display: inline-flex;
 		align-items: center;
