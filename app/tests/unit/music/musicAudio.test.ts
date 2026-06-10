@@ -7,6 +7,7 @@ import {
 	__musicAudioForTest,
 	resumePlaybackFromGesture
 } from '$lib/music/musicAudio.svelte.js';
+import { saveProgress, __resetMusicProgress } from '$lib/music/musicProgress.js';
 import type { MusicTrack } from '$lib/music/parseMusicNote.js';
 
 // jsdom 은 미디어 재생 미구현 → 기록형 stub.
@@ -57,6 +58,7 @@ let uninstall = () => {};
 beforeEach(() => {
 	playSrcs = [];
 	__resetMusicPlayer();
+	__resetMusicProgress();
 	__resetMediaSession();
 	uninstall = installMusicAudio();
 });
@@ -74,6 +76,25 @@ describe('musicAudio 엔진 — 단일 오디오', () => {
 		flushSync();
 		expect(__musicAudioForTest().audio?.getAttribute('src')).toBe('https://h/a.mp3');
 		expect(playSrcs).toEqual([]);
+	});
+
+	it('이어듣기: 저장 위치가 있으면 loadedmetadata 후 그 위치로 seek', () => {
+		saveProgress('g', 'https://h/a.mp3', 42);
+		musicPlayer.playNote('g', [T('https://h/a.mp3', 'a')], '드라이브');
+		flushSync();
+		const audio = __musicAudioForTest().audio!;
+		expect(audio.getAttribute('src')).toBe('https://h/a.mp3');
+		audio.dispatchEvent(new Event('loadedmetadata'));
+		expect(audio.currentTime).toBeCloseTo(42, 0);
+		expect(musicPlayer.resumeAt).toBe(0); // 소비됨
+	});
+
+	it('저장 위치 없는 일반 재생은 seek 하지 않는다(0:00)', () => {
+		musicPlayer.playNote('g', [T('https://h/a.mp3', 'a')], '드라이브');
+		flushSync();
+		const audio = __musicAudioForTest().audio!;
+		audio.dispatchEvent(new Event('loadedmetadata'));
+		expect(audio.currentTime).toBe(0);
 	});
 
 	it('play → 현재 src 로 재생', () => {

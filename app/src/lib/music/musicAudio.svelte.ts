@@ -117,6 +117,18 @@ export function installMusicAudio(): () => void {
 				return;
 			}
 			audio.src = url;
+			// 이어듣기: 저장된 위치가 있으면 메타데이터 로드 후 그 지점으로 seek 한다. resumeAt 은
+			// untrack 으로 읽어 이 effect 의 의존성에 넣지 않는다(중복 재실행 방지). 1회성 리스너라
+			// 자연스러운 다음 곡 전환(resumeAt 미설정)엔 영향 없다.
+			const at = untrack(() => musicPlayer.resumeAt);
+			if (at > 0) {
+				const onMetaSeek = () => {
+					const tgt = musicPlayer.takeResumeAt();
+					if (tgt > 0) audio.currentTime = tgt;
+					audio.removeEventListener('loadedmetadata', onMetaSeek);
+				};
+				audio.addEventListener('loadedmetadata', onMetaSeek);
+			}
 			// 자동 넘김은 isPlaying 을 true 로 둔 채 src 만 바꾼다 → 여기서 직접 이어 재생.
 			if (untrack(() => musicPlayer.isPlaying)) void audio.play().catch(() => {});
 		});
