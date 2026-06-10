@@ -1,0 +1,54 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-10-per-note-music-player.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: musicProgress.ts — 노트별 진행상태 저장소",
+      "status": "pending",
+      "description": "**Goal:** guid별 {trackUrl,currentTime}를 localStorage에 저장/복원하는 순수 모듈. 인메모리 맵이 진실 소스라 read-after-write 동기.\n\n**Files:** Create app/src/lib/music/musicProgress.ts, Test app/tests/unit/music/musicProgress.test.ts\n\n**Verify:** npm run test -- musicProgress\n\n```json:metadata\n{\"files\": [\"app/src/lib/music/musicProgress.ts\", \"app/tests/unit/music/musicProgress.test.ts\"], \"verifyCommand\": \"npm run test -- musicProgress\", \"acceptanceCriteria\": [\"save 직후 load 동기\", \"null/덮어쓰기\", \"clearProgress\", \"flush 직렬화\", \"__resetMusicProgress\", \"손상 JSON 안전\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: musicPlayer 전환 스왑 + resume/playNote/stop",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** setQueue 전환 시 outgoing 저장+incoming 복원, resume/playNote/stop + reportTime 저장.\n\n**Files:** Modify app/src/lib/music/musicPlayer.svelte.ts, Test app/tests/unit/music/musicPlayer.test.ts\n\n**Verify:** npm run test -- musicPlayer\n\n```json:metadata\n{\"files\": [\"app/src/lib/music/musicPlayer.svelte.ts\", \"app/tests/unit/music/musicPlayer.test.ts\"], \"verifyCommand\": \"npm run test -- musicPlayer\", \"acceptanceCriteria\": [\"same-note 보존 4테스트\", \"복귀 시 복원+isPlaying\", \"stop 해제+위치 보존\", \"reportTime saveProgress\", \"명시 play 0:00\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: musicAudio — 새 src 로드 후 이어듣기 seek",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** 새 src 설정 시 resumeAt>0이면 loadedmetadata 후 그 위치로 seek.\n\n**Files:** Modify app/src/lib/music/musicAudio.svelte.ts, Test app/tests/unit/music/musicAudio.test.ts\n\n**Verify:** npm run test -- musicAudio\n\n```json:metadata\n{\"files\": [\"app/src/lib/music/musicAudio.svelte.ts\", \"app/tests/unit/music/musicAudio.test.ts\"], \"verifyCommand\": \"npm run test -- musicAudio\", \"acceptanceCriteria\": [\"loadedmetadata 후 seek+소비\", \"저장 없으면 0:00\", \"자연 전환 stale 없음\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: MusicPlayerBar — 비활성 노트는 자기 기억 위치 표시",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** 활성=라이브, 비활성=그 노트의 기억 위치(일시정지), ▶=playNote.\n\n**Files:** Modify app/src/lib/editor/musicNote/MusicPlayerBar.svelte, Test app/tests/unit/music/MusicPlayerBar.test.ts\n\n**Verify:** npm run test -- MusicPlayerBar\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/musicNote/MusicPlayerBar.svelte\", \"app/tests/unit/music/MusicPlayerBar.test.ts\"], \"verifyCommand\": \"npm run test -- MusicPlayerBar\", \"acceptanceCriteria\": [\"비활성=자기 노트 표시\", \"idle ▶ playNote\", \"활성 라이브\", \"기존 테스트 통과\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: GlobalMiniPlayer(모바일 알약) + 가시성 술어 + 마운트",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** 노트 떠나도 떠 있는 모바일 알약/펼침 카드. ✕=stop, 노트 열기=goto.\n\n**Files:** Create app/src/lib/editor/musicNote/miniPlayerVisibility.ts + GlobalMiniPlayer.svelte, Modify app/src/routes/+layout.svelte + app/src/app.css, Test app/tests/unit/music/miniPlayerVisibility.test.ts\n\n**Verify:** npm run test -- miniPlayerVisibility && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/musicNote/miniPlayerVisibility.ts\", \"app/src/lib/editor/musicNote/GlobalMiniPlayer.svelte\", \"app/src/routes/+layout.svelte\", \"app/src/app.css\", \"app/tests/unit/music/miniPlayerVisibility.test.ts\"], \"verifyCommand\": \"npm run test -- miniPlayerVisibility && npm run check\", \"acceptanceCriteria\": [\"술어 정확\", \"--z-miniplayer 토큰\", \"✕=stop, 노트 열기=goto\", \"비-chromeless 마운트\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: DesktopMiniPlayer — 작업대 떠다니는 플레이어 창",
+      "status": "pending",
+      "blockedBy": [5],
+      "description": "**Goal:** 데스크탑 작업대에서 활성 노트 창이 닫히면 떠다니는 플레이어 창 표시, 노트 열기로 복원.\n\n**Files:** Create app/src/lib/editor/musicNote/DesktopMiniPlayer.svelte, Modify app/src/lib/desktop/DesktopWorkspace.svelte\n\n**Verify:** npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/musicNote/DesktopMiniPlayer.svelte\", \"app/src/lib/desktop/DesktopWorkspace.svelte\"], \"verifyCommand\": \"npm run check\", \"acceptanceCriteria\": [\"desktopMiniPlayerVisible 표시\", \"컨트롤+노트 열기+✕\", \"드래그+canvas 뒤 마운트\", \"check 0 errors\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: 설정 가이드 카드 갱신",
+      "status": "pending",
+      "blockedBy": [4, 5, 6],
+      "description": "**Goal:** 음악 가이드 카드를 노트별 이어듣기 + 전역 미니 플레이어로 갱신.\n\n**Files:** Modify app/src/routes/settings/+page.svelte\n\n**Verify:** npm run check; 마지막 npm run test 전체 그린\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"npm run check\", \"acceptanceCriteria\": [\"전역 단일 불릿 교체\", \"미니 플레이어+✕+노트 복귀 설명\", \"check 0 errors\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-10"
+}
