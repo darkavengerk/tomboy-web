@@ -117,20 +117,29 @@ export function installMusicAudio(): () => void {
 				return;
 			}
 			audio.src = url;
-			// 이어듣기: 저장된 위치가 있으면 메타데이터 로드 후 그 지점으로 seek 한다. resumeAt 은
-			// untrack 으로 읽어 이 effect 의 의존성에 넣지 않는다(중복 재실행 방지). 1회성 리스너라
-			// 자연스러운 다음 곡 전환(resumeAt 미설정)엔 영향 없다.
-			const at = untrack(() => musicPlayer.resumeAt);
-			if (at > 0) {
+			// 자동 넘김은 isPlaying 을 true 로 둔 채 src 만 바꾼다 → 여기서 직접 이어 재생.
+			if (untrack(() => musicPlayer.isPlaying)) void audio.play().catch(() => {});
+		});
+		// 이어듣기 seek. resumeAt(>0)이 설정되면 — 노트 전환으로 src 가 바뀌든(메타데이터
+		// 로드 후) 같은 트랙 url 이라 src 가 그대로든(이미 로드됨 → 즉시) — 저장 위치로
+		// 정확히 한 번 이동한다. src 효과의 early-return(같은 url)에 갇히지 않도록 별도 효과로
+		// 둔다. resumeAt 변화에만 반응하며 takeResumeAt() 으로 1회 소비한다.
+		$effect(() => {
+			const at = musicPlayer.resumeAt;
+			if (at <= 0) return;
+			const apply = () => {
+				const tgt = musicPlayer.takeResumeAt();
+				if (tgt > 0) audio.currentTime = tgt;
+			};
+			if (audio.readyState >= 1 /* HAVE_METADATA: 같은 트랙 이어듣기 → 즉시 */) {
+				apply();
+			} else {
 				const onMetaSeek = () => {
-					const tgt = musicPlayer.takeResumeAt();
-					if (tgt > 0) audio.currentTime = tgt;
+					apply();
 					audio.removeEventListener('loadedmetadata', onMetaSeek);
 				};
 				audio.addEventListener('loadedmetadata', onMetaSeek);
 			}
-			// 자동 넘김은 isPlaying 을 true 로 둔 채 src 만 바꾼다 → 여기서 직접 이어 재생.
-			if (untrack(() => musicPlayer.isPlaying)) void audio.play().catch(() => {});
 		});
 		// 재생/일시정지.
 		$effect(() => {
