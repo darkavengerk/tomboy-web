@@ -1710,8 +1710,12 @@ effort: high
 					</p>
 					<ul class="guide-list">
 						<li><strong>링크 깊이 옵션</strong> — 0 (이 노트만) ~ 5 (5촌 노트까지). 같은 노트가
-							여러 경로로 연결되어 있어도 한 번만 포함됩니다(dedup). 모달이 깊이를 바꿀 때마다
-							포함될 노트 목록을 실시간으로 보여줘 송출 전에 확인 가능.</li>
+							여러 경로로 연결되어 있어도 한 번만 포함됩니다(dedup).</li>
+						<li><strong>트리 미리보기 + 선택 제외</strong> — 모달이 깊이를 바꿀 때마다 포함될
+							노트를 트리 구조로 보여줍니다. 체크박스를 끄면 해당 노트가 트리에서 빠지고
+							아래 "제외 목록" 박스로 옮겨집니다. 같은 노트가 여러 부모 아래 보여도 한 번
+							해제하면 모든 위치에서 빠집니다. 제외된 노트로 향하는 본문 안 내부 링크는
+							PDF 에서 파란 링크가 아닌 plain 텍스트로만 남습니다. "복원" 으로 다시 포함.</li>
 						<li><strong>PDF 첫머리 목차</strong> — 두 개 이상의 노트가 포함되면 자동으로
 							목차가 들어가며, 항목을 누르면 해당 노트로 점프합니다.</li>
 						<li><strong>본문 안 링크</strong> — 번들에 포함된 노트 제목 링크는 같은 PDF 안 해당
@@ -1724,8 +1728,12 @@ effort: high
 						<li><strong>한글 폰트</strong> — NanumGothic (OFL). <code>npm run prefetch:fonts</code>
 							가 빌드 시 자동으로 받아 <code>static/fonts/</code> 에 채우며, 클라이언트는
 							첫 송출 때 한 번 fetch → IDB 캐시. 이후 송출에 추가 네트워크 부담 없음.</li>
-						<li><strong>이미지</strong> — v1 에서 본문 이미지는 PDF 에 들어가지 않습니다 (텍스트
-							중심 메모를 빠르게 빼내는 데 초점). 후속 업데이트 예정.</li>
+						<li><strong>이미지</strong> — 본문 텍스트 안 이미지 URL(<code>.png</code> /
+							<code>.jpg</code> 등 + Dropbox 공유 링크)은 imageCache 에서 blob 을 읽어 PNG/JPEG
+							data URI 로 임베드. fetch 실패 시 URL 텍스트로 폴백 — 송출 실패는 아님.</li>
+						<li><strong>차트</strong> — 체크된 <code>Chart:</code> 블록은 hidden canvas 에
+							Chart.js 로 그려 PNG 로 캡처해 PDF 에 들어갑니다 (참조하는 <code>DATA::</code>
+							노트가 같은 IDB 안에 있어야 함). 미체크된 차트 블록은 PDF 에서 무시.</li>
 						<li><strong>전제</strong> — 브릿지가 reMarkable 호스트와 SSH 접속 가능해야 합니다
 							(<code>remarkable.json</code> 등록 + 키 + <code>known_hosts</code>). 송출 시 브릿지가
 							<code>{`/home/root/.local/share/remarkable/xochitl/`}</code> 에 PDF + 메타를 떨구고

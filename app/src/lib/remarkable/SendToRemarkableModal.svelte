@@ -8,7 +8,7 @@
 		SendRemarkableError,
 		type SendRemarkableStatus
 	} from './sendNoteToRemarkable.js';
-	import { previewPdfBundle } from './pdf/pdfBundle.js';
+	import { previewPdfBundle, type PdfBundleTreeNode } from './pdf/pdfBundle.js';
 	import { pushToast } from '$lib/stores/toast.js';
 
 	interface Props {
@@ -27,18 +27,29 @@
 	let statusText = $state('');
 	let errorText = $state('');
 	let allNotes = $state<NoteData[]>([]);
+	let excludedGuids = $state(new Set<string>());
 	const ac = new AbortController();
 
 	const canSend = $derived(
 		!sending && alias !== '' && folderUuid !== '' && folderName !== ''
 	);
 
-	// depth 변경 시 어떤 노트들이 포함될지 실시간 계산 — 사용자가 depth 를 정하기
-	// 더 쉽도록. allNotes 가 비어 있는 초기 한 프레임에는 빈 배열 반환.
+	// depth / excludedGuids 변경 시 트리 + 포함 guid 실시간 재계산.
 	const preview = $derived(
 		allNotes.length === 0
-			? { includedGuids: [] as string[], titles: [] as string[] }
-			: previewPdfBundle(rootGuid, allNotes, { depth })
+			? { tree: null, includedGuids: [] as string[], titles: new Map<string, string>() }
+			: previewPdfBundle(rootGuid, allNotes, { depth, excludedGuids })
+	);
+
+	// 제외 목록은 사용자가 명시적으로 끈 guid 만. 제외된 guid 의 표시명은 노트
+	// 자체에서 가져옴 (트리에는 더 이상 안 나타나므로).
+	const excludedItems = $derived(
+		[...excludedGuids]
+			.filter((g) => g !== rootGuid)
+			.map((g) => {
+				const note = allNotes.find((n) => n.guid === g);
+				return { guid: g, title: note?.title?.trim() || '제목 없음' };
+			})
 	);
 
 	onMount(async () => {
@@ -52,6 +63,21 @@
 		allNotes = await getAllNotes();
 		prefillReady = true;
 	});
+
+	function toggleGuid(guid: string): void {
+		// 루트는 제외할 수 없다 — 루트가 빠지면 번들 전체가 빈다.
+		if (guid === rootGuid) return;
+		const next = new Set(excludedGuids);
+		if (next.has(guid)) next.delete(guid);
+		else next.add(guid);
+		excludedGuids = next;
+	}
+
+	function restoreGuid(guid: string): void {
+		const next = new Set(excludedGuids);
+		next.delete(guid);
+		excludedGuids = next;
+	}
 
 	function setStatus(s: SendRemarkableStatus): void {
 		switch (s.step) {
@@ -86,6 +112,7 @@
 				folderName,
 				folderUuid,
 				depth,
+				excludedGuids,
 				signal: ac.signal,
 				onStatus: setStatus
 			});
@@ -142,6 +169,30 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
+{#snippet treeNode(node: PdfBundleTreeNode, isRoot: boolean)}
+	<li class="rm-tree-item">
+		<label class="rm-tree-label">
+			<input
+				type="checkbox"
+				checked
+				disabled={isRoot || sending}
+				onchange={() => toggleGuid(node.guid)}
+			/>
+			<span class="rm-tree-title">{node.title}</span>
+			{#if isRoot}
+				<span class="rm-tree-root-tag">루트</span>
+			{/if}
+		</label>
+		{#if node.children.length > 0}
+			<ul class="rm-tree-children">
+				{#each node.children as child (child.positionKey)}
+					{@render treeNode(child, false)}
+				{/each}
+			</ul>
+		{/if}
+	</li>
+{/snippet}
+
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="rm-modal-backdrop" onclick={() => !sending && onclose()}></div>
@@ -178,18 +229,41 @@
 		{#if prefillReady}
 			<div class="rm-row">
 				<span class="rm-label">포함될 노트 ({preview.includedGuids.length}개)</span>
-				<div class="rm-preview">
-					{#if preview.titles.length === 0}
-						<span class="rm-preview-empty">노트를 찾을 수 없습니다</span>
+				<div class="rm-tree-box">
+					{#if preview.tree === null}
+						<span class="rm-tree-empty">노트를 찾을 수 없습니다</span>
 					{:else}
-						<ol class="rm-preview-list">
-							{#each preview.titles as t, i (preview.includedGuids[i])}
-								<li>{t}</li>
-							{/each}
-						</ol>
+						<ul class="rm-tree-root">
+							{@render treeNode(preview.tree, true)}
+						</ul>
 					{/if}
 				</div>
+				<p class="rm-tree-hint">
+					체크를 해제하면 트리에서 제거되고 그 노트로 향하는 링크는 본문에서 텍스트로만
+					남습니다. 같은 노트가 여러 곳에 있어도 한 번 해제하면 전부 빠집니다.
+				</p>
 			</div>
+
+			{#if excludedItems.length > 0}
+				<div class="rm-row">
+					<span class="rm-label">제외 목록 ({excludedItems.length}개)</span>
+					<ul class="rm-excluded-box">
+						{#each excludedItems as item (item.guid)}
+							<li class="rm-excluded-item">
+								<span class="rm-excluded-title">{item.title}</span>
+								<button
+									type="button"
+									class="rm-restore"
+									disabled={sending}
+									onclick={() => restoreGuid(item.guid)}
+								>
+									복원
+								</button>
+							</li>
+						{/each}
+					</ul>
+				</div>
+			{/if}
 		{/if}
 
 		{#if statusText}
@@ -227,7 +301,7 @@
 		color: #111;
 		border-radius: 8px;
 		box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
-		width: min(420px, calc(100vw - 32px));
+		width: min(460px, calc(100vw - 32px));
 		max-height: calc(100vh - 64px);
 		display: flex;
 		flex-direction: column;
@@ -245,6 +319,7 @@
 		display: flex;
 		flex-direction: column;
 		gap: 12px;
+		overflow-y: auto;
 	}
 	.rm-row {
 		display: flex;
@@ -275,28 +350,101 @@
 		color: #aaa;
 		margin: 0 2px;
 	}
-	.rm-preview {
-		max-height: 180px;
+	.rm-tree-box {
+		max-height: 220px;
 		overflow-y: auto;
 		border: 1px solid #e4e8ec;
 		border-radius: 4px;
 		background: #fafafa;
-		padding: 6px 4px;
+		padding: 6px 8px;
 	}
-	.rm-preview-list {
-		margin: 0;
-		padding-left: 24px;
-		font-size: 0.85rem;
-		color: #333;
-	}
-	.rm-preview-list li {
-		padding: 1px 0;
-	}
-	.rm-preview-empty {
+	.rm-tree-empty {
 		display: block;
 		padding: 4px 8px;
 		color: #888;
 		font-size: 0.85rem;
+	}
+	.rm-tree-root,
+	.rm-tree-children {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+	.rm-tree-children {
+		padding-left: 18px;
+		border-left: 1px dashed #d0d4d8;
+		margin-left: 6px;
+	}
+	.rm-tree-item {
+		padding: 2px 0;
+	}
+	.rm-tree-label {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		cursor: pointer;
+		font-size: 0.88rem;
+		color: #222;
+	}
+	.rm-tree-label input[type='checkbox'] {
+		margin: 0;
+		cursor: pointer;
+	}
+	.rm-tree-label input[type='checkbox']:disabled {
+		cursor: not-allowed;
+	}
+	.rm-tree-title {
+		flex: 1;
+	}
+	.rm-tree-root-tag {
+		font-size: 0.7rem;
+		color: #1a6fc4;
+		background: #e8f1fa;
+		padding: 0 6px;
+		border-radius: 3px;
+	}
+	.rm-tree-hint {
+		margin: 4px 2px 0;
+		font-size: 0.78rem;
+		color: #888;
+		line-height: 1.35;
+	}
+	.rm-excluded-box {
+		list-style: none;
+		margin: 0;
+		padding: 4px 6px;
+		border: 1px solid #f3d6d6;
+		background: #fdf3f3;
+		border-radius: 4px;
+		max-height: 140px;
+		overflow-y: auto;
+	}
+	.rm-excluded-item {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 2px 4px;
+		font-size: 0.85rem;
+		color: #863131;
+	}
+	.rm-excluded-title {
+		text-decoration: line-through;
+		text-decoration-color: #c98a8a;
+		opacity: 0.85;
+	}
+	.rm-restore {
+		font: inherit;
+		font-size: 0.78rem;
+		padding: 2px 8px;
+		border: 1px solid #c98a8a;
+		background: #fff;
+		color: #863131;
+		border-radius: 3px;
+		cursor: pointer;
+	}
+	.rm-restore:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 	.rm-status {
 		margin: 0;

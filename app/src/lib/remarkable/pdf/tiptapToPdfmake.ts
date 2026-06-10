@@ -1,4 +1,5 @@
 import type { JSONContent } from '@tiptap/core';
+import { splitTextOnImageUrls } from './extractImageUrls.js';
 
 /**
  * TipTap 노트 JSON → pdfmake content 노드 변환.
@@ -15,9 +16,15 @@ import type { JSONContent } from '@tiptap/core';
  * - 내부 링크(`tomboyInternalLink`): 번들 안에 그 노트가 함께 들어 있을 때만
  *   `linkToDestination: 'note-{guid}'` 로 만들어 같은 PDF 안 다른 섹션으로
  *   점프. 번들 밖이면 링크 속성 없이 텍스트만 남긴다.
- * - 인라인 체크박스: `[x]` / `[ ]` 리터럴 (PDF 그래픽으로 그리는 건 v1 후순위).
- * - 이미지 노드는 일단 무시(v1) — pdfmake 이미지는 dataURI 필요해 별도
- *   fetch/캐시 단계가 들어가야 한다. v2 에서 imageCache 와 묶어 처리.
+ * - 인라인 체크박스: `[x]` / `[ ]` 리터럴 (PDF 그래픽으로 그리는 건 후순위).
+ * - 이미지: 본문 텍스트 안 이미지 URL 을 `splitTextOnImageUrls` 로 잘라
+ *   `imageMap[url]` 의 data URI 가 있으면 별도 pdfmake `image` 블록으로 띄운다.
+ *   매핑이 없으면 (fetch 실패 등) 그냥 URL 텍스트로 둔다. 단 최상위 paragraph
+ *   에만 적용 — listItem 안 이미지 URL 은 plain text. (paragraph 분할이
+ *   list 구조와 맞지 않아 v2 에서는 의도적으로 스킵.)
+ * - 차트: 호출자가 미리 렌더한 PNG 를 `replaceTopLevelIndex` 로 넘기면 해당
+ *   인덱스의 paragraph 가 image block 으로 대체되고, `dropTopLevelIndexes`
+ *   에 포함된 config list 인덱스는 통째로 제거된다.
  */
 
 export type PdfContent = string | PdfBlock;
@@ -28,6 +35,9 @@ export interface PdfBlock {
 	ol?: PdfContent[];
 	stack?: PdfContent[];
 	canvas?: PdfCanvasOp[];
+	image?: string;
+	width?: number;
+	height?: number;
 	style?: string | string[];
 	id?: string;
 	linkToDestination?: string;
@@ -58,42 +68,122 @@ export interface InternalLinkResolver {
 	resolveInternalTarget(target: string): string | null;
 }
 
+export interface TiptapToPdfmakeOptions {
+	resolver: InternalLinkResolver;
+	/** url(노트 텍스트에 보이는 그대로) → `data:image/...;base64,...` data URI. */
+	imageMap?: Map<string, string>;
+	/** 최상위 `doc.content` 안 이 인덱스의 노드는 출력에서 제거. */
+	dropTopLevelIndexes?: Set<number>;
+	/** 최상위 `doc.content` 안 이 인덱스의 노드를 주어진 블록으로 치환. */
+	replaceTopLevelIndex?: Map<number, PdfContent>;
+}
+
+function isResolver(x: InternalLinkResolver | TiptapToPdfmakeOptions): x is InternalLinkResolver {
+	return typeof (x as InternalLinkResolver).resolveInternalTarget === 'function';
+}
+
 export function tiptapToPdfmake(
 	json: JSONContent,
-	resolver: InternalLinkResolver
+	resolverOrOptions: InternalLinkResolver | TiptapToPdfmakeOptions
 ): PdfContent[] {
+	const opts: TiptapToPdfmakeOptions = isResolver(resolverOrOptions)
+		? { resolver: resolverOrOptions }
+		: resolverOrOptions;
+
 	if (json.type !== 'doc') {
-		const single = renderBlock(json, resolver);
-		return single === null ? [] : [single];
+		const single = renderBlock(json, opts);
+		return single;
 	}
 	const out: PdfContent[] = [];
-	for (const child of json.content ?? []) {
-		const rendered = renderBlock(child, resolver);
-		if (rendered !== null) out.push(rendered);
+	const children = json.content ?? [];
+	for (let i = 0; i < children.length; i++) {
+		if (opts.dropTopLevelIndexes?.has(i)) continue;
+		const replacement = opts.replaceTopLevelIndex?.get(i);
+		if (replacement !== undefined) {
+			out.push(replacement);
+			continue;
+		}
+		for (const block of renderBlock(children[i], opts)) out.push(block);
 	}
 	return out;
 }
 
-function renderBlock(node: JSONContent, resolver: InternalLinkResolver): PdfContent | null {
+function renderBlock(node: JSONContent, opts: TiptapToPdfmakeOptions): PdfContent[] {
 	switch (node.type) {
 		case 'paragraph':
-			return { text: renderInlines(node.content ?? [], resolver) };
+			return renderParagraph(node, opts);
 		case 'bulletList':
-			return { ul: (node.content ?? []).map((li) => renderListItem(li, resolver)) };
+			return [{ ul: (node.content ?? []).map((li) => renderListItem(li, opts)) }];
 		case 'orderedList':
-			return { ol: (node.content ?? []).map((li) => renderListItem(li, resolver)) };
+			return [{ ol: (node.content ?? []).map((li) => renderListItem(li, opts)) }];
 		default:
-			return null;
+			return [];
 	}
 }
 
-function renderListItem(li: JSONContent, resolver: InternalLinkResolver): PdfContent {
+type ParagraphPiece = { kind: 'inline'; inline: PdfInline } | { kind: 'image'; url: string };
+
+function renderParagraph(node: JSONContent, opts: TiptapToPdfmakeOptions): PdfContent[] {
+	const pieces: ParagraphPiece[] = [];
+	for (const child of node.content ?? []) {
+		if (child.type === 'text' && typeof child.text === 'string') {
+			const marks = child.marks ?? [];
+			for (const seg of splitTextOnImageUrls(child.text)) {
+				if (seg.kind === 'image') {
+					pieces.push({ kind: 'image', url: seg.value });
+				} else if (seg.value) {
+					pieces.push({
+						kind: 'inline',
+						inline: applyMarks({ text: seg.value }, marks, opts.resolver)
+					});
+				}
+			}
+			continue;
+		}
+		const inline = renderInline(child, opts.resolver);
+		if (inline !== null) pieces.push({ kind: 'inline', inline });
+	}
+
+	const blocks: PdfContent[] = [];
+	let buffer: PdfInline[] = [];
+	const flush = (): void => {
+		if (buffer.length > 0) {
+			blocks.push({ text: buffer });
+			buffer = [];
+		}
+	};
+	for (const piece of pieces) {
+		if (piece.kind === 'image') {
+			const dataUri = opts.imageMap?.get(piece.url);
+			if (dataUri) {
+				flush();
+				blocks.push({ image: dataUri, width: 480, margin: [0, 6, 0, 6] });
+			} else {
+				// 사전 fetch 실패 — URL 을 plain text 로라도 보여서 사용자가 알 수
+				// 있게.
+				buffer.push({ text: piece.url });
+			}
+		} else {
+			buffer.push(piece.inline);
+		}
+	}
+	flush();
+	if (blocks.length === 0) blocks.push({ text: [] });
+	return blocks;
+}
+
+function renderListItem(li: JSONContent, opts: TiptapToPdfmakeOptions): PdfContent {
 	// listItem 은 paragraph + 중첩 list 의 시퀀스. pdfmake 는 item 자체에
 	// stack 을 허용하므로 그대로 펼쳐 담는다. 단일 item 은 wrapper 를 벗긴다.
+	// 이미지 분할은 list-item paragraph 에는 적용하지 않는다 — list 안에서
+	// paragraph 를 쪼개면 item 경계가 흐트러져서.
 	const items: PdfContent[] = [];
 	for (const child of li.content ?? []) {
-		const block = renderBlock(child, resolver);
-		if (block !== null) items.push(block);
+		if (child.type === 'paragraph') {
+			items.push({ text: renderInlines(child.content ?? [], opts.resolver) });
+		} else {
+			for (const block of renderBlock(child, opts)) items.push(block);
+		}
 	}
 	if (items.length === 0) return { text: '' };
 	if (items.length === 1) return items[0];

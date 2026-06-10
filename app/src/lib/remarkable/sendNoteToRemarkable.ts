@@ -46,6 +46,8 @@ export interface SendRemarkableOpts {
 	folderName: string;
 	folderUuid: string;
 	depth: number;
+	/** 사용자가 모달 트리에서 체크 해제한 노트들. BFS 와 본문 링크에서 모두 빠진다. */
+	excludedGuids?: Set<string>;
 	onStatus?: (s: SendRemarkableStatus) => void;
 	signal?: AbortSignal;
 	/** 테스트용 PDF builder 주입. 누락 시 실제 pdfmake 동적 import. */
@@ -77,11 +79,10 @@ export async function sendNoteToRemarkable(
 	}
 
 	opts.onStatus?.({ step: 'building_pdf' });
-	const { docDefinition, includedGuids } = buildPdfBundle(
-		opts.rootGuid,
-		opts.notes,
-		{ depth: opts.depth }
-	);
+	const { docDefinition, includedGuids } = await buildPdfBundle(opts.rootGuid, opts.notes, {
+		depth: opts.depth,
+		excludedGuids: opts.excludedGuids
+	});
 	const rootNote = opts.notes.find((n) => n.guid === opts.rootGuid);
 	const visibleName = (rootNote?.title ?? '').trim() || '제목 없음';
 

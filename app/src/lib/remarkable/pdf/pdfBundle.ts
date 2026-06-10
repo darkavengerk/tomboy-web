@@ -8,6 +8,10 @@ import {
 	type PdfContent,
 	type InternalLinkResolver
 } from './tiptapToPdfmake.js';
+import { extractImageUrlsFromDoc } from './extractImageUrls.js';
+import { fetchImagesForBundle } from './fetchImagesForBundle.js';
+import { findJsonChartRegions, type JsonChartRegion } from './findJsonChartRegions.js';
+import { renderChartsToImages } from './renderChartsToImages.js';
 
 /**
  * 루트 노트 + 내부 링크로 연결된 노트들(depth N까지)을 한 PDF docDefinition 으로
@@ -17,11 +21,21 @@ import {
  * 본문 첫 paragraph 의 텍스트가 노트 제목과 같으면 (Tomboy 컨벤션 — title 은
  * <note-content> 첫 줄에서 derive 됨) 중복 출력 방지를 위해 본문에서 제거하고,
  * 별도의 큰 제목 블록을 섹션 헤더로 얹는다.
+ *
+ * `excludedGuids` 로 일부 노트를 번들에서 제외할 수 있다. 제외된 노트는 BFS
+ * 자체에서 빠지므로 그 노트로만 도달 가능한 다른 노트들도 자동으로 사라지고,
+ * 본문 안 그 노트로의 내부 링크는 plain text 로 떨어진다.
+ *
+ * 이미지/차트: 호출자가 PDF 생성을 트리거하면 비동기로 imageCache 에서 이미지
+ * blob 을 모아 data URI 화하고, 체크된 차트 블록은 Chart.js 로 hidden canvas
+ * 에 그려 PNG data URI 로 변환해 그 위치에 넣는다.
  */
 
 export interface PdfBundleOptions {
-	/** 0 = 루트만, 1 = 루트 + 직접 링크, 2 = ... 권장 상한 3. */
+	/** 0 = 루트만, 1 = 루트 + 직접 링크, 2 = ... 최대 5. */
 	depth: number;
+	/** 번들에서 빼고 싶은 노트 guid 집합. 모달의 체크 해제로 채워진다. */
+	excludedGuids?: Set<string>;
 }
 
 /**
@@ -38,19 +52,36 @@ export interface PdfDocDefinition {
 
 export interface PdfBundleResult {
 	docDefinition: PdfDocDefinition;
-	/** BFS 결과 번들에 들어간 guid 순서 (루트가 [0]). 모달 "N개 노트 포함" 표시용. */
+	/** BFS 결과 번들에 들어간 guid 순서 (루트가 [0]). */
 	includedGuids: string[];
-}
-
-export interface PdfBundlePreview {
-	includedGuids: string[];
-	/** 포함된 노트들의 표시용 제목, includedGuids 와 같은 순서. */
-	titles: string[];
 }
 
 /**
- * 실제 PDF 빌드 없이 어떤 노트들이 포함될지만 미리 계산. 모달에서 depth 변경 시
- * 실시간 표시용. BFS 로직은 빌드와 100% 동일하므로 동작 차이는 없다.
+ * 모달에 보여주는 미리보기 트리. 같은 guid 가 여러 부모 아래에 나타날 수
+ * 있으므로 (depth N 범위 안에서 다중 부모를 모두 보여준다) 각 위치를
+ * `positionKey` 로 고유 식별한다.
+ */
+export interface PdfBundleTreeNode {
+	guid: string;
+	title: string;
+	/** 트리 안 유일한 식별자 — Svelte each 키. */
+	positionKey: string;
+	children: PdfBundleTreeNode[];
+}
+
+export interface PdfBundlePreview {
+	/** 루트 트리 노드 — 루트가 번들에 없으면 null. */
+	tree: PdfBundleTreeNode | null;
+	/** dedup 된 포함 guid 순서 (루트가 [0]). */
+	includedGuids: string[];
+	/** guid → 표시용 제목. 본문에 노트가 없는 경우 '제목 없음'. */
+	titles: Map<string, string>;
+}
+
+/**
+ * 실제 PDF 빌드 없이 어떤 노트들이 포함될지(트리 구조 포함) 미리 계산. 모달에서
+ * depth 또는 제외 셋이 바뀔 때마다 재계산되는 entry. 이미지 fetch 나 차트
+ * 렌더 같은 부수효과는 일으키지 않는다.
  */
 export function previewPdfBundle(
 	rootGuid: string,
@@ -58,15 +89,19 @@ export function previewPdfBundle(
 	options: PdfBundleOptions
 ): PdfBundlePreview {
 	const ctx = traverseBundle(rootGuid, notes, options);
-	const titles = ctx.ordered.map((g) => ctx.byGuid.get(g)?.title?.trim() || '제목 없음');
-	return { includedGuids: ctx.ordered, titles };
+	const titles = new Map<string, string>();
+	for (const guid of ctx.ordered) {
+		titles.set(guid, ctx.byGuid.get(guid)?.title?.trim() || '제목 없음');
+	}
+	const tree = ctx.byGuid.has(rootGuid) ? buildTree(rootGuid, ctx, options) : null;
+	return { tree, includedGuids: ctx.ordered, titles };
 }
 
-export function buildPdfBundle(
+export async function buildPdfBundle(
 	rootGuid: string,
 	notes: NoteData[],
 	options: PdfBundleOptions
-): PdfBundleResult {
+): Promise<PdfBundleResult> {
 	const ctx = traverseBundle(rootGuid, notes, options);
 	if (ctx.ordered.length === 0) return { docDefinition: { content: [] }, includedGuids: [] };
 
@@ -79,6 +114,11 @@ export function buildPdfBundle(
 			return guid && ctx.visited.has(guid) ? guid : null;
 		}
 	};
+
+	// 이미지 / 차트 비동기 수집. 두 단계 다 실패해도 텍스트만으로 PDF 가
+	// 만들어지도록 try/catch.
+	const imageMap = await collectImageMap(ctx);
+	const chartImagesByGuid = await collectChartImages(ctx);
 
 	const content: PdfContent[] = [];
 
@@ -112,12 +152,24 @@ export function buildPdfBundle(
 			id: `note-${guid}`,
 			...(i > 0 ? { margin: [0, 40, 0, 12] } : {})
 		};
-		if (i > 0) content.push({ canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: '#bbbbbb' }] });
+		if (i > 0)
+			content.push({
+				canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: '#bbbbbb' }]
+			});
 		content.push(header);
 		const doc = ctx.parseBody(guid);
 		if (!doc) continue;
 		const body = stripLeadingTitleParagraph(doc, titleText);
-		for (const block of tiptapToPdfmake(body, resolver)) content.push(block);
+		const chartImages = chartImagesByGuid.get(guid) ?? [];
+		const { dropTopLevelIndexes, replaceTopLevelIndex } = chartReplaceMaps(body, chartImages);
+		for (const block of tiptapToPdfmake(body, {
+			resolver,
+			imageMap,
+			dropTopLevelIndexes,
+			replaceTopLevelIndex
+		})) {
+			content.push(block);
+		}
 	}
 
 	return {
@@ -139,8 +191,13 @@ export function buildPdfBundle(
 interface TraversalCtx {
 	ordered: string[];
 	visited: Set<string>;
+	excluded: Set<string>;
 	byGuid: Map<string, NoteData>;
 	titleToGuid: Map<string, string>;
+	/** guid → 그 노트의 내부 링크 대상 guid 들 (중복 제거, 등장 순서 보존). */
+	adjacency: Map<string, string[]>;
+	chartRegionsByGuid: Map<string, JsonChartRegion[]>;
+	depth: number;
 	parseBody(guid: string): JSONContent | null;
 }
 
@@ -150,6 +207,7 @@ function traverseBundle(
 	options: PdfBundleOptions
 ): TraversalCtx {
 	const depth = Math.max(0, Math.floor(options.depth));
+	const excluded = options.excludedGuids ?? new Set<string>();
 
 	const byGuid = new Map<string, NoteData>();
 	for (const n of notes) byGuid.set(n.guid, n);
@@ -180,11 +238,45 @@ function traverseBundle(
 		}
 	}
 
+	const adjacency = new Map<string, string[]>();
+	function adjacencyOf(guid: string): string[] {
+		const cached = adjacency.get(guid);
+		if (cached) return cached;
+		const doc = parseBody(guid);
+		if (!doc) {
+			adjacency.set(guid, []);
+			return [];
+		}
+		const out: string[] = [];
+		const seen = new Set<string>();
+		for (const raw of extractInternalLinkTargets(doc)) {
+			const key = raw.trim();
+			if (!key) continue;
+			const targetGuid = titleToGuid.get(key);
+			if (!targetGuid || seen.has(targetGuid)) continue;
+			seen.add(targetGuid);
+			out.push(targetGuid);
+		}
+		adjacency.set(guid, out);
+		return out;
+	}
+
 	const ordered: string[] = [];
 	const visited = new Set<string>();
-	if (!byGuid.has(rootGuid)) {
-		return { ordered, visited, byGuid, titleToGuid, parseBody };
-	}
+	const ctxBase: TraversalCtx = {
+		ordered,
+		visited,
+		excluded,
+		byGuid,
+		titleToGuid,
+		adjacency,
+		chartRegionsByGuid: new Map(),
+		depth,
+		parseBody
+	};
+
+	if (!byGuid.has(rootGuid) || excluded.has(rootGuid)) return ctxBase;
+
 	const enqueued = new Set<string>([rootGuid]);
 	type QItem = { guid: string; d: number };
 	const queue: QItem[] = [{ guid: rootGuid, d: 0 }];
@@ -194,19 +286,136 @@ function traverseBundle(
 		visited.add(guid);
 		ordered.push(guid);
 		if (d === depth) continue;
-		const doc = parseBody(guid);
-		if (!doc) continue;
-		for (const rawTarget of extractInternalLinkTargets(doc)) {
-			const key = rawTarget.trim();
-			if (!key) continue;
-			const targetGuid = titleToGuid.get(key);
-			if (!targetGuid || enqueued.has(targetGuid)) continue;
+		for (const targetGuid of adjacencyOf(guid)) {
+			if (excluded.has(targetGuid) || enqueued.has(targetGuid)) continue;
 			enqueued.add(targetGuid);
 			queue.push({ guid: targetGuid, d: d + 1 });
 		}
 	}
 
-	return { ordered, visited, byGuid, titleToGuid, parseBody };
+	// 차트 영역은 트리 빌드와 무관하게 노트별로 미리 캐시. PDF 빌드 시
+	// 같은 데이터를 두 번 파싱하지 않도록.
+	const chartRegionsByGuid = new Map<string, JsonChartRegion[]>();
+	for (const guid of ordered) {
+		const doc = parseBody(guid);
+		if (!doc) continue;
+		chartRegionsByGuid.set(guid, findJsonChartRegions(doc));
+	}
+	ctxBase.chartRegionsByGuid = chartRegionsByGuid;
+
+	return ctxBase;
+}
+
+/**
+ * 트리를 DFS 로 만든다. 같은 guid 가 여러 부모 아래 등장할 수 있다 — depth 만
+ * 지키면 됨. 사이클은 ancestors set 으로 차단.
+ */
+function buildTree(
+	rootGuid: string,
+	ctx: TraversalCtx,
+	options: PdfBundleOptions
+): PdfBundleTreeNode {
+	const depth = Math.max(0, Math.floor(options.depth));
+
+	function titleOf(guid: string): string {
+		return ctx.byGuid.get(guid)?.title?.trim() || '제목 없음';
+	}
+
+	function walk(guid: string, d: number, ancestors: Set<string>, path: string): PdfBundleTreeNode {
+		const children: PdfBundleTreeNode[] = [];
+		if (d < depth) {
+			for (const next of ctx.adjacency.get(guid) ?? []) {
+				if (ctx.excluded.has(next) || !ctx.visited.has(next)) continue;
+				if (ancestors.has(next)) continue;
+				const childPath = `${path}>${next}`;
+				const nextAncestors = new Set(ancestors);
+				nextAncestors.add(next);
+				children.push(walk(next, d + 1, nextAncestors, childPath));
+			}
+		}
+		return { guid, title: titleOf(guid), positionKey: path, children };
+	}
+
+	return walk(rootGuid, 0, new Set([rootGuid]), rootGuid);
+}
+
+async function collectImageMap(ctx: TraversalCtx): Promise<Map<string, string>> {
+	const urls = new Set<string>();
+	for (const guid of ctx.ordered) {
+		const doc = ctx.parseBody(guid);
+		if (!doc) continue;
+		for (const url of extractImageUrlsFromDoc(doc)) urls.add(url);
+	}
+	if (urls.size === 0) return new Map();
+	try {
+		return await fetchImagesForBundle([...urls]);
+	} catch {
+		return new Map();
+	}
+}
+
+async function collectChartImages(
+	ctx: TraversalCtx
+): Promise<Map<string, Array<{ dataUri: string; width: number; height: number } | null>>> {
+	const notesByTitle = new Map<string, NoteData>();
+	for (const note of ctx.byGuid.values()) {
+		const key = note.title.trim();
+		if (key) notesByTitle.set(key, note);
+	}
+	const regionsByGuid = new Map<string, JsonChartRegion[]>();
+	let any = false;
+	for (const [guid, regions] of ctx.chartRegionsByGuid) {
+		if (regions.length === 0) continue;
+		const checked = regions.filter((r) => r.checked);
+		if (checked.length === 0) continue;
+		regionsByGuid.set(guid, checked);
+		any = true;
+	}
+	if (!any) return new Map();
+	if (typeof document === 'undefined') return new Map();
+	try {
+		return await renderChartsToImages(regionsByGuid, notesByTitle);
+	} catch {
+		return new Map();
+	}
+}
+
+/**
+ * body (제목 paragraph 가 잘렸을 수도 있는 doc) 안에서 다시 차트 region 을 찾고,
+ * 순서대로 미리 렌더한 chartImages 와 짝지어 치환/제거 인덱스를 만든다.
+ * `stripLeadingTitleParagraph` 가 잘라낼 수 있는 첫 paragraph 는 노트 title 과
+ * 동일한 텍스트뿐이고, 그 paragraph 은 "Chart:" 헤더가 될 수 없으므로
+ * 체크된 차트 영역의 순서는 strip 전후 항상 같다 — i 번째 체크된 region 을
+ * i 번째 ChartImage 로 짝지으면 안전하다.
+ */
+function chartReplaceMaps(
+	body: JSONContent,
+	chartImages: Array<{ dataUri: string; width: number; height: number } | null>
+): {
+	dropTopLevelIndexes?: Set<number>;
+	replaceTopLevelIndex?: Map<number, PdfContent>;
+} {
+	if (chartImages.length === 0) return {};
+	const drop = new Set<number>();
+	const replace = new Map<number, PdfContent>();
+
+	const bodyRegions = findJsonChartRegions(body).filter((r) => r.checked);
+	for (let i = 0; i < bodyRegions.length && i < chartImages.length; i++) {
+		const image = chartImages[i];
+		const region = bodyRegions[i];
+		if (!image) continue;
+		replace.set(region.headerIndex, {
+			image: image.dataUri,
+			width: image.width,
+			margin: [0, 10, 0, 10]
+		});
+		if (region.configListIndex !== undefined) drop.add(region.configListIndex);
+	}
+
+	return {
+		dropTopLevelIndexes: drop.size > 0 ? drop : undefined,
+		replaceTopLevelIndex: replace.size > 0 ? replace : undefined
+	};
 }
 
 /**
