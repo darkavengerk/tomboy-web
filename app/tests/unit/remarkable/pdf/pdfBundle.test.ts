@@ -53,7 +53,7 @@ function collectText(blocks: Array<PdfBlock | string>): string {
 
 describe('buildPdfBundle', () => {
 	it('returns empty docDefinition when root guid is missing', async () => {
-		const out = await buildPdfBundle('missing', [], { depth: 1 });
+		const out = await buildPdfBundle('missing', [], { forwardDepth: 1, backwardDepth: 1 });
 		expect(out.includedGuids).toEqual([]);
 		expect(out.docDefinition.content).toEqual([]);
 	});
@@ -61,7 +61,7 @@ describe('buildPdfBundle', () => {
 	it('depth 0 includes only the root note, no page break', async () => {
 		const root = makeNote('g1', 'Root', `Body says ${linkTo('Other')}`);
 		const other = makeNote('g2', 'Other', 'unrelated');
-		const out = await buildPdfBundle('g1', [root, other], { depth: 0 });
+		const out = await buildPdfBundle('g1', [root, other], { forwardDepth: 0, backwardDepth: 0 });
 		expect(out.includedGuids).toEqual(['g1']);
 		const header = out.docDefinition.content[0] as PdfBlock;
 		expect(header).toMatchObject({ text: 'Root', id: 'note-g1', style: 'noteTitle' });
@@ -76,7 +76,7 @@ describe('buildPdfBundle', () => {
 		);
 		const other = makeNote('g2', 'Other', 'second');
 		const third = makeNote('g3', 'Third', 'third');
-		const out = await buildPdfBundle('g1', [root, other, third], { depth: 1 });
+		const out = await buildPdfBundle('g1', [root, other, third], { forwardDepth: 1, backwardDepth: 1 });
 		expect(out.includedGuids).toEqual(['g1', 'g2', 'g3']);
 		const headers = out.docDefinition.content.filter(
 			(b): b is PdfBlock => typeof b === 'object' && b.style === 'noteTitle'
@@ -100,7 +100,7 @@ describe('buildPdfBundle', () => {
 		);
 		const a = makeNote('a', 'A', `also ${linkTo('B')}`);
 		const b = makeNote('b', 'B', 'leaf');
-		const out = await buildPdfBundle('g1', [root, a, b], { depth: 3 });
+		const out = await buildPdfBundle('g1', [root, a, b], { forwardDepth: 3, backwardDepth: 3 });
 		expect(out.includedGuids).toEqual(['g1', 'a', 'b']);
 		expect(out.includedGuids.filter((g) => g === 'b')).toHaveLength(1);
 	});
@@ -110,21 +110,21 @@ describe('buildPdfBundle', () => {
 		const child = makeNote('c', 'Child', linkTo('Grand'));
 		const grand = makeNote('gc', 'Grand', linkTo('GreatGrand'));
 		const great = makeNote('ggc', 'GreatGrand', 'leaf');
-		const out = await buildPdfBundle('g1', [root, child, grand, great], { depth: 2 });
+		const out = await buildPdfBundle('g1', [root, child, grand, great], { forwardDepth: 2, backwardDepth: 2 });
 		expect(out.includedGuids).toEqual(['g1', 'c', 'gc']);
 		expect(out.includedGuids).not.toContain('ggc');
 	});
 
 	it('drops links to notes whose title resolves to no guid', async () => {
 		const root = makeNote('g1', 'Root', `${linkTo('NoSuchTitle')}`);
-		const out = await buildPdfBundle('g1', [root], { depth: 2 });
+		const out = await buildPdfBundle('g1', [root], { forwardDepth: 2, backwardDepth: 2 });
 		expect(out.includedGuids).toEqual(['g1']);
 	});
 
 	it('renders an internal link to an in-bundle note as linkToDestination', async () => {
 		const root = makeNote('g1', 'Root', `see ${linkTo('Other')}`);
 		const other = makeNote('g2', 'Other', 'body');
-		const out = await buildPdfBundle('g1', [root, other], { depth: 1 });
+		const out = await buildPdfBundle('g1', [root, other], { forwardDepth: 1, backwardDepth: 1 });
 		const linkInlines = findLinkInlines(out.docDefinition.content);
 		expect(linkInlines).toHaveLength(1);
 		expect(linkInlines[0]).toMatchObject({
@@ -137,7 +137,7 @@ describe('buildPdfBundle', () => {
 		// depth 0 — Other isn't included, so the link mark drops to plain text.
 		const root = makeNote('g1', 'Root', `see ${linkTo('Other')}`);
 		const other = makeNote('g2', 'Other', 'body');
-		const out = await buildPdfBundle('g1', [root, other], { depth: 0 });
+		const out = await buildPdfBundle('g1', [root, other], { forwardDepth: 0, backwardDepth: 0 });
 		expect(findLinkInlines(out.docDefinition.content)).toHaveLength(0);
 	});
 
@@ -148,7 +148,7 @@ describe('buildPdfBundle', () => {
 		// 수 있어 v1 에서는 유지한다 — 검증은 "Root" 텍스트가 어디에도 안 보임 +
 		// "paragraph two" 가 들어 있음.
 		const root = makeNote('g1', 'Root', 'paragraph two');
-		const out = await buildPdfBundle('g1', [root], { depth: 0 });
+		const out = await buildPdfBundle('g1', [root], { forwardDepth: 0, backwardDepth: 0 });
 		const bodyBlocks = out.docDefinition.content.slice(1);
 		expect(collectText(bodyBlocks)).not.toContain('Root');
 		expect(collectText(bodyBlocks)).toContain('paragraph two');
@@ -160,7 +160,7 @@ describe('buildPdfBundle', () => {
 		const note = createEmptyNote('g1');
 		note.title = 'Different';
 		note.xmlContent = `<note-content version="0.1">opening line\n\nrest\n</note-content>`;
-		const out = await buildPdfBundle('g1', [note], { depth: 0 });
+		const out = await buildPdfBundle('g1', [note], { forwardDepth: 0, backwardDepth: 0 });
 		const bodyText = collectText(out.docDefinition.content.slice(1));
 		expect(bodyText).toContain('opening line');
 		expect(bodyText).toContain('rest');
@@ -168,7 +168,7 @@ describe('buildPdfBundle', () => {
 
 	it('docDefinition info.title = root title, defaultStyle has Korean font', async () => {
 		const root = makeNote('g1', '루트', 'body');
-		const out = await buildPdfBundle('g1', [root], { depth: 0 });
+		const out = await buildPdfBundle('g1', [root], { forwardDepth: 0, backwardDepth: 0 });
 		expect(out.docDefinition.info?.title).toBe('루트');
 		expect(out.docDefinition.defaultStyle?.font).toBe('Korean');
 		expect(out.docDefinition.styles?.noteTitle).toBeDefined();
@@ -180,7 +180,7 @@ describe('buildPdfBundle', () => {
 			const a = makeNote('a', 'A', 'note a');
 			const b = makeNote('b', 'B', 'note b');
 			const out = await buildPdfBundle('g1', [root, a, b], {
-				depth: 1,
+				forwardDepth: 1, backwardDepth: 1,
 				excludedGuids: new Set(['b'])
 			});
 			expect(out.includedGuids).toEqual(['g1', 'a']);
@@ -193,7 +193,7 @@ describe('buildPdfBundle', () => {
 			const a = makeNote('a', 'A', linkTo('C'));
 			const c = makeNote('c', 'C', 'leaf');
 			const out = await buildPdfBundle('g1', [root, a, c], {
-				depth: 2,
+				forwardDepth: 2, backwardDepth: 2,
 				excludedGuids: new Set(['a'])
 			});
 			expect(out.includedGuids).toEqual(['g1']);
@@ -203,7 +203,7 @@ describe('buildPdfBundle', () => {
 			const root = makeNote('g1', 'Root', `see ${linkTo('Other')}`);
 			const other = makeNote('g2', 'Other', 'body');
 			const out = await buildPdfBundle('g1', [root, other], {
-				depth: 1,
+				forwardDepth: 1, backwardDepth: 1,
 				excludedGuids: new Set(['g2'])
 			});
 			expect(findLinkInlines(out.docDefinition.content)).toHaveLength(0);
@@ -217,7 +217,7 @@ describe('previewPdfBundle', () => {
 		const root = makeNote('g1', 'Root', `${linkTo('A')} and ${linkTo('B')}`);
 		const a = makeNote('a', 'A', 'note a');
 		const b = makeNote('b', 'B', linkTo('A'));
-		const out = previewPdfBundle('g1', [root, a, b], { depth: 2 });
+		const out = previewPdfBundle('g1', [root, a, b], { forwardDepth: 2, backwardDepth: 2 });
 		expect(out.forwardTree).not.toBeNull();
 		expect(out.forwardTree!.guid).toBe('g1');
 		expect(out.includedGuids).toEqual(['g1', 'a', 'b']);
@@ -232,7 +232,7 @@ describe('previewPdfBundle', () => {
 		const a = makeNote('a', 'A', linkTo('C'));
 		const b = makeNote('b', 'B', linkTo('C'));
 		const c = makeNote('c', 'C', 'leaf');
-		const out = previewPdfBundle('g1', [root, a, b, c], { depth: 2 });
+		const out = previewPdfBundle('g1', [root, a, b, c], { forwardDepth: 2, backwardDepth: 2 });
 		const aNode = out.forwardTree!.children.find((n: { guid: string }) => n.guid === 'a');
 		const bNode = out.forwardTree!.children.find((n: { guid: string }) => n.guid === 'b');
 		// C appears under BOTH A and B.
@@ -245,7 +245,7 @@ describe('previewPdfBundle', () => {
 		const a = makeNote('a', 'A', 'note a');
 		const b = makeNote('b', 'B', 'note b');
 		const out = previewPdfBundle('g1', [root, a, b], {
-			depth: 1,
+			forwardDepth: 1, backwardDepth: 1,
 			excludedGuids: new Set(['a'])
 		});
 		expect(out.forwardTree!.children.map((c: { guid: string }) => c.guid)).toEqual(['b']);
@@ -260,7 +260,7 @@ describe('previewPdfBundle', () => {
 			const b = makeNote('b', 'B', `also ${linkTo('Root')}`);
 			const c = makeNote('c', 'C', `and ${linkTo('Root')}`);
 			const other = makeNote('o', 'Other', 'unrelated');
-			const out = previewPdfBundle('g1', [root, a, b, c, other], { depth: 1 });
+			const out = previewPdfBundle('g1', [root, a, b, c, other], { forwardDepth: 1, backwardDepth: 1 });
 			expect(out.backwardTree).not.toBeNull();
 			expect(out.backwardTree!.guid).toBe('g1');
 			const back = out.backwardTree!.children.map((n: { guid: string }) => n.guid).sort();
@@ -274,7 +274,7 @@ describe('previewPdfBundle', () => {
 			const root = makeNote('g1', 'Root', 'root');
 			const a = makeNote('a', 'A', `to ${linkTo('Root')}`);
 			const x = makeNote('x', 'X', `to ${linkTo('A')}`);
-			const out = previewPdfBundle('g1', [root, a, x], { depth: 2 });
+			const out = previewPdfBundle('g1', [root, a, x], { forwardDepth: 2, backwardDepth: 2 });
 			const aNode = out.backwardTree!.children[0];
 			expect(aNode.guid).toBe('a');
 			expect(aNode.children.map((n: { guid: string }) => n.guid)).toEqual(['x']);
@@ -286,7 +286,7 @@ describe('previewPdfBundle', () => {
 			const a = makeNote('a', 'A', `to ${linkTo('Root')}`);
 			const b = makeNote('b', 'B', `to ${linkTo('Root')}`);
 			const out = previewPdfBundle('g1', [root, a, b], {
-				depth: 1,
+				forwardDepth: 1, backwardDepth: 1,
 				excludedGuids: new Set(['b'])
 			});
 			expect(out.backwardTree!.children.map((c: { guid: string }) => c.guid)).toEqual(['a']);
@@ -299,7 +299,7 @@ describe('previewPdfBundle', () => {
 			const root = makeNote('g1', 'Root', `forward to ${linkTo('A')}`);
 			const a = makeNote('a', 'A', 'leaf');
 			const b = makeNote('b', 'B', `back to ${linkTo('Root')}`);
-			const out = previewPdfBundle('g1', [root, a, b], { depth: 1 });
+			const out = previewPdfBundle('g1', [root, a, b], { forwardDepth: 1, backwardDepth: 1 });
 			expect(out.forwardTree!.children.map((c: { guid: string }) => c.guid)).toEqual(['a']);
 			expect(out.backwardTree!.children.map((c: { guid: string }) => c.guid)).toEqual(['b']);
 			// Union goes into the bundle.
@@ -309,7 +309,7 @@ describe('previewPdfBundle', () => {
 		it('positionKey differs between forward and backward roots so Svelte each keys never collide', () => {
 			const root = makeNote('g1', 'Root', `${linkTo('A')}`);
 			const a = makeNote('a', 'A', `${linkTo('Root')}`); // A appears in both directions
-			const out = previewPdfBundle('g1', [root, a], { depth: 1 });
+			const out = previewPdfBundle('g1', [root, a], { forwardDepth: 1, backwardDepth: 1 });
 			expect(out.forwardTree!.positionKey).not.toBe(out.backwardTree!.positionKey);
 			// Children of both roots are tagged with their parent's direction prefix.
 			expect(out.forwardTree!.children[0].positionKey).toContain('forward:');
@@ -321,7 +321,7 @@ describe('previewPdfBundle', () => {
 		// B → Root via backlink. depth 1 → both Root and B included.
 		const root = makeNote('g1', 'Root', 'root');
 		const b = makeNote('b', 'B', `${linkTo('Root')}`);
-		const out = await buildPdfBundle('g1', [root, b], { depth: 1 });
+		const out = await buildPdfBundle('g1', [root, b], { forwardDepth: 1, backwardDepth: 1 });
 		expect(out.includedGuids.sort()).toEqual(['b', 'g1']);
 		// And B's link to Root resolves as linkToDestination (Root is in the bundle).
 		const linkInlines = findLinkInlines(out.docDefinition.content);

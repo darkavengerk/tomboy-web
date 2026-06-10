@@ -19,7 +19,8 @@
 
 	let { rootGuid, onclose }: Props = $props();
 
-	let depth = $state(1);
+	let forwardDepth = $state(1);
+	let backwardDepth = $state(1);
 	let alias = $state('');
 	let folderName = $state('');
 	let folderUuid = $state('');
@@ -44,7 +45,7 @@
 					includedGuids: [] as string[],
 					titles: new Map<string, string>()
 				}
-			: previewPdfBundle(rootGuid, allNotes, { depth, excludedGuids })
+			: previewPdfBundle(rootGuid, allNotes, { forwardDepth, backwardDepth, excludedGuids })
 	);
 
 	// 제외 목록은 사용자가 명시적으로 끈 guid 만. 제외된 guid 의 표시명은 노트
@@ -117,7 +118,8 @@
 				alias: alias.trim(),
 				folderName,
 				folderUuid,
-				depth,
+				forwardDepth,
+				backwardDepth,
 				excludedGuids,
 				signal: ac.signal,
 				onStatus: setStatus
@@ -207,18 +209,6 @@
 		<h2>리마커블로 보내기</h2>
 	</header>
 	<div class="rm-body">
-		<label class="rm-row">
-			<span class="rm-label">링크 깊이</span>
-			<select class="rm-input" bind:value={depth} disabled={sending}>
-				<option value={0}>0 — 이 노트만</option>
-				<option value={1}>1 — 직접 링크된 노트까지</option>
-				<option value={2}>2 — 손자 노트까지</option>
-				<option value={3}>3 — 증손자 노트까지</option>
-				<option value={4}>4 — 4촌 노트까지</option>
-				<option value={5}>5 — 5촌 노트까지</option>
-			</select>
-		</label>
-
 		<div class="rm-row">
 			<span class="rm-label">대상</span>
 			<span class="rm-readonly">
@@ -237,9 +227,27 @@
 				<span class="rm-label">포함될 노트 ({preview.includedGuids.length}개)</span>
 				<div class="rm-tree-pair">
 					<div class="rm-tree-col">
-						<h4 class="rm-tree-heading">
-							앞으로 — 이 노트가 링크하는 노트
-						</h4>
+						<div class="rm-tree-col-head">
+							<h4 class="rm-tree-heading">
+								앞으로 — 이 노트가 링크하는 노트
+							</h4>
+							<label class="rm-tree-depth">
+								<span class="rm-tree-depth-label">깊이</span>
+								<select
+									class="rm-tree-depth-select"
+									bind:value={forwardDepth}
+									disabled={sending}
+									aria-label="앞으로 트리 깊이"
+								>
+									<option value={0}>0 — 루트만</option>
+									<option value={1}>1 — 자식</option>
+									<option value={2}>2 — 손자</option>
+									<option value={3}>3 — 증손자</option>
+									<option value={4}>4 — 4촌</option>
+									<option value={5}>5 — 5촌</option>
+								</select>
+							</label>
+						</div>
 						<div class="rm-tree-box">
 							{#if preview.forwardTree === null}
 								<span class="rm-tree-empty">노트를 찾을 수 없습니다</span>
@@ -256,9 +264,27 @@
 						</div>
 					</div>
 					<div class="rm-tree-col">
-						<h4 class="rm-tree-heading">
-							뒤로 — 이 노트를 링크하는 노트 (백링크)
-						</h4>
+						<div class="rm-tree-col-head">
+							<h4 class="rm-tree-heading">
+								뒤로 — 이 노트를 링크하는 노트 (백링크)
+							</h4>
+							<label class="rm-tree-depth">
+								<span class="rm-tree-depth-label">깊이</span>
+								<select
+									class="rm-tree-depth-select"
+									bind:value={backwardDepth}
+									disabled={sending}
+									aria-label="뒤로 트리 깊이"
+								>
+									<option value={0}>0 — 루트만</option>
+									<option value={1}>1 — 자식</option>
+									<option value={2}>2 — 손자</option>
+									<option value={3}>3 — 증손자</option>
+									<option value={4}>4 — 4촌</option>
+									<option value={5}>5 — 5촌</option>
+								</select>
+							</label>
+						</div>
 						<div class="rm-tree-box">
 							{#if preview.backwardTree === null}
 								<span class="rm-tree-empty">노트를 찾을 수 없습니다</span>
@@ -374,14 +400,6 @@
 		font-weight: 600;
 		color: #444;
 	}
-	.rm-input {
-		padding: 6px 8px;
-		border: 1px solid #ccc;
-		border-radius: 4px;
-		font: inherit;
-		background: #fff;
-		color: #111;
-	}
 	.rm-readonly {
 		padding: 6px 8px;
 		border: 1px dashed #ddd;
@@ -404,12 +422,46 @@
 		display: flex;
 		flex-direction: column;
 	}
-	.rm-tree-heading {
+	.rm-tree-col-head {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 8px;
 		margin: 0 0 4px;
+	}
+	.rm-tree-heading {
+		margin: 0;
 		font-size: 0.78rem;
 		font-weight: 600;
 		color: #555;
 		letter-spacing: 0.01em;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.rm-tree-depth {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		flex-shrink: 0;
+	}
+	.rm-tree-depth-label {
+		font-size: 0.72rem;
+		color: #777;
+	}
+	.rm-tree-depth-select {
+		padding: 2px 4px;
+		border: 1px solid #ccc;
+		border-radius: 3px;
+		font: inherit;
+		font-size: 0.78rem;
+		background: #fff;
+		color: #111;
+	}
+	.rm-tree-depth-select:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 	.rm-tree-box {
 		flex: 1 1 auto;

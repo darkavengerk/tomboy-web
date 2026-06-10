@@ -32,8 +32,16 @@ import { renderChartsToImages } from './renderChartsToImages.js';
  */
 
 export interface PdfBundleOptions {
-	/** 0 = 루트만, 1 = 루트 + 직접 링크, 2 = ... 최대 5. */
-	depth: number;
+	/**
+	 * forward BFS 깊이 — 0 = 루트만, 1 = 루트가 직접 링크한 노트까지. 최대 5.
+	 * 앞으로(forward) 트리에만 적용.
+	 */
+	forwardDepth: number;
+	/**
+	 * backward BFS 깊이 — 0 = 루트만, 1 = 루트를 직접 링크하는 노트까지. 최대 5.
+	 * 뒤로(backward, 백링크) 트리에만 적용. forward 와 독립.
+	 */
+	backwardDepth: number;
 	/** 번들에서 빼고 싶은 노트 guid 집합. 모달의 체크 해제로 채워진다. */
 	excludedGuids?: Set<string>;
 }
@@ -100,8 +108,8 @@ export function previewPdfBundle(
 		titles.set(guid, ctx.byGuid.get(guid)?.title?.trim() || '제목 없음');
 	}
 	const hasRoot = ctx.byGuid.has(rootGuid);
-	const forwardTree = hasRoot ? buildTree(rootGuid, ctx, options, 'forward') : null;
-	const backwardTree = hasRoot ? buildTree(rootGuid, ctx, options, 'backward') : null;
+	const forwardTree = hasRoot ? buildTree(rootGuid, ctx, 'forward') : null;
+	const backwardTree = hasRoot ? buildTree(rootGuid, ctx, 'backward') : null;
 	return { forwardTree, backwardTree, includedGuids: ctx.ordered, titles };
 }
 
@@ -213,7 +221,8 @@ interface TraversalCtx {
 	/** guid → 그 노트를 링크하는 출발 guid 들 (notes 배열 순서로 dedup). */
 	backwardAdj: Map<string, string[]>;
 	chartRegionsByGuid: Map<string, JsonChartRegion[]>;
-	depth: number;
+	forwardDepth: number;
+	backwardDepth: number;
 	parseBody(guid: string): JSONContent | null;
 }
 
@@ -222,7 +231,8 @@ function traverseBundle(
 	notes: NoteData[],
 	options: PdfBundleOptions
 ): TraversalCtx {
-	const depth = Math.max(0, Math.floor(options.depth));
+	const forwardDepth = Math.max(0, Math.floor(options.forwardDepth));
+	const backwardDepth = Math.max(0, Math.floor(options.backwardDepth));
 	const excluded = options.excludedGuids ?? new Set<string>();
 
 	const byGuid = new Map<string, NoteData>();
@@ -294,13 +304,17 @@ function traverseBundle(
 		forwardAdj,
 		backwardAdj,
 		chartRegionsByGuid: new Map(),
-		depth,
+		forwardDepth,
+		backwardDepth,
 		parseBody
 	};
 
 	if (!byGuid.has(rootGuid) || excluded.has(rootGuid)) return ctxBase;
 
-	function bfs(adj: Map<string, string[]>): { visited: Set<string>; ordered: string[] } {
+	function bfs(
+		adj: Map<string, string[]>,
+		maxDepth: number
+	): { visited: Set<string>; ordered: string[] } {
 		const out: string[] = [];
 		const seen = new Set<string>();
 		const enqueued = new Set<string>([rootGuid]);
@@ -311,7 +325,7 @@ function traverseBundle(
 			if (seen.has(guid)) continue;
 			seen.add(guid);
 			out.push(guid);
-			if (d === depth) continue;
+			if (d === maxDepth) continue;
 			for (const nextGuid of adj.get(guid) ?? []) {
 				if (excluded.has(nextGuid) || enqueued.has(nextGuid)) continue;
 				enqueued.add(nextGuid);
@@ -321,8 +335,8 @@ function traverseBundle(
 		return { visited: seen, ordered: out };
 	}
 
-	const fwd = bfs(forwardAdj);
-	const bwd = bfs(backwardAdj);
+	const fwd = bfs(forwardAdj, forwardDepth);
+	const bwd = bfs(backwardAdj, backwardDepth);
 	for (const g of fwd.visited) forwardVisited.add(g);
 	for (const g of bwd.visited) backwardVisited.add(g);
 
@@ -365,10 +379,9 @@ function traverseBundle(
 function buildTree(
 	rootGuid: string,
 	ctx: TraversalCtx,
-	options: PdfBundleOptions,
 	direction: 'forward' | 'backward'
 ): PdfBundleTreeNode {
-	const depth = Math.max(0, Math.floor(options.depth));
+	const depth = direction === 'forward' ? ctx.forwardDepth : ctx.backwardDepth;
 	const adj = direction === 'forward' ? ctx.forwardAdj : ctx.backwardAdj;
 	const dirVisited = direction === 'forward' ? ctx.forwardVisited : ctx.backwardVisited;
 

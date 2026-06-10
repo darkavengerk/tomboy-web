@@ -51,7 +51,7 @@ const basicOpts = (extras: Partial<Parameters<typeof sendNoteToRemarkable>[0]> =
 	alias: 'rm2',
 	folderName: 'Tomboy',
 	folderUuid: 'folder-uuid',
-	depth: 0,
+	forwardDepth: 0, backwardDepth: 0,
 	buildPdf: async () => fakePdfBlob(),
 	...extras
 });

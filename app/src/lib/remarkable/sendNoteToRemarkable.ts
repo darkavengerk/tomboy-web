@@ -45,7 +45,10 @@ export interface SendRemarkableOpts {
 	alias: string;
 	folderName: string;
 	folderUuid: string;
-	depth: number;
+	/** forward BFS 깊이 (이 노트가 링크하는 방향). */
+	forwardDepth: number;
+	/** backward BFS 깊이 (이 노트를 링크하는 방향, 백링크). */
+	backwardDepth: number;
 	/** 사용자가 모달 트리에서 체크 해제한 노트들. BFS 와 본문 링크에서 모두 빠진다. */
 	excludedGuids?: Set<string>;
 	onStatus?: (s: SendRemarkableStatus) => void;
@@ -80,7 +83,8 @@ export async function sendNoteToRemarkable(
 
 	opts.onStatus?.({ step: 'building_pdf' });
 	const { docDefinition, includedGuids } = await buildPdfBundle(opts.rootGuid, opts.notes, {
-		depth: opts.depth,
+		forwardDepth: opts.forwardDepth,
+		backwardDepth: opts.backwardDepth,
 		excludedGuids: opts.excludedGuids
 	});
 	const rootNote = opts.notes.find((n) => n.guid === opts.rootGuid);
