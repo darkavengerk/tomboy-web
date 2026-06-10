@@ -48,9 +48,12 @@ vi.mock('$lib/editor/autoLink/titleProvider.js', () => ({
 }));
 
 const emitNoteReloadSpy = vi.fn(async (_guids: Iterable<string>) => {});
+const emitNoteFlushSpy = vi.fn(async (_guids: Iterable<string>) => {});
 vi.mock('$lib/core/noteReloadBus.js', () => ({
 	emitNoteReload: (guids: Iterable<string>) => emitNoteReloadSpy(guids),
+	emitNoteFlush: (guids: Iterable<string>) => emitNoteFlushSpy(guids),
 	subscribeNoteReload: vi.fn(() => () => {}),
+	subscribeNoteFlush: vi.fn(() => () => {}),
 	_resetForTest: vi.fn()
 }));
 
@@ -95,6 +98,8 @@ beforeEach(() => {
 	ensureTitleIndexReadySpy.mockClear();
 	emitNoteReloadSpy.mockReset();
 	emitNoteReloadSpy.mockImplementation(async () => {});
+	emitNoteFlushSpy.mockReset();
+	emitNoteFlushSpy.mockImplementation(async () => {});
 });
 
 describe('updateNoteFromEditor — rename rewrite of backlinks', () => {
@@ -155,6 +160,14 @@ describe('updateNoteFromEditor — rename rewrite of backlinks', () => {
 		// localDirty true (putNote path, not putNoteSynced).
 		expect(storedB.localDirty).toBe(true);
 		expect(storedC.localDirty).toBe(true);
+
+		// emitNoteFlush called once with the SAME target guids (B and C),
+		// before the rewrite — so any open editor for them lands its pending
+		// edit first. Self-guid A is excluded.
+		expect(emitNoteFlushSpy).toHaveBeenCalledTimes(1);
+		const flushedArr = Array.from(emitNoteFlushSpy.mock.calls[0]![0] as Iterable<string>);
+		expect(new Set(flushedArr)).toEqual(new Set(['B', 'C']));
+		expect(flushedArr).not.toContain('A');
 
 		// emitNoteReload called once with B and C (order independent).
 		expect(emitNoteReloadSpy).toHaveBeenCalledTimes(1);

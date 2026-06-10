@@ -20,7 +20,11 @@ import {
 	type NoteData
 } from '$lib/core/note.js';
 import { deserializeContent, serializeContent } from '$lib/core/noteContentArchiver.js';
-import { ensureUniqueTitle, formatDateTimeTitle } from '$lib/core/noteManager.js';
+import {
+	ensureUniqueTitle,
+	formatDateTimeTitle,
+	findNoteByTitleIndexed
+} from '$lib/core/noteManager.js';
 import * as noteStore from '$lib/storage/noteStore.js';
 import { generateGuid } from '$lib/utils/guid.js';
 import { invalidateCache } from '$lib/stores/noteListCache.js';
@@ -84,7 +88,11 @@ async function mustGet(guid: string): Promise<NoteData> {
 }
 
 async function mustGetByTitle(title: string): Promise<NoteData> {
-	const n = await noteStore.findNoteByTitle(title);
+	// O(1) title-index resolution on the warm-index fast path, with an
+	// authoritative full-scan fallback inside findNoteByTitleIndexed — so this
+	// is as correct as the old findNoteByTitle while avoiding the per-call
+	// corpus scan when the chain's neighbours are already indexed.
+	const n = await findNoteByTitleIndexed(title);
 	if (!n || n.deleted) {
 		throw new Error(`링크 대상 노트를 찾을 수 없습니다: "${title}"`);
 	}
@@ -371,7 +379,9 @@ async function collectDownstreamTitles(source: NoteData): Promise<Set<string>> {
 		const r = validateSlipNoteFormat(cur);
 		if (r.issues.length > 0) break;
 		if (!r.next || r.next.kind !== 'link') break;
-		const next = await noteStore.findNoteByTitle(r.next.target ?? '');
+		// O(1) per hop via the title index — the previous full-scan-per-hop made
+		// this loop O(chainLength × corpusSize).
+		const next = await findNoteByTitleIndexed(r.next.target ?? '');
 		if (!next || next.deleted) break;
 		if (seenGuids.has(next.guid)) break;
 		seenGuids.add(next.guid);

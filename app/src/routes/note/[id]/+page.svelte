@@ -13,7 +13,7 @@
 		isFavorite,
 		listNotes
 	} from '$lib/core/noteManager.js';
-	import { subscribeNoteReload } from '$lib/core/noteReloadBus.js';
+	import { subscribeNoteReload, subscribeNoteFlush } from '$lib/core/noteReloadBus.js';
 	import { attachOpenNote, detachOpenNote } from '$lib/sync/firebase/orchestrator.js';
 	import type { NoteData } from '$lib/core/note.js';
 	import { createTitleProvider } from '$lib/editor/autoLink/titleProvider.js';
@@ -232,7 +232,16 @@
 			if (!keysSpec) keysConnectMode = false;
 			lastSavedDocFingerprint = null;
 		});
-		return off;
+		// Flush bus: a rename sweep elsewhere flushes this editor BEFORE it
+		// reads + rewrites this note, so an unsaved pending edit lands in IDB
+		// first rather than being read stale and overwritten. On mobile this
+		// note is almost never a backlink target of a concurrent rename, but
+		// registering keeps the two surfaces symmetric with NoteWindow.
+		const offFlush = subscribeNoteFlush(g, () => flushSave());
+		return () => {
+			off();
+			offFlush();
+		};
 	});
 
 	// Realtime Firebase sync attach/detach. The orchestrator no-ops when the

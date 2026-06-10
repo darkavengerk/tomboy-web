@@ -1,19 +1,31 @@
 /**
- * Reload bus for note editor windows. Independent of the desktop
- * `session.svelte.ts` `reloadHooks` channel (which is dedicated to slip-note
- * chain ops). Lives at the core layer so both the mobile `/note/[id]` page
- * and the desktop `NoteWindow` can subscribe without pulling in desktop
- * session internals.
+ * Reload + flush bus for note editor windows. Independent of the desktop
+ * `session.svelte.ts` `reloadHooks` / `flushHooks` channels (those are
+ * dedicated to slip-note chain ops and window lifecycle). Lives at the core
+ * layer so both the mobile `/note/[id]` page and the desktop `NoteWindow` can
+ * subscribe without pulling in desktop session internals.
  *
- * Fired by `updateNoteFromEditor` after a rename-triggered backlink rewrite
- * so the open editor for each affected note picks up the freshly-rewritten
- * xml instead of clobbering it on the next debounced save with a stale
- * pendingDoc.
+ * Two channels, both keyed by guid:
+ *
+ * - **Reload** (`emitNoteReload`) — fired by `updateNoteFromEditor` AFTER a
+ *   rename-triggered backlink rewrite so the open editor for each affected
+ *   note picks up the freshly-rewritten xml instead of clobbering it on the
+ *   next debounced save with a stale pendingDoc.
+ *
+ * - **Flush** (`emitNoteFlush`) — fired by the rename sweep BEFORE it reads +
+ *   rewrites a backlinked note, so any open editor's unsaved pending body
+ *   edit lands in IDB first. Without it, a desktop window editing a
+ *   backlinked note within the debounce window would have that edit read
+ *   stale, overwritten by the link rewrite, then dropped by the subsequent
+ *   reload — silent content loss. No-op on mobile (single-note-per-page →
+ *   the backlinked targets are never open) and for any guid with no
+ *   registered editor.
  */
 
 type ReloadListener = () => void | Promise<void>;
 
 const listeners = new Map<string, Set<ReloadListener>>();
+const flushListeners = new Map<string, Set<ReloadListener>>();
 
 /**
  * Register `fn` to be invoked when `emitNoteReload(guids)` contains `guid`.
@@ -60,7 +72,51 @@ export async function emitNoteReload(guids: Iterable<string>): Promise<void> {
 	await Promise.all(tasks);
 }
 
+/**
+ * Register `fn` to flush `guid`'s open editor (persist its pending edit to
+ * IDB). Returns an unsubscribe function. Mirrors `subscribeNoteReload`.
+ */
+export function subscribeNoteFlush(guid: string, fn: ReloadListener): () => void {
+	let set = flushListeners.get(guid);
+	if (!set) {
+		set = new Set();
+		flushListeners.set(guid, set);
+	}
+	set.add(fn);
+	return () => {
+		const s = flushListeners.get(guid);
+		if (!s) return;
+		s.delete(fn);
+		if (s.size === 0) flushListeners.delete(guid);
+	};
+}
+
+/**
+ * Flush every open editor registered for each guid in `guids`, awaiting all
+ * of them. Per-listener errors are swallowed so one broken/destroyed editor
+ * never stalls the caller (the rename sweep must proceed regardless). Resolves
+ * once every flush (sync or async) has settled.
+ */
+export async function emitNoteFlush(guids: Iterable<string>): Promise<void> {
+	const tasks: Array<Promise<void>> = [];
+	for (const guid of guids) {
+		const set = flushListeners.get(guid);
+		if (!set) continue;
+		for (const fn of Array.from(set)) {
+			tasks.push(
+				(async () => {
+					await fn();
+				})().catch(() => {
+					/* swallowed — a broken flush must not stall the sweep */
+				})
+			);
+		}
+	}
+	await Promise.all(tasks);
+}
+
 /** Clear the registry. Test-only. */
 export function _resetForTest(): void {
 	listeners.clear();
+	flushListeners.clear();
 }

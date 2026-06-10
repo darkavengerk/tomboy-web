@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
 	subscribeNoteReload,
 	emitNoteReload,
+	subscribeNoteFlush,
+	emitNoteFlush,
 	_resetForTest
 } from '$lib/core/noteReloadBus.js';
 
@@ -118,5 +120,84 @@ describe('noteReloadBus', () => {
 		resolveInner!();
 		await emitPromise;
 		expect(settled).toBe(true);
+	});
+});
+
+describe('noteReloadBus — flush channel', () => {
+	it('flushes a subscribed guid', async () => {
+		const fn = vi.fn();
+		subscribeNoteFlush('A', fn);
+		await emitNoteFlush(['A']);
+		expect(fn).toHaveBeenCalledTimes(1);
+	});
+
+	it('awaits an async flush before resolving', async () => {
+		let resolveInner: (() => void) | null = null;
+		const inner = new Promise<void>((r) => {
+			resolveInner = r;
+		});
+		const fn = vi.fn(async () => {
+			await inner;
+		});
+		subscribeNoteFlush('A', fn);
+		const emit = emitNoteFlush(['A']);
+		let settled = false;
+		void emit.then(() => {
+			settled = true;
+		});
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(settled).toBe(false);
+		resolveInner!();
+		await emit;
+		expect(settled).toBe(true);
+	});
+
+	it('swallows a throwing flush without stalling the batch', async () => {
+		const bad = vi.fn(async () => {
+			throw new Error('flush boom');
+		});
+		const good = vi.fn(async () => {});
+		subscribeNoteFlush('A', bad);
+		subscribeNoteFlush('B', good);
+		await expect(emitNoteFlush(['A', 'B'])).resolves.toBeUndefined();
+		expect(bad).toHaveBeenCalledTimes(1);
+		expect(good).toHaveBeenCalledTimes(1);
+	});
+
+	it('flush and reload channels are independent for the same guid', async () => {
+		const flushFn = vi.fn();
+		const reloadFn = vi.fn();
+		subscribeNoteFlush('A', flushFn);
+		subscribeNoteReload('A', reloadFn);
+
+		await emitNoteFlush(['A']);
+		expect(flushFn).toHaveBeenCalledTimes(1);
+		expect(reloadFn).not.toHaveBeenCalled();
+
+		await emitNoteReload(['A']);
+		expect(flushFn).toHaveBeenCalledTimes(1);
+		expect(reloadFn).toHaveBeenCalledTimes(1);
+	});
+
+	it('unsubscribe stops further flushes', async () => {
+		const fn = vi.fn();
+		const off = subscribeNoteFlush('A', fn);
+		await emitNoteFlush(['A']);
+		off();
+		await emitNoteFlush(['A']);
+		expect(fn).toHaveBeenCalledTimes(1);
+	});
+
+	it('emit on a guid with no flush subscriber resolves quietly', async () => {
+		await expect(emitNoteFlush(['nobody'])).resolves.toBeUndefined();
+	});
+
+	it('_resetForTest clears flush subscribers too', async () => {
+		const fn = vi.fn();
+		subscribeNoteFlush('A', fn);
+		_resetForTest();
+		await emitNoteFlush(['A']);
+		expect(fn).not.toHaveBeenCalled();
 	});
 });
