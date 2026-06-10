@@ -8,7 +8,7 @@
 		toggleFavorite,
 		isFavorite
 	} from '$lib/core/noteManager.js';
-	import { subscribeNoteReload } from '$lib/core/noteReloadBus.js';
+	import { subscribeNoteReload, subscribeNoteFlush } from '$lib/core/noteReloadBus.js';
 	import { attachOpenNote, detachOpenNote } from '$lib/sync/firebase/orchestrator.js';
 	import type { NoteData } from '$lib/core/note.js';
 	import TomboyEditor from '$lib/editor/TomboyEditor.svelte';
@@ -347,7 +347,16 @@
 		const off = subscribeNoteReload(g, async () => {
 			await externalReload();
 		});
-		return off;
+		// Flush bus: a rename sweep elsewhere flushes this window BEFORE it
+		// reads + rewrites this note, so an unsaved pending body edit in a
+		// backlinked note lands in IDB first instead of being read stale,
+		// rewritten over, and then dropped by the reload above. This is the
+		// desktop multi-window case the mobile single-note flow can't hit.
+		const offFlush = subscribeNoteFlush(g, () => flushSave());
+		return () => {
+			off();
+			offFlush();
+		};
 	});
 
 	function handleEditorChange(doc: JSONContent) {

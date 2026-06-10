@@ -3,8 +3,12 @@ import type { NoteData } from '$lib/core/note.js';
 
 const listNotesMock = vi.fn<() => Promise<NoteData[]>>();
 
+// titleProvider reads through `listNotesShared`; expose both names mapped to
+// the same spy so the call-count assertions track the provider's fetches
+// regardless of which alias it uses.
 vi.mock('$lib/core/noteManager.js', () => ({
-	listNotes: () => listNotesMock()
+	listNotes: () => listNotesMock(),
+	listNotesShared: () => listNotesMock()
 }));
 
 // Use the real noteListCache — it is a simple in-memory module.

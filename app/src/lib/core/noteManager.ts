@@ -6,12 +6,12 @@ import {
 	prepareIncomingNoteForLocal,
 	rewriteInternalLinkRefsInXml
 } from './titleRewrite.js';
-import { emitNoteReload } from './noteReloadBus.js';
+import { emitNoteReload, emitNoteFlush } from './noteReloadBus.js';
 import * as noteStore from '$lib/storage/noteStore.js';
 import * as backlinkIndex from './backlinkIndex.js';
 import { generateGuid } from '$lib/utils/guid.js';
-import { invalidateCache } from '$lib/stores/noteListCache.js';
-import { ensureTitleIndexReady } from '$lib/editor/autoLink/titleProvider.js';
+import { invalidateCache, readThroughNotes } from '$lib/stores/noteListCache.js';
+import { ensureTitleIndexReady, lookupGuidByTitle } from '$lib/editor/autoLink/titleProvider.js';
 import { checkTitleConflict } from '$lib/editor/titleUniqueGuard.js';
 import { pushToast } from '$lib/stores/toast.js';
 import { syncScheduleFromNote } from '$lib/schedule/syncSchedule.js';
@@ -192,6 +192,17 @@ async function rewriteBacklinksForRename(
 	// Snapshot — `sources` is the live Set; putNote mutates it during the
 	// sweep, so iterating directly would skip notes.
 	const targetGuids = [...sources].filter((g) => g !== selfGuid);
+
+	// Flush any open editor for a backlinked target so its unsaved pending
+	// body edit is persisted to IDB BEFORE we read + rewrite it below.
+	// Without this, a desktop window editing one of these notes within the
+	// 1.5s debounce window would have that edit read stale here, overwritten
+	// by the link rewrite, then dropped by the caller's emitNoteReload() —
+	// silent content loss. No-op on mobile (the backlinked targets are never
+	// open) and for any guid without a registered editor. The renamed note's
+	// own guid is already filtered out, so this never re-enters its flush.
+	await emitNoteFlush(targetGuids);
+
 	// Single timestamp so the whole sweep appears as one atomic operation.
 	const now = formatTomboyDate(new Date());
 
@@ -240,9 +251,24 @@ export function getNoteEditorContent(note: NoteData): JSONContent {
 	return deserializeContent(note.xmlContent);
 }
 
-/** Get all notes sorted by changeDate descending */
+/** Get all notes sorted by changeDate descending (always a fresh IDB read). */
 export async function listNotes(): Promise<NoteData[]> {
 	return noteStore.getAllNotes();
+}
+
+/**
+ * Read-through, cache-shared variant of `listNotes()` for the in-memory
+ * index refreshers (auto-link title index + slip-note guid set). Both fire on
+ * the same `invalidateCache()`; routing them through the shared
+ * `readThroughNotes` cache collapses what were TWO full `getAllNotes()` scans
+ * per invalidation into one. Body-only edits don't invalidate the cache, but
+ * those indexes only read (title, notebook) — neither of which a body edit
+ * changes — so a body-stale cache is still correct for them. Freshness-
+ * sensitive callers (the 전체 list, home "latest" redirect) stay on
+ * `listNotes()`.
+ */
+export async function listNotesShared(): Promise<NoteData[]> {
+	return readThroughNotes(() => noteStore.getAllNotes());
 }
 
 /** Get a single note */
@@ -253,6 +279,40 @@ export async function getNote(guid: string): Promise<NoteData | undefined> {
 /** Find a note by its title (case-sensitive, trimmed). */
 export async function findNoteByTitle(title: string): Promise<NoteData | undefined> {
 	return noteStore.findNoteByTitle(title);
+}
+
+/**
+ * Title → note lookup that takes the O(1) in-memory title index as a FAST
+ * PATH but stays as correct as `findNoteByTitle` via an authoritative
+ * fallback. Behaviour is identical to `findNoteByTitle` for every input —
+ * only the cost differs.
+ *
+ *  1. await `ensureTitleIndexReady()` (also awaits any in-flight refresh);
+ *  2. `lookupGuidByTitle` → `getNote` by key. Return it ONLY if it is
+ *     non-deleted and its CURRENT trimmed title still equals the query — so a
+ *     stale index entry can never yield a wrong-note match;
+ *  3. on any miss (cold index, lagged entry, guid since renamed) fall back to
+ *     `noteStore.findNoteByTitle`'s full scan, which always reflects committed
+ *     IDB state.
+ *
+ * The fast path hits whenever the requested title actually exists and the
+ * index is warm — which is the case on slip-note chain walks (every hop
+ * resolves an existing neighbour), turning the old O(chain × corpus) into
+ * O(chain). It is NOT worth using for the uniqueness GUARD in
+ * `ensureUniqueTitle`, where the title almost never exists → the fast path
+ * always misses and falls back, so it would just add an index round-trip.
+ */
+export async function findNoteByTitleIndexed(title: string): Promise<NoteData | undefined> {
+	const needle = title.trim();
+	if (!needle) return undefined;
+	await ensureTitleIndexReady();
+	const guid = lookupGuidByTitle(needle);
+	if (guid) {
+		const note = await noteStore.getNote(guid);
+		if (note && !note.deleted && note.title.trim() === needle) return note;
+	}
+	// Index miss or stale entry → authoritative full scan (correctness net).
+	return noteStore.findNoteByTitle(needle);
 }
 
 /** Import a .note XML string into IndexedDB.

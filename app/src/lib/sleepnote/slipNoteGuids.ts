@@ -14,7 +14,7 @@
  * subscribed).
  */
 
-import { listNotes } from '$lib/core/noteManager.js';
+import { listNotesShared } from '$lib/core/noteManager.js';
 import { onInvalidate } from '$lib/stores/noteListCache.js';
 import { getNotebook } from '$lib/core/notebooks.js';
 import { SLIPBOX_NOTEBOOK } from './validator.js';
@@ -27,7 +27,7 @@ let invalidateOff: (() => void) | null = null;
 async function doRefresh(): Promise<void> {
 	if (inFlight) return inFlight;
 	inFlight = (async () => {
-		const notes = await listNotes();
+		const notes = await listNotesShared();
 		const next = new Set<string>();
 		for (const n of notes) {
 			if (n.deleted) continue;

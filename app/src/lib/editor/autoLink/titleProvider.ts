@@ -19,7 +19,7 @@
  * rely on `lookupGuidByTitle` after awaiting `ensureTitleIndexReady`.
  */
 
-import { listNotes } from '$lib/core/noteManager.js';
+import { listNotesShared } from '$lib/core/noteManager.js';
 import { onInvalidate } from '$lib/stores/noteListCache.js';
 import type { TitleEntry } from './findTitleMatches.js';
 
@@ -47,7 +47,7 @@ let invalidateOff: (() => void) | null = null;
 async function doSharedRefresh(): Promise<void> {
 	if (sharedInFlight) return sharedInFlight;
 	sharedInFlight = (async () => {
-		const notes = await listNotes();
+		const notes = await listNotesShared();
 		const next: TitleEntry[] = [];
 		for (const n of notes) {
 			if (!n || typeof n.title !== 'string') continue;
