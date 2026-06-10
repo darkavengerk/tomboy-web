@@ -447,6 +447,13 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 					// paragraphs and our hrSplit plugin renders them as
 					// horizontal lines via decoration.
 					horizontalRule: false,
+					// Same story for blockquote: its `> ` input rule would
+					// eat the typed text and wrap the paragraph in a PM
+					// blockquote node the archiver can't serialize (silent
+					// data loss on save) — and our TomboyBlockquote plugin
+					// renders `> `-prefixed paragraphs via decoration, which
+					// the input rule would preempt before it ever matched.
+					blockquote: false,
 				}),
 				TomboyParagraph,
 				TomboyListItem,
