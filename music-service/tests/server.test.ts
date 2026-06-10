@@ -28,7 +28,13 @@ describe('POST /extract', () => {
 		const mk = (msg: string) => app(async () => { throw new Error(msg); }).inject({ method: 'POST', url: '/extract', headers: auth, payload: { source: 'x' } });
 		expect((await mk('bad_source:leading_dash')).statusCode).toBe(400);
 		expect((await mk('타임아웃')).statusCode).toBe(504);
+		expect((await mk('too_large')).statusCode).toBe(413);
 		expect((await mk('no_output')).statusCode).toBe(502);
+	});
+	it('413 too_large 응답 본문 error=too_large', async () => {
+		const res = await app(async () => { throw new Error('too_large'); }).inject({ method: 'POST', url: '/extract', headers: auth, payload: { source: 'x' } });
+		expect(res.statusCode).toBe(413);
+		expect(res.json()).toEqual({ error: 'too_large' });
 	});
 });
 

@@ -10,6 +10,7 @@ const KIND_MESSAGES: Record<ExtractErrorKind, string> = {
 	network: '음악 추출 서비스에 연결할 수 없습니다',
 	service_unavailable: '음악 추출 서비스에 연결할 수 없습니다',
 	unauthorized: '브릿지 인증이 필요합니다',
+	too_large: '파일이 용량 상한을 초과했습니다',
 	bad_request: '잘못된 소스',
 	upstream_error: '음악 추출 서비스 오류'
 };

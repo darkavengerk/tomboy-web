@@ -36,7 +36,7 @@ it('성공 응답을 파싱한다 + Bearer/본문 전송', async () => {
 	expect(JSON.parse(body)).toEqual({ source: 'https://yt/abc' });
 });
 
-it.each([[401, 'unauthorized'], [503, 'service_unavailable'], [500, 'upstream_error'], [400, 'bad_request']])(
+it.each([[401, 'unauthorized'], [413, 'too_large'], [503, 'service_unavailable'], [500, 'upstream_error'], [400, 'bad_request']])(
 	'상태 %i → %s', async (status, kind) => {
 		globalThis.fetch = (async () => new Response(JSON.stringify({ error: 'e' }), { status })) as unknown as typeof fetch;
 		await expect(extractOne({ source: 'x' })).rejects.toMatchObject({ kind });
@@ -85,7 +85,7 @@ it('enumeratePlaylist: 성공 응답 파싱 + Bearer/본문/URL/signal', async (
 	expect(sig).toBe(ctrl.signal);
 });
 
-it.each([[401, 'unauthorized'], [503, 'service_unavailable'], [500, 'upstream_error'], [400, 'bad_request']])(
+it.each([[401, 'unauthorized'], [413, 'too_large'], [503, 'service_unavailable'], [500, 'upstream_error'], [400, 'bad_request']])(
 	'enumeratePlaylist 상태 %i → %s', async (status, kind) => {
 		globalThis.fetch = (async () => new Response(JSON.stringify({ error: 'e' }), { status })) as unknown as typeof fetch;
 		await expect(enumeratePlaylist({ source: 'x' })).rejects.toMatchObject({ kind });

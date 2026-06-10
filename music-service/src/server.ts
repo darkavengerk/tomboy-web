@@ -39,8 +39,10 @@ export function buildServer(opts: BuildServerOpts): FastifyInstance {
 			return reply.code(200).send(out);
 		} catch (err) {
 			const msg = (err as Error).message;
-			// bad_source = 클라이언트 잘못(400); 타임아웃 = 게이트웨이 타임아웃(504);
+			// bad_source = 클라이언트 잘못(400); too_large = 용량 상한 초과(413);
+			// 타임아웃 = 게이트웨이 타임아웃(504);
 			// 그 외(no_output/upload_failed:*/upload_no_url) = 게이트웨이 오류(502).
+			if (msg === 'too_large') return reply.code(413).send({ error: 'too_large' });
 			const code = msg.startsWith('bad_source') ? 400 : msg === '타임아웃' ? 504 : 502;
 			return reply.code(code).send({ error: code === 400 ? 'bad_source' : 'extract_failed', detail: msg });
 		}
