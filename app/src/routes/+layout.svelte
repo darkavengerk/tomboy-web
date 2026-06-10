@@ -23,6 +23,7 @@
 	import { installBacklinkIndex } from '$lib/core/backlinkIndex.js';
 	import { installImageFetchers } from '$lib/imageCache/fetchers/install.js';
 	import { installMusicAudio } from '$lib/music/musicAudio.svelte.js';
+	import GlobalMiniPlayer from '$lib/editor/musicNote/GlobalMiniPlayer.svelte';
 	import { pushToast } from '$lib/stores/toast.js';
 	import { getAllNotes } from '$lib/storage/noteStore.js';
 	import { favoriteStore } from '$lib/storage/favoriteStore.svelte.js';
@@ -354,6 +355,7 @@
 			{@render children()}
 		</div>
 	</div>
+	<GlobalMiniPlayer />
 	<Toast />
 	<ImageViewerModal />
 	<ImageActionMenu />
