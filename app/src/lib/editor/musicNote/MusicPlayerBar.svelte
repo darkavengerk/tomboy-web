@@ -7,8 +7,9 @@
 	import { loadProgress } from '$lib/music/musicProgress.js';
 
 	// 순수 뷰. 오디오 재생은 전역 엔진(musicAudio.svelte.ts, +layout 설치)이 단일
-	// <audio> 로 담당한다. 이 컴포넌트는 musicPlayer(싱글톤)를 읽어 표시/조작만 한다.
-	// 여러 패널이 떠 있어도 모두 같은 글로벌 상태를 본다.
+	// <audio> 로 담당한다(동시 1개 재생). 이 컴포넌트는 musicPlayer(싱글톤)를 읽어
+	// 표시/조작만 한다. 단, 이 노트가 활성(현재 재생) 노트면 라이브 상태를, 아니면 이
+	// 노트의 기억된 위치(이어듣기)를 보여준다 — 노트마다 자기 상태를 본다.
 	type Props = { editor: Editor; guid: string };
 	let { editor, guid }: Props = $props();
 
