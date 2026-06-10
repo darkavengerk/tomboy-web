@@ -10,6 +10,7 @@
 	} from './sendNoteToRemarkable.js';
 	import { previewPdfBundle, type PdfBundleTreeNode } from './pdf/pdfBundle.js';
 	import { pushToast } from '$lib/stores/toast.js';
+	import { portal } from '$lib/utils/portal.js';
 
 	interface Props {
 		rootGuid: string;
@@ -200,8 +201,8 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="rm-modal-backdrop" onclick={() => !sending && onclose()}></div>
-<div class="rm-modal" role="dialog" aria-modal="true" aria-label="리마커블로 보내기">
+<div class="rm-modal-backdrop" use:portal onclick={() => !sending && onclose()}></div>
+<div class="rm-modal" use:portal role="dialog" aria-modal="true" aria-label="리마커블로 보내기">
 	<header class="rm-header">
 		<h2>리마커블로 보내기</h2>
 	</header>
@@ -325,10 +326,10 @@
 		position: fixed;
 		inset: 0;
 		background: rgba(0, 0, 0, 0.45);
-		/* 이 모달은 NoteWindow(.note-window) 안에 마운트되어 그 stacking context 에
-		   갇히므로, 실제로는 같은 창 안의 콘텐츠 위로만 뜬다(데스크탑 밴드를 못 넘는다).
-		   따라서 창-내부 기준의 모달 tier 면 충분하다. 창 밖으로 띄우려면 use:portal 필요.
-		   CLAUDE.md "z-index 레이어 규약". */
+		backdrop-filter: blur(4px);
+		-webkit-backdrop-filter: blur(4px);
+		/* use:portal 로 <body> 에 마운트 — NoteWindow 의 stacking context 를 벗어나
+		   --z-modal 토큰이 문서 루트에서 실제로 평가된다. CLAUDE.md "z-index 레이어 규약". */
 		z-index: var(--z-modal);
 	}
 	.rm-modal {
