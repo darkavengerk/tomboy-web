@@ -1,9 +1,19 @@
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import type { EditorView } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { parseMusicNote } from '$lib/music/parseMusicNote.js';
+import type { MusicTrack } from '$lib/music/parseMusicNote.js';
 import { musicPlayer } from '$lib/music/musicPlayer.svelte.js';
 import { resumePlaybackFromGesture } from '$lib/music/musicAudio.svelte.js';
+import { pushToast } from '$lib/stores/toast.js';
+import {
+	deleteTrackRange,
+	moveTrackSwap,
+	canMoveTrack,
+	buildTrackCopyHtml,
+	trackCopyPlain
+} from './trackTools.js';
 
 export const musicNotePluginKey = new PluginKey('tomboyMusicNote');
 
@@ -103,6 +113,97 @@ function playlistPlayButton(opts: BuildOpts, startIndex: number): HTMLElement {
 	return btn;
 }
 
+/** 제스처를 삼키되(탭이 contenteditable 로 새지 않게) 오디오는 건드리지 않는 버전.
+ *  편집 도구(이동/복사/삭제)는 재생을 시작/이어가면 안 되므로 resume 호출이 없다. */
+function swallowAction(el: HTMLElement, onClick: () => void): void {
+	const swallow = (e: Event) => {
+		e.preventDefault();
+		e.stopPropagation();
+	};
+	el.addEventListener('pointerdown', swallow);
+	el.addEventListener('mousedown', swallow);
+	el.addEventListener('click', (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		onClick();
+	});
+}
+
+/** 곡을 클립보드에 — 리치(제목+URL 보존) + 일반텍스트(URL) 폴백. */
+async function copyTrack(track: MusicTrack): Promise<void> {
+	const html = buildTrackCopyHtml(track);
+	const plain = trackCopyPlain(track);
+	try {
+		await navigator.clipboard.write([
+			new ClipboardItem({
+				'text/html': new Blob([html], { type: 'text/html' }),
+				'text/plain': new Blob([plain], { type: 'text/plain' })
+			})
+		]);
+		pushToast('곡을 복사했어요', { timeoutMs: 1500 });
+	} catch {
+		try {
+			await navigator.clipboard.writeText(plain);
+			pushToast('곡 URL을 복사했어요', { timeoutMs: 1500 });
+		} catch {
+			pushToast('복사 실패', { kind: 'error' });
+		}
+	}
+}
+
+function toolButton(label: string, glyph: string, disabled: boolean, onClick: () => void): HTMLElement {
+	const btn = document.createElement('button');
+	btn.type = 'button';
+	btn.className = 'music-track-tool';
+	btn.contentEditable = 'false';
+	btn.setAttribute('data-no-drag', '');
+	btn.setAttribute('aria-label', label);
+	btn.setAttribute('title', label);
+	btn.textContent = glyph;
+	if (disabled) btn.disabled = true;
+	else swallowAction(btn, onClick);
+	return btn;
+}
+
+/**
+ * 곡 행 우측 편집 도구(▲▼ 순서이동 · ⧉ 복사 · 🗑 삭제). 기본 숨김이고
+ * Ctrl(Mac ⌘) 누르는 동안만 노출(.music-ctrl-held). 클릭 시 *라이브* doc 에서
+ * 범위를 다시 계산해 적용한다(데코 빌드 이후 doc 이 바뀌어도 안전). view 는
+ * 클릭 클로저 안에서만 쓰므로(빌드 시 비참조) 테스트의 toDOM() 호출에도 안전.
+ */
+function trackToolsWidget(
+	view: EditorView,
+	liPos: number,
+	track: MusicTrack,
+	canUp: boolean,
+	canDown: boolean
+): HTMLElement {
+	const wrap = document.createElement('span');
+	wrap.className = 'music-track-tools';
+	wrap.contentEditable = 'false';
+	wrap.setAttribute('aria-hidden', 'true');
+	wrap.appendChild(
+		toolButton('위로 이동', '▲', !canUp, () => {
+			const r = moveTrackSwap(view.state.doc, liPos, 'up');
+			if (r) view.dispatch(view.state.tr.replaceWith(r.from, r.to, r.nodes));
+		})
+	);
+	wrap.appendChild(
+		toolButton('아래로 이동', '▼', !canDown, () => {
+			const r = moveTrackSwap(view.state.doc, liPos, 'down');
+			if (r) view.dispatch(view.state.tr.replaceWith(r.from, r.to, r.nodes));
+		})
+	);
+	wrap.appendChild(toolButton('복사', '⧉', false, () => void copyTrack(track)));
+	wrap.appendChild(
+		toolButton('삭제', '🗑', false, () => {
+			const r = deleteTrackRange(view.state.doc, liPos);
+			if (r) view.dispatch(view.state.tr.delete(r.from, r.to));
+		})
+	);
+	return wrap;
+}
+
 export function buildMusicDecorations(doc: PMNode, opts: BuildOpts): DecorationSet {
 	const parsed = parseMusicNote(doc);
 	if (!parsed.isMusic) return DecorationSet.empty;
@@ -183,6 +284,23 @@ export function buildMusicDecorations(doc: PMNode, opts: BuildOpts): DecorationS
 					}
 				)
 			);
+
+			// Ctrl 편집 도구(우측, 기본 숨김). 경계 판정은 빌드 시 doc 으로 미리 계산해
+			// key 에 넣는다 → 순서가 바뀌면 비활성화 상태도 갱신(DOM 재사용 방지).
+			const liPos = track.liPos;
+			const canUp = canMoveTrack(doc, liPos, 'up');
+			const canDown = canMoveTrack(doc, liPos, 'down');
+			decos.push(
+				Decoration.widget(
+					inlinePos,
+					(view) => trackToolsWidget(view, liPos, track, canUp, canDown),
+					{
+						side: 1,
+						key: `music-tools:${track.url}:${index}:${canUp}:${canDown}`,
+						ignoreSelection: true
+					}
+				)
+			);
 		}
 	}
 
@@ -192,6 +310,27 @@ export function buildMusicDecorations(doc: PMNode, opts: BuildOpts): DecorationS
 export function createMusicNotePlugin(getGuid: () => string = () => ''): Plugin {
 	return new Plugin({
 		key: musicNotePluginKey,
+		// Ctrl(Mac ⌘)을 누르는 동안 곡별 편집 도구를 노출. 글로벌 keydown/keyup 으로
+		// 수정자 상태를 읽어 view.dom 에 .music-ctrl-held 토글(CSS 가 표시 제어).
+		// blur 시 해제 — 누른 채 창을 떠나 keyup 을 놓쳐도 고착되지 않게.
+		view(editorView) {
+			const dom = editorView.dom as HTMLElement;
+			const sync = (e: KeyboardEvent) => {
+				dom.classList.toggle('music-ctrl-held', e.ctrlKey || e.metaKey);
+			};
+			const clear = () => dom.classList.remove('music-ctrl-held');
+			window.addEventListener('keydown', sync, true);
+			window.addEventListener('keyup', sync, true);
+			window.addEventListener('blur', clear);
+			return {
+				destroy() {
+					window.removeEventListener('keydown', sync, true);
+					window.removeEventListener('keyup', sync, true);
+					window.removeEventListener('blur', clear);
+					dom.classList.remove('music-ctrl-held');
+				}
+			};
+		},
 		props: {
 			decorations(state) {
 				const parsed = parseMusicNote(state.doc);
