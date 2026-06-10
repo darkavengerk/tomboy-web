@@ -1049,7 +1049,7 @@
 	/>
 {/if}
 
-{#if sendRemarkableOpen && note}
+{#if sendRemarkableOpen && note && active}
 	<SendToRemarkableModal
 		rootGuid={note.guid}
 		onclose={() => (sendRemarkableOpen = false)}

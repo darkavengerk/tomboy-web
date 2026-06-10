@@ -29,7 +29,7 @@
 	const ac = new AbortController();
 
 	const canSend = $derived(
-		!sending && alias.trim() !== '' && folderUuid !== '' && folderName !== ''
+		!sending && alias !== '' && folderUuid !== '' && folderName !== ''
 	);
 
 	onMount(async () => {
@@ -151,23 +151,16 @@
 			</select>
 		</label>
 
-		<label class="rm-row">
-			<span class="rm-label">별칭</span>
-			<input
-				class="rm-input"
-				type="text"
-				bind:value={alias}
-				disabled={sending}
-				placeholder="rm2"
-				spellcheck="false"
-				autocapitalize="off"
-			/>
-		</label>
-
 		<div class="rm-row">
-			<span class="rm-label">폴더</span>
+			<span class="rm-label">대상</span>
 			<span class="rm-readonly">
-				{folderName ? folderName : prefillReady ? '미설정 — 설정 → 리마커블 탭에서 지정' : '…'}
+				{#if folderName && alias}
+					{alias} <span class="rm-sep">/</span> {folderName}
+				{:else if prefillReady}
+					미설정 — 설정 → 리마커블 탭에서 폴더를 지정하세요
+				{:else}
+					…
+				{/if}
 			</span>
 		</div>
 
@@ -193,14 +186,15 @@
 		position: fixed;
 		inset: 0;
 		background: rgba(0, 0, 0, 0.45);
-		z-index: 500;
+		/* Above pinned NoteWindow (1_000_000 + z) and SpreadOverlay (2_000_000). */
+		z-index: 2500000;
 	}
 	.rm-modal {
 		position: fixed;
 		top: 50%;
 		left: 50%;
 		transform: translate(-50%, -50%);
-		z-index: 501;
+		z-index: 2500001;
 		background: #fff;
 		color: #111;
 		border-radius: 8px;
@@ -248,6 +242,10 @@
 		border-radius: 4px;
 		color: #555;
 		background: #fafafa;
+	}
+	.rm-sep {
+		color: #aaa;
+		margin: 0 2px;
 	}
 	.rm-status {
 		margin: 0;

@@ -130,8 +130,13 @@
 <section class="section">
 	<h2>리마커블 PDF 송출</h2>
 	<p class="info-text">
-		노트를 PDF 로 변환해 리마커블 폴더에 보낼 때 쓸 기본 폴더를 별칭별로 지정합니다. 별칭은 브릿지
-		<code>remarkable.json</code> 의 키와 같아야 합니다 (예: <code>rm2</code>).
+		노트를 PDF 로 변환해 보낼 리마커블 폴더를 지정합니다. 한 번 정해두면 메뉴 "리마커블로 보내기"가 이
+		폴더를 기본으로 사용합니다.
+	</p>
+	<p class="info-text">
+		<strong>별칭</strong>은 브릿지 <code>remarkable.json</code> 의 디바이스 키입니다 — 보통
+		<code>rm2</code> 하나만 등록돼 있으니 그대로 입력하면 됩니다. 여러 대를 등록한 경우에만 구분용으로
+		씁니다.
 	</p>
 
 	<h3 class="field-label">리마커블 별칭</h3>
