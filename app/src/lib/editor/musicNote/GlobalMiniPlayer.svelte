@@ -156,7 +156,9 @@
 	.mini {
 		position: fixed;
 		right: clamp(0.6rem, 3vw, 1.2rem);
-		bottom: calc(var(--topnav-height, 0px) + clamp(0.6rem, 3vw, 1.2rem));
+		/* GlobalMiniPlayer 는 .app-shell 형제로 마운트돼 --topnav-height 가 상속되지 않는다.
+		   pill 은 하단 고정이라 nav 오프셋이 필요 없다 — 화면 우하단에 단순 고정. */
+		bottom: clamp(0.6rem, 3vw, 1.2rem);
 		z-index: var(--z-miniplayer);
 	}
 	.pill {
