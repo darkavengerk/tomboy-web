@@ -82,15 +82,35 @@ async function renderOne(
 		return null;
 	}
 
+	// PDF 캡처용 옵션 오버라이드. 라이브 편집기에선 fade/grow 애니메이션이 그대로
+	// 필요하지만 여기서는 mount 직후 한 프레임 뒤 캔버스를 toDataURL 로 떠야 하므로
+	// 애니메이션을 끄지 않으면 라인 차트는 선이 baseline(y=0) 에 깔린 첫 프레임이,
+	// bar 차트는 막대가 0 높이로 잡힌 프레임이 그대로 PNG 에 박힌다.
+	//   - `animation: false` — 신축(scale) 애니메이션 비활성
+	//   - `animations: {...}` — Chart.js v4 의 채널별 fallback (color/x/y)
+	//   - `transitions.active` — 인터랙션 트랜지션(여기선 무관하지만 일관성)
+	// responsive 는 그대로 켜둔다 — 끄면 캔버스가 HTML 기본 300×150 으로 잡혀
+	// off-screen 컨테이너의 700px 폭이 안 반영된다.
+	const captureConfig = {
+		...config,
+		options: {
+			...config.options,
+			animation: false,
+			animations: { colors: false, x: false, y: false },
+			transitions: { active: { animation: { duration: 0 } } }
+		}
+	};
+
 	const container = createOffscreenContainer();
 	try {
 		const renderWidth = 700;
 		const renderHeight = spec.height || 320;
 		container.style.width = `${renderWidth}px`;
-		const handle = await mountChart(container, config, renderHeight);
+		const handle = await mountChart(container, captureConfig, renderHeight);
 		if (!handle) return null;
-		// Chart.js paints synchronously on construct, but the canvas DOM stroke
-		// only commits after one frame in some browsers. Wait one tick.
+		// Chart.js 는 construct 시점에 동기로 그리지만 일부 브라우저에서 캔버스 DOM
+		// 스트로크가 다음 프레임에야 커밋되는 경우가 있어 한 틱 기다린다 — 애니메이션이
+		// 꺼져 있으니 이 한 틱이 곧 완성된 차트.
 		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 		const canvas = container.querySelector('canvas');
 		if (!canvas) {
