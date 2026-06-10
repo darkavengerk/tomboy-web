@@ -4,6 +4,7 @@ import { deserializeContent } from '$lib/core/noteContentArchiver.js';
 import { extractInternalLinkTargets } from '$lib/graph/extractInternalLinks.js';
 import {
 	tiptapToPdfmake,
+	type PdfBlock,
 	type PdfContent,
 	type InternalLinkResolver
 } from './tiptapToPdfmake.js';
@@ -41,19 +42,118 @@ export interface PdfBundleResult {
 	includedGuids: string[];
 }
 
+export interface PdfBundlePreview {
+	includedGuids: string[];
+	/** 포함된 노트들의 표시용 제목, includedGuids 와 같은 순서. */
+	titles: string[];
+}
+
+/**
+ * 실제 PDF 빌드 없이 어떤 노트들이 포함될지만 미리 계산. 모달에서 depth 변경 시
+ * 실시간 표시용. BFS 로직은 빌드와 100% 동일하므로 동작 차이는 없다.
+ */
+export function previewPdfBundle(
+	rootGuid: string,
+	notes: NoteData[],
+	options: PdfBundleOptions
+): PdfBundlePreview {
+	const ctx = traverseBundle(rootGuid, notes, options);
+	const titles = ctx.ordered.map((g) => ctx.byGuid.get(g)?.title?.trim() || '제목 없음');
+	return { includedGuids: ctx.ordered, titles };
+}
+
 export function buildPdfBundle(
 	rootGuid: string,
 	notes: NoteData[],
 	options: PdfBundleOptions
 ): PdfBundleResult {
+	const ctx = traverseBundle(rootGuid, notes, options);
+	if (ctx.ordered.length === 0) return { docDefinition: { content: [] }, includedGuids: [] };
+
+	const root = ctx.byGuid.get(rootGuid)!;
+	const resolver: InternalLinkResolver = {
+		resolveInternalTarget: (target) => {
+			const key = target.trim();
+			if (!key) return null;
+			const guid = ctx.titleToGuid.get(key);
+			return guid && ctx.visited.has(guid) ? guid : null;
+		}
+	};
+
+	const content: PdfContent[] = [];
+
+	// 목차 — 두 개 이상일 때만. 제목 클릭 시 해당 섹션으로 점프.
+	if (ctx.ordered.length > 1) {
+		content.push({ text: '목차', style: 'tocHeader' });
+		content.push({
+			ul: ctx.ordered.map((g) => {
+				const t = ctx.byGuid.get(g)?.title?.trim() || '제목 없음';
+				return {
+					text: t,
+					linkToDestination: `note-${g}`,
+					style: 'tocItem'
+				} as PdfContent;
+			}),
+			margin: [0, 0, 0, 16]
+		});
+	}
+
+	for (let i = 0; i < ctx.ordered.length; i++) {
+		const guid = ctx.ordered[i];
+		const note = ctx.byGuid.get(guid);
+		if (!note) continue;
+		const titleText = note.title.trim() || '제목 없음';
+		// 노트 간 연결: pageBreak 를 강제하지 않는다. 짧은 노트는 같은 페이지에
+		// 흘려 담기고, pdfmake 가 페이지 끝에 닿으면 자동으로 줄넘김.
+		// 대신 헤더 위에 넉넉한 margin + 구분선 으로 시각적 경계.
+		const header: PdfBlock = {
+			text: titleText,
+			style: 'noteTitle',
+			id: `note-${guid}`,
+			...(i > 0 ? { margin: [0, 40, 0, 12] } : {})
+		};
+		if (i > 0) content.push({ canvas: [{ type: 'line', x1: 0, y1: 0, x2: 515, y2: 0, lineWidth: 0.5, lineColor: '#bbbbbb' }] });
+		content.push(header);
+		const doc = ctx.parseBody(guid);
+		if (!doc) continue;
+		const body = stripLeadingTitleParagraph(doc, titleText);
+		for (const block of tiptapToPdfmake(body, resolver)) content.push(block);
+	}
+
+	return {
+		docDefinition: {
+			info: { title: root.title || '제목 없음', creator: 'Tomboy Web' },
+			content,
+			defaultStyle: { font: 'Korean', fontSize: 13, lineHeight: 1.5 },
+			styles: {
+				noteTitle: { fontSize: 20, bold: true, margin: [0, 0, 0, 12] },
+				tocHeader: { fontSize: 16, bold: true, margin: [0, 0, 0, 8] },
+				tocItem: { color: '#1a6fc4', decoration: 'underline' }
+			},
+			pageMargins: [40, 50, 40, 50]
+		},
+		includedGuids: ctx.ordered
+	};
+}
+
+interface TraversalCtx {
+	ordered: string[];
+	visited: Set<string>;
+	byGuid: Map<string, NoteData>;
+	titleToGuid: Map<string, string>;
+	parseBody(guid: string): JSONContent | null;
+}
+
+function traverseBundle(
+	rootGuid: string,
+	notes: NoteData[],
+	options: PdfBundleOptions
+): TraversalCtx {
 	const depth = Math.max(0, Math.floor(options.depth));
 
 	const byGuid = new Map<string, NoteData>();
 	for (const n of notes) byGuid.set(n.guid, n);
-	const root = byGuid.get(rootGuid);
-	if (!root) return { docDefinition: { content: [] }, includedGuids: [] };
 
-	// title → guid (제목 중복 시 가장 최근에 변경된 노트가 이긴다 — buildGraph 와 일관).
 	const titleToGuid = new Map<string, string>();
 	const titleChangeDate = new Map<string, string>();
 	for (const n of notes) {
@@ -66,7 +166,6 @@ export function buildPdfBundle(
 		}
 	}
 
-	// 본문 deserialize 결과를 한 번만 만들어 BFS 와 렌더 양쪽에 재사용.
 	const parsed = new Map<string, JSONContent>();
 	function parseBody(guid: string): JSONContent | null {
 		if (parsed.has(guid)) return parsed.get(guid)!;
@@ -81,9 +180,11 @@ export function buildPdfBundle(
 		}
 	}
 
-	// BFS — 큐에 같은 guid 중복 enqueue 금지. visited 는 방문 확정만 표시.
 	const ordered: string[] = [];
 	const visited = new Set<string>();
+	if (!byGuid.has(rootGuid)) {
+		return { ordered, visited, byGuid, titleToGuid, parseBody };
+	}
 	const enqueued = new Set<string>([rootGuid]);
 	type QItem = { guid: string; d: number };
 	const queue: QItem[] = [{ guid: rootGuid, d: 0 }];
@@ -105,46 +206,7 @@ export function buildPdfBundle(
 		}
 	}
 
-	const resolver: InternalLinkResolver = {
-		resolveInternalTarget: (target) => {
-			const key = target.trim();
-			if (!key) return null;
-			const guid = titleToGuid.get(key);
-			return guid && visited.has(guid) ? guid : null;
-		}
-	};
-
-	const content: PdfContent[] = [];
-	for (let i = 0; i < ordered.length; i++) {
-		const guid = ordered[i];
-		const note = byGuid.get(guid);
-		if (!note) continue;
-		const titleText = note.title.trim() || '제목 없음';
-		const header = {
-			text: titleText,
-			style: 'noteTitle',
-			id: `note-${guid}`,
-			...(i > 0 ? { pageBreak: 'before' as const } : {})
-		};
-		content.push(header);
-		const doc = parseBody(guid);
-		if (!doc) continue;
-		const body = stripLeadingTitleParagraph(doc, titleText);
-		for (const block of tiptapToPdfmake(body, resolver)) content.push(block);
-	}
-
-	return {
-		docDefinition: {
-			info: { title: root.title || '제목 없음', creator: 'Tomboy Web' },
-			content,
-			defaultStyle: { font: 'Korean', fontSize: 11, lineHeight: 1.35 },
-			styles: {
-				noteTitle: { fontSize: 18, bold: true, margin: [0, 0, 0, 10] }
-			},
-			pageMargins: [40, 50, 40, 50]
-		},
-		includedGuids: ordered
-	};
+	return { ordered, visited, byGuid, titleToGuid, parseBody };
 }
 
 /**

@@ -68,7 +68,7 @@ describe('buildPdfBundle', () => {
 		expect(header.pageBreak).toBeUndefined();
 	});
 
-	it('depth 1 follows direct links and inserts page-break before each follower', () => {
+	it('depth 1 follows direct links and separates each follower with top margin (no forced page-break)', () => {
 		const root = makeNote(
 			'g1',
 			'Root',
@@ -82,9 +82,14 @@ describe('buildPdfBundle', () => {
 			(b): b is PdfBlock => typeof b === 'object' && b.style === 'noteTitle'
 		);
 		expect(headers).toHaveLength(3);
+		// 노트 사이 강제 페이지 분리 없음 — 짧은 노트는 같은 페이지에 흐른다.
 		expect(headers[0].pageBreak).toBeUndefined();
-		expect(headers[1].pageBreak).toBe('before');
-		expect(headers[2].pageBreak).toBe('before');
+		expect(headers[1].pageBreak).toBeUndefined();
+		expect(headers[2].pageBreak).toBeUndefined();
+		// 단 두 번째부터는 헤더 위에 큰 margin 으로 시각적 경계.
+		expect(headers[0].margin).toBeUndefined();
+		expect(headers[1].margin?.[1]).toBeGreaterThan(0);
+		expect(headers[2].margin?.[1]).toBeGreaterThan(0);
 	});
 
 	it('dedupes a note reached via multiple paths', () => {

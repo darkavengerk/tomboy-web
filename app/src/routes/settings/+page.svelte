@@ -1709,11 +1709,18 @@ effort: high
 						클릭형 하이퍼링크로 변환됩니다.
 					</p>
 					<ul class="guide-list">
-						<li><strong>링크 깊이 옵션</strong> — 0 (이 노트만) / 1 (직접 링크된 노트까지) /
-							2 / 3. 같은 노트가 여러 경로로 연결되어 있어도 한 번만 포함됩니다(dedup).</li>
+						<li><strong>링크 깊이 옵션</strong> — 0 (이 노트만) ~ 5 (5촌 노트까지). 같은 노트가
+							여러 경로로 연결되어 있어도 한 번만 포함됩니다(dedup). 모달이 깊이를 바꿀 때마다
+							포함될 노트 목록을 실시간으로 보여줘 송출 전에 확인 가능.</li>
+						<li><strong>PDF 첫머리 목차</strong> — 두 개 이상의 노트가 포함되면 자동으로
+							목차가 들어가며, 항목을 누르면 해당 노트로 점프합니다.</li>
+						<li><strong>본문 안 링크</strong> — 번들에 포함된 노트 제목 링크는 같은 PDF 안 해당
+							섹션으로 점프하는 파란 밑줄 링크가 됩니다(외부 URL 도 동일 스타일).</li>
+						<li><strong>노트 분리</strong> — 짧은 노트들은 같은 페이지에 이어 붙고(공간 절약),
+							노트 사이에는 가는 구분선 + 넉넉한 여백으로 시각적 경계.</li>
 						<li><strong>기본 폴더</strong> — <button type="button" class="link-btn" onclick={() => (activeTab = 'remarkable')}>설정 → 리마커블 탭</button>
-							에서 별칭별로 한 번 지정. 매 송출 시 자동으로 채워지고, 모달에서 별칭만
-							바꾸면 즉시 다른 별칭으로 보냅니다.</li>
+							에서 한 번 지정하면 끝. 별칭이 하나뿐인 보통 사용 시나리오에선 모달에 별칭
+							입력이 노출되지 않습니다.</li>
 						<li><strong>한글 폰트</strong> — NanumGothic (OFL). <code>npm run prefetch:fonts</code>
 							가 빌드 시 자동으로 받아 <code>static/fonts/</code> 에 채우며, 클라이언트는
 							첫 송출 때 한 번 fetch → IDB 캐시. 이후 송출에 추가 네트워크 부담 없음.</li>

@@ -8,6 +8,7 @@
 		SendRemarkableError,
 		type SendRemarkableStatus
 	} from './sendNoteToRemarkable.js';
+	import { previewPdfBundle } from './pdf/pdfBundle.js';
 	import { pushToast } from '$lib/stores/toast.js';
 
 	interface Props {
@@ -30,6 +31,14 @@
 
 	const canSend = $derived(
 		!sending && alias !== '' && folderUuid !== '' && folderName !== ''
+	);
+
+	// depth 변경 시 어떤 노트들이 포함될지 실시간 계산 — 사용자가 depth 를 정하기
+	// 더 쉽도록. allNotes 가 비어 있는 초기 한 프레임에는 빈 배열 반환.
+	const preview = $derived(
+		allNotes.length === 0
+			? { includedGuids: [] as string[], titles: [] as string[] }
+			: previewPdfBundle(rootGuid, allNotes, { depth })
 	);
 
 	onMount(async () => {
@@ -148,6 +157,8 @@
 				<option value={1}>1 — 직접 링크된 노트까지</option>
 				<option value={2}>2 — 손자 노트까지</option>
 				<option value={3}>3 — 증손자 노트까지</option>
+				<option value={4}>4 — 4촌 노트까지</option>
+				<option value={5}>5 — 5촌 노트까지</option>
 			</select>
 		</label>
 
@@ -163,6 +174,23 @@
 				{/if}
 			</span>
 		</div>
+
+		{#if prefillReady}
+			<div class="rm-row">
+				<span class="rm-label">포함될 노트 ({preview.includedGuids.length}개)</span>
+				<div class="rm-preview">
+					{#if preview.titles.length === 0}
+						<span class="rm-preview-empty">노트를 찾을 수 없습니다</span>
+					{:else}
+						<ol class="rm-preview-list">
+							{#each preview.titles as t, i (preview.includedGuids[i])}
+								<li>{t}</li>
+							{/each}
+						</ol>
+					{/if}
+				</div>
+			</div>
+		{/if}
 
 		{#if statusText}
 			<p class="rm-status">{statusText}</p>
@@ -246,6 +274,29 @@
 	.rm-sep {
 		color: #aaa;
 		margin: 0 2px;
+	}
+	.rm-preview {
+		max-height: 180px;
+		overflow-y: auto;
+		border: 1px solid #e4e8ec;
+		border-radius: 4px;
+		background: #fafafa;
+		padding: 6px 4px;
+	}
+	.rm-preview-list {
+		margin: 0;
+		padding-left: 24px;
+		font-size: 0.85rem;
+		color: #333;
+	}
+	.rm-preview-list li {
+		padding: 1px 0;
+	}
+	.rm-preview-empty {
+		display: block;
+		padding: 4px 8px;
+		color: #888;
+		font-size: 0.85rem;
 	}
 	.rm-status {
 		margin: 0;

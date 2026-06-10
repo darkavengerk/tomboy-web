@@ -27,6 +27,7 @@ export interface PdfBlock {
 	ul?: PdfContent[];
 	ol?: PdfContent[];
 	stack?: PdfContent[];
+	canvas?: PdfCanvasOp[];
 	style?: string | string[];
 	id?: string;
 	linkToDestination?: string;
@@ -35,7 +36,19 @@ export interface PdfBlock {
 	italics?: boolean;
 	decoration?: string | string[];
 	background?: string;
+	color?: string;
+	margin?: [number, number, number, number];
 	pageBreak?: 'before' | 'after';
+}
+
+export interface PdfCanvasOp {
+	type: 'line';
+	x1: number;
+	y1: number;
+	x2: number;
+	y2: number;
+	lineWidth?: number;
+	lineColor?: string;
 }
 
 export type PdfInline = string | PdfBlock;
@@ -140,14 +153,21 @@ function applyMarks(
 				break;
 			case 'tomboyUrlLink': {
 				const href = String(mark.attrs?.href ?? '').trim();
-				if (href) out = { ...out, link: href };
+				if (href) {
+					out = withDecoration({ ...out, link: href, color: '#1a6fc4' }, 'underline');
+				}
 				break;
 			}
 			case 'tomboyInternalLink': {
 				const target = String(mark.attrs?.target ?? '').trim();
 				if (target) {
 					const guid = resolver.resolveInternalTarget(target);
-					if (guid) out = { ...out, linkToDestination: `note-${guid}` };
+					if (guid) {
+						out = withDecoration(
+							{ ...out, linkToDestination: `note-${guid}`, color: '#1a6fc4' },
+							'underline'
+						);
+					}
 				}
 				break;
 			}

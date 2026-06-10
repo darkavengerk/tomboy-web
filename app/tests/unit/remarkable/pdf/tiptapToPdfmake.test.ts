@@ -73,7 +73,9 @@ describe('tiptapToPdfmake', () => {
 			),
 			noResolve
 		);
-		expect(out[0]).toEqual({ text: [{ text: 'click', link: 'https://x' }] });
+		expect(out[0]).toEqual({
+			text: [{ text: 'click', link: 'https://x', color: '#1a6fc4', decoration: 'underline' }]
+		});
 	});
 
 	it('tomboyUrlLink with empty href is ignored', () => {
@@ -102,7 +104,12 @@ describe('tiptapToPdfmake', () => {
 		expect(out[0]).toEqual({
 			text: [
 				{ text: 'see ' },
-				{ text: 'here', linkToDestination: 'note-guid-2' },
+				{
+					text: 'here',
+					linkToDestination: 'note-guid-2',
+					color: '#1a6fc4',
+					decoration: 'underline'
+				},
 				{ text: ' and ' },
 				{ text: 'gone' }
 			]
