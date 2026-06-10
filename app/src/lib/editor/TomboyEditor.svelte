@@ -27,6 +27,7 @@
 		handleClipboardCopy,
 		handleClipboardCut,
 	} from "./clipboardPlainText.js";
+	import { ClipboardFidelity } from "./clipboardFidelity.js";
 	import { ctrlEnterSplit } from "./ctrlEnterSplit.js";
 	import { createTitleProvider } from "./autoLink/titleProvider.js";
 	import { consumeNewNoteIntent } from "$lib/core/newNoteIntent.js";
@@ -677,6 +678,10 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 				...TomboyInlineCheckbox,
 				...TomboyInlineRadio,
 				TomboyBlockquote,
+				// 노트→노트 붙여넣기 원본 보존(data-tomboy-slice 복원) +
+				// plain 붙여넣기 빈 줄 보존. 복사 쪽 짝은 아래
+				// handleDOMEvents.copy/cut 의 clipboardPlainText.ts.
+				ClipboardFidelity,
 				Extension.create({
 					name: "tomboyFind",
 					addProseMirrorPlugins() {

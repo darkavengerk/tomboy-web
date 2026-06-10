@@ -189,6 +189,13 @@ Everything else keeps a **small hand-picked int (0–20)** and stays **untokeniz
 
 `clipboardPlainText.ts` writes both `text/plain` + `text/html` on Ctrl+C/X. Right-click 복사 same; 형식 복사 submenu forces a single format via `writeText`.
 
+**Note↔note paste fidelity** — the custom serializers above are lossy by design (footnote/checkbox/radio atoms, images, datetime/size marks don't survive `tiptapToHtml`). So `buildClipboardHtml` wraps the html flavor in `<div data-pm-slice="O E []" data-tomboy-slice="<slice JSON>">…</div>`:
+
+- `clipboardFidelity.ts` (`ClipboardFidelity` extension) — paste-side. Its `clipboardParser` detects `data-tomboy-slice` → `Slice.fromJSON` exact restore (silent fallback to schema HTML parse on corrupt/cross-version payload). Its `clipboardTextParser` replaces PM's default `split(/(?:\r\n?|\n)+/)` (which collapsed blank lines) with one-paragraph-per-line, empty line = empty paragraph.
+- `data-pm-slice="O E []"` must match PM's `/^(\d+) (\d+)(?: -(\d+))? (.*)/` (trailing `[]` = empty context) — it makes parseFromClipboard skip maxOpen renormalization and TipTap paste rules treat the payload as PM-internal.
+- Ctrl+Shift+V stays the plain-text escape hatch: marks dropped, but marker text (`[^N]`, `[x]`) re-atomizes via each node's `transformPasted`, and blank lines now survive.
+- Context-menu 붙여넣기 routes through `view.pasteHTML`/`pasteText` (same pipeline as Ctrl+V); 복사 prefers `execCommand('copy')` (sync copy event — Chrome's async `clipboard.write` may sanitize `data-*` attrs off `text/html`).
+
 ## Desktop mode (`/desktop`)
 
 Multi-window operator UI for desktop browsers, separate from mobile single-note flow. `lib/desktop/`:

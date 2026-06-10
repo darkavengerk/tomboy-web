@@ -11,6 +11,7 @@
 		tiptapToMarkdown,
 		copySelectionAsJson
 	} from './copyFormatted.js';
+	import { buildClipboardHtml, copySelectionSlice } from './clipboardPlainText.js';
 
 	interface Props {
 		editor: Editor;
@@ -72,8 +73,20 @@
 
 	async function doCopy() {
 		close();
+		// 선택이 있으면 copy 이벤트 경로 우선 — handleClipboardCopy 가
+		// data-tomboy-slice 포함 payload 를 동기·비검열로 쓴다.
+		// (navigator.clipboard.write 는 Chrome 이 text/html 을 sanitize
+		// 하면서 data-* 속성을 떨어뜨릴 수 있다.)
+		if (!editor.state.selection.empty) {
+			try {
+				editor.commands.focus();
+				if (document.execCommand('copy')) return;
+			} catch {
+				// execCommand 미지원 — 아래 async 경로로 폴백.
+			}
+		}
 		const json = copySelectionAsJson(editor);
-		const html = tiptapToHtml(json);
+		const html = buildClipboardHtml(copySelectionSlice(editor.state), json);
 		const plain = tiptapToPlainText(json);
 		try {
 			await navigator.clipboard.write([
@@ -113,12 +126,38 @@
 			pushToast('붙여넣기 실패 — 브라우저가 허용하지 않음', { kind: 'error' });
 			return;
 		}
-		try {
-			const text = await navigator.clipboard.readText();
-			editor.commands.insertContent(text);
-		} catch {
-			pushToast('붙여넣기 실패 — 브라우저가 허용하지 않음', { kind: 'error' });
+		editor.commands.focus();
+		let html = '';
+		let text = '';
+		// text/html 을 우선 읽어 PM paste 파이프라인(view.pasteHTML)으로
+		// 흘려보낸다 — Ctrl+V 와 동일 경로라서 data-tomboy-slice 원본
+		// 복원과 transformPasted 마커 재조립이 모두 동작한다. (기존
+		// insertContent(text) 는 HTML 파싱이라 개행·마커가 다 깨졌다.)
+		if (typeof navigator.clipboard.read === 'function') {
+			try {
+				const items = await navigator.clipboard.read();
+				for (const item of items) {
+					if (!html && item.types.includes('text/html')) {
+						html = await (await item.getType('text/html')).text();
+					}
+					if (!text && item.types.includes('text/plain')) {
+						text = await (await item.getType('text/plain')).text();
+					}
+				}
+			} catch {
+				// 권한 거부 / 미지원 — 아래 readText 폴백.
+			}
 		}
+		if (!html && !text) {
+			try {
+				text = await navigator.clipboard.readText();
+			} catch {
+				pushToast('붙여넣기 실패 — 브라우저가 허용하지 않음', { kind: 'error' });
+				return;
+			}
+		}
+		if (html) editor.view.pasteHTML(html);
+		else if (text) editor.view.pasteText(text);
 	}
 
 	function doInsertDate() {

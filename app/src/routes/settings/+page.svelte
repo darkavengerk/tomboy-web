@@ -2277,6 +2277,26 @@ Complete:</pre>
 							가져오므로, 한 번 열어본 적 있는 이미지는 네트워크 없이 즉시 복사됩니다.</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>복사 & 붙여넣기 — 노트↔노트 원본 보존</summary>
+					<p class="info-text">
+						노트에서 복사해 다른 노트(또는 같은 노트)에 <kbd>Ctrl</kbd>+<kbd>V</kbd> 로 붙여넣으면
+						<strong>원본이 그대로</strong> 재현됩니다 — 각주·인라인 체크박스/라디오·이미지·내부/외부
+						링크·날짜/서식 마크·빈 줄까지 전부.
+					</p>
+					<ul class="guide-list">
+						<li><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> — <strong>서식 없이</strong> 텍스트만
+							붙여넣기. 굵게/링크 등 마크는 제거되지만 <code>[^1]</code>·<code>[x]</code> 같은
+							마커는 다시 각주/체크박스로 변환되고, 빈 줄도 그대로 유지됩니다.</li>
+						<li><strong>외부 앱으로</strong> 붙여넣을 때는 깔끔한 텍스트/HTML이 나갑니다 — 줄 사이
+							불필요한 빈 줄 없이, 리스트는 리스트로 합쳐집니다.</li>
+						<li>특정 형식이 필요하면 <strong>우클릭 → 형식 복사</strong>에서 HTML / 일반 텍스트 /
+							리스트 형식 유지 / Markdown 을 강제할 수 있습니다.</li>
+						<li><strong>우클릭 → 붙여넣기</strong>도 <kbd>Ctrl</kbd>+<kbd>V</kbd> 와 동일하게
+							동작합니다 (브라우저의 클립보드 읽기 권한 필요).</li>
+					</ul>
+				</details>
 			</section>
 
 			{:else if guideSubTab === 'env'}
