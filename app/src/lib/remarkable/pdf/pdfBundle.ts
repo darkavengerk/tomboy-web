@@ -1,7 +1,7 @@
 import type { JSONContent } from '@tiptap/core';
 import type { NoteData } from '$lib/core/note.js';
 import { deserializeContent } from '$lib/core/noteContentArchiver.js';
-import { extractInternalLinkTargets } from '$lib/graph/extractInternalLinks.js';
+import { extractLinkTargets } from '$lib/core/backlinkIndex.js';
 import {
 	tiptapToPdfmake,
 	type PdfBlock,
@@ -70,9 +70,15 @@ export interface PdfBundleTreeNode {
 }
 
 export interface PdfBundlePreview {
-	/** 루트 트리 노드 — 루트가 번들에 없으면 null. */
-	tree: PdfBundleTreeNode | null;
-	/** dedup 된 포함 guid 순서 (루트가 [0]). */
+	/**
+	 * 앞으로(forward) 트리 — 루트가 링크하는 노트들. 루트가 번들에 없으면 null.
+	 */
+	forwardTree: PdfBundleTreeNode | null;
+	/**
+	 * 뒤로(backward) 트리 — 루트를 링크하는 노트들 (백링크). 루트가 번들에 없으면 null.
+	 */
+	backwardTree: PdfBundleTreeNode | null;
+	/** dedup 된 포함 guid 순서 — forward 먼저, 그 뒤 backward 신규분. */
 	includedGuids: string[];
 	/** guid → 표시용 제목. 본문에 노트가 없는 경우 '제목 없음'. */
 	titles: Map<string, string>;
@@ -93,8 +99,10 @@ export function previewPdfBundle(
 	for (const guid of ctx.ordered) {
 		titles.set(guid, ctx.byGuid.get(guid)?.title?.trim() || '제목 없음');
 	}
-	const tree = ctx.byGuid.has(rootGuid) ? buildTree(rootGuid, ctx, options) : null;
-	return { tree, includedGuids: ctx.ordered, titles };
+	const hasRoot = ctx.byGuid.has(rootGuid);
+	const forwardTree = hasRoot ? buildTree(rootGuid, ctx, options, 'forward') : null;
+	const backwardTree = hasRoot ? buildTree(rootGuid, ctx, options, 'backward') : null;
+	return { forwardTree, backwardTree, includedGuids: ctx.ordered, titles };
 }
 
 export async function buildPdfBundle(
@@ -189,13 +197,21 @@ export async function buildPdfBundle(
 }
 
 interface TraversalCtx {
+	/** forward ∪ backward, dedup, forward 우선 순서. PDF 본문 출력 순서. */
 	ordered: string[];
+	/** forward ∪ backward — PDF 안 어떤 노트로의 링크가 살아남는지 결정. */
 	visited: Set<string>;
+	/** BFS 가 forward 방향으로 도달한 노트들. 앞으로(forward) 트리에 쓰인다. */
+	forwardVisited: Set<string>;
+	/** BFS 가 backward 방향으로 도달한 노트들. 뒤로(backward) 트리에 쓰인다. */
+	backwardVisited: Set<string>;
 	excluded: Set<string>;
 	byGuid: Map<string, NoteData>;
 	titleToGuid: Map<string, string>;
-	/** guid → 그 노트의 내부 링크 대상 guid 들 (중복 제거, 등장 순서 보존). */
-	adjacency: Map<string, string[]>;
+	/** guid → 그 노트가 링크하는 대상 guid 들 (중복 제거, 등장 순서 보존). */
+	forwardAdj: Map<string, string[]>;
+	/** guid → 그 노트를 링크하는 출발 guid 들 (notes 배열 순서로 dedup). */
+	backwardAdj: Map<string, string[]>;
 	chartRegionsByGuid: Map<string, JsonChartRegion[]>;
 	depth: number;
 	parseBody(guid: string): JSONContent | null;
@@ -238,38 +254,45 @@ function traverseBundle(
 		}
 	}
 
-	const adjacency = new Map<string, string[]>();
-	function adjacencyOf(guid: string): string[] {
-		const cached = adjacency.get(guid);
-		if (cached) return cached;
-		const doc = parseBody(guid);
-		if (!doc) {
-			adjacency.set(guid, []);
-			return [];
-		}
-		const out: string[] = [];
+	// Forward + backward adjacency 를 XML regex 로 한 번에 빌드.
+	// extractLinkTargets 는 link:internal + link:broken 모두 잡지만 broken 은
+	// titleToGuid 에 해당 항목이 보통 없으므로 자연 필터링된다 (제목이 살아 있는
+	// broken 마크는 의도된 edge 로 본다 — 정렬 안 된 note 의 stale 마크일 뿐
+	// 사용자가 의도한 참조). JSON 디시리얼라이즈 비용을 안 들이고 모든 노트에
+	// 대해 두 방향을 모두 채울 수 있다.
+	const forwardAdj = new Map<string, string[]>();
+	const backwardAdj = new Map<string, string[]>();
+	for (const note of notes) {
+		const targets: string[] = [];
 		const seen = new Set<string>();
-		for (const raw of extractInternalLinkTargets(doc)) {
-			const key = raw.trim();
+		for (const rawTitle of extractLinkTargets(note.xmlContent)) {
+			const key = rawTitle.trim();
 			if (!key) continue;
 			const targetGuid = titleToGuid.get(key);
-			if (!targetGuid || seen.has(targetGuid)) continue;
+			if (!targetGuid || targetGuid === note.guid || seen.has(targetGuid)) continue;
 			seen.add(targetGuid);
-			out.push(targetGuid);
+			targets.push(targetGuid);
+			const back = backwardAdj.get(targetGuid);
+			if (back) back.push(note.guid);
+			else backwardAdj.set(targetGuid, [note.guid]);
 		}
-		adjacency.set(guid, out);
-		return out;
+		forwardAdj.set(note.guid, targets);
 	}
 
+	const forwardVisited = new Set<string>();
+	const backwardVisited = new Set<string>();
 	const ordered: string[] = [];
 	const visited = new Set<string>();
 	const ctxBase: TraversalCtx = {
 		ordered,
 		visited,
+		forwardVisited,
+		backwardVisited,
 		excluded,
 		byGuid,
 		titleToGuid,
-		adjacency,
+		forwardAdj,
+		backwardAdj,
 		chartRegionsByGuid: new Map(),
 		depth,
 		parseBody
@@ -277,20 +300,43 @@ function traverseBundle(
 
 	if (!byGuid.has(rootGuid) || excluded.has(rootGuid)) return ctxBase;
 
-	const enqueued = new Set<string>([rootGuid]);
-	type QItem = { guid: string; d: number };
-	const queue: QItem[] = [{ guid: rootGuid, d: 0 }];
-	while (queue.length > 0) {
-		const { guid, d } = queue.shift()!;
-		if (visited.has(guid)) continue;
-		visited.add(guid);
-		ordered.push(guid);
-		if (d === depth) continue;
-		for (const targetGuid of adjacencyOf(guid)) {
-			if (excluded.has(targetGuid) || enqueued.has(targetGuid)) continue;
-			enqueued.add(targetGuid);
-			queue.push({ guid: targetGuid, d: d + 1 });
+	function bfs(adj: Map<string, string[]>): { visited: Set<string>; ordered: string[] } {
+		const out: string[] = [];
+		const seen = new Set<string>();
+		const enqueued = new Set<string>([rootGuid]);
+		type QItem = { guid: string; d: number };
+		const queue: QItem[] = [{ guid: rootGuid, d: 0 }];
+		while (queue.length > 0) {
+			const { guid, d } = queue.shift()!;
+			if (seen.has(guid)) continue;
+			seen.add(guid);
+			out.push(guid);
+			if (d === depth) continue;
+			for (const nextGuid of adj.get(guid) ?? []) {
+				if (excluded.has(nextGuid) || enqueued.has(nextGuid)) continue;
+				enqueued.add(nextGuid);
+				queue.push({ guid: nextGuid, d: d + 1 });
+			}
 		}
+		return { visited: seen, ordered: out };
+	}
+
+	const fwd = bfs(forwardAdj);
+	const bwd = bfs(backwardAdj);
+	for (const g of fwd.visited) forwardVisited.add(g);
+	for (const g of bwd.visited) backwardVisited.add(g);
+
+	// PDF 본문 출력 순서: forward 그대로 + backward 의 신규분 추가. 루트는
+	// forward 의 [0] 으로 한 번만 들어가고 backward 에서 중복 안 됨.
+	for (const g of fwd.ordered) {
+		if (visited.has(g)) continue;
+		visited.add(g);
+		ordered.push(g);
+	}
+	for (const g of bwd.ordered) {
+		if (visited.has(g)) continue;
+		visited.add(g);
+		ordered.push(g);
 	}
 
 	// 차트 영역은 트리 빌드와 무관하게 노트별로 미리 캐시. PDF 빌드 시
@@ -309,13 +355,22 @@ function traverseBundle(
 /**
  * 트리를 DFS 로 만든다. 같은 guid 가 여러 부모 아래 등장할 수 있다 — depth 만
  * 지키면 됨. 사이클은 ancestors set 으로 차단.
+ *
+ * direction:
+ *   'forward'  — 루트가 링크하는 방향 (forward adjacency)
+ *   'backward' — 루트를 링크하는 방향 (backward adjacency, 백링크 트리)
+ *
+ * positionKey 가 두 트리에서 충돌하지 않도록 root 경로에 방향 prefix 를 붙인다.
  */
 function buildTree(
 	rootGuid: string,
 	ctx: TraversalCtx,
-	options: PdfBundleOptions
+	options: PdfBundleOptions,
+	direction: 'forward' | 'backward'
 ): PdfBundleTreeNode {
 	const depth = Math.max(0, Math.floor(options.depth));
+	const adj = direction === 'forward' ? ctx.forwardAdj : ctx.backwardAdj;
+	const dirVisited = direction === 'forward' ? ctx.forwardVisited : ctx.backwardVisited;
 
 	function titleOf(guid: string): string {
 		return ctx.byGuid.get(guid)?.title?.trim() || '제목 없음';
@@ -324,8 +379,8 @@ function buildTree(
 	function walk(guid: string, d: number, ancestors: Set<string>, path: string): PdfBundleTreeNode {
 		const children: PdfBundleTreeNode[] = [];
 		if (d < depth) {
-			for (const next of ctx.adjacency.get(guid) ?? []) {
-				if (ctx.excluded.has(next) || !ctx.visited.has(next)) continue;
+			for (const next of adj.get(guid) ?? []) {
+				if (ctx.excluded.has(next) || !dirVisited.has(next)) continue;
 				if (ancestors.has(next)) continue;
 				const childPath = `${path}>${next}`;
 				const nextAncestors = new Set(ancestors);
@@ -336,7 +391,7 @@ function buildTree(
 		return { guid, title: titleOf(guid), positionKey: path, children };
 	}
 
-	return walk(rootGuid, 0, new Set([rootGuid]), rootGuid);
+	return walk(rootGuid, 0, new Set([rootGuid]), `${direction}:${rootGuid}`);
 }
 
 async function collectImageMap(ctx: TraversalCtx): Promise<Map<string, string>> {

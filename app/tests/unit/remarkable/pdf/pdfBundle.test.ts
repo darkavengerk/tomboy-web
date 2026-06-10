@@ -213,15 +213,15 @@ describe('buildPdfBundle', () => {
 });
 
 describe('previewPdfBundle', () => {
-	it('returns a tree rooted at rootGuid', () => {
+	it('returns a forward tree rooted at rootGuid', () => {
 		const root = makeNote('g1', 'Root', `${linkTo('A')} and ${linkTo('B')}`);
 		const a = makeNote('a', 'A', 'note a');
 		const b = makeNote('b', 'B', linkTo('A'));
 		const out = previewPdfBundle('g1', [root, a, b], { depth: 2 });
-		expect(out.tree).not.toBeNull();
-		expect(out.tree!.guid).toBe('g1');
+		expect(out.forwardTree).not.toBeNull();
+		expect(out.forwardTree!.guid).toBe('g1');
 		expect(out.includedGuids).toEqual(['g1', 'a', 'b']);
-		const childGuids = out.tree!.children.map((c: { guid: string }) => c.guid);
+		const childGuids = out.forwardTree!.children.map((c: { guid: string }) => c.guid);
 		expect(childGuids).toEqual(['a', 'b']);
 	});
 
@@ -233,14 +233,14 @@ describe('previewPdfBundle', () => {
 		const b = makeNote('b', 'B', linkTo('C'));
 		const c = makeNote('c', 'C', 'leaf');
 		const out = previewPdfBundle('g1', [root, a, b, c], { depth: 2 });
-		const aNode = out.tree!.children.find((n: { guid: string }) => n.guid === 'a');
-		const bNode = out.tree!.children.find((n: { guid: string }) => n.guid === 'b');
+		const aNode = out.forwardTree!.children.find((n: { guid: string }) => n.guid === 'a');
+		const bNode = out.forwardTree!.children.find((n: { guid: string }) => n.guid === 'b');
 		// C appears under BOTH A and B.
 		expect(aNode!.children.map((n: { guid: string }) => n.guid)).toEqual(['c']);
 		expect(bNode!.children.map((n: { guid: string }) => n.guid)).toEqual(['c']);
 	});
 
-	it('excluded guid disappears from the tree', () => {
+	it('excluded guid disappears from the forward tree', () => {
 		const root = makeNote('g1', 'Root', `${linkTo('A')} and ${linkTo('B')}`);
 		const a = makeNote('a', 'A', 'note a');
 		const b = makeNote('b', 'B', 'note b');
@@ -248,7 +248,83 @@ describe('previewPdfBundle', () => {
 			depth: 1,
 			excludedGuids: new Set(['a'])
 		});
-		expect(out.tree!.children.map((c: { guid: string }) => c.guid)).toEqual(['b']);
+		expect(out.forwardTree!.children.map((c: { guid: string }) => c.guid)).toEqual(['b']);
 		expect(out.includedGuids).toEqual(['g1', 'b']);
+	});
+
+	describe('backward tree (backlinks)', () => {
+		it('returns the set of notes that link TO root as direct children', () => {
+			// A → Root, B → Root, C → Root, Other → Other (no link to root)
+			const root = makeNote('g1', 'Root', 'root body');
+			const a = makeNote('a', 'A', `points to ${linkTo('Root')}`);
+			const b = makeNote('b', 'B', `also ${linkTo('Root')}`);
+			const c = makeNote('c', 'C', `and ${linkTo('Root')}`);
+			const other = makeNote('o', 'Other', 'unrelated');
+			const out = previewPdfBundle('g1', [root, a, b, c, other], { depth: 1 });
+			expect(out.backwardTree).not.toBeNull();
+			expect(out.backwardTree!.guid).toBe('g1');
+			const back = out.backwardTree!.children.map((n: { guid: string }) => n.guid).sort();
+			expect(back).toEqual(['a', 'b', 'c']);
+			// Other is not in the bundle at all (no forward, no backward path).
+			expect(out.includedGuids).not.toContain('o');
+		});
+
+		it('depth 2 walks two backlink hops away from root', () => {
+			// X → A → Root (X links to A, A links to Root)
+			const root = makeNote('g1', 'Root', 'root');
+			const a = makeNote('a', 'A', `to ${linkTo('Root')}`);
+			const x = makeNote('x', 'X', `to ${linkTo('A')}`);
+			const out = previewPdfBundle('g1', [root, a, x], { depth: 2 });
+			const aNode = out.backwardTree!.children[0];
+			expect(aNode.guid).toBe('a');
+			expect(aNode.children.map((n: { guid: string }) => n.guid)).toEqual(['x']);
+			expect(out.includedGuids).toContain('x');
+		});
+
+		it('excluded guid drops from backward tree and from the bundle', () => {
+			const root = makeNote('g1', 'Root', 'root');
+			const a = makeNote('a', 'A', `to ${linkTo('Root')}`);
+			const b = makeNote('b', 'B', `to ${linkTo('Root')}`);
+			const out = previewPdfBundle('g1', [root, a, b], {
+				depth: 1,
+				excludedGuids: new Set(['b'])
+			});
+			expect(out.backwardTree!.children.map((c: { guid: string }) => c.guid)).toEqual(['a']);
+			expect(out.includedGuids).toEqual(['g1', 'a']);
+		});
+
+		it('forward and backward trees are independent for the same root', () => {
+			// Forward: Root → A
+			// Backward: B → Root
+			const root = makeNote('g1', 'Root', `forward to ${linkTo('A')}`);
+			const a = makeNote('a', 'A', 'leaf');
+			const b = makeNote('b', 'B', `back to ${linkTo('Root')}`);
+			const out = previewPdfBundle('g1', [root, a, b], { depth: 1 });
+			expect(out.forwardTree!.children.map((c: { guid: string }) => c.guid)).toEqual(['a']);
+			expect(out.backwardTree!.children.map((c: { guid: string }) => c.guid)).toEqual(['b']);
+			// Union goes into the bundle.
+			expect(out.includedGuids.sort()).toEqual(['a', 'b', 'g1']);
+		});
+
+		it('positionKey differs between forward and backward roots so Svelte each keys never collide', () => {
+			const root = makeNote('g1', 'Root', `${linkTo('A')}`);
+			const a = makeNote('a', 'A', `${linkTo('Root')}`); // A appears in both directions
+			const out = previewPdfBundle('g1', [root, a], { depth: 1 });
+			expect(out.forwardTree!.positionKey).not.toBe(out.backwardTree!.positionKey);
+			// Children of both roots are tagged with their parent's direction prefix.
+			expect(out.forwardTree!.children[0].positionKey).toContain('forward:');
+			expect(out.backwardTree!.children[0].positionKey).toContain('backward:');
+		});
+	});
+
+	it('backward-only notes also reach the PDF bundle build', async () => {
+		// B → Root via backlink. depth 1 → both Root and B included.
+		const root = makeNote('g1', 'Root', 'root');
+		const b = makeNote('b', 'B', `${linkTo('Root')}`);
+		const out = await buildPdfBundle('g1', [root, b], { depth: 1 });
+		expect(out.includedGuids.sort()).toEqual(['b', 'g1']);
+		// And B's link to Root resolves as linkToDestination (Root is in the bundle).
+		const linkInlines = findLinkInlines(out.docDefinition.content);
+		expect(linkInlines.some((i) => i.linkToDestination === 'note-g1')).toBe(true);
 	});
 });

@@ -37,7 +37,12 @@
 	// depth / excludedGuids 변경 시 트리 + 포함 guid 실시간 재계산.
 	const preview = $derived(
 		allNotes.length === 0
-			? { tree: null, includedGuids: [] as string[], titles: new Map<string, string>() }
+			? {
+					forwardTree: null,
+					backwardTree: null,
+					includedGuids: [] as string[],
+					titles: new Map<string, string>()
+				}
 			: previewPdfBundle(rootGuid, allNotes, { depth, excludedGuids })
 	);
 
@@ -229,18 +234,50 @@
 		{#if prefillReady}
 			<div class="rm-row">
 				<span class="rm-label">포함될 노트 ({preview.includedGuids.length}개)</span>
-				<div class="rm-tree-box">
-					{#if preview.tree === null}
-						<span class="rm-tree-empty">노트를 찾을 수 없습니다</span>
-					{:else}
-						<ul class="rm-tree-root">
-							{@render treeNode(preview.tree, true)}
-						</ul>
-					{/if}
+				<div class="rm-tree-pair">
+					<div class="rm-tree-col">
+						<h4 class="rm-tree-heading">
+							앞으로 — 이 노트가 링크하는 노트
+						</h4>
+						<div class="rm-tree-box">
+							{#if preview.forwardTree === null}
+								<span class="rm-tree-empty">노트를 찾을 수 없습니다</span>
+							{:else if preview.forwardTree.children.length === 0}
+								<ul class="rm-tree-root">
+									{@render treeNode(preview.forwardTree, true)}
+								</ul>
+								<p class="rm-tree-empty-hint">링크하는 노트가 없습니다</p>
+							{:else}
+								<ul class="rm-tree-root">
+									{@render treeNode(preview.forwardTree, true)}
+								</ul>
+							{/if}
+						</div>
+					</div>
+					<div class="rm-tree-col">
+						<h4 class="rm-tree-heading">
+							뒤로 — 이 노트를 링크하는 노트 (백링크)
+						</h4>
+						<div class="rm-tree-box">
+							{#if preview.backwardTree === null}
+								<span class="rm-tree-empty">노트를 찾을 수 없습니다</span>
+							{:else if preview.backwardTree.children.length === 0}
+								<ul class="rm-tree-root">
+									{@render treeNode(preview.backwardTree, true)}
+								</ul>
+								<p class="rm-tree-empty-hint">백링크가 없습니다</p>
+							{:else}
+								<ul class="rm-tree-root">
+									{@render treeNode(preview.backwardTree, true)}
+								</ul>
+							{/if}
+						</div>
+					</div>
 				</div>
 				<p class="rm-tree-hint">
-					체크를 해제하면 트리에서 제거되고 그 노트로 향하는 링크는 본문에서 텍스트로만
-					남습니다. 같은 노트가 여러 곳에 있어도 한 번 해제하면 전부 빠집니다.
+					체크를 해제하면 양쪽 트리에서 제거되고 그 노트로 향하는 링크는 본문에서 텍스트로만
+					남습니다. 같은 노트가 여러 곳에 있어도 한 번 해제하면 전부 빠집니다. 뒤로 트리는
+					'2026년' 같은 키워드 노트에 모인 백링크를 한 번에 PDF 로 모을 때 유용합니다.
 				</p>
 			</div>
 
@@ -304,7 +341,9 @@
 		color: #111;
 		border-radius: 8px;
 		box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
-		width: min(460px, calc(100vw - 32px));
+		/* 데스크탑 전용 (NoteWindow 안 모달) — 두 트리를 좌우로 배치해야 하므로
+		   기본 460px 보다 넓게. 작은 창에서도 살 수 있게 viewport 클램프. */
+		width: min(880px, calc(100vw - 32px));
 		max-height: calc(100vh - 64px);
 		display: flex;
 		flex-direction: column;
@@ -353,8 +392,27 @@
 		color: #aaa;
 		margin: 0 2px;
 	}
+	.rm-tree-pair {
+		display: flex;
+		gap: 10px;
+		align-items: stretch;
+	}
+	.rm-tree-pair > .rm-tree-col {
+		flex: 1 1 0;
+		min-width: 0; /* flex shrink 가 실제로 먹게 */
+		display: flex;
+		flex-direction: column;
+	}
+	.rm-tree-heading {
+		margin: 0 0 4px;
+		font-size: 0.78rem;
+		font-weight: 600;
+		color: #555;
+		letter-spacing: 0.01em;
+	}
 	.rm-tree-box {
-		max-height: 220px;
+		flex: 1 1 auto;
+		max-height: 260px;
 		overflow-y: auto;
 		border: 1px solid #e4e8ec;
 		border-radius: 4px;
@@ -366,6 +424,12 @@
 		padding: 4px 8px;
 		color: #888;
 		font-size: 0.85rem;
+	}
+	.rm-tree-empty-hint {
+		margin: 4px 6px 0;
+		font-size: 0.76rem;
+		color: #999;
+		font-style: italic;
 	}
 	.rm-tree-root,
 	.rm-tree-children {
