@@ -45,6 +45,11 @@ export interface SendRemarkableOpts {
 	alias: string;
 	folderName: string;
 	folderUuid: string;
+	/**
+	 * 리마커블에 표시할 파일명. 누락/빈 문자열이면 루트 노트 제목으로 폴백.
+	 * 한글이 리마커블에서 깨지는 경우 사용자가 ASCII 로 바꿔서 보낼 때 사용.
+	 */
+	visibleName?: string;
 	/** forward BFS 깊이 (이 노트가 링크하는 방향). */
 	forwardDepth: number;
 	/** backward BFS 깊이 (이 노트를 링크하는 방향, 백링크). */
@@ -88,7 +93,8 @@ export async function sendNoteToRemarkable(
 		excludedGuids: opts.excludedGuids
 	});
 	const rootNote = opts.notes.find((n) => n.guid === opts.rootGuid);
-	const visibleName = (rootNote?.title ?? '').trim() || '제목 없음';
+	const visibleName =
+		(opts.visibleName ?? '').trim() || (rootNote?.title ?? '').trim() || '제목 없음';
 
 	const builder = opts.buildPdf ?? defaultBuildPdf;
 	const pdfBlob = await builder(docDefinition);

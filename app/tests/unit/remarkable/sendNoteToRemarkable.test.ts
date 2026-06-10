@@ -96,6 +96,39 @@ describe('sendNoteToRemarkable', () => {
 		expect(parsed.pdfBase64).toBe('JVBERg=='); // %PDF
 	});
 
+	it('uses opts.visibleName override when provided (e.g. ASCII-safe name for Korean titles)', async () => {
+		let bodyText = '';
+		globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+			bodyText = typeof init?.body === 'string' ? init.body : '';
+			return new Response(sseBody(['event: done\ndata: {}\n\n']), {
+				status: 200,
+				headers: { 'content-type': 'text/event-stream' }
+			});
+		}) as typeof fetch;
+		const result = await sendNoteToRemarkable(
+			basicOpts({
+				notes: [makeNote('g1', '한글노트', 'body')],
+				visibleName: 'Korean Note'
+			})
+		);
+		expect(result.visibleName).toBe('Korean Note');
+		expect(JSON.parse(bodyText).visibleName).toBe('Korean Note');
+	});
+
+	it('falls back to root title when visibleName is empty / whitespace', async () => {
+		let bodyText = '';
+		globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+			bodyText = typeof init?.body === 'string' ? init.body : '';
+			return new Response(sseBody(['event: done\ndata: {}\n\n']), {
+				status: 200,
+				headers: { 'content-type': 'text/event-stream' }
+			});
+		}) as typeof fetch;
+		const result = await sendNoteToRemarkable(basicOpts({ visibleName: '   ' }));
+		expect(result.visibleName).toBe('Root');
+		expect(JSON.parse(bodyText).visibleName).toBe('Root');
+	});
+
 	it('emits status events: building_pdf, uploading, then server stream', async () => {
 		const statuses: unknown[] = [];
 		globalThis.fetch = (async () =>

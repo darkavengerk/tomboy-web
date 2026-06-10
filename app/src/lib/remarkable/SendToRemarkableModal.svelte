@@ -24,6 +24,7 @@
 	let alias = $state('');
 	let folderName = $state('');
 	let folderUuid = $state('');
+	let visibleName = $state('');
 	let prefillReady = $state(false);
 	let sending = $state(false);
 	let statusText = $state('');
@@ -33,7 +34,11 @@
 	const ac = new AbortController();
 
 	const canSend = $derived(
-		!sending && alias !== '' && folderUuid !== '' && folderName !== ''
+		!sending &&
+			alias !== '' &&
+			folderUuid !== '' &&
+			folderName !== '' &&
+			visibleName.trim() !== ''
 	);
 
 	// depth / excludedGuids 변경 시 트리 + 포함 guid 실시간 재계산.
@@ -68,6 +73,9 @@
 			folderUuid = first[1].folderUuid;
 		}
 		allNotes = await getAllNotes();
+		// 파일명 기본값은 루트 노트 제목. 한글이 깨지면 사용자가 ASCII 로 바꿔서 보낸다.
+		const root = allNotes.find((n) => n.guid === rootGuid);
+		visibleName = (root?.title ?? '').trim();
 		prefillReady = true;
 	});
 
@@ -118,6 +126,7 @@
 				alias: alias.trim(),
 				folderName,
 				folderUuid,
+				visibleName: visibleName.trim(),
 				forwardDepth,
 				backwardDepth,
 				excludedGuids,
@@ -221,6 +230,20 @@
 				{/if}
 			</span>
 		</div>
+
+		<label class="rm-row">
+			<span class="rm-label">파일명 (리마커블에 표시)</span>
+			<input
+				class="rm-name-input"
+				type="text"
+				bind:value={visibleName}
+				disabled={sending || !prefillReady}
+				placeholder="제목 없음"
+			/>
+			<span class="rm-name-hint">
+				리마커블에서 한글이 깨져 보이면 영문으로 바꿔서 보내세요.
+			</span>
+		</label>
 
 		{#if prefillReady}
 			<div class="rm-row">
@@ -406,6 +429,23 @@
 		border-radius: 4px;
 		color: #555;
 		background: #fafafa;
+	}
+	.rm-name-input {
+		padding: 6px 8px;
+		border: 1px solid #ccc;
+		border-radius: 4px;
+		font: inherit;
+		background: #fff;
+		color: #111;
+	}
+	.rm-name-input:disabled {
+		opacity: 0.6;
+		background: #f6f6f6;
+	}
+	.rm-name-hint {
+		margin-top: 2px;
+		font-size: 0.76rem;
+		color: #888;
 	}
 	.rm-sep {
 		color: #aaa;
