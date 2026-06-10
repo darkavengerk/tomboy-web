@@ -1,4 +1,5 @@
 import type { MusicTrack } from '$lib/music/parseMusicNote.js';
+import { saveProgress, loadProgress, flushProgress } from './musicProgress.js';
 
 export type RepeatMode = 'off' | 'all' | 'one';
 
@@ -15,6 +16,10 @@ let repeat = $state<RepeatMode>('off');
 let shuffle = $state(false);
 // shuffle 시 재생 순서(큐 인덱스의 순열). shuffle off 면 무시.
 let shuffleOrder = $state<number[]>([]);
+// 노트 전환 복원: setQueue 가 저장된 위치를 여기에 담고, resume() 가 소비해 resumeAt 으로 승격.
+let pendingRestore = $state(0);
+// 엔진(musicAudio)이 새 src 로드 후 이 위치로 seek 한다(이어듣기). 적용 후 0.
+let resumeAt = $state(0);
 
 function clampIndex(i: number): number {
 	if (queue.length === 0) return -1;
@@ -84,6 +89,8 @@ export function __resetMusicPlayer(): void {
 	repeat = 'off';
 	shuffle = false;
 	shuffleOrder = [];
+	pendingRestore = 0;
+	resumeAt = 0;
 }
 
 export const musicPlayer = {
@@ -127,24 +134,87 @@ export const musicPlayer = {
 	get shuffle(): boolean {
 		return shuffle;
 	},
+	/** 엔진이 새 src 로드 후 seek 할 이어듣기 위치(0 이면 없음). */
+	get resumeAt(): number {
+		return resumeAt;
+	},
 
-	/** doc 재파싱 결과를 반영. 같은 노트면 재생 중 url 로 index 보존. */
+	/** doc 재파싱/노트 활성화 반영. 같은 노트면 재생 중 url 로 index 보존; 다른 노트로
+	 *  전환하면 나가는 노트 위치를 저장하고 들어오는 노트의 저장 위치를 복원한다(이어듣기). */
 	setQueue(noteGuid: string, tracks: MusicTrack[], noteName = ''): void {
 		const sameNote = noteGuid === activeNoteGuid;
+		// 전환이면 나가는 노트의 현재 위치를 저장.
+		if (!sameNote && activeNoteGuid && queue[currentIndex]) {
+			saveProgress(activeNoteGuid, queue[currentIndex].url, currentTime);
+		}
 		const prevUrl = sameNote ? (queue[currentIndex]?.url ?? null) : null;
 		queue = tracks;
 		activeNoteGuid = noteGuid;
 		activeNoteName = noteName;
-		let idx = prevUrl ? tracks.findIndex((t) => t.url === prevUrl) : -1;
-		if (idx === -1) {
-			idx = tracks.length ? 0 : -1;
+		if (sameNote) {
+			let idx = prevUrl ? tracks.findIndex((t) => t.url === prevUrl) : -1;
+			if (idx === -1) {
+				idx = tracks.length ? 0 : -1;
+				isPlaying = false;
+				currentTime = 0;
+				duration = 0;
+			}
+			currentIndex = idx;
+		} else {
+			// 들어오는 노트의 저장 위치 복원(트랙 url 로 식별, 없으면 0번/0초).
+			const entry = loadProgress(noteGuid);
+			let idx = entry ? tracks.findIndex((t) => t.url === entry.trackUrl) : -1;
+			if (idx === -1) idx = tracks.length ? 0 : -1;
+			currentIndex = idx;
 			isPlaying = false;
 			currentTime = 0;
 			duration = 0;
+			pendingRestore = entry && idx >= 0 ? entry.currentTime : 0;
 		}
-		currentIndex = idx;
-		// 큐가 바뀌었으니 섞기 순서도 새로 — 현재 곡을 0번에 고정.
 		if (shuffle) rebuildShuffle(true);
+	},
+
+	/** 현재(복원된) 활성 노트를 그 위치에서 이어 재생. pendingRestore 를 resumeAt 으로 승격. */
+	resume(): void {
+		if (queue.length === 0) return;
+		if (currentIndex < 0) currentIndex = 0;
+		isPlaying = true;
+		if (pendingRestore > 0) {
+			resumeAt = pendingRestore;
+			currentTime = pendingRestore;
+		}
+		pendingRestore = 0;
+	},
+
+	/** 노트를 활성화하고 저장된 위치에서 이어 재생(다른 노트는 정지). 메인 ▶ 진입점. */
+	playNote(noteGuid: string, tracks: MusicTrack[], noteName = ''): void {
+		this.setQueue(noteGuid, tracks, noteName);
+		this.resume();
+	},
+
+	/** 엔진이 resumeAt 을 적용하고 비운다(1회성). */
+	takeResumeAt(): number {
+		const v = resumeAt;
+		resumeAt = 0;
+		return v;
+	},
+
+	/** 정지 + 활성 해제(알약 ✕). 오디오를 멈추고 큐/활성노트를 비우되, 마지막 위치는
+	 *  저장해 두어 다음에 그 노트에서 이어 재생할 수 있게 한다. */
+	stop(): void {
+		if (activeNoteGuid && queue[currentIndex]) {
+			saveProgress(activeNoteGuid, queue[currentIndex].url, currentTime);
+			flushProgress();
+		}
+		isPlaying = false;
+		queue = [];
+		currentIndex = -1;
+		currentTime = 0;
+		duration = 0;
+		activeNoteGuid = null;
+		activeNoteName = '';
+		pendingRestore = 0;
+		resumeAt = 0;
 	},
 
 	/** 반복 모드 순환: off → all → one → off. */
@@ -160,6 +230,7 @@ export const musicPlayer = {
 
 	play(index: number): void {
 		if (queue.length === 0) return;
+		pendingRestore = 0;
 		const i = clampIndex(index);
 		if (i !== currentIndex) {
 			currentIndex = i;
@@ -170,6 +241,10 @@ export const musicPlayer = {
 
 	pause(): void {
 		isPlaying = false;
+		if (activeNoteGuid && queue[currentIndex]) {
+			saveProgress(activeNoteGuid, queue[currentIndex].url, currentTime);
+			flushProgress();
+		}
 	},
 
 	toggle(): void {
@@ -205,6 +280,9 @@ export const musicPlayer = {
 
 	reportTime(t: number): void {
 		currentTime = t;
+		if (activeNoteGuid && queue[currentIndex]) {
+			saveProgress(activeNoteGuid, queue[currentIndex].url, t);
+		}
 	},
 	reportDuration(d: number): void {
 		duration = Number.isFinite(d) ? d : 0;
