@@ -35,6 +35,55 @@ export interface CursorVisibilityOptions {
 	mode?: "window" | "container";
 }
 
+// A focus precedes the on-screen keyboard animation; the visualViewport only
+// updates after it finishes (~200-300ms). Checks during that window read a
+// stale full-height viewport, so a focus holds them until one vv resize
+// arrives — or this timeout when none will (keyboard already up / hardware
+// keyboard / desktop browser on the mobile route).
+const FOCUS_SETTLE_MS = 350;
+
+/**
+ * Should ProseMirror's own scrollToSelection be suppressed in favour of
+ * installCursorVisibility()?
+ *
+ * Wired as the `handleScrollToSelection` editor prop wherever the module is
+ * installed. It replaces the old static `scrollMargin/scrollThreshold
+ * {bottom: 60}` — that magic number drifted from the real toolbar height
+ * (drawer rows), double-corrected against the module's own nudge, and PM's
+ * window rect ignores `visualViewport.offsetTop` (phantom overflow on iOS
+ * while the keyboard pans the viewport). Downward reveals are owned by the
+ * module instead, which knows the live toolbar height and true viewport.
+ *
+ * Mirrors check()'s guards exactly, so we never claim a scroll the module
+ * would then refuse: unfocused views, range selections and upward reveals
+ * (caret above the visible top) all stay with PM.
+ */
+export function shouldDeferScrollToSelection(
+	view: Editor["view"],
+	mode: "window" | "container" = "window",
+): boolean {
+	if (!view.hasFocus()) return false;
+	if (!view.state.selection.empty) return false;
+	let caret: { top: number };
+	try {
+		caret = view.coordsAtPos(view.state.selection.head);
+	} catch {
+		return false;
+	}
+	let visibleTop: number;
+	if (mode === "container") {
+		const scroller = view.dom.parentElement;
+		if (!scroller) return false;
+		visibleTop = scroller.getBoundingClientRect().top;
+	} else {
+		visibleTop = window.visualViewport?.offsetTop ?? 0;
+	}
+	// Caret above the visible area needs an UPWARD scroll, which the module
+	// never performs — let PM handle it (default margin, no toolbar at the top).
+	if (caret.top < visibleTop) return false;
+	return true;
+}
+
 export function installCursorVisibility(
 	editor: Editor,
 	opts: CursorVisibilityOptions = {},
@@ -45,6 +94,22 @@ export function installCursorVisibility(
 	const vv = window.visualViewport;
 
 	let frame = 0;
+	// Pointer gate — collapsed-caret drags (iOS loupe, Android teardrop caret
+	// handle) keep the selection EMPTY the whole time, so the selection.empty
+	// guard below never engages. Worse, the caret is anchored to the finger,
+	// not the document: a nudge doesn't reduce the overflow, so every
+	// selectionchange tick would scroll again — a runaway loop that shoves the
+	// text out from under the user's finger. While any pointer is down we
+	// therefore latch instead of scrolling, and run ONE deferred check when
+	// the last pointer lifts. A plain pan (no selection events while down)
+	// latches nothing, so lifting the finger never snaps a parked caret back.
+	let pointersDown = 0;
+	let pendingAfterPointer = false;
+	// Focus settle — see FOCUS_SETTLE_MS. While settling, schedule() is a
+	// no-op; endSettle() runs the single post-settle check.
+	let settling = false;
+	let settleTimer = 0;
+	let settleResize: (() => void) | null = null;
 
 	const readPx = (el: Element, name: string): number => {
 		const raw = getComputedStyle(el).getPropertyValue(name).trim();
@@ -54,6 +119,11 @@ export function installCursorVisibility(
 
 	const check = () => {
 		frame = 0;
+		// A pointer landed between scheduling and this frame — re-latch.
+		if (pointersDown > 0) {
+			pendingAfterPointer = true;
+			return;
+		}
 		const view = editor.view;
 		if (!view || view.isDestroyed) return;
 		// Only nudge while this editor actually owns the caret — otherwise a
@@ -91,6 +161,9 @@ export function installCursorVisibility(
 			const overflow = caret.bottom - limit;
 			// >2px guards against a feedback loop: after the scroll the caret
 			// sits at ~limit, so the next check finds overflow ≈ 0 and stops.
+			// (Only for a document-anchored caret — a finger-anchored caret
+			// doesn't move with the scroll, which is what the pointer gate is
+			// for.)
 			if (overflow > 2) scroller.scrollTop += overflow;
 			return;
 		}
@@ -105,8 +178,74 @@ export function installCursorVisibility(
 	};
 
 	const schedule = () => {
+		if (pointersDown > 0) {
+			pendingAfterPointer = true;
+			return;
+		}
+		// endSettle() always runs one check, so latching a flag is redundant.
+		if (settling) return;
 		if (frame) return;
 		frame = requestAnimationFrame(check);
+	};
+
+	const endSettle = () => {
+		if (!settling) return;
+		settling = false;
+		if (settleTimer) {
+			clearTimeout(settleTimer);
+			settleTimer = 0;
+		}
+		if (settleResize && vv) {
+			vv.removeEventListener("resize", settleResize);
+			settleResize = null;
+		}
+		schedule();
+	};
+
+	const onFocus = () => {
+		// Desktop container has no on-screen keyboard; without a vv there is
+		// nothing to wait for either. Check immediately.
+		if (mode === "container" || !vv) {
+			schedule();
+			return;
+		}
+		if (settling) return; // already armed by a previous focus
+		settling = true;
+		// ONE-SHOT, self-removing — not a standing vv subscription (a standing
+		// resize/scroll listener re-asserts the caret on every viewport tick
+		// and fights the user's own scrolling; see the trigger block below).
+		settleResize = () => endSettle();
+		vv.addEventListener("resize", settleResize);
+		settleTimer = window.setTimeout(endSettle, FOCUS_SETTLE_MS);
+	};
+
+	// editor 'update' fires for EVERY doc change, including background
+	// dispatches (autolink rescan, chat-note streaming, programmatic reloads).
+	// Those never request scrollIntoView; nudging on them yanks a reader who
+	// scrolled away from a parked caret back down. Mirror PM's own
+	// convention: only transactions that asked for scrollIntoView count.
+	const onUpdate = (payload?: {
+		transaction?: { scrolledIntoView?: boolean };
+	}) => {
+		if (payload?.transaction && !payload.transaction.scrolledIntoView) return;
+		schedule();
+	};
+
+	const onPointerDown = () => {
+		pointersDown++;
+	};
+	const onPointerUp = () => {
+		pointersDown = Math.max(0, pointersDown - 1);
+		if (pointersDown === 0 && pendingAfterPointer) {
+			pendingAfterPointer = false;
+			schedule();
+		}
+	};
+	const onPointerCancel = () => {
+		pointersDown = Math.max(0, pointersDown - 1);
+		// The browser took the gesture over (it became a scroll / system
+		// gesture) — running the deferred check now would fight that scroll.
+		if (pointersDown === 0) pendingAfterPointer = false;
 	};
 
 	// Edit-driven triggers ONLY. We must NOT react to viewport events
@@ -117,19 +256,32 @@ export function installCursorVisibility(
 	// page snaps back down, and during selection it oscillates against the OS's
 	// own scroll. selectionchange/selectionUpdate already cover real caret moves
 	// (taps, arrow keys, typing); a viewport scroll never moves the caret, so we
-	// have no reason to recompute on it.
+	// have no reason to recompute on it. (The focus settle above arms a
+	// self-removing one-shot resize listener per focus transition — that is a
+	// bounded wait for the keyboard, not a standing subscription.)
 	editor.on("selectionUpdate", schedule);
-	editor.on("update", schedule);
-	editor.on("focus", schedule);
+	editor.on("update", onUpdate);
+	editor.on("focus", onFocus);
 	// Native caret moves (taps, arrow keys) don't always fire a TipTap
 	// transaction, but the document-level selectionchange does.
 	document.addEventListener("selectionchange", schedule);
+	// Pointer gate listeners — capture phase so a stopPropagation inside the
+	// page (action-bar buttons etc.) can't leave the gate stuck closed.
+	const pointerOpts = { capture: true, passive: true } as const;
+	document.addEventListener("pointerdown", onPointerDown, pointerOpts);
+	document.addEventListener("pointerup", onPointerUp, pointerOpts);
+	document.addEventListener("pointercancel", onPointerCancel, pointerOpts);
 
 	return () => {
 		if (frame) cancelAnimationFrame(frame);
+		if (settleTimer) clearTimeout(settleTimer);
+		if (settleResize && vv) vv.removeEventListener("resize", settleResize);
 		editor.off("selectionUpdate", schedule);
-		editor.off("update", schedule);
-		editor.off("focus", schedule);
+		editor.off("update", onUpdate);
+		editor.off("focus", onFocus);
 		document.removeEventListener("selectionchange", schedule);
+		document.removeEventListener("pointerdown", onPointerDown, pointerOpts);
+		document.removeEventListener("pointerup", onPointerUp, pointerOpts);
+		document.removeEventListener("pointercancel", onPointerCancel, pointerOpts);
 	};
 }
