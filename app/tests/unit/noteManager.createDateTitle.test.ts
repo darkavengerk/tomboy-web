@@ -18,11 +18,19 @@ vi.mock('$lib/storage/noteStore.js', () => ({
 		return Array.from(store.values()).find(
 			(n) => !n.deleted && n.title.trim() === needle
 		);
+	}),
+	titleExists: vi.fn(async (title: string) => {
+		const needle = title.trim();
+		if (!needle) return false;
+		return Array.from(store.values()).some(
+			(n) => !n.deleted && n.title === needle
+		);
 	})
 }));
 
 vi.mock('$lib/stores/noteListCache.js', () => ({
-	invalidateCache: vi.fn()
+	invalidateCache: vi.fn(),
+	noteMutated: vi.fn()
 }));
 
 import { createNote } from '$lib/core/noteManager.js';

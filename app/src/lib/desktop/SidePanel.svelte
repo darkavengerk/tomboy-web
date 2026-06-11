@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { listNotes, createNote } from '$lib/core/noteManager.js';
+	import { listNotesShared, createNote } from '$lib/core/noteManager.js';
 	import type { NoteData } from '$lib/core/note.js';
 	import { parseTomboyDate } from '$lib/core/note.js';
 	import {
@@ -12,11 +12,7 @@
 	import { SLIPBOX_NOTEBOOK } from '$lib/sleepnote/validator.js';
 	import { createSlipNote } from '$lib/sleepnote/create.js';
 	import { searchNotes } from '$lib/search/noteSearch.js';
-	import {
-		getCachedNotes,
-		setCachedNotes,
-		onInvalidate
-	} from '$lib/stores/noteListCache.js';
+	import { getCachedNotes, onInvalidate } from '$lib/stores/noteListCache.js';
 	import { recentOpens } from './recentOpens.svelte.js';
 	import {
 		sidePanelLayout,
@@ -97,9 +93,12 @@
 	});
 
 	async function refresh() {
-		const fresh = await listNotes();
+		// Shared read-through cache: warm after any other consumer (title
+		// index, slip-note set) has fetched, and patched in place by
+		// editor-path saves — so the per-save fan-out below costs zero IDB
+		// reads instead of the full-corpus getAll `listNotes()` paid before.
+		const fresh = await listNotesShared();
 		allNotes = fresh;
-		setCachedNotes(fresh);
 		loading = false;
 	}
 
@@ -108,9 +107,17 @@
 		getCachedNotebooks().then((n) => {
 			notebooks = n;
 		});
-		const off = onInvalidate(() => {
+		const off = onInvalidate((kind) => {
 			refresh();
-			refreshNotebooksCache().then((n) => {
+			// Single-note patches ('mutate') come from mutation paths that
+			// already maintain the notebooks settings-cache themselves
+			// (assignNotebook & co. refresh it BEFORE notifying), so a cached
+			// read suffices. Bulk invalidates (sync pull, import, …) may have
+			// brought notebook template notes the cache has never seen —
+			// recompute from the corpus then.
+			const notebooksP =
+				kind === 'invalidate' ? refreshNotebooksCache() : getCachedNotebooks();
+			notebooksP.then((n) => {
 				notebooks = n;
 			});
 		});

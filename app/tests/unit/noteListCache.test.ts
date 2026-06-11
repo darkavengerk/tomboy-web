@@ -6,12 +6,17 @@ import {
 	getCachedScrollTop,
 	setCachedScrollTop,
 	invalidateCache,
+	noteMutated,
 	onInvalidate,
 	readThroughNotes
 } from '$lib/stores/noteListCache.js';
 import type { NoteData } from '$lib/core/note.js';
 
 const stub = (guid: string) => ({ guid } as NoteData);
+
+/** Full-enough NoteData for the noteMutated qualify filter + sort. */
+const full = (guid: string, changeDate: string, extra: Partial<NoteData> = {}) =>
+	({ guid, title: guid, changeDate, deleted: false, tags: [], ...extra }) as NoteData;
 
 /** A fetch whose resolution is controlled by the returned `resolve` fn. */
 function deferredFetch(value: NoteData[]) {
@@ -140,5 +145,79 @@ describe('noteListCache.readThroughNotes', () => {
 		const out = await readThroughNotes(good);
 		expect(out).toEqual([stub('ok')]);
 		expect(good).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe('noteListCache.noteMutated', () => {
+	it('patches a warm cache in place: upsert + changeDate-DESC re-sort, NO refetch', async () => {
+		setCachedNotes([full('b', '2024-02-01T00:00:00Z'), full('a', '2024-01-01T00:00:00Z')]);
+		noteMutated(full('c', '2024-03-01T00:00:00Z'));
+		expect(getCachedNotes()?.map((n) => n.guid)).toEqual(['c', 'b', 'a']);
+
+		// The whole point: a subsequent read-through must NOT hit IDB.
+		const fetch = vi.fn(async () => [] as NoteData[]);
+		await readThroughNotes(fetch);
+		expect(fetch).not.toHaveBeenCalled();
+	});
+
+	it('replaces an existing entry by guid (rename / changeDate bump moves it up)', () => {
+		setCachedNotes([full('b', '2024-02-01T00:00:00Z'), full('a', '2024-01-01T00:00:00Z')]);
+		noteMutated(full('a', '2024-04-01T00:00:00Z', { title: 'renamed' }));
+		const cached = getCachedNotes()!;
+		expect(cached.map((n) => n.guid)).toEqual(['a', 'b']);
+		expect(cached[0].title).toBe('renamed');
+		expect(cached).toHaveLength(2); // replaced, not duplicated
+	});
+
+	it('removes a note that no longer qualifies (deleted / template) from the cache', () => {
+		setCachedNotes([full('a', '2024-01-01T00:00:00Z'), full('b', '2024-02-01T00:00:00Z')]);
+		noteMutated(full('a', '2024-03-01T00:00:00Z', { deleted: true }));
+		expect(getCachedNotes()?.map((n) => n.guid)).toEqual(['b']);
+		noteMutated(full('b', '2024-03-01T00:00:00Z', { tags: ['system:template'] }));
+		expect(getCachedNotes()).toEqual([]);
+	});
+
+	it('copy-on-write: a consumer holding the previous array never sees the patch', () => {
+		setCachedNotes([full('a', '2024-01-01T00:00:00Z')]);
+		const before = getCachedNotes()!;
+		noteMutated(full('b', '2024-02-01T00:00:00Z'));
+		expect(before.map((n) => n.guid)).toEqual(['a']);
+		expect(getCachedNotes()!.map((n) => n.guid)).toEqual(['b', 'a']);
+	});
+
+	it('cold cache: fires listeners but does not fabricate a cache', () => {
+		const cb = vi.fn();
+		onInvalidate(cb);
+		noteMutated(full('a', '2024-01-01T00:00:00Z'));
+		expect(cb).toHaveBeenCalledTimes(1);
+		expect(getCachedNotes()).toBeNull();
+	});
+
+	it('degrades to a hard invalidate when a read-through fetch is in flight', async () => {
+		const { fn, resolve } = deferredFetch([full('pre', '2024-01-01T00:00:00Z')]);
+		const p = readThroughNotes(fn);
+
+		// Mutation lands while the fetch is in flight: its snapshot may or may
+		// not contain the write, so the cache must NOT be patched OR populated.
+		noteMutated(full('new', '2024-02-01T00:00:00Z'));
+
+		resolve();
+		await p; // racing fetch still resolves for its own caller
+		expect(getCachedNotes()).toBeNull();
+
+		// Next reader re-fetches committed state.
+		const fresh = vi.fn(async () => [full('new', '2024-02-01T00:00:00Z')]);
+		const out = await readThroughNotes(fresh);
+		expect(fresh).toHaveBeenCalledTimes(1);
+		expect(out.map((n) => n.guid)).toEqual(['new']);
+	});
+
+	it("listeners receive 'mutate' vs 'invalidate' kinds", () => {
+		const kinds: string[] = [];
+		onInvalidate((kind) => kinds.push(kind));
+		setCachedNotes([]);
+		noteMutated(full('a', '2024-01-01T00:00:00Z'));
+		invalidateCache();
+		expect(kinds).toEqual(['mutate', 'invalidate']);
 	});
 });

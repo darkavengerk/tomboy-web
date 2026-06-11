@@ -1,8 +1,17 @@
 import type { NoteData } from '$lib/core/note.js';
 
+/** Why the listener fan-out fired:
+ *  - `'invalidate'` — bulk/unknown mutation (sync pull, import, purge, …);
+ *    the cache was dropped and ANYTHING may have changed, including data the
+ *    cache doesn't carry (e.g. notebook template notes).
+ *  - `'mutate'` — exactly one known note changed and the warm cache was
+ *    patched in place; derived settings-caches maintained by the mutation
+ *    paths themselves (notebooks) are already up to date. */
+export type NoteListChangeKind = 'invalidate' | 'mutate';
+
 let cached: NoteData[] | null = null;
 let scrollTop = 0;
-const listeners = new Set<() => void>();
+const listeners = new Set<(kind: NoteListChangeKind) => void>();
 
 // Read-through coalescing state. `inFlight` lets concurrent cold-cache
 // callers (e.g. the title-index refresh and the slip-note set refresh both
@@ -28,7 +37,50 @@ export function invalidateCache(): void {
 	// re-fetch rather than coalesce onto the stale fetch.
 	inFlight = null;
 	epoch++;
-	for (const l of listeners) l();
+	for (const l of listeners) l('invalidate');
+}
+
+/**
+ * Single-note mutation notification — the cheap sibling of `invalidateCache`.
+ *
+ * Call AFTER the note's IDB write has committed. Instead of nulling the
+ * cache (which forces the next reader into a full-corpus `getAll` that
+ * deserializes every note's xmlContent), this PATCHES the warm cache in
+ * place — remove-by-guid, re-insert if the note still qualifies, re-sort —
+ * and then fires the same listener fan-out. Listeners that read through
+ * `readThroughNotes` (title index, slip-note set, desktop side panel) see
+ * current data with ZERO IDB reads; this is what keeps 새 노트 생성 +
+ * 타이틀 타이핑 from paying a full-corpus read on every debounced save.
+ *
+ * The qualify filter (non-deleted, non-template) MUST stay in lock-step
+ * with `noteStore.getAllNotes` — the cache stores exactly that shape.
+ *
+ * Use `invalidateCache()` instead for bulk or unknown mutations (sync pull,
+ * import, purge, admin rollback): patching is only sound when the caller
+ * knows the one note that changed.
+ */
+export function noteMutated(note: NoteData): void {
+	if (inFlight) {
+		// A read-through fetch raced this mutation; its snapshot may or may
+		// not contain the write. Degrade to a hard invalidate so post-mutation
+		// readers re-fetch committed state instead of inheriting the race.
+		cached = null;
+		inFlight = null;
+		epoch++;
+	} else if (cached) {
+		// Copy-on-write so consumers holding the previous array reference
+		// never observe a mid-patch mutation.
+		const next = cached.filter((n) => n.guid !== note.guid);
+		if (!note.deleted && !note.tags.includes('system:template')) {
+			next.push(note);
+			// Same comparator as noteStore.getAllNotes (changeDate DESC).
+			next.sort((a, b) => (b.changeDate > a.changeDate ? 1 : -1));
+		}
+		cached = next;
+	}
+	// Cold cache: nothing to patch — the listener fan-out's read-through
+	// fetches fresh committed state anyway.
+	for (const l of listeners) l('mutate');
 }
 
 /**
@@ -45,11 +97,12 @@ export function invalidateCache(): void {
  * the post-invalidate readers (driven by the listener fan-out) re-fetch fresh
  * IDB state instead of seeing pre-invalidate data.
  *
- * The cache stores the FULL note list (the `getAllNotes` shape). It is only
- * invalidated on note-list-shaping mutations (create / rename / delete /
- * notebook), NOT on body-only edits — which is why callers that need
- * changeDate freshness on every read (the 전체 list, home "latest" redirect)
- * use `listNotes()` directly instead of this path.
+ * The cache stores the FULL note list (the `getAllNotes` shape). Editor-path
+ * single-note writes keep it current via the `noteMutated` in-place patch;
+ * bulk/unknown mutations (sync pull, import, purge, admin rollback) drop it
+ * via `invalidateCache()`. Callers that must reflect even bypassing writes
+ * the instant they land (the 전체 list, home "latest" redirect) use
+ * `listNotes()` directly instead of this path.
  */
 export function readThroughNotes(fetch: () => Promise<NoteData[]>): Promise<NoteData[]> {
 	if (cached) return Promise.resolve(cached);
@@ -79,7 +132,7 @@ export function setCachedScrollTop(n: number): void {
 	scrollTop = n;
 }
 
-export function onInvalidate(cb: () => void): () => void {
+export function onInvalidate(cb: (kind: NoteListChangeKind) => void): () => void {
 	listeners.add(cb);
 	return () => listeners.delete(cb);
 }

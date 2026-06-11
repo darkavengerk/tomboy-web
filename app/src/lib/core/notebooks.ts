@@ -4,7 +4,7 @@ import * as noteStore from '$lib/storage/noteStore.js';
 import { generateGuid } from '$lib/utils/guid.js';
 import { getSetting, setSetting } from '$lib/storage/appSettings.js';
 import { notifyNoteSaved } from '$lib/sync/firebase/orchestrator.js';
-import { invalidateCache } from '$lib/stores/noteListCache.js';
+import { invalidateCache, noteMutated } from '$lib/stores/noteListCache.js';
 
 const PREFIX = 'system:notebook:';
 const TEMPLATE = 'system:template';
@@ -77,8 +77,13 @@ export async function assignNotebook(guid: string, name: string | null): Promise
 	note.metadataChangeDate = now;
 	await noteStore.putNote(note);
 	notifyNoteSaved(guid);
-	invalidateCache();
+	// Refresh the notebooks settings-cache BEFORE notifying listeners, so a
+	// listener that re-reads getCachedNotebooks() (desktop SidePanel) sees the
+	// post-assign value instead of racing the refresh.
 	await refreshNotebooksCache();
+	// Single known note changed (its tags) → patch the shared list cache
+	// instead of forcing every index refresher into a full-corpus re-read.
+	noteMutated(note);
 }
 
 /**
@@ -112,6 +117,9 @@ export async function deleteNotebook(name: string): Promise<void> {
 			notifyNoteSaved(n.guid);
 		}
 	}
-	invalidateCache();
+	// Bulk mutation (many member notes retagged) → hard invalidate is the
+	// correct tool; refresh the notebooks cache first so listeners that
+	// re-read it on the invalidate fan-out see the post-delete list.
 	await refreshNotebooksCache();
+	invalidateCache();
 }

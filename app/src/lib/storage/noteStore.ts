@@ -128,16 +128,55 @@ export async function purgeAllLocal(): Promise<void> {
 	await db.clear('notes');
 }
 
-/** Find a non-deleted note by title (exact case). Returns the most recently changed match if the uniqueness invariant is somehow violated. */
+/** Find a non-deleted note by title (exact case). Returns the most recently changed match if the uniqueness invariant is somehow violated.
+ *
+ * Fast path: keyed lookup on the `by-title` IDB index — titles are stored
+ * trimmed (whole-app invariant), so raw-key equality is the common case and
+ * costs O(matches) instead of a full-corpus `getAll` (which deserializes
+ * every note's xmlContent on the main thread).
+ *
+ * Fallback (index miss only): full scan with trimmed comparison, so a
+ * legacy/imported note whose STORED title carries stray whitespace (an
+ * invariant violator — surfaced by the /admin duplicate scan) still
+ * resolves. Known edge: when both a raw-key match and an untrimmed-only
+ * match exist, the raw-key match wins regardless of changeDate — that
+ * state already violates title uniqueness, so deterministic-but-arbitrary
+ * is acceptable.
+ */
 export async function findNoteByTitle(title: string): Promise<NoteData | undefined> {
-	const db = await getDB();
-	const all = await db.getAll('notes');
 	const needle = title.trim();
 	if (!needle) return undefined;
+	const db = await getDB();
+	const indexed = (await db.getAllFromIndex('notes', 'by-title', needle)).filter(
+		(n) => !n.deleted
+	);
+	if (indexed.length > 0) {
+		indexed.sort((a, b) => (b.changeDate > a.changeDate ? 1 : -1));
+		return indexed[0];
+	}
+	const all = await db.getAll('notes');
 	const matches = all.filter(
 		(n) => !n.deleted && n.title.trim() === needle
 	);
 	if (matches.length === 0) return undefined;
 	matches.sort((a, b) => (b.changeDate > a.changeDate ? 1 : -1));
 	return matches[0];
+}
+
+/**
+ * Index-only existence probe: is there a non-deleted note whose RAW stored
+ * title equals `title` (trimmed)?
+ *
+ * Used by `ensureUniqueTitle`, where the candidate almost never exists —
+ * `findNoteByTitle`'s full-scan fallback would fire on every probe and pay a
+ * full-corpus read in the tap→navigate critical path of 새 노트. Deliberately
+ * NO fallback: a legacy untrimmed title won't block a candidate, which at
+ * worst recreates a duplicate the /admin scan already reports.
+ */
+export async function titleExists(title: string): Promise<boolean> {
+	const needle = title.trim();
+	if (!needle) return false;
+	const db = await getDB();
+	const matches = await db.getAllFromIndex('notes', 'by-title', needle);
+	return matches.some((n) => !n.deleted);
 }

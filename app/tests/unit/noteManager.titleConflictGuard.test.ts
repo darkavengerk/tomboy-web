@@ -19,8 +19,10 @@ vi.mock('$lib/storage/noteStore.js', () => ({
 }));
 
 const invalidateCacheSpy = vi.fn();
+const noteMutatedSpy = vi.fn();
 vi.mock('$lib/stores/noteListCache.js', () => ({
-	invalidateCache: () => invalidateCacheSpy()
+	invalidateCache: () => invalidateCacheSpy(),
+	noteMutated: (note: NoteData) => noteMutatedSpy(note)
 }));
 
 const lookupGuidByTitleMock = vi.fn<(title: string) => string | null>();
@@ -63,6 +65,7 @@ beforeEach(() => {
 	store.clear();
 	putSpy.mockReset();
 	invalidateCacheSpy.mockReset();
+	noteMutatedSpy.mockReset();
 	lookupGuidByTitleMock.mockReset();
 	ensureTitleIndexReadySpy.mockClear();
 });
@@ -88,9 +91,10 @@ describe('updateNoteFromEditor — title uniqueness guard', () => {
 
 		const result = await updateNoteFromEditor(note.guid, doc);
 
-		// Defensive guard: no write, no cache invalidation.
+		// Defensive guard: no write, no cache notification of any kind.
 		expect(putSpy).not.toHaveBeenCalled();
 		expect(invalidateCacheSpy).not.toHaveBeenCalled();
+		expect(noteMutatedSpy).not.toHaveBeenCalled();
 
 		// The returned note must be unchanged (original title / xml).
 		expect(result?.title).toBe('Hello');
@@ -128,7 +132,9 @@ describe('updateNoteFromEditor — title uniqueness guard', () => {
 		const result = await updateNoteFromEditor(note.guid, doc);
 
 		expect(putSpy).toHaveBeenCalledTimes(1);
-		expect(invalidateCacheSpy).toHaveBeenCalledTimes(1);
+		// Single-note save → in-place cache patch, NOT a hard invalidate.
+		expect(noteMutatedSpy).toHaveBeenCalledTimes(1);
+		expect(invalidateCacheSpy).not.toHaveBeenCalled();
 		expect(result?.title).toBe('Renamed');
 		expect(store.get(note.guid)?.title).toBe('Renamed');
 	});
@@ -150,7 +156,9 @@ describe('updateNoteFromEditor — title uniqueness guard', () => {
 		const result = await updateNoteFromEditor(note.guid, doc);
 
 		expect(putSpy).toHaveBeenCalledTimes(1);
-		expect(invalidateCacheSpy).toHaveBeenCalledTimes(1);
+		// Single-note save → in-place cache patch, NOT a hard invalidate.
+		expect(noteMutatedSpy).toHaveBeenCalledTimes(1);
+		expect(invalidateCacheSpy).not.toHaveBeenCalled();
 		expect(result?.title).toBe('NewName');
 		expect(ensureTitleIndexReadySpy).toHaveBeenCalled();
 	});
@@ -174,7 +182,9 @@ describe('updateNoteFromEditor — title uniqueness guard', () => {
 		expect(putSpy).toHaveBeenCalledTimes(1);
 		expect(ensureTitleIndexReadySpy).not.toHaveBeenCalled();
 		expect(lookupGuidByTitleMock).not.toHaveBeenCalled();
-		// Body-only edits should not invalidate the shared cache either.
+		// Body-only edits patch the shared cache (changeDate freshness) but
+		// must never trigger a hard invalidate / full-corpus refetch.
+		expect(noteMutatedSpy).toHaveBeenCalledTimes(1);
 		expect(invalidateCacheSpy).not.toHaveBeenCalled();
 		expect(result?.title).toBe('Hello');
 		expect(serializeContent(doc)).toContain('new body text');

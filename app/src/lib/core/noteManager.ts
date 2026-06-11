@@ -10,7 +10,7 @@ import { emitNoteReload, emitNoteFlush } from './noteReloadBus.js';
 import * as noteStore from '$lib/storage/noteStore.js';
 import * as backlinkIndex from './backlinkIndex.js';
 import { generateGuid } from '$lib/utils/guid.js';
-import { invalidateCache, readThroughNotes } from '$lib/stores/noteListCache.js';
+import { invalidateCache, noteMutated, readThroughNotes } from '$lib/stores/noteListCache.js';
 import { ensureTitleIndexReady, lookupGuidByTitle } from '$lib/editor/autoLink/titleProvider.js';
 import { checkTitleConflict } from '$lib/editor/titleUniqueGuard.js';
 import { pushToast } from '$lib/stores/toast.js';
@@ -34,11 +34,16 @@ export function formatDateTimeTitle(date: Date): string {
 	return `${yyyy}-${MM}-${dd} ${HH}:${mm}`;
 }
 
-/** Append " (2)", " (3)", … until the title is not in use by any note. */
+/** Append " (2)", " (3)", … until the title is not in use by any note.
+ *
+ * Uses the index-only `titleExists` probe rather than `findNoteByTitle`:
+ * the candidate almost never exists, and on a miss `findNoteByTitle` falls
+ * back to a full-corpus scan — which sat directly in the tap→navigate
+ * critical path of every 새 노트 creation. */
 export async function ensureUniqueTitle(base: string): Promise<string> {
 	let candidate = base;
 	let n = 2;
-	while (await noteStore.findNoteByTitle(candidate)) {
+	while (await noteStore.titleExists(candidate)) {
 		candidate = `${base} (${n})`;
 		n++;
 	}
@@ -88,7 +93,10 @@ export async function createNote(initialTitle?: string): Promise<NoteData> {
 	// cannot resolve it. The debounced push queue coalesces this with any
 	// follow-up edit that lands within the debounce window.
 	notifyNoteSaved(guid);
-	invalidateCache();
+	// Patch (not invalidate) the shared list cache: a single known note was
+	// written, so downstream index refreshes can stay in-memory instead of
+	// re-reading the full corpus from IDB.
+	noteMutated(note);
 	return note;
 }
 
@@ -133,15 +141,16 @@ export async function updateNoteFromEditor(guid: string, doc: JSONContent): Prom
 
 	await noteStore.putNote(note);
 	notifyNoteSaved(guid);
-	// Only invalidate the shared note-list cache when the title changed.
-	// Body-only edits don't affect any derived views that matter while the
-	// user is actively typing (the title list for auto-linking, notebook
-	// chips, etc.), so skipping invalidate here avoids a cascade where every
-	// keystroke's debounced save triggers a full titleProvider refetch +
-	// full-doc auto-link rescan. List pages remount on navigation and
-	// refetch fresh data then.
+	// Patch (not invalidate) the shared note-list cache on every real write.
+	// While the user types a title EVERY debounced save lands here with
+	// titleChanged=true, and the old hard invalidate forced a cold
+	// full-corpus getAll per save — the dominant 새 노트 jank source. The
+	// patch keeps the cache identical to committed IDB state for pure
+	// in-memory cost; downstream refreshers' equivalence guards
+	// (entriesEquivalent / sameSet) then drop body-only fan-outs before any
+	// editor rescan is scheduled.
+	noteMutated(note);
 	if (titleChanged) {
-		invalidateCache();
 		// Rewrite backlinks: every OTHER note that stored
 		// <link:internal>oldTitle</link:internal> (or broken) still holds the
 		// OLD title as text — Tomboy's auto-link marks store the title
@@ -258,14 +267,15 @@ export async function listNotes(): Promise<NoteData[]> {
 
 /**
  * Read-through, cache-shared variant of `listNotes()` for the in-memory
- * index refreshers (auto-link title index + slip-note guid set). Both fire on
- * the same `invalidateCache()`; routing them through the shared
- * `readThroughNotes` cache collapses what were TWO full `getAllNotes()` scans
- * per invalidation into one. Body-only edits don't invalidate the cache, but
- * those indexes only read (title, notebook) — neither of which a body edit
- * changes — so a body-stale cache is still correct for them. Freshness-
- * sensitive callers (the 전체 list, home "latest" redirect) stay on
- * `listNotes()`.
+ * index refreshers (auto-link title index + slip-note guid set) and the
+ * desktop SidePanel. All fire on the same listener fan-out; routing them
+ * through the shared `readThroughNotes` cache collapses what were multiple
+ * full `getAllNotes()` scans per change into AT MOST one — and editor-path
+ * mutations (`noteMutated`) patch the warm cache in place, so the steady
+ * state is ZERO IDB reads per save. Freshness-absolutist callers (the 전체
+ * list, home "latest" redirect) stay on `listNotes()`, which also covers
+ * write paths that bypass the patch and rely on bulk `invalidateCache()`
+ * (sync pull, import, purge, admin rollback).
  */
 export async function listNotesShared(): Promise<NoteData[]> {
 	return readThroughNotes(() => noteStore.getAllNotes());
