@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { Editor } from "@tiptap/core";
-	import { installCursorVisibility } from "./keepCursorVisible.js";
+	import {
+		installCursorVisibility,
+		shouldDeferScrollToSelection,
+	} from "./keepCursorVisible.js";
 	import { applyCommandModeKeyboard } from "./commandModeKeyboard.js";
 	import StarterKit from "@tiptap/starter-kit";
 	import Highlight from "@tiptap/extension-highlight";
@@ -710,16 +713,19 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 				scheduleAutoLinkScan();
 			},
 			editorProps: {
-				// When PM itself scrolls the selection into view (Enter, paste,
-				// commands), keep the caret clear of the fixed bottom toolbar.
-				// Static buffer ≈ toolbar dock height; plain character typing is
-				// scrolled by the browser natively and refined afterwards by
-				// installCursorVisibility(). No-op visual effect off the mobile
-				// route since nothing overlaps the caret there.
+				// Downward caret reveals are owned by installCursorVisibility()
+				// (it knows the live --toolbar-height and the true visual-viewport
+				// bottom incl. offsetTop). The old static scrollMargin/Threshold
+				// {bottom:60} double-corrected against it whenever the toolbar
+				// height drifted from 60, and PM scrolls on EVERY mobile virtual-
+				// keyboard keystroke (readDOMChange always sets scrollIntoView)
+				// with a window rect that ignores vv.offsetTop — phantom scrolls
+				// on iOS. Upward reveals / range selections / unfocused views
+				// stay with PM (returning false keeps its default behaviour).
 				...(keepCursorVisible
 					? {
-							scrollMargin: { top: 8, right: 0, bottom: 60, left: 0 },
-							scrollThreshold: { top: 8, right: 0, bottom: 60, left: 0 },
+							handleScrollToSelection: (view: Editor["view"]) =>
+								shouldDeferScrollToSelection(view, cursorVisibilityMode),
 						}
 					: {}),
 				handleKeyDown: (_view, event) => {

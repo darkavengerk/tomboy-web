@@ -17,6 +17,7 @@
 	import { attachOpenNote, detachOpenNote } from '$lib/sync/firebase/orchestrator.js';
 	import type { NoteData } from '$lib/core/note.js';
 	import { createTitleProvider } from '$lib/editor/autoLink/titleProvider.js';
+	import { isEditorAreaWhitespaceClick } from '$lib/editor/editorAreaClick.js';
 	import { findAdjacentDateNotes } from '$lib/editor/dateLink/findAdjacentDateNotes.js';
 	import TomboyEditor from '$lib/editor/TomboyEditor.svelte';
 	import Toolbar from '$lib/editor/Toolbar.svelte';
@@ -335,12 +336,13 @@
 	// Tap on whitespace anywhere in the editor area → focus at end of doc.
 	// Short notes leave a large empty region inside `.editor-area` below the
 	// content; without this, the user has to land precisely on text to bring
-	// up the keyboard. Clicks on the actual contenteditable (`.tiptap`) are
-	// left alone so the browser's native cursor placement still wins.
+	// up the keyboard. Clicks on the contenteditable (`.tiptap`), on the bars
+	// mounted in this area (music / chat / remarkable — they don't
+	// stopPropagation) and on any interactive element are excluded by the
+	// predicate — focus('end') scrolls to the document end, so a leak here is
+	// a full-page jump mid-read (see editorAreaClick.ts).
 	function handleEditorAreaClick(event: MouseEvent) {
-		const target = event.target as HTMLElement | null;
-		if (!target) return;
-		if (target.closest('.tiptap')) return;
+		if (!isEditorAreaWhitespaceClick(event.target as Element | null)) return;
 		const ed = getEditor();
 		if (!ed) return;
 		ed.commands.focus('end');
