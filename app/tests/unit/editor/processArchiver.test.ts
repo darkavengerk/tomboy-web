@@ -121,7 +121,8 @@ describe('process block depth-3 checkbox marker serialization', () => {
 		expect(xml).toContain('[[X]] 세부');
 	});
 
-	it('depth-3 [[ ]] text outside a process block stays literal on parse', () => {
+	it('depth-3 [[ ]] text outside a process block is per-item checkbox on parse', () => {
+		// Task 3 이후: 영역 밖 [[ ]] 는 어떤 깊이에서도 per-item checkbox 마커.
 		const xml = wrap(
 			'제목\n그냥 목록\n<list>' +
 				'<list-item dir="ltr">카드\n<list>' +
@@ -135,8 +136,12 @@ describe('process block depth-3 checkbox marker serialization', () => {
 		const card = doc.content![2].content![0];
 		const sub = card.content![1].content![0];
 		const step = sub.content![1].content![0];
-		// 프로세스 블록이 아니므로 마커는 평문 텍스트로 남는다.
-		expect(step.content![0].content![0].text).toBe('[[ ]] 세부');
+		// 프로세스 블록이 아니므로 체크리스트 영역 처리는 없지만,
+		// listBox 전역 패스가 [[ ]] 를 per-item checkbox 마커로 처리한다.
+		expect(step.attrs!.boxKind).toBe('checkbox');
+		expect(step.attrs!.checked).toBe(false);
+		expect(step.content![0].content![0].text).toBe('세부');
+		expect(serializeContent(doc)).toBe(xml);
 	});
 
 	it('checklist region header as a stage header: checklist takes precedence (all depths marked)', () => {
