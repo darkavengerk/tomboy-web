@@ -13,8 +13,8 @@
 	 * 파생한다. EditorComponent 는 TomboyEditor 자신 (셀프 임포트 주입) —
 	 * 이 파일이 직접 임포트하면 순환이 생기므로 prop 으로 받는다.
 	 */
-	import { onMount, onDestroy, untrack } from 'svelte';
-	import { flip } from 'svelte/animate';
+	import { onMount, onDestroy, untrack, tick } from 'svelte';
+	import { cubicOut } from 'svelte/easing';
 	import type { Component } from 'svelte';
 	import type { EditorView } from '@tiptap/pm/view';
 	import type { JSONContent } from '@tiptap/core';
@@ -317,7 +317,66 @@
 		if (target < 0 || target >= resolved.length || target === k) return;
 		const entry = resolved[target];
 		if (entry.broken) return;
+		const dir: 1 | -1 = target > k ? 1 : -1;
+		const prevTops = captureTops();
 		selectBundleEntry(view, spec.ordinal, entry.originalIndex);
+		void animateFlow(prevTops, dir);
+	}
+
+	// --- 흐름 애니메이션 --------------------------------------------------------
+	// animate:flip 은 keyed each 의 "재배열"만 잡는다 — 윈도우가 가장자리에
+	// 핀돼 활성만 바뀌는 스텝(배열 동일, body order 만 이동)에선 무반응이라
+	// 텍스트 교체처럼 보였다. 수동 FLIP 으로 통일: 스텝 전 offsetTop 스냅샷
+	// (transform 면역 — 진행 중 애니메이션과 무관) → 렌더 정착 후 비교.
+	function captureTops(): Map<Element, number> {
+		const m = new Map<Element, number>();
+		rootEl?.querySelectorAll('.bundle-bar, .bundle-body').forEach((el) => {
+			m.set(el, (el as HTMLElement).offsetTop);
+		});
+		return m;
+	}
+	/** 실제 이동한 요소 = FLIP(이전→현재), 제자리 바 = 진행 방향 너지,
+	 *  새로 들어온 바 = 방향에서 슬라이드-인. 제자리 body 는 생략(무겁고 산만). */
+	async function animateFlow(prevTops: Map<Element, number>, dir: 1 | -1) {
+		await tick(); // winStart follow effect → 재렌더 정착까지 2틱
+		await tick();
+		rootEl?.querySelectorAll('.bundle-bar, .bundle-body').forEach((el) => {
+			const node = el as HTMLElement;
+			const old = prevTops.get(el);
+			const isBar = node.classList.contains('bundle-bar');
+			let fromY: number;
+			let fromOpacity = 1;
+			if (old === undefined) {
+				if (!isBar) return;
+				fromY = dir * 16; // 새 바 — 진행 방향에서 진입
+				fromOpacity = 0;
+			} else {
+				const dy = old - node.offsetTop;
+				if (Math.abs(dy) > 1) fromY = dy;
+				else if (isBar) fromY = dir * 8; // 제자리 바 — 흐름 너지
+				else return;
+			}
+			node.animate(
+				[
+					{ transform: `translateY(${fromY}px)`, opacity: String(fromOpacity) },
+					{ transform: 'translateY(0)', opacity: '1' }
+				],
+				{ duration: 160, easing: 'ease-out' }
+			);
+		});
+	}
+	/** 윈도우에서 밀려나는 바 — 오른쪽으로 사라짐 (+N 배지에 흡수되는 느낌).
+	 *  position:absolute 로 즉시 플로우에서 빼 생존 바 FLIP 측정을 안 깨뜨린다. */
+	function flyOutRight(node: HTMLElement) {
+		const top = node.offsetTop;
+		const width = node.offsetWidth;
+		return {
+			duration: 160,
+			easing: cubicOut,
+			css: (t: number, u: number) =>
+				`position:absolute; top:${top}px; left:0; width:${width}px; margin:0; ` +
+				`pointer-events:none; transform:translateX(${u * 48}px); opacity:${t};`
+		};
 	}
 	function step(dir: 1 | -1) {
 		if (k < 0) return;
@@ -449,7 +508,7 @@
 			}}
 		>
 			{#each winEntries as e, i (e.originalIndex)}
-				<!-- animate:flip 은 keyed each 직계 자식이어야 한다 → 활성도 button 으로 통일 -->
+				<!-- 이동/너지 애니메이션은 animateFlow(수동 FLIP)가 담당 -->
 				<button
 					type="button"
 					class="bundle-bar"
@@ -457,7 +516,7 @@
 					class:expanded-bar={winStart + i === k}
 					data-idx={winStart + i}
 					style:order={i * 2}
-					animate:flip={{ duration: 150 }}
+					out:flyOutRight
 				>
 					<span class="bar-title">{e.title}</span>
 					{#if i === 0 && hiddenAbove > 0}
@@ -510,6 +569,7 @@
 		background: #1e1e1e;
 	}
 	.bundle-list {
+		position: relative; /* flyOutRight absolute 기준 + offsetTop 기준 */
 		flex: 1;
 		min-height: 0;
 		display: flex;
@@ -532,6 +592,7 @@
 		cursor: pointer;
 		touch-action: none; /* 바에서 시작한 스와이프가 pointercancel 로 죽지 않게 */
 		user-select: none;
+		transition: background-color 160ms ease-out; /* 활성 바 전환도 흐름에 묻어가게 */
 	}
 	.bar-title {
 		flex: 1;
