@@ -125,9 +125,23 @@
 		const el = rootEl;
 		if (!el) return;
 		const stop = (e: Event) => e.stopPropagation();
-		for (const t of ISOLATED_EVENTS) el.addEventListener(t, stop);
+		// Ctrl/Cmd+Home/End 의 네이티브 동작은 "editing host 의 처음/끝으로
+		// 캐럿 이동"인데, 크롬은 중첩 편집 섬에서 바깥 에디터를 호스트로
+		// 보고 캐럿을 탈출시킨다 → 이후 타이핑이 호스트 노트를 오염.
+		// stopPropagation 으로는 못 막으므로 이 둘만 기본 동작을 차단한다.
+		const stopKeydown = (e: Event) => {
+			const ke = e as KeyboardEvent;
+			if ((ke.ctrlKey || ke.metaKey) && (ke.key === 'Home' || ke.key === 'End')) {
+				ke.preventDefault();
+			}
+			ke.stopPropagation();
+		};
+		const pairs: Array<[string, (e: Event) => void]> = ISOLATED_EVENTS.map(
+			(t) => [t, t === 'keydown' ? stopKeydown : stop]
+		);
+		for (const [t, h] of pairs) el.addEventListener(t, h);
 		return () => {
-			for (const t of ISOLATED_EVENTS) el.removeEventListener(t, stop);
+			for (const [t, h] of pairs) el.removeEventListener(t, h);
 		};
 	});
 
