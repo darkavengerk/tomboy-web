@@ -174,11 +174,35 @@
 		// 캐럿 이동"인데, 크롬은 중첩 편집 섬에서 바깥 에디터를 호스트로
 		// 보고 캐럿을 탈출시킨다 → 이후 타이핑이 호스트 노트를 오염.
 		// stopPropagation 으로는 못 막으므로 이 둘만 기본 동작을 차단한다.
+		//
+		// 화살표/Page 키도 같은 계열: 임베디드 문서의 첫/끝 줄에서 ↑/↓ 가
+		// 경계를 넘어 호스트 editable 로 캐럿을 탈출시킨다. 이들은 줄 내
+		// 이동에 필요해서 preventDefault 로 일괄 차단할 수 없다 — 이동 후
+		// 탈출이 감지되면 키 이전 위치로 복원한다.
+		const NAV_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown']);
+		const guardCaretEscape = () => {
+			const sel = document.getSelection();
+			if (!sel || sel.rangeCount === 0) return;
+			const before = sel.getRangeAt(0).cloneRange();
+			setTimeout(() => {
+				const s = document.getSelection();
+				const n = s?.anchorNode;
+				const anchorEl = n ? (n.nodeType === Node.ELEMENT_NODE ? (n as Element) : n.parentElement) : null;
+				if (!anchorEl || rootEl?.contains(anchorEl)) return; // 섬 안 — 정상 이동
+				// 탈출 → 임베디드 에디터로 포커스 + 캐럿 원위치
+				const bc = before.startContainer;
+				const bcEl = bc.nodeType === Node.ELEMENT_NODE ? (bc as Element) : bc.parentElement;
+				bcEl?.closest<HTMLElement>('.ProseMirror')?.focus({ preventScroll: true });
+				s?.removeAllRanges();
+				s?.addRange(before);
+			}, 0);
+		};
 		const stopKeydown = (e: Event) => {
 			const ke = e as KeyboardEvent;
 			if ((ke.ctrlKey || ke.metaKey) && (ke.key === 'Home' || ke.key === 'End')) {
 				ke.preventDefault();
 			}
+			if (NAV_KEYS.has(ke.key)) guardCaretEscape();
 			ke.stopPropagation();
 		};
 		const pairs: Array<[string, (e: Event) => void]> = ISOLATED_EVENTS.map(
