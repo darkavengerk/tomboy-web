@@ -331,18 +331,20 @@
 	function flipWheel(e: WheelEvent) {
 		e.preventDefault(); // ctrl+wheel 브라우저 줌 차단 겸용
 		e.stopPropagation();
+		// 방향 반전 시 잔여 폐기 — 반대 방향 첫 응답이 굼뜨지 않게
+		if (Math.sign(e.deltaY) !== Math.sign(wheelAcc)) wheelAcc = 0;
 		wheelAcc += e.deltaY;
-		// 한 이벤트당 실질 한 칸 — k 는 dispatch 후에야 갱신되므로 루프 2회째부터는
-		// 같은 target 으로 no-op. 플링이 여러 칸을 건너뛰지 않게 하는 의도된 동작.
-		while (wheelAcc >= 50) {
+		// 이벤트당 최대 한 칸. selectBundleEntry 의 dispatch 는 동기라 k 가
+		// 핸들러 안에서 즉시 갱신된다 — 누적 while 루프는 휠 한 칸(deltaY≈100)에
+		// 두 스텝을 만들었다(threshold 50 + 잔여 이월). 스텝 후 잔여를 버려
+		// 노치당 정확히 한 칸으로 고정; 트랙패드 미세 델타는 50까지 누적 후 발동.
+		if (wheelAcc >= 50) {
 			step(1);
-			wheelAcc -= 50;
-		}
-		while (wheelAcc <= -50) {
+			wheelAcc = 0;
+		} else if (wheelAcc <= -50) {
 			step(-1);
-			wheelAcc += 50;
+			wheelAcc = 0;
 		}
-		wheelAcc = Math.max(-49, Math.min(49, wheelAcc));
 	}
 	function handleListWheel(e: Event) {
 		const we = e as WheelEvent;
