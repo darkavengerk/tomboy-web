@@ -251,27 +251,35 @@
 	}
 
 	let swipeY: number | null = null;
+	let downBarIdx: number | null = null;
+	let downBarY = 0;
+	let swiped = false;
 	function handleBarsPointerDown(e: PointerEvent) {
 		swipeY = e.clientY;
+		downBarY = e.clientY;
+		swiped = false;
+		const btn = (e.target as HTMLElement).closest?.('button.bundle-bar') as HTMLElement | null;
+		downBarIdx = btn ? Number(btn.dataset.idx) : null;
 		try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* pointer already released */ }
 	}
 	function handleBarsPointerMove(e: PointerEvent) {
 		if (swipeY === null) return;
 		const dy = e.clientY - swipeY;
 		if (Math.abs(dy) >= 30) {
+			swiped = true;
 			step(dy < 0 ? 1 : -1); // 위로 끌면 다음 파일철
 			swipeY = e.clientY;
 		}
 	}
-	function handleBarsPointerUp() {
+	function handleBarsPointerUp(e: Event) {
+		const pe = e as PointerEvent;
+		// 캡처가 click 을 컨테이너로 retarget 하므로 click 대신 pointerup 에서
+		// 탭(이동 거의 없음)을 판정한다.
+		if (!swiped && downBarIdx !== null && Math.abs(pe.clientY - downBarY) < 8) {
+			moveTo(downBarIdx);
+		}
 		swipeY = null;
-	}
-
-	function handleBarsClick(e: Event) {
-		const btn = (e.target as HTMLElement).closest?.('button.bundle-bar');
-		if (!btn) return;
-		const idx = Number((btn as HTMLElement).dataset.idx);
-		if (Number.isFinite(idx)) moveTo(idx);
+		downBarIdx = null;
 	}
 
 	// --- 하단 리사이즈 핸들 -------------------------------------------------------
@@ -309,8 +317,7 @@
 				pointerdown: handleBarsPointerDown as (e: Event) => void,
 				pointermove: handleBarsPointerMove as (e: Event) => void,
 				pointerup: handleBarsPointerUp,
-				pointercancel: handleBarsPointerUp,
-				click: handleBarsClick
+				pointercancel: handleBarsPointerUp
 			}}
 		>
 			{#each bars as bar, i (barStart + i)}
