@@ -134,6 +134,7 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 	import { createFootnoteClaudePlugin } from "./footnote/claudePlugin.js";
 	import { TomboyInlineCheckbox, insertInlineCheckbox } from './inlineCheckbox';
 	import { TomboyInlineRadio, insertInlineRadio } from './inlineRadio';
+	import { TomboyListBox, toggleRadioAt } from './listBox/index.js';
 	import { TomboyBlockquote } from "./blockquote/index.js";
 	import { createFindPlugin, findPluginKey } from "./find/findPlugin.js";
 	import FindBar from "./find/FindBar.svelte";
@@ -672,6 +673,18 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 						const ed = editor;
 						if (!ed || ed.isDestroyed) return;
 						toggleCheckboxAt(ed, liPos);
+					},
+				}),
+				TomboyListBox.configure({
+					onToggleCheck: (liPos) => {
+						const ed = editor;
+						if (!ed || ed.isDestroyed) return;
+						toggleCheckboxAt(ed, liPos);
+					},
+					onToggleRadio: (liPos) => {
+						const ed = editor;
+						if (!ed || ed.isDestroyed) return;
+						toggleRadioAt(ed, liPos);
 					},
 				}),
 				FootnoteMarker,
@@ -2634,6 +2647,34 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		background-repeat: no-repeat;
 		background-position: center;
 		background-size: contain;
+	}
+
+	/* 항목 단위 라디오 — listBox 플러그인이 boxKind='radio' listItem 에
+	   .tomboy-radio-item 노드 데코와 첫 문단 시작에 .tomboy-radio-box
+	   위젯을 단다. checkbox kind 는 위 체크리스트 CSS 를 그대로 재사용. */
+	.tomboy-editor :global(li.tomboy-radio-item) {
+		list-style: none;
+	}
+	.tomboy-editor :global(.tomboy-radio-box) {
+		display: inline-block;
+		width: 1em;
+		height: 1em;
+		margin-right: 0.4em;
+		padding: 0;
+		vertical-align: -0.12em;
+		border: 1.5px solid #888;
+		border-radius: 50%;
+		background: #fff;
+		cursor: pointer;
+	}
+	.tomboy-editor :global(.tomboy-radio-box.is-selected) {
+		border-color: #1565c0;
+		background: radial-gradient(
+			circle,
+			#1565c0 0%,
+			#1565c0 45%,
+			#fff 55%
+		);
 	}
 
 	/* 각주 [^N] — footnoteMarker atomic 노드의 NodeView (footnote/node.ts) 가

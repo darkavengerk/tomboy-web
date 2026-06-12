@@ -9,11 +9,26 @@
 import { Extension } from '@tiptap/core';
 
 import { createListBoxInputRules } from './inputRules.js';
+import {
+	createListBoxPlugin,
+	listBoxPluginKey,
+	type ListBoxPluginOptions
+} from './plugin.js';
 
 export { getExcludedListRanges, posInExcludedList } from './regions.js';
+export { toggleRadioAt } from './commands.js';
+export { listBoxPluginKey };
+export type { ListBoxPluginOptions };
 
-export const TomboyListBox = Extension.create({
+export const TomboyListBox = Extension.create<ListBoxPluginOptions>({
 	name: 'tomboyListBox',
+
+	addOptions() {
+		return {
+			onToggleCheck: () => {},
+			onToggleRadio: () => {}
+		};
+	},
 
 	addInputRules() {
 		return createListBoxInputRules();
@@ -45,5 +60,9 @@ export const TomboyListBox = Extension.create({
 				});
 			}
 		};
+	},
+
+	addProseMirrorPlugins() {
+		return [createListBoxPlugin(this.options)];
 	}
 });
