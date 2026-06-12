@@ -7,6 +7,7 @@ import {
 	setCachedScrollTop,
 	invalidateCache,
 	noteMutated,
+	getEpoch,
 	onInvalidate,
 	readThroughNotes
 } from '$lib/stores/noteListCache.js';
@@ -219,5 +220,32 @@ describe('noteListCache.noteMutated', () => {
 		noteMutated(full('a', '2024-01-01T00:00:00Z'));
 		invalidateCache();
 		expect(kinds).toEqual(['mutate', 'invalidate']);
+	});
+
+	it('setCachedNotes with a stale epoch token cannot overwrite a newer patch', () => {
+		setCachedNotes([full('a', '2024-01-01T00:00:00Z')]);
+		// The /notes page captures the epoch, then fetches its own snapshot...
+		const asOf = getEpoch();
+		const staleSnapshot = [full('a', '2024-01-01T00:00:00Z')];
+		// ...but a save lands (and patches the cache) before the fetch returns.
+		noteMutated(full('b', '2024-02-01T00:00:00Z'));
+		setCachedNotes(staleSnapshot, asOf);
+		// The patched state survives; the stale snapshot was dropped.
+		expect(getCachedNotes()!.map((n) => n.guid)).toEqual(['b', 'a']);
+	});
+
+	it('setCachedNotes with a current epoch token (or none) still writes', () => {
+		const asOf = getEpoch();
+		setCachedNotes([full('a', '2024-01-01T00:00:00Z')], asOf);
+		expect(getCachedNotes()!.map((n) => n.guid)).toEqual(['a']);
+		setCachedNotes([full('b', '2024-02-01T00:00:00Z')]);
+		expect(getCachedNotes()!.map((n) => n.guid)).toEqual(['b']);
+	});
+
+	it('setCachedNotes with a pre-invalidate token is dropped too', () => {
+		const asOf = getEpoch();
+		invalidateCache();
+		setCachedNotes([full('stale', '2024-01-01T00:00:00Z')], asOf);
+		expect(getCachedNotes()).toBeNull();
 	});
 });

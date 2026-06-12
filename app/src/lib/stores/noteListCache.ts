@@ -22,15 +22,52 @@ const listeners = new Set<(kind: NoteListChangeKind) => void>();
 let inFlight: Promise<NoteData[]> | null = null;
 let epoch = 0;
 
+// ── Cross-context invalidation bridge ───────────────────────────────────────
+// The desktop workspace embeds /admin and /settings as IFRAMES (AdminWindow /
+// SettingsWindow). Each browsing context loads its OWN instance of this
+// module, so an invalidateCache() fired inside an iframe (sync pull, import,
+// admin rollback) would never reach the parent workspace's warm cache on its
+// own — and since single-note saves only PATCH the cache, nothing in the
+// parent would ever heal it. Bridge HARD invalidations over a
+// BroadcastChannel. Only 'invalidate' is bridged: 'mutate' patches can't ship
+// their object across contexts, and a remote hard-invalidate per debounced
+// save would resurrect the full-corpus refetch this cache exists to avoid
+// (iframe contexts host no long-lived cache consumers anyway).
+const bridge =
+	typeof BroadcastChannel !== 'undefined'
+		? new BroadcastChannel('tomboy-note-list-cache')
+		: null;
+if (bridge) {
+	bridge.onmessage = () => {
+		invalidateLocal();
+	};
+	// Node's BroadcastChannel (vitest) would otherwise hold the event loop open.
+	(bridge as unknown as { unref?: () => void }).unref?.();
+}
+
 export function getCachedNotes(): NoteData[] | null {
 	return cached;
 }
 
-export function setCachedNotes(n: NoteData[]): void {
+/**
+ * Replace the cached list with a freshly-fetched snapshot.
+ *
+ * `asOfEpoch` (capture `getEpoch()` BEFORE starting the fetch) guards against
+ * overwriting newer state: if an invalidate or a `noteMutated` patch landed
+ * while the snapshot was being fetched, the stale snapshot is dropped.
+ * Omitting it keeps the old unconditional behaviour (callers that fetched
+ * synchronously w.r.t. the cache, e.g. tests).
+ */
+export function setCachedNotes(n: NoteData[], asOfEpoch?: number): void {
+	if (asOfEpoch !== undefined && asOfEpoch !== epoch) return;
 	cached = n;
 }
 
-export function invalidateCache(): void {
+export function getEpoch(): number {
+	return epoch;
+}
+
+function invalidateLocal(): void {
 	cached = null;
 	// Abandon any in-flight read-through: its result predates this
 	// invalidation, so callers triggered by the listener fan-out below must
@@ -38,6 +75,13 @@ export function invalidateCache(): void {
 	inFlight = null;
 	epoch++;
 	for (const l of listeners) l('invalidate');
+}
+
+export function invalidateCache(): void {
+	invalidateLocal();
+	// Notify sibling browsing contexts (desktop iframes ↔ parent workspace).
+	// postMessage never loops back to this context's own channel instance.
+	bridge?.postMessage('invalidate');
 }
 
 /**
@@ -54,6 +98,12 @@ export function invalidateCache(): void {
  *
  * The qualify filter (non-deleted, non-template) MUST stay in lock-step
  * with `noteStore.getAllNotes` — the cache stores exactly that shape.
+ *
+ * Cached entries are NON-AUTHORITATIVE for sync bookkeeping fields
+ * (`localDirty`, `syncedXmlContent`): `putNote` injects those at write time
+ * while the patch stores the caller's object. Cache consumers (title index,
+ * slip-note set, list UIs) must not read sync bookkeeping off this cache —
+ * sync code reads IDB directly (`getDirtyNotes`).
  *
  * Use `invalidateCache()` instead for bulk or unknown mutations (sync pull,
  * import, purge, admin rollback): patching is only sound when the caller
@@ -77,6 +127,10 @@ export function noteMutated(note: NoteData): void {
 			next.sort((a, b) => (b.changeDate > a.changeDate ? 1 : -1));
 		}
 		cached = next;
+		// The patch advances cache state: bump the epoch so a direct-read
+		// snapshot fetched BEFORE this patch (e.g. the /notes page's
+		// listNotes() + setCachedNotes flow) can't overwrite it.
+		epoch++;
 	}
 	// Cold cache: nothing to patch — the listener fan-out's read-through
 	// fetches fresh committed state anyway.

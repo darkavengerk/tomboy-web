@@ -32,6 +32,7 @@
 	import { createBellRinger } from './terminalBell.js';
 	import { subscribeNoteReload } from '$lib/core/noteReloadBus.js';
 	import { getNote, putNote } from '$lib/storage/noteStore.js';
+	import { noteMutated } from '$lib/stores/noteListCache.js';
 	import { deserializeContent } from '$lib/core/noteContentArchiver.js';
 	import { parseTerminalNote, rewriteSpectateLine } from './parseTerminalNote.js';
 	import { type StickyMods, computeStickyKeySequence, applyStickyToText } from './stickyMods.js';
@@ -588,12 +589,15 @@
 			return;
 		}
 		const now = formatTomboyDate(new Date());
-		await putNote({
+		const stored = {
 			...note,
 			xmlContent: updated,
 			changeDate: now,
 			metadataChangeDate: now
-		});
+		};
+		await putNote(stored);
+		// Bypasses noteManager — patch the warm shared cache ourselves.
+		noteMutated(stored);
 	}
 
 	/**

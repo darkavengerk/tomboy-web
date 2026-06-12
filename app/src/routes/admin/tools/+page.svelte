@@ -308,6 +308,10 @@
 			progress = '기존 로컬 상태 삭제 중...';
 			await purgeAllLocal();
 			await clearManifest();
+			// Invalidate immediately after the wipe (not only at restore
+			// success below) — if any import step throws into the catch, the
+			// warm cache must not keep serving the purged corpus.
+			invalidateCache();
 
 			const dirtySet = new Set(localState?.dirtyGuids ?? []);
 

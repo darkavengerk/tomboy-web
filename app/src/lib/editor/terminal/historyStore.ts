@@ -3,6 +3,7 @@ import { getNote, putNote } from '$lib/storage/noteStore.js';
 import { formatTomboyDate } from '$lib/core/note.js';
 import { deserializeContent, serializeContent } from '$lib/core/noteContentArchiver.js';
 import { emitNoteReload } from '$lib/core/noteReloadBus.js';
+import { noteMutated } from '$lib/stores/noteListCache.js';
 import { notifyNoteSaved } from '$lib/sync/firebase/orchestrator.js';
 import { parseTerminalNote, HISTORY_HEADER_RE, CONNECT_HEADER_RE, PINNED_HEADER_RE } from './parseTerminalNote.js';
 
@@ -113,6 +114,10 @@ async function applyBatch(guid: string, commands: string[], windowKey: string): 
 	note.changeDate = now;
 	note.metadataChangeDate = now;
 	await putNote(note);
+	// Keep the warm shared note-list cache current (changeDate/xml) — these
+	// writes bypass noteManager, so without this the patched cache would
+	// serve a stale row for the terminal note until the next hard invalidate.
+	noteMutated(note);
 	notifyNoteSaved(guid);
 	await emitNoteReload([guid]);
 }
@@ -145,6 +150,10 @@ export async function removeCommandFromTerminalHistory(
 	note.changeDate = now;
 	note.metadataChangeDate = now;
 	await putNote(note);
+	// Keep the warm shared note-list cache current (changeDate/xml) — these
+	// writes bypass noteManager, so without this the patched cache would
+	// serve a stale row for the terminal note until the next hard invalidate.
+	noteMutated(note);
 	notifyNoteSaved(guid);
 	await emitNoteReload([guid]);
 }
@@ -166,6 +175,10 @@ export async function clearTerminalHistory(guid: string, windowKey?: string): Pr
 	note.changeDate = now;
 	note.metadataChangeDate = now;
 	await putNote(note);
+	// Keep the warm shared note-list cache current (changeDate/xml) — these
+	// writes bypass noteManager, so without this the patched cache would
+	// serve a stale row for the terminal note until the next hard invalidate.
+	noteMutated(note);
 	notifyNoteSaved(guid);
 	await emitNoteReload([guid]);
 }
@@ -518,6 +531,10 @@ export async function pinCommandInTerminalHistory(
 	note.changeDate = now;
 	note.metadataChangeDate = now;
 	await putNote(note);
+	// Keep the warm shared note-list cache current (changeDate/xml) — these
+	// writes bypass noteManager, so without this the patched cache would
+	// serve a stale row for the terminal note until the next hard invalidate.
+	noteMutated(note);
 	notifyNoteSaved(guid);
 	await emitNoteReload([guid]);
 }
@@ -544,6 +561,10 @@ export async function unpinCommandInTerminalHistory(
 	note.changeDate = now;
 	note.metadataChangeDate = now;
 	await putNote(note);
+	// Keep the warm shared note-list cache current (changeDate/xml) — these
+	// writes bypass noteManager, so without this the patched cache would
+	// serve a stale row for the terminal note until the next hard invalidate.
+	noteMutated(note);
 	notifyNoteSaved(guid);
 	await emitNoteReload([guid]);
 }

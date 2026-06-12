@@ -29,6 +29,7 @@
 	} from '$lib/sync/syncManager.js';
 	import { getManifest, clearManifest } from '$lib/sync/manifest.js';
 	import { purgeAllLocal } from '$lib/storage/noteStore.js';
+	import { invalidateCache } from '$lib/stores/noteListCache.js';
 	import { sync } from '$lib/sync/syncManager.js';
 	import { pushToast } from '$lib/stores/toast.js';
 	import SyncPlanView from '$lib/components/SyncPlanView.svelte';
@@ -751,6 +752,11 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 		try {
 			await purgeAllLocal();
 			await clearManifest();
+			// IDB was just wiped — drop the warm shared cache NOW, so a sync
+			// failure below can't leave the title index / SidePanel serving
+			// the purged corpus (mirrors adminClient.rollbackAndResync, which
+			// invalidates unconditionally after the same sequence).
+			invalidateCache();
 			const r = await sync();
 			if (r.status === 'success') {
 				pushToast(`다시 받기 완료. 다운로드 ${r.downloaded}건.`);

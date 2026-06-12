@@ -45,6 +45,7 @@
 	import { pushToast, dismissToast } from '$lib/stores/toast.js';
 	import { removeNoteRevision } from '$lib/sync/manifest.js';
 	import { purgeLocalOnly } from '$lib/storage/noteStore.js';
+	import { invalidateCache } from '$lib/stores/noteListCache.js';
 	import { sync } from '$lib/sync/syncManager.js';
 	import type { JSONContent, Editor } from '@tiptap/core';
 	import { startPointerDrag } from './dragResize.js';
@@ -759,6 +760,10 @@
 			}
 			await removeNoteRevision(note.guid);
 			await purgeLocalOnly(note.guid);
+			// purgeLocalOnly hard-deletes from IDB with no cache notification
+			// of its own — invalidate so the ghost row can't linger in the
+			// warm cache if the re-download sync below fails.
+			invalidateCache();
 			const r = await sync();
 			if (r.status === 'success') {
 				pushToast('다시 다운로드 완료.');
