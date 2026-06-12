@@ -51,7 +51,9 @@ function boxPrefix(li: JSONContent): string {
 // Rationale: the right-click menu already offers a dedicated "Markdown" copy
 // path when the user wants list markers. This path is for the common case of
 // pasting into another list, where "- foo" would otherwise land as literal
-// text inside the receiving list item.
+// text inside the receiving list item. Checkbox and radio (boxKind) items are
+// the one exception — they carry their [x]/ ( ) prefix marker because the
+// marker replaces the hidden bullet and is part of the item's visible content.
 // ---------------------------------------------------------------------------
 
 function plainNode(node: JSONContent): string {
