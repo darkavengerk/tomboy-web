@@ -1,6 +1,7 @@
 <script lang="ts">
 	/**
-	 * 노트 묶음 스택 — 접힌 제목 바(≤4) + 펼친 노트(임베디드 TomboyEditor).
+	 * 노트 묶음 스택 — 5칸 타이틀 윈도우(활성 노트 위·아래로 접힌 바) +
+	 * 펼친 노트(임베디드 TomboyEditor).
 	 *
 	 * noteBundlePlugin 의 위젯 컨테이너(외부 에디터의 contenteditable=false
 	 * 섬) 안에 mount() 된다. 루트에서 입력/클립보드/포인터 이벤트를
@@ -12,13 +13,21 @@
 	 * 파생한다. EditorComponent 는 TomboyEditor 자신 (셀프 임포트 주입) —
 	 * 이 파일이 직접 임포트하면 순환이 생기므로 prop 으로 받는다.
 	 */
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, untrack } from 'svelte';
+	import { flip } from 'svelte/animate';
 	import type { Component } from 'svelte';
 	import type { EditorView } from '@tiptap/pm/view';
 	import type { JSONContent } from '@tiptap/core';
 	import type { BundleSpec } from './parser.js';
 	import { selectBundleEntry, writeBundleHeightPct } from './noteBundlePlugin.js';
-	import { collapsedBarStart, firstValidIndex, nextValidIndex } from './stackMath.js';
+	import {
+		windowWidth,
+		clampWindow,
+		stepWindow,
+		initialWindow,
+		firstValidIndex,
+		nextValidIndex
+	} from './stackMath.js';
 	import { lookupGuidByTitle, ensureTitleIndexReady } from '../autoLink/titleProvider.js';
 	import {
 		getNote,
@@ -80,8 +89,44 @@
 		return firstValidIndex(resolved);
 	});
 	const expanded = $derived(k >= 0 ? resolved[k] : null);
-	const barStart = $derived(k >= 0 ? collapsedBarStart(k) : 0);
-	const bars = $derived(k >= 0 ? resolved.slice(barStart, k) : []);
+
+	// --- 타이틀 윈도우 ---------------------------------------------------------
+	// winStart 는 컴포넌트 로컬 — 영속 안 함 (라디오=활성만 영속).
+	let winStart = $state(0);
+	let winInit = false;
+	let lastK = -1;
+	/** step() 이 기록한 직전 이동 방향 — follow effect 가 1회 소비 */
+	let pendingDir: 1 | -1 | null = null;
+
+	// k(활성)·N 변화를 따라 윈도우를 이동. winStart 를 읽고 쓰므로 untrack 필수
+	// (effect_update_depth 함정).
+	$effect(() => {
+		const n = resolved.length;
+		const kk = k;
+		untrack(() => {
+			const dir = pendingDir;
+			pendingDir = null;
+			if (kk < 0) {
+				lastK = kk;
+				winInit = false;
+				return;
+			}
+			if (!winInit) {
+				winStart = initialWindow(kk, n);
+				winInit = true;
+			} else if (kk !== lastK && dir !== null) {
+				winStart = stepWindow(winStart, kk, dir, n);
+			} else {
+				winStart = clampWindow(winStart, kk, n);
+			}
+			lastK = kk;
+		});
+	});
+
+	const W = $derived(windowWidth(resolved.length));
+	const winEntries = $derived(resolved.slice(winStart, winStart + W));
+	const hiddenAbove = $derived(winStart);
+	const hiddenBelow = $derived(Math.max(0, resolved.length - (winStart + W)));
 
 	// --- 높이 ----------------------------------------------------------------
 	let rootEl = $state<HTMLElement | null>(null);
@@ -245,12 +290,15 @@
 	}
 	function step(dir: 1 | -1) {
 		if (k < 0) return;
-		moveTo(nextValidIndex(resolved, k, dir));
+		const target = nextValidIndex(resolved, k, dir);
+		if (target === k) return;
+		pendingDir = dir;
+		moveTo(target);
 	}
 
 	let wheelAcc = 0;
-	function handleBarsWheel(e: WheelEvent) {
-		e.preventDefault();
+	function flipWheel(e: WheelEvent) {
+		e.preventDefault(); // ctrl+wheel 브라우저 줌 차단 겸용
 		e.stopPropagation();
 		wheelAcc += e.deltaY;
 		while (wheelAcc >= 50) {
@@ -263,20 +311,42 @@
 		}
 		wheelAcc = Math.max(-49, Math.min(49, wheelAcc));
 	}
+	function handleListWheel(e: Event) {
+		const we = e as WheelEvent;
+		if (we.ctrlKey || we.metaKey) {
+			flipWheel(we);
+			return;
+		}
+		// 콘텐츠 위 일반 wheel = 임베디드 스크롤 그대로
+		if ((we.target as HTMLElement).closest?.('.bundle-body')) return;
+		flipWheel(we);
+	}
+	/** 루트 폴백 — 리사이즈 핸들 등 .bundle-list 밖에서의 ctrl+wheel.
+	 *  바/콘텐츠 위 ctrl+wheel 은 handleListWheel 이 stopPropagation 으로 선점. */
+	function handleRootWheel(e: Event) {
+		const we = e as WheelEvent;
+		if (we.ctrlKey || we.metaKey) flipWheel(we);
+	}
 
 	let swipeY: number | null = null;
 	let downBarIdx: number | null = null;
 	let downBarY = 0;
 	let swiped = false;
-	function handleBarsPointerDown(e: PointerEvent) {
+	let lastTapIdx: number | null = null;
+	let lastTapTime = 0;
+
+	function handleListPointerDown(e: PointerEvent) {
+		const t = e.target as HTMLElement;
+		if (t.closest?.('.bundle-body')) return; // 임베디드 에디터 — 손대지 않음
+		const bar = t.closest?.('.bundle-bar') as HTMLElement | null;
+		if (!bar) return;
 		swipeY = e.clientY;
 		downBarY = e.clientY;
 		swiped = false;
-		const btn = (e.target as HTMLElement).closest?.('button.bundle-bar') as HTMLElement | null;
-		downBarIdx = btn ? Number(btn.dataset.idx) : null;
+		downBarIdx = bar.dataset.idx != null ? Number(bar.dataset.idx) : null;
 		try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* pointer already released */ }
 	}
-	function handleBarsPointerMove(e: PointerEvent) {
+	function handleListPointerMove(e: PointerEvent) {
 		if (swipeY === null) return;
 		const dy = e.clientY - swipeY;
 		if (Math.abs(dy) >= 30) {
@@ -285,12 +355,21 @@
 			swipeY = e.clientY;
 		}
 	}
-	function handleBarsPointerUp(e: Event) {
+	function handleListPointerUp(e: Event) {
 		const pe = e as PointerEvent;
-		// 캡처가 click 을 컨테이너로 retarget 하므로 click 대신 pointerup 에서
-		// 탭(이동 거의 없음)을 판정한다.
+		// 캡처가 click 을 컨테이너로 retarget 하므로 click/dblclick 대신
+		// pointerup 에서 탭·더블탭을 수동 판정한다.
 		if (!swiped && downBarIdx !== null && Math.abs(pe.clientY - downBarY) < 8) {
-			moveTo(downBarIdx);
+			const now = performance.now();
+			if (lastTapIdx === downBarIdx && now - lastTapTime < 300) {
+				const entry = resolved[downBarIdx];
+				if (entry && !entry.broken) oninternallink?.(entry.title);
+				lastTapIdx = null;
+			} else {
+				moveTo(downBarIdx);
+				lastTapIdx = downBarIdx;
+				lastTapTime = now;
+			}
 		}
 		swipeY = null;
 		downBarIdx = null;
@@ -319,50 +398,58 @@
 	}
 </script>
 
-<div class="bundle-stack" bind:this={rootEl} style:height={`${stackH}px`}>
+<div class="bundle-stack" bind:this={rootEl} style:height={`${stackH}px`} use:direct={{ wheel: handleRootWheel }}>
 	{#if resolved.length === 0}
 		<div class="bundle-empty">묶을 노트 없음</div>
 	{:else}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
-			class="bundle-bars"
+			class="bundle-list"
 			use:direct={{
-				wheel: handleBarsWheel as (e: Event) => void,
-				pointerdown: handleBarsPointerDown as (e: Event) => void,
-				pointermove: handleBarsPointerMove as (e: Event) => void,
-				pointerup: handleBarsPointerUp,
-				pointercancel: handleBarsPointerUp
+				wheel: handleListWheel,
+				pointerdown: handleListPointerDown as (e: Event) => void,
+				pointermove: handleListPointerMove as (e: Event) => void,
+				pointerup: handleListPointerUp,
+				pointercancel: handleListPointerUp
 			}}
 		>
-			{#each bars as bar, i (barStart + i)}
+			{#each winEntries as e, i (e.originalIndex)}
+				<!-- animate:flip 은 keyed each 직계 자식이어야 한다 → 활성도 button 으로 통일 -->
 				<button
 					type="button"
 					class="bundle-bar"
-					class:broken={bar.broken}
-					data-idx={barStart + i}
-				>{bar.title}</button>
+					class:broken={e.broken}
+					class:expanded-bar={winStart + i === k}
+					data-idx={winStart + i}
+					style:order={i * 2}
+					animate:flip={{ duration: 150 }}
+				>
+					<span class="bar-title">{e.title}</span>
+					{#if i === 0 && hiddenAbove > 0}
+						<span class="bar-badge">+{hiddenAbove}</span>
+					{:else if i === winEntries.length - 1 && hiddenBelow > 0}
+						<span class="bar-badge">+{hiddenBelow}</span>
+					{/if}
+				</button>
 			{/each}
-			{#if expanded}
-				<div class="bundle-bar expanded-bar" aria-hidden="true">{expanded.title}</div>
+			{#if expanded && editorContent && loadedGuid}
+				<div class="bundle-body" style:order={(k - winStart) * 2 + 1}>
+					<EditorComponent
+						content={editorContent}
+						currentGuid={loadedGuid}
+						onchange={handleEmbeddedChange}
+						oninternallink={(t: string) => oninternallink?.(t)}
+						enableNoteBundle={false}
+						hrSplitEnabled={false}
+						{createDate}
+					/>
+				</div>
+			{:else if expanded}
+				<div class="bundle-empty" style:order={(k - winStart) * 2 + 1}>로딩…</div>
+			{:else}
+				<div class="bundle-empty">펼칠 수 있는 노트 없음</div>
 			{/if}
 		</div>
-		{#if expanded && editorContent && loadedGuid}
-			<div class="bundle-body">
-				<EditorComponent
-					content={editorContent}
-					currentGuid={loadedGuid}
-					onchange={handleEmbeddedChange}
-					oninternallink={(t: string) => oninternallink?.(t)}
-					enableNoteBundle={false}
-					hrSplitEnabled={false}
-					{createDate}
-				/>
-			</div>
-		{:else if expanded}
-			<div class="bundle-empty">로딩…</div>
-		{:else}
-			<div class="bundle-empty">펼칠 수 있는 노트 없음</div>
-		{/if}
 	{/if}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
@@ -387,18 +474,19 @@
 		overflow: hidden;
 		background: #1e1e1e;
 	}
-	.bundle-bars {
-		flex-shrink: 0;
-		touch-action: none;
-		user-select: none;
+	.bundle-list {
+		flex: 1;
+		min-height: 0;
 		display: flex;
 		flex-direction: column;
 	}
 	/* NoteWindow .title-bar 시각 언어 재사용 (dark #2a2a2a / focused green) */
 	.bundle-bar {
-		display: block;
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		gap: 6px;
 		width: 100%;
-		text-align: left;
 		border: none;
 		border-bottom: 1px solid #1a1a1a;
 		padding: clamp(4px, 1vw, 6px) clamp(8px, 2vw, 12px);
@@ -406,16 +494,28 @@
 		color: #eee;
 		font-size: 0.85rem;
 		font-weight: 500;
+		cursor: pointer;
+		touch-action: none; /* 바에서 시작한 스와이프가 pointercancel 로 죽지 않게 */
+		user-select: none;
+	}
+	.bar-title {
+		flex: 1;
+		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		cursor: pointer;
+		text-align: left;
+	}
+	.bar-badge {
+		flex-shrink: 0;
+		color: #999;
+		font-size: 0.75rem;
 	}
 	.bundle-bar.broken {
 		color: #777;
 		cursor: default;
 	}
-	.expanded-bar {
+	.bundle-bar.expanded-bar {
 		background: #2d5a3d;
 		cursor: grab;
 	}
