@@ -25,7 +25,7 @@
 		getNoteEditorContent,
 		updateNoteFromEditor
 	} from '$lib/core/noteManager.js';
-	import { subscribeNoteReload } from '$lib/core/noteReloadBus.js';
+	import { subscribeNoteReload, subscribeNoteFlush } from '$lib/core/noteReloadBus.js';
 	import { attachOpenNote, detachOpenNote } from '$lib/sync/firebase/orchestrator.js';
 
 	interface Props {
@@ -139,6 +139,7 @@
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	let loadEpoch = 0;
 	let offReload: (() => void) | null = null;
+	let offFlush: (() => void) | null = null;
 
 	async function flushSave(): Promise<void> {
 		if (saveTimer) {
@@ -172,6 +173,8 @@
 			detachOpenNote(loadedGuid);
 			offReload?.();
 			offReload = null;
+			offFlush?.();
+			offFlush = null;
 		}
 		const note = await getNote(guid);
 		if (epoch !== loadEpoch) return;
@@ -186,10 +189,12 @@
 		attachOpenNote(guid);
 		offReload = subscribeNoteReload(guid, async () => {
 			// 렌임 스윕 등 외부 rewrite — pending 폐기 후 IDB 재로드
+			if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
 			pendingDoc = null;
 			const fresh = await getNote(guid);
 			if (fresh && loadedGuid === guid) editorContent = getNoteEditorContent(fresh);
 		});
+		offFlush = subscribeNoteFlush(guid, () => flushSave());
 	}
 
 	$effect(() => {
@@ -201,6 +206,7 @@
 		void flushSave();
 		if (loadedGuid) detachOpenNote(loadedGuid);
 		offReload?.();
+		offFlush?.();
 	});
 
 	// --- 전환 (휠 / 스와이프 / 바 클릭) ------------------------------------------
@@ -228,12 +234,13 @@
 			step(-1);
 			wheelAcc += 50;
 		}
+		wheelAcc = Math.max(-49, Math.min(49, wheelAcc));
 	}
 
 	let swipeY: number | null = null;
 	function handleBarsPointerDown(e: PointerEvent) {
 		swipeY = e.clientY;
-		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+		try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* pointer already released */ }
 	}
 	function handleBarsPointerMove(e: PointerEvent) {
 		if (swipeY === null) return;
@@ -256,7 +263,7 @@
 		resizeStartY = e.clientY;
 		resizeStartH = stackH;
 		dragPx = stackH;
-		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+		try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* pointer already released */ }
 	}
 	function handleResizeMove(e: PointerEvent) {
 		if (dragPx === null) return;
@@ -371,7 +378,7 @@
 		min-height: 0;
 		overflow-y: auto;
 		overscroll-behavior: contain;
-		background: #fff;
+		background: var(--color-bg, #fff);
 	}
 	.bundle-empty {
 		flex: 1;
