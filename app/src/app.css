@@ -38,7 +38,13 @@
 }
 
 html, body {
-	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+	/* 'Noto Sans'/'Liberation Sans': Linux(Fedora)에서 앞의 폰트들이 전부
+	   없으면 fontconfig가 ko 로케일 기준 Noto Sans CJK KR로 치환해 페이지
+	   전체가 CJK 폰트로 렌더링되는데, 그 폰트의 백틱(U+0060) 글리프는
+	   넓은 전진폭에 거의 안 보이는 점 하나라 "입력해도 공백만 생기는"
+	   증상이 난다. 실제 설치된 라틴 폰트를 CJK 폴백보다 앞에 둬서
+	   라틴/문장부호는 라틴 글리프로, 한글만 CJK로 폴백시킨다. */
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', 'Liberation Sans', 'Helvetica Neue', Arial, sans-serif;
 	font-size: 16px;
 	color: var(--color-text);
 	background: var(--color-bg);
