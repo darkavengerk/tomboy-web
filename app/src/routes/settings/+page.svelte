@@ -2128,6 +2128,13 @@ https://www.youtube.com/playlist?list=…  (재생목록: 일반 줄)</pre>
 - [[X]] 우유
 - [[ ]] 빵
 - [[ ]] 잡지</pre>
+					<p class="info-text"><strong>4. 항목 단위 체크박스/라디오 (불릿 교체)</strong> —
+						리스트 항목 <strong>내용 맨 앞</strong>에서 <code>[[ ]]</code> / <code>[[x]]</code> 를
+						입력하면 그 항목의 불릿이 통째 체크박스로, <code>(( ))</code> / <code>((o))</code> 를
+						입력하면 라디오 버튼으로 바뀝니다. <code>체크리스트:</code> 헤더 없이 항목 하나씩
+						켤 수 있습니다.</p>
+					<pre class="snippet">- [[ ]] 우유   ← ☐ 우유
+- (( )) 빵    ← ○ 빵</pre>
 					<ul class="guide-list">
 						<li>인라인 체크박스 / 라디오는 <strong>제목 줄에선 동작하지 않습니다</strong>. 본문에서만
 							위젯으로 바뀝니다.</li>
@@ -2141,7 +2148,13 @@ https://www.youtube.com/playlist?list=…  (재생목록: 일반 줄)</pre>
 							체크박스로 복원됩니다.</li>
 						<li>같은 항목 안에 인라인 <code>[x]</code> 도 함께 둘 수 있습니다 — 항목 자체는 통째 체크,
 							본문 일부에 추가 체크박스를 두는 식. 예: <code>[[X]] 1단계 [x] 첫 단추</code>.</li>
-						<li>영역 헤더 없이 <code>[[X]]</code> 만 적으면 평문 텍스트로 남습니다 (의미 없음).</li>
+						<li>항목 단위 라디오는 <strong>같은 리스트의 직계 형제끼리</strong> 한 개만
+							선택됩니다 (선택된 것을 다시 클릭하면 해제). 중첩 하위 리스트는 별도 그룹.</li>
+						<li>항목 단위 박스에서 <kbd>Enter</kbd> 로 새 항목을 만들면 같은 종류(미체크)로
+							이어집니다. 일반 불릿으로 되돌리려면 항목 내용 맨 앞에서 <kbd>Backspace</kbd>.</li>
+						<li>저장 형식: 체크박스 <code>[[ ]]</code> / <code>[[X]]</code>, 라디오
+							<code>(( ))</code> / <code>((O))</code> 마커가 항목 앞에 붙습니다. 리스트 항목
+							맨 앞이 아닌 곳의 <code>[[X]]</code> / <code>(( ))</code> 는 평문 텍스트로 남습니다.</li>
 					</ul>
 				</details>
 
