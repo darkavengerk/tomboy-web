@@ -140,7 +140,10 @@ function splitInlineCheckboxesInText(
 }
 
 // Inline-radio 패턴. `( )` (공백 1 개) 또는 `(o)` / `(O)`.
-const INLINE_RADIO_SPLIT_RE = /\(([ oO])\)/g;
+// lookbehind/lookahead 로 `(( ))` 안 `( )` 는 건드리지 않음 — 항목 단위
+// 라디오 마커 `(( )) ` 를 보존하기 위함 (INLINE_CHECKBOX_SPLIT_RE 와
+// 동일 정책). 마커는 applyListBoxMarkersOnParse 가 strip.
+const INLINE_RADIO_SPLIT_RE = /(?<!\()\(([ oO])\)(?!\))/g;
 
 /**
  * 텍스트 안의 ( )/(o) 패턴을 inlineRadio 노드로 split.

@@ -52,7 +52,10 @@ export const InlineRadio = Node.create({
 		const type = this.type;
 		return [
 			new InputRule({
-				find: /\(([ oO])\)$/,
+				// `(( ))` (리스트 항목 마커) 안 `( )` 는 잡지 않음 —
+				// 좌측 `(` lookbehind 로 차단. archiver split 정규식과 정책 일치
+				// (inlineCheckbox 의 `[[ ]]` 보호와 동일).
+				find: /(?<!\()\(([ oO])\)$/,
 				handler: ({ state, range, match }) => {
 					const $from = state.doc.resolve(range.from);
 					if ($from.index(0) === 0) return null; // 제목 차단
@@ -121,7 +124,9 @@ export const InlineRadio = Node.create({
 	}
 });
 
-const RADIO_PASTE_RE = /\(([ oO])\)/g;
+// `(( ))` 안 `( )` 는 변환하지 않음 — 리스트 항목 마커 보존.
+// archiver 의 INLINE_RADIO_SPLIT_RE / InputRule find 와 동일 정책.
+const RADIO_PASTE_RE = /(?<!\()\(([ oO])\)(?!\))/g;
 
 function transformPastedSlice(slice: Slice, radioType: NodeType): Slice {
 	const newContent = transformFragment(slice.content, radioType);
