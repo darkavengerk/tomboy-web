@@ -209,6 +209,19 @@
 		offFlush?.();
 	});
 
+	/** Svelte 5 는 click/pointer* 를 document 루트 위임으로 처리하는데, 루트
+	 *  격벽의 stopPropagation 이 위임 핸들러 도달을 막는다 — 스택 내부
+	 *  인터랙션은 전부 이 액션으로 직접 addEventListener 한다. */
+	function direct(node: HTMLElement, handlers: Record<string, (e: Event) => void>) {
+		const entries = Object.entries(handlers);
+		for (const [t, h] of entries) node.addEventListener(t, h);
+		return {
+			destroy() {
+				for (const [t, h] of entries) node.removeEventListener(t, h);
+			}
+		};
+	}
+
 	// --- 전환 (휠 / 스와이프 / 바 클릭) ------------------------------------------
 	function moveTo(target: number) {
 		if (target < 0 || target >= resolved.length || target === k) return;
@@ -254,6 +267,13 @@
 		swipeY = null;
 	}
 
+	function handleBarsClick(e: Event) {
+		const btn = (e.target as HTMLElement).closest?.('button.bundle-bar');
+		if (!btn) return;
+		const idx = Number((btn as HTMLElement).dataset.idx);
+		if (Number.isFinite(idx)) moveTo(idx);
+	}
+
 	// --- 하단 리사이즈 핸들 -------------------------------------------------------
 	let resizeStartY = 0;
 	let resizeStartH = 0;
@@ -284,18 +304,21 @@
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			class="bundle-bars"
-			onwheel={handleBarsWheel}
-			onpointerdown={handleBarsPointerDown}
-			onpointermove={handleBarsPointerMove}
-			onpointerup={handleBarsPointerUp}
-			onpointercancel={handleBarsPointerUp}
+			use:direct={{
+				wheel: handleBarsWheel as (e: Event) => void,
+				pointerdown: handleBarsPointerDown as (e: Event) => void,
+				pointermove: handleBarsPointerMove as (e: Event) => void,
+				pointerup: handleBarsPointerUp,
+				pointercancel: handleBarsPointerUp,
+				click: handleBarsClick
+			}}
 		>
 			{#each bars as bar, i (barStart + i)}
 				<button
 					type="button"
 					class="bundle-bar"
 					class:broken={bar.broken}
-					onclick={() => moveTo(barStart + i)}
+					data-idx={barStart + i}
 				>{bar.title}</button>
 			{/each}
 			{#if expanded}
@@ -323,10 +346,12 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="bundle-resize"
-		onpointerdown={handleResizeDown}
-		onpointermove={handleResizeMove}
-		onpointerup={handleResizeUp}
-		onpointercancel={handleResizeUp}
+		use:direct={{
+			pointerdown: handleResizeDown as (e: Event) => void,
+			pointermove: handleResizeMove as (e: Event) => void,
+			pointerup: handleResizeUp,
+			pointercancel: handleResizeUp
+		}}
 		aria-hidden="true"
 	></div>
 </div>
