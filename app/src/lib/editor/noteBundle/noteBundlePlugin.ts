@@ -16,6 +16,9 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { parseNoteBundles, clampHeightPct, type BundleSpec } from './parser.js';
 
 export interface StackController {
+	/** spec 전체 교체로 취급할 것. 번들 삭제로 ordinal 이 재배정되면 같은
+	 *  컨트롤러가 '다른 번들'의 spec 을 받을 수 있다 — 컴포넌트는 이전
+	 *  spec 과의 차분이 아니라 새 spec 에서 모든 상태를 파생해야 한다. */
 	update(spec: BundleSpec): void;
 	destroy(): void;
 }
@@ -177,8 +180,13 @@ export function createNoteBundlePlugin(opts: NoteBundleOptions): Plugin<PluginSt
 	});
 }
 
-/** 스크롤/바 클릭 → 펼침 항목 변경. 라디오 상호 배타 tr 디스패치. */
-export function selectBundleEntry(view: EditorView, bundle: BundleSpec, index: number): void {
+/** 스크롤/바 클릭 → 펼침 항목 변경. 라디오 상호 배타 tr 디스패치.
+ *  spec 위치가 낡았을 수 있으므로 ordinal 로 신선한 번들을 재조회한다. */
+export function selectBundleEntry(view: EditorView, ordinal: number, index: number): void {
+	const bundle = noteBundlePluginKey
+		.getState(view.state)
+		?.bundles.find((b) => b.ordinal === ordinal);
+	if (!bundle) return;
 	const tr = view.state.tr;
 	bundle.entries.forEach((e, i) => {
 		if (e.radioPos === null) return;
@@ -188,8 +196,12 @@ export function selectBundleEntry(view: EditorView, bundle: BundleSpec, index: n
 	if (tr.steps.length > 0) view.dispatch(tr);
 }
 
-/** 드래그 리사이즈 종료 → `:N` 텍스트 영구화. */
-export function writeBundleHeightPct(view: EditorView, bundle: BundleSpec, pct: number): void {
+/** 드래그 리사이즈 종료 → `:N` 텍스트 영구화. ordinal 로 신선한 번들 재조회. */
+export function writeBundleHeightPct(view: EditorView, ordinal: number, pct: number): void {
+	const bundle = noteBundlePluginKey
+		.getState(view.state)
+		?.bundles.find((b) => b.ordinal === ordinal);
+	if (!bundle) return;
 	const clamped = clampHeightPct(pct);
 	if (clamped === bundle.heightPct) return;
 	view.dispatch(view.state.tr.insertText(String(clamped), bundle.digitsFrom, bundle.digitsTo));
