@@ -39,6 +39,10 @@ const kw = (text: string, checked = false) => ({
 	type: 'paragraph',
 	content: [{ type: 'inlineCheckbox', attrs: { checked } }, { type: 'text', text }]
 });
+/** prefix 텍스트(체크박스 앞) 포함 키워드 라인 빌더 */
+const kwWith = (nodes: object[]) => ({ type: 'paragraph', content: nodes });
+const cb = (checked = false) => ({ type: 'inlineCheckbox', attrs: { checked } });
+const txt = (text: string, marks?: object[]) => ({ type: 'text', text, ...(marks ? { marks } : {}) });
 const li = (t: string, radio: boolean | null) => ({
 	type: 'listItem',
 	content: [
@@ -99,6 +103,60 @@ describe('parseNoteBundles', () => {
 	it('제목 라인(index 0)은 번들 키워드로 취급하지 않음', () => {
 		const ed = makeEditor(doc(kw('노트 묶음:50'), list(li('노트A', null))));
 		expect(parseNoteBundles(ed.state.doc)).toHaveLength(0);
+	});
+
+	it('prefix 트리거: Done:[ ]노트 묶음:30 — digits 오프셋 prefix 반영', () => {
+		const ed = makeEditor(
+			doc(
+				titleLine('호스트'),
+				kwWith([txt('Done:'), cb(true), txt('노트 묶음:30')]),
+				list(li('노트A', null))
+			)
+		);
+		const bundles = parseNoteBundles(ed.state.doc);
+		expect(bundles).toHaveLength(1);
+		expect(bundles[0].checked).toBe(true);
+		expect(bundles[0].heightPct).toBe(30);
+		expect(ed.state.doc.textBetween(bundles[0].digitsFrom, bundles[0].digitsTo)).toBe('30');
+	});
+
+	it('prefix 다중 세그먼트 A:B: 인식, 콜론 없는 prefix 미인식', () => {
+		const ok = makeEditor(
+			doc(titleLine('호스트'), kwWith([txt('A:B:'), cb(), txt('노트묶음:')]), list(li('노트A', null)))
+		);
+		expect(parseNoteBundles(ok.state.doc)).toHaveLength(1);
+		ok.destroy();
+		const bad = makeEditor(
+			doc(titleLine('호스트'), kwWith([txt('메모 '), cb(), txt('노트묶음:')]), list(li('노트A', null)))
+		);
+		expect(parseNoteBundles(bad.state.doc)).toHaveLength(0);
+	});
+
+	it('체크박스 2개 라인: 키워드 앞 체크박스 채택', () => {
+		const ed = makeEditor(
+			doc(
+				titleLine('호스트'),
+				kwWith([cb(true), txt('Done:'), cb(false), txt('노트묶음:')]),
+				list(li('노트A', null))
+			)
+		);
+		const bundles = parseNoteBundles(ed.state.doc);
+		expect(bundles).toHaveLength(1);
+		expect(bundles[0].checked).toBe(false); // 두 번째 체크박스
+		// checkboxPos 가 두 번째 체크박스를 가리킴: 토글 시 그 노드가 inlineCheckbox 여야 함
+		expect(ed.state.doc.nodeAt(bundles[0].checkboxPos)?.type.name).toBe('inlineCheckbox');
+		expect(ed.state.doc.nodeAt(bundles[0].checkboxPos)?.attrs.checked).toBe(false);
+	});
+
+	it('marks 있는 prefix 도 인식', () => {
+		const ed = makeEditor(
+			doc(
+				titleLine('호스트'),
+				kwWith([txt('Done:', [{ type: 'bold' }]), cb(), txt('노트묶음:')]),
+				list(li('노트A', null))
+			)
+		);
+		expect(parseNoteBundles(ed.state.doc)).toHaveLength(1);
 	});
 
 	it('링크 마크 없는 항목 무시 + 리스트 없는 번들은 entries 빈 배열', () => {

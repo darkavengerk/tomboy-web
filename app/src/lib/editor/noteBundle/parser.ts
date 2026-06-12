@@ -1,9 +1,9 @@
 /**
  * 노트 묶음 파서.
  *
- * `[ ]노트 묶음:N` 키워드 paragraph + 직후 bulletList(내부 링크 항목)를
- * 라이브 PMNode 워크로 찾아 BundleSpec[] 로 반환. 체크박스/라디오는 atom
- * 노드라 plain-JSON 텍스트 스캔으로는 보이지 않는다 — 노드 트리를 걷는다.
+ * `[prefix:]<체크박스>노트 묶음:N` 키워드 paragraph (prefix 는 비었거나 ':' 로 끝나는 텍스트) +
+ * 직후 bulletList(내부 링크 항목)를 라이브 PMNode 워크로 찾아 BundleSpec[] 로 반환.
+ * 체크박스/라디오는 atom 노드라 plain-JSON 텍스트 스캔으로는 보이지 않는다 — 노드 트리를 걷는다.
  *
  * 순수 함수: IDB/타이틀 인덱스 접근 없음. guid 해석은 NoteBundleStack 이
  * lookupGuidByTitle 로 수행.
@@ -54,12 +54,15 @@ interface KeywordInfo {
 	keywordEnd: number;
 }
 
-function parseKeywordParagraph(para: PMNode, paraPos: number): KeywordInfo | null {
-	if (para.childCount < 2) return null;
-	const first = para.child(0);
-	if (first.type.name !== 'inlineCheckbox') return null;
+function keywordAfterCheckbox(
+	para: PMNode,
+	paraPos: number,
+	cbIndex: number,
+	checkboxPos: number
+): KeywordInfo | null {
+	const cb = para.child(cbIndex);
 	let text = '';
-	for (let i = 1; i < para.childCount; i++) {
+	for (let i = cbIndex + 1; i < para.childCount; i++) {
 		const c = para.child(i);
 		if (!c.isText) return null;
 		text += c.text ?? '';
@@ -68,16 +71,39 @@ function parseKeywordParagraph(para: PMNode, paraPos: number): KeywordInfo | nul
 	if (!m) return null;
 	const colonIdx = text.indexOf(':');
 	const digitsLen = m[1]?.length ?? 0;
-	// 키워드 텍스트 시작 abs pos = paragraph 내용 시작(paraPos+1) + 체크박스 nodeSize 1
-	const textBase = paraPos + 2;
+	// 키워드 텍스트 시작 abs pos = 체크박스 pos + nodeSize(1)
+	const textBase = checkboxPos + 1;
 	return {
-		checkboxPos: paraPos + 1,
-		checked: first.attrs.checked === true,
+		checkboxPos,
+		checked: cb.attrs.checked === true,
 		heightPct: m[1] ? clampHeightPct(parseInt(m[1], 10)) : DEFAULT_HEIGHT_PCT,
 		digitsFrom: textBase + colonIdx + 1,
 		digitsTo: textBase + colonIdx + 1 + digitsLen,
 		keywordEnd: paraPos + para.nodeSize
 	};
+}
+
+function parseKeywordParagraph(para: PMNode, paraPos: number): KeywordInfo | null {
+	if (para.childCount < 2) return null;
+	// prefix(체크박스 앞 텍스트)가 trim 후 비었거나 ':' 로 끝나고, 뒤따르는
+	// 텍스트가 KEYWORD_RE 에 매칭되는 첫 inlineCheckbox 를 찾는다 —
+	// `Done:[ ]노트 묶음:` 같은 TODO/Process prefix 조합 허용.
+	// atom(앞쪽의 다른 체크박스 등)은 prefix 텍스트에 기여하지 않는다.
+	let prefix = '';
+	let offset = 0;
+	for (let i = 0; i < para.childCount; i++) {
+		const child = para.child(i);
+		if (child.type.name === 'inlineCheckbox') {
+			const trimmed = prefix.trim();
+			if (trimmed === '' || trimmed.endsWith(':')) {
+				const info = keywordAfterCheckbox(para, paraPos, i, paraPos + 1 + offset);
+				if (info) return info;
+			}
+		}
+		if (child.isText) prefix += child.text ?? '';
+		offset += child.nodeSize;
+	}
+	return null;
 }
 
 function parseListEntries(list: PMNode, listPos: number): BundleEntry[] {
