@@ -179,3 +179,77 @@ describe('listBox Backspace 해제', () => {
 		expect(e.state.doc.child(1).type.name).toBe('paragraph');
 	});
 });
+
+describe('listBox 마지막 한 글자 Backspace (네이티브 오인 Enter 방지)', () => {
+	/** 주어진 텍스트 노드 끝 위치로 커서 이동. */
+	function caretAtItemEnd(e: Editor, text: string): void {
+		let pos = 0;
+		e.state.doc.descendants((node, p) => {
+			if (node.isText && node.text === text) pos = p + node.nodeSize;
+		});
+		e.commands.setTextSelection(pos);
+	}
+
+	it('boxKind li 의 마지막 글자 → PM 이 직접 삭제, 박스/줄 유지', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [P('제목'), UL(LI('1', { boxKind: 'radio', checked: true }))]
+		});
+		caretAtItemEnd(e, '1');
+		const blocksBefore = e.state.doc.childCount;
+		const handled = e.commands.keyboardShortcut('Backspace');
+		expect(handled).toBe(true);
+		const li = firstLi(e);
+		expect(li.textContent).toBe('');
+		expect(li.attrs.boxKind).toBe('radio'); // 박스는 그대로
+		expect(li.attrs.checked).toBe(true);
+		expect(e.state.doc.child(1).childCount).toBe(1); // 줄 안 갈라짐
+		expect(e.state.doc.childCount).toBe(blocksBefore);
+	});
+
+	it('서로게이트 쌍(이모지) 한 글자도 통째 삭제', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [P('제목'), UL(LI('🙂', { boxKind: 'checkbox' }))]
+		});
+		caretAtItemEnd(e, '🙂');
+		const handled = e.commands.keyboardShortcut('Backspace');
+		expect(handled).toBe(true);
+		expect(firstLi(e).textContent).toBe('');
+	});
+
+	// 폴스루 케이스: jsdom 에선 코어 joinBackward 가 view.endOfTextblock
+	// 오판으로 true 를 반환하므로 handled 값 대신 "우리 핸들러가 안
+	// 지웠다"(텍스트/구조 불변)를 검증한다.
+	it('두 글자 이상이면 폴스루 (네이티브 삭제에 맡김)', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [P('제목'), UL(LI('우유', { boxKind: 'checkbox' }))]
+		});
+		caretAtItemEnd(e, '우유');
+		e.commands.keyboardShortcut('Backspace');
+		expect(firstLi(e).textContent).toBe('우유');
+		expect(firstLi(e).attrs.boxKind).toBe('checkbox');
+	});
+
+	it('체크리스트: 영역 li 도 같은 위젯 구조 → 직접 삭제', () => {
+		const e = makeEditor({
+			type: 'doc',
+			content: [P('제목'), P('체크리스트:'), UL(LI('얍'))]
+		});
+		caretAtItemEnd(e, '얍');
+		const handled = e.commands.keyboardShortcut('Backspace');
+		expect(handled).toBe(true);
+		const li = e.state.doc.child(2).child(0);
+		expect(li.textContent).toBe('');
+		expect(e.state.doc.child(2).childCount).toBe(1);
+	});
+
+	it('위젯 없는 일반 불릿 li 는 폴스루', () => {
+		const e = makeEditor({ type: 'doc', content: [P('제목'), UL(LI('가'))] });
+		caretAtItemEnd(e, '가');
+		e.commands.keyboardShortcut('Backspace');
+		expect(firstLi(e).textContent).toBe('가');
+		expect(firstLi(e).attrs.boxKind).toBeNull();
+	});
+});
