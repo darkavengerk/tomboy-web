@@ -1,0 +1,400 @@
+<script lang="ts">
+	/**
+	 * 노트 묶음 스택 — 접힌 제목 바(≤4) + 펼친 노트(임베디드 TomboyEditor).
+	 *
+	 * noteBundlePlugin 의 위젯 컨테이너(외부 에디터의 contenteditable=false
+	 * 섬) 안에 mount() 된다. 루트에서 입력/클립보드/포인터 이벤트를
+	 * stopPropagation — 외부 PM 이 임베디드 에디터 이벤트를 보지 못하게
+	 * 하는 editor-in-editor 격벽.
+	 *
+	 * spec 은 전체 교체 계약 (StackController.update 참고) — ordinal 재배정
+	 * 으로 다른 번들의 spec 을 받을 수 있으므로 모든 상태는 현재 spec 에서
+	 * 파생한다. EditorComponent 는 TomboyEditor 자신 (셀프 임포트 주입) —
+	 * 이 파일이 직접 임포트하면 순환이 생기므로 prop 으로 받는다.
+	 */
+	import { onMount, onDestroy } from 'svelte';
+	import type { Component } from 'svelte';
+	import type { EditorView } from '@tiptap/pm/view';
+	import type { JSONContent } from '@tiptap/core';
+	import type { BundleSpec } from './parser.js';
+	import { selectBundleEntry, writeBundleHeightPct } from './noteBundlePlugin.js';
+	import { collapsedBarStart, firstValidIndex, nextValidIndex } from './stackMath.js';
+	import { lookupGuidByTitle, ensureTitleIndexReady } from '../autoLink/titleProvider.js';
+	import {
+		getNote,
+		getNoteEditorContent,
+		updateNoteFromEditor
+	} from '$lib/core/noteManager.js';
+	import { subscribeNoteReload } from '$lib/core/noteReloadBus.js';
+	import { attachOpenNote, detachOpenNote } from '$lib/sync/firebase/orchestrator.js';
+
+	interface Props {
+		spec: BundleSpec;
+		view: EditorView;
+		hostGuid: string | null;
+		// Component<any>: svelte-check 가 실제 TomboyEditor props 와 대조할 때
+		// Record<string,unknown> 이 enableNoteBundle 등 선택적 prop 와 충돌하면
+		// any 로 완화한다 (Task 4 에서 실제 타입 확인).
+		EditorComponent: Component<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+		oninternallink?: (target: string) => void;
+	}
+	let { spec, view, hostGuid, EditorComponent, oninternallink }: Props = $props();
+
+	// --- guid 해석 ----------------------------------------------------------
+	let titleEpoch = $state(0);
+	onMount(() => {
+		void ensureTitleIndexReady().then(() => {
+			titleEpoch++;
+		});
+	});
+
+	interface ResolvedEntry {
+		title: string;
+		guid: string | null;
+		broken: boolean;
+		/** spec.entries 인덱스 — selectBundleEntry 용 */
+		originalIndex: number;
+		selected: boolean;
+	}
+	const resolved = $derived.by<ResolvedEntry[]>(() => {
+		void titleEpoch;
+		const out: ResolvedEntry[] = [];
+		spec.entries.forEach((e, i) => {
+			const guid = lookupGuidByTitle(e.title);
+			if (guid !== null && guid === hostGuid) return; // 자기참조 제외
+			out.push({
+				title: e.title,
+				guid,
+				broken: guid === null,
+				originalIndex: i,
+				selected: e.selected
+			});
+		});
+		return out;
+	});
+
+	// 펼침 인덱스(resolved 기준): 라디오 선택 우선, 없으면 첫 유효 항목
+	const k = $derived.by(() => {
+		const sel = resolved.findIndex((e) => e.selected && !e.broken);
+		if (sel >= 0) return sel;
+		return firstValidIndex(resolved);
+	});
+	const expanded = $derived(k >= 0 ? resolved[k] : null);
+	const barStart = $derived(k >= 0 ? collapsedBarStart(k) : 0);
+	const bars = $derived(k >= 0 ? resolved.slice(barStart, k) : []);
+
+	// --- 높이 ----------------------------------------------------------------
+	let rootEl = $state<HTMLElement | null>(null);
+	let hostH = $state(600);
+	let dragPx = $state<number | null>(null);
+	const stackH = $derived(dragPx ?? Math.max(140, Math.round((hostH * spec.heightPct) / 100)));
+
+	onMount(() => {
+		const hostEl = view.dom.closest<HTMLElement>('.tomboy-editor') ?? view.dom.parentElement;
+		if (!hostEl) return;
+		hostH = hostEl.clientHeight || 600;
+		const ro = new ResizeObserver(() => {
+			hostH = hostEl.clientHeight || hostH;
+		});
+		ro.observe(hostEl);
+		return () => ro.disconnect();
+	});
+
+	// --- 이벤트 격벽 -----------------------------------------------------------
+	const ISOLATED_EVENTS = [
+		'keydown',
+		'keyup',
+		'keypress',
+		'beforeinput',
+		'input',
+		'compositionstart',
+		'compositionupdate',
+		'compositionend',
+		'paste',
+		'copy',
+		'cut',
+		'pointerdown',
+		'mousedown',
+		'click',
+		'touchstart',
+		'dragstart',
+		'dragover',
+		'drop'
+	] as const;
+	onMount(() => {
+		const el = rootEl;
+		if (!el) return;
+		const stop = (e: Event) => e.stopPropagation();
+		for (const t of ISOLATED_EVENTS) el.addEventListener(t, stop);
+		return () => {
+			for (const t of ISOLATED_EVENTS) el.removeEventListener(t, stop);
+		};
+	});
+
+	// --- 펼침 노트 로드/저장 (NoteWindow 패턴 축소판) ----------------------------
+	let editorContent = $state.raw<JSONContent | null>(null);
+	let loadedGuid = $state<string | null>(null);
+	let createDate = $state<string | null>(null);
+	let pendingDoc: JSONContent | null = null;
+	let saveTimer: ReturnType<typeof setTimeout> | null = null;
+	let loadEpoch = 0;
+	let offReload: (() => void) | null = null;
+
+	async function flushSave(): Promise<void> {
+		if (saveTimer) {
+			clearTimeout(saveTimer);
+			saveTimer = null;
+		}
+		const docJson = pendingDoc;
+		const guid = loadedGuid;
+		pendingDoc = null;
+		if (!docJson || !guid) return;
+		try {
+			await updateNoteFromEditor(guid, docJson);
+		} catch (err) {
+			console.error('[noteBundle flushSave]', err);
+		}
+	}
+
+	function handleEmbeddedChange(doc: JSONContent) {
+		pendingDoc = doc;
+		if (saveTimer) clearTimeout(saveTimer);
+		saveTimer = setTimeout(() => {
+			void flushSave();
+		}, 1500);
+	}
+
+	async function loadExpanded(guid: string) {
+		const epoch = ++loadEpoch;
+		await flushSave();
+		if (epoch !== loadEpoch) return;
+		if (loadedGuid && loadedGuid !== guid) {
+			detachOpenNote(loadedGuid);
+			offReload?.();
+			offReload = null;
+		}
+		const note = await getNote(guid);
+		if (epoch !== loadEpoch) return;
+		if (!note) {
+			editorContent = null;
+			loadedGuid = null;
+			return;
+		}
+		editorContent = getNoteEditorContent(note);
+		createDate = note.createDate ?? null;
+		loadedGuid = guid;
+		attachOpenNote(guid);
+		offReload = subscribeNoteReload(guid, async () => {
+			// 렌임 스윕 등 외부 rewrite — pending 폐기 후 IDB 재로드
+			pendingDoc = null;
+			const fresh = await getNote(guid);
+			if (fresh && loadedGuid === guid) editorContent = getNoteEditorContent(fresh);
+		});
+	}
+
+	$effect(() => {
+		const g = expanded?.guid ?? null;
+		if (g && g !== loadedGuid) void loadExpanded(g);
+	});
+
+	onDestroy(() => {
+		void flushSave();
+		if (loadedGuid) detachOpenNote(loadedGuid);
+		offReload?.();
+	});
+
+	// --- 전환 (휠 / 스와이프 / 바 클릭) ------------------------------------------
+	function moveTo(target: number) {
+		if (target < 0 || target >= resolved.length || target === k) return;
+		const entry = resolved[target];
+		if (entry.broken) return;
+		selectBundleEntry(view, spec.ordinal, entry.originalIndex);
+	}
+	function step(dir: 1 | -1) {
+		if (k < 0) return;
+		moveTo(nextValidIndex(resolved, k, dir));
+	}
+
+	let wheelAcc = 0;
+	function handleBarsWheel(e: WheelEvent) {
+		e.preventDefault();
+		e.stopPropagation();
+		wheelAcc += e.deltaY;
+		while (wheelAcc >= 50) {
+			step(1);
+			wheelAcc -= 50;
+		}
+		while (wheelAcc <= -50) {
+			step(-1);
+			wheelAcc += 50;
+		}
+	}
+
+	let swipeY: number | null = null;
+	function handleBarsPointerDown(e: PointerEvent) {
+		swipeY = e.clientY;
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+	}
+	function handleBarsPointerMove(e: PointerEvent) {
+		if (swipeY === null) return;
+		const dy = e.clientY - swipeY;
+		if (Math.abs(dy) >= 30) {
+			step(dy < 0 ? 1 : -1); // 위로 끌면 다음 파일철
+			swipeY = e.clientY;
+		}
+	}
+	function handleBarsPointerUp() {
+		swipeY = null;
+	}
+
+	// --- 하단 리사이즈 핸들 -------------------------------------------------------
+	let resizeStartY = 0;
+	let resizeStartH = 0;
+	function handleResizeDown(e: PointerEvent) {
+		e.preventDefault();
+		e.stopPropagation();
+		resizeStartY = e.clientY;
+		resizeStartH = stackH;
+		dragPx = stackH;
+		(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+	}
+	function handleResizeMove(e: PointerEvent) {
+		if (dragPx === null) return;
+		dragPx = Math.max(140, resizeStartH + (e.clientY - resizeStartY));
+	}
+	function handleResizeUp() {
+		if (dragPx === null) return;
+		const pct = Math.round((dragPx / Math.max(1, hostH)) * 100);
+		dragPx = null;
+		writeBundleHeightPct(view, spec.ordinal, pct);
+	}
+</script>
+
+<div class="bundle-stack" bind:this={rootEl} style:height={`${stackH}px`}>
+	{#if resolved.length === 0}
+		<div class="bundle-empty">묶을 노트 없음</div>
+	{:else}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="bundle-bars"
+			onwheel={handleBarsWheel}
+			onpointerdown={handleBarsPointerDown}
+			onpointermove={handleBarsPointerMove}
+			onpointerup={handleBarsPointerUp}
+			onpointercancel={handleBarsPointerUp}
+		>
+			{#each bars as bar, i (barStart + i)}
+				<button
+					type="button"
+					class="bundle-bar"
+					class:broken={bar.broken}
+					onclick={() => moveTo(barStart + i)}
+				>{bar.title}</button>
+			{/each}
+			{#if expanded}
+				<div class="bundle-bar expanded-bar" aria-hidden="true">{expanded.title}</div>
+			{/if}
+		</div>
+		{#if expanded && editorContent && loadedGuid}
+			<div class="bundle-body">
+				<EditorComponent
+					content={editorContent}
+					currentGuid={loadedGuid}
+					onchange={handleEmbeddedChange}
+					oninternallink={(t: string) => oninternallink?.(t)}
+					enableNoteBundle={false}
+					hrSplitEnabled={false}
+					{createDate}
+				/>
+			</div>
+		{:else if expanded}
+			<div class="bundle-empty">로딩…</div>
+		{:else}
+			<div class="bundle-empty">펼칠 수 있는 노트 없음</div>
+		{/if}
+	{/if}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="bundle-resize"
+		onpointerdown={handleResizeDown}
+		onpointermove={handleResizeMove}
+		onpointerup={handleResizeUp}
+		onpointercancel={handleResizeUp}
+		aria-hidden="true"
+	></div>
+</div>
+
+<style>
+	.bundle-stack {
+		display: flex;
+		flex-direction: column;
+		margin: 8px 0;
+		border: 1px solid #444;
+		border-radius: 6px;
+		overflow: hidden;
+		background: #1e1e1e;
+	}
+	.bundle-bars {
+		flex-shrink: 0;
+		touch-action: none;
+		user-select: none;
+		display: flex;
+		flex-direction: column;
+	}
+	/* NoteWindow .title-bar 시각 언어 재사용 (dark #2a2a2a / focused green) */
+	.bundle-bar {
+		display: block;
+		width: 100%;
+		text-align: left;
+		border: none;
+		border-bottom: 1px solid #1a1a1a;
+		padding: clamp(4px, 1vw, 6px) clamp(8px, 2vw, 12px);
+		background: #2a2a2a;
+		color: #eee;
+		font-size: 0.85rem;
+		font-weight: 500;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		cursor: pointer;
+	}
+	.bundle-bar.broken {
+		color: #777;
+		cursor: default;
+	}
+	.expanded-bar {
+		background: #2d5a3d;
+		cursor: grab;
+	}
+	.bundle-body {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+		background: #fff;
+	}
+	.bundle-empty {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: #888;
+		font-size: 0.85rem;
+	}
+	.bundle-resize {
+		flex-shrink: 0;
+		height: 8px;
+		cursor: ns-resize;
+		touch-action: none;
+		background: #2a2a2a;
+	}
+	.bundle-resize::after {
+		content: '';
+		display: block;
+		width: 36px;
+		height: 3px;
+		border-radius: 2px;
+		margin: 2.5px auto;
+		background: #555;
+	}
+</style>
