@@ -23,6 +23,7 @@ import {
 } from './imageUpload.js';
 import * as noteStore from '$lib/storage/noteStore.js';
 import { emitNoteReload } from '$lib/core/noteReloadBus.js';
+import { invalidateCache } from '$lib/stores/noteListCache.js';
 import { deleteTempImage } from './tempImageUpload.js';
 import { formatTomboyDate } from '$lib/core/note.js';
 
@@ -98,8 +99,12 @@ export async function promoteImageToDropbox(tempUrl: string): Promise<PromotionR
     }
   }
 
-  // Step 5: reload open editors for the succeeded notes
+  // Step 5: reload open editors for the succeeded notes. Also hard-invalidate
+  // the shared note-list cache: this is a bulk multi-note rewrite that
+  // bypasses noteManager, and the warm cache would otherwise keep serving the
+  // pre-rewrite xmlContent/changeDate rows.
   if (succeeded.length > 0) {
+    invalidateCache();
     await emitNoteReload(succeeded);
   }
 

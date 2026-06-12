@@ -19,7 +19,8 @@ vi.mock('$lib/storage/noteStore.js', () => ({
 }));
 
 vi.mock('$lib/stores/noteListCache.js', () => ({
-	invalidateCache: vi.fn()
+	invalidateCache: vi.fn(),
+	noteMutated: vi.fn()
 }));
 
 import { updateNoteFromEditor } from '$lib/core/noteManager.js';

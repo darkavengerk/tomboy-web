@@ -775,6 +775,13 @@ export async function applyPlan(
 				localManifest.lastSyncDate = new Date().toISOString();
 				await saveManifest(localManifest);
 				if (reloadGuids.size > 0) await emitNoteReload(reloadGuids);
+				// Downloads/merges/purges already landed in IDB before this
+				// commit failure — invalidate so the warm shared cache (title
+				// index, slip-note set, SidePanel) doesn't keep serving
+				// pre-sync state until the next fully-successful sync.
+				if (result.downloaded > 0 || result.merged > 0 || result.deleted > 0) {
+					invalidateCache();
+				}
 				setStatus('error');
 				return result;
 			}
@@ -796,6 +803,11 @@ export async function applyPlan(
 				localManifest.lastSyncDate = new Date().toISOString();
 				await saveManifest(localManifest);
 				if (reloadGuids.size > 0) await emitNoteReload(reloadGuids);
+				// Same partial-application guard as the upload-commit failure
+				// path above: applied writes must invalidate the warm cache.
+				if (result.downloaded > 0 || result.merged > 0 || result.deleted > 0) {
+					invalidateCache();
+				}
 				setStatus('error');
 				emitProgress('done', '완료', []);
 				return result;
@@ -817,7 +829,17 @@ export async function applyPlan(
 	await saveManifest(localManifest);
 
 	result.status = result.errors.length > 0 ? 'error' : 'success';
-	if (result.status === 'success') {
+	// Invalidate whenever ANY local write was applied — not only on full
+	// success. Per-note download errors leave the counters non-zero on an
+	// 'error' result, and skipping the invalidate then would leave the warm
+	// shared cache serving pre-sync state until the next successful sync.
+	// (A genuinely write-free sync skips the invalidate — nothing changed.)
+	if (
+		result.downloaded > 0 ||
+		result.merged > 0 ||
+		result.deleted > 0 ||
+		result.uploaded > 0
+	) {
 		invalidateCache();
 		try {
 			await refreshNotebooksCache();

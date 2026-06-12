@@ -36,8 +36,10 @@ vi.mock('$lib/storage/noteStore.js', () => ({
 }));
 
 const invalidateCacheSpy = vi.fn();
+const noteMutatedSpy = vi.fn();
 vi.mock('$lib/stores/noteListCache.js', () => ({
-	invalidateCache: () => invalidateCacheSpy()
+	invalidateCache: () => invalidateCacheSpy(),
+	noteMutated: (note: NoteData) => noteMutatedSpy(note)
 }));
 
 const lookupGuidByTitleMock = vi.fn<(title: string) => string | null>();
@@ -94,6 +96,7 @@ beforeEach(() => {
 	store.clear();
 	putSpy.mockReset();
 	invalidateCacheSpy.mockReset();
+	noteMutatedSpy.mockReset();
 	lookupGuidByTitleMock.mockReset();
 	ensureTitleIndexReadySpy.mockClear();
 	emitNoteReloadSpy.mockReset();
@@ -176,8 +179,9 @@ describe('updateNoteFromEditor — rename rewrite of backlinks', () => {
 		expect(new Set(emittedArr)).toEqual(new Set(['B', 'C']));
 		expect(emittedArr).not.toContain('A');
 
-		// invalidateCache called (at least once for title change; second pass
-		// for the rewrite batch is allowed).
+		// The renamed note itself patches the cache (noteMutated); the bulk
+		// rewrite batch (B, C) then forces a hard invalidate.
+		expect(noteMutatedSpy).toHaveBeenCalledTimes(1);
 		expect(invalidateCacheSpy).toHaveBeenCalled();
 	});
 

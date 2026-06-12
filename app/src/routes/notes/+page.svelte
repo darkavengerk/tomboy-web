@@ -11,6 +11,7 @@
 		setCachedNotes,
 		getCachedScrollTop,
 		setCachedScrollTop,
+		getEpoch,
 		onInvalidate
 	} from '$lib/stores/noteListCache.js';
 	import { goto } from '$app/navigation';
@@ -40,9 +41,14 @@
 	});
 
 	async function refresh() {
+		// Epoch token: if an invalidate or a single-note patch lands while this
+		// fresh read is in flight, setCachedNotes drops our (older) snapshot
+		// instead of overwriting the newer cache state. The page itself still
+		// renders the fresh list either way.
+		const asOf = getEpoch();
 		const fresh = await listNotes();
 		allNotes = fresh;
-		setCachedNotes(fresh);
+		setCachedNotes(fresh, asOf);
 		loading = false;
 	}
 
