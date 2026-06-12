@@ -65,6 +65,8 @@
 	import { parseTerminalNote, type TerminalNoteSpec } from '../terminal/parseTerminalNote.js';
 	import TerminalView from '../terminal/TerminalView.svelte';
 	import { isScrollBottomNote } from '$lib/core/scrollBottom.js';
+	import { isMusicNoteDoc } from '$lib/music/parseMusicNote.js';
+	import MusicPlayerBar from '../musicNote/MusicPlayerBar.svelte';
 
 	interface Props {
 		spec: BundleSpec;
@@ -250,8 +252,18 @@
 			(t) => [t, t === 'keydown' ? stopKeydown : stop]
 		);
 		for (const [t, h] of pairs) el.addEventListener(t, h);
+		// 훑어보기 모드(또는 ctrl/⌘+휠)의 휠은 캡처 단계에서 선점 — xterm 이
+		// 자기 DOM 에 단 wheel 리스너가 타깃 단계에서 버퍼를 스크롤해 버리면
+		// 버블의 preventDefault 로는 못 되돌린다(임베디드 PM 스크롤도 동류).
+		// flipWheel 의 stopPropagation 이 하강 자체를 끊는다.
+		const captureWheel = (e: Event) => {
+			const we = e as WheelEvent;
+			if (mode === 'browse' || we.ctrlKey || we.metaKey) flipWheel(we);
+		};
+		el.addEventListener('wheel', captureWheel, { capture: true, passive: false });
 		return () => {
 			for (const [t, h] of pairs) el.removeEventListener(t, h);
+			el.removeEventListener('wheel', captureWheel, { capture: true });
 		};
 	});
 
@@ -274,6 +286,8 @@
 		termConnect: boolean;
 		/** "하단이 최신" 노트 — 첫 마운트 때 본문을 끝까지 스크롤 */
 		scrollBottom: boolean;
+		/** 음악 노트 — 본문 상단에 MusicPlayerBar 표시 */
+		isMusic: boolean;
 	}
 	const sessions = new SvelteMap<string, EditorSession>();
 	const loading = new Set<string>();
@@ -304,6 +318,13 @@
 		s.saveTimer = setTimeout(() => {
 			void flushSession(guid);
 		}, 1500);
+		// 시그니처(음악/터미널) 변화 때만 세션 교체 — 매 키스트로크 set churn 방지.
+		// 호스트 셸과 동일하게 편집 중 시그니처 등장/소멸을 즉시 반영한다.
+		const isMusic = isMusicNoteDoc(doc);
+		const term = parseTerminalNote(doc);
+		if (isMusic !== s.isMusic || !!term !== !!s.termSpec || term?.target !== s.termSpec?.target) {
+			sessions.set(guid, { ...s, isMusic, termSpec: term });
+		}
 	}
 
 	async function loadSession(guid: string) {
@@ -327,7 +348,12 @@
 				const live = sessions.get(guid);
 				if (fresh && live) {
 					const content = getNoteEditorContent(fresh);
-					sessions.set(guid, { ...live, content, termSpec: parseTerminalNote(content) });
+					sessions.set(guid, {
+						...live,
+						content,
+						termSpec: parseTerminalNote(content),
+						isMusic: isMusicNoteDoc(content)
+					});
 				}
 			});
 			const offFlush = subscribeNoteFlush(guid, () => flushSession(guid));
@@ -342,7 +368,8 @@
 				offFlush,
 				termSpec: parseTerminalNote(content),
 				termConnect: false,
-				scrollBottom
+				scrollBottom,
+				isMusic: isMusicNoteDoc(content)
 			});
 		} finally {
 			loading.delete(guid);
@@ -440,6 +467,36 @@
 		};
 	}
 
+	/** 세션별 임베디드 TomboyEditor 인스턴스 ref — MusicPlayerBar 가 라이브
+	 *  Editor 를 요구한다. bind:this 시점엔 내부 editor 가 아직 onMount 전일
+	 *  수 있어 mountMusicBar 가 rAF 로 getEditor() 준비를 기다린다. */
+	// Component<any> 의 인스턴스 타입(SvelteComponent)과 노출 메서드가 안 맞아
+	// any — 실제로는 TomboyEditor 의 export function getEditor().
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	let editorRefs = $state<Record<string, any>>({});
+
+	/** MusicPlayerBar 도 TerminalView 와 같은 이유로 독립 mount() — 위임
+	 *  onclick 이 격벽에 죽지 않게. */
+	function mountMusicBar(node: HTMLElement, params: { guid: string }) {
+		let app: ReturnType<typeof mountComponent> | null = null;
+		let raf = 0;
+		const tryMount = () => {
+			const ed = editorRefs[params.guid]?.getEditor?.();
+			if (ed) {
+				app = mountComponent(MusicPlayerBar, { target: node, props: { editor: ed, guid: params.guid } });
+			} else {
+				raf = requestAnimationFrame(tryMount);
+			}
+		};
+		tryMount();
+		return {
+			destroy() {
+				cancelAnimationFrame(raf);
+				if (app) void unmountComponent(app);
+			}
+		};
+	}
+
 	// --- 전환 (휠 / 스와이프 / 바 클릭) ------------------------------------------
 	function moveTo(target: number) {
 		if (target < 0 || target >= resolved.length || target === k) return;
@@ -507,6 +564,9 @@
 	function handleListPointerDown(e: PointerEvent) {
 		const t = e.target as HTMLElement;
 		if (t.closest?.('.bar-term-btn')) return; // 접속 버튼 — 자체 click 핸들러
+		// 재생 컨트롤 — 조작이 편집 모드 진입/스와이프로 안 새게. click 은
+		// 독립 mount 된 MusicPlayerBar 가 직접 받는다.
+		if (t.closest?.('.bundle-music')) return;
 		const body = t.closest?.('.bundle-body') as HTMLElement | null;
 		if (body) {
 			// 편집 모드: 노트 내부 인터랙션 — 손대지 않음.
@@ -659,7 +719,11 @@
 								></div>
 							{/key}
 						{:else}
+							{#if session.isMusic}
+								<div class="bundle-music" use:mountMusicBar={{ guid: session.guid }}></div>
+							{/if}
 							<EditorComponent
+								bind:this={editorRefs[session.guid]}
 								content={session.content}
 								currentGuid={session.guid}
 								onchange={(doc: JSONContent) => handleEmbeddedChange(session.guid, doc)}
@@ -807,6 +871,17 @@
 	}
 	.bundle-term {
 		height: 100%;
+	}
+	/* 재생 컨트롤 — 본문 스크롤 컨테이너 상단에 sticky. .music-bar 자체의
+	   sticky 는 이 래퍼 박스에 갇혀 무효라 래퍼가 sticky 를 맡고, 내부 바의
+	   --topnav-height 오프셋(모바일 nav 용)도 여기선 0 이어야 한다. */
+	.bundle-music {
+		position: sticky;
+		top: 0;
+		z-index: 5;
+	}
+	.bundle-music :global(.music-bar) {
+		position: static;
 	}
 	.bundle-body.loading {
 		display: flex;
