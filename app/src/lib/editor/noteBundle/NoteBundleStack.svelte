@@ -26,8 +26,20 @@
 	 * 윈도우 밖 바는 제거 대신 .off(max-height 0 + 우측 48px + 투명)로
 	 * 접는다 — 클래스 토글이 CSS transition 을 타므로 윈도우에서 밀려나는
 	 * 바가 오른쪽 +N 배지로 빨려 들어가듯 사라지고, 들어오는 바는 역재생.
+	 *
+	 * ── 훑어보기 / 편집 모드 ─────────────────────────────────────────────
+	 * 훑어보기(기본): 스택 어디서든 휠/스와이프 = 묶음 브라우징(노트 전환),
+	 * 활성 본문은 회색조 + 포인터 커서. 본문 탭/클릭 → 편집 모드: 본문이
+	 * 흰 배경으로 바뀌고 휠/스크롤이 노트 내부로 들어간다. Esc · 타이틀 바
+	 * 클릭 · 묶음 스크롤(바 위 휠/스와이프, ctrl+휠) → 훑어보기 복귀.
+	 *
+	 * ── 호스트 셸 배선 ──────────────────────────────────────────────────
+	 * 터미널 노트: 활성 바에 "접속" 버튼 → TerminalView 를 본문에 별도
+	 * mount() (격벽이 Svelte 위임 이벤트를 죽이므로 — 위임 루트가 격벽
+	 * 안쪽이 되도록 독립 마운트). "하단이 최신" 노트는 세션 첫 마운트 때
+	 * 본문(.bundle-body 스크롤 컨테이너)을 끝까지 내린다.
 	 */
-	import { onMount, onDestroy, untrack } from 'svelte';
+	import { onMount, onDestroy, untrack, mount as mountComponent, unmount as unmountComponent } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
 	import type { Component } from 'svelte';
 	import type { EditorView } from '@tiptap/pm/view';
@@ -50,6 +62,9 @@
 	} from '$lib/core/noteManager.js';
 	import { subscribeNoteReload, subscribeNoteFlush } from '$lib/core/noteReloadBus.js';
 	import { attachOpenNote, detachOpenNote } from '$lib/sync/firebase/orchestrator.js';
+	import { parseTerminalNote, type TerminalNoteSpec } from '../terminal/parseTerminalNote.js';
+	import TerminalView from '../terminal/TerminalView.svelte';
+	import { isScrollBottomNote } from '$lib/core/scrollBottom.js';
 
 	interface Props {
 		spec: BundleSpec;
@@ -223,6 +238,11 @@
 			if ((ke.ctrlKey || ke.metaKey) && (ke.key === 'Home' || ke.key === 'End')) {
 				ke.preventDefault();
 			}
+			// Esc = 편집 → 훑어보기 복귀. 터미널 안 Esc 는 터미널 몫(vim 등).
+			if (ke.key === 'Escape' && mode === 'edit') {
+				const t = ke.target as HTMLElement | null;
+				if (!t?.closest?.('.bundle-term')) exitEdit();
+			}
 			if (NAV_KEYS.has(ke.key)) guardCaretEscape();
 			ke.stopPropagation();
 		};
@@ -248,6 +268,12 @@
 		saveTimer: ReturnType<typeof setTimeout> | null;
 		offReload: () => void;
 		offFlush: () => void;
+		/** 터미널 노트면 spec — 활성 바에 "접속" 버튼 노출 */
+		termSpec: TerminalNoteSpec | null;
+		/** 접속 중 = 본문이 TerminalView */
+		termConnect: boolean;
+		/** "하단이 최신" 노트 — 첫 마운트 때 본문을 끝까지 스크롤 */
+		scrollBottom: boolean;
 	}
 	const sessions = new SvelteMap<string, EditorSession>();
 	const loading = new Set<string>();
@@ -284,7 +310,7 @@
 		if (sessions.has(guid) || loading.has(guid)) return;
 		loading.add(guid);
 		try {
-			const note = await getNote(guid);
+			const [note, scrollBottom] = await Promise.all([getNote(guid), isScrollBottomNote(guid)]);
 			if (!note || destroyed || sessions.has(guid)) return;
 			attachOpenNote(guid);
 			const offReload = subscribeNoteReload(guid, async () => {
@@ -299,21 +325,34 @@
 				}
 				const fresh = await getNote(guid);
 				const live = sessions.get(guid);
-				if (fresh && live) sessions.set(guid, { ...live, content: getNoteEditorContent(fresh) });
+				if (fresh && live) {
+					const content = getNoteEditorContent(fresh);
+					sessions.set(guid, { ...live, content, termSpec: parseTerminalNote(content) });
+				}
 			});
 			const offFlush = subscribeNoteFlush(guid, () => flushSession(guid));
+			const content = getNoteEditorContent(note);
 			sessions.set(guid, {
 				guid,
-				content: getNoteEditorContent(note),
+				content,
 				createDate: note.createDate ?? null,
 				pendingDoc: null,
 				saveTimer: null,
 				offReload,
-				offFlush
+				offFlush,
+				termSpec: parseTerminalNote(content),
+				termConnect: false,
+				scrollBottom
 			});
 		} finally {
 			loading.delete(guid);
 		}
+	}
+
+	function setTermConnect(guid: string, on: boolean) {
+		const s = sessions.get(guid);
+		if (!s) return;
+		sessions.set(guid, { ...s, termConnect: on });
 	}
 
 	function teardownSession(guid: string) {
@@ -361,6 +400,46 @@
 		};
 	}
 
+	// --- 훑어보기 / 편집 모드 ---------------------------------------------------
+	// browse(기본): 묶음 전체가 휠/스와이프를 받아 노트를 브라우징.
+	// edit: 본문 클릭으로 진입 — 휠/스크롤이 활성 노트 내부로 들어간다.
+	let mode = $state<'browse' | 'edit'>('browse');
+
+	function exitEdit() {
+		if (mode !== 'edit') return;
+		mode = 'browse';
+		// 임베디드 에디터에 남은 포커스 제거 — 이후 타이핑이 노트로 새지 않게
+		const ae = document.activeElement as HTMLElement | null;
+		if (ae && rootEl?.contains(ae)) ae.blur();
+	}
+
+	/** "하단이 최신" 노트 — 세션 첫 마운트 직후 본문 스크롤을 끝으로.
+	 *  rAF×2: 임베디드 에디터가 setContent + 레이아웃을 마친 다음 프레임. */
+	function scrollBottomInit(node: HTMLElement, enabled: boolean) {
+		if (!enabled) return;
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				node.scrollTop = node.scrollHeight;
+			});
+		});
+	}
+
+	/** TerminalView 를 독립 mount() — NoteBundleStack 트리 안에 넣으면 Svelte
+	 *  위임 이벤트(onclick 등)의 위임 루트가 격벽 바깥(위젯 컨테이너)이라
+	 *  stopPropagation 에 전부 죽는다. 별도 mount 는 위임 루트가 이 div 가
+	 *  되어 격벽 안쪽에서 정상 동작. */
+	function mountTerminal(
+		node: HTMLElement,
+		params: { spec: TerminalNoteSpec; guid: string; onedit: () => void }
+	) {
+		const app = mountComponent(TerminalView, { target: node, props: params });
+		return {
+			destroy() {
+				void unmountComponent(app);
+			}
+		};
+	}
+
 	// --- 전환 (휠 / 스와이프 / 바 클릭) ------------------------------------------
 	function moveTo(target: number) {
 		if (target < 0 || target >= resolved.length || target === k) return;
@@ -370,6 +449,7 @@
 	}
 
 	function step(dir: 1 | -1) {
+		exitEdit(); // 묶음 스크롤 = 훑어보기 복귀 (스와이프 경로 포함)
 		if (k < 0) return;
 		const target = nextValidIndex(resolved, k, dir);
 		if (target === k) return;
@@ -379,6 +459,7 @@
 
 	let wheelAcc = 0;
 	function flipWheel(e: WheelEvent) {
+		exitEdit(); // 묶음 스크롤 의도 — 임계 미달 누적이어도 복귀
 		e.preventDefault(); // ctrl+wheel 브라우저 줌 차단 겸용
 		e.stopPropagation();
 		// 방향 반전 시 잔여 폐기 — 반대 방향 첫 응답이 굼뜨지 않게
@@ -402,8 +483,9 @@
 			flipWheel(we);
 			return;
 		}
-		// 콘텐츠 위 일반 wheel = 임베디드 스크롤 그대로
-		if ((we.target as HTMLElement).closest?.('.bundle-body')) return;
+		// 편집 모드에서만 콘텐츠 위 일반 wheel = 임베디드 스크롤.
+		// 훑어보기 모드는 스택 어디서든 wheel = 묶음 브라우징.
+		if (mode === 'edit' && (we.target as HTMLElement).closest?.('.bundle-body')) return;
 		flipWheel(we);
 	}
 	/** 루트 폴백 — 리사이즈 핸들 등 .bundle-list 밖에서의 ctrl+wheel.
@@ -417,17 +499,35 @@
 	let downBarIdx: number | null = null;
 	let downBarY = 0;
 	let swiped = false;
+	/** 훑어보기 모드에서 열린 본문 위 pointerdown — 탭이면 편집 모드 진입 */
+	let downBodyEdit = false;
 	let lastTapIdx: number | null = null;
 	let lastTapTime = 0;
 
 	function handleListPointerDown(e: PointerEvent) {
 		const t = e.target as HTMLElement;
-		if (t.closest?.('.bundle-body')) return; // 임베디드 에디터 — 손대지 않음
+		if (t.closest?.('.bar-term-btn')) return; // 접속 버튼 — 자체 click 핸들러
+		const body = t.closest?.('.bundle-body') as HTMLElement | null;
+		if (body) {
+			// 편집 모드: 노트 내부 인터랙션 — 손대지 않음.
+			if (mode === 'edit') return;
+			// 훑어보기: 열린 본문 위 제스처를 추적 — 탭=편집 진입, 스와이프=브라우징.
+			// 캡처는 안 한다 — 캡처하면 click 이 리스트로 retarget 돼 탭 시
+			// PM 포커스(모바일 키보드)가 안 뜬다.
+			if (!body.classList.contains('open')) return;
+			swipeY = e.clientY;
+			downBarY = e.clientY;
+			swiped = false;
+			downBodyEdit = true;
+			downBarIdx = null;
+			return;
+		}
 		const bar = t.closest?.('.bundle-bar') as HTMLElement | null;
 		if (!bar) return;
 		swipeY = e.clientY;
 		downBarY = e.clientY;
 		swiped = false;
+		downBodyEdit = false;
 		downBarIdx = bar.dataset.idx != null ? Number(bar.dataset.idx) : null;
 		try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* pointer already released */ }
 	}
@@ -444,20 +544,27 @@
 		const pe = e as PointerEvent;
 		// 캡처가 click 을 컨테이너로 retarget 하므로 click/dblclick 대신
 		// pointerup 에서 탭·더블탭을 수동 판정한다.
-		if (!swiped && downBarIdx !== null && Math.abs(pe.clientY - downBarY) < 8) {
-			const now = performance.now();
-			if (lastTapIdx === downBarIdx && now - lastTapTime < 300) {
-				const entry = resolved[downBarIdx];
-				if (entry && !entry.broken) oninternallink?.(entry.title);
-				lastTapIdx = null;
-			} else {
-				moveTo(downBarIdx);
-				lastTapIdx = downBarIdx;
-				lastTapTime = now;
+		if (!swiped && Math.abs(pe.clientY - downBarY) < 8) {
+			if (downBodyEdit) {
+				// 훑어보기에서 열린 본문 탭 → 편집 모드 (PM 이 이미 캐럿을 놓았다)
+				mode = 'edit';
+			} else if (downBarIdx !== null) {
+				const now = performance.now();
+				if (lastTapIdx === downBarIdx && now - lastTapTime < 300) {
+					const entry = resolved[downBarIdx];
+					if (entry && !entry.broken) oninternallink?.(entry.title);
+					lastTapIdx = null;
+				} else {
+					exitEdit(); // 타이틀 클릭 = 훑어보기 복귀
+					moveTo(downBarIdx);
+					lastTapIdx = downBarIdx;
+					lastTapTime = now;
+				}
 			}
 		}
 		swipeY = null;
 		downBarIdx = null;
+		downBodyEdit = false;
 	}
 
 	// --- 하단 리사이즈 핸들 -------------------------------------------------------
@@ -483,7 +590,13 @@
 	}
 </script>
 
-<div class="bundle-stack" bind:this={rootEl} style:height={`${stackH}px`} use:direct={{ wheel: handleRootWheel }}>
+<div
+	class="bundle-stack"
+	class:browse={mode === 'browse'}
+	bind:this={rootEl}
+	style:height={`${stackH}px`}
+	use:direct={{ wheel: handleRootWheel }}
+>
 	{#if resolved.length === 0}
 		<div class="bundle-empty">묶을 노트 없음</div>
 	{:else}
@@ -510,6 +623,22 @@
 					data-idx={idx}
 				>
 					<span class="bar-title">{e.title}</span>
+					{#if idx === k && session?.termSpec && !session.termConnect}
+						<!-- 터미널 노트 — 호스트 셸의 "접속" FAB 대응. 격벽이 Svelte
+						     위임 click 을 죽이므로 direct 액션으로 직접 바인딩. -->
+						<span
+							class="bar-term-btn"
+							role="button"
+							tabindex="-1"
+							title="SSH 접속 — {session.termSpec.target}"
+							use:direct={{
+								click: () => {
+									setTermConnect(e.guid!, true);
+									mode = 'edit';
+								}
+							}}
+						>접속</span>
+					{/if}
 					{#if idx === winStart && hiddenAbove > 0}
 						<span class="bar-badge">+{hiddenAbove}</span>
 					{:else if idx === lastVisibleIdx && hiddenBelow > 0}
@@ -517,16 +646,29 @@
 					{/if}
 				</button>
 				{#if session}
-					<div class="bundle-body" class:open={idx === k}>
-						<EditorComponent
-							content={session.content}
-							currentGuid={session.guid}
-							onchange={(doc: JSONContent) => handleEmbeddedChange(session.guid, doc)}
-							oninternallink={(t: string) => oninternallink?.(t)}
-							enableNoteBundle={false}
-							hrSplitEnabled={false}
-							createDate={session.createDate}
-						/>
+					<div class="bundle-body" class:open={idx === k} use:scrollBottomInit={session.scrollBottom}>
+						{#if session.termSpec && session.termConnect}
+							{#key session.termSpec}
+								<div
+									class="bundle-term"
+									use:mountTerminal={{
+										spec: session.termSpec,
+										guid: session.guid,
+										onedit: () => setTermConnect(session.guid, false)
+									}}
+								></div>
+							{/key}
+						{:else}
+							<EditorComponent
+								content={session.content}
+								currentGuid={session.guid}
+								onchange={(doc: JSONContent) => handleEmbeddedChange(session.guid, doc)}
+								oninternallink={(t: string) => oninternallink?.(t)}
+								enableNoteBundle={false}
+								hrSplitEnabled={false}
+								createDate={session.createDate}
+							/>
+						{/if}
 					</div>
 				{:else if idx === k}
 					<div class="bundle-body open loading">로딩…</div>
@@ -624,6 +766,22 @@
 		background: #2d5a3d;
 		cursor: grab;
 	}
+	/* 편집 모드 — 활성 바를 한 단계 밝게 */
+	.bundle-stack:not(.browse) .bundle-bar.expanded-bar {
+		background: #3f8657;
+	}
+	.bar-term-btn {
+		flex-shrink: 0;
+		padding: 1px 8px;
+		border-radius: 4px;
+		background: #1e3a2a;
+		color: #9fd4b3;
+		font-size: 0.75rem;
+		cursor: pointer;
+	}
+	.bar-term-btn:hover {
+		background: #163022;
+	}
 	/* 모든 세션 본문이 자기 바 밑에 상주 — 활성만 flex-grow:1. 전환은
 	   flex-grow transition: 옛 본문 접히고 새 본문 펼쳐지는 서랍 모션이
 	   레이아웃에서 일어나 바들이 매 프레임 자연히 따라 움직인다. */
@@ -633,10 +791,22 @@
 		overflow-y: auto;
 		overscroll-behavior: contain;
 		background: var(--color-bg, #fff);
-		transition: flex-grow 160ms ease-out;
+		transition:
+			flex-grow 160ms ease-out,
+			background-color 160ms ease-out;
 	}
 	.bundle-body.open {
 		flex-grow: 1;
+	}
+	/* 훑어보기 모드 — 활성 본문 회색조(편집 모드의 흰 배경과 구분) + 탭 힌트.
+	   touch-action: none 으로 네이티브 스크롤 대신 스와이프 브라우징을 받는다. */
+	.bundle-stack.browse .bundle-body.open {
+		background: #ecebe6;
+		cursor: pointer;
+		touch-action: none;
+	}
+	.bundle-term {
+		height: 100%;
 	}
 	.bundle-body.loading {
 		display: flex;
