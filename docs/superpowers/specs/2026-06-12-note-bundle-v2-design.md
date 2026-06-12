@@ -104,21 +104,26 @@ stepWindow(start, active', dir, N) = clampWindow(start + dir, active', N)
 
 ## 6. 슬라이드 애니메이션
 
-- 바 + 콘텐츠를 **단일 keyed `{#each}`** 로 재구성: 윈도우 항목들을
-  순회하며 활성 항목 바로 뒤에 콘텐츠 패널 삽입.
+- 바들은 **단일 keyed `{#each}`** (윈도우 항목 전체, 활성 포함 전부
+  button), 콘텐츠 패널은 each **바깥** 단일 요소. 배치는 flex `order` 로:
+  바 i → `order: i*2`, 콘텐츠 → `order: (active-start)*2 + 1` — 활성 바
+  바로 아래 끼워진다.
 
 ```svelte
-{#each windowEntries as e (e.originalIndex)}
-  <bar … />
-  {#if e.originalIndex === expandedOriginalIndex}
-    <div class="bundle-body">…</div>
-  {/if}
-{/each}
+<div class="bundle-list"> <!-- flex column -->
+  {#each winEntries as e, i (e.originalIndex)}
+    <button class="bundle-bar" class:expanded-bar={…} style:order={i * 2}
+            animate:flip={{ duration: 150 }}>…</button>
+  {/each}
+  <div class="bundle-body" style:order={(k - winStart) * 2 + 1}>…</div>
+</div>
 ```
 
-- 바에 `animate:flip={{ duration: 150 }}` — 윈도우 슬라이드 시 바들이
-  실제로 밀려 올라가고/내려온다. 콘텐츠 패널은 가벼운 fade
-  (`transition:fade={{ duration: 120 }}` 수준, 과하지 않게).
+- `animate:flip` 은 keyed each 의 직계 자식이어야 한다 — `{#if}` 래퍼
+  금지가 button 통일({`class:expanded-bar`})의 이유.
+- 콘텐츠 패널은 **단일 인스턴스 유지** (임베디드 에디터 리마운트 방지 —
+  파일철 빠르게 넘길 때 TipTap 재초기화 비용 회피). 페이드 없음;
+  윈도우 슬라이드 시 바 flip(150ms)이 넘김 효과를 담당한다.
 - 콘텐츠 패널 높이는 flex `1` 유지 — 바 수가 상·하로 변해도 스택 전체
   높이(`stackH`)는 불변.
 
