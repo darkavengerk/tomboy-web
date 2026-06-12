@@ -2684,6 +2684,10 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		display: inline-block;
 		width: 1em;
 		height: 1em;
+		/* 폭 1em + 우측 0.4em 만큼 음수 마진 — 위젯이 ul 패딩(1.5em)의
+		   불릿 자리로 들어가고, 항목 텍스트는 일반 불릿 항목 텍스트와
+		   같은 x 에서 시작한다. */
+		margin-left: -1.4em;
 		margin-right: 0.4em;
 		padding: 0;
 		vertical-align: -0.12em;
@@ -2711,6 +2715,7 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		display: inline-block;
 		width: 1em;
 		height: 1em;
+		margin-left: -1.4em; /* 체크박스와 동일 — 불릿 자리 정렬 */
 		margin-right: 0.4em;
 		padding: 0;
 		vertical-align: -0.12em;
