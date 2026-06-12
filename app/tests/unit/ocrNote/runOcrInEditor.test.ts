@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { ClaudeChatError } from '$lib/chatNote/backends/claude.js';
@@ -16,11 +16,20 @@ vi.mock('$lib/chatNote/backends/claude.js', async (importOriginal) => {
 	};
 });
 
+// Destroy editors so prosemirror's DOMObserver flush timer can't fire after
+// jsdom teardown ("document is not defined" unhandled error).
+const editors: Editor[] = [];
+afterEach(() => {
+	for (const ed of editors.splice(0)) ed.destroy();
+});
+
 function makeEditor() {
-	return new Editor({
+	const ed = new Editor({
 		extensions: [StarterKit],
 		content: '<p>ocr://claude</p><p></p>'
 	});
+	editors.push(ed);
+	return ed;
 }
 
 function baseSpec(overrides: Partial<OcrNoteSpec> = {}): OcrNoteSpec {
