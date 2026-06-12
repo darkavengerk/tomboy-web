@@ -144,6 +144,11 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		modKeys,
 		installModKeyListeners,
 	} from "$lib/desktop/modKeys.svelte.js";
+	import { mount as mountSvelte, unmount as unmountSvelte } from "svelte";
+	import TomboyEditorSelf from "./TomboyEditor.svelte"; // 셀프 임포트 — 임베디드 에디터 주입용
+	import NoteBundleStack from "./noteBundle/NoteBundleStack.svelte";
+	import { createNoteBundlePlugin } from "./noteBundle/noteBundlePlugin.js";
+	import type { BundleSpec } from "./noteBundle/parser.js";
 
 	interface Props {
 		content?: JSONContent;
@@ -236,6 +241,9 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		 *  (desktop NoteWindow): the editor's own overflow parent + the 30px
 		 *  `--toolbar-h` strip. */
 		cursorVisibilityMode?: "window" | "container";
+		/** 노트 묶음 스택 렌더 여부. 임베디드(번들 안) 에디터는 false 로
+		 *  중첩 번들을 막는다 (depth 1 — 번들 안 번들은 리스트로만 보임). */
+		enableNoteBundle?: boolean;
 	}
 
 	let {
@@ -267,6 +275,7 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		keepCursorVisible = false,
 		cursorVisibilityMode = "window",
 		onsendremarkable,
+		enableNoteBundle = true,
 	}: Props = $props();
 
 	let ctxMenu = $state<{ x: number; y: number } | null>(null);
@@ -503,6 +512,41 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 					name: "tomboyGeoMap",
 					addProseMirrorPlugins() {
 						return [createGeoMapPlugin()];
+					},
+				}),
+				Extension.create({
+					name: "tomboyNoteBundle",
+					addProseMirrorPlugins() {
+						if (!enableNoteBundle) return [];
+						return [
+							createNoteBundlePlugin({
+								mountStack: (container, view, spec) => {
+									// $state 프록시 props — 이후 spec 갱신이
+									// 리마운트 없이 컴포넌트에 반영된다.
+									const props = $state({
+										spec,
+										view,
+										hostGuid: currentGuid,
+										EditorComponent: TomboyEditorSelf,
+										oninternallink: (t: string) =>
+											oninternallink?.(t),
+									});
+									const inst = mountSvelte(NoteBundleStack, {
+										target: container,
+										props,
+									});
+									return {
+										update(s: BundleSpec) {
+											props.spec = s;
+											props.hostGuid = currentGuid;
+										},
+										destroy() {
+											void unmountSvelte(inst);
+										},
+									};
+								},
+							}),
+						];
 					},
 				}),
 				Extension.create({
@@ -1710,6 +1754,14 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 	.tomboy-editor :global(.tomboy-geo-map .leaflet-container) {
 		width: 100%;
 		height: 100%;
+	}
+
+	/* 노트 묶음: 체크 시 링크 리스트 숨김 (노드 데코레이션 클래스) */
+	.tomboy-editor :global(.tomboy-note-bundle-hidden) {
+		display: none;
+	}
+	.tomboy-editor :global(.tomboy-note-bundle) {
+		display: block;
 	}
 
 	/* Highlight */
