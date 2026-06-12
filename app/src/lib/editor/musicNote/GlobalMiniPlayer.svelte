@@ -4,6 +4,7 @@
 	import { musicPlayer } from '$lib/music/musicPlayer.svelte.js';
 	import { resumePlaybackFromGesture } from '$lib/music/musicAudio.svelte.js';
 	import { miniPlayerVisible } from './miniPlayerVisibility.js';
+	import { dragStartAllowed } from './miniPlayerDrag.js';
 
 	// 현재 페이지의 노트 guid(/note/[id]). 그 외 라우트는 null.
 	const currentNoteGuid = $derived(page.params.id ?? null);
@@ -36,6 +37,9 @@
 	let dragDY = 0;
 	let moved = false;
 	function onPointerDown(e: PointerEvent) {
+		// 버튼(✕/▶)에서 시작한 시퀀스를 캡처하면 click 이 알약으로 재타게팅되어
+		// 버튼 onclick 이 죽는다 — 인터랙티브 타깃이면 드래그를 시작하지 않는다.
+		if (!dragStartAllowed(e.target)) return;
 		const el = e.currentTarget as HTMLElement;
 		const r = el.getBoundingClientRect();
 		dragging = true;
