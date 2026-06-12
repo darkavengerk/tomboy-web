@@ -1,0 +1,40 @@
+{
+	"planPath": "docs/superpowers/plans/2026-06-12-note-bundle.md",
+	"tasks": [
+		{
+			"id": 9,
+			"subject": "Task 1: parser.ts + stackMath.ts (순수 함수 + 테스트)",
+			"status": "pending",
+			"description": "**Goal:** doc 에서 BundleSpec[] 을 추출하는 파서와 스택 인덱스 계산 헬퍼.\n\n**Files:** Create app/src/lib/editor/noteBundle/parser.ts, stackMath.ts; Test app/tests/unit/editor/noteBundle/parser.test.ts, stackMath.test.ts\n\n**Acceptance Criteria:** 키워드+리스트 파싱 / 노트묶음 변형 + :N 생략 기본 50 / 체크박스 없음·제목 라인 미인식·비링크 무시·다중 번들 / clampHeightPct 클램프\n\n**Verify:** cd app && npx vitest run tests/unit/editor/noteBundle/\n\n전체 코드: 플랜 문서 Task 1.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/noteBundle/parser.ts\", \"app/src/lib/editor/noteBundle/stackMath.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/noteBundle/\", \"acceptanceCriteria\": [\"키워드+리스트 파싱\", \"변형/기본값\", \"미인식 케이스\", \"클램프\"]}\n```"
+		},
+		{
+			"id": 10,
+			"subject": "Task 2: noteBundlePlugin.ts (데코레이션 + 라디오 자동삽입 + tr 헬퍼)",
+			"status": "pending",
+			"blockedBy": [9],
+			"description": "**Goal:** 체크된 번들에 리스트 숨김 + 위젯 데코레이션, 라디오 의무 자동삽입, selectBundleEntry / writeBundleHeightPct.\n\n**Files:** Create app/src/lib/editor/noteBundle/noteBundlePlugin.ts, index.ts; Test noteBundlePlugin.test.ts\n\n**Acceptance Criteria:** mountStack 1회+update / 라디오 자동삽입+첫 (o) / 체크 해제 destroy / tr 헬퍼 / XML 라운드트립 보존\n\n**Verify:** cd app && npx vitest run tests/unit/editor/noteBundle/noteBundlePlugin.test.ts\n\n전체 코드: 플랜 문서 Task 2.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/noteBundle/noteBundlePlugin.ts\", \"app/src/lib/editor/noteBundle/index.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/noteBundle/noteBundlePlugin.test.ts\", \"acceptanceCriteria\": [\"마운트 1회\", \"라디오 자동삽입\", \"destroy\", \"tr 헬퍼\", \"라운드트립\"]}\n```"
+		},
+		{
+			"id": 11,
+			"subject": "Task 3: NoteBundleStack.svelte (스택 UI + 임베디드 에디터)",
+			"status": "pending",
+			"blockedBy": [10],
+			"description": "**Goal:** 접힌 바 + 펼친 노트(임베디드 TomboyEditor) + 휠/스와이프 + 드래그 리사이즈.\n\n**Files:** Create app/src/lib/editor/noteBundle/NoteBundleStack.svelte\n\n**Acceptance Criteria:** npm run check 0 errors / 이벤트 격벽 / 디바운스 저장+flush / attach·detach+reload 구독\n\n**Verify:** cd app && npm run check\n\n전체 코드: 플랜 문서 Task 3.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/noteBundle/NoteBundleStack.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"check 통과\", \"격벽\", \"저장 수명주기\", \"sync 수명주기\"]}\n```"
+		},
+		{
+			"id": 12,
+			"subject": "Task 4: TomboyEditor 통합 (prop + 확장 + CSS + 수동 검증)",
+			"status": "pending",
+			"blockedBy": [11],
+			"description": "**Goal:** enableNoteBundle prop + tomboyNoteBundle 확장 + mountStack($state props) + 숨김 CSS.\n\n**Files:** Modify app/src/lib/editor/TomboyEditor.svelte\n\n**Acceptance Criteria:** prop 기본 true·중첩 가드 / $state 리마운트 없는 갱신 / 숨김 CSS / 수동 8 시나리오 (플랜 Task 4 Step 5)\n\n**Verify:** cd app && npm run check && npx vitest run tests/unit/editor/ + npm run dev 수동\n\n전체 코드: 플랜 문서 Task 4.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/TomboyEditor.svelte\"], \"verifyCommand\": \"cd app && npm run check && npx vitest run tests/unit/editor/\", \"acceptanceCriteria\": [\"prop+가드\", \"리마운트 없음\", \"CSS\", \"수동 시나리오\"]}\n```"
+		},
+		{
+			"id": 13,
+			"subject": "Task 5: 가이드 카드 + 최종 검증",
+			"status": "pending",
+			"blockedBy": [12],
+			"description": "**Goal:** 설정 → 가이드 → 에디터 탭 guide-card + 전체 테스트.\n\n**Files:** Modify app/src/routes/settings/+page.svelte\n\n**Acceptance Criteria:** 노트 묶음 카드 추가 / npm run check + npm run test 전체 통과\n\n**Verify:** cd app && npm run check && npm run test\n\n카드 마크업: 플랜 문서 Task 5.\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check && npm run test\", \"acceptanceCriteria\": [\"가이드 카드\", \"전체 통과\"]}\n```"
+		}
+	],
+	"lastUpdated": "2026-06-12"
+}
