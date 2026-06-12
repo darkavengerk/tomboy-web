@@ -301,6 +301,8 @@
 		e.preventDefault(); // ctrl+wheel 브라우저 줌 차단 겸용
 		e.stopPropagation();
 		wheelAcc += e.deltaY;
+		// 한 이벤트당 실질 한 칸 — k 는 dispatch 후에야 갱신되므로 루프 2회째부터는
+		// 같은 target 으로 no-op. 플링이 여러 칸을 건너뛰지 않게 하는 의도된 동작.
 		while (wheelAcc >= 50) {
 			step(1);
 			wheelAcc -= 50;
@@ -447,7 +449,7 @@
 			{:else if expanded}
 				<div class="bundle-empty" style:order={(k - winStart) * 2 + 1}>로딩…</div>
 			{:else}
-				<div class="bundle-empty">펼칠 수 있는 노트 없음</div>
+				<div class="bundle-empty" style:order={winEntries.length * 2}>펼칠 수 있는 노트 없음</div>
 			{/if}
 		</div>
 	{/if}
