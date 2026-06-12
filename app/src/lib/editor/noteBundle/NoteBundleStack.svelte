@@ -12,9 +12,23 @@
 	 * 으로 다른 번들의 spec 을 받을 수 있으므로 모든 상태는 현재 spec 에서
 	 * 파생한다. EditorComponent 는 TomboyEditor 자신 (셀프 임포트 주입) —
 	 * 이 파일이 직접 임포트하면 순환이 생기므로 prop 으로 받는다.
+	 *
+	 * ── 열린 노트 유지 + 서랍 애니메이션 ──────────────────────────────
+	 * 한 번이라도 펼친 노트는 에디터 세션(sessions)을 살려 둔다(lazy mount,
+	 * 언마운트 없음). 모든 항목이 "바 + 자기 본문" 쌍으로 DOM 순서 그대로
+	 * 놓이고, 활성 본문만 flex-grow:1 — 전환은 flex-grow CSS transition 으로
+	 * 옛 본문이 접히고 새 본문이 펼쳐지는 서랍 모션이 레이아웃 자체에서
+	 * 일어난다. 바들은 매 프레임 레이아웃을 따라 움직이므로 별도 FLIP 불요.
+	 * 이전 단일-body 구조는 본문이 바를 덮어 그려 이동 애니메이션이 가려졌고,
+	 * 들어올 본문이 스텝 시점에 존재하지 않아(IDB async 로드) 교체 자체에
+	 * 애니메이션을 걸 수 없었다.
+	 *
+	 * 윈도우 밖 바는 제거 대신 .off(max-height 0 + 우측 48px + 투명)로
+	 * 접는다 — 클래스 토글이 CSS transition 을 타므로 윈도우에서 밀려나는
+	 * 바가 오른쪽 +N 배지로 빨려 들어가듯 사라지고, 들어오는 바는 역재생.
 	 */
-	import { onMount, onDestroy, untrack, tick } from 'svelte';
-	import { cubicOut } from 'svelte/easing';
+	import { onMount, onDestroy, untrack } from 'svelte';
+	import { SvelteMap } from 'svelte/reactivity';
 	import type { Component } from 'svelte';
 	import type { EditorView } from '@tiptap/pm/view';
 	import type { JSONContent } from '@tiptap/core';
@@ -124,9 +138,9 @@
 	});
 
 	const W = $derived(windowWidth(resolved.length));
-	const winEntries = $derived(resolved.slice(winStart, winStart + W));
 	const hiddenAbove = $derived(winStart);
 	const hiddenBelow = $derived(Math.max(0, resolved.length - (winStart + W)));
+	const lastVisibleIdx = $derived(Math.min(winStart + W, resolved.length) - 1);
 
 	// --- 높이 ----------------------------------------------------------------
 	let rootEl = $state<HTMLElement | null>(null);
@@ -221,25 +235,34 @@
 		};
 	});
 
-	// --- 펼침 노트 로드/저장 (NoteWindow 패턴 축소판) ----------------------------
-	let editorContent = $state.raw<JSONContent | null>(null);
-	let loadedGuid = $state<string | null>(null);
-	let createDate = $state<string | null>(null);
-	let pendingDoc: JSONContent | null = null;
-	let saveTimer: ReturnType<typeof setTimeout> | null = null;
-	let loadEpoch = 0;
-	let offReload: (() => void) | null = null;
-	let offFlush: (() => void) | null = null;
+	// --- 에디터 세션 (노트별, lazy mount 후 유지) -------------------------------
+	// 처음 펼칠 때 IDB 로드 + attach + 구독을 만들고, 스택이 살아 있는 동안
+	// 유지한다. 스텝마다 로드/저장이 인터리브되던 단일-body 구조의 flushSave
+	// 레이스가 사라지고, 노트별 커서·언두가 보존되며, 전환 애니메이션이
+	// 이미 마운트된 본문 사이에서 일어난다.
+	interface EditorSession {
+		guid: string;
+		content: JSONContent;
+		createDate: string | null;
+		pendingDoc: JSONContent | null;
+		saveTimer: ReturnType<typeof setTimeout> | null;
+		offReload: () => void;
+		offFlush: () => void;
+	}
+	const sessions = new SvelteMap<string, EditorSession>();
+	const loading = new Set<string>();
+	let destroyed = false;
 
-	async function flushSave(): Promise<void> {
-		if (saveTimer) {
-			clearTimeout(saveTimer);
-			saveTimer = null;
+	async function flushSession(guid: string): Promise<void> {
+		const s = sessions.get(guid);
+		if (!s) return;
+		if (s.saveTimer) {
+			clearTimeout(s.saveTimer);
+			s.saveTimer = null;
 		}
-		const docJson = pendingDoc;
-		const guid = loadedGuid;
-		pendingDoc = null;
-		if (!docJson || !guid) return;
+		const docJson = s.pendingDoc;
+		s.pendingDoc = null;
+		if (!docJson) return;
 		try {
 			await updateNoteFromEditor(guid, docJson);
 		} catch (err) {
@@ -247,56 +270,82 @@
 		}
 	}
 
-	function handleEmbeddedChange(doc: JSONContent) {
-		pendingDoc = doc;
-		if (saveTimer) clearTimeout(saveTimer);
-		saveTimer = setTimeout(() => {
-			void flushSave();
+	function handleEmbeddedChange(guid: string, doc: JSONContent) {
+		const s = sessions.get(guid);
+		if (!s) return;
+		s.pendingDoc = doc;
+		if (s.saveTimer) clearTimeout(s.saveTimer);
+		s.saveTimer = setTimeout(() => {
+			void flushSession(guid);
 		}, 1500);
 	}
 
-	async function loadExpanded(guid: string) {
-		const epoch = ++loadEpoch;
-		await flushSave();
-		if (epoch !== loadEpoch) return;
-		if (loadedGuid && loadedGuid !== guid) {
-			detachOpenNote(loadedGuid);
-			offReload?.();
-			offReload = null;
-			offFlush?.();
-			offFlush = null;
+	async function loadSession(guid: string) {
+		if (sessions.has(guid) || loading.has(guid)) return;
+		loading.add(guid);
+		try {
+			const note = await getNote(guid);
+			if (!note || destroyed || sessions.has(guid)) return;
+			attachOpenNote(guid);
+			const offReload = subscribeNoteReload(guid, async () => {
+				// 렌임 스윕 등 외부 rewrite — pending 폐기 후 IDB 재로드
+				const cur = sessions.get(guid);
+				if (cur) {
+					if (cur.saveTimer) {
+						clearTimeout(cur.saveTimer);
+						cur.saveTimer = null;
+					}
+					cur.pendingDoc = null;
+				}
+				const fresh = await getNote(guid);
+				const live = sessions.get(guid);
+				if (fresh && live) sessions.set(guid, { ...live, content: getNoteEditorContent(fresh) });
+			});
+			const offFlush = subscribeNoteFlush(guid, () => flushSession(guid));
+			sessions.set(guid, {
+				guid,
+				content: getNoteEditorContent(note),
+				createDate: note.createDate ?? null,
+				pendingDoc: null,
+				saveTimer: null,
+				offReload,
+				offFlush
+			});
+		} finally {
+			loading.delete(guid);
 		}
-		const note = await getNote(guid);
-		if (epoch !== loadEpoch) return;
-		if (!note) {
-			editorContent = null;
-			loadedGuid = null;
-			return;
-		}
-		editorContent = getNoteEditorContent(note);
-		createDate = note.createDate ?? null;
-		loadedGuid = guid;
-		attachOpenNote(guid);
-		offReload = subscribeNoteReload(guid, async () => {
-			// 렌임 스윕 등 외부 rewrite — pending 폐기 후 IDB 재로드
-			if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
-			pendingDoc = null;
-			const fresh = await getNote(guid);
-			if (fresh && loadedGuid === guid) editorContent = getNoteEditorContent(fresh);
-		});
-		offFlush = subscribeNoteFlush(guid, () => flushSave());
 	}
 
+	function teardownSession(guid: string) {
+		const s = sessions.get(guid);
+		if (!s) return;
+		void flushSession(guid);
+		detachOpenNote(guid);
+		s.offReload();
+		s.offFlush();
+		sessions.delete(guid);
+	}
+
+	// 활성 노트 세션 보장
 	$effect(() => {
 		const g = expanded?.guid ?? null;
-		if (g && g !== loadedGuid) void loadExpanded(g);
+		if (g && !sessions.has(g)) void loadSession(g);
+	});
+
+	// spec 에서 빠진 노트 세션 정리 (사용자가 목록을 편집한 경우).
+	// sessions 를 읽고 쓰므로 untrack — resolved 변화에만 반응.
+	$effect(() => {
+		const valid = new Set(resolved.map((e) => e.guid).filter((g): g is string => g !== null));
+		untrack(() => {
+			for (const guid of [...sessions.keys()]) {
+				if (!valid.has(guid)) teardownSession(guid);
+			}
+		});
 	});
 
 	onDestroy(() => {
-		void flushSave();
-		if (loadedGuid) detachOpenNote(loadedGuid);
-		offReload?.();
-		offFlush?.();
+		destroyed = true;
+		for (const guid of [...sessions.keys()]) teardownSession(guid);
 	});
 
 	/** Svelte 5 는 click/pointer* 를 document 루트 위임으로 처리하는데, 루트
@@ -317,67 +366,9 @@
 		if (target < 0 || target >= resolved.length || target === k) return;
 		const entry = resolved[target];
 		if (entry.broken) return;
-		const dir: 1 | -1 = target > k ? 1 : -1;
-		const prevTops = captureTops();
 		selectBundleEntry(view, spec.ordinal, entry.originalIndex);
-		void animateFlow(prevTops, dir);
 	}
 
-	// --- 흐름 애니메이션 --------------------------------------------------------
-	// animate:flip 은 keyed each 의 "재배열"만 잡는다 — 윈도우가 가장자리에
-	// 핀돼 활성만 바뀌는 스텝(배열 동일, body order 만 이동)에선 무반응이라
-	// 텍스트 교체처럼 보였다. 수동 FLIP 으로 통일: 스텝 전 offsetTop 스냅샷
-	// (transform 면역 — 진행 중 애니메이션과 무관) → 렌더 정착 후 비교.
-	function captureTops(): Map<Element, number> {
-		const m = new Map<Element, number>();
-		rootEl?.querySelectorAll('.bundle-bar, .bundle-body').forEach((el) => {
-			m.set(el, (el as HTMLElement).offsetTop);
-		});
-		return m;
-	}
-	/** 실제 이동한 요소 = FLIP(이전→현재), 제자리 바 = 진행 방향 너지,
-	 *  새로 들어온 바 = 방향에서 슬라이드-인. 제자리 body 는 생략(무겁고 산만). */
-	async function animateFlow(prevTops: Map<Element, number>, dir: 1 | -1) {
-		await tick(); // winStart follow effect → 재렌더 정착까지 2틱
-		await tick();
-		rootEl?.querySelectorAll('.bundle-bar, .bundle-body').forEach((el) => {
-			const node = el as HTMLElement;
-			const old = prevTops.get(el);
-			const isBar = node.classList.contains('bundle-bar');
-			let fromY: number;
-			let fromOpacity = 1;
-			if (old === undefined) {
-				if (!isBar) return;
-				fromY = dir * 16; // 새 바 — 진행 방향에서 진입
-				fromOpacity = 0;
-			} else {
-				const dy = old - node.offsetTop;
-				if (Math.abs(dy) > 1) fromY = dy;
-				else if (isBar) fromY = dir * 8; // 제자리 바 — 흐름 너지
-				else return;
-			}
-			node.animate(
-				[
-					{ transform: `translateY(${fromY}px)`, opacity: String(fromOpacity) },
-					{ transform: 'translateY(0)', opacity: '1' }
-				],
-				{ duration: 160, easing: 'ease-out' }
-			);
-		});
-	}
-	/** 윈도우에서 밀려나는 바 — 오른쪽으로 사라짐 (+N 배지에 흡수되는 느낌).
-	 *  position:absolute 로 즉시 플로우에서 빼 생존 바 FLIP 측정을 안 깨뜨린다. */
-	function flyOutRight(node: HTMLElement) {
-		const top = node.offsetTop;
-		const width = node.offsetWidth;
-		return {
-			duration: 160,
-			easing: cubicOut,
-			css: (t: number, u: number) =>
-				`position:absolute; top:${top}px; left:0; width:${width}px; margin:0; ` +
-				`pointer-events:none; transform:translateX(${u * 48}px); opacity:${t};`
-		};
-	}
 	function step(dir: 1 | -1) {
 		if (k < 0) return;
 		const target = nextValidIndex(resolved, k, dir);
@@ -507,41 +498,42 @@
 				pointercancel: handleListPointerUp
 			}}
 		>
-			{#each winEntries as e, i (e.originalIndex)}
-				<!-- 이동/너지 애니메이션은 animateFlow(수동 FLIP)가 담당 -->
+			{#each resolved as e, idx (e.originalIndex)}
+				{@const off = idx < winStart || idx > lastVisibleIdx}
+				{@const session = e.guid ? sessions.get(e.guid) : undefined}
 				<button
 					type="button"
 					class="bundle-bar"
 					class:broken={e.broken}
-					class:expanded-bar={winStart + i === k}
-					data-idx={winStart + i}
-					style:order={i * 2}
-					out:flyOutRight
+					class:expanded-bar={idx === k}
+					class:off
+					data-idx={idx}
 				>
 					<span class="bar-title">{e.title}</span>
-					{#if i === 0 && hiddenAbove > 0}
+					{#if idx === winStart && hiddenAbove > 0}
 						<span class="bar-badge">+{hiddenAbove}</span>
-					{:else if i === winEntries.length - 1 && hiddenBelow > 0}
+					{:else if idx === lastVisibleIdx && hiddenBelow > 0}
 						<span class="bar-badge">+{hiddenBelow}</span>
 					{/if}
 				</button>
+				{#if session}
+					<div class="bundle-body" class:open={idx === k}>
+						<EditorComponent
+							content={session.content}
+							currentGuid={session.guid}
+							onchange={(doc: JSONContent) => handleEmbeddedChange(session.guid, doc)}
+							oninternallink={(t: string) => oninternallink?.(t)}
+							enableNoteBundle={false}
+							hrSplitEnabled={false}
+							createDate={session.createDate}
+						/>
+					</div>
+				{:else if idx === k}
+					<div class="bundle-body open loading">로딩…</div>
+				{/if}
 			{/each}
-			{#if expanded && editorContent && loadedGuid}
-				<div class="bundle-body" style:order={(k - winStart) * 2 + 1}>
-					<EditorComponent
-						content={editorContent}
-						currentGuid={loadedGuid}
-						onchange={handleEmbeddedChange}
-						oninternallink={(t: string) => oninternallink?.(t)}
-						enableNoteBundle={false}
-						hrSplitEnabled={false}
-						{createDate}
-					/>
-				</div>
-			{:else if expanded}
-				<div class="bundle-empty" style:order={(k - winStart) * 2 + 1}>로딩…</div>
-			{:else}
-				<div class="bundle-empty" style:order={winEntries.length * 2}>펼칠 수 있는 노트 없음</div>
+			{#if k < 0}
+				<div class="bundle-empty">펼칠 수 있는 노트 없음</div>
 			{/if}
 		</div>
 	{/if}
@@ -569,7 +561,7 @@
 		background: #1e1e1e;
 	}
 	.bundle-list {
-		position: relative; /* flyOutRight absolute 기준 + offsetTop 기준 */
+		position: relative;
 		flex: 1;
 		min-height: 0;
 		display: flex;
@@ -582,6 +574,7 @@
 		align-items: center;
 		gap: 6px;
 		width: 100%;
+		max-height: 3rem;
 		border: none;
 		border-bottom: 1px solid #1a1a1a;
 		padding: clamp(4px, 1vw, 6px) clamp(8px, 2vw, 12px);
@@ -590,9 +583,25 @@
 		font-size: 0.85rem;
 		font-weight: 500;
 		cursor: pointer;
+		overflow: hidden;
 		touch-action: none; /* 바에서 시작한 스와이프가 pointercancel 로 죽지 않게 */
 		user-select: none;
-		transition: background-color 160ms ease-out; /* 활성 바 전환도 흐름에 묻어가게 */
+		/* 활성 전환·윈도우 진입/퇴장 전부 클래스 토글 → transition 이 흐름을 만든다 */
+		transition:
+			background-color 160ms ease-out,
+			max-height 160ms ease-out,
+			padding 160ms ease-out,
+			opacity 160ms ease-out,
+			transform 160ms ease-out;
+	}
+	/* 윈도우 밖 바 — 오른쪽(+N 배지 방향)으로 빨려 들어가며 접힘 */
+	.bundle-bar.off {
+		max-height: 0;
+		padding-block: 0;
+		border-bottom-width: 0;
+		opacity: 0;
+		transform: translateX(48px);
+		pointer-events: none;
 	}
 	.bar-title {
 		flex: 1;
@@ -615,12 +624,26 @@
 		background: #2d5a3d;
 		cursor: grab;
 	}
+	/* 모든 세션 본문이 자기 바 밑에 상주 — 활성만 flex-grow:1. 전환은
+	   flex-grow transition: 옛 본문 접히고 새 본문 펼쳐지는 서랍 모션이
+	   레이아웃에서 일어나 바들이 매 프레임 자연히 따라 움직인다. */
 	.bundle-body {
-		flex: 1;
+		flex: 0 1 0%;
 		min-height: 0;
 		overflow-y: auto;
 		overscroll-behavior: contain;
 		background: var(--color-bg, #fff);
+		transition: flex-grow 160ms ease-out;
+	}
+	.bundle-body.open {
+		flex-grow: 1;
+	}
+	.bundle-body.loading {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: #888;
+		font-size: 0.85rem;
 	}
 	.bundle-empty {
 		flex: 1;
