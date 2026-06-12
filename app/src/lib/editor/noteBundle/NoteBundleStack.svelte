@@ -189,12 +189,19 @@
 				const n = s?.anchorNode;
 				const anchorEl = n ? (n.nodeType === Node.ELEMENT_NODE ? (n as Element) : n.parentElement) : null;
 				if (!anchorEl || rootEl?.contains(anchorEl)) return; // 섬 안 — 정상 이동
-				// 탈출 → 임베디드 에디터로 포커스 + 캐럿 원위치
+				// 탈출 → 임베디드 에디터로 포커스 + 캐럿 원위치.
+				// 스냅샷 컨테이너가 동시 PM 트랜잭션으로 분리됐으면 기존 선택을
+				// 지우지 않고 포기 (removeAllRanges 후 addRange 실패 = 무선택 상태).
 				const bc = before.startContainer;
-				const bcEl = bc.nodeType === Node.ELEMENT_NODE ? (bc as Element) : bc.parentElement;
-				bcEl?.closest<HTMLElement>('.ProseMirror')?.focus({ preventScroll: true });
-				s?.removeAllRanges();
-				s?.addRange(before);
+				if (!bc.isConnected) return;
+				try {
+					const bcEl = bc.nodeType === Node.ELEMENT_NODE ? (bc as Element) : bc.parentElement;
+					bcEl?.closest<HTMLElement>('.ProseMirror')?.focus({ preventScroll: true });
+					s?.removeAllRanges();
+					s?.addRange(before);
+				} catch {
+					/* 스냅샷 무효화 (IndexSizeError 등) — 복원 포기 */
+				}
 			}, 0);
 		};
 		const stopKeydown = (e: Event) => {
