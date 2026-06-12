@@ -119,7 +119,8 @@ describe('checklist marker serialization', () => {
 	});
 
 	it('does not treat a checklist-format title as a region header', () => {
-		// 제목 줄(블록 0)은 절대 헤더가 아니다 — 영역 미형성, [[ ]] 평문 유지.
+		// 제목 줄(블록 0)은 절대 헤더가 아니다 — 영역 미형성.
+		// Task 3 이후: 영역 밖 [[ ]] 는 per-item checkbox 마커로 파싱된다.
 		const xml = wrap(
 			'체크리스트: 장보기\n<list>' +
 				'<list-item dir="ltr">[[ ]] 우유</list-item>' +
@@ -127,14 +128,18 @@ describe('checklist marker serialization', () => {
 		);
 		const doc = deserializeContent(xml);
 		const li0 = doc.content![1].content![0];
-		// 영역 헤더가 없으므로 [[ ]] 마커 strip 안 됨.
-		expect(li0.content![0].content![0].text).toBe('[[ ]] 우유');
+		// 영역 헤더가 없으므로 체크리스트 영역이 아니지만,
+		// listBox 전역 패스가 [[ ]] 를 per-item checkbox 마커로 처리한다.
+		expect(li0.attrs!.boxKind).toBe('checkbox');
+		expect(li0.attrs!.checked).toBe(false);
+		expect(li0.content![0].content![0].text).toBe('우유');
 		expect(serializeContent(doc)).toBe(xml);
 	});
 });
 
-describe('checklist region 외부에선 [[X]] 평문, [x] inline atom', () => {
-	it('non-region list-item 의 [[X]] 는 평문 텍스트로 남는다', () => {
+describe('checklist region 외부에선 [[X]] per-item 마커, [x] inline atom', () => {
+	it('non-region list-item 의 [[X]] 는 per-item checkbox 마커로 파싱된다', () => {
+		// Task 3 이후: 영역 밖 [[X]] 는 평문이 아닌 per-item boxKind 마커.
 		const xml = wrap(
 			'제목\n그냥 목록\n<list>' +
 				'<list-item dir="ltr">[[X]] 우유</list-item>' +
@@ -142,9 +147,9 @@ describe('checklist region 외부에선 [[X]] 평문, [x] inline atom', () => {
 		);
 		const doc = deserializeContent(xml);
 		const li0 = doc.content![2].content![0];
-		const inlines = li0.content![0].content!;
-		expect(inlines).toHaveLength(1);
-		expect(inlines[0]).toEqual({ type: 'text', text: '[[X]] 우유' });
+		expect(li0.attrs!.boxKind).toBe('checkbox');
+		expect(li0.attrs!.checked).toBe(true);
+		expect(li0.content![0].content![0].text).toBe('우유');
 		expect(serializeContent(doc)).toBe(xml);
 	});
 

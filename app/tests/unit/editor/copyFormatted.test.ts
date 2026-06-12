@@ -347,3 +347,57 @@ describe('inlineCheckbox serializers', () => {
 		expect(html).toContain('<input type="checkbox" disabled checked>');
 	});
 });
+
+describe('boxKind 항목 단위 체크박스/라디오', () => {
+	const boxDoc: JSONContent = {
+		type: 'doc',
+		content: [
+			{
+				type: 'bulletList',
+				content: [
+					{
+						type: 'listItem',
+						attrs: { boxKind: 'checkbox', checked: true },
+						content: [
+							{ type: 'paragraph', content: [{ type: 'text', text: '우유' }] }
+						]
+					},
+					{
+						type: 'listItem',
+						attrs: { boxKind: 'radio', checked: false },
+						content: [
+							{ type: 'paragraph', content: [{ type: 'text', text: '밥' }] }
+						]
+					},
+					{
+						type: 'listItem',
+						content: [
+							{ type: 'paragraph', content: [{ type: 'text', text: '빵' }] }
+						]
+					}
+				]
+			}
+		]
+	};
+
+	it('markdown: 태스크 문법 + 라디오 리터럴', () => {
+		expect(tiptapToMarkdown(boxDoc)).toBe('- [x] 우유\n- ( ) 밥\n- 빵');
+	});
+
+	it('plain: 접두 마커', () => {
+		expect(tiptapToPlainText(boxDoc)).toBe('[x] 우유\n( ) 밥\n빵');
+	});
+
+	it('structured: 불릿 글리프 대신 마커', () => {
+		expect(tiptapToStructuredText(boxDoc)).toBe('[x] 우유\n( ) 밥\n• 빵');
+	});
+
+	it('html: input 요소', () => {
+		const html = tiptapToHtml(boxDoc);
+		expect(html).toContain(
+			'<li><input type="checkbox" disabled checked> <p>우유</p></li>'
+		);
+		expect(html).toContain('<li><input type="radio" disabled> <p>밥</p></li>');
+		expect(html).toContain('<li><p>빵</p></li>');
+	});
+});

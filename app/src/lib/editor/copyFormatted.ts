@@ -31,6 +31,14 @@ function getTextNodes(node: JSONContent): string {
 	return (node.content ?? []).map(getTextNodes).join('');
 }
 
+/** 항목 단위(boxKind) 박스의 텍스트 접두 마커. 없으면 ''. */
+function boxPrefix(li: JSONContent): string {
+	const kind = li.attrs?.boxKind;
+	if (kind === 'checkbox') return li.attrs?.checked ? '[x] ' : '[ ] ';
+	if (kind === 'radio') return li.attrs?.checked ? '(o) ' : '( ) ';
+	return '';
+}
+
 // ---------------------------------------------------------------------------
 // Plain text
 //
@@ -43,7 +51,9 @@ function getTextNodes(node: JSONContent): string {
 // Rationale: the right-click menu already offers a dedicated "Markdown" copy
 // path when the user wants list markers. This path is for the common case of
 // pasting into another list, where "- foo" would otherwise land as literal
-// text inside the receiving list item.
+// text inside the receiving list item. Checkbox and radio (boxKind) items are
+// the one exception — they carry their [x]/ ( ) prefix marker because the
+// marker replaces the hidden bullet and is part of the item's visible content.
 // ---------------------------------------------------------------------------
 
 function plainNode(node: JSONContent): string {
@@ -58,10 +68,11 @@ function plainNode(node: JSONContent): string {
 		}
 		case 'hardBreak':
 			return '\n';
+		case 'listItem':
+			return boxPrefix(node) + (node.content ?? []).map(plainNode).join('\n');
 		case 'doc':
 		case 'bulletList':
 		case 'orderedList':
-		case 'listItem':
 		default:
 			return (node.content ?? []).map(plainNode).join('\n');
 	}
@@ -118,15 +129,17 @@ function structuredNode(node: JSONContent, indent: number): string {
 }
 
 function structuredListItem(li: JSONContent, indent: number, marker: string): string {
+	const box = boxPrefix(li);
+	const effectiveMarker = box !== '' ? box : marker;
 	const pad = '  '.repeat(indent);
 	const lines: string[] = [];
 	for (const child of li.content ?? []) {
 		if (child.type === 'paragraph') {
-			lines.push(pad + marker + structuredNode(child, indent));
+			lines.push(pad + effectiveMarker + structuredNode(child, indent));
 		} else if (child.type === 'bulletList' || child.type === 'orderedList') {
 			lines.push(structuredNode(child, indent + 1));
 		} else {
-			lines.push(pad + marker + structuredNode(child, indent));
+			lines.push(pad + effectiveMarker + structuredNode(child, indent));
 		}
 	}
 	return lines.join('\n');
@@ -187,8 +200,16 @@ function htmlNode(node: JSONContent): string {
 			return `<ul>${(node.content ?? []).map(htmlNode).join('')}</ul>`;
 		case 'orderedList':
 			return `<ol>${(node.content ?? []).map(htmlNode).join('')}</ol>`;
-		case 'listItem':
-			return `<li>${(node.content ?? []).map(htmlNode).join('')}</li>`;
+		case 'listItem': {
+			const kind = node.attrs?.boxKind;
+			let boxInput = '';
+			if (kind === 'checkbox') {
+				boxInput = `<input type="checkbox" disabled${node.attrs?.checked ? ' checked' : ''}> `;
+			} else if (kind === 'radio') {
+				boxInput = `<input type="radio" disabled${node.attrs?.checked ? ' checked' : ''}> `;
+			}
+			return `<li>${boxInput}${(node.content ?? []).map(htmlNode).join('')}</li>`;
+		}
 		default:
 			return (node.content ?? []).map(htmlNode).join('');
 	}
@@ -268,7 +289,7 @@ function mdNode(node: JSONContent, indent: number, insideList: boolean): string 
 }
 
 function mdListItem(li: JSONContent, indent: number): string {
-	const prefix = ' '.repeat(indent * 2) + '- ';
+	const prefix = ' '.repeat(indent * 2) + '- ' + boxPrefix(li);
 	const lines: string[] = [];
 	for (const child of li.content ?? []) {
 		if (child.type === 'paragraph') {

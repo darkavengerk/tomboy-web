@@ -1,0 +1,53 @@
+{
+	"planPath": "docs/superpowers/plans/2026-06-12-list-marker-checkbox-radio.md",
+	"tasks": [
+		{
+			"id": 7,
+			"subject": "Task 1: inlineRadio (( )) 보호 — lookbehind/lookahead",
+			"status": "pending",
+			"description": "**Goal:** 인라인 라디오의 3개 정규식에 lookbehind/lookahead를 추가해 `(( ))`가 인라인 라디오로 먼저 변환되는 충돌 제거.\n\n**Files:**\n- Modify: app/src/lib/editor/inlineRadio/node.ts\n- Modify: app/src/lib/core/noteContentArchiver.ts (INLINE_RADIO_SPLIT_RE)\n- Test: app/tests/unit/editor/inlineRadio/node.test.ts, app/tests/unit/core/archiverInlineRadio.test.ts\n\n**Acceptance Criteria:**\n- (( )) 타이핑 시 인라인 라디오 atom 미생성\n- ( )/(o) 기존 동작 유지\n- (( )) 빵 deserialize 시 inlineRadio 0개\n\n**Verify:** cd app && npx vitest run tests/unit/editor/inlineRadio tests/unit/core/archiverInlineRadio.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/inlineRadio/node.ts\", \"app/src/lib/core/noteContentArchiver.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/inlineRadio tests/unit/core/archiverInlineRadio.test.ts\", \"acceptanceCriteria\": [\"(( )) 타이핑 시 인라인 라디오 atom 미생성\", \"( )/(o) 기존 동작 유지\", \"(( )) 빵 deserialize 시 inlineRadio 0개\"], \"plan\": \"docs/superpowers/plans/2026-06-12-list-marker-checkbox-radio.md#task-1\"}\n```"
+		},
+		{
+			"id": 8,
+			"subject": "Task 2: TomboyListItem boxKind attr + checked keepOnSplit",
+			"status": "pending",
+			"description": "**Goal:** listItem 스키마에 boxKind attr 추가 + checked keepOnSplit:false — Enter 분할 시 종류 상속 + 체크 리셋.\n\n**Files:**\n- Modify: app/src/lib/editor/extensions/TomboyListItem.ts\n- Test: Create app/tests/unit/editor/listBox/splitInheritance.test.ts\n\n**Acceptance Criteria:**\n- boxKind attr 존재(default null, rendered false)\n- splitListItem 시 boxKind 상속 + checked 리셋\n- 기존 항목 attrs 유지\n\n**Verify:** cd app && npx vitest run tests/unit/editor/listBox/splitInheritance.test.ts tests/unit/editor/checklistPlugin.test.ts tests/unit/editor/checklistCommands.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/extensions/TomboyListItem.ts\", \"app/tests/unit/editor/listBox/splitInheritance.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/listBox/splitInheritance.test.ts tests/unit/editor/checklistPlugin.test.ts tests/unit/editor/checklistCommands.test.ts\", \"acceptanceCriteria\": [\"boxKind attr 존재(default null, rendered false)\", \"splitListItem 시 boxKind 상속 + checked 리셋\", \"기존 항목 attrs 유지\"], \"plan\": \"docs/superpowers/plans/2026-06-12-list-marker-checkbox-radio.md#task-2\"}\n```"
+		},
+		{
+			"id": 9,
+			"subject": "Task 3: 아카이버 라운드트립 — per-item 마커 직렬화/파싱",
+			"status": "pending",
+			"blockedBy": [7, 8],
+			"description": "**Goal:** 영역 밖 boxKind 항목을 [[ ]]/[[X]](checkbox), (( ))/((O))(radio) 마커로 직렬화 + 전역 파스 패스로 복원.\n\n**Files:**\n- Modify: app/src/lib/core/noteContentArchiver.ts (serializeContent/serializeBulletList/serializeListItem +allowItemMarkers, deserializeContent 패스 체인, applyProcessMarkersOnParse 반환형, 신규 applyListBoxMarkersOnParse)\n- Test: Create app/tests/unit/core/archiverListBox.test.ts\n\n**Acceptance Criteria:**\n- 영역 밖 boxKind 마커 emit + round-trip byte-identical\n- 영역 안 기존 동작/boxKind 미설정\n- 마커 인라인 atom 분리 없음 + 중첩 동작\n- 텍스트 중간 (( )) 평문 유지\n\n**Verify:** cd app && npx vitest run tests/unit/core tests/unit/editor/checklistArchiver.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/core/noteContentArchiver.ts\", \"app/tests/unit/core/archiverListBox.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/core tests/unit/editor/checklistArchiver.test.ts\", \"acceptanceCriteria\": [\"영역 밖 boxKind 마커 emit + round-trip byte-identical\", \"영역 안 기존 동작/boxKind 미설정\", \"마커 인라인 atom 분리 없음 + 중첩 동작\", \"텍스트 중간 (( )) 평문 유지\"], \"plan\": \"docs/superpowers/plans/2026-06-12-list-marker-checkbox-radio.md#task-3\"}\n```"
+		},
+		{
+			"id": 10,
+			"subject": "Task 4: listBox 모듈 — 영역 제외 helper + InputRule + Backspace",
+			"status": "pending",
+			"blockedBy": [7, 8],
+			"description": "**Goal:** [[ ]]/(( )) 입력 → boxKind 설정 + 마커 삭제; 내용 맨 앞 Backspace → 불릿 복원. 영역 리스트에서는 비활성.\n\n**Files:**\n- Create: app/src/lib/editor/listBox/regions.ts, inputRules.ts, index.ts\n- Test: Create app/tests/unit/editor/listBox/inputRules.test.ts\n\n**Acceptance Criteria:**\n- li 첫 문단 시작 마커 입력 → attr 설정 + 텍스트 삭제\n- 일반 문단/영역 내 무반응\n- 내용 맨 앞 Backspace → 불릿 복원\n\n**Verify:** cd app && npx vitest run tests/unit/editor/listBox/inputRules.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/listBox/regions.ts\", \"app/src/lib/editor/listBox/inputRules.ts\", \"app/src/lib/editor/listBox/index.ts\", \"app/tests/unit/editor/listBox/inputRules.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/listBox/inputRules.test.ts\", \"acceptanceCriteria\": [\"li 첫 문단 시작 마커 입력 → attr 설정 + 텍스트 삭제\", \"일반 문단/영역 내 무반응\", \"내용 맨 앞 Backspace → 불릿 복원\"], \"plan\": \"docs/superpowers/plans/2026-06-12-list-marker-checkbox-radio.md#task-4\"}\n```"
+		},
+		{
+			"id": 11,
+			"subject": "Task 5: listBox 데코 플러그인 + 라디오 토글 + CSS + 에디터 등록",
+			"status": "pending",
+			"blockedBy": [8, 10],
+			"description": "**Goal:** boxKind 항목에 불릿 숨김 + 위젯 데코레이션, 라디오 직계-형제 상호배타 토글, TomboyEditor 등록.\n\n**Files:**\n- Create: app/src/lib/editor/listBox/plugin.ts, commands.ts\n- Modify: app/src/lib/editor/listBox/index.ts, app/src/lib/editor/TomboyEditor.svelte (등록 + CSS)\n- Test: Create app/tests/unit/editor/listBox/plugin.test.ts\n\n**Acceptance Criteria:**\n- checkbox 항목 클래스+위젯\n- radio 항목 클래스+위젯\n- toggleRadioAt 직계 형제 상호배타/재클릭 해제/중첩 독립\n- 체크리스트 영역 이중 위젯 없음\n\n**Verify:** cd app && npx vitest run tests/unit/editor/listBox tests/unit/editor/checklistPlugin.test.ts && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/listBox/plugin.ts\", \"app/src/lib/editor/listBox/commands.ts\", \"app/src/lib/editor/listBox/index.ts\", \"app/src/lib/editor/TomboyEditor.svelte\", \"app/tests/unit/editor/listBox/plugin.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/listBox tests/unit/editor/checklistPlugin.test.ts && npm run check\", \"acceptanceCriteria\": [\"checkbox 항목 클래스+위젯\", \"radio 항목 클래스+위젯\", \"toggleRadioAt 직계 형제 상호배타/재클릭 해제/중첩 독립\", \"체크리스트 영역 이중 위젯 없음\"], \"plan\": \"docs/superpowers/plans/2026-06-12-list-marker-checkbox-radio.md#task-5\"}\n```"
+		},
+		{
+			"id": 12,
+			"subject": "Task 6: copyFormatted 4종 직렬화기 boxKind 지원",
+			"status": "pending",
+			"blockedBy": [8],
+			"description": "**Goal:** 복사 시 boxKind 항목 마커 표현 — Markdown `- [ ]` 태스크 문법, plain/structured 접두, HTML input.\n\n**Files:**\n- Modify: app/src/lib/editor/copyFormatted.ts\n- Test: app/tests/unit/editor/copyFormatted.test.ts (확장)\n\n**Acceptance Criteria:**\n- Markdown - [x]/- ( ) 출력\n- Plain/Structured 접두 마커\n- HTML input 요소\n- boxKind 없는 항목 회귀 없음\n\n**Verify:** cd app && npx vitest run tests/unit/editor/copyFormatted.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/copyFormatted.ts\", \"app/tests/unit/editor/copyFormatted.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/copyFormatted.test.ts\", \"acceptanceCriteria\": [\"Markdown - [x]/- ( ) 출력\", \"Plain/Structured 접두 마커\", \"HTML input 요소\", \"boxKind 없는 항목 회귀 없음\"], \"plan\": \"docs/superpowers/plans/2026-06-12-list-marker-checkbox-radio.md#task-6\"}\n```"
+		},
+		{
+			"id": 13,
+			"subject": "Task 7: 설정 가이드 카드 + 전체 검증",
+			"status": "pending",
+			"blockedBy": [9, 11, 12],
+			"description": "**Goal:** 설정 → 가이드 editor 탭 카드에 항목 단위 문법 추가 + 전체 테스트/타입 체크 마무리.\n\n**Files:**\n- Modify: app/src/routes/settings/+page.svelte (~line 2109 카드)\n\n**Acceptance Criteria:**\n- 가이드 카드에 항목 단위 문법/Enter 상속/Backspace 해제/라디오 그룹 설명\n- 낡은 설명 교체\n- check 에러 0 + 전체 테스트 PASS\n\n**Verify:** cd app && npm run check && npm run test\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check && npm run test\", \"acceptanceCriteria\": [\"가이드 카드에 항목 단위 문법/Enter 상속/Backspace 해제/라디오 그룹 설명\", \"낡은 설명 교체\", \"check 에러 0 + 전체 테스트 PASS\"], \"plan\": \"docs/superpowers/plans/2026-06-12-list-marker-checkbox-radio.md#task-7\"}\n```"
+		}
+	],
+	"lastUpdated": "2026-06-12"
+}

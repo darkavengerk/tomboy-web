@@ -133,6 +133,24 @@ describe('inlineRadio input rule', () => {
 		expect(hasRadio).toBe(false);
 		editor.destroy();
 	});
+
+	it('does not convert ( ) inside (( )) — 리스트 마커 보호', () => {
+		const editor = makeEditor({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{ type: 'paragraph' }
+			]
+		});
+		editor.commands.setTextSelection(7); // 빈 문단 안
+		typeText(editor, '(( ))');
+		let radios = 0;
+		editor.state.doc.descendants((n) => {
+			if (n.type.name === 'inlineRadio') radios++;
+		});
+		expect(radios).toBe(0);
+		editor.destroy();
+	});
 });
 
 function makeParagraphSlice(editor: Editor, text: string): Slice {
@@ -196,6 +214,35 @@ describe('inlineRadio paste transform', () => {
 			if (n.type.name === 'inlineRadio') hasRadio = true;
 		});
 		expect(hasRadio).toBe(false);
+		editor.destroy();
+	});
+
+	it('paste transform skips (( )) — 리스트 마커 보호', () => {
+		// 커서를 body 문단(index 1)에 두어 title-line guard 를 통과시킨다.
+		// applyAllTransformPasted 로 모든 플러그인을 순서대로 적용한다 —
+		// someProp 은 첫 truthy 에서 멈추므로 멀티-플러그인 환경에서 부적합.
+		const editor = makeEditor({
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '제목' }] },
+				{ type: 'paragraph' }
+			]
+		});
+		editor.commands.setTextSelection(editor.state.doc.content.size);
+		const slice = new Slice(
+			Fragment.from(editor.schema.text('(( )) 빵 ( ) 밥')),
+			0,
+			0
+		);
+		const out = applyAllTransformPasted(editor, slice);
+		let radios = 0;
+		let text = '';
+		out.content.forEach((n) => {
+			if (n.type.name === 'inlineRadio') radios++;
+			if (n.isText) text += n.text;
+		});
+		expect(radios).toBe(1); // ( ) 밥 쪽만
+		expect(text).toContain('(( )) 빵');
 		editor.destroy();
 	});
 });

@@ -117,6 +117,17 @@ describe('archiver: inlineRadio node → ( )/(o) text', () => {
 	});
 });
 
+describe('archiver: (( )) 마커 보호', () => {
+	it('(( )) 마커 후보는 인라인 라디오로 split 되지 않는다', () => {
+		const doc = deserializeContent(
+			'<note-content version="0.1">제목\n\n(( )) 그대로</note-content>'
+		);
+		const json = JSON.stringify(doc);
+		expect(json).not.toContain('inlineRadio');
+		expect(json).toContain('(( )) 그대로');
+	});
+});
+
 describe('archiver: ( )/(o) inside <list-item>', () => {
 	function firstListItemInlines(doc: any) {
 		const list = doc.content.find((n: any) => n.type === 'bulletList');

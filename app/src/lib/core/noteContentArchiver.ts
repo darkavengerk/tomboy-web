@@ -140,7 +140,10 @@ function splitInlineCheckboxesInText(
 }
 
 // Inline-radio 패턴. `( )` (공백 1 개) 또는 `(o)` / `(O)`.
-const INLINE_RADIO_SPLIT_RE = /\(([ oO])\)/g;
+// lookbehind/lookahead 로 `(( ))` 안 `( )` 는 건드리지 않음 — 항목 단위
+// 라디오 마커 `(( )) ` 를 보존하기 위함 (INLINE_CHECKBOX_SPLIT_RE 와
+// 동일 정책). 마커는 applyListBoxMarkersOnParse 가 strip.
+const INLINE_RADIO_SPLIT_RE = /(?<!\()\(([ oO])\)(?!\))/g;
 
 /**
  * 텍스트 안의 ( )/(o) 패턴을 inlineRadio 노드로 split.
@@ -232,7 +235,11 @@ export function deserializeContent(xmlContent: string): JSONContent {
 	}
 
 	const checklistLists = applyChecklistMarkersOnParse(blocks);
-	applyProcessMarkersOnParse(blocks, checklistLists);
+	const processLists = applyProcessMarkersOnParse(blocks, checklistLists);
+	applyListBoxMarkersOnParse(
+		blocks,
+		new Set([...checklistLists, ...processLists])
+	);
 	return { type: 'doc', content: blocks };
 }
 
@@ -343,14 +350,19 @@ export function serializeContent(doc: JSONContent): string {
 
 		if (node.type === 'bulletList') {
 			closeAll();
+			const isProcessList = processStageLists.has(i);
 			result += serializeBulletList(
 				node,
 				/*isTopLevel=*/ true,
 				inChecklistRegion
 					? MARKER_ALL_DEPTHS
-					: processStageLists.has(i)
+					: isProcessList
 						? MARKER_PROCESS_DEPTH3
-						: MARKER_NONE
+						: MARKER_NONE,
+				// 항목 단위(boxKind) 마커는 영역 리스트에선 emit 하지 않는다 —
+				// 영역 마커가 우선이고, 파싱 쪽 전역 패스도 영역 리스트를
+				// 건너뛰므로 비대칭 라운드트립을 막는다.
+				/*allowItemMarkers=*/ !inChecklistRegion && !isProcessList
 			);
 			// 연속 리스트는 같은 영역 — inChecklistRegion 유지.
 		} else if (node.type === 'paragraph' || node.type === 'heading') {
@@ -927,11 +939,13 @@ const MARKER_PROCESS_DEPTH3: MarkerDepthFn = (depth) => depth === 3;
  * containing list-item.
  *
  * `markerAt` decides which nesting depths get whole-li checkbox markers.
+ * `allowItemMarkers` enables per-item boxKind markers (only outside regions).
  */
 function serializeBulletList(
 	node: JSONContent,
 	isTopLevel: boolean,
 	markerAt: MarkerDepthFn,
+	allowItemMarkers = false,
 	depth = 1
 ): string {
 	let result = '<list>';
@@ -941,7 +955,7 @@ function serializeBulletList(
 		const item = items[i];
 		if (item.type === 'listItem') {
 			const isLastTopLevel = isTopLevel && i === items.length - 1;
-			result += serializeListItem(item, isLastTopLevel, markerAt, depth);
+			result += serializeListItem(item, isLastTopLevel, markerAt, allowItemMarkers, depth);
 		}
 	}
 
@@ -963,6 +977,7 @@ function serializeListItem(
 	item: JSONContent,
 	isLastTopLevel: boolean,
 	markerAt: MarkerDepthFn,
+	allowItemMarkers: boolean,
 	depth: number
 ): string {
 	let result = '<list-item dir="ltr">';
@@ -971,6 +986,12 @@ function serializeListItem(
 		// '[', ']', 공백, 'X' 는 XML 안전 문자라 이스케이프 불필요.
 		// `[[X]]` / `[[ ]]` 은 inline checkbox atom `[x]` 과 구분되는 문법.
 		result += item.attrs?.checked ? '[[X]] ' : '[[ ]] ';
+	} else if (allowItemMarkers && item.attrs?.boxKind === 'checkbox') {
+		// 항목 단위 체크박스 — 영역 밖에서도 같은 [[ ]] 문법.
+		result += item.attrs?.checked ? '[[X]] ' : '[[ ]] ';
+	} else if (allowItemMarkers && item.attrs?.boxKind === 'radio') {
+		// 항목 단위 라디오. '(', ')', 'O', 공백 모두 XML-safe.
+		result += item.attrs?.checked ? '((O)) ' : '(( )) ';
 	}
 
 	const children = item.content ?? [];
@@ -1003,6 +1024,7 @@ function serializeListItem(
 					child,
 					/*isTopLevel=*/ false,
 					markerAt,
+					allowItemMarkers,
 					depth + 1
 				);
 			}
@@ -1105,6 +1127,11 @@ function getPlainText(node: JSONContent): string {
 const CHECKLIST_MARKER_RE = /^\[\[([ xX])\]\] /;
 const CHECKLIST_MARKER_LEN = 6; // '[[X]] '.length
 
+// 항목 단위 라디오 마커: (( )) 미선택 / ((O)) 선택 (소문자 o 도 인정).
+// 체크박스 쪽은 CHECKLIST_MARKER_RE([[ ]]/[[X]]) 를 그대로 재사용한다.
+const LISTBOX_RADIO_MARKER_RE = /^\(\(([ oO])\)\) /;
+const LISTBOX_MARKER_LEN = 6; // '((O)) '.length === '[[X]] '.length
+
 // 주의: 체크리스트 영역 그룹핑(헤더 + 그 직후 연속 bulletList)은 네 곳
 // 에서 각각 구현된다 — editor/checklist/regions.ts 의 findChecklistRegions
 // (라이브 PM 노드), 아래 applyChecklistMarkersOnParse(역직렬화 후 처리)와
@@ -1119,6 +1146,10 @@ const CHECKLIST_MARKER_LEN = 6; // '[[X]] '.length
 // 바꾸면 함께 고칠 것. (헤더/무시 문단 판정은 regions.ts 의
 // isProcessHeaderText / isCompleteHeaderText / isIgnorableProcessText 가
 // single source.)
+//
+// 항목 단위 listBox 마커(전역 패스 applyListBoxMarkersOnParse / 직렬화
+// allowItemMarkers)는 위 영역들이 소비하지 않은 리스트에만 적용된다 —
+// 영역 그룹핑 규칙이 바뀌면 skip Set 전달도 함께 확인할 것.
 /**
  * parseBlocks 결과를 후처리해 체크리스트 영역 항목의 마커를 떼고
  * `attrs.checked` 를 설정한다. 헤더 다음의 연속 리스트가 영역이다.
@@ -1178,6 +1209,59 @@ function stripChecklistMarkerInItem(li: JSONContent): void {
 		}
 	}
 	li.attrs = { ...(li.attrs ?? {}), checked };
+}
+
+/**
+ * 체크리스트/프로세스 패스가 소비하지 않은 최상위 리스트에서 li 첫머리
+ * 마커를 떼고 항목 단위 `boxKind`+`checked` 를 설정한다 (listBox 기능).
+ * 마커 없는 li 는 attrs 를 건드리지 않는다.
+ */
+function applyListBoxMarkersOnParse(
+	blocks: JSONContent[],
+	skip: Set<number>
+): void {
+	for (let i = 1; i < blocks.length; i++) {
+		if (blocks[i].type !== 'bulletList' || skip.has(i)) continue;
+		stripListBoxMarkersInList(blocks[i]);
+	}
+}
+
+function stripListBoxMarkersInList(listNode: JSONContent): void {
+	for (const li of listNode.content ?? []) {
+		if (li.type !== 'listItem') continue;
+		stripListBoxMarkerInItem(li);
+		for (const child of li.content ?? []) {
+			// 중첩 <list> 도 parseList 가 bulletList 로 만든다.
+			if (child.type === 'bulletList') stripListBoxMarkersInList(child);
+		}
+	}
+}
+
+function stripListBoxMarkerInItem(li: JSONContent): void {
+	const para = li.content?.[0];
+	if (!para || para.type !== 'paragraph' || !para.content) return;
+	const first = para.content[0];
+	if (!first || first.type !== 'text' || typeof first.text !== 'string') return;
+	let boxKind: 'checkbox' | 'radio';
+	let stateChar: string;
+	const cb = CHECKLIST_MARKER_RE.exec(first.text);
+	if (cb) {
+		boxKind = 'checkbox';
+		stateChar = cb[1];
+	} else {
+		const rd = LISTBOX_RADIO_MARKER_RE.exec(first.text);
+		if (!rd) return; // 마커 없음 — attrs 그대로 둔다.
+		boxKind = 'radio';
+		stateChar = rd[1];
+	}
+	const checked = /[xXoO]/.test(stateChar);
+	const rest = first.text.slice(LISTBOX_MARKER_LEN);
+	if (rest.length === 0) {
+		para.content.shift();
+	} else {
+		first.text = rest;
+	}
+	li.attrs = { ...(li.attrs ?? {}), boxKind, checked };
 }
 
 // --- 프로세스 블록 depth-3 체크박스 마커 ---
@@ -1261,16 +1345,20 @@ function findProcessStageListIndices(blocks: JSONContent[]): Set<number> {
  * 마커를 떼고 `attrs.checked` 를 설정한다. depth-1/2(카드·하부 항목)는
  * 건드리지 않는다. `skip` 은 체크리스트 영역이 이미 처리한 리스트 인덱스
  * (체크리스트가 우선 — 직렬화 쪽 inChecklistRegion 우선순위와 동일).
+ *
+ * 처리한 스테이지 리스트 인덱스 Set 을 반환한다 — listBox 전역 패스
+ * (applyListBoxMarkersOnParse)가 같은 리스트를 중복 처리하지 않도록.
  */
 function applyProcessMarkersOnParse(
 	blocks: JSONContent[],
 	skip: Set<number>
-): void {
+): Set<number> {
 	const stageListIndices = findProcessStageListIndices(blocks);
 	for (const idx of stageListIndices) {
 		if (skip.has(idx)) continue;
 		stripProcessMarkersInList(blocks[idx], 1);
 	}
+	return stageListIndices;
 }
 
 function stripProcessMarkersInList(listNode: JSONContent, depth: number): void {
