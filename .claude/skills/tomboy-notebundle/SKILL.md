@@ -299,18 +299,32 @@ termConnect, scrollBottom, isMusic}`.
 
 `mode = $state<'browse'|'edit'>` (default `browse`).
 
-- **browse** — wheel/swipe anywhere flips tabs (`flipWheel`/`step`); active body
-  grayed (`#ecebe6`) + `touch-action:none`. A tap on the active body (`<8px`, no
-  capture) → `mode='edit'` **only** (no focus/keyboard — see two-tap below); a
-  `≥30px` vertical swipe steps.
+- **browse** — wheel/swipe anywhere flips notes (`flipWheel`/`step`); active body
+  grayed (`#ecebe6`) + `touch-action:none`. A `≥30px` vertical swipe steps. Body
+  tap (`<8px`, no capture) differs per component:
+  - **Tab** (NoteBundleStack): tap on active body → `mode='edit'` **only** (no
+    focus/keyboard — see two-tap below).
+  - **Cabinet** (NoteBundleCabinet): tap on the open body → `oninternallink(active)`
+    (**open the note standalone**); **Ctrl/⌘+tap → `mode='edit'`** instead. (Per
+    request: 묶음 click opens the note, ctrl+click edits. On mobile, no ctrl → tap
+    always opens; edit the note in its own screen.)
 - **edit** — a plain wheel over `.bundle-body` scrolls the note; white body bg.
-- **Exits to browse**: `Esc` (skipped inside `.bundle-term` for vim/TUI), tab
-  click, or any bundle scroll. `step`/`flipWheel` call `exitEdit` first.
+- **Exits to browse**: `Esc` (skipped inside `.bundle-term` for vim/TUI), title
+  bar/tab click, or any flip scroll. `step`/`flipWheel` call `exitEdit` first.
 
 **Capture-phase wheel preemption (terminal scroll-leak fix).** A capture-phase
-`wheel` listener on `rootEl` runs `flipWheel` (which `stopPropagation`s) whenever
-`mode==='browse'` or ctrl/⌘ — so xterm/embedded-PM never scroll their buffer in
-browse. In edit, a plain wheel passes capture untouched and the note scrolls.
+`wheel` listener on `rootEl` (BOTH components):
+- **ctrl/⌘+wheel → `scrollActiveBody`** — `preventDefault` (blocks browser zoom +
+  native scroll) + `stopPropagation`, then manual `scrollTop += deltaY` on the
+  active body (`.bundle-body.open` cabinet / `.node-body.active > .bundle-body`
+  tab). **Reads the active note's content WITHOUT entering edit.** Mode-agnostic.
+- **browse (no ctrl) → `flipWheel`** (`stopPropagation`s) — xterm/embedded-PM never
+  scroll their buffer in browse.
+- **edit (no ctrl) → passthrough** — note scrolls natively.
+
+(Previously ctrl/⌘+wheel flipped + exited edit; repurposed to content-scroll per
+user request. The cabinet's old `handleRootWheel` ctrl fallback was removed — the
+capture handler is now the single wheel authority.)
 
 **Wheel direction (restored to forward=down).** In the tab layout the structure
 is inverted vs the old vertical stack, so `flipWheel` maps **down**
@@ -326,12 +340,13 @@ must not raise the keyboard (the entering touch isn't necessarily to type). A
 **capture-phase** `mousedown` + `touchstart` (`passive:false`) listener on `rootEl`
 `preventDefault`s the focus default for any target inside `.bundle-body` **unless**
 `mode==='edit'` AND that body is the active one (`.bundle-body.open` for the
-cabinet; `.node-body.active .bundle-body` for the tab). So: first browse tap →
-mode switch only (no caret, no keyboard); second tap in edit → PM focuses →
-keyboard. Scoped to `.bundle-body` only so bars/tabs keep their native `click`
-(mobile tab switching survives — do **not** widen the scope). Tapping a title
-bar/tab to exit never focuses the editor and `exitEdit` blurs, so exiting never
-raises the keyboard either.
+cabinet; `.node-body.active .bundle-body` for the tab). So entering edit never
+focuses (no keyboard): **tab** — first browse tap → `mode='edit'` only; **cabinet**
+— Ctrl+click → `mode='edit'` only. Then a tap in edit → PM focuses → keyboard.
+Scoped to `.bundle-body` only so bars/tabs keep their native `click` (mobile tab
+switching survives — do **not** widen the scope). Tapping a title bar/tab to exit
+never focuses the editor and `exitEdit` blurs, so exiting never raises the
+keyboard either.
 
 ### Host-shell wiring (per session, inside `leafBody`)
 

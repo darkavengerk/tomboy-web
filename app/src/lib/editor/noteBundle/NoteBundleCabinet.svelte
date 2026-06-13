@@ -32,9 +32,10 @@
 	 *
 	 * ── 훑어보기 / 편집 모드 ─────────────────────────────────────────────
 	 * 훑어보기(기본): 스택 어디서든 휠/스와이프 = 묶음 브라우징(노트 전환),
-	 * 활성 본문은 회색조 + 포인터 커서. 본문 탭/클릭 → 편집 모드: 본문이
-	 * 흰 배경으로 바뀌고 휠/스크롤이 노트 내부로 들어간다. Esc · 타이틀 바
-	 * 클릭 · 묶음 스크롤(바 위 휠/스와이프, ctrl+휠) → 훑어보기 복귀.
+	 * 활성 본문은 회색조 + 포인터 커서. 본문 클릭 → 활성 노트 단독 열기,
+	 * ctrl+클릭 → 편집 모드(흰 배경, 휠/스크롤이 노트 내부로). ctrl+휠은 모드
+	 * 무관 활성 본문 스크롤(편집 진입 없이 내용 확인). Esc · 타이틀 바 클릭 ·
+	 * 묶음 스크롤(바 위 휠/스와이프) → 훑어보기 복귀.
 	 *
 	 * ── 호스트 셸 배선 ──────────────────────────────────────────────────
 	 * 터미널 노트: 활성 바에 "접속" 버튼 → TerminalView 를 본문에 별도
@@ -261,13 +262,19 @@
 			(t) => [t, t === 'keydown' ? stopKeydown : stop]
 		);
 		for (const [t, h] of pairs) el.addEventListener(t, h);
-		// 훑어보기 모드(또는 ctrl/⌘+휠)의 휠은 캡처 단계에서 선점 — xterm 이
-		// 자기 DOM 에 단 wheel 리스너가 타깃 단계에서 버퍼를 스크롤해 버리면
-		// 버블의 preventDefault 로는 못 되돌린다(임베디드 PM 스크롤도 동류).
-		// flipWheel 의 stopPropagation 이 하강 자체를 끊는다.
+		// 휠은 캡처 단계에서 선점 — xterm 이 자기 DOM 에 단 wheel 리스너가 타깃
+		// 단계에서 버퍼를 스크롤해 버리면 버블의 preventDefault 로는 못 되돌린다
+		// (임베디드 PM 스크롤도 동류). stopPropagation 이 하강 자체를 끊는다.
+		//  - ctrl/⌘+휠: 활성 본문 스크롤(편집 진입 없이 내용 확인) + 브라우저 줌 차단.
+		//  - 훑어보기: 묶음 브라우징(노트 전환).
+		//  - 편집(ctrl 없음): 통과 → 본문 네이티브 스크롤.
 		const captureWheel = (e: Event) => {
 			const we = e as WheelEvent;
-			if (mode === 'browse' || we.ctrlKey || we.metaKey) flipWheel(we);
+			if (we.ctrlKey || we.metaKey) {
+				scrollActiveBody(we);
+				return;
+			}
+			if (mode === 'browse') flipWheel(we);
 		};
 		el.addEventListener('wheel', captureWheel, { capture: true, passive: false });
 		// 모바일 편집-진입 키보드 억제: 임베디드 PM 은 "편집 모드 + 활성 본문 직접
@@ -453,8 +460,9 @@
 	}
 
 	// --- 훑어보기 / 편집 모드 ---------------------------------------------------
-	// browse(기본): 묶음 전체가 휠/스와이프를 받아 노트를 브라우징.
-	// edit: 본문 클릭으로 진입 — 휠/스크롤이 활성 노트 내부로 들어간다.
+	// browse(기본): 묶음 전체가 휠/스와이프를 받아 노트를 브라우징. 본문 클릭=
+	//   활성 노트 단독 열기. ctrl+휠=활성 본문 스크롤(모드 무관).
+	// edit: 본문 ctrl+클릭으로 진입 — 일반 휠/스크롤이 활성 노트 내부로 들어간다.
 	let mode = $state<'browse' | 'edit'>('browse');
 
 	function exitEdit() {
@@ -541,7 +549,7 @@
 	let wheelAcc = 0;
 	function flipWheel(e: WheelEvent) {
 		exitEdit(); // 묶음 스크롤 의도 — 임계 미달 누적이어도 복귀
-		e.preventDefault(); // ctrl+wheel 브라우저 줌 차단 겸용
+		e.preventDefault(); // 네이티브 본문 스크롤 차단(브라우징 중)
 		e.stopPropagation();
 		// 방향 반전 시 잔여 폐기 — 반대 방향 첫 응답이 굼뜨지 않게
 		if (Math.sign(e.deltaY) !== Math.sign(wheelAcc)) wheelAcc = 0;
@@ -561,28 +569,26 @@
 	}
 	function handleListWheel(e: Event) {
 		const we = e as WheelEvent;
-		if (we.ctrlKey || we.metaKey) {
-			flipWheel(we);
-			return;
-		}
-		// 편집 모드에서만 콘텐츠 위 일반 wheel = 임베디드 스크롤.
-		// 훑어보기 모드는 스택 어디서든 wheel = 묶음 브라우징.
+		// ctrl+휠은 캡처 단계 captureWheel 이 본문 스크롤로 선점(stopPropagation).
+		// 여기 도달 = 편집 모드 일반 휠: 본문 위면 임베디드 네이티브 스크롤, 바 위면 브라우징.
 		if (mode === 'edit' && (we.target as HTMLElement).closest?.('.bundle-body')) return;
 		flipWheel(we);
 	}
-	/** 루트 폴백 — 리사이즈 핸들 등 .bundle-list 밖에서의 ctrl+wheel.
-	 *  바/콘텐츠 위 ctrl+wheel 은 handleListWheel 이 stopPropagation 으로 선점. */
-	function handleRootWheel(e: Event) {
-		const we = e as WheelEvent;
-		if (we.ctrlKey || we.metaKey) flipWheel(we);
+	/** ctrl/⌘+휠 — 활성 노트 본문을 직접 스크롤(편집 모드 진입 없이 내용 확인).
+	 *  preventDefault 로 브라우저 줌·네이티브 스크롤을 막고 scrollTop 직접 이동. */
+	function scrollActiveBody(e: WheelEvent) {
+		e.preventDefault();
+		e.stopPropagation();
+		const body = rootEl?.querySelector<HTMLElement>('.bundle-body.open');
+		if (body) body.scrollTop += e.deltaY;
 	}
 
 	let swipeY: number | null = null;
 	let downBarIdx: number | null = null;
 	let downBarY = 0;
 	let swiped = false;
-	/** 훑어보기 모드에서 열린 본문 위 pointerdown — 탭이면 편집 모드 진입 */
-	let downBodyEdit = false;
+	/** 훑어보기 모드에서 열린 본문 위 pointerdown — 탭이면 노트 열기(ctrl=편집) */
+	let downOnBody = false;
 	let lastTapIdx: number | null = null;
 	let lastTapTime = 0;
 
@@ -596,14 +602,14 @@
 		if (body) {
 			// 편집 모드: 노트 내부 인터랙션 — 손대지 않음.
 			if (mode === 'edit') return;
-			// 훑어보기: 열린 본문 위 제스처를 추적 — 탭=편집 진입, 스와이프=브라우징.
+			// 훑어보기: 열린 본문 위 제스처를 추적 — 탭=노트 열기(ctrl=편집), 스와이프=브라우징.
 			// 캡처는 안 한다 — 캡처하면 click 이 리스트로 retarget 돼 탭 시
 			// PM 포커스(모바일 키보드)가 안 뜬다.
 			if (!body.classList.contains('open')) return;
 			swipeY = e.clientY;
 			downBarY = e.clientY;
 			swiped = false;
-			downBodyEdit = true;
+			downOnBody = true;
 			downBarIdx = null;
 			return;
 		}
@@ -612,7 +618,7 @@
 		swipeY = e.clientY;
 		downBarY = e.clientY;
 		swiped = false;
-		downBodyEdit = false;
+		downOnBody = false;
 		downBarIdx = bar.dataset.idx != null ? Number(bar.dataset.idx) : null;
 		try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* pointer already released */ }
 	}
@@ -630,10 +636,15 @@
 		// 캡처가 click 을 컨테이너로 retarget 하므로 click/dblclick 대신
 		// pointerup 에서 탭·더블탭을 수동 판정한다.
 		if (!swiped && Math.abs(pe.clientY - downBarY) < 8) {
-			if (downBodyEdit) {
-				// 훑어보기에서 열린 본문 탭 → 편집 모드만 전환. 포커스는
-				// suppressEditorFocus 가 막아 키보드 안 뜸 — 타이핑은 편집 모드에서 재탭.
-				mode = 'edit';
+			if (downOnBody) {
+				// 훑어보기에서 열린 본문 탭 → 활성 노트 단독 열기. ctrl/⌘ 동반
+				// 시에만 편집 모드 진입(포커스는 suppressEditorFocus 가 막아 키보드
+				// 안 뜸 — 타이핑은 편집 모드에서 재탭).
+				if (pe.ctrlKey || pe.metaKey) {
+					mode = 'edit';
+				} else if (expanded && !expanded.broken) {
+					oninternallink?.(expanded.title);
+				}
 			} else if (downBarIdx !== null) {
 				const now = performance.now();
 				if (lastTapIdx === downBarIdx && now - lastTapTime < 300) {
@@ -650,7 +661,7 @@
 		}
 		swipeY = null;
 		downBarIdx = null;
-		downBodyEdit = false;
+		downOnBody = false;
 	}
 
 	// --- 하단 리사이즈 핸들 -------------------------------------------------------
@@ -681,7 +692,6 @@
 	class:browse={mode === 'browse'}
 	bind:this={rootEl}
 	style:height={`${stackH}px`}
-	use:direct={{ wheel: handleRootWheel }}
 >
 	{#if resolved.length === 0}
 		<div class="bundle-empty">묶을 노트 없음</div>
