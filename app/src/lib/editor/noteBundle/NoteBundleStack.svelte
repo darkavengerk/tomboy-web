@@ -46,7 +46,16 @@
 	import type { JSONContent } from '@tiptap/core';
 	import type { BundleSpec, BundleNode } from './parser.js';
 	import { writeBundleHeightPct } from './noteBundlePlugin.js';
-	import { firstNavPath, repairPath, stepPath, pickPath, tabWindow } from './stackMath.js';
+	import {
+		firstNavPath,
+		repairPath,
+		stepPath,
+		pickPath,
+		tabWindow,
+		clampIndex,
+		topItems,
+		bottomItems
+	} from './stackMath.js';
 	import { lookupGuidByTitle, ensureTitleIndexReady } from '../autoLink/titleProvider.js';
 	import {
 		getNote,
@@ -165,17 +174,8 @@
 	});
 	const activeLeafGuid = $derived(activeLeaf?.guid ?? null);
 
-	// 스트립 항목 빌더
-	function topItems(nodes: ResolvedNode[], activeIdx: number) {
-		const out: Array<{ node: ResolvedNode; idx: number }> = [];
-		for (let i = Math.max(0, activeIdx); i < nodes.length; i++) out.push({ node: nodes[i], idx: i });
-		return out;
-	}
-	function bottomItems(nodes: ResolvedNode[], activeIdx: number) {
-		const out: Array<{ node: ResolvedNode; idx: number }> = [];
-		for (let i = activeIdx - 1; i >= 0; i--) out.push({ node: nodes[i], idx: i }); // 역순(최근 좌측)
-		return out;
-	}
+	// 스트립 항목 빌더는 stackMath(topItems/bottomItems)로 이동 — activeIdx 가
+	// 범위 밖이어도(재귀 비활성 형제) undefined 노드를 만들지 않게 clamp 포함.
 
 	// --- 높이 ----------------------------------------------------------------
 	let rootEl = $state<HTMLElement | null>(null);
@@ -624,7 +624,7 @@
 	{:else if activePath.length === 0}
 		<div class="bundle-empty">펼칠 수 있는 노트 없음</div>
 	{:else}
-		{@render tabLevel(tree, 0)}
+		{@render tabLevel(tree, 0, true)}
 	{/if}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
@@ -639,7 +639,12 @@
 	></div>
 </div>
 
-{#snippet strip(items: Array<{ node: ResolvedNode; idx: number }>, depth: number, isTop: boolean)}
+{#snippet strip(
+	items: Array<{ node: ResolvedNode; idx: number }>,
+	depth: number,
+	isTop: boolean,
+	activeIdx: number
+)}
 	{#if items.length > 0}
 		{@const win = tabWindow(items.length)}
 		<div class="tab-strip" class:bottom={!isTop}>
@@ -647,7 +652,7 @@
 				<button
 					type="button"
 					class="tab"
-					class:active={isTop && it.idx === (activePath[depth] ?? 0)}
+					class:active={isTop && it.idx === activeIdx}
 					class:broken={it.node.isLeaf && it.node.broken}
 					class:cat={!it.node.isLeaf}
 					title={it.node.label}
@@ -717,22 +722,25 @@
 	{/if}
 {/snippet}
 
-{#snippet tabLevel(nodes: ResolvedNode[], depth: number)}
-	{@const activeIdx = activePath[depth] ?? 0}
+{#snippet tabLevel(nodes: ResolvedNode[], depth: number, onPath: boolean)}
+	<!-- activeIdx: 활성 경로 위면 activePath[depth], 아니면(비활성 형제 카테고리)
+	     첫 탭. 어느 경우든 자기 노드 수로 clamp — 다른(더 깊은) 형제의 인덱스가
+	     새어들어와 범위를 넘겨도 undefined 노드를 만들지 않는다. -->
+	{@const activeIdx = clampIndex(nodes.length, onPath ? (activePath[depth] ?? 0) : 0)}
 	<div class="tab-level">
-		{@render strip(topItems(nodes, activeIdx), depth, true)}
+		{@render strip(topItems(nodes, activeIdx), depth, true, activeIdx)}
 		<div class="level-body">
 			{#each nodes as node, i (node.key)}
 				<div class="node-body" class:active={i === activeIdx} class:before={i < activeIdx}>
 					{#if node.isLeaf}
 						{@render leafBody(node)}
 					{:else}
-						{@render tabLevel(node.children, depth + 1)}
+						{@render tabLevel(node.children, depth + 1, onPath && i === activeIdx)}
 					{/if}
 				</div>
 			{/each}
 		</div>
-		{@render strip(bottomItems(nodes, activeIdx), depth, false)}
+		{@render strip(bottomItems(nodes, activeIdx), depth, false, activeIdx)}
 	</div>
 {/snippet}
 
@@ -759,8 +767,9 @@
 		overflow: hidden;
 	}
 	/* 본문은 전부 마운트 유지(keep-alive). 활성 외에는 화면 밖으로 transform.
-	   - 이후(upcoming) 노트: 위(-100%)에 대기 → 전진 시 아래로 내려와 채움.
-	   - 지나간(before) 노트: 아래(100%)로 빠짐.
+	   탭이 오른쪽→왼쪽으로 밀리므로 본문도 가로축으로 슬라이드:
+	   - 이후(upcoming) 노트: 오른쪽(100%)에 대기 → 전진 시 왼쪽으로 들어와 채움.
+	   - 지나간(before) 노트: 왼쪽(-100%)으로 빠짐.
 	   display:none 대신 transform 이라 에디터 언마운트 없이 슬라이드. */
 	.node-body {
 		position: absolute;
@@ -769,18 +778,18 @@
 		flex-direction: column;
 		opacity: 0;
 		pointer-events: none;
-		transform: translateY(-100%);
+		transform: translateX(100%);
 		transition:
 			transform 240ms cubic-bezier(0.4, 0, 0.2, 1),
 			opacity 200ms ease-out;
 	}
 	.node-body.before {
-		transform: translateY(100%);
+		transform: translateX(-100%);
 	}
 	.node-body.active {
 		opacity: 1;
 		pointer-events: auto;
-		transform: translateY(0);
+		transform: translateX(0);
 		z-index: 1;
 	}
 	@media (prefers-reduced-motion: reduce) {
