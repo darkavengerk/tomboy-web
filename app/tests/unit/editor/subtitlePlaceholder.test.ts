@@ -55,7 +55,7 @@ describe('TomboySubtitlePlaceholder', () => {
 		expect(placeholderAttr(editor)).toBe('2026-04-17');
 	});
 
-	it('hides the placeholder when the cursor is on the second paragraph', () => {
+	it('keeps the placeholder visible while the cursor is on the empty second paragraph', () => {
 		const editor = makeEditor({
 			content: docWithEmptySecondLine,
 			text: '2026-04-17'
@@ -64,7 +64,10 @@ describe('TomboySubtitlePlaceholder', () => {
 		// doc: [para "2026-04-17"(size 12), para empty(size 2), para empty(size 2)]
 		// second paragraph starts at 12; inside = 13.
 		editor.commands.setTextSelection(13);
-		expect(hasPlaceholderClass(editor)).toBe(false);
+		// The date should persist until real content is typed — the caret simply
+		// renders before the floated placeholder text.
+		expect(hasPlaceholderClass(editor)).toBe(true);
+		expect(placeholderAttr(editor)).toBe('2026-04-17');
 	});
 
 	it('hides when the second paragraph has content', () => {
