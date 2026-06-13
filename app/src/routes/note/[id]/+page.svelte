@@ -41,6 +41,10 @@
 	import NoteActionSheet, { type ActionKind } from '$lib/editor/NoteActionSheet.svelte';
 	import NoteXmlViewer from '$lib/editor/NoteXmlViewer.svelte';
 	import NotebookPicker from '$lib/components/NotebookPicker.svelte';
+	import NoteTitleDialog from '$lib/components/NoteTitleDialog.svelte';
+	import { renameNote } from '$lib/core/noteManager.js';
+	import { newNoteFlow } from '$lib/stores/newNoteFlow.svelte.js';
+	import { listNotebooks } from '$lib/core/notebooks.js';
 	import { SLIPBOX_NOTEBOOK } from '$lib/sleepnote/validator.js';
 	import { getSlipNoteLabel } from '$lib/sleepnote/indexLabel.js';
 	import {
@@ -82,6 +86,8 @@
 	let actionSheetOpen = $state(false);
 	let pickerOpen = $state(false);
 	let xmlViewerOpen = $state(false);
+	let titleDialogOpen = $state(false);
+	let titleDialogNotebooks = $state<string[]>([]);
 	let isHomeNoteState = $state(false);
 	let isScrollBottomState = $state(false);
 	let isScheduleNoteState = $state(false);
@@ -665,6 +671,11 @@
 			return;
 		}
 
+		if (kind === 'editTitle') {
+			openTitleDialog();
+			return;
+		}
+
 		if (kind === 'toggleScrollBottom') {
 			const next = !isScrollBottomState;
 			await setScrollBottomNote(note!.guid, next);
@@ -712,6 +723,29 @@
 		pickerOpen = false;
 		pushToast('노트북이 변경되었습니다.');
 	}
+
+	async function openTitleDialog() {
+		titleDialogNotebooks = await listNotebooks();
+		titleDialogOpen = true;
+	}
+
+	async function handleTitleSave(r: { title: string; typeId: string; notebook: string | null }) {
+		if (!note) return;
+		titleDialogOpen = false;
+		if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+		await flushSave();
+		const ok = await renameNote(note.guid, r.title);
+		if (!ok) {
+			pushToast('이미 같은 제목의 노트가 있거나 제목이 비어 있습니다.', { kind: 'error' });
+			return;
+		}
+		if (r.notebook !== currentNotebook) {
+			await assignNotebook(note.guid, r.notebook);
+		}
+		const updated = await getNote(note.guid);
+		if (updated) note = updated;
+		pushToast('제목이 변경되었습니다.');
+	}
 </script>
 
 <div class="editor-page" class:terminal-connected={showTerminal || showKeys}>
@@ -743,6 +777,18 @@
 			</button>
 		{/if}
 	</div>
+
+	{#if note}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="title-bar"
+			ondblclick={openTitleDialog}
+			title="더블클릭하면 제목을 수정합니다"
+		>
+			<span class="title-text">{note.title || '제목 없음'}</span>
+			<button class="title-edit-btn" onclick={openTitleDialog} aria-label="제목 수정">✎</button>
+		</div>
+	{/if}
 
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -810,6 +856,8 @@
 					hrSplitEnabled={false}
 					keepCursorVisible={true}
 					onimageinserted={handleImageInserted}
+					hideTitleLine={true}
+					onnoteready={(g) => newNoteFlow.markEditorReady(g)}
 				/>
 				{#if editorComponent?.getEditor() && llmBridgeUrl && llmBridgeToken}
 					<ChatSendBar
@@ -888,6 +936,17 @@
 		current={currentNotebook}
 		onselect={handleNotebookSelect}
 		onclose={() => (pickerOpen = false)}
+	/>
+{/if}
+
+{#if titleDialogOpen && note}
+	<NoteTitleDialog
+		mode="edit"
+		notebooks={titleDialogNotebooks}
+		initialTitle={note.title}
+		initialNotebook={currentNotebook}
+		onsubmit={(r) => handleTitleSave(r)}
+		oncancel={() => (titleDialogOpen = false)}
 	/>
 {/if}
 
@@ -1106,5 +1165,27 @@
 
 	.fab-terminal-connect:active {
 		transform: scale(0.95);
+	}
+
+	.title-bar {
+		display: flex;
+		align-items: center;
+		gap: clamp(6px, 1.5vw, 12px);
+		padding: clamp(6px, 1.5vw, 10px) clamp(10px, 3vw, 16px);
+		border-bottom: 1px solid var(--color-border, #eee);
+		cursor: pointer;
+		user-select: none;
+	}
+	.title-text {
+		flex: 1;
+		font-size: clamp(1rem, 3.5vw, 1.15rem);
+		font-weight: 700;
+		color: var(--color-text, #111);
+		white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+	}
+	.title-edit-btn {
+		border: none; background: none; cursor: pointer;
+		font-size: 1rem; color: var(--color-text-secondary, #888);
+		padding: 4px 6px;
 	}
 </style>

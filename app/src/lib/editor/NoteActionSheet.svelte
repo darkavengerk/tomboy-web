@@ -6,6 +6,7 @@
 	export type ActionKind =
 		| 'delete'
 		| 'redownload'
+		| 'editTitle'
 		| 'toggleFavorite'
 		| 'setHome'
 		| 'unsetHome'
@@ -115,6 +116,10 @@
 		<div class="sheet-title">{note.title || '제목 없음'}</div>
 		<div class="sheet-actions">
 			{#if !confirmDelete}
+				<button class="action-btn" onclick={() => onaction('editTitle')}>
+					<span class="action-icon">✎</span>
+					제목 수정
+				</button>
 				<button class="action-btn" onclick={() => onaction('pickNotebook')}>
 					<span class="action-icon">🗂</span>
 					노트북 이동
