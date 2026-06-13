@@ -1,90 +1,113 @@
 import { describe, it, expect } from 'vitest';
 import {
-	WINDOW_SIZE,
-	windowWidth,
-	clampWindow,
-	stepWindow,
-	initialWindow,
-	firstValidIndex,
-	nextValidIndex
+	TAB_CAP,
+	tabWindow,
+	nodesAtDepth,
+	firstNavPath,
+	drillFrom,
+	repairPath,
+	stepPath,
+	pickPath,
+	type NavNode
 } from '$lib/editor/noteBundle/stackMath.js';
 
-const e = (broken: boolean) => ({ broken });
+const lf = (navigable = true): NavNode => ({ navigable, isLeaf: true, children: [] });
+const cat = (children: NavNode[]): NavNode => ({
+	navigable: children.some((c) => c.navigable),
+	isLeaf: false,
+	children
+});
 
-describe('windowWidth', () => {
-	it('min(3, N)', () => {
-		expect(WINDOW_SIZE).toBe(3);
-		expect(windowWidth(0)).toBe(0);
-		expect(windowWidth(2)).toBe(2);
-		expect(windowWidth(3)).toBe(3);
-		expect(windowWidth(12)).toBe(3);
+describe('tabWindow', () => {
+	it('CAP=4 이하면 전부, 초과면 (CAP-1)개 + 나머지', () => {
+		expect(TAB_CAP).toBe(4);
+		expect(tabWindow(0)).toEqual({ shown: 0, plus: 0 });
+		expect(tabWindow(4)).toEqual({ shown: 4, plus: 0 });
+		expect(tabWindow(5)).toEqual({ shown: 3, plus: 2 });
+		expect(tabWindow(7)).toEqual({ shown: 3, plus: 4 });
 	});
 });
 
-describe('clampWindow', () => {
-	it('N ≤ W → 항상 0', () => {
-		expect(clampWindow(2, 1, 3)).toBe(0);
-		expect(clampWindow(0, 0, 3)).toBe(0);
-		expect(clampWindow(0, 0, 1)).toBe(0);
+describe('firstNavPath', () => {
+	it('첫 navigable 잎 경로, broken 스킵', () => {
+		expect(firstNavPath([lf(), lf()])).toEqual([0]);
+		expect(firstNavPath([lf(false), lf()])).toEqual([1]);
+		expect(firstNavPath([lf(false), lf(false)])).toBeNull();
+		expect(firstNavPath([])).toBeNull();
 	});
-	it('활성을 가운데(위치 1)로 강제 — W=3 → start = active-1', () => {
-		// N=10, W=3
-		expect(clampWindow(0, 7, 10)).toBe(6); // 점프: 아래로 당김
-		expect(clampWindow(5, 2, 10)).toBe(1); // 점프: 위로 당김
-		expect(clampWindow(2, 3, 10)).toBe(2); // 이미 유효 → 그대로
-	});
-	it('양 끝 고정이 우선', () => {
-		expect(clampWindow(0, 0, 10)).toBe(0); // active=0: prev 없음
-		expect(clampWindow(5, 9, 10)).toBe(7); // active=N-1: maxStart=N-W=7
-		expect(clampWindow(9, 9, 10)).toBe(7); // maxStart 초과 클램프
+	it('카테고리 안으로 drill', () => {
+		expect(firstNavPath([cat([lf(false), lf()]), lf()])).toEqual([0, 1]);
+		// 카테고리 전부 broken → 스킵 후 다음 잎
+		expect(firstNavPath([cat([lf(false)]), lf()])).toEqual([1]);
 	});
 });
 
-describe('stepWindow — 가운데 클램프', () => {
-	it('아래 연속 스크롤: active 가운데(maxStart 7 에서 고정)', () => {
-		let start = 0;
-		const seq: number[] = [];
-		for (let a = 1; a <= 9; a++) {
-			start = stepWindow(start, a, 1, 10);
-			seq.push(start);
-		}
-		expect(seq).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 7]);
-	});
-	it('위 연속 스크롤: active 가운데(0 에서 고정)', () => {
-		let start = 7;
-		const seq: number[] = [];
-		for (let a = 8; a >= 0; a--) {
-			start = stepWindow(start, a, -1, 10);
-			seq.push(start);
-		}
-		expect(seq).toEqual([7, 6, 5, 4, 3, 2, 1, 0, 0]);
-	});
-	it('broken 스킵 멀티 점프도 가운데 유지', () => {
-		// active 1 → 6 (broken 스킵). start = 6-1 = 5
-		expect(stepWindow(1, 6, 1, 10)).toBe(5);
+describe('drillFrom', () => {
+	it('잎이면 [idx], 카테고리면 첫 잎까지, 비navigable 이면 null', () => {
+		expect(drillFrom([lf(), lf()], 1)).toEqual([1]);
+		expect(drillFrom([cat([lf(false), lf()])], 0)).toEqual([0, 1]);
+		expect(drillFrom([lf(false)], 0)).toBeNull();
 	});
 });
 
-describe('initialWindow — 활성 위 1개', () => {
-	it('마운트 초기값', () => {
-		expect(initialWindow(0, 10)).toBe(0);
-		expect(initialWindow(4, 10)).toBe(3);
-		expect(initialWindow(9, 10)).toBe(7); // maxStart=N-W=7
-		expect(initialWindow(2, 4)).toBe(1); // N=4,W=3 → maxStart=1
+describe('nodesAtDepth', () => {
+	it('path 따라 깊이별 형제 목록', () => {
+		const t = [lf(), cat([lf(), lf()])];
+		expect(nodesAtDepth(t, [1, 0], 0)).toBe(t);
+		expect(nodesAtDepth(t, [1, 0], 1)).toBe(t[1].children);
 	});
 });
 
-describe('nextValidIndex / firstValidIndex — v1 불변', () => {
-	it('broken 건너뜀, 끝이면 from 유지', () => {
-		const entries = [e(false), e(true), e(false)];
-		expect(nextValidIndex(entries, 0, 1)).toBe(2);
-		expect(nextValidIndex(entries, 2, -1)).toBe(0);
-		expect(nextValidIndex(entries, 2, 1)).toBe(2);
-		expect(nextValidIndex(entries, 0, -1)).toBe(0);
+describe('repairPath', () => {
+	const t = [lf(), cat([lf(), lf()])];
+	it('navigable 잎 가리키면 그대로', () => {
+		const p = [1, 0];
+		expect(repairPath(t, p)).toBe(p);
 	});
-	it('firstValidIndex: 전부 broken 이면 -1', () => {
-		expect(firstValidIndex([e(true), e(false)])).toBe(1);
-		expect(firstValidIndex([e(true), e(true)])).toBe(-1);
-		expect(firstValidIndex([])).toBe(-1);
+	it('카테고리에서 끝나면(잎 아님) 첫 잎으로 보정', () => {
+		expect(repairPath(t, [1])).toEqual([0]);
+	});
+	it('범위 밖이면 첫 잎으로', () => {
+		expect(repairPath(t, [9])).toEqual([0]);
+		expect(repairPath(t, [])).toEqual([0]);
+	});
+});
+
+describe('stepPath — 가장 깊은 레벨 이동', () => {
+	it('형제 잎 이동, 끝이면 유지', () => {
+		const t = [lf(), lf(), lf()];
+		expect(stepPath(t, [0], 1)).toEqual([1]);
+		expect(stepPath(t, [2], 1)).toEqual([2]);
+		expect(stepPath(t, [1], -1)).toEqual([0]);
+	});
+	it('비navigable 형제 스킵', () => {
+		const t = [lf(), lf(false), lf()];
+		expect(stepPath(t, [0], 1)).toEqual([2]);
+	});
+	it('형제 카테고리로 이동하면 drill', () => {
+		const t = [lf(), cat([lf(), lf()])];
+		expect(stepPath(t, [0], 1)).toEqual([1, 0]);
+	});
+	it('카테고리 내부에서 이동(루트는 안 건드림)', () => {
+		const t = [lf(), cat([lf(), lf()])];
+		expect(stepPath(t, [1, 0], 1)).toEqual([1, 1]);
+		expect(stepPath(t, [1, 1], 1)).toEqual([1, 1]); // 끝
+	});
+});
+
+describe('pickPath — depth 레벨 탭 선택 + drill', () => {
+	const t = [lf(), cat([lf(), lf()]), lf()];
+	it('잎 선택', () => {
+		expect(pickPath(t, [0], 0, 2)).toEqual([2]);
+	});
+	it('카테고리 선택 → 첫 잎까지 drill', () => {
+		expect(pickPath(t, [0], 0, 1)).toEqual([1, 0]);
+	});
+	it('하위에서 루트 다른 탭 선택(depth 0)', () => {
+		expect(pickPath(t, [1, 0], 0, 2)).toEqual([2]);
+	});
+	it('비navigable 선택은 path 유지', () => {
+		const t2 = [lf(), cat([lf(false)])];
+		expect(pickPath(t2, [0], 0, 1)).toEqual([0]);
 	});
 });

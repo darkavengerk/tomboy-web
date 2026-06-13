@@ -235,9 +235,9 @@ describe('noteBundlePlugin', () => {
 		// 첫 번째 컨트롤러가 destroy 됐어야 한다
 		expect(calls.destroyed).toBe(1);
 		// 남은 컨트롤러(ordinal 0 으로 재배정)가 update 를 받았어야 한다
-		// — 마지막 update spec 의 entries[0].title 이 'B' (원 2번 번들)
+		// — 마지막 update spec 의 tree[0].label 이 'B' (원 2번 번들)
 		const lastUpdate = calls.updates[calls.updates.length - 1];
 		expect(lastUpdate).toBeDefined();
-		expect(lastUpdate.entries[0]?.title).toBe('B');
+		expect(lastUpdate.tree[0]?.label).toBe('B');
 	});
 });

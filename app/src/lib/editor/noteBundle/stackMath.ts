@@ -1,58 +1,100 @@
-/** 묶음 스택 인덱스 계산 — 순수 함수. */
-export const WINDOW_SIZE = 3;
-
-/** 타이틀 윈도우 폭 = min(3, N). */
-export function windowWidth(n: number): number {
-	return Math.min(WINDOW_SIZE, Math.max(0, n));
-}
-
-function clamp(x: number, lo: number, hi: number): number {
-	return Math.min(hi, Math.max(lo, x));
-}
-
 /**
- * 불변 강제 클램프 — active 의 prev/next 가 윈도우 안에 들어오도록 start 를
- * 최소 이동. 활성 윈도우 내 위치 ∈ [1, W-2], 단 양 끝([0, N-W]) 고정이 우선.
- * W=3 에서는 위치가 항상 1(가운데) — active 위·아래 1개씩. 점프(바 탭 /
- * 외부 활성 변경 / 항목 수 변화)에 그대로 사용.
+ * 묶음 탭 트리 내비게이션 — 순수 함수.
+ *
+ * 트리는 재귀 탭(파일철). path = 각 레벨에서 선택한 인덱스 배열, 항상
+ * **navigable 잎**에서 끝난다. 카테고리(비-잎)는 그 자체로 노트를 열지
+ * 않으므로 path 가 카테고리에서 끝나지 않게 drill 한다.
  */
-export function clampWindow(start: number, active: number, n: number): number {
-	const w = windowWidth(n);
-	if (n <= w) return 0;
-	const s = clamp(start, active - (w - 2), active - 1);
-	return clamp(s, 0, n - w);
+
+/** 컴포넌트의 ResolvedNode 가 만족하는 최소 형태 */
+export interface NavNode {
+	/** 펼침 가능: 잎이면 링크 해석됨, 카테고리면 navigable 자손 존재 */
+	navigable: boolean;
+	/** 잎(노트) 여부. false = 카테고리 */
+	isLeaf: boolean;
+	children: NavNode[];
 }
 
-/**
- * 한 칸 이동: eager 슬라이드 1 + 불변 클램프.
- * W=3 에서는 active 가 늘 가운데로 클램프된다(위1/아래1). nextActive 가
- * broken 스킵으로 여러 칸 점프해도 클램프가 따라잡는다.
- */
-export function stepWindow(start: number, nextActive: number, dir: 1 | -1, n: number): number {
-	return clampWindow(start + dir, nextActive, n);
+/** 한 줄(스트립)에 보일 탭 수 — 최소 1/4 너비 → 최대 4. 넘치면 +N. */
+export const TAB_CAP = 4;
+
+/** total 개 탭 중 몇 개를 보이고 +N 은 몇인지. CAP 초과면 (CAP-1)개 + 나머지. */
+export function tabWindow(total: number): { shown: number; plus: number } {
+	if (total <= TAB_CAP) return { shown: Math.max(0, total), plus: 0 };
+	return { shown: TAB_CAP - 1, plus: total - (TAB_CAP - 1) };
 }
 
-/** 마운트 초기 윈도우 — 활성 위 1개. */
-export function initialWindow(active: number, n: number): number {
-	return clamp(active - 1, 0, Math.max(0, n - windowWidth(n)));
-}
-
-export interface ResolvedEntryLike {
-	broken: boolean;
-}
-
-/** dir 방향 가장 가까운 펼침 가능(비-broken) 인덱스. 없으면 from 유지. */
-export function nextValidIndex(entries: ResolvedEntryLike[], from: number, dir: 1 | -1): number {
-	let i = from + dir;
-	while (i >= 0 && i < entries.length) {
-		if (!entries[i].broken) return i;
-		i += dir;
+/** 주어진 깊이의 형제 노드 목록(path 따라 내려간). 범위 밖이면 null. */
+export function nodesAtDepth<T extends NavNode>(tree: T[], path: number[], depth: number): T[] | null {
+	let nodes = tree;
+	for (let d = 0; d < depth; d++) {
+		const n = nodes[path[d]];
+		if (!n) return null;
+		nodes = n.children as T[];
 	}
-	return from;
+	return nodes;
 }
 
-/** 첫 펼침 가능 인덱스. 없으면 -1. */
-export function firstValidIndex(entries: ResolvedEntryLike[]): number {
-	for (let i = 0; i < entries.length; i++) if (!entries[i].broken) return i;
-	return -1;
+/** nodes 의 첫 navigable 잎까지의 인덱스 경로. 없으면 null. */
+export function firstNavPath(nodes: NavNode[]): number[] | null {
+	for (let i = 0; i < nodes.length; i++) {
+		const n = nodes[i];
+		if (!n.navigable) continue;
+		if (n.isLeaf) return [i];
+		const sub = firstNavPath(n.children);
+		if (sub) return [i, ...sub];
+	}
+	return null;
+}
+
+/** nodes[idx] 에서 시작해 잎까지 drill 한 경로([idx, …]). idx 가 navigable 아니면 null. */
+export function drillFrom(nodes: NavNode[], idx: number): number[] | null {
+	const n = nodes[idx];
+	if (!n || !n.navigable) return null;
+	if (n.isLeaf) return [idx];
+	const sub = firstNavPath(n.children);
+	return sub ? [idx, ...sub] : null;
+}
+
+function pathEndsAtLeaf(tree: NavNode[], path: number[]): boolean {
+	if (path.length === 0) return false;
+	let nodes = tree;
+	for (let d = 0; d < path.length; d++) {
+		const n = nodes[path[d]];
+		if (!n || !n.navigable) return false;
+		if (d === path.length - 1) return n.isLeaf;
+		nodes = n.children;
+	}
+	return false;
+}
+
+/** path 가 여전히 navigable 잎을 가리키면 그대로, 아니면 첫 navigable 잎으로. */
+export function repairPath(tree: NavNode[], path: number[]): number[] {
+	if (pathEndsAtLeaf(tree, path)) return path;
+	return firstNavPath(tree) ?? [];
+}
+
+/** 가장 깊은(현재) 레벨에서 dir 방향 다음 navigable 형제로 이동 + drill.
+ *  형제가 카테고리면 그 안 첫 잎까지 내려간다. 없으면 path 유지. */
+export function stepPath(tree: NavNode[], path: number[], dir: 1 | -1): number[] {
+	if (path.length === 0) return path;
+	const d = path.length - 1;
+	const nodes = nodesAtDepth(tree, path, d);
+	if (!nodes) return path;
+	let j = path[d] + dir;
+	while (j >= 0 && j < nodes.length) {
+		const drilled = drillFrom(nodes, j);
+		if (drilled) return path.slice(0, d).concat(drilled);
+		j += dir;
+	}
+	return path;
+}
+
+/** depth 레벨의 idx 탭을 선택(+drill). navigable 아니면 path 유지. */
+export function pickPath(tree: NavNode[], path: number[], depth: number, idx: number): number[] {
+	const nodes = nodesAtDepth(tree, path, depth);
+	if (!nodes) return path;
+	const drilled = drillFrom(nodes, idx);
+	if (!drilled) return path;
+	return path.slice(0, depth).concat(drilled);
 }

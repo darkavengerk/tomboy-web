@@ -41,7 +41,7 @@ function buildState(doc: PMNode, containers: Map<number, HTMLElement>): PluginSt
 	const decos: Decoration[] = [];
 	for (const b of bundles) {
 		if (!b.checked) continue;
-		if (b.listPos !== null && b.listEnd !== null && b.entries.length > 0) {
+		if (b.listPos !== null && b.listEnd !== null && b.tree.length > 0) {
 			decos.push(
 				Decoration.node(b.listPos, b.listEnd, { class: 'tomboy-note-bundle-hidden' })
 			);
