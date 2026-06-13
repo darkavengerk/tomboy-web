@@ -15,7 +15,12 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { parseNoteBundles, clampHeightPct, type BundleSpec } from './parser.js';
+import { parseNoteBundles, clampHeightPct, type BundleSpec, type BundleKind } from './parser.js';
+
+/** 번들에 펼칠 콘텐츠가 있나 — kind 무관(탭=tree, 묶음=entries). */
+function hasContent(b: BundleSpec): boolean {
+	return b.tree.length > 0 || b.entries.length > 0;
+}
 
 export interface StackController {
 	/** spec 전체 교체로 취급할 것. 번들 삭제로 ordinal 이 재배정되면 같은
@@ -41,7 +46,7 @@ function buildState(doc: PMNode, containers: Map<number, HTMLElement>): PluginSt
 	const decos: Decoration[] = [];
 	for (const b of bundles) {
 		if (!b.checked) continue;
-		if (b.listPos !== null && b.listEnd !== null && b.tree.length > 0) {
+		if (b.listPos !== null && b.listEnd !== null && hasContent(b)) {
 			decos.push(
 				Decoration.node(b.listPos, b.listEnd, { class: 'tomboy-note-bundle-hidden' })
 			);
@@ -74,6 +79,9 @@ function buildState(doc: PMNode, containers: Map<number, HTMLElement>): PluginSt
 export function createNoteBundlePlugin(opts: NoteBundleOptions): Plugin<PluginState> {
 	const containers = new Map<number, HTMLElement>();
 	const controllers = new Map<number, StackController>();
+	// 컨트롤러가 어떤 kind 로 마운트됐는지 — ordinal 재배정/키워드 편집으로
+	// 같은 ordinal 의 kind 가 바뀌면(탭↔묶음) 컴포넌트를 교체해야 한다.
+	const controllerKind = new Map<number, BundleKind>();
 
 	const syncControllers = (view: EditorView) => {
 		const st = noteBundlePluginKey.getState(view.state);
@@ -83,19 +91,28 @@ export function createNoteBundlePlugin(opts: NoteBundleOptions): Plugin<PluginSt
 			if (!b.checked) continue;
 			active.add(b.ordinal);
 			const existing = controllers.get(b.ordinal);
-			if (existing) {
+			if (existing && controllerKind.get(b.ordinal) === b.kind) {
 				existing.update(b);
-			} else {
-				const el = containers.get(b.ordinal);
-				if (el && el.isConnected) {
-					controllers.set(b.ordinal, opts.mountStack(el, view, b));
-				}
+				continue;
+			}
+			if (existing) {
+				// kind 변경(탭↔묶음) — update 로는 컴포넌트를 못 바꾸므로 파괴 후
+				// 같은 컨테이너에 새 컴포넌트를 리마운트.
+				existing.destroy();
+				controllers.delete(b.ordinal);
+				controllerKind.delete(b.ordinal);
+			}
+			const el = containers.get(b.ordinal);
+			if (el && el.isConnected) {
+				controllers.set(b.ordinal, opts.mountStack(el, view, b));
+				controllerKind.set(b.ordinal, b.kind);
 			}
 		}
 		for (const [ord, ctrl] of [...controllers]) {
 			if (!active.has(ord)) {
 				ctrl.destroy();
 				controllers.delete(ord);
+				controllerKind.delete(ord);
 				containers.delete(ord);
 			}
 		}
@@ -129,6 +146,7 @@ export function createNoteBundlePlugin(opts: NoteBundleOptions): Plugin<PluginSt
 				destroy() {
 					for (const c of controllers.values()) c.destroy();
 					controllers.clear();
+					controllerKind.clear();
 					containers.clear();
 				}
 			};

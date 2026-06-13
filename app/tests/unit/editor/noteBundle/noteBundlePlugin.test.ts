@@ -26,15 +26,21 @@ afterEach(() => {
 });
 
 function makeStub() {
-	const calls = { mounted: 0, updates: [] as BundleSpec[], destroyed: 0 };
+	const calls = {
+		mounted: 0,
+		mountedSpecs: [] as BundleSpec[],
+		updates: [] as BundleSpec[],
+		destroyed: 0
+	};
 	const mountStack = (
 		_c: HTMLElement,
 		_v: EditorView,
-		_s: BundleSpec
+		s: BundleSpec
 	): StackController => {
 		calls.mounted++;
+		calls.mountedSpecs.push(s);
 		return {
-			update: (s) => calls.updates.push(s),
+			update: (u) => calls.updates.push(u),
 			destroy: () => calls.destroyed++
 		};
 	};
@@ -121,6 +127,38 @@ describe('noteBundlePlugin', () => {
 		await tick();
 		expect(calls.mounted).toBe(1);
 		expect(calls.updates.length).toBeGreaterThan(0);
+	});
+
+	it('묶음(bundle) kind 도 마운트 + 리스트 숨김 (entries 기반 hasContent)', async () => {
+		const { calls, mountStack } = makeStub();
+		const ed = makeEditor(
+			doc(titleLine('호스트'), kw('묶음:50', true), list(li('A'), li('B'))),
+			mountStack
+		);
+		await tick();
+		expect(calls.mounted).toBe(1);
+		expect(calls.mountedSpecs[0].kind).toBe('bundle');
+		const st = noteBundlePluginKey.getState(ed.state)!;
+		const b = st.bundles[0];
+		expect(st.decorations.find(b.listPos!, b.listEnd!).length).toBeGreaterThan(0);
+	});
+
+	it('kind 변경(탭→묶음) → destroy + 새 kind 로 리마운트', async () => {
+		const { calls, mountStack } = makeStub();
+		const ed = makeEditor(
+			doc(titleLine('호스트'), kw('탭:50', true), list(li('A'))),
+			mountStack
+		);
+		await tick();
+		expect(calls.mounted).toBe(1);
+		expect(calls.mountedSpecs[0].kind).toBe('tab');
+		// 키워드 첫 글자 '탭'(checkboxPos+1, 1자)을 '묶음' 으로 교체 → kind 변경
+		const cbPos = noteBundlePluginKey.getState(ed.state)!.bundles[0].checkboxPos;
+		ed.view.dispatch(ed.state.tr.insertText('묶음', cbPos + 1, cbPos + 2));
+		await tick();
+		expect(calls.destroyed).toBe(1);
+		expect(calls.mounted).toBe(2);
+		expect(calls.mountedSpecs[1].kind).toBe('bundle');
 	});
 
 	it('unchecked 번들 → 마운트 안 함', async () => {
@@ -212,9 +250,9 @@ describe('noteBundlePlugin', () => {
 		const ed = makeEditor(
 			doc(
 				titleLine('호스트'),
-				kw('묶음:50', true),
+				kw('탭:50', true),
 				list(li('A')),
-				kw('묶음:60', true),
+				kw('탭:60', true),
 				list(li('B'))
 			),
 			mountStack
