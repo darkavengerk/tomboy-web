@@ -42,6 +42,7 @@
 	} from "./titleUniqueGuard.js";
 	import { createImagePreviewPlugin } from "./imagePreview/imagePreviewPlugin.js";
 	import { createGeoMapPlugin } from "./geoMap/geoMapPlugin.js";
+import { createTitleIsolationPlugin } from "./titleIsolation/titleIsolationPlugin.js";
 import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 import { createAutomationNotePlugin } from "./automationNote/automationNotePlugin.js";
 import { createRemarkableNotePlugin } from "./remarkableNote/remarkableNotePlugin.js";
@@ -245,6 +246,12 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		/** 노트 묶음 스택 렌더 여부. 임베디드(번들 안) 에디터는 false 로
 		 *  중첩 번들을 막는다 (depth 1 — 번들 안 번들은 리스트로만 보임). */
 		enableNoteBundle?: boolean;
+		/** 첫 top-level 줄(타이틀)을 에디터에서 숨기고 커서/Backspace 를 가드.
+		 *  실제 노트 편집 화면(/note, NoteWindow)만 true. 번들 임베디드는 false. */
+		hideTitleLine?: boolean;
+		/** 콘텐츠 스왑(setContent)이 settle 된 뒤 1회 호출. 생성 로딩 플로우가
+		 *  '에디터 여는 중' 단계를 종료하는 신호로 쓴다. */
+		onnoteready?: (guid: string | null) => void;
 	}
 
 	let {
@@ -277,6 +284,8 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		cursorVisibilityMode = "window",
 		onsendremarkable,
 		enableNoteBundle = true,
+		hideTitleLine = false,
+		onnoteready = () => {},
 	}: Props = $props();
 
 	let ctxMenu = $state<{ x: number; y: number } | null>(null);
@@ -302,6 +311,8 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 	// closures so prop changes take effect without re-creating extensions.
 	// Seeded to safe defaults; the $effect below syncs from the props.
 	let hrSplitEnabledFlag = true;
+	// titleIsolation enabled 게이트 — prop 을 클로저로 읽어 재생성 없이 반영.
+	let hideTitleLineFlag = false;
 	let hrSplitChangeFn:
 		| ((newCount: number, prevCount: number) => void)
 		| undefined = undefined;
@@ -513,6 +524,12 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 					name: "tomboyGeoMap",
 					addProseMirrorPlugins() {
 						return [createGeoMapPlugin()];
+					},
+				}),
+				Extension.create({
+					name: "tomboyTitleIsolation",
+					addProseMirrorPlugins() {
+						return [createTitleIsolationPlugin(() => hideTitleLineFlag)];
 					},
 				}),
 				Extension.create({
@@ -1213,6 +1230,7 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 				);
 			}
 			applyNewNoteIntent(ed, g);
+			requestAnimationFrame(() => { if (!ed.isDestroyed) onnoteready(g); });
 			return;
 		}
 
@@ -1275,6 +1293,7 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		findQuery = "";
 
 		applyNewNoteIntent(ed, g);
+		requestAnimationFrame(() => { if (!ed.isDestroyed) onnoteready(g); });
 	});
 
 	// Toggle the "send list item" plugin's active flag whenever the parent's
@@ -1374,6 +1393,10 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 				ed.view.dispatch(ed.state.tr);
 			}
 		}
+	});
+
+	$effect(() => {
+		hideTitleLineFlag = hideTitleLine;
 	});
 
 	// Keep the closure-bound autoWeekday flag in sync with the prop. When the
@@ -3235,5 +3258,10 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		-webkit-mask-image: linear-gradient(to bottom, black 65%, transparent 100%);
 		mask-image: linear-gradient(to bottom, black 65%, transparent 100%);
 		font-family: inherit;
+	}
+	/* titleIsolation: 데코레이션으로 첫 top-level 줄(타이틀)을 숨긴다.
+	   PM DOM 에 직접 붙는 클래스라 :global 필요. */
+	:global(.ProseMirror .tomboy-title-hidden) {
+		display: none;
 	}
 </style>
