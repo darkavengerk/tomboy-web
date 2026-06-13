@@ -38,6 +38,8 @@
 	 * 격벽이 Svelte 위임 이벤트를 죽이므로 본문에 독립 mount().
 	 */
 	import { onMount, onDestroy, untrack, mount as mountComponent, unmount as unmountComponent } from 'svelte';
+	import { flip } from 'svelte/animate';
+	import { fade } from 'svelte/transition';
 	import { SvelteMap } from 'svelte/reactivity';
 	import type { Component } from 'svelte';
 	import type { EditorView } from '@tiptap/pm/view';
@@ -73,7 +75,11 @@
 
 	// --- 트리 해석 ----------------------------------------------------------
 	let titleEpoch = $state(0);
+	// 초기 렌더에서 탭 intro 트랜지션이 한꺼번에 깜빡이지 않게, 마운트 후에만
+	// 트랜지션 시간을 켠다(그 전엔 duration 0 = 즉시).
+	let ready = $state(false);
 	onMount(() => {
+		ready = true;
 		void ensureTitleIndexReady().then(() => {
 			titleEpoch++;
 		});
@@ -645,6 +651,9 @@
 					class:broken={it.node.isLeaf && it.node.broken}
 					class:cat={!it.node.isLeaf}
 					title={it.node.label}
+					animate:flip={{ duration: ready ? 220 : 0 }}
+					in:fade={{ duration: ready ? 150 : 0 }}
+					out:fade={{ duration: ready ? 120 : 0 }}
 					use:direct={{ click: () => handleTabClick(depth, it.idx, it.node) }}
 				>
 					<span class="tab-label">{it.node.label || '(빈 카테고리)'}</span>
@@ -714,7 +723,7 @@
 		{@render strip(topItems(nodes, activeIdx), depth, true)}
 		<div class="level-body">
 			{#each nodes as node, i (node.key)}
-				<div class="node-body" class:active={i === activeIdx}>
+				<div class="node-body" class:active={i === activeIdx} class:before={i < activeIdx}>
 					{#if node.isLeaf}
 						{@render leafBody(node)}
 					{:else}
@@ -744,19 +753,40 @@
 		min-height: 0;
 	}
 	.level-body {
-		display: flex;
-		flex-direction: column;
+		position: relative; /* 본문 슬라이드 기준 + 넘침 클립 */
 		flex: 1;
 		min-height: 0;
+		overflow: hidden;
 	}
+	/* 본문은 전부 마운트 유지(keep-alive). 활성 외에는 화면 밖으로 transform.
+	   - 이후(upcoming) 노트: 위(-100%)에 대기 → 전진 시 아래로 내려와 채움.
+	   - 지나간(before) 노트: 아래(100%)로 빠짐.
+	   display:none 대신 transform 이라 에디터 언마운트 없이 슬라이드. */
 	.node-body {
-		display: none;
+		position: absolute;
+		inset: 0;
+		display: flex;
+		flex-direction: column;
+		opacity: 0;
+		pointer-events: none;
+		transform: translateY(-100%);
+		transition:
+			transform 240ms cubic-bezier(0.4, 0, 0.2, 1),
+			opacity 200ms ease-out;
+	}
+	.node-body.before {
+		transform: translateY(100%);
 	}
 	.node-body.active {
-		display: flex;
-		flex-direction: column;
-		flex: 1;
-		min-height: 0;
+		opacity: 1;
+		pointer-events: auto;
+		transform: translateY(0);
+		z-index: 1;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.node-body {
+			transition: none;
+		}
 	}
 	/* --- 탭 스트립 ---------------------------------------------------------- */
 	.tab-strip {
