@@ -147,8 +147,9 @@ an `$effect` keyed on `tree` calls `repairPath` (read/write under `untrack`).
 
 The `tabLevel(nodes, depth)` **snippet recurses**:
 - **top strip** = `topItems` (indices `activeIdx..end`, active leftmost),
-- **level-body** = every node's `.node-body` (only `activeIdx` is `display:flex`,
-  rest `display:none`); a leaf renders `leafBody`, a category recurses `tabLevel`,
+- **level-body** = every node's `.node-body`, all rendered and **transform-stacked**
+  (`position:absolute; inset:0`) so only `activeIdx` is on-screen — see the
+  animation section; a leaf renders `leafBody`, a category recurses `tabLevel`,
 - **bottom strip** = `bottomItems` (indices `activeIdx-1..0`, reversed).
 
 Each strip applies `tabWindow`: ≤4 tabs share equally (`flex:1 1 0`, ≥¼ each,
@@ -161,14 +162,42 @@ The active **leaf** (deepest node on `activePath`) is the visible note;
 
 ### Full-tree render + keep-alive
 
-The recursion renders the **entire tree** (every branch), with off-path branches
-hidden via `display:none` on `.node-body`. A leaf's editor mounts **lazily** —
-`leafBody` only renders the `EditorComponent` once `sessions.get(guid)` exists,
-and sessions load only when a leaf becomes the active leaf (so first mount is
-always **visible** → music-bar/scroll-bottom measurements are correct). Once
-mounted, the editor **stays mounted** (hidden when off-path) → tab switches are
-instant and **cursor/undo are preserved per note** (keep-alive). Sessions are
-torn down only when a guid leaves the tree (or on destroy).
+The recursion renders the **entire tree** (every branch). Off-path branches are
+**transformed off-screen** (not `display:none` — see the animation section so the
+slide can play). A leaf's editor mounts **lazily** — `leafBody` only renders the
+`EditorComponent` once `sessions.get(guid)` exists, and sessions load only when a
+leaf becomes the active leaf. Once mounted, the editor **stays mounted** (off-path
+= `opacity:0; pointer-events:none`, transformed aside) → tab switches are instant
+and **cursor/undo are preserved per note** (keep-alive). Sessions are torn down
+only when a guid leaves the tree (or on destroy).
+
+### Tab-transition animation
+
+Restored after the tab redesign initially dropped all motion. Two independent axes,
+both must keep working with keep-alive (no unmount):
+
+- **Body slide (CSS transform).** `.node-body` is `position:absolute; inset:0`
+  inside a `position:relative; overflow:hidden` `.level-body`. Each body's resting
+  transform encodes its relation to the active index: **active** = `translateY(0)`
+  + `opacity:1`; **upcoming** (`i > activeIdx`, default) = `translateY(-100%)` (waits
+  above); **before** (`i < activeIdx`, the `.before` class) = `translateY(100%)`
+  (below). A `transform` transition makes a forward step look like the active note
+  **falling down** while the next note **descends from the top** to fill — the motion
+  the user asked for. Direction is implicit in the index relation, so backward steps
+  reverse automatically with no direction state. `prefers-reduced-motion` zeroes it.
+- **Tab shift (`animate:flip` + `fade`).** Strip tabs are keyed by `node.key`;
+  `animate:flip` animates the left/right shift when the active index moves (the
+  persisting tabs slide to their new slots). Cross-strip enter/exit (a tab leaving
+  the top strip / appearing in the bottom strip) uses `in/out:fade` — they're
+  separate `{#each}` blocks so a tab can't fly continuously across the body; the
+  fade + the body slide together read as the motion.
+- **Initial-flash guard.** A `ready` flag (`onMount`) keeps all transition/flip
+  durations at `0` until after mount, so the first render doesn't play every tab's
+  intro at once.
+
+This is **not** the old single-body FLIP dead-end (see below): bodies are
+per-note and persistent, so the slide animates real mounted elements, not a
+shared body re-loaded mid-flight.
 
 ### Editor-in-editor event barrier (load-bearing)
 
@@ -281,7 +310,8 @@ viewport, content-independent; `resize` listener catches rotation).
 - **heightPct clamped 20–90, default 50.** Drag the bottom edge; persisted on pointer-up.
 - **Widget container cached per ordinal** — never recreate it or the Svelte stack is lost.
 - **Full-tree render is required for keep-alive** — visited leaf editors must stay
-  mounted (hidden) across tab switches; don't switch to active-branch-only render.
+  mounted (transformed off-screen, not `display:none`) across tab switches; don't
+  switch to active-branch-only render.
 - **Child components MUST be independently `mount()`'d** inside the barrier; the
   stack's own handlers use the `direct` action (with its `update` method), never `onclick=`.
 
