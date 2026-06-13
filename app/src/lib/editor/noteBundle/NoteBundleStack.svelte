@@ -31,7 +31,8 @@
 	 * 훑어보기(기본): 휠/스와이프 = 탭 전환. 데스크톱 휠은 아래로 굴리면
 	 * 다음(이후) 노트 — 탭 구조라 이전 세로 스택과 방향이 반대. 활성 본문은
 	 * 회색조. 본문 탭/클릭 → 편집 모드(흰 배경, 휠/스크롤이 노트 안으로).
-	 * Esc · 탭 클릭 · 묶음 스크롤(휠/스와이프, ctrl+휠) → 훑어보기 복귀.
+	 * ctrl+휠은 모드 무관 활성 본문 스크롤(편집 진입 없이 내용 확인).
+	 * Esc · 탭 클릭 · 묶음 스크롤(휠/스와이프) → 훑어보기 복귀.
 	 *
 	 * ── 호스트 셸 배선 ──────────────────────────────────────────────────
 	 * 터미널/음악/하단최신은 잎 본문에 그대로. TerminalView·MusicPlayerBar 는
@@ -274,11 +275,17 @@
 			(t) => [t, t === 'keydown' ? stopKeydown : stop]
 		);
 		for (const [t, h] of pairs) el.addEventListener(t, h);
-		// 훑어보기(또는 ctrl/⌘+휠)의 휠은 캡처 단계에서 선점 — xterm/임베디드 PM 이
-		// 타깃 단계에서 자체 스크롤해 버리면 버블 preventDefault 로 못 되돌린다.
+		// 휠은 캡처 단계에서 선점 — xterm/임베디드 PM 이 타깃 단계에서 자체
+		// 스크롤해 버리면 버블 preventDefault 로 못 되돌린다.
+		//  - ctrl/⌘+휠: 활성 본문 스크롤(편집 진입 없이 내용 확인) + 줌 차단.
+		//  - 훑어보기: 탭 전환. 편집(ctrl 없음): 통과 → 본문 네이티브 스크롤.
 		const captureWheel = (e: Event) => {
 			const we = e as WheelEvent;
-			if (mode === 'browse' || we.ctrlKey || we.metaKey) flipWheel(we);
+			if (we.ctrlKey || we.metaKey) {
+				scrollActiveBody(we);
+				return;
+			}
+			if (mode === 'browse') flipWheel(we);
 		};
 		el.addEventListener('wheel', captureWheel, { capture: true, passive: false });
 		// 모바일 편집-진입 키보드 억제: 임베디드 PM 은 "편집 모드 + 활성 본문 직접
@@ -531,10 +538,20 @@
 		if (next !== activePath) activePath = next;
 	}
 
+	/** ctrl/⌘+휠 — 활성 잎 노트 본문을 직접 스크롤(편집 진입 없이 내용 확인).
+	 *  preventDefault 로 줌·네이티브 스크롤을 막고 scrollTop 직접 이동.
+	 *  활성 잎 본문 = 가장 깊은 .node-body.active 의 직속 .bundle-body. */
+	function scrollActiveBody(e: WheelEvent) {
+		e.preventDefault();
+		e.stopPropagation();
+		const body = rootEl?.querySelector<HTMLElement>('.node-body.active > .bundle-body') ?? null;
+		if (body) body.scrollTop += e.deltaY;
+	}
+
 	let wheelAcc = 0;
 	function flipWheel(e: WheelEvent) {
 		exitEdit();
-		e.preventDefault(); // ctrl+wheel 줌 차단 겸용
+		e.preventDefault(); // 네이티브 본문 스크롤 차단(브라우징 중)
 		e.stopPropagation();
 		if (Math.sign(e.deltaY) !== Math.sign(wheelAcc)) wheelAcc = 0;
 		wheelAcc += e.deltaY;
