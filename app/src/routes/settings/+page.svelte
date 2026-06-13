@@ -1562,6 +1562,19 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 				</p>
 
 				<details class="guide-card" open>
+					<summary>새 노트 만들기 — 제목·종류·노트북</summary>
+					<p class="info-text">
+						＋ 버튼을 누르면 팝업이 떠서 제목을 입력합니다(제목은 필수). 종류를 고르면
+						터미널·채팅·자동화 같은 특수 노트의 형식이 자동으로 채워지고, 노트북도 함께 지정할 수 있습니다.
+					</p>
+					<ul class="guide-list">
+						<li>종류 드롭다운 → 본문 시그니처(<code>ssh://</code> 등)나 제목 접두어(<code>자동화::</code> 등)를 자동 주입.</li>
+						<li>생성 중에는 <strong>노트 생성 → 인덱스 갱신 → 에디터 여는 중</strong> 단계와 소요시간(ms)이 표시됩니다.</li>
+						<li>제목이 비어 있으면 만들 수 없습니다.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card" open>
 					<summary>터미널 노트 — SSH 세션을 노트로 열기</summary>
 					<p class="info-text">
 						본문 1–3줄이 메타데이터로 인식되면 노트가 터미널 화면으로 열립니다. 4번째 자유 단락이
@@ -1946,6 +1959,19 @@ https://www.youtube.com/playlist?list=…  (재생목록: 일반 줄)</pre>
 					아래는 노트의 일부 영역에만 적용되는 인라인 블록 형식입니다. 한 노트 안에 여러 개를 섞을
 					수 있고, 형식이 어긋나면 그 블록만 일반 문단으로 보입니다.
 				</p>
+
+				<details class="guide-card" open>
+					<summary>제목은 본문에서 분리됩니다</summary>
+					<p class="info-text">
+						제목은 더 이상 본문 첫 줄로 편집하지 않습니다. 본문 위 <strong>제목 바</strong>에 표시되며,
+						편집 본문은 둘째 줄부터 시작합니다.
+					</p>
+					<ul class="guide-list">
+						<li>제목 수정: 제목 바를 <strong>더블클릭</strong>하거나 <strong>⋯ 메뉴 → 제목 수정</strong>.</li>
+						<li>데이터(.note)에는 제목이 첫 줄로 그대로 저장됩니다 — Dropbox 동기화·내부 링크·노트 종류 인식에 영향 없음.</li>
+						<li>이름을 바꾸면 이 노트를 가리키던 내부 링크가 자동으로 함께 갱신됩니다.</li>
+					</ul>
+				</details>
 
 				<details class="guide-card" open>
 					<summary>표 (CSV / TSV) — 본문 안의 펜스 블록</summary>

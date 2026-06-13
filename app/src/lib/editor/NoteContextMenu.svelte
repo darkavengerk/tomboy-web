@@ -6,6 +6,7 @@
 
 	export type ActionKind =
 		| 'delete'
+		| 'editTitle'
 		| 'redownload'
 		| 'toggleFavorite'
 		| 'setHome'
@@ -107,6 +108,10 @@
 >
 	{#if view === 'main'}
 		{#if !confirmDelete}
+			<button class="item" onclick={() => onaction('editTitle')}>
+				<span class="icon">✎</span>제목 수정
+			</button>
+			<div class="sep"></div>
 			<button class="item" onclick={() => onaction('toggleFavorite')}>
 				<span class="icon">{isFavoriteNote ? '★' : '☆'}</span>
 				{isFavoriteNote ? '즐겨찾기 해제' : '즐겨찾기'}

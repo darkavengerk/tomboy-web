@@ -28,6 +28,9 @@
 	import { getAllNotes } from '$lib/storage/noteStore.js';
 	import { favoriteStore } from '$lib/storage/favoriteStore.svelte.js';
 	import { getCachedPublicConfig, discoverPublicConfigForGuest } from '$lib/sync/firebase/publicConfig.js';
+	import NoteTitleDialog from '$lib/components/NoteTitleDialog.svelte';
+	import { newNoteFlow } from '$lib/stores/newNoteFlow.svelte.js';
+	import { listNotebooks } from '$lib/core/notebooks.js';
 
 	let { children } = $props();
 
@@ -314,6 +317,13 @@
 	function dismissInstallBanner() {
 		showInstallBanner = false;
 	}
+
+	let flowNotebooks = $state<string[]>([]);
+	$effect(() => {
+		if (newNoteFlow.phase === 'input') {
+			listNotebooks().then((n) => (flowNotebooks = n));
+		}
+	});
 </script>
 
 <svelte:head>
@@ -359,6 +369,24 @@
 	<Toast />
 	<ImageViewerModal />
 	<ImageActionMenu />
+{/if}
+
+{#if newNoteFlow.phase === 'input'}
+	<NoteTitleDialog
+		mode="create"
+		notebooks={flowNotebooks}
+		initialNotebook={newNoteFlow.defaultNotebook}
+		onsubmit={(r) => newNoteFlow.submit(r)}
+		oncancel={() => newNoteFlow.cancel()}
+	/>
+{:else if newNoteFlow.phase === 'creating'}
+	<NoteTitleDialog
+		mode="create"
+		notebooks={flowNotebooks}
+		progressStages={newNoteFlow.stages}
+		onsubmit={() => {}}
+		oncancel={() => {}}
+	/>
 {/if}
 
 <style>

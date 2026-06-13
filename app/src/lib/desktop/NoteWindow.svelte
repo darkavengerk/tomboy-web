@@ -6,7 +6,8 @@
 		getNoteEditorContent,
 		deleteNoteById,
 		toggleFavorite,
-		isFavorite
+		isFavorite,
+		renameNote
 	} from '$lib/core/noteManager.js';
 	import { subscribeNoteReload, subscribeNoteFlush } from '$lib/core/noteReloadBus.js';
 	import { attachOpenNote, detachOpenNote } from '$lib/sync/firebase/orchestrator.js';
@@ -32,6 +33,8 @@
 		getTerminalBridgeToken
 	} from '$lib/editor/terminal/bridgeSettings.js';
 	import NoteContextMenu, { type ActionKind } from '$lib/editor/NoteContextMenu.svelte';
+	import NoteTitleDialog from '$lib/components/NoteTitleDialog.svelte';
+	import { newNoteFlow } from '$lib/stores/newNoteFlow.svelte.js';
 	import NoteXmlViewer from '$lib/editor/NoteXmlViewer.svelte';
 	import {
 		assignNotebook,
@@ -128,6 +131,7 @@
 	let menuAnchor = $state<{ right: number; bottom: number } | null>(null);
 	let xmlViewerOpen = $state(false);
 	let sendRemarkableOpen = $state(false);
+	let titleDialogOpen = $state(false);
 	let notebookNames = $state<string[]>([]);
 	let isHomeState = $state(false);
 	let isScrollBottomState = $state(false);
@@ -720,6 +724,32 @@
 		}
 	}
 
+	function openTitleDialog() {
+		titleDialogOpen = true;
+	}
+
+	async function handleTitleSave(r: { title: string; typeId: string; notebook: string | null }) {
+		if (!note) return;
+		titleDialogOpen = false;
+		// 본문에 미저장 디바운스 편집이 있으면 먼저 IDB 로 내린다 — renameNote 가
+		// 옛 본문을 읽어 rewrite + reload 하며 그 편집을 잃지 않도록.
+		if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+		await flushSave();
+		const ok = await renameNote(note.guid, r.title);
+		if (!ok) {
+			pushToast('이미 같은 제목의 노트가 있거나 제목이 비어 있습니다.', { kind: 'error' });
+			return;
+		}
+		if (r.notebook !== currentNotebook) {
+			await assignNotebook(note.guid, r.notebook);
+		}
+		// 본문은 renameNote 의 noteReload 로 갱신되고, 윈도우 타이틀(titleDisplay)은
+		// 로컬 note 에서 파생되므로 재조회로 갱신.
+		const updated = await getNote(note.guid);
+		if (updated) note = updated;
+		pushToast('제목이 변경되었습니다.');
+	}
+
 	function scrollEditorToBottom() {
 		const ed = getEditor();
 		const el = ed?.view.dom.parentElement as HTMLElement | undefined;
@@ -739,6 +769,8 @@
 	async function handleAction(kind: ActionKind) {
 		menuAnchor = null;
 		if (!note) return;
+
+		if (kind === 'editTitle') { openTitleDialog(); return; }
 
 		if (kind === 'delete') {
 			if (saveTimer) {
@@ -879,6 +911,7 @@
 		class:focused={isFocused}
 		onpointerdown={startDrag}
 		onauxclick={handleTitleBarAuxClick}
+		ondblclick={(e) => { if ((e.target as HTMLElement)?.closest('[data-no-drag]')) return; openTitleDialog(); }}
 	>
 		<span class="title-text">
 			{#if saving}<span class="save-dot" title="저장 중"></span>{/if}
@@ -956,6 +989,8 @@
 					cursorVisibilityMode="container"
 					onimageinserted={handleImageInserted}
 					onsendremarkable={() => (sendRemarkableOpen = true)}
+					hideTitleLine={true}
+					onnoteready={(g) => newNoteFlow.markEditorReady(g)}
 				/>
 				{#if editorComponent?.getEditor() && llmBridgeUrl && llmBridgeToken}
 					<ChatSendBar
@@ -1067,6 +1102,17 @@
 	<SendToRemarkableModal
 		rootGuid={note.guid}
 		onclose={() => (sendRemarkableOpen = false)}
+	/>
+{/if}
+
+{#if titleDialogOpen && note}
+	<NoteTitleDialog
+		mode="edit"
+		notebooks={notebookNames}
+		initialTitle={note.title}
+		initialNotebook={currentNotebook}
+		onsubmit={(r) => handleTitleSave(r)}
+		oncancel={() => (titleDialogOpen = false)}
 	/>
 {/if}
 

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { listNotesShared, createNote } from '$lib/core/noteManager.js';
+	import { listNotesShared } from '$lib/core/noteManager.js';
+	import { newNoteFlow } from '$lib/stores/newNoteFlow.svelte.js';
 	import type { NoteData } from '$lib/core/note.js';
 	import { parseTomboyDate } from '$lib/core/note.js';
 	import {
@@ -124,15 +125,19 @@
 		return () => off();
 	});
 
-	async function handleNew() {
-		const note =
-			selectedNotebook === SLIPBOX_NOTEBOOK
-				? await createSlipNote()
-				: await createNote();
-		if (selectedNotebook) {
-			await assignNotebook(note.guid, selectedNotebook);
+	function handleNew() {
+		if (selectedNotebook === SLIPBOX_NOTEBOOK) {
+			// 슬립노트는 전용 생성 경로 유지(다이얼로그 미사용).
+			void createSlipNote().then((note) => {
+				if (selectedNotebook) void assignNotebook(note.guid, selectedNotebook);
+				onopen(note.guid);
+			});
+			return;
 		}
-		onopen(note.guid);
+		newNoteFlow.open({
+			notebook: selectedNotebook ?? null,
+			navigate: (n) => onopen(n.guid)
+		});
 	}
 
 	function selectNotebook(name: string | null) {
