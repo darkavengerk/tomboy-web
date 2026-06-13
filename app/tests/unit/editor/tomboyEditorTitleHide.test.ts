@@ -1,4 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
+// TomboyEditor's onMount warms the title index via IDB (listNotesShared →
+// getAllNotes); without this the mount emits "indexedDB is not defined"
+// unhandled rejections that pollute the suite output.
+import 'fake-indexeddb/auto';
 import { render, cleanup } from '@testing-library/svelte';
 import TomboyEditor from '$lib/editor/TomboyEditor.svelte';
 
