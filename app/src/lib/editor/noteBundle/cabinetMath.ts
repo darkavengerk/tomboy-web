@@ -10,30 +10,19 @@ function clamp(x: number, lo: number, hi: number): number {
 	return Math.min(hi, Math.max(lo, x));
 }
 
+/** 활성 노트가 윈도우 안에서 고수할 자리(0-기준). 3번째 = 2 → 위·아래 2칸씩. */
+export const ACTIVE_SLOT = 2;
+
 /**
- * 불변 강제 클램프 — active 의 prev/next 가 윈도우 안에 들어오도록 start 를
- * 최소 이동. 활성 윈도우 내 위치 ∈ [1, W-2], 단 양 끝([0, N-W]) 고정이 우선.
- * 점프(바 탭 / 외부 활성 변경 / 항목 수 변화)에 그대로 사용.
+ * 활성 노트를 윈도우 ACTIVE_SLOT(3번째) 자리에 고정 — 스크롤 방향과 무관하게
+ * 항상 가운데를 고수해 위·아래 맥락이 대칭으로 보인다. 단 양 끝([0, N-W])
+ * 고정이 우선(맨 앞이면 1·2번째, 맨 뒤면 마지막 자리). 점프·스텝·초기 마운트
+ * 모두 이 한 함수로 — 직전 start 와 무관하게 active 만으로 결정된다.
  */
-export function clampWindow(start: number, active: number, n: number): number {
+export function centeredWindow(active: number, n: number): number {
 	const w = windowWidth(n);
 	if (n <= w) return 0;
-	const s = clamp(start, active - (w - 2), active - 1);
-	return clamp(s, 0, n - w);
-}
-
-/**
- * 한 칸 이동: eager 슬라이드 1 + 불변 클램프.
- * 내려갈 땐 정상상태 위1/아래3, 올라갈 땐 위3/아래1 — 진행 방향이 미리 보인다.
- * nextActive 가 broken 스킵으로 여러 칸 점프해도 클램프가 따라잡는다.
- */
-export function stepWindow(start: number, nextActive: number, dir: 1 | -1, n: number): number {
-	return clampWindow(start + dir, nextActive, n);
-}
-
-/** 마운트 초기 윈도우 — 활성 위 1개. */
-export function initialWindow(active: number, n: number): number {
-	return clamp(active - 1, 0, Math.max(0, n - windowWidth(n)));
+	return clamp(active - ACTIVE_SLOT, 0, n - w);
 }
 
 export interface ResolvedEntryLike {
