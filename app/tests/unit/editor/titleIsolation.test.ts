@@ -9,7 +9,8 @@ import {
 } from '$lib/editor/titleIsolation/titleIsolationPlugin.js';
 
 let editor: Editor | null = null;
-afterEach(() => { editor?.destroy(); editor = null; });
+let el: HTMLElement | null = null;
+afterEach(() => { editor?.destroy(); editor = null; el?.remove(); el = null; });
 
 function makeEditor(enabled: boolean) {
 	const ext = Extension.create({
@@ -18,7 +19,7 @@ function makeEditor(enabled: boolean) {
 			return [createTitleIsolationPlugin(() => enabled)];
 		}
 	});
-	const el = document.createElement('div');
+	el = document.createElement('div');
 	document.body.appendChild(el);
 	return new Editor({
 		element: el,
@@ -51,5 +52,30 @@ describe('titleIsolation', () => {
 		expect(editor.state.selection.from).toBe(1);
 		const firstP = editor.view.dom.querySelector('p');
 		expect(firstP?.classList.contains('tomboy-title-hidden')).toBe(false);
+	});
+
+	it('둘째 블록 맨 앞 Backspace 를 차단한다', () => {
+		editor = makeEditor(true);
+		const first = editor.state.doc.firstChild!;
+		editor.view.dispatch(
+			editor.state.tr.setSelection(TextSelection.create(editor.state.doc, first.nodeSize + 1))
+		);
+		const blocked = editor.view.someProp('handleKeyDown', (f) =>
+			f(editor!.view, new KeyboardEvent('keydown', { key: 'Backspace' }))
+		);
+		expect(blocked).toBe(true);
+	});
+
+	it('본문 중간 Backspace 는 막지 않는다', () => {
+		editor = makeEditor(true);
+		const first = editor.state.doc.firstChild!;
+		// 둘째 블록 안 1글자 뒤(맨 앞이 아님)
+		editor.view.dispatch(
+			editor.state.tr.setSelection(TextSelection.create(editor.state.doc, first.nodeSize + 2))
+		);
+		const blocked = editor.view.someProp('handleKeyDown', (f) =>
+			f(editor!.view, new KeyboardEvent('keydown', { key: 'Backspace' }))
+		);
+		expect(blocked).toBeFalsy();
 	});
 });
