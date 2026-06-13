@@ -2519,7 +2519,10 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 	   TomboySubtitlePlaceholder. */
 	.tomboy-editor :global(.tiptap p.tomboy-subtitle-placeholder::before) {
 		color: #909090;
-		content: attr(data-placeholder);
+		/* Own attribute — the built-in Placeholder overwrites `data-placeholder`
+		   on the caret's node, so reading it here would show "Start typing..."
+		   on the empty subtitle line (see TomboySubtitlePlaceholder). */
+		content: attr(data-subtitle-placeholder);
 		float: left;
 		height: 0;
 		pointer-events: none;
