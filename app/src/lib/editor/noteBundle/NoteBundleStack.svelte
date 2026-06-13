@@ -751,6 +751,7 @@
 				oninternallink={(t: string) => oninternallink?.(t)}
 				enableNoteBundle={false}
 				hrSplitEnabled={false}
+				hideTitleLine={true}
 				createDate={session.createDate}
 			/>
 		</div>
