@@ -8,7 +8,6 @@ import { TomboyInternalLink } from '$lib/editor/extensions/TomboyInternalLink.js
 import {
 	createNoteBundlePlugin,
 	noteBundlePluginKey,
-	selectBundleEntry,
 	writeBundleHeightPct,
 	type BundleSpec,
 	type StackController
@@ -78,13 +77,12 @@ const kw = (text: string, checked: boolean) => ({
 	type: 'paragraph',
 	content: [{ type: 'inlineCheckbox', attrs: { checked } }, { type: 'text', text }]
 });
-const li = (t: string, radio: boolean | null) => ({
+const li = (t: string) => ({
 	type: 'listItem',
 	content: [
 		{
 			type: 'paragraph',
 			content: [
-				...(radio === null ? [] : [{ type: 'inlineRadio', attrs: { selected: radio } }]),
 				{
 					type: 'text',
 					text: t,
@@ -97,19 +95,19 @@ const li = (t: string, radio: boolean | null) => ({
 const list = (...items: object[]) => ({ type: 'bulletList', content: items });
 const doc = (...blocks: object[]) => ({ type: 'doc', content: blocks });
 
-function radios(ed: Editor): boolean[] {
-	const out: boolean[] = [];
-	ed.state.doc.descendants((n) => {
-		if (n.type.name === 'inlineRadio') out.push(n.attrs.selected === true);
+function radioCount(ed: Editor): number {
+	let n = 0;
+	ed.state.doc.descendants((node) => {
+		if (node.type.name === 'inlineRadio') n++;
 	});
-	return out;
+	return n;
 }
 
 describe('noteBundlePlugin', () => {
 	it('checked 번들 → 스택 1회 마운트 + 리스트 숨김 데코레이션', async () => {
 		const { calls, mountStack } = makeStub();
 		const ed = makeEditor(
-			doc(titleLine('호스트'), kw('노트 묶음:50', true), list(li('A', true), li('B', false))),
+			doc(titleLine('호스트'), kw('묶음:50', true), list(li('A'), li('B'))),
 			mountStack
 		);
 		await tick();
@@ -127,29 +125,26 @@ describe('noteBundlePlugin', () => {
 
 	it('unchecked 번들 → 마운트 안 함', async () => {
 		const { calls, mountStack } = makeStub();
-		makeEditor(
-			doc(titleLine('호스트'), kw('노트 묶음:50', false), list(li('A', true))),
-			mountStack
-		);
+		makeEditor(doc(titleLine('호스트'), kw('묶음:50', false), list(li('A'))), mountStack);
 		await tick();
 		expect(calls.mounted).toBe(0);
 	});
 
-	it('라디오 자동삽입: checked + 라디오 없는 항목 → 삽입 + 첫 항목 (o)', async () => {
+	it('라디오 자동삽입 없음 — 리스트 내용 무수정', async () => {
 		const { mountStack } = makeStub();
 		const ed = makeEditor(
-			doc(titleLine('호스트'), kw('노트 묶음:50', true), list(li('A', null), li('B', null))),
+			doc(titleLine('호스트'), kw('묶음:50', true), list(li('A'), li('B'))),
 			mountStack
 		);
 		await tick();
-		await tick(); // 삽입 tr 반영
-		expect(radios(ed)).toEqual([true, false]);
+		await tick();
+		expect(radioCount(ed)).toBe(0);
 	});
 
 	it('체크 해제 → destroy + 데코레이션 제거', async () => {
 		const { calls, mountStack } = makeStub();
 		const ed = makeEditor(
-			doc(titleLine('호스트'), kw('노트 묶음:50', true), list(li('A', true))),
+			doc(titleLine('호스트'), kw('묶음:50', true), list(li('A'))),
 			mountStack
 		);
 		await tick();
@@ -161,74 +156,44 @@ describe('noteBundlePlugin', () => {
 		expect(st2.decorations.find().length).toBe(0);
 	});
 
-	it('selectBundleEntry: 라디오 상호 배타 갱신', async () => {
-		const { mountStack } = makeStub();
-		const ed = makeEditor(
-			doc(titleLine('호스트'), kw('노트 묶음:50', true), list(li('A', true), li('B', false))),
-			mountStack
-		);
-		await tick();
-		selectBundleEntry(ed.view, 0, 1);
-		expect(radios(ed)).toEqual([false, true]);
-	});
-
 	it('writeBundleHeightPct: 숫자 교체 + 숫자 없으면 삽입 + 클램프', async () => {
 		const { mountStack } = makeStub();
 		const ed = makeEditor(
-			doc(titleLine('호스트'), kw('노트 묶음:50', true), list(li('A', true))),
+			doc(titleLine('호스트'), kw('묶음:50', true), list(li('A'))),
 			mountStack
 		);
 		await tick();
 		writeBundleHeightPct(ed.view, 0, 63);
-		expect(ed.state.doc.textBetween(0, ed.state.doc.content.size, '\n')).toContain('노트 묶음:63');
+		expect(ed.state.doc.textBetween(0, ed.state.doc.content.size, '\n')).toContain('묶음:63');
 
 		// 숫자 없는 키워드에 삽입 (별도 editor)
 		const { mountStack: mountStack2 } = makeStub();
 		const ed2 = makeEditor(
-			doc(titleLine('호스트2'), kw('노트 묶음:', true), list(li('A', true))),
+			doc(titleLine('호스트2'), kw('묶음:', true), list(li('A'))),
 			mountStack2
 		);
 		await tick();
 		writeBundleHeightPct(ed2.view, 0, 95);
-		expect(ed2.state.doc.textBetween(0, ed2.state.doc.content.size, '\n')).toContain(
-			'노트 묶음:90'
-		);
+		expect(ed2.state.doc.textBetween(0, ed2.state.doc.content.size, '\n')).toContain('묶음:90');
 	});
 
 	it('XML 라운드트립: 데코레이션은 직렬화에 영향 없음', async () => {
 		const { mountStack } = makeStub();
 		const ed = makeEditor(
-			doc(titleLine('호스트'), kw('노트 묶음:50', true), list(li('A', true), li('B', false))),
+			doc(titleLine('호스트'), kw('묶음:50', true), list(li('A'), li('B'))),
 			mountStack
 		);
 		await tick();
 		const xml = serializeContent(ed.getJSON());
-		expect(xml).toContain('[x]노트 묶음:50');
-		expect(xml).toContain('(o)');
-		expect(xml).toContain('( )');
+		expect(xml).toContain('[x]묶음:50');
 		expect(xml).toContain('<link:internal>A</link:internal>');
-	});
-
-	it('부분 라디오 자동삽입: 기존 라디오(미선택) + 없는 항목 혼합', async () => {
-		// li('A', false) = 라디오 있음 + 미선택, li('B', null) = 라디오 없음
-		const { mountStack } = makeStub();
-		const ed = makeEditor(
-			doc(titleLine('호스트'), kw('노트 묶음:50', true), list(li('A', false), li('B', null))),
-			mountStack
-		);
-		await tick();
-		await tick(); // 삽입 tr 반영
-		// A 의 기존 라디오가 첫 항목이므로 selected=true 로 갱신, B 에 새 unselected 라디오 삽입
-		expect(radios(ed)).toEqual([true, false]);
+		expect(xml).toContain('<link:internal>B</link:internal>');
 	});
 
 	it('리스트 없는 번들 위젯 — 크래시 없음 + listPos === null', async () => {
 		// bulletList 없이 키워드만 있는 경우
 		const { calls, mountStack } = makeStub();
-		const ed = makeEditor(
-			doc(titleLine('호스트'), kw('노트 묶음:50', true)),
-			mountStack
-		);
+		const ed = makeEditor(doc(titleLine('호스트'), kw('묶음:50', true)), mountStack);
 		await tick();
 		// 위젯은 keywordEnd 에 붙어야 하므로 마운트 1회
 		expect(calls.mounted).toBe(1);
@@ -247,10 +212,10 @@ describe('noteBundlePlugin', () => {
 		const ed = makeEditor(
 			doc(
 				titleLine('호스트'),
-				kw('노트 묶음:50', true),
-				list(li('A', true)),
-				kw('노트 묶음:60', true),
-				list(li('B', true))
+				kw('묶음:50', true),
+				list(li('A')),
+				kw('묶음:60', true),
+				list(li('B'))
 			),
 			mountStack
 		);

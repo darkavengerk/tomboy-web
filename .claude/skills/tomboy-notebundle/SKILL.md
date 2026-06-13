@@ -1,45 +1,55 @@
 ---
 name: tomboy-notebundle
-description: Use when working on the 노트 묶음 (note bundle) feature — a `[prefix:][체크박스]노트 묶음:N` keyword paragraph immediately followed by a bulletList of internal links renders an in-editor stacked file-cabinet of the linked notes (5 title bars + one expanded, fully-editable embedded TomboyEditor). Covers the parser (atom-aware PMNode walk, keyword/checkbox/list adjacency rules), the ProseMirror plugin (hide-list decoration + cached widget container per ordinal + idempotent radio auto-insert + spec-as-full-replacement StackController contract), stackMath (5-wide title window with eager-slide + clamp invariants), and the NoteBundleStack.svelte component — the editor-in-editor event barrier (ISOLATED_EVENTS stopPropagation that kills Svelte delegated events → `direct` action + independent `mount()` for child components), the caret-escape guard (Ctrl+Home/End + arrow/Page snapshot-restore), per-note lazy EditorSession map (persist + flushSave + reload/flush bus + Firebase attach/detach), the flex-grow drawer animation that replaced the old single-body structure, the browse/edit two-mode state machine with capture-phase wheel preemption (xterm scroll-leak fix), and host-shell wiring (TerminalView 접속 branch, MusicPlayerBar sticky wrapper, scroll-bottom).
+description: Use when working on the 묶음 (note bundle) feature — a `[prefix:][체크박스]묶음:N` keyword paragraph (legacy `노트 묶음` still accepted) immediately followed by a bulletList of internal links renders an in-editor stacked file-cabinet of the linked notes (3 title bars + one expanded, fully-editable embedded TomboyEditor). Every link in each list item counts (comma/space-separated, multi-per-line), and indented child items are grouped under the parent item's title as a right-aligned category. Covers the parser (atom-aware PMNode walk, keyword/checkbox/list adjacency rules, multi-link + recursive category collection), the ProseMirror plugin (hide-list decoration + cached widget container per ordinal + spec-as-full-replacement StackController contract — no list mutation), stackMath (3-wide title window with clamp invariants), and the NoteBundleStack.svelte component — active-note index is component-local state (NOT persisted; reopening shows the first note), the editor-in-editor event barrier (ISOLATED_EVENTS stopPropagation that kills Svelte delegated events → `direct` action + independent `mount()` for child components), the caret-escape guard (Ctrl+Home/End + arrow/Page snapshot-restore), per-note lazy EditorSession map (persist + flushSave + reload/flush bus + Firebase attach/detach), the flex-grow drawer animation, the browse/edit two-mode state machine with capture-phase wheel preemption (xterm scroll-leak fix, reversed desktop wheel direction), the desktop-vs-mobile height basis (mobile = viewport height, avoids the content-feedback infinite-growth bug), and host-shell wiring (TerminalView 접속 branch, MusicPlayerBar sticky wrapper, scroll-bottom).
 ---
 
-# 노트 묶음 (note bundle — in-editor file cabinet)
+# 묶음 (note bundle — in-editor file cabinet)
 
 A top-level paragraph of the form
 
 ```
-[prefix:][체크박스]노트 묶음:N
+[prefix:][체크박스]묶음:N
 • [[대상 노트 1]]
-• [[대상 노트 2]]
-• [[대상 노트 3]]
+• [[대상 노트 2]], [[대상 노트 3]]
+• 카테고리 제목
+	• [[하위 노트]]
 ```
 
 — an `inlineCheckbox` atom whose preceding text is empty or ends with `:`,
-followed by literal `노트 묶음:` and an optional height number `N`,
-**immediately followed by a bulletList** of internal-link list items —
-renders an in-editor stacked file-cabinet. When the checkbox is checked the
-link list is hidden and a stack widget appears in its place: up to 5 title
-bars plus one **expanded** note rendered in a real embedded `TomboyEditor`,
-fully editable inline and clamped to N% of the host note's height.
+followed by literal `묶음:` (legacy `노트 묶음:` still matched) and an optional
+height number `N`, **immediately followed by a bulletList** of internal-link
+list items — renders an in-editor stacked file-cabinet. When the checkbox is
+checked the link list is hidden and a stack widget appears in its place: up to
+3 title bars plus one **expanded** note rendered in a real embedded
+`TomboyEditor`, fully editable inline and clamped to N% of the screen height.
+
+**Every internal link in a list item is its own entry** (comma/space-separated,
+multiple per line allowed) — so the bundle includes *all* links of the list
+regardless of item count. **Indented child items are a category**: the parent
+item's full title (link text included) shows right-aligned in each child bar;
+a parent that also carries a link is both its own entry and its children's
+category.
 
 Pure **view layer over a regular note** — the `.note` XML is unchanged
 (geoMap/chartBlock pattern). The only persisted state lives in the note text
-itself: the checkbox `checked` attr, the `:N` height digits, and the per-item
-radio `(o)`/`( )` that records which note is expanded. Tomboy desktop and
-Dropbox/Firebase sync see a normal checkbox + bullet list.
+itself: the checkbox `checked` attr and the `:N` height digits. **Which note is
+expanded is NOT persisted** — it is component-local state, so reopening the
+bundle (or remounting) always shows the first note. Tomboy desktop and
+Dropbox/Firebase sync see a normal checkbox + bullet list; the bundle never
+mutates the list content.
 
 ## File map
 
 | File | Role |
 |------|------|
-| `lib/editor/noteBundle/parser.ts` | Pure `parseNoteBundles(doc): BundleSpec[]`. Atom-aware PMNode walk — finds keyword paragraphs + their following bulletList, extracts entries (title / radio pos / selected). No IDB, no title index. |
-| `lib/editor/noteBundle/noteBundlePlugin.ts` | ProseMirror plugin. Hide-list node decoration + cached widget container per ordinal + idempotent radio auto-insert + `StackController` lifecycle (`mountStack`/`update`/`destroy`). Exports `selectBundleEntry`, `writeBundleHeightPct`. |
-| `lib/editor/noteBundle/stackMath.ts` | Pure 5-wide title-window math — `windowWidth`, `clampWindow`, `stepWindow`, `initialWindow`, `nextValidIndex`, `firstValidIndex`. Heavily tested. |
-| `lib/editor/noteBundle/NoteBundleStack.svelte` | The stack UI. Mounted inside the plugin's widget container. Title window + per-note `EditorSession` map + event barrier + browse/edit modes + host-shell wiring. |
+| `lib/editor/noteBundle/parser.ts` | Pure `parseNoteBundles(doc): BundleSpec[]`. Atom-aware PMNode walk — finds keyword paragraphs + their following bulletList, recursively extracts entries (`{title, category}` — all links per item, nested lists → category). No IDB, no title index. |
+| `lib/editor/noteBundle/noteBundlePlugin.ts` | ProseMirror plugin. Hide-list node decoration + cached widget container per ordinal + `StackController` lifecycle (`mountStack`/`update`/`destroy`). Exports `writeBundleHeightPct` only. **No list mutation** (no radio insert / no selection write-back). |
+| `lib/editor/noteBundle/stackMath.ts` | Pure 3-wide title-window math — `windowWidth`, `clampWindow`, `stepWindow`, `initialWindow`, `nextValidIndex`, `firstValidIndex`. Heavily tested. |
+| `lib/editor/noteBundle/NoteBundleStack.svelte` | The stack UI. Mounted inside the plugin's widget container. Local active-index state + title window + per-note `EditorSession` map + event barrier + browse/edit modes + host-shell wiring. |
 | `lib/editor/noteBundle/index.ts` | Barrel. |
 | `lib/editor/TomboyEditor.svelte` | Wires the plugin (`enableNoteBundle` prop, default `true`). `mountStack` mounts `NoteBundleStack` with **`EditorComponent: TomboyEditorSelf`** (self-import — embedded editor is TomboyEditor itself) and `$state` props so spec updates reflect without remount. |
-| `routes/settings/+page.svelte` (가이드 → notes 탭) | Guide card "노트 묶음 — 연관 노트 서류함". |
-| `tests/unit/editor/noteBundle/{parser,noteBundlePlugin,stackMath}.test.ts` | Unit tests (pure parser, plugin decorations/radio-insert, window math). |
+| `routes/settings/+page.svelte` (가이드 → notes 탭) | Guide card "묶음 — 연관 노트 서류함". |
+| `tests/unit/editor/noteBundle/{parser,noteBundlePlugin,stackMath}.test.ts` | Unit tests (pure parser incl. multi-link + category, plugin decorations/height write-back, window math). |
 
 There is **no Svelte component test** — the stack is verified manually via
 `npm run dev` and the headless probe scripts under `/tmp/nb-verify/`
@@ -47,12 +57,13 @@ There is **no Svelte component test** — the stack is verified manually via
 
 ## Note format & parser (`parser.ts`)
 
-`KEYWORD_RE = /^\s*노트\s*묶음:(\d+)?\s*$/` matched against the paragraph
-text **after** the checkbox atom.
+`KEYWORD_RE = /^\s*(?:노트\s*)?묶음:(\d+)?\s*$/` matched against the paragraph
+text **after** the checkbox atom. The `노트 ` prefix is optional — legacy
+`노트 묶음:` notes keep working; the current term is `묶음:`.
 
 - **Keyword paragraph** (`parseKeywordParagraph`): scans children for the
   first `inlineCheckbox` whose preceding text (`prefix`) is empty or, after
-  trim, ends with `:`. So `Done:[ ]노트 묶음:` (a TODO/Process prefix) is
+  trim, ends with `:`. So `Done:[ ]묶음:` (a TODO/Process prefix) is
   allowed; atoms before the checkbox don't contribute to `prefix`. The
   number after `:` becomes `heightPct` (clamped 20–90, default 50).
 - **Adjacency is strict.** `parseNoteBundles` walks `doc.forEach`; a pending
@@ -62,21 +73,33 @@ text **after** the checkbox atom.
   keyword and list leaves an empty paragraph → empty stack.
 - **`index === 0` (title line) is never a keyword** — the note title can't
   start a bundle.
-- **Entries** (`parseListEntries`): per `listItem`'s first paragraph, the
-  first `inlineRadio` atom gives `radioPos` + `selected`; the first text run
-  carrying a `tomboyInternalLink` mark gives `title` (= **destination note
-  title**, the link identity). Items without an internal-link mark are
-  skipped.
-- **Atoms, not text.** Checkboxes and radios are atom nodes — invisible to a
-  plain-JSON text scan. The parser walks the live PMNode tree. (Same class of
-  gotcha as `inlineCheckbox` body markers — see the project memory.)
+- **Entries** (`parseListEntries` → recursive `parseListInto`): `BundleEntry`
+  is just `{title, category}`. `collectLinks(para)` walks the paragraph's
+  inline content and emits **every** `tomboyInternalLink` target in order
+  (adjacent text nodes with the same target = one link; a non-link node or a
+  different target starts a new entry) — so a single item with
+  `[[A]], [[B]] [[C]]` yields three entries. `title` is the **destination note
+  title** (the link identity). Items with no internal link contribute no
+  entry but may still act as a category.
+- **Categories from nesting.** A `listItem` may hold a paragraph **and** a
+  nested `bulletList`/`orderedList`. `parseListInto(list, category, …)`
+  recurses with the parent item's `paragraphText` (text nodes only, trimmed,
+  link display text included) as the child category; an empty parent title
+  inherits the grandparent category. The parent's own links still belong to
+  the parent's inherited category.
+- **Atoms, not text.** Checkboxes are atom nodes — invisible to a plain-JSON
+  text scan. The parser walks the live PMNode tree. (Same class of gotcha as
+  `inlineCheckbox` body markers — see the project memory.) Leftover
+  `inlineRadio` atoms from older bundles are simply skipped (not links).
 - **`ordinal`** = index in the returned `BundleSpec[]` (0-based, document
   order). It is the identity key everywhere downstream. Deleting an earlier
   bundle **renumbers** later ordinals — hence the full-replacement contract
   below.
 
 `BundleSpec` carries absolute positions (`checkboxPos`, `digitsFrom/To`,
-`keywordEnd`, `listPos/End`) so the plugin can write back without re-parsing.
+`keywordEnd`, `listPos/End`) so the plugin can write back the height without
+re-parsing. **Entries carry no positions** — selection is local state, never
+written back.
 
 ## Plugin (`noteBundlePlugin.ts`)
 
@@ -100,44 +123,60 @@ ordinals renumber, the same controller can receive a *different bundle's* spec.
 `NoteBundleStack` must derive **all** state from the current `spec` — never
 diff against a previous one.
 
-**Radio auto-insert** (`scheduleRadioInsert`): if any checked bundle has an
-entry with `radioPos === null`, a single `queueMicrotask` (dispatch is illegal
-inside `view.update`) inserts `inlineRadio` atoms — back-to-front so earlier
-positions don't shift — selecting the first entry when nothing is selected
-yet. Idempotent: after insertion there are no missing radios. `insertScheduled`
-guards against pile-up; the microtask recomputes from fresh state so concurrent
-edits can't use stale positions.
-
-**Write-back helpers** re-look-up the bundle by `ordinal` from fresh plugin
-state (positions may be stale):
-- `selectBundleEntry(view, ordinal, index)` — sets the chosen entry's radio
-  `selected=true` and clears the rest (mutual exclusion); dispatches only if
-  something changed.
-- `writeBundleHeightPct(view, ordinal, pct)` — `insertText` the clamped number
-  into `[digitsFrom, digitsTo]`. No-op if unchanged.
+**No list mutation.** The plugin does NOT touch the link list — there is no
+radio auto-insert and no selection write-back (active note is component-local
+state). The only write-back is the height:
+- `writeBundleHeightPct(view, ordinal, pct)` — re-looks-up the bundle by
+  `ordinal` from fresh plugin state (positions may be stale), then `insertText`
+  the clamped number into `[digitsFrom, digitsTo]` (the keyword line, not the
+  list). No-op if unchanged.
 
 ## Title window (`stackMath.ts`)
 
-5 bars visible (`WINDOW_SIZE = 5`, or all if fewer notes). `winStart` is the
+3 bars visible (`WINDOW_SIZE = 3`, or all if fewer notes). `winStart` is the
 top visible index; bars outside `[winStart, winStart+W)` collapse to `.off`.
 
 - `clampWindow(start, active, n)` — minimal move so the active note's prev/next
   stay visible: in-window position ∈ `[1, W-2]`, with the ends `[0, n-W]`
-  pinned. Used for jumps (bar tap / external radio change / count change).
-- `stepWindow(start, nextActive, dir, n)` — eager slide by `dir` then clamp.
-  Going down → steady-state 1-above/3-below; up → 3-above/1-below, so the
-  direction of travel is previewed.
+  pinned. At `W=3` this means the active note is always centered (1 above /
+  1 below). Used for jumps (bar tap / active change / count change).
+- `stepWindow(start, nextActive, dir, n)` — eager slide by `dir` then clamp
+  (at `W=3`, always recenters). `nextActive` may jump several indices when
+  `broken` entries are skipped; the clamp catches up.
 - `initialWindow(active, n)` — active with 1 above on first mount.
 - `nextValidIndex` / `firstValidIndex` — skip `broken` (unresolved-title)
   entries.
 
-`winStart` is **component-local, never persisted** — only the radio (= active)
-lives in the XML.
+`winStart` **and** the active index `k` are both **component-local, never
+persisted** — the XML records neither.
 
 ## `NoteBundleStack.svelte`
 
 Mounted inside the plugin widget (a `contenteditable=false` island in the host
 editor). The header doc comment is the canonical orientation — keep it current.
+
+### Active index (`k`) — local state, not persisted
+
+`resolved` is `spec.entries` mapped to `{title, category, guid, broken,
+srcIndex}` (self-references dropped, `srcIndex` = `spec.entries` index, used as
+the `{#each}` key so duplicate links stay distinct). The expanded entry is
+`k = $state(-1)`. A single `$effect` keyed on `resolved` (k read/written under
+`untrack` to dodge `effect_update_depth`) repairs `k` whenever entries change —
+out of range or `broken` → `firstValidIndex`. `moveTo`/`step` set `k` directly;
+**no transaction, no XML write** — so reopening or remounting the bundle resets
+to the first valid note. (This replaced the old radio-backed selection.)
+
+### Title-window height basis — desktop vs mobile
+
+`stackH = dragPx ?? max(140, round(basisH * heightPct/100))`. `basisH` is chosen
+at mount: in a desktop multi-window (`view.dom.closest('.note-window')`) the
+host `.tomboy-editor` `clientHeight` is bounded by the window, so a
+`ResizeObserver` on it is fine. On the **mobile route** the editor is body-level
+scroll whose height grows with content — and the bundle is *inside* that
+content, so measuring `clientHeight` creates a measure→grow feedback loop
+(infinite growth). Mobile therefore uses `window.innerHeight` (the layout
+viewport, independent of content; a `resize` listener catches rotation).
+`writeBundleHeightPct` divides the drag delta by `basisH`.
 
 ### Editor-in-editor event barrier (load-bearing)
 
@@ -230,6 +269,12 @@ the descent) whenever `mode==='browse'` or ctrl/⌘ is held — xterm/PM never s
 the event. In edit mode, a plain wheel passes capture untouched so the note
 scrolls.
 
+**Reversed desktop wheel direction.** `flipWheel` accumulates `deltaY` and at
+±50 steps the active note, but the mapping is inverted on purpose: wheeling
+**down** (`deltaY>0`) goes to the **previous** file, **up** goes to **next** —
+which reads as more intuitive on desktop/trackpad. Mobile swipe is the pointer
+path (`handleListPointerMove`, drag-up = next) and is unaffected.
+
 **No pointer capture for body gestures.** `setPointerCapture` would retarget
 the click to the container and break PM focus (mobile keyboard won't open on
 tap-to-edit). Body gestures in browse are tracked *without* capture; bar
@@ -262,9 +307,11 @@ per-session here:
 
 ## Invariants
 
-- **View layer only — `.note` XML never restructured.** Decorations +
-  text/attr write-backs only. Persisted state = checkbox `checked`, `:N`
-  digits, per-item radio. Everything else (winStart, mode, sessions) is ephemeral.
+- **View layer only — `.note` XML never restructured, list never mutated.**
+  Decorations + the `:N` height write-back only. Persisted state = checkbox
+  `checked` + `:N` digits. **The active note is NOT persisted** — `k`, winStart,
+  mode, sessions are all component-local ephemeral state; reopening shows the
+  first note.
 - **`ordinal` is the identity, and it renumbers.** Always re-look-up by ordinal
   from fresh plugin state before a write-back. `StackController.update` is a
   full spec replacement; derive all component state from the current spec.
@@ -301,16 +348,24 @@ per-session here:
 - **Pointer-capturing body taps.** Retargets the click to the container; PM
   loses focus and the mobile keyboard won't open. Track body gestures without
   capture.
+- **Persisting the active note via an inline `(o)`/`( )` radio per item.** The
+  original design auto-inserted `inlineRadio` atoms and wrote the selected one
+  back to XML. It conflicted with multi-link-per-item (one radio can't pick
+  among several links in a line) and the list-radio `(( ))` is a *different*
+  feature (`listBox boxKind='radio'`, one per `listItem`). Resolved by dropping
+  selection persistence entirely — active note is component-local state, the
+  list is read-only. Don't reintroduce radio-backed selection or list mutation.
 
 ## Testing
 
-- `parser.test.ts` — keyword/checkbox/prefix matching, adjacency flush,
-  atom-aware entry extraction, ordinal numbering, height clamp.
-- `noteBundlePlugin.test.ts` — hide-list + widget decorations, idempotent radio
-  auto-insert, `selectBundleEntry`/`writeBundleHeightPct`.
-- `stackMath.test.ts` — window invariants (eager slide, clamp, broken-skip).
+- `parser.test.ts` — keyword/checkbox/prefix matching (incl. legacy `노트 묶음`),
+  adjacency flush, multi-link per item, category from nesting, radios ignored,
+  ordinal numbering, height clamp.
+- `noteBundlePlugin.test.ts` — hide-list + widget decorations, **no** radio
+  insert (list unmutated), `writeBundleHeightPct`, ordinal renumber.
+- `stackMath.test.ts` — window invariants at `W=3` (center clamp, broken-skip).
 - No component test. Drive the stack with `npm run dev` (host note with a
-  checked `노트 묶음:` + link list) or the `/tmp/nb-verify/` headless probes:
+  checked `묶음:` + link list) or the `/tmp/nb-verify/` headless probes:
   fake-host mode (localStorage dropbox tokens), fixtures recreated per run
   (`flatpak kill` doesn't flush IDB), probe browse/edit modes, terminal/music
   wiring, scroll-bottom. Note the `npm run test` flake "document is not defined"

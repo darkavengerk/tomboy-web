@@ -45,7 +45,7 @@
 	import type { EditorView } from '@tiptap/pm/view';
 	import type { JSONContent } from '@tiptap/core';
 	import type { BundleSpec } from './parser.js';
-	import { selectBundleEntry, writeBundleHeightPct } from './noteBundlePlugin.js';
+	import { writeBundleHeightPct } from './noteBundlePlugin.js';
 	import {
 		windowWidth,
 		clampWindow,
@@ -90,11 +90,12 @@
 
 	interface ResolvedEntry {
 		title: string;
+		/** 상위 들여쓰기 항목의 전체 타이틀 — 바에 우측정렬 표시 */
+		category: string | null;
 		guid: string | null;
 		broken: boolean;
-		/** spec.entries 인덱스 — selectBundleEntry 용 */
-		originalIndex: number;
-		selected: boolean;
+		/** spec.entries 인덱스 — #each 키 안정화용(중복 링크 구분) */
+		srcIndex: number;
 	}
 	const resolved = $derived.by<ResolvedEntry[]>(() => {
 		void titleEpoch;
@@ -104,25 +105,37 @@
 			if (guid !== null && guid === hostGuid) return; // 자기참조 제외
 			out.push({
 				title: e.title,
+				category: e.category,
 				guid,
 				broken: guid === null,
-				originalIndex: i,
-				selected: e.selected
+				srcIndex: i
 			});
 		});
 		return out;
 	});
 
-	// 펼침 인덱스(resolved 기준): 라디오 선택 우선, 없으면 첫 유효 항목
-	const k = $derived.by(() => {
-		const sel = resolved.findIndex((e) => e.selected && !e.broken);
-		if (sel >= 0) return sel;
-		return firstValidIndex(resolved);
+	// 펼침 인덱스(resolved 기준) — 로컬 state, 영속 안 함. 재오픈/리마운트 시
+	// 첫 유효 노트가 보인다. 라디오/XML 에 활성 정보를 쓰지 않는다.
+	let k = $state(-1);
+	// resolved 변화 시 k 초기화/보정: 범위 밖·broken 이면 첫 유효 항목으로.
+	// k 를 읽고 쓰므로 untrack — resolved 변화에만 반응(effect_update_depth 함정).
+	$effect(() => {
+		const n = resolved.length;
+		untrack(() => {
+			if (n === 0) {
+				if (k !== -1) k = -1;
+				return;
+			}
+			if (k < 0 || k >= n || resolved[k].broken) {
+				const v = firstValidIndex(resolved);
+				if (v !== k) k = v;
+			}
+		});
 	});
-	const expanded = $derived(k >= 0 ? resolved[k] : null);
+	const expanded = $derived(k >= 0 && k < resolved.length ? resolved[k] : null);
 
 	// --- 타이틀 윈도우 ---------------------------------------------------------
-	// winStart 는 컴포넌트 로컬 — 영속 안 함 (라디오=활성만 영속).
+	// winStart·k(활성) 모두 컴포넌트 로컬 — 영속 안 함.
 	let winStart = $state(0);
 	let winInit = false;
 	let lastK = -1;
@@ -161,19 +174,33 @@
 
 	// --- 높이 ----------------------------------------------------------------
 	let rootEl = $state<HTMLElement | null>(null);
-	let hostH = $state(600);
+	let basisH = $state(600);
 	let dragPx = $state<number | null>(null);
-	const stackH = $derived(dragPx ?? Math.max(140, Math.round((hostH * spec.heightPct) / 100)));
+	const stackH = $derived(dragPx ?? Math.max(140, Math.round((basisH * spec.heightPct) / 100)));
 
 	onMount(() => {
-		const hostEl = view.dom.closest<HTMLElement>('.tomboy-editor') ?? view.dom.parentElement;
-		if (!hostEl) return;
-		hostH = hostEl.clientHeight || 600;
-		const ro = new ResizeObserver(() => {
-			hostH = hostEl.clientHeight || hostH;
-		});
-		ro.observe(hostEl);
-		return () => ro.disconnect();
+		// 데스크톱 멀티윈도우(.note-window)는 창이 높이를 한정 → 호스트
+		// 에디터 clientHeight 가 안정적. 모바일 라우트는 본문이 body 스크롤로
+		// 콘텐츠만큼 자라고 그 안에 묶음이 포함돼, clientHeight 를 기준으로
+		// 잡으면 측정→성장 피드백 루프(무한 증식)가 생긴다. 모바일은 화면
+		// 높이(innerHeight, 레이아웃 뷰포트)를 기준 — 콘텐츠와 무관해 루프가 끊긴다.
+		const inDesktopWindow = !!view.dom.closest('.note-window');
+		if (inDesktopWindow) {
+			const hostEl = view.dom.closest<HTMLElement>('.tomboy-editor') ?? view.dom.parentElement;
+			if (!hostEl) return;
+			basisH = hostEl.clientHeight || 600;
+			const ro = new ResizeObserver(() => {
+				basisH = hostEl.clientHeight || basisH;
+			});
+			ro.observe(hostEl);
+			return () => ro.disconnect();
+		}
+		const measure = () => {
+			basisH = window.innerHeight || 600;
+		};
+		measure();
+		window.addEventListener('resize', measure);
+		return () => window.removeEventListener('resize', measure);
 	});
 
 	// --- 이벤트 격벽 -----------------------------------------------------------
@@ -498,11 +525,11 @@
 	}
 
 	// --- 전환 (휠 / 스와이프 / 바 클릭) ------------------------------------------
+	// 활성 인덱스 k 는 로컬 state — 전환은 k 직접 변경(뷰 디스패치/영속 없음).
 	function moveTo(target: number) {
 		if (target < 0 || target >= resolved.length || target === k) return;
-		const entry = resolved[target];
-		if (entry.broken) return;
-		selectBundleEntry(view, spec.ordinal, entry.originalIndex);
+		if (resolved[target].broken) return;
+		k = target;
 	}
 
 	function step(dir: 1 | -1) {
@@ -511,7 +538,7 @@
 		const target = nextValidIndex(resolved, k, dir);
 		if (target === k) return;
 		pendingDir = dir;
-		moveTo(target);
+		k = target;
 	}
 
 	let wheelAcc = 0;
@@ -522,15 +549,16 @@
 		// 방향 반전 시 잔여 폐기 — 반대 방향 첫 응답이 굼뜨지 않게
 		if (Math.sign(e.deltaY) !== Math.sign(wheelAcc)) wheelAcc = 0;
 		wheelAcc += e.deltaY;
-		// 이벤트당 최대 한 칸. selectBundleEntry 의 dispatch 는 동기라 k 가
-		// 핸들러 안에서 즉시 갱신된다 — 누적 while 루프는 휠 한 칸(deltaY≈100)에
-		// 두 스텝을 만들었다(threshold 50 + 잔여 이월). 스텝 후 잔여를 버려
-		// 노치당 정확히 한 칸으로 고정; 트랙패드 미세 델타는 50까지 누적 후 발동.
+		// 이벤트당 최대 한 칸. k 변경은 동기라 핸들러 안에서 즉시 반영된다 —
+		// 스텝 후 잔여를 버려 노치당 정확히 한 칸으로 고정; 트랙패드 미세
+		// 델타는 50까지 누적 후 발동.
+		// 데스크톱 휠 방향은 반전: 아래로 굴리면(deltaY>0) 이전 파일철, 위로
+		// 굴리면 다음 — 더 직관적. (모바일 스와이프는 pointer 경로라 무관.)
 		if (wheelAcc >= 50) {
-			step(1);
+			step(-1);
 			wheelAcc = 0;
 		} else if (wheelAcc <= -50) {
-			step(-1);
+			step(1);
 			wheelAcc = 0;
 		}
 	}
@@ -644,7 +672,7 @@
 	}
 	function handleResizeUp() {
 		if (dragPx === null) return;
-		const pct = Math.round((dragPx / Math.max(1, hostH)) * 100);
+		const pct = Math.round((dragPx / Math.max(1, basisH)) * 100);
 		dragPx = null;
 		writeBundleHeightPct(view, spec.ordinal, pct);
 	}
@@ -671,7 +699,7 @@
 				pointercancel: handleListPointerUp
 			}}
 		>
-			{#each resolved as e, idx (e.originalIndex)}
+			{#each resolved as e, idx (e.srcIndex)}
 				{@const off = idx < winStart || idx > lastVisibleIdx}
 				{@const session = e.guid ? sessions.get(e.guid) : undefined}
 				<button
@@ -683,6 +711,10 @@
 					data-idx={idx}
 				>
 					<span class="bar-title">{e.title}</span>
+					{#if e.category}
+						<!-- 카테고리(상위 들여쓰기 항목 타이틀) — 우측정렬 표시 -->
+						<span class="bar-category" title={e.category}>{e.category}</span>
+					{/if}
 					{#if idx === k && session?.termSpec && !session.termConnect}
 						<!-- 터미널 노트 — 호스트 셸의 "접속" FAB 대응. 격벽이 Svelte
 						     위임 click 을 죽이므로 direct 액션으로 직접 바인딩. -->
@@ -816,6 +848,19 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		text-align: left;
+	}
+	/* 카테고리 — 우측정렬, 흐린 색, 길면 말줄임. 타이틀과 배지 사이. */
+	.bar-category {
+		flex-shrink: 1;
+		min-width: 0;
+		max-width: 45%;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		text-align: right;
+		color: #9aa;
+		font-size: 0.72rem;
+		font-weight: 400;
 	}
 	.bar-badge {
 		flex-shrink: 0;
