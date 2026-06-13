@@ -1,14 +1,15 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { getAllNotes } from '$lib/storage/noteStore.js';
-	import { isFavorite, createNote } from '$lib/core/noteManager.js';
+	import { isFavorite } from '$lib/core/noteManager.js';
 	import { parseTomboyDate } from '$lib/core/note.js';
+	import { newNoteFlow } from '$lib/stores/newNoteFlow.svelte.js';
 	import type { NoteData } from '$lib/core/note.js';
 	import { page } from '$app/state';
 	import { appMode, type AppMode } from '$lib/stores/appMode.svelte.js';
 	import { mode } from '$lib/stores/guestMode.svelte.js';
 	import { getCachedPublicConfig } from '$lib/sync/firebase/publicConfig.js';
-	import { assignNotebook, getNotebook } from '$lib/core/notebooks.js';
+	import { getNotebook } from '$lib/core/notebooks.js';
 	import { pushToast } from '$lib/stores/toast.js';
 
 	interface Props {
@@ -46,20 +47,23 @@
 		void e;
 	}
 
-	async function handleNewNote() {
+	function handleNewNote() {
 		if (mode.value === 'guest') {
 			const shared = getCachedPublicConfig()?.sharedNotebooks ?? [];
 			if (shared.length === 0) {
 				pushToast('공유 노트북이 없습니다.', { kind: 'info' });
 				return;
 			}
-			const n = await createNote();
-			await assignNotebook(n.guid, shared[0]);
-			void goto(`/note/${n.guid}`);
+			newNoteFlow.open({
+				notebook: shared[0],
+				navigate: (n) => goto(`/note/${n.guid}`)
+			});
 			return;
 		}
-		const n = await createNote();
-		void goto(`/note/${n.guid}`);
+		newNoteFlow.open({
+			notebook: null,
+			navigate: (n) => goto(`/note/${n.guid}`)
+		});
 	}
 
 	function isActive(navMode: AppMode): boolean {
