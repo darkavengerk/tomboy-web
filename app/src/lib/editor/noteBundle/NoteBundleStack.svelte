@@ -281,9 +281,25 @@
 			if (mode === 'browse' || we.ctrlKey || we.metaKey) flipWheel(we);
 		};
 		el.addEventListener('wheel', captureWheel, { capture: true, passive: false });
+		// 모바일 편집-진입 키보드 억제: 임베디드 PM 은 "편집 모드 + 활성 본문 직접
+		// 탭"일 때만 포커스(=키보드)를 얻는다. 그 외 본문 위 mousedown/touchstart 는
+		// 캡처 단계에서 preventDefault 로 포커스 디폴트를 차단 — 훑어보기에서 본문을
+		// 탭하면 모드만 바뀌고(키보드 안 뜸), 다시 탭해야 타이핑이 시작된다.
+		// 탭 스트립(.tab)은 click 으로 전환하므로 건드리지 않는다(모바일 탭 click 보존).
+		const suppressEditorFocus = (e: Event) => {
+			const t = e.target as HTMLElement | null;
+			const body = t?.closest?.('.bundle-body');
+			if (!body) return;
+			if (mode === 'edit' && body.closest('.node-body')?.classList.contains('active')) return;
+			e.preventDefault();
+		};
+		el.addEventListener('mousedown', suppressEditorFocus, { capture: true });
+		el.addEventListener('touchstart', suppressEditorFocus, { capture: true, passive: false });
 		return () => {
 			for (const [t, h] of pairs) el.removeEventListener(t, h);
 			el.removeEventListener('wheel', captureWheel, { capture: true });
+			el.removeEventListener('mousedown', suppressEditorFocus, { capture: true });
+			el.removeEventListener('touchstart', suppressEditorFocus, { capture: true });
 		};
 	});
 
@@ -577,7 +593,9 @@
 	function handlePointerUp(e: Event) {
 		const pe = e as PointerEvent;
 		if (downOnBody && !swiped && Math.abs(pe.clientY - downY) < 8 && mode === 'browse') {
-			mode = 'edit'; // 본문 탭 → 편집 (PM 이 이미 캐럿을 놓았다)
+			// 본문 탭 → 편집 모드만 전환. 포커스는 suppressEditorFocus 가 막아
+			// 키보드 안 뜸 — 타이핑은 편집 모드에서 다시 탭.
+			mode = 'edit';
 		}
 		swipeY = null;
 		swiped = false;

@@ -1,10 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
 	WINDOW_SIZE,
+	ACTIVE_SLOT,
 	windowWidth,
-	clampWindow,
-	stepWindow,
-	initialWindow,
+	centeredWindow,
 	firstValidIndex,
 	nextValidIndex
 } from '$lib/editor/noteBundle/cabinetMath.js';
@@ -21,56 +20,38 @@ describe('windowWidth', () => {
 	});
 });
 
-describe('clampWindow', () => {
-	it('N ≤ W → 항상 0', () => {
-		expect(clampWindow(3, 2, 4)).toBe(0);
-		expect(clampWindow(0, 0, 5)).toBe(0);
-		expect(clampWindow(0, 0, 1)).toBe(0);
+describe('centeredWindow — 활성 3번째 자리 고수', () => {
+	it('ACTIVE_SLOT = 2 (3번째)', () => {
+		expect(ACTIVE_SLOT).toBe(2);
 	});
-	it('활성 위치를 [1, W-2] 로 강제 (prev/next 가시)', () => {
-		// N=10, W=5: start ∈ [active-3, active-1]
-		expect(clampWindow(0, 7, 10)).toBe(4); // 점프: 아래로 당김
-		expect(clampWindow(5, 2, 10)).toBe(1); // 점프: 위로 당김
-		expect(clampWindow(2, 3, 10)).toBe(2); // 이미 유효 → 그대로 (최소 이동)
+	it('N ≤ W → 항상 0', () => {
+		expect(centeredWindow(2, 4)).toBe(0);
+		expect(centeredWindow(0, 5)).toBe(0);
+		expect(centeredWindow(0, 1)).toBe(0);
+	});
+	it('가운데에선 active 가 윈도우 3번째(start = active-2)', () => {
+		// N=10, W=5
+		expect(centeredWindow(5, 10)).toBe(3); // [3..7], active 5 = 3번째
+		expect(centeredWindow(4, 10)).toBe(2);
+		expect(centeredWindow(3, 10)).toBe(1);
 	});
 	it('양 끝 고정이 우선', () => {
-		expect(clampWindow(0, 0, 10)).toBe(0); // active=0: prev 없음
-		expect(clampWindow(5, 9, 10)).toBe(5); // active=N-1: next 없음
-		expect(clampWindow(9, 9, 10)).toBe(5); // maxStart=5 초과 클램프
+		expect(centeredWindow(0, 10)).toBe(0); // 맨 앞: 1번째 자리
+		expect(centeredWindow(1, 10)).toBe(0); // 2번째 자리
+		expect(centeredWindow(2, 10)).toBe(0); // 비로소 3번째
+		expect(centeredWindow(9, 10)).toBe(5); // 맨 뒤: maxStart=5 로 클램프
+		expect(centeredWindow(8, 10)).toBe(5);
 	});
-});
-
-describe('stepWindow — eager 슬라이드 + 불변', () => {
-	it('아래 연속 스크롤: 정상상태 active 위치 1 (위1/아래3)', () => {
-		let start = 0;
-		const seq: number[] = [];
-		for (let a = 1; a <= 9; a++) {
-			start = stepWindow(start, a, 1, 10);
-			seq.push(start);
-		}
-		expect(seq).toEqual([0, 1, 2, 3, 4, 5, 5, 5, 5]);
+	it('방향 무관 — start 인자 없이 active 만으로 결정 (스크롤해도 3번째 고수)', () => {
+		const down: number[] = [];
+		for (let a = 0; a <= 9; a++) down.push(centeredWindow(a, 10));
+		expect(down).toEqual([0, 0, 0, 1, 2, 3, 4, 5, 5, 5]);
+		// 올라갈 때도 동일 매핑(start 무관)
+		const up = [...down].reverse().map((_, i) => centeredWindow(9 - i, 10));
+		expect(up).toEqual([5, 5, 5, 4, 3, 2, 1, 0, 0, 0]);
 	});
-	it('위 연속 스크롤: 정상상태 active 위치 3 (위3/아래1)', () => {
-		let start = 5;
-		const seq: number[] = [];
-		for (let a = 8; a >= 0; a--) {
-			start = stepWindow(start, a, -1, 10);
-			seq.push(start);
-		}
-		expect(seq).toEqual([5, 4, 3, 2, 1, 0, 0, 0, 0]);
-	});
-	it('broken 스킵 멀티 점프도 불변 유지', () => {
-		// active 2 → 6 (3,4,5 broken 스킵)
-		expect(stepWindow(1, 6, 1, 10)).toBe(3); // [3..7]: prev 5 ✓ next 7 ✓
-	});
-});
-
-describe('initialWindow — 활성 위 1개', () => {
-	it('마운트 초기값', () => {
-		expect(initialWindow(0, 10)).toBe(0);
-		expect(initialWindow(4, 10)).toBe(3);
-		expect(initialWindow(9, 10)).toBe(5);
-		expect(initialWindow(2, 4)).toBe(0); // N<5
+	it('broken 스킵 멀티 점프도 3번째 고수', () => {
+		expect(centeredWindow(6, 10)).toBe(4); // [4..8], active 6 = 3번째
 	});
 });
 

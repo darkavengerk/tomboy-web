@@ -51,9 +51,7 @@
 	import { writeBundleHeightPct } from './noteBundlePlugin.js';
 	import {
 		windowWidth,
-		clampWindow,
-		stepWindow,
-		initialWindow,
+		centeredWindow,
 		firstValidIndex,
 		nextValidIndex
 	} from './cabinetMath.js';
@@ -140,33 +138,14 @@
 	// --- 타이틀 윈도우 ---------------------------------------------------------
 	// winStart·k(활성) 모두 컴포넌트 로컬 — 영속 안 함.
 	let winStart = $state(0);
-	let winInit = false;
-	let lastK = -1;
-	/** step() 이 기록한 직전 이동 방향 — follow effect 가 1회 소비 */
-	let pendingDir: 1 | -1 | null = null;
 
-	// k(활성)·N 변화를 따라 윈도우를 이동. winStart 를 읽고 쓰므로 untrack 필수
-	// (effect_update_depth 함정).
+	// 활성 k 를 따라 윈도우를 이동 — 항상 active 를 3번째 자리에 고정(스크롤
+	// 방향 무관). winStart 를 읽고 쓰므로 untrack 필수(effect_update_depth 함정).
 	$effect(() => {
 		const n = resolved.length;
 		const kk = k;
 		untrack(() => {
-			const dir = pendingDir;
-			pendingDir = null;
-			if (kk < 0) {
-				lastK = kk;
-				winInit = false;
-				return;
-			}
-			if (!winInit) {
-				winStart = initialWindow(kk, n);
-				winInit = true;
-			} else if (kk !== lastK && dir !== null) {
-				winStart = stepWindow(winStart, kk, dir, n);
-			} else {
-				winStart = clampWindow(winStart, kk, n);
-			}
-			lastK = kk;
+			winStart = kk < 0 ? 0 : centeredWindow(kk, n);
 		});
 	});
 
@@ -291,9 +270,25 @@
 			if (mode === 'browse' || we.ctrlKey || we.metaKey) flipWheel(we);
 		};
 		el.addEventListener('wheel', captureWheel, { capture: true, passive: false });
+		// 모바일 편집-진입 키보드 억제: 임베디드 PM 은 "편집 모드 + 활성 본문 직접
+		// 탭"일 때만 포커스(=키보드)를 얻는다. 그 외 본문 위 mousedown/touchstart 는
+		// 캡처 단계에서 preventDefault 로 포커스 디폴트를 차단 — 훑어보기에서 본문을
+		// 탭하면 모드만 바뀌고(키보드 안 뜸), 다시 탭해야 타이핑이 시작된다.
+		// 바/배지/리사이즈/음악/접속(.bundle-body 밖)은 건드리지 않아 탭·클릭 정상.
+		const suppressEditorFocus = (e: Event) => {
+			const t = e.target as HTMLElement | null;
+			const body = t?.closest?.('.bundle-body');
+			if (!body) return;
+			if (mode === 'edit' && body.classList.contains('open')) return;
+			e.preventDefault();
+		};
+		el.addEventListener('mousedown', suppressEditorFocus, { capture: true });
+		el.addEventListener('touchstart', suppressEditorFocus, { capture: true, passive: false });
 		return () => {
 			for (const [t, h] of pairs) el.removeEventListener(t, h);
 			el.removeEventListener('wheel', captureWheel, { capture: true });
+			el.removeEventListener('mousedown', suppressEditorFocus, { capture: true });
+			el.removeEventListener('touchstart', suppressEditorFocus, { capture: true });
 		};
 	});
 
@@ -540,7 +535,6 @@
 		if (k < 0) return;
 		const target = nextValidIndex(resolved, k, dir);
 		if (target === k) return;
-		pendingDir = dir;
 		k = target;
 	}
 
@@ -637,7 +631,8 @@
 		// pointerup 에서 탭·더블탭을 수동 판정한다.
 		if (!swiped && Math.abs(pe.clientY - downBarY) < 8) {
 			if (downBodyEdit) {
-				// 훑어보기에서 열린 본문 탭 → 편집 모드 (PM 이 이미 캐럿을 놓았다)
+				// 훑어보기에서 열린 본문 탭 → 편집 모드만 전환. 포커스는
+				// suppressEditorFocus 가 막아 키보드 안 뜸 — 타이핑은 편집 모드에서 재탭.
 				mode = 'edit';
 			} else if (downBarIdx !== null) {
 				const now = performance.now();
@@ -713,11 +708,12 @@
 					class:off
 					data-idx={idx}
 				>
-					<span class="bar-title">{e.title}</span>
 					{#if e.category}
-						<!-- 카테고리(상위 들여쓰기 항목 타이틀) — 우측정렬 표시 -->
+						<!-- 카테고리(상위 들여쓰기 항목 타이틀) — 제목 왼쪽에 표시.
+						     우측 +N 배지와 엉키지 않게 좌측으로 옮김. -->
 						<span class="bar-category" title={e.category}>{e.category}</span>
 					{/if}
+					<span class="bar-title">{e.title}</span>
 					{#if idx === k && session?.termSpec && !session.termConnect}
 						<!-- 터미널 노트 — 호스트 셸의 "접속" FAB 대응. 격벽이 Svelte
 						     위임 click 을 죽이므로 direct 액션으로 직접 바인딩. -->
@@ -852,18 +848,28 @@
 		white-space: nowrap;
 		text-align: left;
 	}
-	/* 카테고리 — 우측정렬, 흐린 색, 길면 말줄임. 타이틀과 배지 사이. */
+	/* 카테고리 — 제목 왼쪽, 흐린 색, 길면 말줄임. 우측 +N 배지와 분리. */
 	.bar-category {
 		flex-shrink: 1;
 		min-width: 0;
-		max-width: 45%;
+		max-width: 40%;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-		text-align: right;
+		text-align: left;
 		color: #9aa;
 		font-size: 0.72rem;
 		font-weight: 400;
+	}
+	/* 제목과 구분되도록 가는 세로줄 + 여백 */
+	.bar-category::after {
+		content: '';
+		display: inline-block;
+		width: 1px;
+		height: 0.8em;
+		margin-left: 6px;
+		vertical-align: -1px;
+		background: #556;
 	}
 	.bar-badge {
 		flex-shrink: 0;
