@@ -44,7 +44,7 @@ sync see a normal checkbox + bullet list; the bundle never mutates the list.
 |------|------|
 | `lib/editor/noteBundle/parser.ts` | Pure `parseNoteBundles(doc): BundleSpec[]`. Atom-aware PMNode walk — finds keyword paragraphs + their following bulletList, recursively parses a **tree** of `BundleNode{label, link, children}` (all links per item, nested lists → category nodes). No IDB, no title index. |
 | `lib/editor/noteBundle/noteBundlePlugin.ts` | ProseMirror plugin. Hide-list node decoration (gated on `tree.length`) + cached widget container per ordinal + `StackController` lifecycle (`mountStack`/`update`/`destroy`). Exports `writeBundleHeightPct` only. **No list mutation.** |
-| `lib/editor/noteBundle/stackMath.ts` | Pure tree-navigation helpers — `firstNavPath`, `drillFrom`, `repairPath`, `stepPath`, `pickPath`, `nodesAtDepth`, and `tabWindow`/`TAB_CAP` (overflow math). Heavily tested. |
+| `lib/editor/noteBundle/stackMath.ts` | Pure tree-navigation helpers — `firstNavPath`, `drillFrom`, `repairPath`, `stepPath` (bubbles to parent at level ends), `pickPath`, `nodesAtDepth`, `clampIndex`, `topItems`/`bottomItems` (range-safe strip builders), and `tabWindow`/`TAB_CAP` (overflow math). Heavily tested. |
 | `lib/editor/noteBundle/NoteBundleStack.svelte` | The tab UI. Mounted inside the plugin's widget container. `activePath` state + recursive `tabLevel` snippet + per-note `EditorSession` keep-alive map + event barrier + browse/edit modes + host-shell wiring. |
 | `lib/editor/noteBundle/index.ts` | Barrel. |
 | `lib/editor/TomboyEditor.svelte` | Wires the plugin (`enableNoteBundle` prop, default `true`). `mountStack` mounts `NoteBundleStack` with **`EditorComponent: TomboyEditorSelf`** (self-import — embedded editor is TomboyEditor itself) and `$state` props so spec updates reflect without remount. |
@@ -125,8 +125,16 @@ descends into their first navigable leaf).
 - `repairPath(tree, path)` — keep `path` if it still ends at a navigable leaf,
   else `firstNavPath` (or `[]`).
 - `stepPath(tree, path, dir)` — move the **deepest** level to its next navigable
-  sibling (skip non-navigable), drilling into a sibling category. Clamps at ends.
+  sibling (skip non-navigable), drilling into a sibling category. When the deepest
+  level is blocked in `dir`, it **bubbles to the parent** and steps there (so
+  scrolling out of a category's last child tosses to the parent's next sibling
+  instead of dead-ending — the "scroll toss-to-parent" the user expects). Only the
+  root edge clamps.
 - `pickPath(tree, path, depth, idx)` — select tab `idx` at `depth` (+drill).
+- `clampIndex(len, idx)` / `topItems(nodes, activeIdx)` / `bottomItems(nodes, activeIdx)`
+  — strip builders. **Clamp `activeIdx` into range** so an out-of-range index never
+  yields an `undefined` node (see the recursion crash note below). `bottomItems`
+  is reversed (most-recent leftmost).
 - `nodesAtDepth(tree, path, depth)` — the sibling list at a depth.
 - `tabWindow(total)` — overflow: `total ≤ TAB_CAP(=4)` → all shown; else
   `{shown: 3, plus: total-3}`. **`TAB_CAP=4`** because the min tab width is ¼.
@@ -171,20 +179,36 @@ leaf becomes the active leaf. Once mounted, the editor **stays mounted** (off-pa
 and **cursor/undo are preserved per note** (keep-alive). Sessions are torn down
 only when a guid leaves the tree (or on destroy).
 
+**Per-level `activeIdx` must be local, not the global path (load-bearing).** Because
+the recursion renders **every** branch, `tabLevel(nodes, depth, onPath)` takes an
+`onPath` flag: the active index is `activePath[depth]` **only when this level is on
+the active path** (`onPath && i === activeIdx` flows down); off-path sibling
+categories default to index `0`. It's then `clampIndex`-ed to `nodes.length`. Without
+this, a **non-active sibling category with fewer children than the active branch's
+selected index** would render its strip with an out-of-range `activeIdx` →
+`topItems`/`bottomItems` produced a `{node: undefined}` entry → `it.node.key` /
+`node.guid` threw (`can't access property … undefined`). This only surfaced with
+**asymmetric nesting depth**, which is why it read as "깊이가 있어서". `clampIndex` in
+the strip builders is the second line of defence; the unit tests
+(`stackMath.test.ts`) reproduce the out-of-range case deterministically.
+
 ### Tab-transition animation
 
 Restored after the tab redesign initially dropped all motion. Two independent axes,
 both must keep working with keep-alive (no unmount):
 
-- **Body slide (CSS transform).** `.node-body` is `position:absolute; inset:0`
-  inside a `position:relative; overflow:hidden` `.level-body`. Each body's resting
-  transform encodes its relation to the active index: **active** = `translateY(0)`
-  + `opacity:1`; **upcoming** (`i > activeIdx`, default) = `translateY(-100%)` (waits
-  above); **before** (`i < activeIdx`, the `.before` class) = `translateY(100%)`
-  (below). A `transform` transition makes a forward step look like the active note
-  **falling down** while the next note **descends from the top** to fill — the motion
-  the user asked for. Direction is implicit in the index relation, so backward steps
-  reverse automatically with no direction state. `prefers-reduced-motion` zeroes it.
+- **Body slide (CSS transform, horizontal).** `.node-body` is `position:absolute;
+  inset:0` inside a `position:relative; overflow:hidden` `.level-body`. The slide is
+  **horizontal** to match the tabs sliding right→left: each body's resting transform
+  encodes its relation to the active index — **active** = `translateX(0)` +
+  `opacity:1`; **upcoming** (`i > activeIdx`, default) = `translateX(100%)` (waits to
+  the **right**); **before** (`i < activeIdx`, the `.before` class) =
+  `translateX(-100%)` (exits **left**). A `transform` transition makes a forward step
+  look like the active note **sliding out left** while the next note **enters from the
+  right** to fill — same direction as the tabs' shift. Direction is implicit in the
+  index relation, so backward steps reverse automatically with no direction state.
+  `prefers-reduced-motion` zeroes it. (Earlier it was vertical translateY; switched to
+  X because the horizontal tab shift made a vertical body slide feel disjoint.)
 - **Tab shift (`animate:flip` + `fade`).** Strip tabs are keyed by `node.key`;
   `animate:flip` animates the left/right shift when the active index moves (the
   persisting tabs slide to their new slots). Cross-strip enter/exit (a tab leaving
@@ -343,8 +367,22 @@ viewport, content-independent; `resize` listener catches rotation).
 - `noteBundlePlugin.test.ts` — hide-list + widget decorations, **no** radio insert
   (list unmutated), `writeBundleHeightPct`, ordinal renumber (`tree[0].label`).
 - `stackMath.test.ts` — `tabWindow` overflow + `firstNavPath`/`drillFrom`/
-  `repairPath`/`stepPath`/`pickPath` over leaf/category/broken trees.
+  `repairPath`/`stepPath`/`pickPath` over leaf/category/broken trees, **stepPath
+  parent-bubble** (level-end toss), and **`clampIndex`/`topItems`/`bottomItems`
+  range-safety** (the out-of-range → `undefined`-node crash repro).
 - No component test. Drive the tabs with `npm run dev` (host note with a checked
   `묶음:` + link list, including a nested category) or the `/tmp/nb-verify/`
   headless probes. The `npm run test` flake "document is not defined" (DOMObserver
   teardown) is the known tigress `ff9f04f` issue, unrelated.
+
+  ⚠️ **Headless probe gotcha — deep-nesting fixtures don't autolink.** The
+  `/tmp/nb-verify` probes build fixtures by typing titles and waiting for the
+  deferred autolink idle scan. A **flat** list of `잎A`-style titles links reliably
+  (`s31-tabs.js`), but a fixture whose **first list item is a category with
+  indented children** (needed to reproduce the asymmetric-depth crash) leaves the
+  leaves unlinked — the leaves stay `broken` and the stack shows "펼칠 수 있는 노트
+  없음", so the crash path can't be exercised live. Tried: Hangul vs Latin
+  suffixes, `Shift+Tab` vs empty-item double-Enter outdent, leaf-first ordering,
+  reload-rescan — none link the nested leaves. The crash is instead pinned by the
+  deterministic `stackMath.test.ts` cases. If you need live deep-nesting, author the
+  note by hand in `npm run dev` rather than via the typing probe.

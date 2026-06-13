@@ -8,6 +8,9 @@ import {
 	repairPath,
 	stepPath,
 	pickPath,
+	clampIndex,
+	topItems,
+	bottomItems,
 	type NavNode
 } from '$lib/editor/noteBundle/stackMath.js';
 
@@ -91,7 +94,57 @@ describe('stepPath — 가장 깊은 레벨 이동', () => {
 	it('카테고리 내부에서 이동(루트는 안 건드림)', () => {
 		const t = [lf(), cat([lf(), lf()])];
 		expect(stepPath(t, [1, 0], 1)).toEqual([1, 1]);
-		expect(stepPath(t, [1, 1], 1)).toEqual([1, 1]); // 끝
+	});
+	it('카테고리 끝에서 막히면 부모로 버블 — 다음 형제 잎으로 토스', () => {
+		const t = [cat([lf(), lf()]), lf()];
+		// [0,1] = cat 마지막 자식, 더 못 감 → 부모(루트) 다음 형제 lf(1)
+		expect(stepPath(t, [0, 1], 1)).toEqual([1]);
+		// 역방향: cat 첫 자식 [0,0] 에서 뒤로 → 부모도 못 감 → 유지
+		expect(stepPath(t, [0, 0], -1)).toEqual([0, 0]);
+	});
+	it('뒤로 버블 — 카테고리 앞 형제로 토스', () => {
+		const t = [lf(), cat([lf(), lf()])];
+		// [1,0] 에서 뒤로 → cat 내부 못 감 → 부모 이전 형제 lf(0)
+		expect(stepPath(t, [1, 0], -1)).toEqual([0]);
+		// cat 마지막 [1,1] 앞으로 → 부모도 막힘 → 유지
+		expect(stepPath(t, [1, 1], 1)).toEqual([1, 1]);
+	});
+	it('3중 중첩에서 가장 안쪽 끝 → 루트 형제로 버블', () => {
+		// 루트: [ catA[ catB[l, l] ], leaf ]
+		const t = [cat([cat([lf(), lf()])]), lf()];
+		// [0,0,1] = catB 마지막 → catB·catA 못 감 → 루트 형제 leaf(1)
+		expect(stepPath(t, [0, 0, 1], 1)).toEqual([1]);
+	});
+});
+
+describe('clampIndex / topItems / bottomItems — 범위 밖 인덱스도 undefined 노드 없음', () => {
+	it('clampIndex 경계', () => {
+		expect(clampIndex(0, 5)).toBe(0);
+		expect(clampIndex(3, -2)).toBe(0);
+		expect(clampIndex(3, 9)).toBe(2);
+		expect(clampIndex(3, 1)).toBe(1);
+	});
+	it('정상 범위', () => {
+		const ns = ['a', 'b', 'c'];
+		expect(topItems(ns, 1)).toEqual([
+			{ node: 'b', idx: 1 },
+			{ node: 'c', idx: 2 }
+		]);
+		expect(bottomItems(ns, 1)).toEqual([{ node: 'a', idx: 0 }]); // 역순
+	});
+	it('재귀 비활성 형제 재현: activeIdx 가 자식 수보다 크면 undefined 노드 안 생김', () => {
+		const ns = ['a', 'b']; // 형제 카테고리는 자식 2개인데 활성 인덱스는 5
+		const top = topItems(ns, 5);
+		const bot = bottomItems(ns, 5);
+		expect(top.every((it) => it.node !== undefined)).toBe(true);
+		expect(bot.every((it) => it.node !== undefined)).toBe(true);
+		// 보정된 활성 = 마지막(1): top=[b], bottom=[a]
+		expect(top).toEqual([{ node: 'b', idx: 1 }]);
+		expect(bot).toEqual([{ node: 'a', idx: 0 }]);
+	});
+	it('빈 노드', () => {
+		expect(topItems([], 0)).toEqual([]);
+		expect(bottomItems([], 3)).toEqual([]);
 	});
 });
 

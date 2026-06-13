@@ -75,19 +75,47 @@ export function repairPath(tree: NavNode[], path: number[]): number[] {
 }
 
 /** 가장 깊은(현재) 레벨에서 dir 방향 다음 navigable 형제로 이동 + drill.
- *  형제가 카테고리면 그 안 첫 잎까지 내려간다. 없으면 path 유지. */
+ *  형제가 카테고리면 그 안 첫 잎까지 내려간다. 현재 레벨에서 더 갈 곳이
+ *  없으면 부모 레벨로 **버블** — 카테고리 끝에서 스크롤하면 부모의 다음
+ *  형제로 토스된다(스크롤이 자식에 갇히지 않게). 루트까지 막히면 path 유지. */
 export function stepPath(tree: NavNode[], path: number[], dir: 1 | -1): number[] {
-	if (path.length === 0) return path;
-	const d = path.length - 1;
-	const nodes = nodesAtDepth(tree, path, d);
-	if (!nodes) return path;
-	let j = path[d] + dir;
-	while (j >= 0 && j < nodes.length) {
-		const drilled = drillFrom(nodes, j);
-		if (drilled) return path.slice(0, d).concat(drilled);
-		j += dir;
+	for (let d = path.length - 1; d >= 0; d--) {
+		const nodes = nodesAtDepth(tree, path, d);
+		if (!nodes) continue;
+		let j = path[d] + dir;
+		while (j >= 0 && j < nodes.length) {
+			const drilled = drillFrom(nodes, j);
+			if (drilled) return path.slice(0, d).concat(drilled);
+			j += dir;
+		}
+		// 이 레벨에서 못 감 → 부모 레벨로 버블(루프 계속)
 	}
 	return path;
+}
+
+/** activeIdx 를 [0, len-1] 로 보정(len=0 이면 0). */
+export function clampIndex(len: number, idx: number): number {
+	if (len <= 0) return 0;
+	return Math.min(Math.max(0, idx), len - 1);
+}
+
+/** 위 스트립 항목: 활성(보정된)부터 끝까지, 활성 최좌측. activeIdx 가 범위
+ *  밖이어도 절대 undefined 노드를 만들지 않는다(재귀 비활성 형제 보호). */
+export function topItems<T>(nodes: T[], activeIdx: number): Array<{ node: T; idx: number }> {
+	const out: Array<{ node: T; idx: number }> = [];
+	if (nodes.length === 0) return out;
+	const start = clampIndex(nodes.length, activeIdx);
+	for (let i = start; i < nodes.length; i++) out.push({ node: nodes[i], idx: i });
+	return out;
+}
+
+/** 아래 스트립 항목: 활성 직전부터 0 까지 **역순**(가장 최근=좌측). */
+export function bottomItems<T>(nodes: T[], activeIdx: number): Array<{ node: T; idx: number }> {
+	const out: Array<{ node: T; idx: number }> = [];
+	if (nodes.length === 0) return out;
+	const start = clampIndex(nodes.length, activeIdx);
+	for (let i = start - 1; i >= 0; i--) out.push({ node: nodes[i], idx: i });
+	return out;
 }
 
 /** depth 레벨의 idx 탭을 선택(+drill). navigable 아니면 path 유지. */
