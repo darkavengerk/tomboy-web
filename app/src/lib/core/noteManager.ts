@@ -1,10 +1,11 @@
-import { createEmptyNote, formatTomboyDate, type NoteData } from './note.js';
+import { createEmptyNote, formatTomboyDate, escapeXml, type NoteData } from './note.js';
 import { favoriteStore } from '$lib/storage/favoriteStore.svelte.js';
 import { serializeContent, extractTitleFromDoc, deserializeContent } from './noteContentArchiver.js';
 import { parseNote, serializeNote } from './noteArchiver.js';
 import {
 	prepareIncomingNoteForLocal,
-	rewriteInternalLinkRefsInXml
+	rewriteInternalLinkRefsInXml,
+	rewriteTitleInNoteContentXml
 } from './titleRewrite.js';
 import { emitNoteReload, emitNoteFlush } from './noteReloadBus.js';
 import * as noteStore from '$lib/storage/noteStore.js';
@@ -50,43 +51,65 @@ export async function ensureUniqueTitle(base: string): Promise<string> {
 	return candidate;
 }
 
-/** Create a new note and persist it to IndexedDB */
-export async function createNote(initialTitle?: string): Promise<NoteData> {
+export interface CreateNoteOptions {
+	/** 최종 타이틀(이미 타입 접두어가 합성된 값). 미지정 시 날짜 자동 타이틀. */
+	title?: string;
+	/** 본문 첫 보이는 줄(note-content 2번째 줄) 시그니처. 예: 'ssh://user@host'. */
+	bodyFirstLine?: string;
+	/** 생성 후 지정할 노트북(없으면 미지정). */
+	notebook?: string | null;
+}
+
+/** Create a new note and persist it to IndexedDB.
+ *  문자열 인자는 `{ title }` 로 매핑(역호환). */
+export async function createNote(arg?: string | CreateNoteOptions): Promise<NoteData> {
+	const opts: CreateNoteOptions = typeof arg === 'string' ? { title: arg } : (arg ?? {});
+	const explicitTitle = opts.title !== undefined;
 	const guid = generateGuid();
 	const note = createEmptyNote(guid);
-	const title =
-		initialTitle ?? (await ensureUniqueTitle(formatDateTimeTitle(new Date())));
+	const title = opts.title ?? (await ensureUniqueTitle(formatDateTimeTitle(new Date())));
 	note.title = title;
-	// When the title looks like yyyy-mm-dd, seed the subtitle slot (second
-	// line) with the year so date-titled notes have an auto-filled header.
-	const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(title);
-	const suffix = dateMatch ? `\n${dateMatch[1]}년\n` : `\n\n`;
-	note.xmlContent = `<note-content version="0.1">${title}${suffix}</note-content>`;
-	if (dateMatch) {
-		const year = Number(dateMatch[1]);
-		const month = Number(dateMatch[2]);
-		const day = Number(dateMatch[3]);
-		const seed = await buildDateNoteScheduleSeed(year, month, day);
-		if (seed.length > 0) {
-			const doc: JSONContent = {
-				type: 'doc',
-				content: [
-					{ type: 'paragraph', content: [{ type: 'text', text: title }] },
-					{ type: 'paragraph', content: [{ type: 'text', text: `${year}년` }] },
-					...seed,
-					{ type: 'paragraph' },
-					{ type: 'paragraph' }
-				]
-			};
-			note.xmlContent = serializeContent(doc);
+
+	if (opts.bodyFirstLine) {
+		// Whole-note 타입 스캐폴드: 1줄=타이틀, 2줄=시그니처.
+		note.xmlContent =
+			`<note-content version="0.1">${escapeXml(title)}\n${escapeXml(opts.bodyFirstLine)}\n\n</note-content>`;
+	} else {
+		// 기존 동작: 날짜형 타이틀은 2번째 줄 연도 + 일정 시드.
+		const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(title);
+		const suffix = dateMatch ? `\n${dateMatch[1]}년\n` : `\n\n`;
+		note.xmlContent = `<note-content version="0.1">${title}${suffix}</note-content>`;
+		if (dateMatch) {
+			const year = Number(dateMatch[1]);
+			const month = Number(dateMatch[2]);
+			const day = Number(dateMatch[3]);
+			const seed = await buildDateNoteScheduleSeed(year, month, day);
+			if (seed.length > 0) {
+				const doc: JSONContent = {
+					type: 'doc',
+					content: [
+						{ type: 'paragraph', content: [{ type: 'text', text: title }] },
+						{ type: 'paragraph', content: [{ type: 'text', text: `${year}년` }] },
+						...seed,
+						{ type: 'paragraph' },
+						{ type: 'paragraph' }
+					]
+				};
+				note.xmlContent = serializeContent(doc);
+			}
 		}
 	}
+
+	// 노트북 태그 인라인(시스템 태그 prefix 는 notebooks.ts PREFIX 와 동일).
+	if (opts.notebook) {
+		note.tags = note.tags.filter((t) => !t.startsWith('system:notebook:'));
+		note.tags.push(`system:notebook:${opts.notebook}`);
+	}
+
 	await noteStore.putNote(note);
 	// Tell the editor how to place the cursor when it first loads this note.
-	// No initialTitle → the title is the auto-generated date, so select it
-	// whole (one keystroke replaces it). An explicit title was chosen by the
-	// caller → put the cursor in the body (line after the line-2 placeholder).
-	setNewNoteIntent(guid, initialTitle === undefined ? 'selectTitle' : 'bodyCursor');
+	// 명시 타이틀 → 본문에 커서, 자동 날짜 타이틀 → 타이틀 전체 선택.
+	setNewNoteIntent(guid, explicitTitle ? 'bodyCursor' : 'selectTitle');
 	// Push to Firestore even before the first edit. Otherwise a "create new
 	// note + drop a link to it from another note" workflow leaves the new
 	// note absent from Firestore — receiving devices see the link but
@@ -176,6 +199,41 @@ export async function updateNoteFromEditor(guid: string, doc: JSONContent): Prom
 		console.warn('[schedule] sync/flush failed', err);
 	}
 	return note;
+}
+
+/**
+ * 에디터 밖(타이틀 수정 다이얼로그/메뉴)에서 노트 제목을 바꾼다.
+ * note-content 첫 줄 + note.title 동기 갱신 → 백링크 rename 캐스케이드 →
+ * 열린 에디터 리로드. 충돌이면 아무것도 바꾸지 않고 false.
+ */
+export async function renameNote(guid: string, newTitle: string): Promise<boolean> {
+	const note = await noteStore.getNote(guid);
+	if (!note) return false;
+	const trimmed = newTitle.trim();
+	if (!trimmed) return false;
+	if (trimmed === note.title) return true; // no-op (성공 취급)
+
+	// 권위 있는 충돌 검사 — by-title IDB 인덱스를 읽는 full lookup 이라 워밍된
+	// in-memory 인덱스에 의존하지 않는다(테스트/직접-IDB 경로에서도 정확).
+	const existing = await noteStore.findNoteByTitle(trimmed);
+	if (existing && existing.guid !== guid && !existing.deleted) return false;
+
+	const oldTitle = note.title;
+	const now = formatTomboyDate(new Date());
+	note.title = trimmed;
+	note.xmlContent = rewriteTitleInNoteContentXml(note.xmlContent, trimmed);
+	note.changeDate = now;
+	note.metadataChangeDate = now;
+	await noteStore.putNote(note);
+	notifyNoteSaved(guid);
+	noteMutated(note);
+
+	const affected = await rewriteBacklinksForRename(oldTitle, trimmed, guid);
+	if (affected.length > 0) invalidateCache();
+	// 자기 자신 + 백링크 대상 에디터를 리로드 — 자기 노트의 in-memory doc 은
+	// 아직 옛 첫 줄을 들고 있어 리로드하지 않으면 다음 저장에 덮어쓴다.
+	await emitNoteReload([guid, ...affected]);
+	return true;
 }
 
 /**
