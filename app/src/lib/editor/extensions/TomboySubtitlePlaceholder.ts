@@ -1,14 +1,11 @@
 /**
  * Node-decoration placeholder for the second top-level paragraph (the
- * "subtitle" slot). When the second paragraph is empty and the cursor is
- * NOT on it, a gray placeholder like `2026-04-17` is shown — purely
- * a decoration, never written to the document, so no .note XML round-trip
- * impact. Disappears automatically when the user types content there or
- * moves the cursor into the line.
- *
- * Contrast with the built-in TipTap Placeholder extension, which shows
- * its hint only on the *current* empty node (the opposite of what we want
- * here — ours should hide when the cursor enters).
+ * "subtitle" slot). Whenever the second paragraph is empty, a gray
+ * placeholder like `2026-04-17` is shown — purely a decoration, never
+ * written to the document, so no .note XML round-trip impact. It stays
+ * visible even while the cursor sits on the empty line (the caret renders
+ * before the floated placeholder text) and disappears only once the user
+ * types real content there.
  *
  * Exception: notes whose title contains `::` (automation/data notes such as
  * `자동화::제목` or `DATA::project`) use the second line as a log slot, so the
@@ -74,9 +71,9 @@ function buildDecorations(state: EditorState, text: string | null): DecorationSe
 	if (second.type.name !== 'paragraph') return DecorationSet.empty;
 	if (second.content.size > 0) return DecorationSet.empty;
 
-	// Hide while the cursor is inside the second top-level block.
-	const { $from } = state.selection;
-	if ($from.depth >= 1 && $from.index(0) === 1) return DecorationSet.empty;
+	// Intentionally NOT hidden while the cursor is on this line — the date
+	// should stay visible until the user types real content (the caret simply
+	// renders before the floated placeholder text).
 
 	const from = doc.child(0).nodeSize;
 	const to = from + second.nodeSize;

@@ -1180,8 +1180,10 @@
 	.title-text {
 		flex: 1;
 		min-width: 0;
-		font-size: clamp(1rem, 3.5vw, 1.15rem);
+		/* 제목 느낌이 나도록 본문보다 크게. */
+		font-size: clamp(1.3rem, 5.5vw, 1.7rem);
 		font-weight: 700;
+		line-height: 1.25;
 		color: var(--color-text, #111);
 		white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 	}

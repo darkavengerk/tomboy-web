@@ -1166,8 +1166,9 @@
 
 	.title-text {
 		flex: 1;
-		font-size: 0.85rem;
-		font-weight: 500;
+		/* 제목 느낌이 나도록 키운다 — 윈도우 헤더지만 노트 제목이 주인공. */
+		font-size: 1.1rem;
+		font-weight: 600;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;

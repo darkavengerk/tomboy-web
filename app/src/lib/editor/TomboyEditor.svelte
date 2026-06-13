@@ -1685,12 +1685,15 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		margin-bottom: -0.4em;
 	}
 
-	/* Second paragraph (body top) = subtitle slot: smaller, muted.
+	/* Second paragraph (body top) = subtitle slot: smaller, muted. The title
+	   (first line) is hidden in the note editor, so this date/label line sits at
+	   the very top — keep it tight to the body below (the old tall line-height
+	   left a wasted gap above line 3).
 	   Suppressed for `::` notes — the tomboySubtitlePlaceholder plugin tags the
 	   root with `.tomboy-no-subtitle` (see subtitleSlot.ts). */
 	.tomboy-editor :global(.tiptap:not(.tomboy-no-subtitle) > p:nth-child(2)) {
 		font-size: 0.8em;
-		line-height: 2.4;
+		line-height: 1.3;
 		color: #666;
 		vertical-align: top;
 		padding-left: 0.1em;
@@ -2511,8 +2514,8 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		pointer-events: none;
 	}
 
-	/* Subtitle (second line) creation-date placeholder. Applied only when
-	   the second paragraph is empty and the cursor is not on it — see
+	/* Subtitle (second line) creation-date placeholder. Applied whenever the
+	   second paragraph is empty (including while the caret sits on it) — see
 	   TomboySubtitlePlaceholder. */
 	.tomboy-editor :global(.tiptap p.tomboy-subtitle-placeholder::before) {
 		color: #909090;
