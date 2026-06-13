@@ -77,9 +77,13 @@ function buildDecorations(state: EditorState, text: string | null): DecorationSe
 
 	const from = doc.child(0).nodeSize;
 	const to = from + second.nodeSize;
+	// Own attribute name (NOT `data-placeholder`): the built-in TipTap
+	// Placeholder extension sets `data-placeholder="Start typing..."` on the
+	// node the caret is on, which would clobber ours on the empty subtitle
+	// line. A distinct attribute keeps the date immune to that collision.
 	const deco = Decoration.node(from, to, {
 		class: 'tomboy-subtitle-placeholder',
-		'data-placeholder': text
+		'data-subtitle-placeholder': text
 	});
 	return DecorationSet.create(doc, [deco]);
 }

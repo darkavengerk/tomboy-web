@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
+import Placeholder from '@tiptap/extension-placeholder';
 import { TomboySubtitlePlaceholder } from '$lib/editor/extensions/TomboySubtitlePlaceholder.js';
 
 let currentEditor: Editor | null = null;
@@ -30,7 +31,7 @@ function hasPlaceholderClass(editor: Editor): boolean {
 
 function placeholderAttr(editor: Editor): string | null {
 	const el = editor.view.dom.querySelector('p.tomboy-subtitle-placeholder');
-	return el?.getAttribute('data-placeholder') ?? null;
+	return el?.getAttribute('data-subtitle-placeholder') ?? null;
 }
 
 describe('TomboySubtitlePlaceholder', () => {
@@ -53,6 +54,24 @@ describe('TomboySubtitlePlaceholder', () => {
 		editor.commands.setTextSelection(1);
 		expect(hasPlaceholderClass(editor)).toBe(true);
 		expect(placeholderAttr(editor)).toBe('2026-04-17');
+	});
+
+	it('shows the date — not the built-in "Start typing…" — when the caret is on the empty subtitle line', () => {
+		// The built-in Placeholder sets data-placeholder on the caret's node; the
+		// subtitle must use its own attribute so it isn't clobbered there.
+		const editor = new Editor({
+			extensions: [
+				StarterKit.configure({ code: false, codeBlock: false }),
+				Placeholder.configure({ placeholder: 'Start typing...' }),
+				TomboySubtitlePlaceholder.configure({ getPlaceholderText: () => '2026-04-17' })
+			],
+			content: docWithEmptySecondLine
+		});
+		currentEditor = editor;
+		// Caret inside the empty second paragraph (collision case).
+		editor.commands.setTextSelection(13);
+		const el = editor.view.dom.querySelector('p.tomboy-subtitle-placeholder');
+		expect(el?.getAttribute('data-subtitle-placeholder')).toBe('2026-04-17');
 	});
 
 	it('keeps the placeholder visible while the cursor is on the empty second paragraph', () => {
