@@ -427,6 +427,7 @@ save → `syncScheduleFromNote` path still applies after the rewrite.
 |-------|------------------------------------|
 | `/desktop/...` (NoteWindow) | `onMount` resolves `getScheduleNoteGuid()` and compares with `guid`; passes `isScheduleNote` to `<TomboyEditor>` |
 | `/note/[id]` (mobile) | Same resolution inside the note-loading async block; passes `isScheduleNote` |
+| 묶음/탭 embedded (`NoteBundleCabinet`/`NoteBundleStack`) | `onMount` resolves `getScheduleNoteGuid()` once → `scheduleNoteGuid`; each session's `EditorComponent` gets `isScheduleNote={session.guid === scheduleNoteGuid}`. See `tomboy-notebundle`. |
 
 ## "보내기" Ctrl gate
 
@@ -451,6 +452,14 @@ there's no focus ambiguity. The mobile route also calls
 desktop browsers viewing the mobile route) updates the shared
 `modKeys` state; the same listeners power the Toolbar's Ctrl-lock
 toggle.
+
+**Inside 묶음/탭** the same gate runs per embedded session
+(`ignoreFocus: true`, `ctrlHeld: modKeys.ctrl`). The note-bundle event
+barrier `stopPropagation`s `keydown` on its root, so `modKeys`'
+`window` listeners are **capture phase** — otherwise Ctrl pressed while
+an embedded editor is focused would never reach `window` and the
+button would only appear in the bundle's browse mode, not edit mode.
+See `tomboy-notebundle`.
 
 ## "보내기" 반복 마커 + 삽입 정렬
 

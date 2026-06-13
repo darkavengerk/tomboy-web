@@ -257,7 +257,7 @@ shared body re-loaded mid-flight.
 
 The root `stopPropagation`s a fixed `ISOLATED_EVENTS` set (keydown, input,
 composition, clipboard, pointer/mouse/touch down, click, drag/drop) so the
-**outer** PM never sees the embedded editor's events. Two consequences:
+**outer** PM never sees the embedded editor's events. Three consequences:
 
 1. **Svelte 5 delegates `click`/`pointer*` at the document root** — the barrier
    blocks delegated handlers. So the stack's interactions use the **`direct`
@@ -268,6 +268,14 @@ composition, clipboard, pointer/mouse/touch down, click, drag/drop) so the
 2. **Child Svelte components** (`TerminalView`, `MusicPlayerBar`) are mounted
    with an **independent `mount()`** into a div inside the barrier, so their
    delegation root is inside and their onclick works.
+3. **The barrier stops `keydown`/`keyup` from reaching `window`** — so the
+   global `modKeys` store (`lib/desktop/modKeys.svelte.ts`) would never see a
+   Ctrl/Alt press while an embedded editor is focused, leaving `modKeys.ctrl`
+   stuck `false` in edit mode (browse mode worked because focus was outside the
+   barrier). Fix lives in `modKeys`, not here: its `window` keydown/keyup
+   listeners are **capture phase**, which runs before any descendant can
+   `stopPropagation`. Don't re-add a per-bundle Ctrl forwarder — physical
+   modifier state is global and must stay barrier-immune.
 
 ### Caret-escape guard
 
@@ -361,6 +369,17 @@ keyboard either.
   (`handlePointerDown` ignores `.bundle-music`).
 - **Scroll-bottom ("하단이 최신")** — `scrollBottomInit` action; rAF×2 sets
   `node.scrollTop = node.scrollHeight` on the leaf `.bundle-body` first mount.
+- **일정 노트 / 보내기 (schedule)** — each `EditorComponent` is passed
+  `isScheduleNote={session.guid === scheduleNoteGuid}` (auto-weekday `(요일)`
+  fill, resolved once via `getScheduleNoteGuid()` in `onMount`) and
+  `sendListItemActive={shouldSendListBeActive({ guid: session.guid, sourceGuid:
+  SEND_SOURCE_GUID, ctrlHeld: modKeys.ctrl, focusedGuid: null, ignoreFocus:
+  true })}` (the floating "보내기" button on each list item of the source note,
+  shown while Ctrl is held — `ignoreFocus` like the mobile route, no
+  multi-window focus inside a bundle). The transfer itself is self-contained in
+  `TomboyEditor` (`createSendListItemPlugin.onSend → transferListItem`); the
+  bundle just flips the two props. Both depend on the capture-phase `modKeys`
+  fix above so Ctrl is detected in edit mode. See `tomboy-schedule`.
 
 ### Height basis — desktop vs mobile
 

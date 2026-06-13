@@ -70,6 +70,10 @@
 	import { isScrollBottomNote } from '$lib/core/scrollBottom.js';
 	import { isMusicNoteDoc } from '$lib/music/parseMusicNote.js';
 	import MusicPlayerBar from '../musicNote/MusicPlayerBar.svelte';
+	import { modKeys } from '$lib/desktop/modKeys.svelte.js';
+	import { SEND_SOURCE_GUID } from '../sendListItem/transferListItem.js';
+	import { shouldSendListBeActive } from '../sendListItem/sendActiveGate.js';
+	import { getScheduleNoteGuid } from '$lib/core/schedule.js';
 
 	interface Props {
 		spec: BundleSpec;
@@ -88,10 +92,16 @@
 	// 초기 렌더에서 탭 intro 트랜지션이 한꺼번에 깜빡이지 않게, 마운트 후에만
 	// 트랜지션 시간을 켠다(그 전엔 duration 0 = 즉시).
 	let ready = $state(false);
+	// 일정 노트 guid — 임베디드 에디터가 자동요일/일정 동기화를 켤지 판단. async
+	// 해석되므로 $state, 미해석이면 null(일정 노트 아님으로 취급).
+	let scheduleNoteGuid = $state<string | null>(null);
 	onMount(() => {
 		ready = true;
 		void ensureTitleIndexReady().then(() => {
 			titleEpoch++;
+		});
+		void getScheduleNoteGuid().then((g) => {
+			scheduleNoteGuid = g ?? null;
 		});
 	});
 
@@ -752,6 +762,14 @@
 				enableNoteBundle={false}
 				hrSplitEnabled={false}
 				hideTitleLine={true}
+				isScheduleNote={session.guid === scheduleNoteGuid}
+				sendListItemActive={shouldSendListBeActive({
+					guid: session.guid,
+					sourceGuid: SEND_SOURCE_GUID,
+					ctrlHeld: modKeys.ctrl,
+					focusedGuid: null,
+					ignoreFocus: true
+				})}
 				createDate={session.createDate}
 			/>
 		</div>

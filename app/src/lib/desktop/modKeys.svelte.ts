@@ -22,8 +22,15 @@ let installCount = 0;
 
 export function installModKeyListeners(): () => void {
 	if (installCount++ === 0) {
-		window.addEventListener('keydown', onKeyDown);
-		window.addEventListener('keyup', onKeyUp);
+		// Capture phase: physical Ctrl/Alt state is a global fact, so it must
+		// not be hidden by any subtree's stopPropagation. The note-bundle event
+		// barrier stopPropagation's keydown/keyup on its root (so the outer PM
+		// never sees the embedded editor's keys); a bubble-phase window listener
+		// would therefore miss every key pressed while an embedded editor is
+		// focused, leaving modKeys.ctrl stuck false in edit mode. Capturing on
+		// window runs before any descendant can stop the event.
+		window.addEventListener('keydown', onKeyDown, true);
+		window.addEventListener('keyup', onKeyUp, true);
 		window.addEventListener('blur', reset);
 		document.addEventListener('visibilitychange', () => {
 			if (document.visibilityState === 'hidden') reset();
@@ -31,8 +38,8 @@ export function installModKeyListeners(): () => void {
 	}
 	return () => {
 		if (--installCount === 0) {
-			window.removeEventListener('keydown', onKeyDown);
-			window.removeEventListener('keyup', onKeyUp);
+			window.removeEventListener('keydown', onKeyDown, true);
+			window.removeEventListener('keyup', onKeyUp, true);
 			window.removeEventListener('blur', reset);
 		}
 	};

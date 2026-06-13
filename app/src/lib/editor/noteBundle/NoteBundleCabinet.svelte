@@ -69,6 +69,10 @@
 	import { isScrollBottomNote } from '$lib/core/scrollBottom.js';
 	import { isMusicNoteDoc } from '$lib/music/parseMusicNote.js';
 	import MusicPlayerBar from '../musicNote/MusicPlayerBar.svelte';
+	import { modKeys } from '$lib/desktop/modKeys.svelte.js';
+	import { SEND_SOURCE_GUID } from '../sendListItem/transferListItem.js';
+	import { shouldSendListBeActive } from '../sendListItem/sendActiveGate.js';
+	import { getScheduleNoteGuid } from '$lib/core/schedule.js';
 
 	interface Props {
 		spec: BundleSpec;
@@ -84,9 +88,15 @@
 
 	// --- guid 해석 ----------------------------------------------------------
 	let titleEpoch = $state(0);
+	// 일정 노트 guid — 임베디드 에디터가 자동요일/일정 동기화를 켤지 판단. async
+	// 해석되므로 $state, 미해석이면 null(일정 노트 아님으로 취급).
+	let scheduleNoteGuid = $state<string | null>(null);
 	onMount(() => {
 		void ensureTitleIndexReady().then(() => {
 			titleEpoch++;
+		});
+		void getScheduleNoteGuid().then((g) => {
+			scheduleNoteGuid = g ?? null;
 		});
 	});
 
@@ -772,6 +782,14 @@
 								enableNoteBundle={false}
 								hrSplitEnabled={false}
 								hideTitleLine={true}
+								isScheduleNote={session.guid === scheduleNoteGuid}
+								sendListItemActive={shouldSendListBeActive({
+									guid: session.guid,
+									sourceGuid: SEND_SOURCE_GUID,
+									ctrlHeld: modKeys.ctrl,
+									focusedGuid: null,
+									ignoreFocus: true
+								})}
 								createDate={session.createDate}
 							/>
 						{/if}
