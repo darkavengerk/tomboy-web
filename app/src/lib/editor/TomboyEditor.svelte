@@ -149,6 +149,7 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 	import { mount as mountSvelte, unmount as unmountSvelte } from "svelte";
 	import TomboyEditorSelf from "./TomboyEditor.svelte"; // 셀프 임포트 — 임베디드 에디터 주입용
 	import NoteBundleStack from "./noteBundle/NoteBundleStack.svelte";
+	import NoteBundleCabinet from "./noteBundle/NoteBundleCabinet.svelte";
 	import { createNoteBundlePlugin } from "./noteBundle/noteBundlePlugin.js";
 	import type { BundleSpec } from "./noteBundle/parser.js";
 
@@ -549,7 +550,15 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 										oninternallink: (t: string) =>
 											oninternallink?.(t),
 									});
-									const inst = mountSvelte(NoteBundleStack, {
+									// kind 별 컴포넌트: '탭:' = 재귀 탭(NoteBundleStack),
+									// '묶음:' = 5칸 윈도우 서류함(NoteBundleCabinet).
+									// kind 변경 시 플러그인이 destroy 후 리마운트하므로
+									// 마운트 시점의 spec.kind 가 컴포넌트를 고정한다.
+									const Comp =
+										spec.kind === "bundle"
+											? NoteBundleCabinet
+											: NoteBundleStack;
+									const inst = mountSvelte(Comp, {
 										target: container,
 										props,
 									});

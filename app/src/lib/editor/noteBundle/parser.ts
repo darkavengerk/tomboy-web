@@ -1,24 +1,30 @@
 /**
- * 묶음 파서.
+ * 묶음/탭 파서 — 두 종류의 인-에디터 파일철.
  *
- * `[prefix:]<체크박스>묶음:N` 키워드 paragraph (prefix 는 비었거나 ':' 로 끝나는 텍스트,
- * 옛 `노트 묶음` 표기도 허용) + 직후 bulletList(내부 링크 항목)를 라이브 PMNode
- * 워크로 찾아 BundleSpec[] 로 반환.
+ * `[prefix:]<체크박스>탭:N`  → kind 'tab'   : 재귀 브라우저-탭 파일철(NoteBundleStack)
+ * `[prefix:]<체크박스>묶음:N` → kind 'bundle' : 5칸 타이틀-윈도우 서류함(NoteBundleCabinet)
+ *
+ * prefix 는 비었거나 ':' 로 끝나는 텍스트, 옛 `노트 ` 접두도 허용
+ * (`노트 탭:` / `노트 묶음:`). 키워드 paragraph + 직후 bulletList(내부 링크
+ * 항목)를 라이브 PMNode 워크로 찾아 BundleSpec[] 로 반환.
  * 체크박스는 atom 노드라 plain-JSON 텍스트 스캔으로는 보이지 않는다 — 노드 트리를 걷는다.
  *
- * 리스트는 **트리**(BundleNode[])로 파싱된다 — 탭(파일철) UI 가 재귀적이기 때문.
- * - 한 줄(리스트아이템)의 모든 내부 링크(쉼표/공백 구분)가 각각 잎 노드.
- * - 중첩 리스트가 있는 항목은 **카테고리** 노드: 그 항목의 전체 타이틀이 label,
- *   children = [자기 링크(있으면) 먼저, 그 뒤 중첩 리스트를 재귀 파싱].
+ * 두 UI 는 같은 리스트를 서로 다른 모양으로 소비한다:
+ * - 'tab'    → tree(BundleNode[]): 중첩 = 카테고리 탭 레벨(재귀).
+ * - 'bundle' → entries(BundleEntry[]): 중첩을 평탄화, 부모 타이틀 = category 표시.
+ * kind 에 맞는 필드만 채운다(다른 쪽은 빈 배열).
  *
- * 활성 노트(어떤 탭이 열렸는지)는 영속하지 않는다 — 컴포넌트 로컬 상태.
+ * 활성 노트(어떤 탭/항목이 열렸는지)는 영속하지 않는다 — 컴포넌트 로컬 상태.
  * 파서는 리스트 내용을 읽기만 한다(위치/선택 정보 없음).
  *
- * 순수 함수: IDB/타이틀 인덱스 접근 없음. guid 해석은 NoteBundleStack 이
+ * 순수 함수: IDB/타이틀 인덱스 접근 없음. guid 해석은 스택 컴포넌트가
  * lookupGuidByTitle 로 수행.
  */
 import type { Node as PMNode } from '@tiptap/pm/model';
 
+export type BundleKind = 'tab' | 'bundle';
+
+/** 'tab' 트리 노드 — 카테고리(children 보유) 또는 잎(link 보유). */
 export interface BundleNode {
 	/** 탭 라벨 — 카테고리면 항목 전체 타이틀, 잎이면 링크 타이틀 */
 	label: string;
@@ -28,8 +34,18 @@ export interface BundleNode {
 	children: BundleNode[];
 }
 
+/** 'bundle' 평탄 엔트리 — 중첩 리스트는 category 로만 표시. */
+export interface BundleEntry {
+	/** tomboyInternalLink mark 의 target (= 대상 노트 제목) */
+	title: string;
+	/** 부모(상위 들여쓰기) 항목의 전체 타이틀 — 바에 우측정렬 표시. 없으면 null */
+	category: string | null;
+}
+
 export interface BundleSpec {
 	ordinal: number;
+	/** 'tab' = 재귀 탭(NoteBundleStack), 'bundle' = 5칸 윈도우 서류함(NoteBundleCabinet) */
+	kind: BundleKind;
 	checkboxPos: number;
 	checked: boolean;
 	/** 20–90 클램프, 생략 시 50 */
@@ -41,8 +57,10 @@ export interface BundleSpec {
 	keywordEnd: number;
 	listPos: number | null;
 	listEnd: number | null;
-	/** 최상위 노드들(트리 루트). 빈 리스트면 [] */
+	/** kind==='tab' 일 때만 채워짐(최상위 트리 노드들). 아니면 [] */
 	tree: BundleNode[];
+	/** kind==='bundle' 일 때만 채워짐(평탄 엔트리). 아니면 [] */
+	entries: BundleEntry[];
 }
 
 export const DEFAULT_HEIGHT_PCT = 50;
@@ -52,10 +70,12 @@ export function clampHeightPct(n: number): number {
 	return Math.min(90, Math.max(20, Math.round(n)));
 }
 
-// `묶음:N` 또는 옛 표기 `노트 묶음:N` (하위호환). `노트` 접두는 선택.
-const KEYWORD_RE = /^\s*(?:노트\s*)?묶음:(\d+)?\s*$/;
+// `탭:N` / `묶음:N` (옛 `노트 ` 접두 허용). `노트` 접두는 선택.
+const TAB_RE = /^\s*(?:노트\s*)?탭:(\d+)?\s*$/;
+const BUNDLE_RE = /^\s*(?:노트\s*)?묶음:(\d+)?\s*$/;
 
 interface KeywordInfo {
+	kind: BundleKind;
 	checkboxPos: number;
 	checked: boolean;
 	heightPct: number;
@@ -77,13 +97,16 @@ function keywordAfterCheckbox(
 		if (!c.isText) return null;
 		text += c.text ?? '';
 	}
-	const m = KEYWORD_RE.exec(text);
+	const tab = TAB_RE.exec(text);
+	const m = tab ?? BUNDLE_RE.exec(text);
 	if (!m) return null;
+	const kind: BundleKind = tab ? 'tab' : 'bundle';
 	const colonIdx = text.indexOf(':');
 	const digitsLen = m[1]?.length ?? 0;
 	// 키워드 텍스트 시작 abs pos = 체크박스 pos + nodeSize(1)
 	const textBase = checkboxPos + 1;
 	return {
+		kind,
 		checkboxPos,
 		checked: cb.attrs.checked === true,
 		heightPct: m[1] ? clampHeightPct(parseInt(m[1], 10)) : DEFAULT_HEIGHT_PCT,
@@ -96,8 +119,8 @@ function keywordAfterCheckbox(
 function parseKeywordParagraph(para: PMNode, paraPos: number): KeywordInfo | null {
 	if (para.childCount < 2) return null;
 	// prefix(체크박스 앞 텍스트)가 trim 후 비었거나 ':' 로 끝나고, 뒤따르는
-	// 텍스트가 KEYWORD_RE 에 매칭되는 첫 inlineCheckbox 를 찾는다 —
-	// `Done:[ ]묶음:` 같은 TODO/Process prefix 조합 허용.
+	// 텍스트가 키워드 RE 에 매칭되는 첫 inlineCheckbox 를 찾는다 —
+	// `Done:[ ]탭:` 같은 TODO/Process prefix 조합 허용.
 	// atom(앞쪽의 다른 체크박스 등)은 prefix 텍스트에 기여하지 않는다.
 	let prefix = '';
 	let offset = 0;
@@ -146,11 +169,13 @@ function collectLinks(para: PMNode): string[] {
 	return out;
 }
 
+// ── 'tab' 트리 파싱 ──────────────────────────────────────────────────────
+
 /** 리스트를 트리(BundleNode[])로 재귀 파싱.
  *  - 중첩 리스트 있는 항목 → 카테고리 노드(label=항목 전체 타이틀,
  *    children=[자기 링크 잎…, 중첩 재귀…]).
  *  - 중첩 없는 항목 → 항목의 각 링크가 형제 잎. 링크 없으면 노드 없음. */
-function parseList(list: PMNode): BundleNode[] {
+function parseTree(list: PMNode): BundleNode[] {
 	const out: BundleNode[] = [];
 	list.forEach((li) => {
 		if (li.type.name !== 'listItem' || li.childCount === 0) return;
@@ -170,13 +195,45 @@ function parseList(list: PMNode): BundleNode[] {
 			// 카테고리 노드 — 자기 링크가 첫 children(자신을 첫 탭으로), 그 뒤 중첩.
 			const children: BundleNode[] = [];
 			for (const L of links) children.push({ label: L, link: L, children: [] });
-			children.push(...parseList(nested));
+			children.push(...parseTree(nested));
 			out.push({ label: title || links[0] || '', link: null, children });
 		} else {
 			for (const L of links) out.push({ label: L, link: L, children: [] });
 		}
 	});
 	return out;
+}
+
+// ── 'bundle' 평탄 엔트리 파싱 ─────────────────────────────────────────────
+
+/** 리스트를 재귀 순회하며 엔트리 수집. category = 상위 항목의 타이틀(없으면 null).
+ *  각 항목의 모든 링크를 현재 category 로 push 하고, 중첩 리스트가 있으면
+ *  이 항목의 타이틀을 자식들의 category 로 넘긴다. */
+function parseListInto(list: PMNode, category: string | null, entries: BundleEntry[]): void {
+	list.forEach((li) => {
+		if (li.type.name !== 'listItem' || li.childCount === 0) return;
+		const para = li.child(0);
+		let ownTitle: string | null = null;
+		if (para.type.name === 'paragraph') {
+			for (const t of collectLinks(para)) entries.push({ title: t, category });
+			ownTitle = paragraphText(para) || null;
+		}
+		// 중첩 리스트(자식) — 이 항목의 타이틀이 자식 카테고리. 빈 타이틀이면
+		// 상위 category 를 그대로 물려준다.
+		const childCategory = ownTitle ?? category;
+		for (let ci = 0; ci < li.childCount; ci++) {
+			const child = li.child(ci);
+			if (child.type.name === 'bulletList' || child.type.name === 'orderedList') {
+				parseListInto(child, childCategory, entries);
+			}
+		}
+	});
+}
+
+function parseEntries(list: PMNode): BundleEntry[] {
+	const entries: BundleEntry[] = [];
+	parseListInto(list, null, entries);
+	return entries;
 }
 
 export function parseNoteBundles(doc: PMNode): BundleSpec[] {
@@ -187,6 +244,7 @@ export function parseNoteBundles(doc: PMNode): BundleSpec[] {
 		if (!pending) return;
 		out.push({
 			ordinal: out.length,
+			kind: pending.kind,
 			checkboxPos: pending.checkboxPos,
 			checked: pending.checked,
 			heightPct: pending.heightPct,
@@ -195,7 +253,8 @@ export function parseNoteBundles(doc: PMNode): BundleSpec[] {
 			keywordEnd: pending.keywordEnd,
 			listPos,
 			listEnd: list && listPos !== null ? listPos + list.nodeSize : null,
-			tree: list ? parseList(list) : []
+			tree: list && pending.kind === 'tab' ? parseTree(list) : [],
+			entries: list && pending.kind === 'bundle' ? parseEntries(list) : []
 		});
 		pending = null;
 	};
