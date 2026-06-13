@@ -731,6 +731,10 @@
 	async function handleTitleSave(r: { title: string; typeId: string; notebook: string | null }) {
 		if (!note) return;
 		titleDialogOpen = false;
+		// 본문에 미저장 디바운스 편집이 있으면 먼저 IDB 로 내린다 — renameNote 가
+		// 옛 본문을 읽어 rewrite + reload 하며 그 편집을 잃지 않도록.
+		if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+		await flushSave();
 		const ok = await renameNote(note.guid, r.title);
 		if (!ok) {
 			pushToast('이미 같은 제목의 노트가 있거나 제목이 비어 있습니다.', { kind: 'error' });
@@ -907,7 +911,7 @@
 		class:focused={isFocused}
 		onpointerdown={startDrag}
 		onauxclick={handleTitleBarAuxClick}
-		ondblclick={openTitleDialog}
+		ondblclick={(e) => { if ((e.target as HTMLElement)?.closest('[data-no-drag]')) return; openTitleDialog(); }}
 	>
 		<span class="title-text">
 			{#if saving}<span class="save-dot" title="저장 중"></span>{/if}
