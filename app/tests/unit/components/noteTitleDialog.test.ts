@@ -37,4 +37,23 @@ describe('NoteTitleDialog', () => {
 		expect(getByText('노트 생성')).toBeTruthy();
 		expect(getByText(/12\s*ms/)).toBeTruthy();
 	});
+
+	it('edit 모드는 종류 드롭다운이 없고 기존 제목을 채운다', () => {
+		const { getByLabelText, queryByText, getByRole } = render(NoteTitleDialog, {
+			props: { mode: 'edit', notebooks: [], initialTitle: '기존 제목', initialNotebook: null,
+				onsubmit: () => {}, oncancel: () => {} }
+		});
+		expect((getByLabelText('타이틀') as HTMLInputElement).value).toBe('기존 제목');
+		expect(queryByText('종류')).toBeNull();
+		expect(getByRole('button', { name: '저장' })).toBeTruthy();
+	});
+
+	it('종류를 바꾸면 도움말이 그 종류의 help 로 바뀐다', async () => {
+		const { getByLabelText, getByText } = render(NoteTitleDialog, {
+			props: { mode: 'create', notebooks: [], initialTitle: '', initialNotebook: null,
+				onsubmit: () => {}, oncancel: () => {} }
+		});
+		await fireEvent.change(getByLabelText('종류'), { target: { value: 'terminal' } });
+		expect(getByText(/ssh:\/\//)).toBeTruthy();
+	});
 });

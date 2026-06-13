@@ -1,5 +1,7 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { NOTE_TYPES, getNoteType } from '$lib/noteTypes/registry.js';
+	import { portal } from '$lib/utils/portal.js';
 
 	export interface Stage {
 		name: string;
@@ -31,11 +33,14 @@
 	let title = $state(initialTitle);
 	let typeId = $state('plain');
 	let notebook = $state<string | null>(initialNotebook);
+	let titleInputEl = $state<HTMLInputElement>();
 
 	const showProgress = $derived(!!progressStages && progressStages.length > 0);
 	const helpText = $derived(getNoteType(typeId)?.help ?? '');
 	const canSubmit = $derived(title.trim().length > 0);
 	const confirmLabel = $derived(mode === 'create' ? '만들기' : '저장');
+
+	onMount(() => { titleInputEl?.focus(); });
 
 	function submit() {
 		if (!canSubmit) return;
@@ -52,11 +57,11 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="backdrop" onclick={() => !showProgress && oncancel()}></div>
+<div class="backdrop" use:portal onclick={() => !showProgress && oncancel()}></div>
 
-<div class="dialog" role="dialog" aria-modal="true">
+<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="note-title-dialog-heading" use:portal>
 	{#if showProgress}
-		<div class="dlg-title">새 노트 만드는 중…</div>
+		<div class="dlg-title" id="note-title-dialog-heading">{mode === 'create' ? '새 노트 만드는 중…' : '수정 중…'}</div>
 		<ul class="stages">
 			{#each progressStages! as s (s.name)}
 				<li class="stage" class:active={s.status === 'active'} class:done={s.status === 'done'}>
@@ -67,11 +72,11 @@
 			{/each}
 		</ul>
 	{:else}
-		<div class="dlg-title">{mode === 'create' ? '새 노트' : '제목 수정'}</div>
+		<div class="dlg-title" id="note-title-dialog-heading">{mode === 'create' ? '새 노트' : '제목 수정'}</div>
 
 		<label class="field">
 			<span class="field-label">타이틀</span>
-			<input bind:value={title} placeholder="제목을 입력하세요" />
+			<input bind:this={titleInputEl} bind:value={title} placeholder="제목을 입력하세요" />
 		</label>
 
 		{#if mode === 'create'}
