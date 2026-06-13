@@ -11,7 +11,8 @@
 		findNoteByTitle,
 		toggleFavorite,
 		isFavorite,
-		listNotes
+		listNotes,
+		renameNote
 	} from '$lib/core/noteManager.js';
 	import { subscribeNoteReload, subscribeNoteFlush } from '$lib/core/noteReloadBus.js';
 	import { attachOpenNote, detachOpenNote } from '$lib/sync/firebase/orchestrator.js';
@@ -42,9 +43,7 @@
 	import NoteXmlViewer from '$lib/editor/NoteXmlViewer.svelte';
 	import NotebookPicker from '$lib/components/NotebookPicker.svelte';
 	import NoteTitleDialog from '$lib/components/NoteTitleDialog.svelte';
-	import { renameNote } from '$lib/core/noteManager.js';
 	import { newNoteFlow } from '$lib/stores/newNoteFlow.svelte.js';
-	import { listNotebooks } from '$lib/core/notebooks.js';
 	import { SLIPBOX_NOTEBOOK } from '$lib/sleepnote/validator.js';
 	import { getSlipNoteLabel } from '$lib/sleepnote/indexLabel.js';
 	import {
@@ -62,7 +61,7 @@
 	import { purgeLocalOnly } from '$lib/storage/noteStore.js';
 	import { invalidateCache } from '$lib/stores/noteListCache.js';
 	import { sync } from '$lib/sync/syncManager.js';
-	import { assignNotebook, getNotebook } from '$lib/core/notebooks.js';
+	import { assignNotebook, getNotebook, listNotebooks } from '$lib/core/notebooks.js';
 	import { setHomeNote, clearHomeNote, getHomeNoteGuid } from '$lib/core/home.js';
 	import { mode } from '$lib/stores/guestMode.svelte.js';
 	import { getCachedPublicConfig } from '$lib/sync/firebase/publicConfig.js';
@@ -729,6 +728,7 @@
 		titleDialogOpen = true;
 	}
 
+	// edit 모드에선 typeId 를 쓰지 않는다(타입 변환은 범위 밖).
 	async function handleTitleSave(r: { title: string; typeId: string; notebook: string | null }) {
 		if (!note) return;
 		titleDialogOpen = false;
@@ -783,10 +783,10 @@
 		<div
 			class="title-bar"
 			ondblclick={openTitleDialog}
-			title="더블클릭하면 제목을 수정합니다"
+			title="제목 수정: 더블클릭 또는 … 메뉴"
 		>
-			<span class="title-text">{note.title || '제목 없음'}</span>
 			<button class="title-edit-btn" onclick={openTitleDialog} aria-label="제목 수정">✎</button>
+			<span class="title-text">{note.title || '제목 없음'}</span>
 		</div>
 	{/if}
 
@@ -1171,19 +1171,22 @@
 		display: flex;
 		align-items: center;
 		gap: clamp(6px, 1.5vw, 12px);
-		padding: clamp(6px, 1.5vw, 10px) clamp(10px, 3vw, 16px);
+		/* 우측은 떠 있는 .editor-meta-bar(🗂 + … , top-right) 를 피하려 여유를 둔다. */
+		padding: clamp(6px, 1.5vw, 10px) clamp(84px, 24vw, 140px) clamp(6px, 1.5vw, 10px) clamp(10px, 3vw, 16px);
 		border-bottom: 1px solid var(--color-border, #eee);
 		cursor: pointer;
 		user-select: none;
 	}
 	.title-text {
 		flex: 1;
+		min-width: 0;
 		font-size: clamp(1rem, 3.5vw, 1.15rem);
 		font-weight: 700;
 		color: var(--color-text, #111);
 		white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 	}
 	.title-edit-btn {
+		flex-shrink: 0;
 		border: none; background: none; cursor: pointer;
 		font-size: 1rem; color: var(--color-text-secondary, #888);
 		padding: 4px 6px;
