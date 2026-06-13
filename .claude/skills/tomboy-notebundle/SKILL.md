@@ -431,6 +431,12 @@ band + eager-slide are gone. It is independent of `stackMath` (tab tree-nav).
   `enableNoteBundle={false}` + `hrSplitEnabled={false}` (a bundle inside a bundled
   note is a plain list). This is distinct from the *category* tree depth, which is
   unbounded within one bundle.
+- **Cabinet hides the title line.** The cabinet's embedded `EditorComponent` also
+  gets `hideTitleLine={true}` (`createTitleIsolationPlugin` — display:none on the
+  first top-level node + caret clamp out of it). The bar already shows the note
+  title, so the body starts from content — matches the standalone note route
+  (`note/[id]/+page.svelte` passes the same). **Tab (NoteBundleStack) does NOT set
+  it** (per request, 묶음 only) — set it there too if tab parity is wanted.
 - **heightPct clamped 20–90, default 50.** Drag the bottom edge; persisted on pointer-up.
 - **Widget container cached per ordinal** — never recreate it or the Svelte stack is lost.
 - **Full-tree render is required for keep-alive** — visited leaf editors must stay
