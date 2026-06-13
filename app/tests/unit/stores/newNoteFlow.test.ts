@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import 'fake-indexeddb/auto';
 import { newNoteFlow } from '$lib/stores/newNoteFlow.svelte.js';
 import { getNote } from '$lib/core/noteManager.js';

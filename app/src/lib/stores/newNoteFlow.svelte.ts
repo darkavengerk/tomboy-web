@@ -105,6 +105,7 @@ export const newNoteFlow = {
 			pushToast('노트 생성 중 오류가 발생했습니다.', { kind: 'error' });
 		} finally {
 			phase = 'idle';
+			stages = [];
 			pendingGuid = null;
 			readyResolve = null;
 			navigateFn = null;
