@@ -24,45 +24,69 @@
 
 type ReloadListener = () => void | Promise<void>;
 
-const listeners = new Map<string, Set<ReloadListener>>();
+/** A subscriber + the token identifying which editor instance owns it. */
+interface ReloadEntry {
+	fn: ReloadListener;
+	token: unknown;
+}
+
+const listeners = new Map<string, Set<ReloadEntry>>();
 const flushListeners = new Map<string, Set<ReloadListener>>();
 
 /**
  * Register `fn` to be invoked when `emitNoteReload(guids)` contains `guid`.
- * Returns an unsubscribe function. Idempotent: calling the returned function
- * more than once is a no-op.
+ * `token` (optional) identifies the editor instance so a save by THAT instance
+ * can exclude itself via `emitNoteReload(guids, { except: token })`. Returns an
+ * unsubscribe function. Idempotent: calling it more than once is a no-op.
  */
-export function subscribeNoteReload(guid: string, fn: ReloadListener): () => void {
+export function subscribeNoteReload(
+	guid: string,
+	fn: ReloadListener,
+	token?: unknown
+): () => void {
 	let set = listeners.get(guid);
 	if (!set) {
 		set = new Set();
 		listeners.set(guid, set);
 	}
-	set.add(fn);
+	const entry: ReloadEntry = { fn, token };
+	set.add(entry);
 	return () => {
 		const s = listeners.get(guid);
 		if (!s) return;
-		s.delete(fn);
+		s.delete(entry);
 		if (s.size === 0) listeners.delete(guid);
 	};
 }
 
+export interface EmitReloadOptions {
+	/** Skip the listener whose token === except. Undefined excludes nobody. */
+	except?: unknown;
+}
+
 /**
- * Fire every listener registered for each guid in `guids`. Per-listener
- * errors are caught and swallowed so one broken subscriber never stalls
- * the batch. Resolves once every listener (sync or async) has settled.
+ * Fire every listener registered for each guid in `guids`, except the one whose
+ * token matches `opts.except` (the editor that just saved — so it isn't reloaded
+ * out from under the user's cursor). Per-listener errors are swallowed so one
+ * broken subscriber never stalls the batch. Resolves once every listener
+ * (sync or async) has settled.
  */
-export async function emitNoteReload(guids: Iterable<string>): Promise<void> {
+export async function emitNoteReload(
+	guids: Iterable<string>,
+	opts?: EmitReloadOptions
+): Promise<void> {
+	const except = opts?.except;
 	const tasks: Array<Promise<void>> = [];
 	for (const guid of guids) {
 		const set = listeners.get(guid);
 		if (!set) continue;
 		// Snapshot so a listener that unsubscribes during emit doesn't mutate
 		// the set we're iterating.
-		for (const fn of Array.from(set)) {
+		for (const entry of Array.from(set)) {
+			if (except !== undefined && entry.token === except) continue;
 			tasks.push(
 				(async () => {
-					await fn();
+					await entry.fn();
 				})().catch(() => {
 					/* swallowed — one broken subscriber must not stall the batch */
 				})
