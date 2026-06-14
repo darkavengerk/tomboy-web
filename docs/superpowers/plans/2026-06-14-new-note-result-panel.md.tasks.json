@@ -11,14 +11,14 @@
     {
       "id": 9,
       "subject": "Task 2: linkSweep count/apply over corpus",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [8],
       "description": "**Goal:** Headless countLinkSweep/applyLinkSweep: XML-substring prefilter → addInternalLinksForTitle per candidate → (apply) putNote + noteMutated; progress + cancel.\n\n```json:metadata\n{\"files\": [\"app/src/lib/core/linkSweep.ts\", \"app/tests/unit/core/linkSweep.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/core/linkSweep.test.ts\", \"acceptanceCriteria\": [\"count returns would-change guids, excludes target/deleted/non-substring\", \"already-linked not counted\", \"apply writes only matched + returns {updated,failed}\", \"per-note throw -> failed, no abort\", \"cancel stops + returns subset\"]}\n```"
     },
     {
       "id": 10,
       "subject": "Task 3: newNoteFlow result phase + sweep orchestration",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [9],
       "description": "**Goal:** Add persistent `result` phase (no auto-close) + sweep sub-state with startSweepCount/applySweep/cancelSweep/dismiss wired to linkSweep + flushAll/reloadWindows/emitNoteReload.\n\n```json:metadata\n{\"files\": [\"app/src/lib/stores/newNoteFlow.svelte.ts\", \"app/tests/unit/stores/newNoteFlow.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/stores/newNoteFlow.test.ts && npm run check\", \"acceptanceCriteria\": [\"submit -> phase result, stages keep ms\", \"dismiss clears + idle\", \"startSweepCount -> confirm with matched/total\", \"applySweep -> done + reloadWindows(updated)\", \"cancelSweep ends without confirm\", \"stage failure -> toast + idle\"]}\n```"
     },

@@ -50,6 +50,21 @@ function setStage(i: number, patch: Partial<Stage>) {
 	stages[i] = { ...stages[i], ...patch };
 }
 
+/** Reset every flow field back to the idle baseline. Shared by cancel()
+ *  (abandon the input dialog) and dismiss() (close the result panel) so the
+ *  two can never drift as new state fields are added. */
+function reset() {
+	phase = 'idle';
+	stages = [];
+	navigateFn = null;
+	pendingGuid = null;
+	readyResolve = null;
+	createdGuid = null;
+	createdTitle = null;
+	matchedGuids = [];
+	sweep = emptySweep();
+}
+
 export const newNoteFlow = {
 	get phase() { return phase; },
 	get stages() { return stages; },
@@ -64,15 +79,7 @@ export const newNoteFlow = {
 	},
 
 	cancel() {
-		phase = 'idle';
-		stages = [];
-		navigateFn = null;
-		pendingGuid = null;
-		readyResolve = null;
-		createdGuid = null;
-		createdTitle = null;
-		matchedGuids = [];
-		sweep = emptySweep();
+		reset();
 	},
 
 	/** 에디터가 새 노트 콘텐츠 스왑을 끝냈을 때 호출(TomboyEditor onnoteready). */
@@ -161,43 +168,64 @@ export const newNoteFlow = {
 		if (!createdTitle || !createdGuid) return;
 		cancelFlag = { cancelled: false };
 		sweep = { ...sweep, status: 'counting', scanned: 0, total: 0, matched: 0 };
-		await desktopSession.flushAll();
-		const { matched, total } = await countLinkSweep(createdTitle, createdGuid, {
-			cancelToken: cancelFlag,
-			onProgress: (p) => {
-				sweep = { ...sweep, scanned: p.scanned, total: p.total, matched: p.matched };
+		try {
+			await desktopSession.flushAll();
+			const { matched, total } = await countLinkSweep(createdTitle, createdGuid, {
+				cancelToken: cancelFlag,
+				onProgress: (p) => {
+					sweep = { ...sweep, scanned: p.scanned, total: p.total, matched: p.matched };
+				}
+			});
+			if (cancelFlag.cancelled) {
+				sweep = { ...sweep, status: 'idle' };
+				return;
 			}
-		});
-		if (cancelFlag.cancelled) {
+			matchedGuids = matched;
+			sweep = { ...sweep, status: 'confirm', total, matched: matched.length };
+		} catch (err) {
+			// Don't strand the panel at 'counting' with no recovery — surface the
+			// error and return to idle so the user can dismiss or retry.
+			console.error('[newNoteFlow] 링크 스캔 실패', err);
+			pushToast('링크 스캔 중 오류가 발생했습니다.', { kind: 'error' });
 			sweep = { ...sweep, status: 'idle' };
-			return;
 		}
-		matchedGuids = matched;
-		sweep = { ...sweep, status: 'confirm', total, matched: matched.length };
 	},
 
 	async applySweep() {
 		if (!createdTitle || !createdGuid) return;
+		if (sweep.status !== 'confirm') return; // only after a count produced a confirm
 		cancelFlag = { cancelled: false };
 		const t0 = performance.now();
 		sweep = { ...sweep, status: 'applying', updated: 0, failed: 0, total: matchedGuids.length };
-		const { updated, failed } = await applyLinkSweep(createdTitle, createdGuid, matchedGuids, {
-			cancelToken: cancelFlag,
-			onProgress: (p) => {
-				sweep = { ...sweep, scanned: p.scanned, updated: p.matched };
+		try {
+			// Flush open editors right before the multi-note write: edits made in
+			// the count→confirm gap must land in IDB first, else reloadWindows below
+			// would clobber them (CLAUDE.md cross-window mutation pattern).
+			await desktopSession.flushAll();
+			const { updated, failed } = await applyLinkSweep(createdTitle, createdGuid, matchedGuids, {
+				cancelToken: cancelFlag,
+				onProgress: (p) => {
+					sweep = { ...sweep, scanned: p.scanned, updated: p.matched };
+				}
+			});
+			if (updated.length) {
+				await emitNoteReload(updated);
+				await desktopSession.reloadWindows(updated);
 			}
-		});
-		if (updated.length) {
-			await emitNoteReload(updated);
-			await desktopSession.reloadWindows(updated);
+			// A cancel mid-apply still reports 'done' with the partial count —
+			// "M개 완료" is accurate (M notes were actually written).
+			sweep = {
+				...sweep,
+				status: 'done',
+				updated: updated.length,
+				failed,
+				ms: Math.round(performance.now() - t0)
+			};
+		} catch (err) {
+			console.error('[newNoteFlow] 링크 반영 실패', err);
+			pushToast('링크 반영 중 오류가 발생했습니다.', { kind: 'error' });
+			sweep = { ...sweep, status: 'confirm' }; // back to confirm so the user can retry
 		}
-		sweep = {
-			...sweep,
-			status: 'done',
-			updated: updated.length,
-			failed,
-			ms: Math.round(performance.now() - t0)
-		};
 	},
 
 	cancelSweep() {
@@ -205,14 +233,6 @@ export const newNoteFlow = {
 	},
 
 	dismiss() {
-		phase = 'idle';
-		stages = [];
-		navigateFn = null;
-		pendingGuid = null;
-		readyResolve = null;
-		createdGuid = null;
-		createdTitle = null;
-		matchedGuids = [];
-		sweep = emptySweep();
+		reset();
 	}
 };
