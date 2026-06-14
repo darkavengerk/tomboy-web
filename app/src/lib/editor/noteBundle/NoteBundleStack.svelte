@@ -760,6 +760,7 @@
 				content={session.content}
 				currentGuid={session.guid}
 				onchange={(doc: JSONContent) => handleEmbeddedChange(session.guid, doc)}
+				onblur={() => { void flushSession(session.guid); }}
 				oninternallink={(t: string) => oninternallink?.(t)}
 				enableNoteBundle={false}
 				hrSplitEnabled={false}

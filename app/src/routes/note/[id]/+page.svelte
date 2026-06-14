@@ -847,6 +847,7 @@
 					bind:this={editorComponent}
 					content={editorContent}
 					onchange={handleEditorChange}
+					onblur={() => { void flushSave(); }}
 					oninternallink={handleInternalLink}
 					currentGuid={noteId}
 					createDate={note?.createDate ?? null}

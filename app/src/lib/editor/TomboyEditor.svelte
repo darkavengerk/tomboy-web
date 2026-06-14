@@ -156,6 +156,9 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 	interface Props {
 		content?: JSONContent;
 		onchange?: (doc: JSONContent) => void;
+		/** Fired when the editor loses focus — hosts flush pending edits here so
+		 *  leaving an editor commits it before another view of the same note saves. */
+		onblur?: () => void;
 		oninternallink?: (target: string) => void;
 		currentGuid?: string | null;
 		enableContextMenu?: boolean;
@@ -258,6 +261,7 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 	let {
 		content,
 		onchange,
+		onblur,
 		oninternallink,
 		currentGuid = null,
 		enableContextMenu = false,
@@ -801,6 +805,9 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 					lastConflictTitleRef.current = null;
 				}
 				scheduleAutoLinkScan();
+			},
+			onBlur: () => {
+				onblur?.();
 			},
 			editorProps: {
 				// Downward caret reveals are owned by installCursorVisibility()

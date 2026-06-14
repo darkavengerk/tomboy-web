@@ -973,6 +973,7 @@
 					bind:this={editorComponent}
 					content={editorContent}
 					onchange={handleEditorChange}
+					onblur={() => { void flushSave(); }}
 					oninternallink={handleInternalLink}
 					currentGuid={guid}
 					enableContextMenu={true}
