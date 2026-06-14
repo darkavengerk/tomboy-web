@@ -1094,7 +1094,8 @@
 		>키</button>
 	{/if}
 
-	{#if !loading && editorContent && isFocused && !showTerminal && !showKeys}
+	{#if !loading && editorContent && isFocused && !showTerminal && !showKeys && !(dedicatedKind && !showRawBundle)}
+		<!-- 전용 파일철 뷰엔 호스트 에디터가 없어 툴바가 무의미 — 숨김. raw 편집 모드에선 표시. -->
 		<div class="toolbar-slot">
 			<Toolbar
 				editor={getEditor()}

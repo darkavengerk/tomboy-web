@@ -529,6 +529,27 @@ the cabinet renders via the embedded `EditorComponent` (route-level title-sig
 detection never fires for it), so a child titled `묶음::…` just shows as a normal
 note, no nested takeover.
 
+**Host chrome in cabinet view.** When `dedicatedKind && !showRawBundle`, both
+hosts **hide the note title-bar AND the bottom `Toolbar`** (`.toolbar-area` /
+`.toolbar-slot`): the title is already on the bars, and `getEditor()` is null in
+cabinet view (no host editor) so the Toolbar would be inert and overlap the body
+(the "목록 하단 가림" bug). Both return in raw/edit mode (`showRawBundle` true) so
+it "looks like a normal note". Desktop NoteWindow keeps its **window** title-bar
+(drag handle + ✕) — that's window chrome, not the note title-bar.
+
+**Teardown-safety: `bind:this` must key on the stable node, not the session.**
+The embedded editor binds `bind:this={editorRefs[node.guid!]}` (Stack) /
+`editorRefs[e.guid!]` (Cabinet) — **NOT** `editorRefs[session.guid]`. On the
+cabinet→raw transition the component unmounts: `onDestroy`→`teardownSession`
+`sessions.delete(guid)` runs, and the editor binding's teardown re-reads its key
+expression. If keyed on the deleted `session` (`{@const session=sessions.get(...)}`
+→ now `undefined`), `session.guid` throws `Cannot read properties of undefined
+(reading 'guid')` **during destroy**, which white-screens the whole route (one
+throw per leaf = "몇십 개"). `node.guid`/`e.guid` are stable snippet/#each params,
+so the teardown can't crash. (A separate `state_unsafe_mutation` from the embedded
+editor's blur-transaction during teardown — `TomboyEditor` `selectionUpdate`/find
+handlers — is pre-existing and non-fatal; it also fires during normal typing.)
+
 ## Invariants
 
 - **View layer only — `.note` XML never restructured, list never mutated.**
