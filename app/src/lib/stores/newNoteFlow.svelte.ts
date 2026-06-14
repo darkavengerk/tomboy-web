@@ -5,6 +5,9 @@ import { ensureBacklinkIndexReady } from '$lib/core/backlinkIndex.js';
 import { composeTitle, bodyFirstLine } from '$lib/noteTypes/registry.js';
 import * as noteStore from '$lib/storage/noteStore.js';
 import { pushToast } from '$lib/stores/toast.js';
+import { countLinkSweep, applyLinkSweep } from '$lib/core/linkSweep.js';
+import { desktopSession } from '$lib/desktop/session.svelte.js';
+import { emitNoteReload } from '$lib/core/noteReloadBus.js';
 
 export interface Stage {
 	name: string;
@@ -12,15 +15,34 @@ export interface Stage {
 	status: 'pending' | 'active' | 'done';
 }
 
+export interface SweepState {
+	status: 'idle' | 'counting' | 'confirm' | 'applying' | 'done';
+	scanned: number;
+	total: number;
+	matched: number;
+	updated: number;
+	failed: number;
+	ms: number;
+}
+
 type NavigateFn = (note: NoteData) => void | Promise<void>;
 
-let phase = $state<'idle' | 'input' | 'creating'>('idle');
+function emptySweep(): SweepState {
+	return { status: 'idle', scanned: 0, total: 0, matched: 0, updated: 0, failed: 0, ms: 0 };
+}
+
+let phase = $state<'idle' | 'input' | 'creating' | 'result'>('idle');
 let stages = $state<Stage[]>([]);
 let defaultNotebook = $state<string | null>(null);
+let sweep = $state<SweepState>(emptySweep());
 
 let navigateFn: NavigateFn | null = null;
 let pendingGuid: string | null = null;
 let readyResolve: (() => void) | null = null;
+let createdGuid: string | null = null;
+let createdTitle: string | null = null;
+let matchedGuids: string[] = [];
+let cancelFlag: { cancelled: boolean } = { cancelled: false };
 
 const READY_TIMEOUT_MS = 5000;
 
@@ -28,10 +50,26 @@ function setStage(i: number, patch: Partial<Stage>) {
 	stages[i] = { ...stages[i], ...patch };
 }
 
+/** Reset every flow field back to the idle baseline. Shared by cancel()
+ *  (abandon the input dialog) and dismiss() (close the result panel) so the
+ *  two can never drift as new state fields are added. */
+function reset() {
+	phase = 'idle';
+	stages = [];
+	navigateFn = null;
+	pendingGuid = null;
+	readyResolve = null;
+	createdGuid = null;
+	createdTitle = null;
+	matchedGuids = [];
+	sweep = emptySweep();
+}
+
 export const newNoteFlow = {
 	get phase() { return phase; },
 	get stages() { return stages; },
 	get defaultNotebook() { return defaultNotebook; },
+	get sweep() { return sweep; },
 
 	open(opts: { notebook?: string | null; navigate: NavigateFn }) {
 		defaultNotebook = opts.notebook ?? null;
@@ -41,11 +79,7 @@ export const newNoteFlow = {
 	},
 
 	cancel() {
-		phase = 'idle';
-		stages = [];
-		navigateFn = null;
-		pendingGuid = null;
-		readyResolve = null;
+		reset();
 	},
 
 	/** 에디터가 새 노트 콘텐츠 스왑을 끝냈을 때 호출(TomboyEditor onnoteready). */
@@ -72,6 +106,8 @@ export const newNoteFlow = {
 			{ name: '에디터 여는 중', ms: null, status: 'pending' }
 		];
 
+		let succeeded = false;
+		let noteGuid: string | null = null;
 		try {
 			// 1) 노트 생성
 			let t0 = performance.now();
@@ -100,15 +136,104 @@ export const newNoteFlow = {
 				new Promise<void>((res) => setTimeout(res, READY_TIMEOUT_MS))
 			]);
 			setStage(2, { ms: Math.round(performance.now() - t0), status: 'done' });
+
+			noteGuid = note.guid;
+			succeeded = true;
 		} catch (err) {
 			console.error('[newNoteFlow] 노트 생성 실패', err);
 			pushToast('노트 생성 중 오류가 발생했습니다.', { kind: 'error' });
-		} finally {
+		}
+
+		if (succeeded && noteGuid) {
+			// Success path: persist result state
+			createdGuid = noteGuid;
+			createdTitle = finalTitle;
+			matchedGuids = [];
+			sweep = emptySweep();
+			navigateFn = null;
+			pendingGuid = null;
+			readyResolve = null;
+			phase = 'result';
+		} else {
+			// Error path: return to idle and clear everything
 			phase = 'idle';
 			stages = [];
 			pendingGuid = null;
 			readyResolve = null;
 			navigateFn = null;
 		}
+	},
+
+	async startSweepCount() {
+		if (!createdTitle || !createdGuid) return;
+		if (sweep.status !== 'idle') return; // already counting/confirmed/applying
+		cancelFlag = { cancelled: false };
+		sweep = { ...sweep, status: 'counting', scanned: 0, total: 0, matched: 0 };
+		try {
+			await desktopSession.flushAll();
+			const { matched, total } = await countLinkSweep(createdTitle, createdGuid, {
+				cancelToken: cancelFlag,
+				onProgress: (p) => {
+					sweep = { ...sweep, scanned: p.scanned, total: p.total, matched: p.matched };
+				}
+			});
+			if (cancelFlag.cancelled) {
+				sweep = { ...sweep, status: 'idle' };
+				return;
+			}
+			matchedGuids = matched;
+			sweep = { ...sweep, status: 'confirm', total, matched: matched.length };
+		} catch (err) {
+			// Don't strand the panel at 'counting' with no recovery — surface the
+			// error and return to idle so the user can dismiss or retry.
+			console.error('[newNoteFlow] 링크 스캔 실패', err);
+			pushToast('링크 스캔 중 오류가 발생했습니다.', { kind: 'error' });
+			sweep = { ...sweep, status: 'idle' };
+		}
+	},
+
+	async applySweep() {
+		if (!createdTitle || !createdGuid) return;
+		if (sweep.status !== 'confirm') return; // only after a count produced a confirm
+		cancelFlag = { cancelled: false };
+		const t0 = performance.now();
+		sweep = { ...sweep, status: 'applying', updated: 0, failed: 0, total: matchedGuids.length };
+		try {
+			// Flush open editors right before the multi-note write: edits made in
+			// the count→confirm gap must land in IDB first, else reloadWindows below
+			// would clobber them (CLAUDE.md cross-window mutation pattern).
+			await desktopSession.flushAll();
+			const { updated, failed } = await applyLinkSweep(createdTitle, createdGuid, matchedGuids, {
+				cancelToken: cancelFlag,
+				onProgress: (p) => {
+					sweep = { ...sweep, scanned: p.scanned, updated: p.matched };
+				}
+			});
+			if (updated.length) {
+				await emitNoteReload(updated);
+				await desktopSession.reloadWindows(updated);
+			}
+			// A cancel mid-apply still reports 'done' with the partial count —
+			// "M개 완료" is accurate (M notes were actually written).
+			sweep = {
+				...sweep,
+				status: 'done',
+				updated: updated.length,
+				failed,
+				ms: Math.round(performance.now() - t0)
+			};
+		} catch (err) {
+			console.error('[newNoteFlow] 링크 반영 실패', err);
+			pushToast('링크 반영 중 오류가 발생했습니다.', { kind: 'error' });
+			sweep = { ...sweep, status: 'confirm' }; // back to confirm so the user can retry
+		}
+	},
+
+	cancelSweep() {
+		cancelFlag.cancelled = true;
+	},
+
+	dismiss() {
+		reset();
 	}
 };

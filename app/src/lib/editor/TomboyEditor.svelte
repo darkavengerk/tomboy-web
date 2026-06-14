@@ -33,6 +33,7 @@
 	import { ClipboardFidelity } from "./clipboardFidelity.js";
 	import { ctrlEnterSplit } from "./ctrlEnterSplit.js";
 	import { createTitleProvider } from "./autoLink/titleProvider.js";
+	import { shouldRescanForDelta } from "./autoLink/shouldRescanForDelta.js";
 	import { consumeNewNoteIntent } from "$lib/core/newNoteIntent.js";
 	import { autoLinkPluginKey } from "./autoLink/autoLinkPlugin.js";
 	import {
@@ -1144,8 +1145,12 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		// ask the plugin for a full-document rescan. Routed through the
 		// same debouncer so a burst of cache invalidations collapses into
 		// one scan.
-		const offChange = titleProvider.onChange(() => {
-			scheduleAutoLinkScan({ full: true });
+		const offChange = titleProvider.onChange((delta) => {
+			const ed = editor;
+			if (!ed || ed.isDestroyed) { scheduleAutoLinkScan({ full: true }); return; }
+			if (shouldRescanForDelta(delta, ed.state.doc.textContent)) {
+				scheduleAutoLinkScan({ full: true });
+			}
 		});
 
 		// Keep the caret above the floating bottom toolbar while typing (mobile
@@ -1213,6 +1218,23 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		});
 	}
 
+	// Signal "note ready" only AFTER the browser has painted the setContent
+	// result. A SINGLE requestAnimationFrame fires BEFORE that paint, so
+	// newNoteFlow stage 2 (which races this signal via markEditorReady) closed
+	// its progress popup one frame early — while the editor's first paint +
+	// plugin decoration pass was still pending. That gap was the "popup gone
+	// but still janky" the user saw. The double rAF waits one full paint, so
+	// the signal now means painted+interactive. It also lands AFTER
+	// applyNewNoteIntent's own (earlier, single) caret/focus rAF, folding the
+	// mobile keyboard-pop reflow inside the popup window too.
+	function signalNoteReadyAfterPaint(ed: Editor, guid: string | null): void {
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				if (!ed.isDestroyed) onnoteready(guid);
+			});
+		});
+	}
+
 	// Reactively swap the editor's document when the parent navigates to a
 	// different note (or otherwise hands us new content). Reusing the same
 	// TipTap instance across notes avoids the full
@@ -1247,7 +1269,7 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 				);
 			}
 			applyNewNoteIntent(ed, g);
-			requestAnimationFrame(() => { if (!ed.isDestroyed) onnoteready(g); });
+			signalNoteReadyAfterPaint(ed, g);
 			return;
 		}
 
@@ -1322,7 +1344,7 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		findQuery = "";
 
 		applyNewNoteIntent(ed, g);
-		requestAnimationFrame(() => { if (!ed.isDestroyed) onnoteready(g); });
+		signalNoteReadyAfterPaint(ed, g);
 	});
 
 	// Toggle the "send list item" plugin's active flag whenever the parent's

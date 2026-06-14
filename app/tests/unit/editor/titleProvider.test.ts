@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NoteData } from '$lib/core/note.js';
+import type { TitleDelta } from '$lib/editor/autoLink/shouldRescanForDelta.js';
 
 const listNotesMock = vi.fn<() => Promise<NoteData[]>>();
 
@@ -159,7 +160,7 @@ describe('titleProvider', () => {
 		p.dispose();
 	});
 
-	it('onChange still fires when a note is reordered but set is equivalent — order alone is ignored', async () => {
+	it('onChange does NOT fire when only order changes (set is equivalent)', async () => {
 		// Equality check is order-independent — reordering with no content
 		// change should NOT fire onChange.
 		listNotesMock
@@ -335,6 +336,109 @@ describe('titleProvider', () => {
 			const p = createTitleProvider({});
 			await p.refresh();
 			expect(lookupGuidByTitle('Dup')).toBe('newer');
+			p.dispose();
+		});
+	});
+
+	describe('delta computation in onChange', () => {
+		it('CREATE: broadcast delta has added=[new] and removed=[]', async () => {
+			listNotesMock
+				.mockResolvedValueOnce([makeNote('a', 'Foo')])
+				.mockResolvedValueOnce([makeNote('a', 'Foo'), makeNote('b', 'Bar')]);
+
+			const p = createTitleProvider({});
+			await p.refresh();
+
+			let receivedDelta: TitleDelta | undefined;
+			p.onChange((delta) => { receivedDelta = delta; });
+
+			invalidateCache();
+			await new Promise((r) => setTimeout(r, 0));
+
+			expect(receivedDelta).toBeDefined();
+			expect(receivedDelta!.removed).toHaveLength(0);
+			expect(receivedDelta!.added).toHaveLength(1);
+			expect(receivedDelta!.added[0]).toMatchObject({ title: 'Bar', guid: 'b' });
+			p.dispose();
+		});
+
+		it('DELETE: broadcast delta has removed non-empty and added=[]', async () => {
+			listNotesMock
+				.mockResolvedValueOnce([makeNote('a', 'Foo'), makeNote('b', 'Bar')])
+				.mockResolvedValueOnce([makeNote('a', 'Foo')]);
+
+			const p = createTitleProvider({});
+			await p.refresh();
+
+			let receivedDelta: TitleDelta | undefined;
+			p.onChange((delta) => { receivedDelta = delta; });
+
+			invalidateCache();
+			await new Promise((r) => setTimeout(r, 0));
+
+			expect(receivedDelta).toBeDefined();
+			expect(receivedDelta!.added).toHaveLength(0);
+			expect(receivedDelta!.removed).toHaveLength(1);
+			expect(receivedDelta!.removed[0]).toMatchObject({ title: 'Bar', guid: 'b' });
+			p.dispose();
+		});
+
+		it('RENAME (same guid, changed title): appears in BOTH added and removed', async () => {
+			listNotesMock
+				.mockResolvedValueOnce([makeNote('a', 'Foo')])
+				.mockResolvedValueOnce([makeNote('a', 'Foo Renamed')]);
+
+			const p = createTitleProvider({});
+			await p.refresh();
+
+			let receivedDelta: TitleDelta | undefined;
+			p.onChange((delta) => { receivedDelta = delta; });
+
+			invalidateCache();
+			await new Promise((r) => setTimeout(r, 0));
+
+			expect(receivedDelta).toBeDefined();
+			expect(receivedDelta!.added).toHaveLength(1);
+			expect(receivedDelta!.added[0]).toMatchObject({ title: 'Foo Renamed', guid: 'a' });
+			expect(receivedDelta!.removed).toHaveLength(1);
+			expect(receivedDelta!.removed[0]).toMatchObject({ title: 'Foo', guid: 'a' });
+			p.dispose();
+		});
+
+		it('unchanged set: no broadcast at all (delta-empty guard)', async () => {
+			listNotesMock
+				.mockResolvedValueOnce([makeNote('a', 'Foo'), makeNote('b', 'Bar')])
+				.mockResolvedValueOnce([makeNote('a', 'Foo'), makeNote('b', 'Bar')]);
+
+			const p = createTitleProvider({});
+			await p.refresh();
+
+			const changed = vi.fn();
+			p.onChange(changed);
+
+			invalidateCache();
+			await new Promise((r) => setTimeout(r, 0));
+
+			expect(changed).not.toHaveBeenCalled();
+			p.dispose();
+		});
+
+		it('0-arg onChange callback still compiles and fires (backward compat)', async () => {
+			listNotesMock
+				.mockResolvedValueOnce([makeNote('a', 'Foo')])
+				.mockResolvedValueOnce([makeNote('a', 'Foo'), makeNote('b', 'Bar')]);
+
+			const p = createTitleProvider({});
+			await p.refresh();
+
+			const changed = vi.fn();
+			// Consumers that ignore the delta arg still work fine
+			p.onChange(() => changed());
+
+			invalidateCache();
+			await new Promise((r) => setTimeout(r, 0));
+
+			expect(changed).toHaveBeenCalledTimes(1);
 			p.dispose();
 		});
 	});

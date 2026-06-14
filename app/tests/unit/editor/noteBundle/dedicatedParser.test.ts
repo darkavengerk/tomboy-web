@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	dedicatedBundleKind,
 	parseDedicatedBundle,
+	buildSyntheticBundleSpec,
 	type BundleNode,
 	type BundleEntry
 } from '$lib/editor/noteBundle/parser.js';
@@ -137,5 +138,46 @@ describe('parseDedicatedBundle — 합성 spec 메타', () => {
 		expect(spec.checkboxPos).toBe(-1);
 		expect(spec.listPos).toBeNull();
 		expect(spec.listEnd).toBeNull();
+	});
+});
+
+describe('buildSyntheticBundleSpec — 역참조 등 합성 목록', () => {
+	it('bundle: 제목 리스트 → 평면 엔트리(category 없음) + 합성 메타', () => {
+		const spec = buildSyntheticBundleSpec(['가', '나', '다'], 'bundle');
+		expect(spec.kind).toBe('bundle');
+		expect(spec.entries).toEqual([
+			{ title: '가', category: null },
+			{ title: '나', category: null },
+			{ title: '다', category: null }
+		]);
+		expect(spec.tree).toEqual([]);
+		expect(spec.checked).toBe(true);
+		expect(spec.heightPct).toBe(100);
+		expect(spec.checkboxPos).toBe(-1);
+		expect(spec.listPos).toBeNull();
+	});
+
+	it('tab: 제목 리스트 → 평면 잎(link=label)', () => {
+		const spec = buildSyntheticBundleSpec(['가', '나'], 'tab');
+		expect(spec.kind).toBe('tab');
+		expect(spec.tree).toEqual([
+			{ label: '가', link: '가', children: [] },
+			{ label: '나', link: '나', children: [] }
+		]);
+		expect(spec.entries).toEqual([]);
+	});
+
+	it('공백/빈 제목은 trim 후 제외', () => {
+		const spec = buildSyntheticBundleSpec(['  가  ', '', '   ', '나'], 'bundle');
+		expect(spec.entries).toEqual([
+			{ title: '가', category: null },
+			{ title: '나', category: null }
+		]);
+	});
+
+	it('빈 목록 → 빈 spec', () => {
+		const spec = buildSyntheticBundleSpec([], 'bundle');
+		expect(spec.entries).toEqual([]);
+		expect(spec.tree).toEqual([]);
 	});
 });

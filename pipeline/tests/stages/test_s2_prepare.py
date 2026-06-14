@@ -271,3 +271,108 @@ def test_rmscene_renderer_keeps_standard_height_when_strokes_fit(tmp_path: Path)
 
     img = Image.open(out)
     assert img.size == (RmsceneRenderer.PAGE_WIDTH, RmsceneRenderer.PAGE_HEIGHT)
+
+
+# ---------------------------------------------------------------------------
+# Split-folder tests (Task 5)
+# ---------------------------------------------------------------------------
+
+
+def _route_for_factory(split_folders):
+    from desktop.lib.config import FolderRoute
+
+    def route_for(source_folder):
+        if source_folder in split_folders:
+            return FolderRoute("[0] Slip-Box", "{datetime} 리마커블 {label}([{unit_key}])",
+                               split=True, labels=("上", "下"))
+        return FolderRoute("기록", "{date} 리마커블([{unit_key}])", split=False)
+
+    return route_for
+
+
+def _seed_raw_with_folder(raw_root, uuid, source_folder):
+    import json as _json
+    d = raw_root / uuid
+    d.mkdir(parents=True)
+    (d / f"{uuid}.rm").write_bytes(b"\x00" * 32)
+    (d / f"{uuid}.metadata").write_text(
+        _json.dumps({"lastModified": "1715337600000", "sourceFolder": source_folder,
+                     "visibleName": source_folder, "type": "PageType"})
+    )
+
+
+def _tall_png_bytes(h):
+    from PIL import Image, ImageDraw
+    img = Image.new("RGB", (80, h), "white")
+    d = ImageDraw.Draw(img)
+    d.line([(5, 20), (75, 20)], fill="black", width=4)          # ink near top
+    d.line([(5, h - 20), (75, h - 20)], fill="black", width=4)  # ink near bottom
+    import io
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return buf.getvalue()
+
+
+def test_split_folder_emits_two_halves(tmp_path, stub_log):
+    pytest.importorskip("PIL")
+    from PIL import Image
+    from desktop.stages.s2_prepare import RmsceneRenderer, prepare
+
+    raw_root = tmp_path / "raw"; png_root = tmp_path / "png"
+    raw_root.mkdir(); png_root.mkdir()
+    _seed_raw_with_folder(raw_root, "slip-1", "Slip-Notes")
+    state = StateFile(tmp_path / "state" / "prepared.json")
+    renderer = FakeRenderer(_tall_png_bytes(RmsceneRenderer.PAGE_HEIGHT))  # 1872
+
+    prepared = prepare(raw_root=raw_root, png_root=png_root, state=state,
+                       log=stub_log, renderer=renderer,
+                       route_for=_route_for_factory({"Slip-Notes"}))
+
+    assert sorted(prepared) == ["slip-1#0", "slip-1#1"]
+    p0 = png_root / "slip-1" / "page.0.png"
+    p1 = png_root / "slip-1" / "page.1.png"
+    assert p0.exists() and p1.exists()
+    assert Image.open(p0).size[1] == RmsceneRenderer.PAGE_HEIGHT // 2
+    rec0 = state.get("slip-1#0")
+    assert rec0["source_folder"] == "Slip-Notes"
+    assert rec0["half_index"] == 0
+    assert rec0["png_path"].endswith("page.0.png")
+
+
+def test_split_uses_fixed_center_even_when_scrolled(tmp_path, stub_log):
+    pytest.importorskip("PIL")
+    from PIL import Image
+    from desktop.stages.s2_prepare import RmsceneRenderer, prepare
+
+    raw_root = tmp_path / "raw"; png_root = tmp_path / "png"
+    raw_root.mkdir(); png_root.mkdir()
+    _seed_raw_with_folder(raw_root, "slip-2", "Slip-Notes")
+    state = StateFile(tmp_path / "state" / "prepared.json")
+    renderer = FakeRenderer(_tall_png_bytes(2400))  # scrolled / extended
+
+    prepare(raw_root=raw_root, png_root=png_root, state=state, log=stub_log,
+            renderer=renderer, route_for=_route_for_factory({"Slip-Notes"}))
+
+    assert Image.open(png_root / "slip-2" / "page.0.png").size[1] == RmsceneRenderer.PAGE_HEIGHT // 2
+
+
+def test_split_skip_and_force_are_page_scoped(tmp_path, stub_log):
+    pytest.importorskip("PIL")
+    from desktop.stages.s2_prepare import RmsceneRenderer, prepare
+
+    raw_root = tmp_path / "raw"; png_root = tmp_path / "png"
+    raw_root.mkdir(); png_root.mkdir()
+    _seed_raw_with_folder(raw_root, "slip-3", "Slip-Notes")
+    state = StateFile(tmp_path / "state" / "prepared.json")
+    renderer = FakeRenderer(_tall_png_bytes(RmsceneRenderer.PAGE_HEIGHT))
+    rf = _route_for_factory({"Slip-Notes"})
+
+    first = prepare(raw_root=raw_root, png_root=png_root, state=state, log=stub_log,
+                    renderer=renderer, route_for=rf)
+    assert sorted(first) == ["slip-3#0", "slip-3#1"]
+    again = prepare(raw_root=raw_root, png_root=png_root, state=state, log=stub_log,
+                    renderer=renderer, route_for=rf)
+    assert again == []
+    forced = prepare(raw_root=raw_root, png_root=png_root, state=state, log=stub_log,
+                     renderer=renderer, route_for=rf, force={"slip-3"})
+    assert sorted(forced) == ["slip-3#0", "slip-3#1"]

@@ -57,15 +57,67 @@ class PiConfig:
 
 
 @dataclass(frozen=True)
+class FolderRoute:
+    notebook: str
+    title_format: str
+    split: bool = False
+    labels: tuple[str, ...] = ()
+
+
+# rM 폴더명 → 라우팅. config의 tomboy.folders가 이를 덮어쓴다.
+DEFAULT_FOLDER_ROUTES: dict[str, FolderRoute] = {
+    "Diary": FolderRoute("일기", "{date} 리마커블([{unit_key}])"),
+    "Notes": FolderRoute("기록", "{date} 리마커블([{unit_key}])"),
+    "Slip-Notes": FolderRoute(
+        "[0] Slip-Box",
+        "{datetime} 리마커블 {label}([{unit_key}])",
+        split=True,
+        labels=("上", "下"),
+    ),
+}
+# 알 수 없는 rM 폴더는 Notes처럼 처리(전체 페이지, 분할 없음).
+_FALLBACK_FOLDER = "Notes"
+
+
+@dataclass(frozen=True)
 class TomboyConfig:
+    folders: dict[str, FolderRoute]
     diary_notebook_name: str = "일기"
     title_format: str = "{date} 리마커블([{page_uuid}])"
 
+    def route_for(self, source_folder: str | None) -> FolderRoute:
+        if source_folder and source_folder in self.folders:
+            return self.folders[source_folder]
+        return self.folders.get(
+            _FALLBACK_FOLDER, FolderRoute("기록", "{date} 리마커블([{unit_key}])")
+        )
+
     @classmethod
     def from_dict(cls, d: dict) -> TomboyConfig:
+        folders: dict[str, FolderRoute] = dict(DEFAULT_FOLDER_ROUTES)
+        legacy_nb = d.get("diary_notebook_name")
+        legacy_tf = d.get("title_format")
+        # 레거시 단일 폴더 키 → Diary 엔트리 오버라이드(하위호환).
+        if legacy_nb or legacy_tf:
+            base = folders["Diary"]
+            folders["Diary"] = FolderRoute(
+                notebook=legacy_nb or base.notebook,
+                title_format=legacy_tf or base.title_format,
+            )
+        # 명시적 folders 맵이 최종 오버라이드.
+        for name, fd in (d.get("folders") or {}).items():
+            folders[name] = FolderRoute(
+                notebook=_require(fd, "notebook", f"tomboy.folders.{name}.notebook"),
+                title_format=_require(
+                    fd, "title_format", f"tomboy.folders.{name}.title_format"
+                ),
+                split=bool(fd.get("split", False)),
+                labels=tuple(fd.get("labels", ()) or ()),
+            )
         return cls(
-            diary_notebook_name=d.get("diary_notebook_name", "일기"),
-            title_format=d.get("title_format", "{date} 리마커블([{page_uuid}])"),
+            folders=folders,
+            diary_notebook_name=legacy_nb or "일기",
+            title_format=legacy_tf or "{date} 리마커블([{page_uuid}])",
         )
 
 
@@ -159,8 +211,8 @@ class Config:
         return cls(
             firebase_uid=_require(d, "firebase_uid", "firebase_uid"),
             firebase_service_account=_require(d, "firebase_service_account", "firebase_service_account"),
-            dropbox_refresh_token=_require(d, "dropbox_refresh_token", "dropbox_refresh_token"),
-            dropbox_app_key=_require(d, "dropbox_app_key", "dropbox_app_key"),
+            dropbox_refresh_token=d.get("dropbox_refresh_token", ""),
+            dropbox_app_key=d.get("dropbox_app_key", ""),
             remarkable=RemarkableConfig.from_dict(_require(d, "remarkable", "remarkable")),
             pi=PiConfig.from_dict(_require(d, "pi", "pi")),
             desktop=DesktopConfig.from_dict(d.get("desktop", {})),

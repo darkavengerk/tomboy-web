@@ -1,0 +1,63 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-14-remarkable-multifolder-ocr.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: 작업단위 키 플러밍 (keys.py + StateFile.remove_page)",
+      "status": "completed",
+      "description": "**Goal:** 복합 키(`<uuid>#half`) 생성/분해 순수 함수 + `StateFile.remove_page`(page-uuid와 모든 `uuid#*` 삭제).\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/lib/keys.py\", \"pipeline/desktop/lib/state.py\", \"pipeline/tests/lib/test_keys.py\", \"pipeline/tests/lib/test_state.py\"], \"verifyCommand\": \"cd pipeline && .venv/bin/python -m pytest tests/lib/test_keys.py tests/lib/test_state.py -q\", \"acceptanceCriteria\": [\"unit_keys_for_page split T/F\", \"page_uuid_of / half_index_of\", \"remove_page drops uuid and #halves, keeps others\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: 빈-띠 탐색 raster 헬퍼 (raster.py + local_vlm 공유)",
+      "status": "completed",
+      "description": "**Goal:** local_vlm의 순수 Pillow ink_row_mask/find_gap_near를 lib/raster.py로 추출, s2/타일러 공유, torch 미유발.\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/lib/raster.py\", \"pipeline/desktop/ocr_backends/local_vlm.py\", \"pipeline/tests/lib/test_raster.py\"], \"verifyCommand\": \"cd pipeline && .venv/bin/python -m pytest tests/lib/test_raster.py tests/ocr_backends/test_local_vlm.py -q\", \"acceptanceCriteria\": [\"find_blank_row_near snaps to central gap\", \"falls back to target when all ink\", \"no torch import\", \"existing local_vlm tests pass\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Config 폴더 라우팅 (FolderRoute/folders/route_for, dropbox 선택값)",
+      "status": "completed",
+      "description": "**Goal:** rM 폴더명→{노트북,제목포맷,분할,라벨} 라우팅(코드 기본값+오버라이드+레거시 폴백), dropbox 키 선택값.\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/lib/config.py\", \"pipeline/desktop/bootstrap.py\", \"pipeline/tests/lib/test_config.py\"], \"verifyCommand\": \"cd pipeline && .venv/bin/python -m pytest tests/lib/test_config.py -q\", \"acceptanceCriteria\": [\"route_for default folders\", \"unknown folder falls back to Notes\", \"folders override\", \"dropbox keys optional\", \"legacy config compat\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Payload — 이미지 제거 + 슬립 스켈레톤 + 제목 플레이스홀더",
+      "status": "completed",
+      "description": "**Goal:** build_note_content_xml/build_payload 이미지 제거, 슬립 스켈레톤, {datetime}/{unit_key}/{label} 플레이스홀더.\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/lib/tomboy_payload.py\", \"pipeline/tests/lib/test_tomboy_payload.py\"], \"verifyCommand\": \"cd pipeline && .venv/bin/python -m pytest tests/lib/test_tomboy_payload.py -q\", \"acceptanceCriteria\": [\"whole body no image/hr\", \"slip skeleton layout\", \"slip title matches isSlipNoteTitle regex\", \"build_payload unit_key marker, no image_url\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: s2_prepare — sourceFolder 라우팅 + 슬립 분할",
+      "status": "completed",
+      "blockedBy": [1, 2, 3],
+      "description": "**Goal:** s2가 sourceFolder로 분할 판단, 분할 폴더는 PAGE_HEIGHT//2 근처 빈띠에서 위/아래 크롭→복합키 2개. skip/force 페이지 단위.\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/stages/s2_prepare.py\", \"pipeline/tests/stages/test_s2_prepare.py\"], \"verifyCommand\": \"cd pipeline && .venv/bin/python -m pytest tests/stages/test_s2_prepare.py -q\", \"acceptanceCriteria\": [\"whole page 1 key page.png\", \"split 2 composite keys + 2 pngs\", \"cut at fixed 936 even when 2400 tall\", \"skip/force page-scoped\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: s4_write — Dropbox 제거 + route 기반 노트북/제목 + 슬립 + 빈 건너뛰기",
+      "status": "completed",
+      "blockedBy": [1, 3, 4],
+      "description": "**Goal:** s4 Dropbox 미사용, 복합키별 route_for로 노트북/제목/슬립 스켈레톤, 빈 OCR 단위 건너뛰기.\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/stages/s4_write.py\", \"pipeline/tests/stages/test_s4_write.py\"], \"verifyCommand\": \"cd pipeline && .venv/bin/python -m pytest tests/stages/test_s4_write.py -q\", \"acceptanceCriteria\": [\"no dropbox/notebook_name/title_format args\", \"diary 일기 no link:url\", \"slip 2 notes [0] Slip-Box 上/下 skeleton\", \"empty ocr skipped\", \"I1 marker uses unit_key\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: s1_fetch — 복합 키 캐스케이드",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "**Goal:** 재페치/force 시 하위 상태에서 page-uuid와 uuid#* 모두 제거(remove_page).\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/stages/s1_fetch.py\", \"pipeline/tests/stages/test_s1_fetch.py\"], \"verifyCommand\": \"cd pipeline && .venv/bin/python -m pytest tests/stages/test_s1_fetch.py -q\", \"acceptanceCriteria\": [\"refetch clears uuid#* downstream\", \"force clears composites\", \"existing s1 tests pass\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: rM 푸시 스크립트 — 다중 폴더 + sourceFolder (README)",
+      "status": "completed",
+      "description": "**Goal:** pi/README.md 정본 푸시 스크립트를 Diary/Notes/Slip-Notes 3폴더 루프로 교체 + metadata sourceFolder.\n\n```json:metadata\n{\"files\": [\"pipeline/pi/README.md\"], \"verifyCommand\": \"bash -n /tmp/diary-push.sh\", \"acceptanceCriteria\": [\"TARGET_FOLDERS loop Diary/Notes/Slip-Notes\", \"DocumentType children skip pdf\", \"metadata has sourceFolder\", \"verify section mentions slip 2 notes\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: tomboy-diary 스킬 문서 갱신",
+      "status": "completed",
+      "description": "**Goal:** 스킬 본문에 다중 폴더/슬립 분할(작업단위 키)/이미지 폐지 반영.\n\n```json:metadata\n{\"files\": [\".claude/skills/tomboy-diary/SKILL.md\"], \"verifyCommand\": \"\", \"acceptanceCriteria\": [\"I1 unit-key generalization\", \"I3 three folders + sourceFolder\", \"image abolition reflected\", \"slip split section added\", \"file map updated\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-14T09"
+}

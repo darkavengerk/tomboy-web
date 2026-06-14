@@ -39,6 +39,7 @@
 		getTerminalBridgeToken
 	} from '$lib/editor/terminal/bridgeSettings.js';
 	import NoteContextMenu, { type ActionKind } from '$lib/editor/NoteContextMenu.svelte';
+	import BacklinkBundleOverlay from '$lib/editor/noteBundle/BacklinkBundleOverlay.svelte';
 	import NoteTitleDialog from '$lib/components/NoteTitleDialog.svelte';
 	import { newNoteFlow } from '$lib/stores/newNoteFlow.svelte.js';
 	import NoteXmlViewer from '$lib/editor/NoteXmlViewer.svelte';
@@ -135,6 +136,7 @@
 	let editorComponent: TomboyEditor | undefined = $state(undefined);
 	let bodyEl: HTMLDivElement | undefined;
 	let menuAnchor = $state<{ right: number; bottom: number } | null>(null);
+	let backlinkBundleOpen = $state(false);
 	let xmlViewerOpen = $state(false);
 	let sendRemarkableOpen = $state(false);
 	let titleDialogOpen = $state(false);
@@ -918,11 +920,6 @@
 		pushToast('노트북이 변경되었습니다.');
 	}
 
-	function handleActionGoto(targetGuid: string) {
-		menuAnchor = null;
-		desktopSession.openWindow(targetGuid);
-	}
-
 	const titleDisplay = $derived(note?.title?.trim() || '제목 없음');
 	const isFocused = $derived(desktopSession.focusedNoteGuid === guid);
 </script>
@@ -1157,7 +1154,17 @@
 		anchor={menuAnchor}
 		onaction={handleAction}
 		onclose={() => (menuAnchor = null)}
-		ongoto={handleActionGoto}
+		onbacklinks={() => { menuAnchor = null; backlinkBundleOpen = true; }}
+	/>
+{/if}
+
+{#if backlinkBundleOpen && note}
+	<BacklinkBundleOverlay
+		targetTitle={note.title}
+		targetGuid={note.guid}
+		windowed={true}
+		onclose={() => (backlinkBundleOpen = false)}
+		oninternallink={(t) => { backlinkBundleOpen = false; void handleInternalLink(t); }}
 	/>
 {/if}
 

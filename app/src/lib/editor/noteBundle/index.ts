@@ -3,7 +3,8 @@ export {
 	clampHeightPct,
 	DEFAULT_HEIGHT_PCT,
 	dedicatedBundleKind,
-	parseDedicatedBundle
+	parseDedicatedBundle,
+	buildSyntheticBundleSpec
 } from './parser.js';
 export type { BundleSpec, BundleNode, BundleEntry, BundleKind } from './parser.js';
 export {
