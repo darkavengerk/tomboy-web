@@ -78,9 +78,7 @@ def test_corrupt_json_raises(tmp_path: Path):
         s.read()
 
 
-def test_remove_page_drops_uuid_and_all_halves(tmp_path):
-    from desktop.lib.state import StateFile
-
+def test_remove_page_drops_uuid_and_all_halves(tmp_path: Path):
     s = StateFile(tmp_path / "prepared.json")
     s.write({"u": {"a": 1}, "u#0": {"b": 2}, "u#1": {"c": 3}, "v": {"d": 4}})
     s.remove_page("u")
@@ -88,9 +86,7 @@ def test_remove_page_drops_uuid_and_all_halves(tmp_path):
     assert set(remaining.keys()) == {"v"}
 
 
-def test_remove_page_noop_when_absent(tmp_path):
-    from desktop.lib.state import StateFile
-
+def test_remove_page_noop_when_absent(tmp_path: Path):
     s = StateFile(tmp_path / "prepared.json")
     s.write({"v": {"d": 4}})
     s.remove_page("u")  # no error, no change

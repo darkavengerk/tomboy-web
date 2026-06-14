@@ -12,6 +12,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from desktop.lib.keys import SEP
+
 
 class StateFile:
     """A small wrapper over a JSON file used to track per-stage progress."""
@@ -67,7 +69,7 @@ class StateFile:
         re-edited split page is fully re-processed (the bare ``remove`` only
         matched the whole-page key)."""
         current = self.read()
-        prefix = page_uuid + "#"
+        prefix = page_uuid + SEP
         keys = [k for k in current if k == page_uuid or k.startswith(prefix)]
         if not keys:
             return
