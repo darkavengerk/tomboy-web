@@ -87,8 +87,8 @@ the panel simply persists afterward instead of closing.
 | `newNoteFlow.svelte.ts` (extend) | State machine + sweep orchestration; no DOM | `linkSweep`, `noteStore`, `desktopSession`, `noteReloadBus` |
 | `NewNoteResultPanel.svelte` (new) | Render result view: stages+ms, sweep button, count/confirm/apply progress, close. Pure view over `newNoteFlow`. | `newNoteFlow`, `portal` |
 | `+layout.svelte` (extend) | Add `{:else if newNoteFlow.phase === 'result'}` to the existing phase block (`:374`) → render `NewNoteResultPanel`. | — |
-| `lib/core/linkSweep.ts` (new, headless) | `countLinkSweep` / `applyLinkSweep` over the corpus; cancel token; progress callback. No Svelte, no DOM. | `noteStore`, `noteContentArchiver`, `linkifyDoc` |
-| `lib/editor/autoLink/linkifyDoc.ts` (new, extracted) | Pure `linkifyDocJson(docJson, titles, schema, markType, suppress) → { docJson, changed }` — the whole-doc match+mark reconcile lifted out of `autoLinkPlugin.applyInRange`, runnable without an editor view. **Shared by the plugin and the sweep** so linking is byte-identical. | `findTitleMatches`, prosemirror-model |
+| `lib/core/linkSweep.ts` (new, headless) | `countLinkSweep` / `applyLinkSweep` over the corpus; cancel token; progress callback. No Svelte, no DOM. | `noteStore`, `noteContentArchiver`, `linkifyDocJson` |
+| `lib/editor/autoLink/linkifyDocJson.ts` (new) | Pure **additive** linker over plain `JSONContent`: `addInternalLinksForTitle(docJson, title, targetGuid, suppressMarks) → { docJson, changed }`. Walks textblocks, skips the title line + suppressed/code spans + text already inside an internal-link mark, runs `findTitleMatches` for the one title, adds the `tomboyInternalLink` mark on fresh matches. **No PM schema** (operates on JSON, not a PM `Node`); `autoLinkPlugin` is left unmodified. Matching consistency comes from sharing the pure `findTitleMatches`. | `findTitleMatches` |
 
 `NoteTitleDialog.svelte` stays focused on `input` + `creating` only; the result view is its own
 component (separation of concerns; the result panel's interaction model is materially different).
@@ -102,12 +102,12 @@ component (separation of concerns; the result panel's interaction model is mater
      - List all notes (`noteStore.getAllNotes()` / warm cache).
      - **Cheap prefilter:** skip unless `note.xmlContent.includes(title)` (and not deleted, not
        `newGuid`). A unique new title yields few candidates → most notes never get parsed.
-     - For each candidate: `deserializeContent(xml)` → `linkifyDocJson([{title, guid:newGuid}], …)`
-       in dry-run → if `changed`, record the guid.
+     - For each candidate: `deserializeContent(xml)` → `addInternalLinksForTitle(json, title,
+       newGuid, suppress)` → if `changed`, record the guid (count phase discards the new json).
      - Returns `{ matched: guid[], total: candidatesScanned }`. Panel shows "N개".
 2. `[취소]` → `cancelSweep()` → back to result, no writes.
 3. `[적용]` → `applySweep()`:
-   - For each matched guid: load note, `deserializeContent` → `linkifyDocJson` → `serializeContent`
+   - For each matched guid: load note, `deserializeContent` → `addInternalLinksForTitle` → `serializeContent`
      → `noteStore.putNote` (this also updates the in-memory backlink index per the backlink-index
      contract) → `noteMutated(note)`. Collect `updated` / `failed`, report progress M/N.
    - After (or on cancel, for the subset written): `emitNoteReload(written)` +
@@ -117,15 +117,20 @@ component (separation of concerns; the result panel's interaction model is mater
 
 ## Matching / link insertion detail
 
-- **Idempotent:** `linkifyDocJson` reconciles marks the same way the editor does — a note that
-  already carries the `<link:internal>` mark for this title is a no-op (so re-running the sweep
-  adds nothing, and notes already auto-linked while open are correctly counted as 0 changes).
-- **Consistency:** because both the live editor plugin and the sweep call the *same*
-  `linkifyDocJson`, the sweep can never diverge from interactive autolink behavior (word
-  boundaries, suppressed marks in code/monospace, longest-title-wins, self-exclusion).
-- **Headless schema:** `linkSweep` builds the editor schema once via TipTap `getSchema(extensions)`
-  (the same extension list `TomboyEditor` uses) and reuses it across all notes. `markType` =
-  the `tomboyInternalLink` mark type from that schema.
+- **Shared matcher (consistency where it matters):** title matching uses the *same pure*
+  `findTitleMatches` the editor plugin uses (word boundaries, longest-title-wins, exact case). The
+  sweep is **additive only** — it adds internal-link marks for the one new title — so it deliberately
+  does NOT replicate `applyInRange`'s full reconcile (stale removal, self-claim regions, existing-mark
+  validation). The JSON walker mirrors `applyInRange`'s run-building (concat a textblock's text
+  children) and skip rules (title line when the doc has a body; chars under suppressed marks).
+- **Idempotent:** before adding, any text span already covered by a `tomboyInternalLink` mark is
+  skipped. So a note already linked (e.g. auto-linked while open) yields 0 changes, and re-running the
+  sweep adds nothing.
+- **No PM schema, plugin untouched:** operates on plain `JSONContent` (the shape
+  `serializeContent` / `deserializeContent` already use) — no headless editor schema, no
+  `autoLinkPlugin` / `TomboyEditor` refactor.
+- **Self / blank skip:** the new note itself (`targetGuid`) and the note's own title line are never
+  linked; the `tomboyInternalLink` mark stores the title text (`attrs.target`), matching the editor.
 
 ## Error handling
 
@@ -175,31 +180,31 @@ note's own editor self-excludes its title via `findTitleMatches`' `excludeGuid`.
 
 This composes with the sweep: the automatic path links *open* editors that mention the new title
 immediately (cheap); the explicit sweep propagates to the *entire corpus* (incl. closed notes) on
-demand. The sweep's `flushAll` + idempotent `linkifyDoc` mean the two never double-link even if both
-touch the same open note.
+demand. The sweep's `flushAll` + idempotent `addInternalLinksForTitle` mean the two never
+double-link even if both touch the same open note.
 
 ## Files
 
-1. **New** `app/src/lib/editor/autoLink/linkifyDoc.ts` — extract `linkifyDocJson` from
-   `autoLinkPlugin.applyInRange`; refactor the plugin to call it.
-2. `app/src/lib/editor/autoLink/autoLinkPlugin.ts` — delegate its whole-doc reconcile to the
-   extracted helper (no behavior change).
-3. **New** `app/src/lib/core/linkSweep.ts` — `countLinkSweep` / `applyLinkSweep`.
-4. `app/src/lib/stores/newNoteFlow.svelte.ts` — add `'result'` phase + sweep orchestration methods.
-5. **New** `app/src/lib/components/NewNoteResultPanel.svelte` — result/sweep UI.
-6. `app/src/routes/+layout.svelte` — `result` phase branch renders the panel.
-7. `app/src/routes/settings/+page.svelte` — 가이드 → `notes` sub-tab
+1. **New** `app/src/lib/editor/autoLink/linkifyDocJson.ts` — pure additive JSON linker
+   `addInternalLinksForTitle(docJson, title, targetGuid, suppressMarks)`, reusing `findTitleMatches`.
+   (`autoLinkPlugin.ts` is NOT modified — 1b shares the matcher, not the PM reconcile.)
+2. **New** `app/src/lib/core/linkSweep.ts` — `countLinkSweep` / `applyLinkSweep`.
+3. `app/src/lib/stores/newNoteFlow.svelte.ts` — add `'result'` phase + sweep orchestration methods.
+4. **New** `app/src/lib/components/NewNoteResultPanel.svelte` — result/sweep UI.
+5. `app/src/routes/+layout.svelte` — `result` phase branch renders the panel.
+6. `app/src/routes/settings/+page.svelte` — 가이드 → `notes` sub-tab
    `<details class="guide-card">` documenting the result panel + 전체 문서 반영 (CLAUDE.md guide rule).
-8. `app/src/lib/editor/autoLink/titleProvider.ts` — compute + broadcast `{ added, removed }` delta;
+7. `app/src/lib/editor/autoLink/titleProvider.ts` — compute + broadcast `{ added, removed }` delta;
    `onChange` callback signature `(delta?) => void` (backward-compatible).
-9. **New** `app/src/lib/editor/autoLink/shouldRescanForDelta.ts` — pure delta-gate predicate.
-10. `app/src/lib/editor/TomboyEditor.svelte` — delta-gate the `titleProvider.onChange` rescan via
-    `shouldRescanForDelta(delta, ed.state.doc.textContent)`.
+8. **New** `app/src/lib/editor/autoLink/shouldRescanForDelta.ts` — pure delta-gate predicate.
+9. `app/src/lib/editor/TomboyEditor.svelte` — delta-gate the `titleProvider.onChange` rescan via
+   `shouldRescanForDelta(delta, ed.state.doc.textContent)`.
 
 ## Tests
 
-- `app/tests/unit/.../linkifyDoc.test.ts` — pure matcher/mark reconcile: word boundaries, code
-  suppression, existing-mark idempotency, longest-title-wins (reuse autolink fixtures).
+- `app/tests/unit/.../linkifyDocJson.test.ts` — pure additive linker: adds mark on a whole-word
+  match; no-op when no match; **idempotent** when the span already has the mark; skips the title line
+  (multi-block doc); skips text under suppressed marks (monospace/url); leaves `attrs.target` = title.
 - `app/tests/unit/.../linkSweep.test.ts` (fake-indexeddb) — seed notes (matching / non-matching /
   already-linked / deleted / the new note itself); count returns the correct guid set; apply marks
   only matches; **idempotent** on re-run; new note excluded; backlink index updated; cancel yields a
