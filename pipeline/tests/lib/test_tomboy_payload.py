@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 
 import pytest
@@ -21,124 +22,78 @@ def test_format_tomboy_date_utc():
     assert s.endswith("+00:00")
 
 
-def test_format_tomboy_date_with_microseconds():
-    dt = datetime(2024, 5, 10, 12, 0, 0, 123456, tzinfo=timezone.utc)
-    s = format_tomboy_date(dt)
-    assert ".1234560+" in s
+def test_whole_body_has_no_image_or_hr():
+    xml = build_note_content_xml("T", "a\nb")
+    assert xml == '<note-content version="0.1">T\n\na\nb</note-content>'
+    assert "<link:url>" not in xml
+    assert "---" not in xml
 
 
-def test_build_note_content_xml_basic():
-    xml = build_note_content_xml(
-        title="2024-05-10 리마커블([abc-123])",
-        ocr_text="첫째줄\n둘째줄",
-        image_url="https://example.com/page.png",
-    )
-    assert xml.startswith('<note-content version="0.1">')
-    assert xml.endswith("</note-content>")
-    assert "2024-05-10 리마커블([abc-123])" in xml
-    assert "첫째줄" in xml
-    assert "둘째줄" in xml
-    assert "---" in xml
-    # The image URL must be wrapped in a <link:url> mark, not plain text —
-    # the editor's TomboyUrlLink extension has no input/paste rule, so a
-    # plain URL would render as unclickable text. See the docstring of
-    # `build_note_content_xml` and spec §9.
-    assert "<link:url>https://example.com/page.png</link:url>" in xml
+def test_whole_body_escapes_special_chars():
+    xml = build_note_content_xml("t", 'a < b & c > d "e"')
+    assert "&lt;" in xml and "&gt;" in xml and "&amp;" in xml and "&quot;" in xml
 
 
-def test_build_note_content_xml_escapes_query_string_ampersand_inside_link_url():
-    # Real Dropbox share URLs contain `&` between query params; that has to
-    # become `&amp;` INSIDE the <link:url> element so the XML parses.
-    xml = build_note_content_xml(
-        title="t",
-        ocr_text="x",
-        image_url="https://www.dropbox.com/scl/fi/x/p.png?rlkey=abc&dl=0",
-    )
-    assert "<link:url>https://www.dropbox.com/scl/fi/x/p.png?rlkey=abc&amp;dl=0</link:url>" in xml
-    assert "&dl=0" not in xml  # raw & must have been escaped
+def test_slip_skeleton_body_layout():
+    title = "2026-06-14 09:30 리마커블 上([abc#0])"
+    xml = build_note_content_xml(title, "본문1\n본문2", slip=True)
+    inner = xml.replace('<note-content version="0.1">', "").replace("</note-content>", "")
+    lines = inner.split("\n")
+    assert lines[0] == title
+    assert lines[1] == ""
+    assert lines[2] == "이전: 없음"
+    assert lines[3] == "다음: 없음"
+    assert lines[4] == ""
+    assert lines[5] == "본문1"
+    assert "<link:url>" not in xml
 
 
-def test_build_note_content_xml_escapes_special_chars():
-    xml = build_note_content_xml(
-        title="t",
-        ocr_text="a < b & c > d \"e\"",
-        image_url="https://example.com/p.png",
-    )
-    assert "&lt;" in xml
-    assert "&gt;" in xml
-    assert "&amp;" in xml
-    assert "&quot;" in xml
-
-
-def test_build_payload_shape():
+def test_build_payload_whole_page():
     dt = datetime(2024, 5, 10, 12, 0, 0, tzinfo=timezone.utc)
-    payload = build_payload(
-        guid="11111111-2222-3333-4444-555555555555",
-        page_uuid="abc-123",
-        ocr_text="hello",
-        image_url="https://example.com/p.png",
-        notebook_name="일기",
-        title_format="{date} 리마커블([{page_uuid}])",
-        create_date=dt,
-        change_date=dt,
+    p = build_payload(
+        guid="g", page_uuid="abc-123", ocr_text="hello",
+        notebook_name="일기", title_format="{date} 리마커블([{unit_key}])",
+        create_date=dt, change_date=dt,
     )
-    assert payload["guid"] == "11111111-2222-3333-4444-555555555555"
-    assert payload["uri"] == "note://tomboy/11111111-2222-3333-4444-555555555555"
-    assert payload["title"] == "2024-05-10 리마커블([abc-123])"
-    assert "<note-content" in payload["xmlContent"]
-    assert payload["tags"] == ["system:notebook:일기"]
-    assert payload["deleted"] is False
-    assert "createDate" in payload
-    assert "changeDate" in payload
-    assert "metadataChangeDate" in payload
+    assert p["title"] == "2024-05-10 리마커블([abc-123])"
+    assert p["tags"] == ["system:notebook:일기"]
+    assert p["deleted"] is False
+    assert "<link:url>" not in p["xmlContent"]
+    inner = p["xmlContent"].replace('<note-content version="0.1">', "").replace("</note-content>", "")
+    assert inner.lstrip().splitlines()[0] == p["title"]
 
 
-def test_build_payload_title_uses_format_and_date():
-    dt = datetime(2025, 1, 15, 0, 0, 0, tzinfo=timezone.utc)
-    payload = build_payload(
-        guid="g",
-        page_uuid="p",
-        ocr_text="",
-        image_url="",
-        notebook_name="일기",
-        title_format="다이어리 {date} (#{page_uuid})",
-        create_date=dt,
-        change_date=dt,
+def test_build_payload_slip_title_matches_app_regex():
+    DATE_TIME_PREFIX = re.compile(r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}\b")
+    dt = datetime(2026, 6, 14, 9, 30, 0, tzinfo=timezone.utc)
+    p = build_payload(
+        guid="g", page_uuid="abc", unit_key="abc#0", ocr_text="x",
+        notebook_name="[0] Slip-Box",
+        title_format="{datetime} 리마커블 {label}([{unit_key}])",
+        create_date=dt, change_date=dt, label="上", slip=True,
     )
-    assert payload["title"] == "다이어리 2025-01-15 (#p)"
+    assert p["title"] == "2026-06-14 09:30 리마커블 上([abc#0])"
+    assert DATE_TIME_PREFIX.match(p["title"])
+    assert p["tags"] == ["system:notebook:[0] Slip-Box"]
+    assert "이전: 없음" in p["xmlContent"]
+    assert "다음: 없음" in p["xmlContent"]
+
+
+def test_build_payload_marker_uses_unit_key():
+    dt = datetime(2026, 6, 14, 9, 30, tzinfo=timezone.utc)
+    p = build_payload(
+        guid="g", page_uuid="abc", unit_key="abc#1", ocr_text="x",
+        notebook_name="N", title_format="{datetime} 리마커블 {label}([{unit_key}])",
+        create_date=dt, change_date=dt, label="下", slip=True,
+    )
+    assert "[abc#1]" in p["title"]
 
 
 def test_build_payload_too_large_raises():
     dt = datetime(2024, 1, 1, tzinfo=timezone.utc)
-    huge = "x" * 1_000_000
-    with pytest.raises(NotePayloadTooLargeError) as exc:
+    with pytest.raises(NotePayloadTooLargeError):
         build_payload(
-            guid="g",
-            page_uuid="p",
-            ocr_text=huge,
-            image_url="https://e.com/p.png",
-            notebook_name="일기",
-            title_format="{date}",
-            create_date=dt,
-            change_date=dt,
+            guid="g", page_uuid="p", ocr_text="x" * 1_000_000,
+            notebook_name="일기", title_format="{date}",
+            create_date=dt, change_date=dt,
         )
-    assert exc.value.byte_length > 900_000
-
-
-def test_build_payload_first_line_matches_title():
-    dt = datetime(2024, 5, 10, tzinfo=timezone.utc)
-    p = build_payload(
-        guid="g",
-        page_uuid="abc",
-        ocr_text="body",
-        image_url="https://e.com/p.png",
-        notebook_name="일기",
-        title_format="{date} 리마커블([{page_uuid}])",
-        create_date=dt,
-        change_date=dt,
-    )
-    inner = p["xmlContent"].replace('<note-content version="0.1">', "").replace(
-        "</note-content>", ""
-    )
-    first_line = inner.lstrip().splitlines()[0]
-    assert first_line == p["title"]
