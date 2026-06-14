@@ -42,10 +42,10 @@ export function addInternalLinksForTitle(
   function linkInline(block: JSONContent): JSONContent {
     const inline = block.content ?? [];
     // Build runs of contiguous text nodes (split on any non-text inline node).
-    let out: JSONContent[] = [];
+    const out: JSONContent[] = [];
     let run: JSONContent[] = [];
     const flush = () => {
-      if (run.length) { out = out.concat(relinkRun(run)); run = []; }
+      if (run.length) { out.push(...relinkRun(run)); run = []; }
     };
     for (const child of inline) {
       if (isText(child)) run.push(child);
@@ -75,9 +75,9 @@ export function addInternalLinksForTitle(
       for (let i = m.from; i < m.to; i++) if (meta[i].suppressed || meta[i].hasLink) { ok = false; break; }
       if (!ok) continue;
       for (let i = m.from; i < m.to; i++) marked[i] = true;
-      changed = true;
     }
-    if (!matches.length || marked.every((v) => !v)) return textNodes; // unchanged
+    if (!matches.length || marked.every((v) => !v)) return textNodes; // nothing applied
+    changed = true; // guard passed → at least one char will be marked
 
     // Re-emit, splitting each original text node at its node boundary AND at
     // marked/unmarked transitions, so original marks are preserved per node.

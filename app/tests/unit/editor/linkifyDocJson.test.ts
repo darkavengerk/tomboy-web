@@ -56,4 +56,32 @@ describe('addInternalLinksForTitle', () => {
     const liPara = ((docJson.content![1].content![0] as JSONContent).content![0] as JSONContent);
     expect(liPara.content!.some((n) => n.marks?.some((m) => m.type === 'tomboyInternalLink'))).toBe(true);
   });
+
+  it('links a match spanning two text nodes with different base marks', () => {
+    // 'Foo' straddles a bold node ('Fo') and an italic node ('o').
+    const input = doc(para('t'), { type: 'paragraph', content: [
+      { type: 'text', text: 'Fo', marks: [{ type: 'bold' }] },
+      { type: 'text', text: 'o', marks: [{ type: 'italic' }] }
+    ]});
+    const { changed, docJson } = addInternalLinksForTitle(input, 'Foo', 'g');
+    expect(changed).toBe(true);
+    const inline = docJson.content![1].content! as JSONContent[];
+    // Each original node keeps its own base mark AND gains the link mark.
+    const fo = inline.find((n) => n.text === 'Fo');
+    const o = inline.find((n) => n.text === 'o');
+    const names = (n?: JSONContent) => (n?.marks ?? []).map((m) => m.type).sort();
+    expect(names(fo)).toEqual(['bold', 'tomboyInternalLink']);
+    expect(names(o)).toEqual(['italic', 'tomboyInternalLink']);
+  });
+
+  it('links every match when a title occurs multiple times in one run', () => {
+    const input = doc(para('t'), para('Foo and Foo again'));
+    const { changed, docJson } = addInternalLinksForTitle(input, 'Foo', 'g');
+    expect(changed).toBe(true);
+    const inline = docJson.content![1].content! as JSONContent[];
+    const linkedTexts = inline
+      .filter((n) => n.marks?.some((m) => m.type === 'tomboyInternalLink'))
+      .map((n) => n.text);
+    expect(linkedTexts).toEqual(['Foo', 'Foo']); // two distinct linked spans, middle text unlinked
+  });
 });
