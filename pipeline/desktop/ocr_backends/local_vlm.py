@@ -18,6 +18,8 @@ from typing import Any
 # in torch lazily.
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
+from desktop.lib.raster import find_gap_near, ink_row_mask
+
 from .base import OCRBackend, OCRResult, register_backend
 
 
@@ -135,7 +137,7 @@ class LocalVlmBackend(OCRBackend):
         w, h = image.size
         if h <= self.TILE_THRESHOLD:
             return [image]
-        ink_rows = self._ink_row_mask(image)
+        ink_rows = ink_row_mask(image)
         tiles: list[Any] = []
         top = 0
         # Each iteration carves off one tile starting at `top`. We pick a
@@ -146,7 +148,7 @@ class LocalVlmBackend(OCRBackend):
             if target >= h:
                 tiles.append(image.crop((0, top, w, h)))
                 break
-            cut = self._find_gap_near(ink_rows, target, self.LINE_GAP_SEARCH)
+            cut = find_gap_near(ink_rows, target, self.LINE_GAP_SEARCH)
             # Defensive: never let snapping push the cut backward, that
             # would loop forever.
             if cut <= top:
@@ -157,57 +159,11 @@ class LocalVlmBackend(OCRBackend):
 
     @staticmethod
     def _ink_row_mask(image: Any) -> list[bool]:
-        """For each row, True iff any pixel is darker than near-white.
-
-        Used to find ink-free bands. Done in pure Pillow (no numpy) so the
-        backend doesn't grow a new hard dep just for tiling.
-        """
-        gray = image.convert("L")
-        w, h = gray.size
-        # Threshold: same near-white cutoff already used by the s2 tests.
-        # Any pixel < 250 counts as ink.
-        # `Image.point` builds a 0/1 mask, then `getextrema` per-row would
-        # be O(h) PIL calls. The cheapest portable path: read the bytes
-        # once and scan.
-        data = gray.tobytes()
-        assert len(data) == w * h, "unexpected PIL row stride"
-        rows: list[bool] = [False] * h
-        for y in range(h):
-            base = y * w
-            row = data[base : base + w]
-            # `min(row)` over a bytes object is C-level fast in CPython.
-            if min(row) < 250:
-                rows[y] = True
-        return rows
+        return ink_row_mask(image)
 
     @staticmethod
     def _find_gap_near(ink_rows: list[bool], target: int, search: int) -> int:
-        """Return the midpoint of the longest blank run within
-        [target-search, target+search]. Falls back to ``target`` when the
-        window has no blank row."""
-        n = len(ink_rows)
-        lo = max(0, target - search)
-        hi = min(n, target + search)
-        best_mid = target
-        best_len = 0
-        run_start: int | None = None
-        for i in range(lo, hi):
-            if not ink_rows[i]:
-                if run_start is None:
-                    run_start = i
-            else:
-                if run_start is not None:
-                    run_len = i - run_start
-                    if run_len > best_len:
-                        best_len = run_len
-                        best_mid = (run_start + i) // 2
-                    run_start = None
-        if run_start is not None:
-            run_len = hi - run_start
-            if run_len > best_len:
-                best_len = run_len
-                best_mid = (run_start + hi) // 2
-        return best_mid
+        return find_gap_near(ink_rows, target, search)
 
     def ocr(self, image_path: Path) -> OCRResult:
         text = self._run_inference(image_path, self.system_prompt).strip()
