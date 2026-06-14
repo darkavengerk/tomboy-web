@@ -2420,6 +2420,19 @@ Complete:</pre>
 						<li>묶음 안 노트의 또 다른 탭/묶음은 리스트로만 보임 (1단계 중첩)</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>같은 노트를 여러 곳에서 열어도 동기화</summary>
+					<p class="info-text">
+						한 노트를 노트 묶음 안과 노트 페이지(또는 데스크탑 창)에서 동시에 열어두고
+						한쪽에서 편집하면, 잠시 뒤 다른 쪽도 자동으로 같은 내용으로 맞춰집니다.
+					</p>
+					<ul class="guide-list">
+						<li>입력 중인 편집기는 바뀌지 않습니다 — 보고만 있던 쪽이 따라옵니다.</li>
+						<li>편집기에서 포커스를 벗어나면(다른 곳 클릭) 그 즉시 저장되므로, 동시에 다른 곳에서 저장돼도 입력 내용이 사라지지 않습니다.</li>
+						<li>커서 위치는 가능한 한 유지됩니다.</li>
+					</ul>
+				</details>
 			</section>
 
 			{:else if guideSubTab === 'env'}
