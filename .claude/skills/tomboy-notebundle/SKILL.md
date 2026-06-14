@@ -534,8 +534,10 @@ hosts **hide the note title-bar AND the bottom `Toolbar`** (`.toolbar-area` /
 `.toolbar-slot`): the title is already on the bars, and `getEditor()` is null in
 cabinet view (no host editor) so the Toolbar would be inert and overlap the body
 (the "목록 하단 가림" bug). Both return in raw/edit mode (`showRawBundle` true) so
-it "looks like a normal note". Desktop NoteWindow keeps its **window** title-bar
-(drag handle + ✕) — that's window chrome, not the note title-bar.
+it "looks like a normal note". **Desktop NoteWindow also hides its window
+title-bar** in cabinet view (user choice) — drag + 📌 pin are lost there, close
+is via the dchrome `✕`, and the resize handles still work; the title-bar (and
+drag/pin) returns in raw mode.
 
 **Teardown-safety: `bind:this` must key on the stable node, not the session.**
 The embedded editor binds `bind:this={editorRefs[node.guid!]}` (Stack) /
