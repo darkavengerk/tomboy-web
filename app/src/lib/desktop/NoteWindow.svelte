@@ -149,6 +149,11 @@
 	let llmBridgeUrl = $state('');
 	let llmBridgeToken = $state('');
 
+	// Stable identity for THIS window's editor on the reload bus, so its own
+	// save-convergence emit excludes itself (other editors of the same guid
+	// still reload). One token per window instance.
+	const reloadToken = {};
+
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	let pendingDoc: JSONContent | null = $state.raw(null);
 	// Fingerprint of the last successfully-flushed doc. flushSave() skips
@@ -351,7 +356,7 @@
 		const g = guid;
 		const off = subscribeNoteReload(g, async () => {
 			await externalReload();
-		});
+		}, reloadToken);
 		// Flush bus: a rename sweep elsewhere flushes this window BEFORE it
 		// reads + rewrites this note, so an unsaved pending body edit in a
 		// backlinked note lands in IDB first instead of being read stale,
@@ -432,7 +437,7 @@
 				return;
 			}
 			saving = true;
-			const updated = await updateNoteFromEditor(note.guid, pendingDoc);
+			const updated = await updateNoteFromEditor(note.guid, pendingDoc, reloadToken);
 			if (updated) note = updated;
 			lastSavedDocFingerprint = fingerprint;
 			pendingDoc = null;

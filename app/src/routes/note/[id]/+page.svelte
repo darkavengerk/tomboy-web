@@ -132,6 +132,12 @@
 	let llmBridgeUrl = $state('');
 	let llmBridgeToken = $state('');
 
+	// Stable identity for THIS page's editor on the reload bus, so its own
+	// save-convergence emit excludes itself (other editors of the same guid
+	// still reload). One token for the page instance — it persists across note
+	// navigations because the editor is reused (no {#key noteId}).
+	const reloadToken = {};
+
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	let loadedGuid: string | null = null;
 	let pendingDoc: JSONContent | null = $state.raw(null);
@@ -238,7 +244,7 @@
 			keysSpec = parseKeysNote(editorContent);
 			if (!keysSpec) keysConnectMode = false;
 			lastSavedDocFingerprint = null;
-		});
+		}, reloadToken);
 		// Flush bus: a rename sweep elsewhere flushes this editor BEFORE it
 		// reads + rewrites this note, so an unsaved pending edit lands in IDB
 		// first rather than being read stale and overwritten. On mobile this
@@ -410,7 +416,7 @@
 				return;
 			}
 			saving = true;
-			const updated = await updateNoteFromEditor(note.guid, pendingDoc);
+			const updated = await updateNoteFromEditor(note.guid, pendingDoc, reloadToken);
 			if (updated) note = updated;
 			lastSavedDocFingerprint = fingerprint;
 			pendingDoc = null;

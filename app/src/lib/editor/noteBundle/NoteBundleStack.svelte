@@ -314,6 +314,10 @@
 	interface EditorSession {
 		guid: string;
 		content: JSONContent;
+		/** Last-known xml of this note — reload no-op guard (used by Task 4). */
+		xmlContent: string;
+		/** Stable reload-bus identity for THIS leaf. */
+		reloadToken: object;
 		createDate: string | null;
 		pendingDoc: JSONContent | null;
 		saveTimer: ReturnType<typeof setTimeout> | null;
@@ -339,7 +343,7 @@
 		s.pendingDoc = null;
 		if (!docJson) return;
 		try {
-			await updateNoteFromEditor(guid, docJson);
+			await updateNoteFromEditor(guid, docJson, s.reloadToken);
 		} catch (err) {
 			console.error('[noteBundle flushSave]', err);
 		}
@@ -368,6 +372,7 @@
 			const [note, scrollBottom] = await Promise.all([getNote(guid), isScrollBottomNote(guid)]);
 			if (!note || destroyed || sessions.has(guid)) return;
 			attachOpenNote(guid);
+			const reloadToken = {};
 			const offReload = subscribeNoteReload(guid, async () => {
 				const cur = sessions.get(guid);
 				if (cur) {
@@ -388,12 +393,14 @@
 						isMusic: isMusicNoteDoc(content)
 					});
 				}
-			});
+			}, reloadToken);
 			const offFlush = subscribeNoteFlush(guid, () => flushSession(guid));
 			const content = getNoteEditorContent(note);
 			sessions.set(guid, {
 				guid,
 				content,
+				xmlContent: note.xmlContent,
+				reloadToken,
 				createDate: note.createDate ?? null,
 				pendingDoc: null,
 				saveTimer: null,
