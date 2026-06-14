@@ -1024,7 +1024,7 @@
 		align-items: center;
 		gap: 8px;
 		padding: clamp(4px, 0.9vw, 6px) clamp(6px, 1.4vw, 10px);
-		background: #3f8657;
+		background: #2d5a3d;
 		border-bottom: 1px solid #1a1a1a;
 	}
 	.edit-nav {
