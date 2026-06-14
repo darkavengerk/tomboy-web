@@ -1950,6 +1950,17 @@ https://www.youtube.com/playlist?list=…  (재생목록: 일반 줄)</pre>
 							도메인)에만 사용하세요.</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>새 노트 결과 패널 · 전체 문서에 제목 반영</summary>
+					<p class="info-text">새 노트를 만들면 진행 팝업이 자동으로 닫히지 않고 각 단계 소요 시간을 보여줍니다. 원하면 이 제목을 기존 모든 노트에 링크로 반영할 수 있습니다.</p>
+					<ul class="guide-list">
+						<li>"전체 문서에 이 제목 반영"을 누르면 먼저 <b>몇 개 노트가 업데이트되는지</b> 집계 후 확인을 받습니다.</li>
+						<li>적용하면 제목과 일치하는 본문이 내부 링크가 되어 새 노트의 백링크로 잡힙니다.</li>
+						<li>업데이트된 노트는 다음 Dropbox "지금 동기화" 때 함께 올라갑니다.</li>
+						<li>닫기 전까지 결과·소요 시간이 유지됩니다.</li>
+					</ul>
+				</details>
 			</section>
 
 			{:else if guideSubTab === 'editor'}
