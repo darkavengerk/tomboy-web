@@ -33,6 +33,7 @@
 	import { ClipboardFidelity } from "./clipboardFidelity.js";
 	import { ctrlEnterSplit } from "./ctrlEnterSplit.js";
 	import { createTitleProvider } from "./autoLink/titleProvider.js";
+	import { shouldRescanForDelta } from "./autoLink/shouldRescanForDelta.js";
 	import { consumeNewNoteIntent } from "$lib/core/newNoteIntent.js";
 	import { autoLinkPluginKey } from "./autoLink/autoLinkPlugin.js";
 	import {
@@ -1144,8 +1145,12 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		// ask the plugin for a full-document rescan. Routed through the
 		// same debouncer so a burst of cache invalidations collapses into
 		// one scan.
-		const offChange = titleProvider.onChange(() => {
-			scheduleAutoLinkScan({ full: true });
+		const offChange = titleProvider.onChange((delta) => {
+			const ed = editor;
+			if (!ed || ed.isDestroyed) { scheduleAutoLinkScan({ full: true }); return; }
+			if (shouldRescanForDelta(delta, ed.state.doc.textContent)) {
+				scheduleAutoLinkScan({ full: true });
+			}
 		});
 
 		// Keep the caret above the floating bottom toolbar while typing (mobile

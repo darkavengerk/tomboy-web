@@ -29,6 +29,7 @@
 	import { favoriteStore } from '$lib/storage/favoriteStore.svelte.js';
 	import { getCachedPublicConfig, discoverPublicConfigForGuest } from '$lib/sync/firebase/publicConfig.js';
 	import NoteTitleDialog from '$lib/components/NoteTitleDialog.svelte';
+	import NewNoteResultPanel from '$lib/components/NewNoteResultPanel.svelte';
 	import { newNoteFlow } from '$lib/stores/newNoteFlow.svelte.js';
 	import { listNotebooks } from '$lib/core/notebooks.js';
 
@@ -387,6 +388,8 @@
 		onsubmit={() => {}}
 		oncancel={() => {}}
 	/>
+{:else if newNoteFlow.phase === 'result'}
+	<NewNoteResultPanel />
 {/if}
 
 <style>
