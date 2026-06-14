@@ -52,16 +52,17 @@ sync see a normal checkbox + bullet list; the bundle never mutates the list.
 
 | File | Role |
 |------|------|
-| `lib/editor/noteBundle/parser.ts` | Pure `parseNoteBundles(doc): BundleSpec[]`. Atom-aware PMNode walk; **both keywords** (`탭:`→kind 'tab', `묶음:`→kind 'bundle'). Per kind it fills **either** `tree: BundleNode{label,link,children}` (tab, recursive — `parseTree`) **or** `entries: BundleEntry{title,category}` (bundle, flat — `parseEntries`); the other field stays `[]`. No IDB, no title index. |
+| `lib/editor/noteBundle/parser.ts` | Pure `parseNoteBundles(doc): BundleSpec[]`. Atom-aware PMNode walk; **both keywords** (`탭:`→kind 'tab', `묶음:`→kind 'bundle'). Per kind it fills **either** `tree: BundleNode{label,link,children}` (tab, recursive — `parseTree`) **or** `entries: BundleEntry{title,category}` (bundle, flat — `parseEntries`); the other field stays `[]`. No IDB, no title index. **Also** the dedicated-note path: `dedicatedBundleKind(title)` (`탭::`/`묶음::` 접두 → kind, else null) + `parseDedicatedBundle(jsonDoc, kind): BundleSpec` (synthetic spec from the **whole body** — JSON-based twin of the PMNode walk; see 전용 노트 section). |
 | `lib/editor/noteBundle/noteBundlePlugin.ts` | ProseMirror plugin, **kind-agnostic**. Hide-list node decoration gated on `hasContent` (`tree.length \|\| entries.length`) + cached widget container per ordinal + `StackController` lifecycle. **Kind-change (탭↔묶음) on a live ordinal = destroy + remount** (`controllerKind` map). Checked → hides declaration line (`keywordPos..keywordEnd`) **and** list. Exports `writeBundleHeightPct` + `setBundleChecked` (Ctrl 편집 버튼 → 체크 해제). **No list mutation** (only the checkbox attr / `:N` digits). |
 | `lib/editor/noteBundle/stackMath.ts` | **Tab** tree-navigation — `firstNavPath`, `drillFrom`, `repairPath`, `stepPath` (bubbles to parent at level ends), `pickPath`, `nodesAtDepth`, `clampIndex`, `visibleTabs` (range-safe), `tabView`/`TAB_FIT_MAX`/`TAB_WINDOW` (active-centred window + `[+N]` badges). |
 | `lib/editor/noteBundle/cabinetMath.ts` | **Bundle** title-window algebra — `WINDOW_SIZE=5`, `ACTIVE_SLOT=2`, `windowWidth`, `centeredWindow` (active fixed at slot 3 / index 2 regardless of scroll direction, end-pinned), `firstValidIndex`/`nextValidIndex` (broken-skip). |
-| `lib/editor/noteBundle/NoteBundleStack.svelte` | **Tab** UI (kind 'tab'). `activePath` + recursive `tabLevel` snippet + keep-alive `EditorSession` map + barrier + browse/edit + host-shell wiring. |
-| `lib/editor/noteBundle/NoteBundleCabinet.svelte` | **Bundle** UI (kind 'bundle'). Flat `resolved` entries + `k`(active)/`winStart`(5-bar window) + flex-grow drawer + same barrier / sessions / modes / host-shell wiring. |
-| `lib/editor/noteBundle/index.ts` | Barrel (exports `BundleSpec`, `BundleNode`, `BundleEntry`, `BundleKind`). |
-| `lib/editor/TomboyEditor.svelte` | Wires the plugin (`enableNoteBundle`, default `true`). `mountStack` **branches on `spec.kind`** → mounts `NoteBundleCabinet` (bundle) or `NoteBundleStack` (tab), both with `EditorComponent: TomboyEditorSelf` + `$state` props. |
-| `routes/settings/+page.svelte` (가이드 → notes 탭) | **Two** guide cards: "탭 — 오가며 작업하는 노트 탭" + "묶음 — 뒤져서 찾는 노트 서류함". |
-| `tests/unit/editor/noteBundle/{parser,noteBundlePlugin,stackMath,cabinetMath}.test.ts` | Unit tests (parser kind/tree/entries, plugin decorations + kind-change remount, tab tree-nav + tabView/visibleTabs, bundle window-5 algebra). |
+| `lib/editor/noteBundle/NoteBundleStack.svelte` | **Tab** UI (kind 'tab'). `activePath` + recursive `tabLevel` snippet + keep-alive `EditorSession` map + barrier + browse/edit + host-shell wiring. `variant='dedicated'` + nullable `view` + `onclose`/`onraw` for the full-note path. |
+| `lib/editor/noteBundle/NoteBundleCabinet.svelte` | **Bundle** UI (kind 'bundle'). Flat `resolved` entries + `k`(active)/`winStart`(5-bar window) + flex-grow drawer + same barrier / sessions / modes / host-shell wiring. Same `variant='dedicated'` extras. |
+| `lib/editor/noteBundle/index.ts` | Barrel (exports `BundleSpec`, `BundleNode`, `BundleEntry`, `BundleKind`, `dedicatedBundleKind`, `parseDedicatedBundle`). |
+| `lib/editor/TomboyEditor.svelte` | Wires the plugin (`enableNoteBundle`, default `true`). `mountStack` **branches on `spec.kind`** → mounts `NoteBundleCabinet` (bundle) or `NoteBundleStack` (tab), both with `EditorComponent: TomboyEditorSelf` + `$state` props (inline `variant`). |
+| `routes/note/[id]/+page.svelte` + `lib/desktop/NoteWindow.svelte` | **Dedicated-note hosts** — branch on `dedicatedBundleKind(note.title)`; render `NoteBundleStack`/`NoteBundleCabinet` `variant="dedicated"` `view={null}` (+ `onclose=handleClose` on NoteWindow only) when `!showRawBundle`; else the normal `TomboyEditor` + a Ctrl-gated `↩ 묶음` back button. |
+| `routes/settings/+page.svelte` (가이드 → notes 탭) | **Three** guide cards: "탭 …" + "묶음 …" + "전용 탭/묶음 노트 — 노트 하나가 통째로 파일철". |
+| `tests/unit/editor/noteBundle/{parser,noteBundlePlugin,stackMath,cabinetMath,dedicatedParser}.test.ts` | Unit tests (parser kind/tree/entries, plugin decorations + kind-change remount, tab tree-nav + tabView/visibleTabs, bundle window-5 algebra, **dedicated** title-sig + body→tree/entries). |
 
 There is **no Svelte component test** — both UIs are verified manually via
 `npm run dev` and the headless probe scripts under `/tmp/nb-verify/`
@@ -468,6 +469,65 @@ layout** — it has no recursion:
 but its windowing was **changed to fixed slot-3 centering** (`centeredWindow`)
 per the bundle use case — the old `clampWindow`/`stepWindow`/`initialWindow`
 band + eager-slide are gone. It is independent of `stackMath` (tab tree-nav).
+
+## 전용 노트 (dedicated note — the whole note IS the cabinet)
+
+A note whose **title** starts `탭::` or `묶음::` opens not as an in-body widget
+but as a **full-note takeover view** (terminal/music-note pattern) — the entire
+body is the cabinet. No checkbox / keyword needed; just list links in the body.
+
+**Parser (`parser.ts`, JSON-based).** The host is `note/[id]` / `NoteWindow`,
+which hold `editorContent` (JSONContent), not a live PMNode — so the dedicated
+parser is a **JSON twin** of the PMNode walk (own `collectLinksJson` /
+`paragraphTextJson` / `parseTreeJson` / `parseListIntoJson`), NOT a reuse of the
+PMNode helpers.
+
+- `dedicatedBundleKind(title)` → `'tab'` / `'bundle'` / `null` (trimStart, then
+  `탭::` / `묶음::` prefix; single-colon `탭:` does NOT match).
+- `parseDedicatedBundle(jsonDoc, kind): BundleSpec` — synthetic spec from the
+  **whole body**. `checked=true`, `heightPct=100`, write-back fields `-1`/`null`
+  (no checkbox/list/digits to persist). `tree` for tab, `entries` for bundle.
+
+**Depth model — body is the "depth-1 list".** Walk top-level body blocks,
+**skipping block 0 (the title line)**:
+
+- A top-level **textblock** (paragraph/heading) with links → **depth-1**
+  leaves/entries (one per link).
+- A textblock **immediately followed by a list** → that textblock is the
+  **category** (its text = label), the list its children (**depth-2**). This is
+  the old "listItem + nested bulletList" relation lifted one level up — that's
+  why "리스트는 깊이2로 시작". The textblock's own links become the first
+  children (tab) / get the inherited category (bundle).
+- A list with **no preceding textblock** (first block, or list-after-list) →
+  its items fall in at **depth-1** directly (fallback, no category).
+- Nested lists recurse exactly as in-body (`parseTreeJson`/`parseListIntoJson`).
+- 묶음 keeps `category` too (parent textblock title) — depth is NOT flat-only.
+
+**Component reuse via `variant`.** `NoteBundleStack`/`NoteBundleCabinet` gained
+`variant: 'inline' | 'dedicated'` (default inline), nullable `view`, and
+`onclose?` / `onraw?`:
+
+- `dedicated` → root `flex:1` (fills `.editor-area`/`.body`), no inline height,
+  the `onMount` height-basis block + resize handle are skipped, `view` is null
+  so `writeBundleHeightPct`/`setBundleChecked` are guarded out.
+- Browse-mode top-right **dedicated chrome**: `[✎ 편집 (Ctrl)] [↗ 꺼내기]
+  [✕ 닫기]`. **닫기 only when `onclose` is provided** (NoteWindow → `handleClose`;
+  the mobile route omits it → no 닫기). Chrome is browse-only; in edit mode the
+  existing `.edit-header` (← 돌아가기 / ↗ 꺼내기) takes over (so 닫기 never shows
+  in edit mode). 꺼내기 = `oninternallink(active title)` standalone-open.
+- Ctrl→`✎ 편집` calls `onraw()`. The **host** (route/window) owns a
+  `showRawBundle` toggle: true → render the plain `TomboyEditor` on the host note
+  (edit the link list) with a Ctrl-gated `↩ 묶음` back button (`exitRawBundle`,
+  which pulls the live editor doc into `editorContent` so the re-parsed spec
+  reflects unsaved edits). `showRawBundle` resets to false on note change.
+- Ctrl gating means the raw toggle is **desktop-only** (same limitation as the
+  in-body Ctrl 편집 button); on mobile, escape a dedicated note by editing its
+  title (remove the `탭::`/`묶음::` prefix).
+
+The dedicated host editors are **not recursive** — a child note opened inside
+the cabinet renders via the embedded `EditorComponent` (route-level title-sig
+detection never fires for it), so a child titled `묶음::…` just shows as a normal
+note, no nested takeover.
 
 ## Invariants
 

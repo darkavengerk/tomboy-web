@@ -1,4 +1,10 @@
-export { parseNoteBundles, clampHeightPct, DEFAULT_HEIGHT_PCT } from './parser.js';
+export {
+	parseNoteBundles,
+	clampHeightPct,
+	DEFAULT_HEIGHT_PCT,
+	dedicatedBundleKind,
+	parseDedicatedBundle
+} from './parser.js';
 export type { BundleSpec, BundleNode, BundleEntry, BundleKind } from './parser.js';
 export {
 	createNoteBundlePlugin,

@@ -2428,6 +2428,33 @@ Complete:</pre>
 						<li>묶음 안 노트의 또 다른 탭/묶음은 리스트로만 보임 (1단계 중첩)</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>전용 탭/묶음 노트 — 노트 하나가 통째로 파일철</summary>
+					<p class="info-text">
+						제목을 <strong>탭::</strong> 또는 <strong>묶음::</strong> 로 시작하면, 그 노트는
+						본문 속 위젯이 아니라 <strong>노트 전체가 곧 파일철</strong>로 열립니다(터미널·음악
+						노트처럼 전용 화면). 체크박스·키워드를 적을 필요 없이 본문에 링크만 늘어놓으면 돼요.
+						본문 자체가 "깊이1 리스트" — 단락 링크가 곧 항목이 되고, 리스트를 쓰면 한 단계 들어간
+						카테고리가 됩니다.
+					</p>
+					<pre class="snippet">탭::메뉴
+[[오늘 할 일]]
+프로젝트
+• [[시계탑 구현]]
+• [[시계탑 버그]]
+	• [[버그 재현 노트]]</pre>
+					<ul class="guide-list">
+						<li>제목이 <strong>탭::</strong> = 재귀 탭, <strong>묶음::</strong> = 5칸 서류함 — 동작은 본문 속 탭/묶음과 동일</li>
+						<li>본문 최상위 단락의 링크 = <strong>깊이1 항목</strong>. 단락 바로 <strong>아래에 리스트</strong>를 두면 그 단락이 카테고리가 되고 리스트 항목은 그 하위(깊이2)</li>
+						<li>부모 단락 없이 시작하는 리스트는 그냥 깊이1 항목들로 들어감</li>
+						<li>제목 줄(첫 줄)의 링크는 항목으로 치지 않음 — 제목이니까</li>
+						<li>우측 상단 <strong>↗ 꺼내기</strong> = 지금 보고 있는 노트를 단독 화면으로 열기, <strong>✕ 닫기</strong> = 창 닫기(<strong>데스크탑 창에서만</strong> 표시 — 모바일·편집 모드에선 숨김)</li>
+						<li>본문/링크 리스트를 고치려면 <kbd>Ctrl</kbd>을 누르고 우측 상단 <strong>✎ 편집</strong> → 일반 노트처럼 보임. 그 상태에서 다시 <kbd>Ctrl</kbd>을 누르면 좌측 상단 <strong>↩ 묶음</strong> 버튼으로 파일철 뷰 복귀</li>
+						<li>훑어보기/편집(단일 노트 뷰)·휠/스와이프·터미널/음악 배선은 본문 속 탭/묶음과 똑같이 동작</li>
+						<li>제목에서 <strong>탭::</strong>/<strong>묶음::</strong> 접두를 지우면 다시 평범한 노트가 됨</li>
+					</ul>
+				</details>
 			</section>
 
 			{:else if guideSubTab === 'env'}
