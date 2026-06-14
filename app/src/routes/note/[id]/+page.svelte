@@ -223,6 +223,11 @@
 		const g = note?.guid;
 		if (!g) return;
 		const off = subscribeNoteReload(g, async () => {
+			// Don't yank an editor the user is actively typing in. flush-on-blur
+			// (added in a later task) keeps only the focused editor dirty, so
+			// idle siblings still reload and converge.
+			const ed = editorComponent?.getEditor?.();
+			if (ed?.isFocused && pendingDoc) return;
 			// Cancel any pending debounced save so the stale doc it holds
 			// doesn't win the race with the fresh IDB content.
 			if (saveTimer) {

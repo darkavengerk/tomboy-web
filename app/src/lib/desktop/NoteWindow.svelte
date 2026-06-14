@@ -519,6 +519,7 @@
 		if (!note) return;
 		const fresh = await getNote(note.guid);
 		if (!fresh) return;
+		if (fresh.xmlContent === note.xmlContent) return; // no-op: nothing changed
 		note = fresh;
 		editorContent = getNoteEditorContent(fresh);
 		isMusicNote = isMusicNoteDoc(editorContent as JSONContent);
@@ -539,6 +540,9 @@
 	 * fresh IDB content wins) and then reload as normal.
 	 */
 	async function externalReload(): Promise<void> {
+		// Actively-typed editor must not be reloaded mid-keystroke.
+		const ed = getEditor();
+		if (ed?.isFocused && pendingDoc) return;
 		if (saveTimer) {
 			clearTimeout(saveTimer);
 			saveTimer = null;

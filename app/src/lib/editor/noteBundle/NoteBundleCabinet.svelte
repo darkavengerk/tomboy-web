@@ -372,27 +372,31 @@
 			attachOpenNote(guid);
 			const reloadToken = {};
 			const offReload = subscribeNoteReload(guid, async () => {
-				// 렌임 스윕 등 외부 rewrite — pending 폐기 후 IDB 재로드
-				const cur = sessions.get(guid);
-				if (cur) {
-					if (cur.saveTimer) {
-						clearTimeout(cur.saveTimer);
-						cur.saveTimer = null;
+					const cur = sessions.get(guid);
+					// Skip when THIS leaf is focused + dirty (user is typing here).
+					const ed = editorRefs[guid]?.getEditor?.();
+					if (ed?.isFocused && cur?.pendingDoc) return;
+					if (cur) {
+						if (cur.saveTimer) {
+							clearTimeout(cur.saveTimer);
+							cur.saveTimer = null;
+						}
+						cur.pendingDoc = null;
 					}
-					cur.pendingDoc = null;
-				}
-				const fresh = await getNote(guid);
-				const live = sessions.get(guid);
-				if (fresh && live) {
+					const fresh = await getNote(guid);
+					const live = sessions.get(guid);
+					if (!fresh || !live) return;
+					if (fresh.xmlContent === live.xmlContent) return; // no-op
 					const content = getNoteEditorContent(fresh);
 					sessions.set(guid, {
 						...live,
 						content,
+						xmlContent: fresh.xmlContent,
 						termSpec: parseTerminalNote(content),
 						isMusic: isMusicNoteDoc(content)
 					});
-				}
-			}, reloadToken);
+				},
+			reloadToken);
 			const offFlush = subscribeNoteFlush(guid, () => flushSession(guid));
 			const content = getNoteEditorContent(note);
 			sessions.set(guid, {
