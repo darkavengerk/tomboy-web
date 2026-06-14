@@ -149,6 +149,11 @@
 	let llmBridgeUrl = $state('');
 	let llmBridgeToken = $state('');
 
+	// Stable identity for THIS window's editor on the reload bus, so its own
+	// save-convergence emit excludes itself (other editors of the same guid
+	// still reload). One token per window instance.
+	const reloadToken = {};
+
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	let pendingDoc: JSONContent | null = $state.raw(null);
 	// Fingerprint of the last successfully-flushed doc. flushSave() skips
@@ -351,7 +356,7 @@
 		const g = guid;
 		const off = subscribeNoteReload(g, async () => {
 			await externalReload();
-		});
+		}, reloadToken);
 		// Flush bus: a rename sweep elsewhere flushes this window BEFORE it
 		// reads + rewrites this note, so an unsaved pending body edit in a
 		// backlinked note lands in IDB first instead of being read stale,
@@ -432,7 +437,7 @@
 				return;
 			}
 			saving = true;
-			const updated = await updateNoteFromEditor(note.guid, pendingDoc);
+			const updated = await updateNoteFromEditor(note.guid, pendingDoc, reloadToken);
 			if (updated) note = updated;
 			lastSavedDocFingerprint = fingerprint;
 			pendingDoc = null;
@@ -514,6 +519,7 @@
 		if (!note) return;
 		const fresh = await getNote(note.guid);
 		if (!fresh) return;
+		if (fresh.xmlContent === note.xmlContent) return; // no-op: nothing changed
 		note = fresh;
 		editorContent = getNoteEditorContent(fresh);
 		isMusicNote = isMusicNoteDoc(editorContent as JSONContent);
@@ -522,10 +528,6 @@
 		keysSpec = parseKeysNote(editorContent);
 		if (!keysSpec) keysConnectMode = false;
 		lastSavedDocFingerprint = null;
-		const ed = getEditor();
-		if (ed && editorContent) {
-			ed.commands.setContent(editorContent, { emitUpdate: false });
-		}
 	}
 
 	/**
@@ -534,6 +536,9 @@
 	 * fresh IDB content wins) and then reload as normal.
 	 */
 	async function externalReload(): Promise<void> {
+		// Actively-typed editor must not be reloaded mid-keystroke.
+		const ed = getEditor();
+		if (ed?.isFocused && pendingDoc) return;
 		if (saveTimer) {
 			clearTimeout(saveTimer);
 			saveTimer = null;
@@ -964,6 +969,7 @@
 					bind:this={editorComponent}
 					content={editorContent}
 					onchange={handleEditorChange}
+					onblur={() => { void flushSave(); }}
 					oninternallink={handleInternalLink}
 					currentGuid={guid}
 					enableContextMenu={true}

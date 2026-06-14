@@ -132,6 +132,12 @@
 	let llmBridgeUrl = $state('');
 	let llmBridgeToken = $state('');
 
+	// Stable identity for THIS page's editor on the reload bus, so its own
+	// save-convergence emit excludes itself (other editors of the same guid
+	// still reload). One token for the page instance — it persists across note
+	// navigations because the editor is reused (no {#key noteId}).
+	const reloadToken = {};
+
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	let loadedGuid: string | null = null;
 	let pendingDoc: JSONContent | null = $state.raw(null);
@@ -217,16 +223,22 @@
 		const g = note?.guid;
 		if (!g) return;
 		const off = subscribeNoteReload(g, async () => {
-			// Cancel any pending debounced save so the stale doc it holds
-			// doesn't win the race with the fresh IDB content.
+			// Don't yank an editor the user is actively typing in. flush-on-blur
+			// (added in a later task) keeps only the focused editor dirty, so
+			// idle siblings still reload and converge.
+			const ed = editorComponent?.getEditor?.();
+			if (ed?.isFocused && pendingDoc) return;
+			const fresh = await getNote(g);
+			if (!fresh) return;
+			// No-op ping (xml unchanged): keep this editor's pending edit intact.
+			if (fresh.xmlContent === note?.xmlContent) return;
+			// Real change incoming — drop the stale debounced doc so it can't
+			// clobber the fresh content on the next flush.
 			if (saveTimer) {
 				clearTimeout(saveTimer);
 				saveTimer = null;
 			}
 			pendingDoc = null;
-			const fresh = await getNote(g);
-			if (!fresh) return;
-			if (fresh.xmlContent === note?.xmlContent) return;
 			note = fresh;
 			// Swap content prop — TomboyEditor's $effect keyed on `content`
 			// performs the setContent + clearDirty dance. Fingerprint reset
@@ -238,7 +250,7 @@
 			keysSpec = parseKeysNote(editorContent);
 			if (!keysSpec) keysConnectMode = false;
 			lastSavedDocFingerprint = null;
-		});
+		}, reloadToken);
 		// Flush bus: a rename sweep elsewhere flushes this editor BEFORE it
 		// reads + rewrites this note, so an unsaved pending edit lands in IDB
 		// first rather than being read stale and overwritten. On mobile this
@@ -410,7 +422,7 @@
 				return;
 			}
 			saving = true;
-			const updated = await updateNoteFromEditor(note.guid, pendingDoc);
+			const updated = await updateNoteFromEditor(note.guid, pendingDoc, reloadToken);
 			if (updated) note = updated;
 			lastSavedDocFingerprint = fingerprint;
 			pendingDoc = null;
@@ -531,10 +543,6 @@
 		keysSpec = parseKeysNote(editorContent);
 		if (!keysSpec) keysConnectMode = false;
 		lastSavedDocFingerprint = null;
-		const ed = getEditor();
-		if (ed && editorContent) {
-			ed.commands.setContent(editorContent, { emitUpdate: false });
-		}
 	}
 
 	async function flushBeforeOp(): Promise<void> {
@@ -835,6 +843,7 @@
 					bind:this={editorComponent}
 					content={editorContent}
 					onchange={handleEditorChange}
+					onblur={() => { void flushSave(); }}
 					oninternallink={handleInternalLink}
 					currentGuid={noteId}
 					createDate={note?.createDate ?? null}

@@ -121,6 +121,32 @@ describe('noteReloadBus', () => {
 		await emitPromise;
 		expect(settled).toBe(true);
 	});
+
+	it('excludes only the listener whose token matches `except`', async () => {
+		const saver = vi.fn();
+		const sibling = vi.fn();
+		const tokenSaver = {};
+		const tokenSibling = {};
+		subscribeNoteReload('A', saver, tokenSaver);
+		subscribeNoteReload('A', sibling, tokenSibling);
+		await emitNoteReload(['A'], { except: tokenSaver });
+		expect(saver).not.toHaveBeenCalled();
+		expect(sibling).toHaveBeenCalledTimes(1);
+	});
+
+	it('except=undefined excludes nobody (back-compat)', async () => {
+		const fn = vi.fn();
+		subscribeNoteReload('A', fn, {});
+		await emitNoteReload(['A'], { except: undefined });
+		expect(fn).toHaveBeenCalledTimes(1);
+	});
+
+	it('a token-less listener is never excluded', async () => {
+		const fn = vi.fn();
+		subscribeNoteReload('A', fn); // no token
+		await emitNoteReload(['A'], { except: {} });
+		expect(fn).toHaveBeenCalledTimes(1);
+	});
 });
 
 describe('noteReloadBus — flush channel', () => {

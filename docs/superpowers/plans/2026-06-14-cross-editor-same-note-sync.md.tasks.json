@@ -1,0 +1,54 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-14-cross-editor-same-note-sync.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Bus sender identity (token + except)",
+      "status": "completed",
+      "description": "Give noteReloadBus per-subscriber token + emitNoteReload {except}. Back-compat for token-less callers. Files: app/src/lib/core/noteReloadBus.ts, app/tests/unit/core/noteReloadBus.test.ts.\n\n```json:metadata\n{\"files\": [\"app/src/lib/core/noteReloadBus.ts\", \"app/tests/unit/core/noteReloadBus.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- noteReloadBus && npm run check\", \"acceptanceCriteria\": [\"2-arg subscribe + 1-arg emit unchanged\", \"except:token skips that listener, fires siblings\", \"except:undefined fires all\", \"flush bus unchanged\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: updateNoteFromEditor self-emit on every write",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "updateNoteFromEditor(guid, doc, sourceToken?) self-emits emitNoteReload([guid], {except: sourceToken}) after putNote; rename affected emit stays separate. Update renameRewrite.test.ts. Files: app/src/lib/core/noteManager.ts, app/tests/unit/noteManager.renameRewrite.test.ts.\n\n```json:metadata\n{\"files\": [\"app/src/lib/core/noteManager.ts\", \"app/tests/unit/noteManager.renameRewrite.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- noteManager.renameRewrite && npm run check\", \"acceptanceCriteria\": [\"3rd sourceToken arg default undefined\", \"self-emit [guid] with except on every real write\", \"no emit on no-op/conflict early returns\", \"rename affected emit stays separate, renameNote unchanged\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Thread a per-instance token through the four hosts",
+      "status": "completed",
+      "blockedBy": [1, 2],
+      "description": "Each host (mobile page, NoteWindow, bundle Cabinet/Stack) owns a stable token, passes it to subscribeNoteReload + updateNoteFromEditor. Bundle token per-session, survives spread; add xmlContent + reloadToken to EditorSession. Files: app/src/routes/note/[id]/+page.svelte, app/src/lib/desktop/NoteWindow.svelte, app/src/lib/editor/noteBundle/NoteBundleCabinet.svelte, app/src/lib/editor/noteBundle/NoteBundleStack.svelte.\n\n```json:metadata\n{\"files\": [\"app/src/routes/note/[id]/+page.svelte\", \"app/src/lib/desktop/NoteWindow.svelte\", \"app/src/lib/editor/noteBundle/NoteBundleCabinet.svelte\", \"app/src/lib/editor/noteBundle/NoteBundleStack.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"stable per-instance token in each host\", \"token passed to subscribeNoteReload\", \"token passed to updateNoteFromEditor\", \"bundle token per-session, survives spread\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Reload-handler guards (xml-equality + focus/dirty)",
+      "status": "completed",
+      "blockedBy": [3],
+      "description": "Add xml-equality no-op + focus/dirty skip to all four reload handlers (NoteWindow + both bundles lack the xml guard). Bundle sessions track xmlContent. Files: app/src/routes/note/[id]/+page.svelte, app/src/lib/desktop/NoteWindow.svelte, app/src/lib/editor/noteBundle/NoteBundleCabinet.svelte, app/src/lib/editor/noteBundle/NoteBundleStack.svelte.\n\n```json:metadata\n{\"files\": [\"app/src/routes/note/[id]/+page.svelte\", \"app/src/lib/desktop/NoteWindow.svelte\", \"app/src/lib/editor/noteBundle/NoteBundleCabinet.svelte\", \"app/src/lib/editor/noteBundle/NoteBundleStack.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"xml-equality no-op in all 4 hosts\", \"skip reload when focused+dirty in all 4 hosts\", \"bundle sessions track xmlContent\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: Flush-on-blur (the no-loss guarantee)",
+      "status": "completed",
+      "blockedBy": [3],
+      "description": "TomboyEditor gains onblur prop fired from PM blur; each host wires it to flushSave/flushSession so leaving an editor commits it (single-dirty invariant = no lost keystrokes). Files: app/src/lib/editor/TomboyEditor.svelte + 4 hosts.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/TomboyEditor.svelte\", \"app/src/routes/note/[id]/+page.svelte\", \"app/src/lib/desktop/NoteWindow.svelte\", \"app/src/lib/editor/noteBundle/NoteBundleCabinet.svelte\", \"app/src/lib/editor/noteBundle/NoteBundleStack.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"onblur prop fired from PM blur\", \"4 hosts wire onblur to flush\", \"unchanged-blur is a no-op\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: Atom-aware caret preservation on same-guid reload",
+      "status": "completed",
+      "blockedBy": [3],
+      "description": "New restoreSelection.ts helper (clamp + TextSelection.between bias); TomboyEditor preserves caret on same-guid content swaps; remove NoteWindow redundant setContent. Files: app/src/lib/editor/restoreSelection.ts, app/tests/unit/editor/reloadCaretPreserve.test.ts, app/src/lib/editor/TomboyEditor.svelte, app/src/lib/desktop/NoteWindow.svelte.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/restoreSelection.ts\", \"app/tests/unit/editor/reloadCaretPreserve.test.ts\", \"app/src/lib/editor/TomboyEditor.svelte\", \"app/src/lib/desktop/NoteWindow.svelte\"], \"verifyCommand\": \"cd app && npm run test -- reloadCaretPreserve && npm run check\", \"acceptanceCriteria\": [\"same-guid reload preserves clamped atom-safe selection\", \"different-guid swap unaffected\", \"restore failure falls back without throw\", \"NoteWindow drops redundant setContent\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: Audit token-less callers, de-dupe automation emits, integration test, guide card",
+      "status": "completed",
+      "blockedBy": [2, 4, 5, 6],
+      "description": "Audit ~10 token-less emitNoteReload callers (unchanged); drop redundant explicit emit in applyDataNoteCsv + applyChartNote; add fake-IDB same-note convergence integration test; add 설정 가이드 card. Files: app/src/lib/automation/applyDataNoteCsv.ts, app/src/lib/automation/applyChartNote.ts, app/tests/unit/core/sameNoteConvergence.test.ts, app/src/routes/settings/+page.svelte.\n\n```json:metadata\n{\"files\": [\"app/src/lib/automation/applyDataNoteCsv.ts\", \"app/src/lib/automation/applyChartNote.ts\", \"app/tests/unit/core/sameNoteConvergence.test.ts\", \"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run test && npm run check\", \"acceptanceCriteria\": [\"token-less callers unchanged + compile\", \"automation files drop explicit emitNoteReload\", \"integration test: sibling reloads, saver excluded, IDB updated\", \"guide card added under editor sub-tab\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-14"
+}

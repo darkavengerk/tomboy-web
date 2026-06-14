@@ -320,6 +320,10 @@
 	interface EditorSession {
 		guid: string;
 		content: JSONContent;
+		/** Last-known xml of this note — reload no-op guard (used by Task 4). */
+		xmlContent: string;
+		/** Stable reload-bus identity for THIS leaf. */
+		reloadToken: object;
 		createDate: string | null;
 		pendingDoc: JSONContent | null;
 		saveTimer: ReturnType<typeof setTimeout> | null;
@@ -349,7 +353,7 @@
 		s.pendingDoc = null;
 		if (!docJson) return;
 		try {
-			await updateNoteFromEditor(guid, docJson);
+			await updateNoteFromEditor(guid, docJson, s.reloadToken);
 		} catch (err) {
 			console.error('[noteBundle flushSave]', err);
 		}
@@ -379,33 +383,40 @@
 			const [note, scrollBottom] = await Promise.all([getNote(guid), isScrollBottomNote(guid)]);
 			if (!note || destroyed || sessions.has(guid)) return;
 			attachOpenNote(guid);
+			const reloadToken = {};
 			const offReload = subscribeNoteReload(guid, async () => {
-				// 렌임 스윕 등 외부 rewrite — pending 폐기 후 IDB 재로드
-				const cur = sessions.get(guid);
-				if (cur) {
-					if (cur.saveTimer) {
-						clearTimeout(cur.saveTimer);
-						cur.saveTimer = null;
+					const cur = sessions.get(guid);
+					// Skip when THIS leaf is focused + dirty (user is typing here).
+					const ed = editorRefs[guid]?.getEditor?.();
+					if (ed?.isFocused && cur?.pendingDoc) return;
+					if (cur) {
+						if (cur.saveTimer) {
+							clearTimeout(cur.saveTimer);
+							cur.saveTimer = null;
+						}
+						cur.pendingDoc = null;
 					}
-					cur.pendingDoc = null;
-				}
-				const fresh = await getNote(guid);
-				const live = sessions.get(guid);
-				if (fresh && live) {
+					const fresh = await getNote(guid);
+					const live = sessions.get(guid);
+					if (!fresh || !live) return;
+					if (fresh.xmlContent === live.xmlContent) return; // no-op
 					const content = getNoteEditorContent(fresh);
 					sessions.set(guid, {
 						...live,
 						content,
+						xmlContent: fresh.xmlContent,
 						termSpec: parseTerminalNote(content),
 						isMusic: isMusicNoteDoc(content)
 					});
-				}
-			});
+				},
+			reloadToken);
 			const offFlush = subscribeNoteFlush(guid, () => flushSession(guid));
 			const content = getNoteEditorContent(note);
 			sessions.set(guid, {
 				guid,
 				content,
+				xmlContent: note.xmlContent,
+				reloadToken,
 				createDate: note.createDate ?? null,
 				pendingDoc: null,
 				saveTimer: null,
@@ -819,6 +830,7 @@
 								content={session.content}
 								currentGuid={session.guid}
 								onchange={(doc: JSONContent) => handleEmbeddedChange(session.guid, doc)}
+								onblur={() => { void flushSession(session.guid); }}
 								oninternallink={(t: string) => oninternallink?.(t)}
 								enableNoteBundle={false}
 								hrSplitEnabled={false}

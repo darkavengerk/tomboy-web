@@ -5,7 +5,6 @@ import {
   getNoteEditorContent,
   updateNoteFromEditor
 } from '$lib/core/noteManager.js';
-import { emitNoteReload } from '$lib/core/noteReloadBus.js';
 import { desktopSession } from '$lib/desktop/session.svelte.js';
 import { findDataBlockRegion, csvToParagraphs } from './findDataBlockRegion.js';
 
@@ -40,9 +39,8 @@ export async function applyDataNoteCsv(project: string, csv: string): Promise<Ap
   }
   const newDoc = buildUpdatedDoc(getNoteEditorContent(note), csv);
   await updateNoteFromEditor(note.guid, newDoc);
-  // Open editors (mobile/core via bus; desktop windows via session) drop stale
-  // in-memory docs and reload — mirrors the rename-cascade cross-window pattern.
-  await emitNoteReload([note.guid]);
+  // updateNoteFromEditor now self-emits the bus reload for this guid; we only
+  // still need the desktop session channel for open NoteWindows.
   await desktopSession.reloadWindows([note.guid]);
   return outcome;
 }
