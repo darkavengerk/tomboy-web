@@ -7,11 +7,13 @@ import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable, Protocol
+from typing import Any, Callable, Iterable, Protocol
 
 from desktop.lib.config import load_config
+from desktop.lib.keys import page_uuid_of, unit_keys_for_page
 from desktop.lib.log import StageLogger
 from desktop.lib.pipeline_status import fetch_pending_reruns
+from desktop.lib.raster import find_blank_row_near
 from desktop.lib.state import StateFile
 
 
@@ -152,6 +154,31 @@ class RmsceneRenderer:
         img.save(output_path, "PNG")
 
 
+SPLIT_GAP_SEARCH = 240  # half-window (px) to snap the split to a blank band
+
+
+def _split_full_png(full_png: Path, out_dir: Path, log: StageLogger, uuid: str) -> list[tuple[int, Path]]:
+    """Crop a rendered page into top/bottom halves at the physical screen
+    center (PAGE_HEIGHT//2), snapping to the nearest blank row band. Returns
+    [(half_index, png_path), ...]. Requires Pillow."""
+    from PIL import Image
+
+    img = Image.open(full_png).convert("RGB")
+    w, h = img.size
+    if h > RmsceneRenderer.PAGE_HEIGHT:
+        # Unintended scroll — the physical-center split may be off; flag it.
+        log.info("split_scroll_warning", uuid=uuid, height=h)
+    target = RmsceneRenderer.PAGE_HEIGHT // 2
+    cut = find_blank_row_near(img, target, SPLIT_GAP_SEARCH)
+    cut = max(1, min(h - 1, cut))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    p0 = out_dir / "page.0.png"
+    p1 = out_dir / "page.1.png"
+    img.crop((0, 0, w, cut)).save(p0, "PNG")
+    img.crop((0, cut, w, h)).save(p1, "PNG")
+    return [(0, p0), (1, p1)]
+
+
 def prepare(
     *,
     raw_root: Path,
@@ -159,39 +186,68 @@ def prepare(
     state: StateFile,
     log: StageLogger,
     renderer: Renderer,
+    route_for: "Callable[[str | None], Any] | None" = None,
     force: Iterable[str] | None = None,
 ) -> list[str]:
-    force = set(force or [])
-    for u in force:
-        state.remove(u)
+    # 분할 여부는 route_for(source_folder).split 으로 판단. 미지정 시 전부 비분할.
+    if route_for is None:
+        from desktop.lib.config import FolderRoute
+
+        _default = FolderRoute("기록", "{date} 리마커블([{unit_key}])", split=False)
+        route_for = lambda _sf: _default  # noqa: E731
+
+    # force/rerun/--uuid 로 들어온 키는 page-uuid로 환원해 페이지 전체를 비운다.
+    for page in {page_uuid_of(k) for k in (force or [])}:
+        state.remove_page(page)
 
     prepared: list[str] = []
     for uuid_dir in sorted(p for p in raw_root.iterdir() if p.is_dir()):
         uuid = uuid_dir.name
-        if state.contains(uuid):
-            continue
         meta_path = uuid_dir / f"{uuid}.metadata"
         if not meta_path.exists():
             log.error("missing_metadata", uuid=uuid)
             continue
         try:
             metadata = json.loads(meta_path.read_text(encoding="utf-8"))
-            target = png_root / uuid / "page.png"
-            renderer.render(uuid_dir, target)
-            record: dict[str, object] = {
-                "prepared_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                "png_path": str(target.resolve()),
-                "metadata": metadata,
-            }
-            # PNG size lets the admin view flag scroll-extended pages
-            # (height > 1872). Missing here just means the admin will
-            # show "—" for that field; pipeline keeps moving.
-            size = _read_png_size(target)
-            if size is not None:
-                record["png_width"], record["png_height"] = size
-            state.update({uuid: record})
-            log.info("prepared", uuid=uuid)
-            prepared.append(uuid)
+            source_folder = metadata.get("sourceFolder")
+            route = route_for(source_folder)
+            keys = unit_keys_for_page(uuid, route.split)
+            if all(state.contains(k) for k in keys):
+                continue
+            # 부분 상태 정리 후 재렌더(멱등).
+            for k in keys:
+                state.remove(k)
+
+            def _record(png_path: Path, meta: dict) -> dict[str, object]:
+                rec: dict[str, object] = {
+                    "prepared_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                    "png_path": str(png_path.resolve()),
+                    "metadata": meta,
+                    "source_folder": source_folder,
+                }
+                size = _read_png_size(png_path)
+                if size is not None:
+                    rec["png_width"], rec["png_height"] = size
+                return rec
+
+            if route.split:
+                full = png_root / uuid / "page.full.png"
+                renderer.render(uuid_dir, full)
+                halves = _split_full_png(full, png_root / uuid, log, uuid)
+                full.unlink(missing_ok=True)
+                for half_idx, png_path in halves:
+                    key = f"{uuid}#{half_idx}"
+                    rec = _record(png_path, metadata)
+                    rec["half_index"] = half_idx
+                    state.update({key: rec})
+                    log.info("prepared", uuid=key)
+                    prepared.append(key)
+            else:
+                target = png_root / uuid / "page.png"
+                renderer.render(uuid_dir, target)
+                state.update({uuid: _record(target, metadata)})
+                log.info("prepared", uuid=uuid)
+                prepared.append(uuid)
         except Exception as e:
             log.error("prepare_failed", uuid=uuid, reason=str(e))
     return prepared
@@ -212,12 +268,6 @@ def main(argv: list[str] | None = None) -> int:
     log = StageLogger("s2_prepare", cfg.data_dir)
     renderer = RmsceneRenderer()
 
-    if args.uuid:
-        # Drop everything except the requested uuid by faking a single-uuid raw_root view.
-        # Simplest: reuse `prepare` with `force={uuid}` and let it process all then early-return.
-        # For now, just call with force; the per-uuid skip prevents redundant work.
-        pass
-    # Fold in any UUIDs the admin page has marked for re-processing.
     rerun_uuids = fetch_pending_reruns(cfg, log)
     force = set(args.force) | set(rerun_uuids)
     if args.uuid:
@@ -228,9 +278,10 @@ def main(argv: list[str] | None = None) -> int:
         state=state,
         log=log,
         renderer=renderer,
+        route_for=cfg.tomboy.route_for,
         force=force,
     )
-    print(f"s2_prepare: {len(prepared)} pages prepared")
+    print(f"s2_prepare: {len(prepared)} units prepared")
     return 0
 
 
