@@ -1162,6 +1162,7 @@
 	<BacklinkBundleOverlay
 		targetTitle={note.title}
 		targetGuid={note.guid}
+		windowed={true}
 		onclose={() => (backlinkBundleOpen = false)}
 		oninternallink={(t) => { backlinkBundleOpen = false; void handleInternalLink(t); }}
 	/>
