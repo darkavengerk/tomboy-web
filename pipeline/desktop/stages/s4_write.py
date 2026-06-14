@@ -2,7 +2,7 @@
 
 Per spec §3:
   1. mapping miss → new guid
-  2. mapping hit + title still has [rm_uuid] + not deleted → overwrite same guid
+  2. mapping hit + title still has [unit_key] + not deleted → overwrite same guid
   3. mapping hit + title marker removed → new guid (user-protected)
   4. mapping hit + doc missing or deleted=True → new guid
 """
@@ -14,11 +14,11 @@ import sys
 import uuid as uuid_lib
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable, Protocol
+from typing import Any, Callable, Iterable, Protocol
 
-from desktop.lib.config import load_config
-from desktop.lib.dropbox_uploader import DropboxUploader
+from desktop.lib.config import FolderRoute, load_config
 from desktop.lib.firestore_client import FirestoreClient
+from desktop.lib.keys import half_index_of, page_uuid_of
 from desktop.lib.log import StageLogger
 from desktop.lib.pipeline_status import (
     PipelineStatusClient,
@@ -32,11 +32,6 @@ from desktop.lib.tomboy_payload import build_payload
 class _Firestore(Protocol):
     def get_note(self, guid: str) -> dict[str, Any] | None: ...
     def set_note(self, guid: str, payload: dict[str, Any]) -> None: ...
-
-
-class _Dropbox(Protocol):
-    def upload(self, local_path: Path, target_path: str) -> Any: ...
-    def share_link(self, target_path: str) -> str: ...
 
 
 class _PipelineStatus(Protocol):
@@ -180,10 +175,8 @@ def write_pending(
     written_state: StateFile,
     mappings: StateFile,
     firestore: _Firestore,
-    dropbox: _Dropbox,
     log: StageLogger,
-    notebook_name: str,
-    title_format: str,
+    route_for: "Callable[[str | None], FolderRoute]",
     force: Iterable[str] | None = None,
     status: _PipelineStatus | None = None,
 ) -> list[str]:
@@ -194,113 +187,92 @@ def write_pending(
     processed: list[str] = []
     prepared_index = prepared_state.read()
 
-    for rm_uuid, _ in ocr_state.read().items():
-        if written_state.contains(rm_uuid):
+    for unit_key, _ in ocr_state.read().items():
+        if written_state.contains(unit_key):
             continue
-        ocr_path = ocr_root / f"{rm_uuid}.json"
-        prep = prepared_index.get(rm_uuid)
+        ocr_path = ocr_root / f"{unit_key}.json"
+        prep = prepared_index.get(unit_key)
         if not ocr_path.exists() or prep is None:
-            log.error("inputs_missing", uuid=rm_uuid)
+            log.error("inputs_missing", uuid=unit_key)
             continue
         try:
             ocr_data = json.loads(ocr_path.read_text(encoding="utf-8"))
+            ocr_text = ocr_data["text"]
+            if not ocr_text.strip():
+                # 빈/공백 OCR(예: 카드 한쪽만 작성) → 노트 생성 건너뜀. 다음
+                # 실행에서 cheap-skip; 카드를 채우고 재OCR하면 mtime-bump
+                # 캐스케이드로 다시 처리된다.
+                log.info("skipped_empty", uuid=unit_key)
+                continue
+
             metadata = prep["metadata"]
+            source_folder = prep.get("source_folder")
+            route = route_for(source_folder)
             change_dt = _ms_to_dt(metadata["lastModified"])
-            existing_mapping = mappings.get(rm_uuid)
+            page_uuid = page_uuid_of(unit_key)
+            half = half_index_of(unit_key)
+            label = (
+                route.labels[half]
+                if route.split and half is not None and half < len(route.labels)
+                else ""
+            )
+            existing_mapping = mappings.get(unit_key)
             create_dt = (
                 datetime.fromisoformat(existing_mapping["first_seen"])
                 if existing_mapping and "first_seen" in existing_mapping
                 else change_dt
             )
 
-            # 1. Upload image FIRST. If this fails, no Firestore write happens.
-            png_path = Path(prep["png_path"])
-            target_path = (
-                f"/Apps/Tomboy/diary-images/{change_dt:%Y/%m/%d}/{rm_uuid}/page.png"
-            )
-            dropbox.upload(png_path, target_path)
-            image_url = dropbox.share_link(target_path)
-
-            # 2. Resolve target guid via the I1 algorithm.
+            # I1 알고리즘 — 마커는 복합 키(unit_key).
             target_guid, is_new = _resolve_target_guid(
-                rm_uuid=rm_uuid, mappings=mappings, firestore=firestore
+                rm_uuid=unit_key, mappings=mappings, firestore=firestore
             )
 
-            # 3. Build the payload.
-            # `metadata_change_date` is forced to "now" on every write — without
-            # this the app-side conflictResolver hits a `metadataChangeDate`
-            # tie on re-OCR (rM mtime doesn't change between runs) and falls
-            # through to `tie-prefers-local`, pushing the user's stale local
-            # short content BACK over our freshly-written long OCR. Bumping
-            # metadataChangeDate makes our writes strictly newer so the
-            # resolver pulls remote.
-            #
-            # changeDate stays at rM mtime so the diary date in the title and
-            # any changeDate-based sort still reflects when the user actually
-            # wrote the page on the tablet.
+            # metadata_change_date=now (I13): 재OCR 시 app conflictResolver가
+            # remote를 당기도록. changeDate는 rM mtime 유지(제목 날짜·정렬).
             payload = build_payload(
                 guid=target_guid,
-                page_uuid=rm_uuid,
-                ocr_text=ocr_data["text"],
-                image_url=image_url,
-                notebook_name=notebook_name,
-                title_format=title_format,
+                page_uuid=page_uuid,
+                unit_key=unit_key,
+                ocr_text=ocr_text,
+                notebook_name=route.notebook,
+                title_format=route.title_format,
                 create_date=create_dt,
                 change_date=change_dt,
                 metadata_change_date=datetime.now(timezone.utc),
+                label=label,
+                slip=route.split,
             )
 
-            # 4. Write doc.
             firestore.set_note(target_guid, payload)
 
-            # 5. Update mappings + written state.
             mappings.update(
-                {
-                    rm_uuid: {
-                        "tomboy_guid": target_guid,
-                        "first_seen": create_dt.isoformat(),
-                    }
-                }
+                {unit_key: {"tomboy_guid": target_guid, "first_seen": create_dt.isoformat()}}
             )
             written_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
             written_state.update(
-                {
-                    rm_uuid: {
-                        "written_at": written_at,
-                        "tomboy_guid": target_guid,
-                        "image_url": image_url,
-                    }
-                }
+                {unit_key: {"written_at": written_at, "tomboy_guid": target_guid, "image_url": ""}}
             )
-            # Sync admin-visible status. Best-effort: a Firestore hiccup
-            # here must not roll back the note write we just succeeded at.
             if status is not None:
                 try:
                     fields = _status_for_uuid(
-                        rm_uuid=rm_uuid,
+                        rm_uuid=unit_key,
                         written_entry={
                             "written_at": written_at,
                             "tomboy_guid": target_guid,
-                            "image_url": image_url,
+                            "image_url": "",
                         },
                         prep_entry=prep,
                         ocr_root=ocr_root,
                     )
-                    status.set(rm_uuid, fields)
-                    # Successful write clears any pending re-process flag
-                    # regardless of whether this run originated from one.
-                    status.clear_rerun(rm_uuid)
+                    status.set(unit_key, fields)
+                    status.clear_rerun(unit_key)
                 except Exception as e:
-                    log.error("status_write_failed", uuid=rm_uuid, reason=str(e))
-            log.info(
-                "wrote_note",
-                uuid=rm_uuid,
-                guid=target_guid,
-                is_new=is_new,
-            )
-            processed.append(rm_uuid)
+                    log.error("status_write_failed", uuid=unit_key, reason=str(e))
+            log.info("wrote_note", uuid=unit_key, guid=target_guid, is_new=is_new)
+            processed.append(unit_key)
         except Exception as e:
-            log.error("write_failed", uuid=rm_uuid, reason=str(e))
+            log.error("write_failed", uuid=unit_key, reason=str(e))
     return processed
 
 
@@ -319,7 +291,6 @@ def main(argv: list[str] | None = None) -> int:
     log = StageLogger("s4_write", cfg.data_dir)
 
     fs = FirestoreClient(cfg.firebase_uid, cfg.firebase_service_account)
-    dbx = DropboxUploader(cfg.dropbox_refresh_token, cfg.dropbox_app_key)
     status: PipelineStatusClient | None
     try:
         status = PipelineStatusClient(
@@ -347,10 +318,8 @@ def main(argv: list[str] | None = None) -> int:
         written_state=written,
         mappings=mappings,
         firestore=fs,
-        dropbox=dbx,
         log=log,
-        notebook_name=cfg.tomboy.diary_notebook_name,
-        title_format=cfg.tomboy.title_format,
+        route_for=cfg.tomboy.route_for,
         force=set(args.force) | set(rerun_uuids),
         status=status,
     )
