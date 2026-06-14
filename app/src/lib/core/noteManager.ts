@@ -124,7 +124,11 @@ export async function createNote(arg?: string | CreateNoteOptions): Promise<Note
 }
 
 /** Update a note from the editor's JSON document */
-export async function updateNoteFromEditor(guid: string, doc: JSONContent): Promise<NoteData | undefined> {
+export async function updateNoteFromEditor(
+	guid: string,
+	doc: JSONContent,
+	sourceToken?: unknown
+): Promise<NoteData | undefined> {
 	const note = await noteStore.getNote(guid);
 	if (!note) return undefined;
 
@@ -173,6 +177,13 @@ export async function updateNoteFromEditor(guid: string, doc: JSONContent): Prom
 	// (entriesEquivalent / sameSet) then drop body-only fan-outs before any
 	// editor rescan is scheduled.
 	noteMutated(note);
+	// Same-note convergence: tell every OTHER live editor of THIS guid (host
+	// page, desktop window, note-bundle leaf) to drop its stale in-memory doc
+	// and reload from IDB. `except` skips the editor that just saved so its own
+	// caret isn't yanked. Kept SEPARATE from the rename `affected` emit below so
+	// the rename sweep's self-exclusion contract (it must never emit the renamed
+	// guid) stays intact.
+	await emitNoteReload([guid], { except: sourceToken });
 	if (titleChanged) {
 		// Rewrite backlinks: every OTHER note that stored
 		// <link:internal>oldTitle</link:internal> (or broken) still holds the
