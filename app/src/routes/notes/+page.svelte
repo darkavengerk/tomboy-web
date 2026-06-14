@@ -12,7 +12,8 @@
 		getCachedScrollTop,
 		setCachedScrollTop,
 		getEpoch,
-		onInvalidate
+		onInvalidate,
+		type NoteListChangeKind
 	} from '$lib/stores/noteListCache.js';
 	import { goto } from '$app/navigation';
 	import { getCachedNotebooks, filterByNotebook } from '$lib/core/notebooks.js';
@@ -40,7 +41,22 @@
 		return searchNotes(filtered, q, 200).map((r) => r.note);
 	});
 
-	async function refresh() {
+	async function refresh(kind?: NoteListChangeKind) {
+		// Single-note patch ('mutate' — a 새 노트 / edit save): noteMutated already
+		// updated the warm cache in place, so reuse it instead of paying a
+		// full-corpus listNotes() getAll + whole-list re-render. This was a
+		// redundant scan firing on every note creation while the new editor was
+		// still settling. 'invalidate' (bulk / bypass writes, sync pull, import,
+		// purge, admin rollback) and the initial mount call (no kind) keep the
+		// freshness-absolutist fresh read.
+		if (kind === 'mutate') {
+			const warm = getCachedNotes();
+			if (warm) {
+				allNotes = warm;
+				loading = false;
+				return;
+			}
+		}
 		// Epoch token: if an invalidate or a single-note patch lands while this
 		// fresh read is in flight, setCachedNotes drops our (older) snapshot
 		// instead of overwriting the newer cache state. The page itself still

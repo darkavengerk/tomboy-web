@@ -1213,6 +1213,23 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		});
 	}
 
+	// Signal "note ready" only AFTER the browser has painted the setContent
+	// result. A SINGLE requestAnimationFrame fires BEFORE that paint, so
+	// newNoteFlow stage 2 (which races this signal via markEditorReady) closed
+	// its progress popup one frame early — while the editor's first paint +
+	// plugin decoration pass was still pending. That gap was the "popup gone
+	// but still janky" the user saw. The double rAF waits one full paint, so
+	// the signal now means painted+interactive. It also lands AFTER
+	// applyNewNoteIntent's own (earlier, single) caret/focus rAF, folding the
+	// mobile keyboard-pop reflow inside the popup window too.
+	function signalNoteReadyAfterPaint(ed: Editor, guid: string | null): void {
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				if (!ed.isDestroyed) onnoteready(guid);
+			});
+		});
+	}
+
 	// Reactively swap the editor's document when the parent navigates to a
 	// different note (or otherwise hands us new content). Reusing the same
 	// TipTap instance across notes avoids the full
@@ -1247,7 +1264,7 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 				);
 			}
 			applyNewNoteIntent(ed, g);
-			requestAnimationFrame(() => { if (!ed.isDestroyed) onnoteready(g); });
+			signalNoteReadyAfterPaint(ed, g);
 			return;
 		}
 
@@ -1322,7 +1339,7 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		findQuery = "";
 
 		applyNewNoteIntent(ed, g);
-		requestAnimationFrame(() => { if (!ed.isDestroyed) onnoteready(g); });
+		signalNoteReadyAfterPaint(ed, g);
 	});
 
 	// Toggle the "send list item" plugin's active flag whenever the parent's
