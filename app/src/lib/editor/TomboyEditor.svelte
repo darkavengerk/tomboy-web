@@ -87,6 +87,7 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 	} from "./eqHeader/eqHeaderPlugin.js";
 	import StickyHeader from "./eqHeader/StickyHeader.svelte";
 	import { createLabeledDividerPlugin } from "./labeledDivider/labeledDividerPlugin.js";
+	import { restoreSelectionClamped } from "$lib/editor/restoreSelection.js";
 	import {
 		loadActiveOrdinals,
 		saveActiveOrdinals,
@@ -1251,6 +1252,14 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		}
 
 		if (c === lastAppliedContent && g === lastAppliedGuid) return;
+		// Same guid + new content = a sibling-save reload of THIS note. Preserve
+		// the caret across the swap; a different guid is a navigation, where the
+		// new-note intent positions the caret instead.
+		const sameNoteReload = g === lastAppliedGuid;
+		const savedSel =
+			sameNoteReload && !ed.isDestroyed
+				? { from: ed.state.selection.from, to: ed.state.selection.to }
+				: null;
 		lastAppliedContent = c;
 		lastAppliedGuid = g;
 
@@ -1285,6 +1294,10 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		// carries `<link:internal>` marks and a rescan on load is neither
 		// needed nor cheap for large notes.
 		ed.commands.setContent(docContent, { emitUpdate: false });
+		if (savedSel) {
+			const tr = restoreSelectionClamped(ed.state, savedSel);
+			if (tr) ed.view.dispatch(tr);
+		}
 		ed.view.dispatch(
 			ed.state.tr.setMeta(autoLinkPluginKey, {
 				clearDirty: true,
