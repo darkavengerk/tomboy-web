@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -186,7 +185,7 @@ def prepare(
     state: StateFile,
     log: StageLogger,
     renderer: Renderer,
-    route_for: "Callable[[str | None], Any] | None" = None,
+    route_for: Callable[[str | None], Any] | None = None,
     force: Iterable[str] | None = None,
 ) -> list[str]:
     # 분할 여부는 route_for(source_folder).split 으로 판단. 미지정 시 전부 비분할.
