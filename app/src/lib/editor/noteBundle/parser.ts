@@ -21,6 +21,7 @@
  * lookupGuidByTitle 로 수행.
  */
 import type { Node as PMNode } from '@tiptap/pm/model';
+import type { JSONContent } from '@tiptap/core';
 
 export type BundleKind = 'tab' | 'bundle';
 
@@ -280,4 +281,185 @@ export function parseNoteBundles(doc: PMNode): BundleSpec[] {
 	});
 	flush(null, null);
 	return out;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+//  전용 노트 (dedicated note) — 제목이 `탭::` / `묶음::` 로 시작하는 노트는
+//  본문 전체가 곧 파일철. 인-에디터 위젯이 아니라 note 라우트/NoteWindow 가
+//  풀-노트 뷰로 띄운다(터미널/음악 노트 패턴).
+//
+//  소스가 라이브 PMNode 가 아니라 editorContent(JSONContent)라 위의 PMNode
+//  파서를 재사용하지 못한다 — 같은 규칙을 JSON 트리에 대해 다시 구현한다.
+//
+//  깊이 모델: 본문이 곧 "깊이1 리스트". 본문 최상위 단락 = 깊이1 항목.
+//  단락 바로 뒤에 리스트가 오면 그 단락이 부모(카테고리), 리스트 항목은
+//  깊이2 — 옛 "listItem + 중첩 bulletList" 관계를 한 단계 위로 옮긴 것.
+//  부모 단락 없이 시작하는 리스트는 항목이 깊이1로 직접 들어간다(폴백).
+// ─────────────────────────────────────────────────────────────────────────
+
+interface JSONNode {
+	type?: string;
+	text?: string;
+	attrs?: Record<string, unknown>;
+	marks?: Array<{ type?: string; attrs?: Record<string, unknown> }>;
+	content?: JSONNode[];
+}
+
+/** 제목이 전용 파일철 시그니처면 kind, 아니면 null. */
+export function dedicatedBundleKind(title: string): BundleKind | null {
+	const t = (title ?? '').trimStart();
+	if (t.startsWith('탭::')) return 'tab';
+	if (t.startsWith('묶음::')) return 'bundle';
+	return null;
+}
+
+function isListJson(n: JSONNode): boolean {
+	return n.type === 'bulletList' || n.type === 'orderedList';
+}
+
+function isTextblockJson(n: JSONNode): boolean {
+	return n.type === 'paragraph' || n.type === 'heading';
+}
+
+/** JSON 단락의 내부 링크 target 들을 등장 순서대로(인접 중복 1개로) 수집. */
+function collectLinksJson(para: JSONNode): string[] {
+	const out: string[] = [];
+	let lastTarget: string | null = null;
+	for (const child of para.content ?? []) {
+		if (child.type !== 'text') {
+			lastTarget = null;
+			continue;
+		}
+		const mark = (child.marks ?? []).find((m) => m.type === 'tomboyInternalLink');
+		const target = mark?.attrs?.target ? String(mark.attrs.target) : null;
+		if (target && target !== lastTarget) out.push(target);
+		lastTarget = target;
+	}
+	return out;
+}
+
+/** JSON 단락의 텍스트만 이어붙여 trim — 카테고리 라벨용. */
+function paragraphTextJson(para: JSONNode): string {
+	let s = '';
+	for (const c of para.content ?? []) if (c.type === 'text') s += c.text ?? '';
+	return s.trim();
+}
+
+/** 리스트(JSON)를 'tab' 트리로 재귀 파싱 — parseTree 의 JSON 판. */
+function parseTreeJson(list: JSONNode): BundleNode[] {
+	const out: BundleNode[] = [];
+	for (const li of list.content ?? []) {
+		if (li.type !== 'listItem' || !li.content?.length) continue;
+		const para = li.content[0];
+		const isPara = isTextblockJson(para);
+		const links = isPara ? collectLinksJson(para) : [];
+		const title = isPara ? paragraphTextJson(para) : '';
+		let nested: JSONNode | null = null;
+		for (const c of li.content) {
+			if (isListJson(c)) {
+				nested = c;
+				break;
+			}
+		}
+		if (nested) {
+			const children: BundleNode[] = [];
+			for (const L of links) children.push({ label: L, link: L, children: [] });
+			children.push(...parseTreeJson(nested));
+			out.push({ label: title || links[0] || '', link: null, children });
+		} else {
+			for (const L of links) out.push({ label: L, link: L, children: [] });
+		}
+	}
+	return out;
+}
+
+/** 리스트(JSON)를 'bundle' 평탄 엔트리로 — parseListInto 의 JSON 판. */
+function parseListIntoJson(list: JSONNode, category: string | null, entries: BundleEntry[]): void {
+	for (const li of list.content ?? []) {
+		if (li.type !== 'listItem' || !li.content?.length) continue;
+		const para = li.content[0];
+		let ownTitle: string | null = null;
+		if (isTextblockJson(para)) {
+			for (const t of collectLinksJson(para)) entries.push({ title: t, category });
+			ownTitle = paragraphTextJson(para) || null;
+		}
+		const childCategory = ownTitle ?? category;
+		for (const c of li.content) {
+			if (isListJson(c)) parseListIntoJson(c, childCategory, entries);
+		}
+	}
+}
+
+/** 제목 라인(블록 0)을 제외한 최상위 블록들. */
+function bodyBlocks(doc: JSONNode): JSONNode[] {
+	return (doc.content ?? []).slice(1);
+}
+
+function parseDedicatedTree(doc: JSONNode): BundleNode[] {
+	const out: BundleNode[] = [];
+	const blocks = bodyBlocks(doc);
+	for (let i = 0; i < blocks.length; i++) {
+		const node = blocks[i];
+		if (isTextblockJson(node)) {
+			const links = collectLinksJson(node);
+			const title = paragraphTextJson(node);
+			const next = blocks[i + 1];
+			if (next && isListJson(next)) {
+				// 단락 = 카테고리, 다음 리스트 = 자식(깊이2). 자기 링크가 첫 자식 잎.
+				const children: BundleNode[] = [];
+				for (const L of links) children.push({ label: L, link: L, children: [] });
+				children.push(...parseTreeJson(next));
+				out.push({ label: title || links[0] || '', link: null, children });
+				i++; // 리스트 소비
+			} else {
+				for (const L of links) out.push({ label: L, link: L, children: [] });
+			}
+		} else if (isListJson(node)) {
+			// 부모 단락 없는 리스트 → 항목들이 깊이1로 직접
+			out.push(...parseTreeJson(node));
+		}
+	}
+	return out;
+}
+
+function parseDedicatedEntries(doc: JSONNode): BundleEntry[] {
+	const entries: BundleEntry[] = [];
+	const blocks = bodyBlocks(doc);
+	for (let i = 0; i < blocks.length; i++) {
+		const node = blocks[i];
+		if (isTextblockJson(node)) {
+			for (const t of collectLinksJson(node)) entries.push({ title: t, category: null });
+			const ownTitle = paragraphTextJson(node) || null;
+			const next = blocks[i + 1];
+			if (next && isListJson(next)) {
+				parseListIntoJson(next, ownTitle, entries);
+				i++; // 리스트 소비
+			}
+		} else if (isListJson(node)) {
+			parseListIntoJson(node, null, entries);
+		}
+	}
+	return entries;
+}
+
+/** 전용 노트 본문(JSONContent)을 합성 BundleSpec 으로. 인-에디터 쓰기백
+ *  필드(checkboxPos/digits/keyword/list pos)는 의미 없어 -1/null, checked=true,
+ *  heightPct=100(전용 뷰는 컨테이너를 꽉 채운다). */
+export function parseDedicatedBundle(doc: JSONContent, kind: BundleKind): BundleSpec {
+	const root = doc as JSONNode;
+	return {
+		ordinal: 0,
+		kind,
+		checkboxPos: -1,
+		checked: true,
+		heightPct: 100,
+		digitsFrom: -1,
+		digitsTo: -1,
+		keywordPos: -1,
+		keywordEnd: -1,
+		listPos: null,
+		listEnd: null,
+		tree: kind === 'tab' ? parseDedicatedTree(root) : [],
+		entries: kind === 'bundle' ? parseDedicatedEntries(root) : []
+	};
 }

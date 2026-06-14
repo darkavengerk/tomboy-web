@@ -80,15 +80,33 @@
 
 	interface Props {
 		spec: BundleSpec;
-		view: EditorView;
+		/** 인-에디터(인라인) 모드의 호스트 PM 뷰. 전용 노트 모드에선 null. */
+		view: EditorView | null;
 		hostGuid: string | null;
 		// Component<any>: svelte-check 가 실제 TomboyEditor props 와 대조할 때
 		// Record<string,unknown> 이 enableNoteBundle 등 선택적 prop 와 충돌하면
 		// any 로 완화한다.
 		EditorComponent: Component<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 		oninternallink?: (target: string) => void;
+		/** 'inline' = 노트 본문 속 위젯(기본). 'dedicated' = 제목 `탭::` 전용
+		 *  노트가 풀-노트로 띄운 모드 — 닫기/꺼내기 크롬 + Ctrl→일반 노트 토글. */
+		variant?: 'inline' | 'dedicated';
+		/** dedicated 닫기(✕) — 데스크탑 창에서만 제공(없으면 닫기 버튼 숨김 = 모바일). */
+		onclose?: () => void;
+		/** dedicated Ctrl→편집 — 호스트 노트를 일반 노트로 보기(링크 리스트 편집). */
+		onraw?: () => void;
 	}
-	let { spec, view, hostGuid, EditorComponent, oninternallink }: Props = $props();
+	let {
+		spec,
+		view,
+		hostGuid,
+		EditorComponent,
+		oninternallink,
+		variant = 'inline',
+		onclose,
+		onraw
+	}: Props = $props();
+	const dedicated = $derived(variant === 'dedicated');
 
 	// --- 트리 해석 ----------------------------------------------------------
 	let titleEpoch = $state(0);
@@ -231,14 +249,17 @@
 	const stackH = $derived(dragPx ?? Math.max(140, Math.round((basisH * spec.heightPct) / 100)));
 
 	onMount(() => {
+		// 전용 노트는 컨테이너(.editor-area / .body)를 flex:1 로 꽉 채운다 —
+		// heightPct 기반 측정 불요. view 도 null 이라 아래 분기 자체를 건너뛴다.
+		if (dedicated) return;
 		// 데스크톱 멀티윈도우(.note-window)는 창이 높이를 한정 → 호스트
 		// 에디터 clientHeight 안정적. 모바일 라우트는 본문이 body 스크롤로
 		// 콘텐츠만큼 자라고 그 안에 묶음이 포함돼, clientHeight 기준이면
 		// 측정→성장 피드백 루프(무한 증식). 모바일은 화면 높이(innerHeight)를
 		// 기준 — 콘텐츠와 무관해 루프가 끊긴다.
-		const inDesktopWindow = !!view.dom.closest('.note-window');
+		const inDesktopWindow = !!view!.dom.closest('.note-window');
 		if (inDesktopWindow) {
-			const hostEl = view.dom.closest<HTMLElement>('.tomboy-editor') ?? view.dom.parentElement;
+			const hostEl = view!.dom.closest<HTMLElement>('.tomboy-editor') ?? view!.dom.parentElement;
 			if (!hostEl) return;
 			basisH = hostEl.clientHeight || 600;
 			const ro = new ResizeObserver(() => {
@@ -538,7 +559,20 @@
 	function handleUncheck(e: Event) {
 		e.preventDefault();
 		e.stopPropagation();
+		if (!view) return;
 		setBundleChecked(view, spec.ordinal, false);
+	}
+
+	// 전용 노트 크롬 — Ctrl→편집(일반 노트로 보기) / 닫기(창).
+	function handleRawEdit(e: Event) {
+		e.preventDefault();
+		e.stopPropagation();
+		onraw?.();
+	}
+	function handleClose(e: Event) {
+		e.preventDefault();
+		e.stopPropagation();
+		onclose?.();
 	}
 
 	// --- 훑어보기 / 편집 모드 ---------------------------------------------------
@@ -731,7 +765,7 @@
 		if (dragPx === null) return;
 		const pct = Math.round((dragPx / Math.max(1, basisH)) * 100);
 		dragPx = null;
-		writeBundleHeightPct(view, spec.ordinal, pct);
+		if (view) writeBundleHeightPct(view, spec.ordinal, pct);
 	}
 </script>
 
@@ -740,8 +774,9 @@
 	class:browse={mode === 'browse'}
 	class:edit={mode === 'edit'}
 	class:no-anim={suppressAnim}
+	class:dedicated
 	bind:this={rootEl}
-	style:height={`${stackH}px`}
+	style:height={dedicated ? null : `${stackH}px`}
 	use:direct={{
 		pointerdown: handlePointerDown as (e: Event) => void,
 		pointermove: handlePointerMove as (e: Event) => void,
@@ -773,7 +808,36 @@
 	{:else}
 		{@render tabLevel(tree, 0, true)}
 	{/if}
-	{#if modKeys.ctrl}
+	{#if dedicated}
+		<!-- 전용 노트 크롬(훑어보기 전용) — 우상단 [✎편집(Ctrl)][↗꺼내기][✕닫기].
+		     편집 모드에선 .edit-header 가 ←/↗ 를 맡으므로 여기선 안 띄운다. -->
+		{#if mode === 'browse'}
+			<div class="dedicated-chrome">
+				{#if modKeys.ctrl}
+					<button
+						type="button"
+						class="dchrome-btn"
+						title="편집 (일반 노트로 보기)"
+						use:direct={{ click: handleRawEdit, pointerdown: stopEvt, mousedown: stopEvt }}
+					>✎ 편집</button>
+				{/if}
+				<button
+					type="button"
+					class="dchrome-btn"
+					title="활성 노트 단독으로 열기"
+					use:direct={{ click: handleEject, pointerdown: stopEvt, mousedown: stopEvt }}
+				>↗ 꺼내기</button>
+				{#if onclose}
+					<button
+						type="button"
+						class="dchrome-btn dchrome-close"
+						title="닫기"
+						use:direct={{ click: handleClose, pointerdown: stopEvt, mousedown: stopEvt }}
+					>✕</button>
+				{/if}
+			</div>
+		{/if}
+	{:else if modKeys.ctrl}
 		<button
 			type="button"
 			class="bundle-edit-btn"
@@ -781,17 +845,19 @@
 			use:direct={{ click: handleUncheck, pointerdown: stopEvt, mousedown: stopEvt }}
 		>✎ 편집</button>
 	{/if}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div
-		class="bundle-resize"
-		use:direct={{
-			pointerdown: handleResizeDown as (e: Event) => void,
-			pointermove: handleResizeMove as (e: Event) => void,
-			pointerup: handleResizeUp,
-			pointercancel: handleResizeUp
-		}}
-		aria-hidden="true"
-	></div>
+	{#if !dedicated}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="bundle-resize"
+			use:direct={{
+				pointerdown: handleResizeDown as (e: Event) => void,
+				pointermove: handleResizeMove as (e: Event) => void,
+				pointerup: handleResizeUp,
+				pointercancel: handleResizeUp
+			}}
+			aria-hidden="true"
+		></div>
+	{/if}
 </div>
 
 {#snippet strip(vis: VisibleTabs<ResolvedNode>, depth: number, activeIdx: number)}
@@ -914,6 +980,42 @@
 		border-radius: 6px;
 		overflow: hidden;
 		background: #1e1e1e;
+	}
+	/* 전용 노트 — 컨테이너(.editor-area / .body)를 꽉 채우고 카드 테두리/여백 제거. */
+	.bundle-stack.dedicated {
+		flex: 1;
+		min-height: 0;
+		margin: 0;
+		border: none;
+		border-radius: 0;
+		position: relative;
+	}
+	/* 전용 노트 우상단 크롬 — 반투명, 본문 위로 떠 있음. */
+	.dedicated-chrome {
+		position: absolute;
+		top: 4px;
+		right: 4px;
+		z-index: 6;
+		display: flex;
+		gap: 4px;
+	}
+	.dchrome-btn {
+		padding: 3px 9px;
+		font-size: 12px;
+		line-height: 1.4;
+		color: #fff;
+		background: rgba(38, 38, 38, 0.82);
+		border: none;
+		border-radius: 4px;
+		cursor: pointer;
+		opacity: 0.82;
+		box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+	}
+	.dchrome-btn:hover {
+		opacity: 1;
+	}
+	.dchrome-close {
+		background: rgba(122, 46, 46, 0.9);
 	}
 	.tab-level {
 		display: flex;

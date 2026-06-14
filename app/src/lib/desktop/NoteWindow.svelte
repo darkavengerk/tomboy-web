@@ -24,6 +24,12 @@
 	import ChatSendBar from '$lib/editor/chatNote/ChatSendBar.svelte';
 	import MusicPlayerBar from '$lib/editor/musicNote/MusicPlayerBar.svelte';
 	import { isMusicNoteDoc } from '$lib/music/parseMusicNote.js';
+	import NoteBundleStack from '$lib/editor/noteBundle/NoteBundleStack.svelte';
+	import NoteBundleCabinet from '$lib/editor/noteBundle/NoteBundleCabinet.svelte';
+	import {
+		dedicatedBundleKind,
+		parseDedicatedBundle
+	} from '$lib/editor/noteBundle/parser.js';
 	import RemarkableActionBar from '$lib/editor/remarkable/RemarkableActionBar.svelte';
 	import SendToRemarkableModal from '$lib/remarkable/SendToRemarkableModal.svelte';
 	import { parseOcrNote } from '$lib/ocrNote/parseOcrNote.js';
@@ -144,6 +150,26 @@
 	let keysSpec: KeysNoteSpec | null = $state.raw(null);
 	let keysConnectMode = $state(false);
 	const showKeys = $derived(!!keysSpec && keysConnectMode);
+
+	// 전용 파일철 노트 — 제목 `탭::`/`묶음::`. 본문 전체가 탭/묶음(터미널/음악
+	// 노트처럼 창 본문을 점유). showRawBundle = 일반 노트(링크 리스트 편집) 토글
+	// — 진입 Ctrl→편집, 복귀 raw 뷰 Ctrl→↩ 묶음. 닫기(✕)는 창 닫기.
+	let showRawBundle = $state(false);
+	const dedicatedKind = $derived(dedicatedBundleKind(note?.title ?? ''));
+	const dedicatedSpec = $derived.by(() => {
+		if (!dedicatedKind || !editorContent) return null;
+		return parseDedicatedBundle(editorContent, dedicatedKind);
+	});
+	// 창의 노트가 바뀌면 항상 번들 뷰로 시작.
+	$effect(() => {
+		void guid;
+		showRawBundle = false;
+	});
+	function exitRawBundle() {
+		const ed = editorComponent?.getEditor();
+		if (ed) editorContent = ed.getJSON();
+		showRawBundle = false;
+	}
 
 	// Bridge settings for ChatSendBar — loaded once on mount from appSettings.
 	let llmBridgeUrl = $state('');
@@ -959,8 +985,42 @@
 					onedit={() => (keysConnectMode = false)}
 				/>
 			{/key}
+		{:else if dedicatedKind && dedicatedSpec && !showRawBundle}
+			<!-- 전용 파일철 노트 — 본문 전체가 탭/묶음. 닫기(✕)=창 닫기(데스크탑),
+			     Ctrl→편집(onraw)=일반 노트 보기. -->
+			{#key guid}
+				{#if dedicatedKind === 'bundle'}
+					<NoteBundleCabinet
+						spec={dedicatedSpec}
+						view={null}
+						hostGuid={guid}
+						variant="dedicated"
+						EditorComponent={TomboyEditor}
+						oninternallink={handleInternalLink}
+						onraw={() => (showRawBundle = true)}
+						onclose={handleClose}
+					/>
+				{:else}
+					<NoteBundleStack
+						spec={dedicatedSpec}
+						view={null}
+						hostGuid={guid}
+						variant="dedicated"
+						EditorComponent={TomboyEditor}
+						oninternallink={handleInternalLink}
+						onraw={() => (showRawBundle = true)}
+						onclose={handleClose}
+					/>
+				{/if}
+			{/key}
 		{:else}
 			{#if editorContent}
+				<!-- 전용 노트 raw 뷰 — Ctrl 누르면 ↩ 묶음 버튼으로 번들 뷰 복귀. -->
+				{#if dedicatedKind && showRawBundle && modKeys.ctrl}
+					<button class="dedicated-back-btn" onclick={exitRawBundle} title="묶음 뷰로 돌아가기"
+						>↩ 묶음</button
+					>
+				{/if}
 				<!-- 재생 컨트롤은 창 본문 상단(제목 줄 위)에 고정 — 편집 영역을 가리지 않도록. -->
 				{#if editorComponent?.getEditor() && isMusicNote}
 					<MusicPlayerBar editor={editorComponent.getEditor()!} guid={guid} />
@@ -1309,6 +1369,26 @@
 	.body :global(.tomboy-editor-shell) {
 		flex: 1;
 		min-height: 0;
+	}
+
+	/* 전용 노트 raw 뷰에서 Ctrl 누른 동안만 뜨는 번들 복귀 버튼 — 좌상단. */
+	.dedicated-back-btn {
+		position: absolute;
+		top: 4px;
+		left: 4px;
+		z-index: 7;
+		padding: 3px 9px;
+		font-size: 12px;
+		line-height: 1.4;
+		color: #fff;
+		background: rgba(38, 38, 38, 0.86);
+		border: none;
+		border-radius: 4px;
+		cursor: pointer;
+		box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+	}
+	.dedicated-back-btn:hover {
+		opacity: 0.92;
 	}
 
 	/* desktop window 는 body scroll 이 없고 (chromeless) 윈도우 박스 안에서
