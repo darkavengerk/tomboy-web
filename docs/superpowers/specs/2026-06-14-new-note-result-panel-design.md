@@ -36,9 +36,13 @@ Turn the new-note popup from a fire-and-close progress dialog into a **persisten
 - The sweep is **two-phase with a confirmation gate**: first count how many notes *would* be
   updated, show **"N개 노트가 업데이트됩니다"**, and only write after the user confirms — so the
   blast radius (and its sync side-effect) is seen before any commit.
+- **Eliminate the silent post-creation stutter** by **delta-gating** the automatic per-editor
+  rescan: an open editor only re-scans when a newly-added title's text actually appears in its
+  document (most don't → skip). This is the fix for the original ~1.5s sustained jank (#4).
 
-Non-goals: making the existing open-editor autolink faster; sweeping on every creation
-automatically; corpus sweep for renames/deletes (creation only).
+Non-goals: sweeping the whole corpus automatically on every creation; corpus sweep for
+renames/deletes (creation only); making the autolink *matcher itself* faster (we skip unnecessary
+scans, we do not speed up a scan that does run).
 
 ## Behavior overview
 
@@ -137,26 +141,42 @@ Swept notes become `localDirty` → uploaded on the next manual Dropbox "지금 
 realtime sync is on, each fires a debounced push. The **count + confirm gate** is exactly the
 mechanism that shows the user this blast radius (N notes) before any write happens.
 
-## Interaction with the automatic per-editor rescan (out of scope — flagged for review)
+## Narrowing the automatic per-editor rescan (delta-gated)
 
-Creating a note still triggers the existing automatic propagation: the new title changes the title
-set → `titleProvider` broadcasts → every open editor runs `scheduleAutoLinkScan({full:true})`
-(`TomboyEditor.svelte:1147`), a deferred whole-document O(D×T) rescan ~1–1.5s later. **This is the
-original sustained-stutter source (#4), and this spec does NOT change it.** The explicit corpus
-sweep is the comprehensive, measured, confirmed propagation path the user asked for; it does not
-remove the silent automatic one.
+Root cause of the original sustained stutter: creating a note changes the title set, and **every**
+open editor runs `scheduleAutoLinkScan({full:true})` (`TomboyEditor.svelte:1147`) — a deferred
+(~1–1.5s) O(D×T) whole-doc rescan against ALL ~T titles. With thousands of titles and several open
+windows, that batch is the jank, landing well after the popup is gone.
 
-Consequence: with this feature alone, the silent ~1.5s background rescan of open editors still
-happens on every creation, sweep or not. Two coherent end states to choose between (review gate):
+Fix: gate the rescan on a cheap delta precheck so editors that cannot be affected skip entirely,
+while keeping a **full, correct** reconcile for the few that can.
 
-- **(i) Ship sweep only** (this spec as written): the panel makes the new propagation explicit and
-  measured; the silent open-editor rescan remains as today.
-- **(ii) Sweep + narrow the automatic rescan**: additionally change the create-triggered rescan so
-  it only checks the *delta* title (O(D×1)) instead of all titles — eliminating the silent stutter.
-  This touches `autoLink` broadcast semantics shared with rename/delete, so it is a separate,
-  larger change deferred unless explicitly approved.
+1. `titleProvider.doSharedRefresh` already detects whether the set changed (`entriesEquivalent`).
+   Extend it to compute the **delta** `{ added: TitleEntry[], removed: TitleEntry[] }` (old
+   `sharedEntries` vs `next`) and pass it to listeners. The `onChange(cb)` callback signature becomes
+   `(delta?) => void` — backward-compatible (existing consumers — date adjacency, slip set — ignore
+   the arg and are unaffected).
+2. A pure helper `shouldRescanForDelta(delta, docText) → boolean` (testable in isolation):
+   - `delta.removed.length > 0` → **true** (a removed/renamed title may have a stale mark to
+     reconcile/unlink — preserve today's correctness).
+   - else if `delta.added` non-empty and **none** of the added titles' text occurs in `docText`
+     → **false** (skip).
+   - else → **true**.
+3. `TomboyEditor`'s `titleProvider.onChange` handler calls `shouldRescanForDelta(delta,
+   ed.state.doc.textContent)` and only `scheduleAutoLinkScan({full:true})` when true. `textContent`
+   is the same text the scanner flattens, so no false negatives.
+4. When a scan *does* run it is unchanged (full title set, `applyInRange`) → overlap /
+   longest-title-wins / suppressed-mark correctness all preserved. Only the **decision to scan** is
+   narrowed.
 
-Default in this spec is **(i)**; (ii) is recorded so the decision is explicit, not accidental.
+Effect on a create (pure addition of one unique title): editors whose doc doesn't contain that title
+skip → the O(N×D×T) batch collapses to the few editors that actually mention the new title. The new
+note's own editor self-excludes its title via `findTitleMatches`' `excludeGuid`.
+
+This composes with the sweep: the automatic path links *open* editors that mention the new title
+immediately (cheap); the explicit sweep propagates to the *entire corpus* (incl. closed notes) on
+demand. The sweep's `flushAll` + idempotent `linkifyDoc` mean the two never double-link even if both
+touch the same open note.
 
 ## Files
 
@@ -170,6 +190,11 @@ Default in this spec is **(i)**; (ii) is recorded so the decision is explicit, n
 6. `app/src/routes/+layout.svelte` — `result` phase branch renders the panel.
 7. `app/src/routes/settings/+page.svelte` — 가이드 → `notes` sub-tab
    `<details class="guide-card">` documenting the result panel + 전체 문서 반영 (CLAUDE.md guide rule).
+8. `app/src/lib/editor/autoLink/titleProvider.ts` — compute + broadcast `{ added, removed }` delta;
+   `onChange` callback signature `(delta?) => void` (backward-compatible).
+9. **New** `app/src/lib/editor/autoLink/shouldRescanForDelta.ts` — pure delta-gate predicate.
+10. `app/src/lib/editor/TomboyEditor.svelte` — delta-gate the `titleProvider.onChange` rescan via
+    `shouldRescanForDelta(delta, ed.state.doc.textContent)`.
 
 ## Tests
 
@@ -181,3 +206,7 @@ Default in this spec is **(i)**; (ii) is recorded so the decision is explicit, n
   valid partial; per-note failure is skipped not fatal.
 - `app/tests/unit/.../newNoteFlow.test.ts` (extend) — `submit` → `result` persists (no auto-close);
   `startSweepCount` → `confirm`; `applySweep` → `done`; `cancelSweep`; `dismiss` clears state.
+- `app/tests/unit/.../shouldRescanForDelta.test.ts` — removed non-empty → true; added present in
+  docText → true; added absent from docText → false; empty added+removed → false.
+- `app/tests/unit/.../titleProvider.test.ts` (extend) — `doSharedRefresh` computes correct
+  `{added, removed}` on create / rename / delete; broadcasts the delta; no broadcast when unchanged.
