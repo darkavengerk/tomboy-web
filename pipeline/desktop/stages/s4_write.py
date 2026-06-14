@@ -176,7 +176,7 @@ def write_pending(
     mappings: StateFile,
     firestore: _Firestore,
     log: StageLogger,
-    route_for: "Callable[[str | None], FolderRoute]",
+    route_for: Callable[[str | None], FolderRoute],
     force: Iterable[str] | None = None,
     status: _PipelineStatus | None = None,
 ) -> list[str]:

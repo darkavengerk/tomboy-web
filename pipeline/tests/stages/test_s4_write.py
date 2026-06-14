@@ -159,3 +159,91 @@ def test_backfill_skips_when_status_unavailable(tmp_path, stub_log):
     n = backfill_status(written_state=written, prepared_state=prepared,
                         ocr_root=tmp_path / "ocr", status=None, log=stub_log)
     assert n == 0
+
+
+def test_marker_removed_creates_new_note(tmp_path, stub_log):
+    prepared, ocr_state, written, mappings, ocr_root = _states(tmp_path)
+    _seed_unit(tmp_path=tmp_path, prepared=prepared, ocr_state=ocr_state,
+               ocr_root=ocr_root, key="rm-1", source_folder="Notes")
+    mappings.write({"rm-1": {"tomboy_guid": "old-guid", "first_seen": "2024-05-10T12:00:00+00:00"}})
+    # Existing doc's title has NO [rm-1] marker → user corrected it → protected.
+    fs = MagicMock()
+    fs.get_note.return_value = {"guid": "old-guid", "title": "교정된 제목 (마커 없음)", "deleted": False}
+
+    write_pending(ocr_root=ocr_root, prepared_state=prepared, ocr_state=ocr_state,
+                  written_state=written, mappings=mappings, firestore=fs,
+                  log=stub_log, route_for=_route_for)
+    new_guid = fs.set_note.call_args.args[0]
+    assert new_guid != "old-guid"
+    assert mappings.get("rm-1")["tomboy_guid"] == new_guid
+
+
+def test_doc_missing_treated_as_new(tmp_path, stub_log):
+    prepared, ocr_state, written, mappings, ocr_root = _states(tmp_path)
+    _seed_unit(tmp_path=tmp_path, prepared=prepared, ocr_state=ocr_state,
+               ocr_root=ocr_root, key="rm-1", source_folder="Notes")
+    mappings.write({"rm-1": {"tomboy_guid": "old-guid", "first_seen": "2024-05-10T12:00:00+00:00"}})
+    fs = MagicMock(); fs.get_note.return_value = None  # doc missing
+
+    write_pending(ocr_root=ocr_root, prepared_state=prepared, ocr_state=ocr_state,
+                  written_state=written, mappings=mappings, firestore=fs,
+                  log=stub_log, route_for=_route_for)
+    assert fs.set_note.call_args.args[0] != "old-guid"
+
+
+def test_doc_soft_deleted_treated_as_new(tmp_path, stub_log):
+    prepared, ocr_state, written, mappings, ocr_root = _states(tmp_path)
+    _seed_unit(tmp_path=tmp_path, prepared=prepared, ocr_state=ocr_state,
+               ocr_root=ocr_root, key="rm-1", source_folder="Notes")
+    mappings.write({"rm-1": {"tomboy_guid": "old-guid", "first_seen": "2024-05-10T12:00:00+00:00"}})
+    fs = MagicMock()
+    fs.get_note.return_value = {"guid": "old-guid", "title": "2024-05-10 리마커블([rm-1])", "deleted": True}
+
+    write_pending(ocr_root=ocr_root, prepared_state=prepared, ocr_state=ocr_state,
+                  written_state=written, mappings=mappings, firestore=fs,
+                  log=stub_log, route_for=_route_for)
+    assert fs.set_note.call_args.args[0] != "old-guid"
+
+
+class _FakeStatus:
+    """In-memory _PipelineStatus stub. Tracks set/clear_rerun calls."""
+
+    def __init__(self, seed=None):
+        self.docs = dict(seed or {})
+        self.set_calls = []
+        self.clear_calls = []
+
+    def get(self, page_uuid):
+        return self.docs.get(page_uuid)
+
+    def set(self, page_uuid, fields):
+        self.set_calls.append((page_uuid, fields))
+        self.docs[page_uuid] = {**self.docs.get(page_uuid, {}), **fields}
+
+    def clear_rerun(self, page_uuid):
+        self.clear_calls.append(page_uuid)
+        self.set(page_uuid, {"rerunRequested": False, "rerunRequestedAt": None})
+
+
+def test_status_recorded_and_rerun_cleared(tmp_path, stub_log):
+    prepared, ocr_state, written, mappings, ocr_root = _states(tmp_path)
+    _seed_unit(tmp_path=tmp_path, prepared=prepared, ocr_state=ocr_state,
+               ocr_root=ocr_root, key="rm-1", source_folder="Notes")
+    rec = prepared.get("rm-1"); rec.update({"png_width": 1404, "png_height": 936})
+    prepared.update({"rm-1": rec})
+    status = _FakeStatus(seed={"rm-1": {"rerunRequested": True, "rerunRequestedAt": "x"}})
+    fs = MagicMock(); fs.get_note.return_value = None
+
+    write_pending(ocr_root=ocr_root, prepared_state=prepared, ocr_state=ocr_state,
+                  written_state=written, mappings=mappings, firestore=fs,
+                  log=stub_log, route_for=_route_for, status=status)
+
+    assert "rm-1" in [c[0] for c in status.set_calls]
+    assert "rm-1" in status.clear_calls
+    doc = status.docs["rm-1"]
+    assert doc["pageUuid"] == "rm-1"
+    assert doc["tomboyGuid"]
+    assert doc["imageUrl"] == ""
+    assert doc["imageWidth"] == 1404
+    assert doc["imageHeight"] == 936
+    assert doc["rerunRequested"] is False
