@@ -11,6 +11,9 @@ function docState(text: string): EditorState {
 }
 
 describe('restoreSelectionClamped', () => {
+	// Note: atom-skip (never landing the caret inside inlineCheckbox/footnote/
+	// radio atoms) is delegated to PM's TextSelection.between(..., 1) textOnly
+	// path and is not re-exercised here — the basic schema has no atom nodes.
 	it('restores an in-range caret position', () => {
 		const st = docState('hello world');
 		const tr = restoreSelectionClamped(st, { from: 4, to: 4 });

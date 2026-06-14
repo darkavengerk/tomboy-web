@@ -543,10 +543,6 @@
 		keysSpec = parseKeysNote(editorContent);
 		if (!keysSpec) keysConnectMode = false;
 		lastSavedDocFingerprint = null;
-		const ed = getEditor();
-		if (ed && editorContent) {
-			ed.commands.setContent(editorContent, { emitUpdate: false });
-		}
 	}
 
 	async function flushBeforeOp(): Promise<void> {
