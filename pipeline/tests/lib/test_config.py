@@ -151,3 +151,56 @@ def test_example_yaml_defaults_to_claude():
     assert "claude:" in yaml_text
     assert "service_url:" in yaml_text
     assert "local_vlm:" in yaml_text  # 두 섹션 모두 보존
+
+
+def test_route_for_default_folders():
+    cfg = load_config_from_string(VALID_YAML)
+    slip = cfg.tomboy.route_for("Slip-Notes")
+    assert slip.notebook == "[0] Slip-Box"
+    assert slip.split is True
+    assert slip.labels == ("上", "下")
+
+    notes = cfg.tomboy.route_for("Notes")
+    assert notes.notebook == "기록"
+    assert notes.split is False
+
+    diary = cfg.tomboy.route_for("Diary")
+    assert diary.split is False
+
+
+def test_route_for_unknown_folder_falls_back_to_notes():
+    cfg = load_config_from_string(VALID_YAML)
+    r = cfg.tomboy.route_for("SomethingElse")
+    assert r.split is False
+    assert r.notebook == "기록"
+
+
+def test_folders_override_in_config():
+    yaml_text = VALID_YAML.replace(
+        '''tomboy:
+  diary_notebook_name: "일기"
+  title_format: "{date} 리마커블([{page_uuid}])"
+''',
+        '''tomboy:
+  folders:
+    Slip-Notes:
+      notebook: "내슬립박스"
+      title_format: "{datetime} S {label}([{unit_key}])"
+      split: true
+      labels: ["A", "B"]
+''',
+    )
+    cfg = load_config_from_string(yaml_text)
+    slip = cfg.tomboy.route_for("Slip-Notes")
+    assert slip.notebook == "내슬립박스"
+    assert slip.labels == ("A", "B")
+    # Folders not overridden still come from code defaults.
+    assert cfg.tomboy.route_for("Notes").notebook == "기록"
+
+
+def test_dropbox_keys_optional():
+    yaml_text = VALID_YAML.replace('dropbox_refresh_token: "dummy-token"\n', "")
+    yaml_text = yaml_text.replace('dropbox_app_key: "dummy-key"\n', "")
+    cfg = load_config_from_string(yaml_text)  # must not raise
+    assert cfg.dropbox_refresh_token == ""
+    assert cfg.dropbox_app_key == ""

@@ -112,8 +112,16 @@ def _interactive_main(dry_run: bool) -> int:
         },
         "desktop": {"data_dir": "~/.local/share/tomboy-pipeline"},
         "tomboy": {
-            "diary_notebook_name": "일기",
-            "title_format": "{date} 리마커블([{page_uuid}])",
+            "folders": {
+                "Diary": {"notebook": "일기", "title_format": "{date} 리마커블([{unit_key}])", "split": False},
+                "Notes": {"notebook": "기록", "title_format": "{date} 리마커블([{unit_key}])", "split": False},
+                "Slip-Notes": {
+                    "notebook": "[0] Slip-Box",
+                    "title_format": "{datetime} 리마커블 {label}([{unit_key}])",
+                    "split": True,
+                    "labels": ["上", "下"],
+                },
+            },
         },
         "ocr": {
             "backend": "local_vlm",
