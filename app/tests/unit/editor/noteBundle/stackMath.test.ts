@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
-	TAB_CAP,
-	tabWindow,
+	TAB_FIT_MAX,
+	TAB_WINDOW,
+	tabView,
+	visibleTabs,
 	nodesAtDepth,
 	firstNavPath,
 	drillFrom,
@@ -9,8 +11,6 @@ import {
 	stepPath,
 	pickPath,
 	clampIndex,
-	topItems,
-	bottomItems,
 	type NavNode
 } from '$lib/editor/noteBundle/stackMath.js';
 
@@ -21,13 +21,29 @@ const cat = (children: NavNode[]): NavNode => ({
 	children
 });
 
-describe('tabWindow', () => {
-	it('CAP=4 이하면 전부, 초과면 (CAP-1)개 + 나머지', () => {
-		expect(TAB_CAP).toBe(4);
-		expect(tabWindow(0)).toEqual({ shown: 0, plus: 0 });
-		expect(tabWindow(4)).toEqual({ shown: 4, plus: 0 });
-		expect(tabWindow(5)).toEqual({ shown: 3, plus: 2 });
-		expect(tabWindow(7)).toEqual({ shown: 3, plus: 4 });
+describe('tabView — 활성 중심 윈도우', () => {
+	it('상수', () => {
+		expect(TAB_FIT_MAX).toBe(4);
+		expect(TAB_WINDOW).toBe(3);
+	});
+	it('4개 이하 → 전부 표시(고정), 배지 없음', () => {
+		expect(tabView(0, 0)).toEqual({ start: 0, count: 0, leftPlus: 0, rightPlus: 0 });
+		expect(tabView(1, 0)).toEqual({ start: 0, count: 1, leftPlus: 0, rightPlus: 0 });
+		expect(tabView(4, 0)).toEqual({ start: 0, count: 4, leftPlus: 0, rightPlus: 0 });
+		expect(tabView(4, 3)).toEqual({ start: 0, count: 4, leftPlus: 0, rightPlus: 0 });
+	});
+	it('5개 이상 → 3개 윈도우, 활성 가운데(2번째), 처음/끝 예외', () => {
+		expect(tabView(5, 0)).toEqual({ start: 0, count: 3, leftPlus: 0, rightPlus: 2 }); // 처음 탭
+		expect(tabView(5, 1)).toEqual({ start: 0, count: 3, leftPlus: 0, rightPlus: 2 }); // 가운데
+		expect(tabView(5, 2)).toEqual({ start: 1, count: 3, leftPlus: 1, rightPlus: 1 });
+		expect(tabView(5, 3)).toEqual({ start: 2, count: 3, leftPlus: 2, rightPlus: 0 });
+		expect(tabView(5, 4)).toEqual({ start: 2, count: 3, leftPlus: 2, rightPlus: 0 }); // 끝 탭
+		// n=7 가운데
+		expect(tabView(7, 3)).toEqual({ start: 2, count: 3, leftPlus: 2, rightPlus: 2 });
+	});
+	it('범위 밖 활성 인덱스 clamp', () => {
+		expect(tabView(6, -3)).toEqual({ start: 0, count: 3, leftPlus: 0, rightPlus: 3 });
+		expect(tabView(6, 99)).toEqual({ start: 3, count: 3, leftPlus: 3, rightPlus: 0 });
 	});
 });
 
@@ -117,34 +133,53 @@ describe('stepPath — 가장 깊은 레벨 이동', () => {
 	});
 });
 
-describe('clampIndex / topItems / bottomItems — 범위 밖 인덱스도 undefined 노드 없음', () => {
+describe('clampIndex / visibleTabs — 범위 밖 인덱스도 undefined 노드 없음', () => {
 	it('clampIndex 경계', () => {
 		expect(clampIndex(0, 5)).toBe(0);
 		expect(clampIndex(3, -2)).toBe(0);
 		expect(clampIndex(3, 9)).toBe(2);
 		expect(clampIndex(3, 1)).toBe(1);
 	});
-	it('정상 범위', () => {
+	it('4개 이하 → 전부, 배지 0', () => {
 		const ns = ['a', 'b', 'c'];
-		expect(topItems(ns, 1)).toEqual([
-			{ node: 'b', idx: 1 },
-			{ node: 'c', idx: 2 }
-		]);
-		expect(bottomItems(ns, 1)).toEqual([{ node: 'a', idx: 0 }]); // 역순
+		expect(visibleTabs(ns, 1)).toEqual({
+			items: [
+				{ node: 'a', idx: 0 },
+				{ node: 'b', idx: 1 },
+				{ node: 'c', idx: 2 }
+			],
+			leftPlus: 0,
+			rightPlus: 0
+		});
+	});
+	it('5개 이상 → 3개 윈도우 + 좌우 배지', () => {
+		const ns = ['a', 'b', 'c', 'd', 'e'];
+		expect(visibleTabs(ns, 2)).toEqual({
+			items: [
+				{ node: 'b', idx: 1 },
+				{ node: 'c', idx: 2 },
+				{ node: 'd', idx: 3 }
+			],
+			leftPlus: 1,
+			rightPlus: 1
+		});
 	});
 	it('재귀 비활성 형제 재현: activeIdx 가 자식 수보다 크면 undefined 노드 안 생김', () => {
-		const ns = ['a', 'b']; // 형제 카테고리는 자식 2개인데 활성 인덱스는 5
-		const top = topItems(ns, 5);
-		const bot = bottomItems(ns, 5);
-		expect(top.every((it) => it.node !== undefined)).toBe(true);
-		expect(bot.every((it) => it.node !== undefined)).toBe(true);
-		// 보정된 활성 = 마지막(1): top=[b], bottom=[a]
-		expect(top).toEqual([{ node: 'b', idx: 1 }]);
-		expect(bot).toEqual([{ node: 'a', idx: 0 }]);
+		const ns = ['a', 'b']; // 활성 인덱스 5
+		const v = visibleTabs(ns, 5);
+		expect(v.items.every((it) => it.node !== undefined)).toBe(true);
+		expect(v).toEqual({
+			items: [
+				{ node: 'a', idx: 0 },
+				{ node: 'b', idx: 1 }
+			],
+			leftPlus: 0,
+			rightPlus: 0
+		});
 	});
 	it('빈 노드', () => {
-		expect(topItems([], 0)).toEqual([]);
-		expect(bottomItems([], 3)).toEqual([]);
+		expect(visibleTabs([], 0)).toEqual({ items: [], leftPlus: 0, rightPlus: 0 });
+		expect(visibleTabs([], 3)).toEqual({ items: [], leftPlus: 0, rightPlus: 0 });
 	});
 });
 

@@ -8,15 +8,15 @@
 	 * 하는 editor-in-editor 격벽.
 	 *
 	 * ── 탭 모델 ─────────────────────────────────────────────────────────
-	 * 각 레벨(루트/카테고리)은 [위 탭 스트립][본문][아래 탭 스트립] 구조.
-	 * - 위 스트립: 활성 + 이후 노트(활성이 최좌측), 왼→오.
-	 * - 본문: 활성 탭의 노트(잎=에디터, 카테고리=재귀 탭 레벨).
-	 * - 아래 스트립: 지나간(스크롤로 내려간) 노트, 역순(가장 오래된 게 최우측).
-	 * 카테고리가 활성이면 본문 상단/하단에 자기 탭 스트립이 재귀로 생긴다.
+	 * 각 레벨(루트/카테고리)은 [탭 스트립(상단)][본문] 구조. 하단 스트립 없음.
+	 * - 스트립: 항상 상단. 활성 탭을 가운데에 두는 윈도우(stackMath.visibleTabs).
+	 * - 본문: 활성 탭의 노트(잎=에디터, 카테고리=재귀 탭 레벨). 가로 슬라이드.
+	 * 카테고리가 활성이면 본문 상단에 자기 탭 스트립이 재귀로 생긴다.
 	 * 카테고리가 자기 링크를 가지면 그 링크가 첫 하위 탭(자신을 첫 탭에 로드).
 	 *
-	 * 탭 폭은 균등 분배(최소 1/4, 말줄임). 한 스트립에 최대 4개, 넘치면
-	 * 우측에 작은 +N 탭(stackMath.tabWindow).
+	 * 탭 폭은 내용(타이틀)에 맞춰 커지되 최소 1/4, 넘치면 말줄임. 4개 이하는
+	 * 전부 고정 표시(활성 하이라이트만 이동); 5개 이상은 3개 윈도우 + 좌우 +N
+	 * 작은 탭(숨은 수). 활성은 가운데(2번째), 처음/끝 탭만 예외.
 	 *
 	 * 활성 경로(activePath)는 영속하지 않는 컴포넌트 로컬 상태 — 재오픈/리마운트
 	 * 시 첫 노트로. 파서/플러그인은 리스트 내용을 수정하지 않는다.
@@ -28,11 +28,14 @@
 	 * 임포트 주입, prop 으로 받아 순환 회피).
 	 *
 	 * ── 훑어보기 / 편집 모드 ─────────────────────────────────────────────
-	 * 훑어보기(기본): 휠/스와이프 = 탭 전환. 데스크톱 휠은 아래로 굴리면
-	 * 다음(이후) 노트 — 탭 구조라 이전 세로 스택과 방향이 반대. 활성 본문은
-	 * 회색조. 본문 탭/클릭 → 편집 모드(흰 배경, 휠/스크롤이 노트 안으로).
+	 * 훑어보기(기본): 휠/스와이프 = 탭 전환. 데스크톱 휠은 우세축(deltaX|deltaY)
+	 * 양수면 다음(이후) 노트. 모바일은 좌우 스와이프만 인식(왼쪽으로 끌면 다음),
+	 * 상하 제스처는 무시. 활성 본문은 회색조. 본문 탭/클릭 → 편집 모드.
 	 * ctrl+휠은 모드 무관 활성 본문 스크롤(편집 진입 없이 내용 확인).
-	 * Esc · 탭 클릭 · 묶음 스크롤(휠/스와이프) → 훑어보기 복귀.
+	 *
+	 * 편집(단일 노트 뷰): 탭 스트립을 전부 숨겨(.edit) 노트 한 개만 보이는 듯한
+	 * UI. 상단에 편집 헤더 — 제목 왼쪽 ← 돌아가기(훑어보기 복귀), 우측 ↗ 꺼내기
+	 * (oninternallink 로 단독 열기). Esc · ← · 묶음 스크롤(휠/스와이프) → 훑어보기.
 	 *
 	 * ── 호스트 셸 배선 ──────────────────────────────────────────────────
 	 * 터미널/음악/하단최신은 잎 본문에 그대로. TerminalView·MusicPlayerBar 는
@@ -46,17 +49,17 @@
 	import type { EditorView } from '@tiptap/pm/view';
 	import type { JSONContent } from '@tiptap/core';
 	import type { BundleSpec, BundleNode } from './parser.js';
-	import { writeBundleHeightPct } from './noteBundlePlugin.js';
+	import { writeBundleHeightPct, setBundleChecked } from './noteBundlePlugin.js';
 	import {
-		firstNavPath,
 		repairPath,
 		stepPath,
 		pickPath,
-		tabWindow,
+		visibleTabs,
 		clampIndex,
-		topItems,
-		bottomItems
+		tabView,
+		nodesAtDepth
 	} from './stackMath.js';
+	import type { VisibleTabs } from './stackMath.js';
 	import { lookupGuidByTitle, ensureTitleIndexReady } from '../autoLink/titleProvider.js';
 	import {
 		getNote,
@@ -70,28 +73,56 @@
 	import { isScrollBottomNote } from '$lib/core/scrollBottom.js';
 	import { isMusicNoteDoc } from '$lib/music/parseMusicNote.js';
 	import MusicPlayerBar from '../musicNote/MusicPlayerBar.svelte';
+	import { modKeys } from '$lib/desktop/modKeys.svelte.js';
+	import { SEND_SOURCE_GUID } from '../sendListItem/transferListItem.js';
+	import { shouldSendListBeActive } from '../sendListItem/sendActiveGate.js';
+	import { getScheduleNoteGuid } from '$lib/core/schedule.js';
 
 	interface Props {
 		spec: BundleSpec;
-		view: EditorView;
+		/** 인-에디터(인라인) 모드의 호스트 PM 뷰. 전용 노트 모드에선 null. */
+		view: EditorView | null;
 		hostGuid: string | null;
 		// Component<any>: svelte-check 가 실제 TomboyEditor props 와 대조할 때
 		// Record<string,unknown> 이 enableNoteBundle 등 선택적 prop 와 충돌하면
 		// any 로 완화한다.
 		EditorComponent: Component<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 		oninternallink?: (target: string) => void;
+		/** 'inline' = 노트 본문 속 위젯(기본). 'dedicated' = 제목 `탭::` 전용
+		 *  노트가 풀-노트로 띄운 모드 — 닫기/꺼내기 크롬 + Ctrl→일반 노트 토글. */
+		variant?: 'inline' | 'dedicated';
+		/** dedicated 닫기(✕) — 데스크탑 창에서만 제공(없으면 닫기 버튼 숨김 = 모바일). */
+		onclose?: () => void;
+		/** dedicated Ctrl→편집 — 호스트 노트를 일반 노트로 보기(링크 리스트 편집). */
+		onraw?: () => void;
 	}
-	let { spec, view, hostGuid, EditorComponent, oninternallink }: Props = $props();
+	let {
+		spec,
+		view,
+		hostGuid,
+		EditorComponent,
+		oninternallink,
+		variant = 'inline',
+		onclose,
+		onraw
+	}: Props = $props();
+	const dedicated = $derived(variant === 'dedicated');
 
 	// --- 트리 해석 ----------------------------------------------------------
 	let titleEpoch = $state(0);
 	// 초기 렌더에서 탭 intro 트랜지션이 한꺼번에 깜빡이지 않게, 마운트 후에만
 	// 트랜지션 시간을 켠다(그 전엔 duration 0 = 즉시).
 	let ready = $state(false);
+	// 일정 노트 guid — 임베디드 에디터가 자동요일/일정 동기화를 켤지 판단. async
+	// 해석되므로 $state, 미해석이면 null(일정 노트 아님으로 취급).
+	let scheduleNoteGuid = $state<string | null>(null);
 	onMount(() => {
 		ready = true;
 		void ensureTitleIndexReady().then(() => {
 			titleEpoch++;
+		});
+		void getScheduleNoteGuid().then((g) => {
+			scheduleNoteGuid = g ?? null;
 		});
 	});
 
@@ -152,13 +183,46 @@
 
 	// --- 활성 경로 (로컬 state, 영속 안 함) -------------------------------------
 	let activePath = $state<number[]>([]);
+	// 본문 슬라이드 억제 — 보이는 탭 윈도우가 실제로 이동하지 않는 전환에서는
+	// 탭이 제자리라 슬라이드가 어색하다(5개+ 에서 활성 0↔1, 끝-1↔끝; 4개 이하
+	// 전부 고정). 그땐 즉시 컷. activePath 바꾸기 직전 setActive 에서 계산.
+	// (탭 flip 은 위치 변화가 없으면 자동으로 안 뜨므로 본문만 제어한다.)
+	let suppressAnim = $state(false);
+
+	/** old→new 전환에서 (가장 얕은 변경 레벨의) 윈도우 start 가 바뀌면 true. */
+	function windowMoved(oldPath: number[], newPath: number[]): boolean {
+		const maxLen = Math.max(oldPath.length, newPath.length);
+		let d = -1;
+		for (let i = 0; i < maxLen; i++) {
+			if (oldPath[i] !== newPath[i]) {
+				d = i;
+				break;
+			}
+		}
+		if (d < 0) return false;
+		// d 위쪽 부모는 old/new 동일(첫 변경 깊이) → newPath 로 형제 목록 조회 OK.
+		const nodes = nodesAtDepth(tree, newPath, d);
+		if (!nodes) return false;
+		const n = nodes.length;
+		return tabView(n, oldPath[d] ?? 0).start !== tabView(n, newPath[d] ?? 0).start;
+	}
+
+	/** activePath 교체 + 윈도우 이동 여부로 본문 슬라이드 on/off. */
+	function setActive(next: number[]) {
+		suppressAnim = !windowMoved(activePath, next);
+		activePath = next;
+	}
+
 	// tree 변화 시 경로 보정: 여전히 navigable 잎을 가리키면 유지, 아니면 첫 잎.
 	// activePath 를 읽고 쓰므로 untrack — tree 변화에만 반응.
 	$effect(() => {
 		const t = tree;
 		untrack(() => {
 			const repaired = repairPath(t, activePath);
-			if (repaired !== activePath) activePath = repaired;
+			if (repaired !== activePath) {
+				suppressAnim = true; // 구조 보정 — 슬라이드 없이 즉시
+				activePath = repaired;
+			}
 		});
 	});
 
@@ -175,8 +239,8 @@
 	});
 	const activeLeafGuid = $derived(activeLeaf?.guid ?? null);
 
-	// 스트립 항목 빌더는 stackMath(topItems/bottomItems)로 이동 — activeIdx 가
-	// 범위 밖이어도(재귀 비활성 형제) undefined 노드를 만들지 않게 clamp 포함.
+	// 스트립 윈도우는 stackMath(visibleTabs)로 — activeIdx 가 범위 밖이어도
+	// (재귀 비활성 형제) undefined 노드를 만들지 않게 clamp 포함.
 
 	// --- 높이 ----------------------------------------------------------------
 	let rootEl = $state<HTMLElement | null>(null);
@@ -185,14 +249,17 @@
 	const stackH = $derived(dragPx ?? Math.max(140, Math.round((basisH * spec.heightPct) / 100)));
 
 	onMount(() => {
+		// 전용 노트는 컨테이너(.editor-area / .body)를 flex:1 로 꽉 채운다 —
+		// heightPct 기반 측정 불요. view 도 null 이라 아래 분기 자체를 건너뛴다.
+		if (dedicated) return;
 		// 데스크톱 멀티윈도우(.note-window)는 창이 높이를 한정 → 호스트
 		// 에디터 clientHeight 안정적. 모바일 라우트는 본문이 body 스크롤로
 		// 콘텐츠만큼 자라고 그 안에 묶음이 포함돼, clientHeight 기준이면
 		// 측정→성장 피드백 루프(무한 증식). 모바일은 화면 높이(innerHeight)를
 		// 기준 — 콘텐츠와 무관해 루프가 끊긴다.
-		const inDesktopWindow = !!view.dom.closest('.note-window');
+		const inDesktopWindow = !!view!.dom.closest('.note-window');
 		if (inDesktopWindow) {
-			const hostEl = view.dom.closest<HTMLElement>('.tomboy-editor') ?? view.dom.parentElement;
+			const hostEl = view!.dom.closest<HTMLElement>('.tomboy-editor') ?? view!.dom.parentElement;
 			if (!hostEl) return;
 			basisH = hostEl.clientHeight || 600;
 			const ro = new ResizeObserver(() => {
@@ -314,6 +381,10 @@
 	interface EditorSession {
 		guid: string;
 		content: JSONContent;
+		/** Last-known xml of this note — reload no-op guard (used by Task 4). */
+		xmlContent: string;
+		/** Stable reload-bus identity for THIS leaf. */
+		reloadToken: object;
 		createDate: string | null;
 		pendingDoc: JSONContent | null;
 		saveTimer: ReturnType<typeof setTimeout> | null;
@@ -339,7 +410,7 @@
 		s.pendingDoc = null;
 		if (!docJson) return;
 		try {
-			await updateNoteFromEditor(guid, docJson);
+			await updateNoteFromEditor(guid, docJson, s.reloadToken);
 		} catch (err) {
 			console.error('[noteBundle flushSave]', err);
 		}
@@ -368,32 +439,40 @@
 			const [note, scrollBottom] = await Promise.all([getNote(guid), isScrollBottomNote(guid)]);
 			if (!note || destroyed || sessions.has(guid)) return;
 			attachOpenNote(guid);
+			const reloadToken = {};
 			const offReload = subscribeNoteReload(guid, async () => {
-				const cur = sessions.get(guid);
-				if (cur) {
-					if (cur.saveTimer) {
-						clearTimeout(cur.saveTimer);
-						cur.saveTimer = null;
+					const cur = sessions.get(guid);
+					// Skip when THIS leaf is focused + dirty (user is typing here).
+					const ed = editorRefs[guid]?.getEditor?.();
+					if (ed?.isFocused && cur?.pendingDoc) return;
+					if (cur) {
+						if (cur.saveTimer) {
+							clearTimeout(cur.saveTimer);
+							cur.saveTimer = null;
+						}
+						cur.pendingDoc = null;
 					}
-					cur.pendingDoc = null;
-				}
-				const fresh = await getNote(guid);
-				const live = sessions.get(guid);
-				if (fresh && live) {
+					const fresh = await getNote(guid);
+					const live = sessions.get(guid);
+					if (!fresh || !live) return;
+					if (fresh.xmlContent === live.xmlContent) return; // no-op
 					const content = getNoteEditorContent(fresh);
 					sessions.set(guid, {
 						...live,
 						content,
+						xmlContent: fresh.xmlContent,
 						termSpec: parseTerminalNote(content),
 						isMusic: isMusicNoteDoc(content)
 					});
-				}
-			});
+				},
+			reloadToken);
 			const offFlush = subscribeNoteFlush(guid, () => flushSession(guid));
 			const content = getNoteEditorContent(note);
 			sessions.set(guid, {
 				guid,
 				content,
+				xmlContent: note.xmlContent,
+				reloadToken,
 				createDate: note.createDate ?? null,
 				pendingDoc: null,
 				saveTimer: null,
@@ -471,6 +550,31 @@
 		};
 	}
 
+	// Ctrl 누른 채 우상단 편집 버튼 → 체크 해제. 선언 라인 + 리스트가 다시
+	// 보이고(데코 해제) 위젯이 파괴되어 직접 편집 가능. modKeys.ctrl 로만 노출.
+	const stopEvt = (e: Event) => {
+		e.preventDefault();
+		e.stopPropagation();
+	};
+	function handleUncheck(e: Event) {
+		e.preventDefault();
+		e.stopPropagation();
+		if (!view) return;
+		setBundleChecked(view, spec.ordinal, false);
+	}
+
+	// 전용 노트 크롬 — Ctrl→편집(일반 노트로 보기) / 닫기(창).
+	function handleRawEdit(e: Event) {
+		e.preventDefault();
+		e.stopPropagation();
+		onraw?.();
+	}
+	function handleClose(e: Event) {
+		e.preventDefault();
+		e.stopPropagation();
+		onclose?.();
+	}
+
 	// --- 훑어보기 / 편집 모드 ---------------------------------------------------
 	let mode = $state<'browse' | 'edit'>('browse');
 
@@ -479,6 +583,19 @@
 		mode = 'browse';
 		const ae = document.activeElement as HTMLElement | null;
 		if (ae && rootEl?.contains(ae)) ae.blur();
+	}
+
+	// 편집 헤더 — ← 돌아가기(훑어보기) / ↗ 꺼내기(단독 열기).
+	function handleEditBack(e: Event) {
+		e.preventDefault();
+		e.stopPropagation();
+		exitEdit();
+	}
+	function handleEject(e: Event) {
+		e.preventDefault();
+		e.stopPropagation();
+		const l = activeLeaf;
+		if (l && !l.broken && l.link) oninternallink?.(l.link);
 	}
 
 	/** "하단이 최신" 노트 — 본문 첫 마운트 직후 끝으로 스크롤(rAF×2). */
@@ -535,7 +652,7 @@
 	function step(dir: 1 | -1) {
 		exitEdit();
 		const next = stepPath(tree, activePath, dir);
-		if (next !== activePath) activePath = next;
+		if (next !== activePath) setActive(next);
 	}
 
 	/** ctrl/⌘+휠 — 활성 잎 노트 본문을 직접 스크롤(편집 진입 없이 내용 확인).
@@ -553,10 +670,11 @@
 		exitEdit();
 		e.preventDefault(); // 네이티브 본문 스크롤 차단(브라우징 중)
 		e.stopPropagation();
-		if (Math.sign(e.deltaY) !== Math.sign(wheelAcc)) wheelAcc = 0;
-		wheelAcc += e.deltaY;
-		// 탭 구조: 아래로 굴리면(deltaY>0) 다음(이후) 노트 — 이전 세로 스택과
-		// 방향 반대. 노치당 정확히 한 칸(잔여 폐기).
+		// 가로 탭이라 우세축 사용 — 마우스 휠(deltaY) / 트랙패드 가로(deltaX) 둘 다.
+		const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+		if (Math.sign(d) !== Math.sign(wheelAcc)) wheelAcc = 0;
+		wheelAcc += d;
+		// 양수(아래/오른쪽)면 다음(이후) 노트. 노치당 정확히 한 칸(잔여 폐기).
 		if (wheelAcc >= 50) {
 			step(1);
 			wheelAcc = 0;
@@ -581,40 +699,49 @@
 		lastTabKey = id;
 		lastTabTime = now;
 		if (!node.navigable) return;
-		activePath = pickPath(tree, activePath, depth, idx);
+		setActive(pickPath(tree, activePath, depth, idx));
 	}
 
-	// 본문 위 스와이프(전환) + 탭(편집 진입). 캡처 안 함 — 캡처하면 click 이
-	// retarget 돼 PM 포커스(모바일 키보드)가 안 뜬다.
-	let swipeY: number | null = null;
+	// 본문 위 가로 스와이프(전환) + 탭(편집 진입). 가로만 — 상하 제스처는 무시
+	// (스크롤 의도). 캡처 안 함 — 캡처하면 click 이 retarget 돼 PM 포커스(모바일
+	// 키보드)가 안 뜬다.
+	let swipeX: number | null = null;
+	let downX = 0;
 	let downY = 0;
 	let swiped = false;
 	let downOnBody = false;
 	function handlePointerDown(e: PointerEvent) {
 		const t = e.target as HTMLElement;
 		if (t.closest?.('.tab') || t.closest?.('.bundle-music') || t.closest?.('.bar-term-btn')) return;
-		swipeY = e.clientY;
+		swipeX = e.clientX;
+		downX = e.clientX;
 		downY = e.clientY;
 		swiped = false;
 		downOnBody = !!t.closest?.('.bundle-body');
 	}
 	function handlePointerMove(e: PointerEvent) {
-		if (swipeY === null) return;
-		const dy = e.clientY - swipeY;
-		if (Math.abs(dy) >= 30) {
+		if (swipeX === null) return;
+		const dx = e.clientX - swipeX;
+		if (Math.abs(dx) >= 30) {
 			swiped = true;
-			if (mode === 'browse') step(dy < 0 ? 1 : -1); // 위로 끌면 다음
-			swipeY = e.clientY;
+			if (mode === 'browse') step(dx < 0 ? 1 : -1); // 왼쪽으로 끌면 다음(이후)
+			swipeX = e.clientX;
 		}
 	}
 	function handlePointerUp(e: Event) {
 		const pe = e as PointerEvent;
-		if (downOnBody && !swiped && Math.abs(pe.clientY - downY) < 8 && mode === 'browse') {
+		if (
+			downOnBody &&
+			!swiped &&
+			Math.abs(pe.clientX - downX) < 8 &&
+			Math.abs(pe.clientY - downY) < 8 &&
+			mode === 'browse'
+		) {
 			// 본문 탭 → 편집 모드만 전환. 포커스는 suppressEditorFocus 가 막아
 			// 키보드 안 뜸 — 타이핑은 편집 모드에서 다시 탭.
 			mode = 'edit';
 		}
-		swipeY = null;
+		swipeX = null;
 		swiped = false;
 		downOnBody = false;
 	}
@@ -638,15 +765,18 @@
 		if (dragPx === null) return;
 		const pct = Math.round((dragPx / Math.max(1, basisH)) * 100);
 		dragPx = null;
-		writeBundleHeightPct(view, spec.ordinal, pct);
+		if (view) writeBundleHeightPct(view, spec.ordinal, pct);
 	}
 </script>
 
 <div
 	class="bundle-stack"
 	class:browse={mode === 'browse'}
+	class:edit={mode === 'edit'}
+	class:no-anim={suppressAnim}
+	class:dedicated
 	bind:this={rootEl}
-	style:height={`${stackH}px`}
+	style:height={dedicated ? null : `${stackH}px`}
 	use:direct={{
 		pointerdown: handlePointerDown as (e: Event) => void,
 		pointermove: handlePointerMove as (e: Event) => void,
@@ -654,6 +784,23 @@
 		pointercancel: handlePointerUp
 	}}
 >
+	{#if mode === 'edit' && activeLeaf}
+		<div class="edit-header">
+			<button
+				type="button"
+				class="edit-nav edit-back"
+				title="훑어보기로 돌아가기"
+				use:direct={{ click: handleEditBack, pointerdown: stopEvt, mousedown: stopEvt }}
+			>←</button>
+			<span class="edit-title">{activeLeaf.label || '(제목 없음)'}</span>
+			<button
+				type="button"
+				class="edit-nav edit-eject"
+				title="노트 단독으로 열기"
+				use:direct={{ click: handleEject, pointerdown: stopEvt, mousedown: stopEvt }}
+			>↗</button>
+		</div>
+	{/if}
 	{#if tree.length === 0}
 		<div class="bundle-empty">묶을 노트 없음</div>
 	{:else if activePath.length === 0}
@@ -661,33 +808,69 @@
 	{:else}
 		{@render tabLevel(tree, 0, true)}
 	{/if}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div
-		class="bundle-resize"
-		use:direct={{
-			pointerdown: handleResizeDown as (e: Event) => void,
-			pointermove: handleResizeMove as (e: Event) => void,
-			pointerup: handleResizeUp,
-			pointercancel: handleResizeUp
-		}}
-		aria-hidden="true"
-	></div>
+	{#if dedicated}
+		<!-- 전용 노트 크롬(훑어보기 전용) — 우상단 [✎편집(Ctrl)][↗꺼내기][✕닫기].
+		     편집 모드에선 .edit-header 가 ←/↗ 를 맡으므로 여기선 안 띄운다. -->
+		{#if mode === 'browse'}
+			<div class="dedicated-chrome">
+				{#if modKeys.ctrl}
+					<button
+						type="button"
+						class="dchrome-btn"
+						title="편집 (일반 노트로 보기)"
+						use:direct={{ click: handleRawEdit, pointerdown: stopEvt, mousedown: stopEvt }}
+					>✎ 편집</button>
+				{/if}
+				<button
+					type="button"
+					class="dchrome-btn"
+					title="활성 노트 단독으로 열기"
+					use:direct={{ click: handleEject, pointerdown: stopEvt, mousedown: stopEvt }}
+				>↗ 꺼내기</button>
+				{#if onclose}
+					<button
+						type="button"
+						class="dchrome-btn dchrome-close"
+						title="닫기"
+						use:direct={{ click: handleClose, pointerdown: stopEvt, mousedown: stopEvt }}
+					>✕</button>
+				{/if}
+			</div>
+		{/if}
+	{:else if modKeys.ctrl}
+		<button
+			type="button"
+			class="bundle-edit-btn"
+			title="편집 (체크 해제)"
+			use:direct={{ click: handleUncheck, pointerdown: stopEvt, mousedown: stopEvt }}
+		>✎ 편집</button>
+	{/if}
+	{#if !dedicated}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="bundle-resize"
+			use:direct={{
+				pointerdown: handleResizeDown as (e: Event) => void,
+				pointermove: handleResizeMove as (e: Event) => void,
+				pointerup: handleResizeUp,
+				pointercancel: handleResizeUp
+			}}
+			aria-hidden="true"
+		></div>
+	{/if}
 </div>
 
-{#snippet strip(
-	items: Array<{ node: ResolvedNode; idx: number }>,
-	depth: number,
-	isTop: boolean,
-	activeIdx: number
-)}
-	{#if items.length > 0}
-		{@const win = tabWindow(items.length)}
-		<div class="tab-strip" class:bottom={!isTop}>
-			{#each items.slice(0, win.shown) as it (it.node.key)}
+{#snippet strip(vis: VisibleTabs<ResolvedNode>, depth: number, activeIdx: number)}
+	{#if vis.items.length > 0}
+		<div class="tab-strip">
+			{#if vis.leftPlus > 0}
+				<span class="tab tab-plus">+{vis.leftPlus}</span>
+			{/if}
+			{#each vis.items as it (it.node.key)}
 				<button
 					type="button"
 					class="tab"
-					class:active={isTop && it.idx === activeIdx}
+					class:active={it.idx === activeIdx}
 					class:broken={it.node.isLeaf && it.node.broken}
 					class:cat={!it.node.isLeaf}
 					title={it.node.label}
@@ -699,8 +882,8 @@
 					<span class="tab-label">{it.node.label || '(빈 카테고리)'}</span>
 				</button>
 			{/each}
-			{#if win.plus > 0}
-				<span class="tab tab-plus">+{win.plus}</span>
+			{#if vis.rightPlus > 0}
+				<span class="tab tab-plus">+{vis.rightPlus}</span>
 			{/if}
 		</div>
 	{/if}
@@ -744,13 +927,23 @@
 				<div class="bundle-music" use:mountMusicBar={{ guid: session.guid }}></div>
 			{/if}
 			<EditorComponent
-				bind:this={editorRefs[session.guid]}
+				bind:this={editorRefs[node.guid!]}
 				content={session.content}
 				currentGuid={session.guid}
 				onchange={(doc: JSONContent) => handleEmbeddedChange(session.guid, doc)}
+				onblur={() => { void flushSession(session.guid); }}
 				oninternallink={(t: string) => oninternallink?.(t)}
 				enableNoteBundle={false}
 				hrSplitEnabled={false}
+				hideTitleLine={true}
+				isScheduleNote={session.guid === scheduleNoteGuid}
+				sendListItemActive={shouldSendListBeActive({
+					guid: session.guid,
+					sourceGuid: SEND_SOURCE_GUID,
+					ctrlHeld: modKeys.ctrl,
+					focusedGuid: null,
+					ignoreFocus: true
+				})}
 				createDate={session.createDate}
 			/>
 		</div>
@@ -763,7 +956,7 @@
 	     새어들어와 범위를 넘겨도 undefined 노드를 만들지 않는다. -->
 	{@const activeIdx = clampIndex(nodes.length, onPath ? (activePath[depth] ?? 0) : 0)}
 	<div class="tab-level">
-		{@render strip(topItems(nodes, activeIdx), depth, true, activeIdx)}
+		{@render strip(visibleTabs(nodes, activeIdx), depth, activeIdx)}
 		<div class="level-body">
 			{#each nodes as node, i (node.key)}
 				<div class="node-body" class:active={i === activeIdx} class:before={i < activeIdx}>
@@ -775,7 +968,6 @@
 				</div>
 			{/each}
 		</div>
-		{@render strip(bottomItems(nodes, activeIdx), depth, false, activeIdx)}
 	</div>
 {/snippet}
 
@@ -788,6 +980,42 @@
 		border-radius: 6px;
 		overflow: hidden;
 		background: #1e1e1e;
+	}
+	/* 전용 노트 — 컨테이너(.editor-area / .body)를 꽉 채우고 카드 테두리/여백 제거. */
+	.bundle-stack.dedicated {
+		flex: 1;
+		min-height: 0;
+		margin: 0;
+		border: none;
+		border-radius: 0;
+		position: relative;
+	}
+	/* 전용 노트 우상단 크롬 — 반투명, 본문 위로 떠 있음. */
+	.dedicated-chrome {
+		position: absolute;
+		top: 4px;
+		right: 4px;
+		z-index: 6;
+		display: flex;
+		gap: 4px;
+	}
+	.dchrome-btn {
+		padding: 3px 9px;
+		font-size: 12px;
+		line-height: 1.4;
+		color: #fff;
+		background: rgba(38, 38, 38, 0.82);
+		border: none;
+		border-radius: 4px;
+		cursor: pointer;
+		opacity: 0.82;
+		box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+	}
+	.dchrome-btn:hover {
+		opacity: 1;
+	}
+	.dchrome-close {
+		background: rgba(122, 46, 46, 0.9);
 	}
 	.tab-level {
 		display: flex;
@@ -827,12 +1055,16 @@
 		transform: translateX(0);
 		z-index: 1;
 	}
+	/* 윈도우가 안 움직이는 전환(탭 제자리) — 본문 슬라이드 생략, 즉시 컷. */
+	.bundle-stack.no-anim .node-body {
+		transition: none;
+	}
 	@media (prefers-reduced-motion: reduce) {
 		.node-body {
 			transition: none;
 		}
 	}
-	/* --- 탭 스트립 ---------------------------------------------------------- */
+	/* --- 탭 스트립(상단 전용) ----------------------------------------------- */
 	.tab-strip {
 		flex-shrink: 0;
 		display: flex;
@@ -842,12 +1074,11 @@
 		background: #1a1a1a;
 		overflow: hidden;
 	}
-	.tab-strip.bottom {
-		padding: 0 2px 2px;
-	}
 	.tab {
-		flex: 1 1 0;
-		min-width: 0; /* 최소 1/4 는 최대 4탭(tabWindow) 보장으로 충족 */
+		/* 내용(타이틀) 폭에 맞춰 커지되 넘치면 shrink+말줄임, 최소 1/4. */
+		flex: 0 1 auto;
+		min-width: 25%;
+		max-width: 100%;
 		display: flex;
 		align-items: center;
 		border: none;
@@ -861,11 +1092,6 @@
 		touch-action: manipulation;
 		user-select: none;
 		transition: background-color 140ms ease-out, color 140ms ease-out;
-	}
-	.tab-strip.bottom .tab {
-		border-radius: 0 0 5px 5px;
-		background: #232323;
-		color: #9a9a9a;
 	}
 	.tab-label {
 		flex: 1;
@@ -890,14 +1116,59 @@
 		color: #777;
 		cursor: default;
 	}
+	/* 숨은 탭 수 배지 — 좌/우 끝의 작은 고정폭 탭([+N]). */
 	.tab-plus {
 		flex: 0 0 auto;
+		min-width: 0;
+		justify-content: center;
 		color: #999;
 		font-size: 0.72rem;
+		font-weight: 600;
 		cursor: default;
 		background: #202020;
+		padding: clamp(4px, 0.9vw, 6px) 7px;
+	}
+	/* --- 편집 모드(단일 노트 뷰) ------------------------------------------- */
+	/* 탭 스트립 전부 숨김 → 활성 본문만 남아 노트 한 개처럼 보인다. */
+	.bundle-stack.edit .tab-strip {
+		display: none;
+	}
+	.edit-header {
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: clamp(4px, 0.9vw, 6px) clamp(6px, 1.4vw, 10px);
+		background: #2d5a3d;
+		border-bottom: 1px solid #1a1a1a;
+	}
+	.edit-nav {
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
 		justify-content: center;
-		padding: clamp(4px, 0.9vw, 6px) 8px;
+		width: 22px;
+		height: 22px;
+		border: none;
+		border-radius: 4px;
+		background: rgba(255, 255, 255, 0.14);
+		color: #fff;
+		font-size: 0.85rem;
+		line-height: 1;
+		cursor: pointer;
+	}
+	.edit-nav:hover {
+		background: rgba(255, 255, 255, 0.28);
+	}
+	.edit-title {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: #fff;
+		font-size: 0.8rem;
+		font-weight: 500;
 	}
 	/* --- 본문 -------------------------------------------------------------- */
 	.bundle-body {
@@ -908,12 +1179,12 @@
 		background: var(--color-bg, #fff);
 		transition: background-color 160ms ease-out;
 	}
-	/* 훑어보기 모드 — 활성 본문 회색조 + 탭 힌트. touch-action:none 으로
-	   네이티브 스크롤 대신 스와이프 전환을 받는다. */
+	/* 훑어보기 모드 — 활성 본문 회색조 + 탭 힌트. touch-action:pan-y 로 좌우
+	   스와이프는 JS(탭 전환)가, 상하는 브라우저(페이지 스크롤)가 가져간다. */
 	.bundle-stack.browse .bundle-body {
 		background: #ecebe6;
 		cursor: pointer;
-		touch-action: none;
+		touch-action: pan-y;
 	}
 	.bundle-term {
 		height: 100%;
@@ -973,5 +1244,25 @@
 		border-radius: 2px;
 		margin: 2.5px auto;
 		background: #555;
+	}
+	/* Ctrl 누른 동안만 노출되는 편집(체크 해제) 버튼 — 우상단 오버레이. */
+	.bundle-edit-btn {
+		position: absolute;
+		top: 4px;
+		right: 4px;
+		z-index: 5;
+		padding: 2px 8px;
+		font-size: 12px;
+		line-height: 1.4;
+		color: #fff;
+		background: #3f8657;
+		border: none;
+		border-radius: 4px;
+		cursor: pointer;
+		opacity: 0.92;
+		box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+	}
+	.bundle-edit-btn:hover {
+		opacity: 1;
 	}
 </style>

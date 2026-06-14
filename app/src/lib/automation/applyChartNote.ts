@@ -1,5 +1,4 @@
 import { findNoteByTitle, createNote, updateNoteFromEditor } from '$lib/core/noteManager.js';
-import { emitNoteReload } from '$lib/core/noteReloadBus.js';
 import { desktopSession } from '$lib/desktop/session.svelte.js';
 import { buildChartNoteDoc, type ChartNoteOptions } from './buildChartNote.js';
 
@@ -20,8 +19,7 @@ export async function applyChartNote(opts: ChartNoteOptions): Promise<ChartApply
 
   const note = await createNote(opts.noteTitle);
   await updateNoteFromEditor(note.guid, buildChartNoteDoc(opts));
-  // Same dual-channel reload as applyDataNoteCsv (mobile/core bus + desktop).
-  await emitNoteReload([note.guid]);
+  // Self-emit covers the bus; keep the desktop session reload for windows.
   await desktopSession.reloadWindows([note.guid]);
   return 'created';
 }

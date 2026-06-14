@@ -9,6 +9,7 @@ import {
 	createNoteBundlePlugin,
 	noteBundlePluginKey,
 	writeBundleHeightPct,
+	setBundleChecked,
 	type BundleSpec,
 	type StackController
 } from '$lib/editor/noteBundle';
@@ -194,6 +195,42 @@ describe('noteBundlePlugin', () => {
 		expect(st2.decorations.find().length).toBe(0);
 	});
 
+	it('checked 번들 → 선언 라인(키워드 paragraph)도 숨김 데코', async () => {
+		const { mountStack } = makeStub();
+		const ed = makeEditor(
+			doc(titleLine('호스트'), kw('묶음:50', true), list(li('A'), li('B'))),
+			mountStack
+		);
+		await tick();
+		const st = noteBundlePluginKey.getState(ed.state)!;
+		const b = st.bundles[0];
+		// 키워드 paragraph 범위에 hidden 노드 데코가 있어야 한다
+		const kwDecos = st.decorations.find(b.keywordPos, b.keywordEnd).filter((d) => {
+			const dd = d as { from: number; to: number };
+			return dd.from === b.keywordPos && dd.to === b.keywordEnd;
+		});
+		expect(kwDecos.length).toBe(1);
+	});
+
+	it('setBundleChecked(false) → 체크 해제 + 데코/위젯 제거', async () => {
+		const { calls, mountStack } = makeStub();
+		const ed = makeEditor(
+			doc(titleLine('호스트'), kw('묶음:50', true), list(li('A'))),
+			mountStack
+		);
+		await tick();
+		setBundleChecked(ed.view, 0, false);
+		await tick();
+		expect(calls.destroyed).toBe(1);
+		const st = noteBundlePluginKey.getState(ed.state)!;
+		expect(st.bundles[0].checked).toBe(false);
+		expect(st.decorations.find().length).toBe(0);
+		// 멱등 — 이미 false 면 no-op (재파괴 없음)
+		setBundleChecked(ed.view, 0, false);
+		await tick();
+		expect(calls.destroyed).toBe(1);
+	});
+
 	it('writeBundleHeightPct: 숫자 교체 + 숫자 없으면 삽입 + 클램프', async () => {
 		const { mountStack } = makeStub();
 		const ed = makeEditor(
@@ -237,12 +274,16 @@ describe('noteBundlePlugin', () => {
 		expect(calls.mounted).toBe(1);
 		const st = noteBundlePluginKey.getState(ed.state)!;
 		expect(st.bundles[0].listPos).toBeNull();
-		// node 데코레이션(hidden) 은 없어야 한다
+		// 리스트가 없어도 선언 라인(키워드 paragraph)은 숨겨지므로 node
+		// 데코레이션이 정확히 1개 — 그 범위는 [keywordPos, keywordEnd].
 		const nodeDecos = st.decorations.find().filter((d) => {
 			// widget decoration 은 from===to, node decoration 은 from<to
 			return (d as { from: number; to: number }).from < (d as { from: number; to: number }).to;
 		});
-		expect(nodeDecos.length).toBe(0);
+		expect(nodeDecos.length).toBe(1);
+		const b = st.bundles[0];
+		expect(nodeDecos[0].from).toBe(b.keywordPos);
+		expect(nodeDecos[0].to).toBe(b.keywordEnd);
 	});
 
 	it('ordinal 재배정 — 컨트롤러 1개 destroy + 생존 컨트롤러가 2번째 번들 spec 수신', async () => {

@@ -1,6 +1,6 @@
 ---
 name: tomboy-notebundle
-description: Use when working on the 탭/묶음 (note bundle) feature — TWO in-editor file-cabinets sharing one parser/plugin but with different UIs, chosen by keyword. `[prefix:][체크박스]탭:N` (kind 'tab', legacy `노트 탭`) renders the **browser-tab recursive** cabinet (NoteBundleStack: top strip = active+upcoming, body, bottom strip = passed; indented children recurse as category tabs) — for going back and forth between notes. `[prefix:][체크박스]묶음:N` (kind 'bundle', legacy `노트 묶음`) renders the **5-bar title-window** cabinet (NoteBundleCabinet: one expanded note + collapsed title bars above/below with the active note fixed at the 3rd slot, nested children flattened with a category label left of the title) — for digging through documents to find one. Both: every link per list item counts (comma/space, multi-per-line); fully-editable embedded TomboyEditor clamped to N% height; same editor-in-editor barrier, per-note keep-alive EditorSession map, browse/edit modes, capture-phase wheel preemption, caret-escape guard, host-shell wiring (terminal 접속 / music bar / scroll-bottom). Covers the shared parser (atom-aware PMNode walk, keyword/checkbox/list adjacency, `kind` discrimination, tree for tab + flat entries for bundle), the plugin (hide-list decoration gated on `hasContent`, cached widget per ordinal, kind-change destroy+remount, spec-as-full-replacement StackController), stackMath (tab: firstNavPath/repairPath/stepPath/pickPath + tabWindow) and cabinetMath (bundle: windowWidth/centeredWindow, WINDOW_SIZE=5, ACTIVE_SLOT=2 fixed 3rd slot), and both Svelte components — `activePath`/`k` are component-local (NOT persisted; reopening shows the first note).
+description: Use when working on the 탭/묶음 (note bundle) feature — TWO in-editor file-cabinets sharing one parser/plugin but with different UIs, chosen by keyword. `[prefix:][체크박스]탭:N` (kind 'tab', legacy `노트 탭`) renders the **browser-tab recursive** cabinet (NoteBundleStack: single top strip with an active-centred 3-window + `[+N]` edge badges, body slides horizontally; indented children recurse as category tabs) — for going back and forth between notes. `[prefix:][체크박스]묶음:N` (kind 'bundle', legacy `노트 묶음`) renders the **5-bar title-window** cabinet (NoteBundleCabinet: one expanded note + collapsed title bars above/below with the active note fixed at the 3rd slot, nested children flattened with a category label left of the title) — for digging through documents to find one. Both: every link per list item counts (comma/space, multi-per-line); fully-editable embedded TomboyEditor clamped to N% height; same editor-in-editor barrier, per-note keep-alive EditorSession map, browse/edit modes, capture-phase wheel preemption, caret-escape guard, host-shell wiring (terminal 접속 / music bar / scroll-bottom). Covers the shared parser (atom-aware PMNode walk, keyword/checkbox/list adjacency, `kind` discrimination, tree for tab + flat entries for bundle), the plugin (hide-list decoration gated on `hasContent`, cached widget per ordinal, kind-change destroy+remount, spec-as-full-replacement StackController), stackMath (tab: firstNavPath/repairPath/stepPath/pickPath + tabView/visibleTabs active-centred window) and cabinetMath (bundle: windowWidth/centeredWindow, WINDOW_SIZE=5, ACTIVE_SLOT=2 fixed 3rd slot), and both Svelte components — `activePath`/`k` are component-local (NOT persisted; reopening shows the first note).
 ---
 
 # 탭 / 묶음 (note bundle — two in-editor file cabinets)
@@ -11,7 +11,7 @@ checking the checkbox hides the list and renders the cabinet in its place.
 
 | Keyword | `kind` | Component | UI | Use for |
 |---|---|---|---|---|
-| `[ ]탭:N` (legacy `노트 탭:`) | `'tab'` | `NoteBundleStack.svelte` | browser-tab **recursive** (top=active+upcoming / body / bottom=passed; indented children recurse as category tabs) | **오가며 작업** — going back and forth between notes |
+| `[ ]탭:N` (legacy `노트 탭:`) | `'tab'` | `NoteBundleStack.svelte` | browser-tab **recursive** (single top strip, active-centred 3-window + `[+N]` edge badges, body slides horizontally; indented children recurse as category tabs) | **오가며 작업** — going back and forth between notes |
 | `[ ]묶음:N` (legacy `노트 묶음:`) | `'bundle'` | `NoteBundleCabinet.svelte` | **5-bar title window** (one expanded note + collapsed title bars above/below, active fixed at 3rd slot; nested children flattened, parent title shown left of the title as category) | **뒤져서 찾기** — digging through documents |
 
 ```
@@ -52,16 +52,17 @@ sync see a normal checkbox + bullet list; the bundle never mutates the list.
 
 | File | Role |
 |------|------|
-| `lib/editor/noteBundle/parser.ts` | Pure `parseNoteBundles(doc): BundleSpec[]`. Atom-aware PMNode walk; **both keywords** (`탭:`→kind 'tab', `묶음:`→kind 'bundle'). Per kind it fills **either** `tree: BundleNode{label,link,children}` (tab, recursive — `parseTree`) **or** `entries: BundleEntry{title,category}` (bundle, flat — `parseEntries`); the other field stays `[]`. No IDB, no title index. |
-| `lib/editor/noteBundle/noteBundlePlugin.ts` | ProseMirror plugin, **kind-agnostic**. Hide-list node decoration gated on `hasContent` (`tree.length \|\| entries.length`) + cached widget container per ordinal + `StackController` lifecycle. **Kind-change (탭↔묶음) on a live ordinal = destroy + remount** (`controllerKind` map). Exports `writeBundleHeightPct` only. **No list mutation.** |
-| `lib/editor/noteBundle/stackMath.ts` | **Tab** tree-navigation — `firstNavPath`, `drillFrom`, `repairPath`, `stepPath` (bubbles to parent at level ends), `pickPath`, `nodesAtDepth`, `clampIndex`, `topItems`/`bottomItems` (range-safe), `tabWindow`/`TAB_CAP`. |
+| `lib/editor/noteBundle/parser.ts` | Pure `parseNoteBundles(doc): BundleSpec[]`. Atom-aware PMNode walk; **both keywords** (`탭:`→kind 'tab', `묶음:`→kind 'bundle'). Per kind it fills **either** `tree: BundleNode{label,link,children}` (tab, recursive — `parseTree`) **or** `entries: BundleEntry{title,category}` (bundle, flat — `parseEntries`); the other field stays `[]`. No IDB, no title index. **Also** the dedicated-note path: `dedicatedBundleKind(title)` (`탭::`/`묶음::` 접두 → kind, else null) + `parseDedicatedBundle(jsonDoc, kind): BundleSpec` (synthetic spec from the **whole body** — JSON-based twin of the PMNode walk; see 전용 노트 section). |
+| `lib/editor/noteBundle/noteBundlePlugin.ts` | ProseMirror plugin, **kind-agnostic**. Hide-list node decoration gated on `hasContent` (`tree.length \|\| entries.length`) + cached widget container per ordinal + `StackController` lifecycle. **Kind-change (탭↔묶음) on a live ordinal = destroy + remount** (`controllerKind` map). Checked → hides declaration line (`keywordPos..keywordEnd`) **and** list. Exports `writeBundleHeightPct` + `setBundleChecked` (Ctrl 편집 버튼 → 체크 해제). **No list mutation** (only the checkbox attr / `:N` digits). |
+| `lib/editor/noteBundle/stackMath.ts` | **Tab** tree-navigation — `firstNavPath`, `drillFrom`, `repairPath`, `stepPath` (bubbles to parent at level ends), `pickPath`, `nodesAtDepth`, `clampIndex`, `visibleTabs` (range-safe), `tabView`/`TAB_FIT_MAX`/`TAB_WINDOW` (active-centred window + `[+N]` badges). |
 | `lib/editor/noteBundle/cabinetMath.ts` | **Bundle** title-window algebra — `WINDOW_SIZE=5`, `ACTIVE_SLOT=2`, `windowWidth`, `centeredWindow` (active fixed at slot 3 / index 2 regardless of scroll direction, end-pinned), `firstValidIndex`/`nextValidIndex` (broken-skip). |
-| `lib/editor/noteBundle/NoteBundleStack.svelte` | **Tab** UI (kind 'tab'). `activePath` + recursive `tabLevel` snippet + keep-alive `EditorSession` map + barrier + browse/edit + host-shell wiring. |
-| `lib/editor/noteBundle/NoteBundleCabinet.svelte` | **Bundle** UI (kind 'bundle'). Flat `resolved` entries + `k`(active)/`winStart`(5-bar window) + flex-grow drawer + same barrier / sessions / modes / host-shell wiring. |
-| `lib/editor/noteBundle/index.ts` | Barrel (exports `BundleSpec`, `BundleNode`, `BundleEntry`, `BundleKind`). |
-| `lib/editor/TomboyEditor.svelte` | Wires the plugin (`enableNoteBundle`, default `true`). `mountStack` **branches on `spec.kind`** → mounts `NoteBundleCabinet` (bundle) or `NoteBundleStack` (tab), both with `EditorComponent: TomboyEditorSelf` + `$state` props. |
-| `routes/settings/+page.svelte` (가이드 → notes 탭) | **Two** guide cards: "탭 — 오가며 작업하는 노트 탭" + "묶음 — 뒤져서 찾는 노트 서류함". |
-| `tests/unit/editor/noteBundle/{parser,noteBundlePlugin,stackMath,cabinetMath}.test.ts` | Unit tests (parser kind/tree/entries, plugin decorations + kind-change remount, tab tree-nav + tabWindow, bundle window-5 algebra). |
+| `lib/editor/noteBundle/NoteBundleStack.svelte` | **Tab** UI (kind 'tab'). `activePath` + recursive `tabLevel` snippet + keep-alive `EditorSession` map + barrier + browse/edit + host-shell wiring. `variant='dedicated'` + nullable `view` + `onclose`/`onraw` for the full-note path. |
+| `lib/editor/noteBundle/NoteBundleCabinet.svelte` | **Bundle** UI (kind 'bundle'). Flat `resolved` entries + `k`(active)/`winStart`(5-bar window) + flex-grow drawer + same barrier / sessions / modes / host-shell wiring. Same `variant='dedicated'` extras. |
+| `lib/editor/noteBundle/index.ts` | Barrel (exports `BundleSpec`, `BundleNode`, `BundleEntry`, `BundleKind`, `dedicatedBundleKind`, `parseDedicatedBundle`). |
+| `lib/editor/TomboyEditor.svelte` | Wires the plugin (`enableNoteBundle`, default `true`). `mountStack` **branches on `spec.kind`** → mounts `NoteBundleCabinet` (bundle) or `NoteBundleStack` (tab), both with `EditorComponent: TomboyEditorSelf` + `$state` props (inline `variant`). |
+| `routes/note/[id]/+page.svelte` + `lib/desktop/NoteWindow.svelte` | **Dedicated-note hosts** — branch on `dedicatedBundleKind(note.title)`; render `NoteBundleStack`/`NoteBundleCabinet` `variant="dedicated"` `view={null}` (+ `onclose=handleClose` on NoteWindow only) when `!showRawBundle`; else the normal `TomboyEditor` + a Ctrl-gated `↩ 묶음` back button. |
+| `routes/settings/+page.svelte` (가이드 → notes 탭) | **Three** guide cards: "탭 …" + "묶음 …" + "전용 탭/묶음 노트 — 노트 하나가 통째로 파일철". |
+| `tests/unit/editor/noteBundle/{parser,noteBundlePlugin,stackMath,cabinetMath,dedicatedParser}.test.ts` | Unit tests (parser kind/tree/entries, plugin decorations + kind-change remount, tab tree-nav + tabView/visibleTabs, bundle window-5 algebra, **dedicated** title-sig + body→tree/entries). |
 
 There is **no Svelte component test** — both UIs are verified manually via
 `npm run dev` and the headless probe scripts under `/tmp/nb-verify/`
@@ -113,11 +114,22 @@ Kind-agnostic. State rebuilt on every `docChanged` (`buildState`). For each
 **checked** bundle with `hasContent(b)` (`tree.length || entries.length` — works
 for both kinds):
 
+0. `Decoration.node(keywordPos, keywordEnd, {class:'tomboy-note-bundle-hidden'})`
+   hides the **declaration line** (checkbox + keyword paragraph) to save space —
+   added even when there is no list. `keywordPos` is the keyword paragraph's node
+   start (always a top-level paragraph; the bundle parser only recognizes those).
 1. `Decoration.node(listPos, listEnd, {class:'tomboy-note-bundle-hidden'})` hides
    the raw list (nested lists included — the whole top-level list range).
 2. `Decoration.widget(listEnd ?? keywordEnd, …, {key:'note-bundle-<ordinal>',
    side:1})` whose `toDOM` returns a **container cached by ordinal** so the
    mounted Svelte component survives re-renders.
+
+Re-edit path: with the declaration hidden there's no visible checkbox to
+un-toggle, so both components show a Ctrl-only **"✎ 편집" button** (top-right,
+`{#if modKeys.ctrl}`, `use:direct` click) → `setBundleChecked(view, ordinal,
+false)` re-looks-up by ordinal and `setNodeAttribute(checkboxPos, 'checked',
+false)`. Unchecking drops all three decorations (declaration + list reappear) and
+`syncControllers` destroys the widget. No-op if already that value.
 
 `view().update` runs `syncControllers`: `update(spec)` an existing controller
 **of the same kind**, else (no controller, or **kind changed**) `mountStack` when
@@ -161,13 +173,18 @@ descends into their first navigable leaf).
   instead of dead-ending — the "scroll toss-to-parent" the user expects). Only the
   root edge clamps.
 - `pickPath(tree, path, depth, idx)` — select tab `idx` at `depth` (+drill).
-- `clampIndex(len, idx)` / `topItems(nodes, activeIdx)` / `bottomItems(nodes, activeIdx)`
-  — strip builders. **Clamp `activeIdx` into range** so an out-of-range index never
-  yields an `undefined` node (see the recursion crash note below). `bottomItems`
-  is reversed (most-recent leftmost).
+- `clampIndex(len, idx)` / `visibleTabs(nodes, activeIdx)` — the (single, top) strip
+  builder. **Clamp `activeIdx` into range** so an out-of-range index never yields an
+  `undefined` node (see the recursion crash note below). Returns
+  `{items:[{node,idx}…], leftPlus, rightPlus}` — the windowed tabs plus hidden-count
+  badges on each side.
 - `nodesAtDepth(tree, path, depth)` — the sibling list at a depth.
-- `tabWindow(total)` — overflow: `total ≤ TAB_CAP(=4)` → all shown; else
-  `{shown: 3, plus: total-3}`. **`TAB_CAP=4`** because the min tab width is ¼.
+- `tabView(total, active)` — **active-centred window**. `total ≤ TAB_FIT_MAX(=4)` →
+  all shown, fixed (no badges; scrolling only moves the highlight). `total ≥ 5` →
+  `TAB_WINDOW(=3)` visible with the active in the **middle (2nd) slot**
+  (`start = clamp(active-1, 0, total-3)`); first/last tabs are the only exceptions
+  (active at the left/right end). `leftPlus = start`, `rightPlus = total-(start+3)`
+  feed the `[+N]` edge badges. Min tab width is ¼ → at most 4 ever fit.
 
 `activePath` (and the per-level windowing) is **component-local, never persisted**.
 
@@ -184,16 +201,21 @@ isLeaf, navigable, children}` (keyed by tree-position path; self-references —
 an `$effect` keyed on `tree` calls `repairPath` (read/write under `untrack`).
 
 The `tabLevel(nodes, depth)` **snippet recurses**:
-- **top strip** = `topItems` (indices `activeIdx..end`, active leftmost),
+- **strip (top only)** = `visibleTabs(nodes, activeIdx)` — the active-centred
+  window. No bottom strip (removed — tabs always live at the top),
 - **level-body** = every node's `.node-body`, all rendered and **transform-stacked**
   (`position:absolute; inset:0`) so only `activeIdx` is on-screen — see the
-  animation section; a leaf renders `leafBody`, a category recurses `tabLevel`,
-- **bottom strip** = `bottomItems` (indices `activeIdx-1..0`, reversed).
+  animation section; a leaf renders `leafBody`, a category recurses `tabLevel`.
 
-Each strip applies `tabWindow`: ≤4 tabs share equally (`flex:1 1 0`, ≥¼ each,
-ellipsis); >4 shows 3 + a small `+N` tab. Active tab highlighted green; a
-category tab carries a `▤` glyph. Tab **click** = `pickPath` (navigate/drill);
-manual **double**-click on a leaf = `oninternallink` (open standalone).
+The strip lays out `[+leftPlus]? tab… [+rightPlus]?`. Tabs are **content-sized**
+(`flex:0 1 auto`) with `min-width:25%` and ellipsis — they grow to show the title
+but never go below ¼; ≤4 tabs all show fixed, ≥5 shows the 3-window + edge badges.
+Active tab highlighted green (centred when possible); a category tab carries a `▤`
+glyph; `[+N]` badges are non-interactive indicators. Tab **click** = `pickPath`
+(navigate/drill); manual **double**-click on a leaf = `oninternallink` (open
+standalone). **Browse gestures: horizontal only** — wheel uses the dominant axis,
+touch swipe is left/right (left = next); vertical is ignored (`touch-action:pan-y`
+lets the page scroll under a browse body).
 
 The active **leaf** (deepest node on `activePath`) is the visible note;
 `activeLeafGuid` drives session loading.
@@ -216,10 +238,10 @@ the active path** (`onPath && i === activeIdx` flows down); off-path sibling
 categories default to index `0`. It's then `clampIndex`-ed to `nodes.length`. Without
 this, a **non-active sibling category with fewer children than the active branch's
 selected index** would render its strip with an out-of-range `activeIdx` →
-`topItems`/`bottomItems` produced a `{node: undefined}` entry → `it.node.key` /
+`visibleTabs` produced a `{node: undefined}` entry → `it.node.key` /
 `node.guid` threw (`can't access property … undefined`). This only surfaced with
 **asymmetric nesting depth**, which is why it read as "깊이가 있어서". `clampIndex` in
-the strip builders is the second line of defence; the unit tests
+`visibleTabs`/`tabView` is the second line of defence; the unit tests
 (`stackMath.test.ts`) reproduce the out-of-range case deterministically.
 
 ### Tab-transition animation
@@ -239,12 +261,18 @@ both must keep working with keep-alive (no unmount):
   index relation, so backward steps reverse automatically with no direction state.
   `prefers-reduced-motion` zeroes it. (Earlier it was vertical translateY; switched to
   X because the horizontal tab shift made a vertical body slide feel disjoint.)
+  **Slide suppressed when the window doesn't move.** A transition where the visible
+  3-window stays put (≥5 tabs: active 0↔1 or (n-2)↔(n-1); all ≤4-tab switches; tree
+  repair) is an instant cut — the tabs are physically in place, so a slide reads as
+  noise. `setActive(next)` sets `suppressAnim = !windowMoved(activePath, next)`, and
+  `windowMoved` compares `tabView(n, idx).start` at the **shallowest changed depth**
+  (parents above it are shared, so the sibling list is well-defined). `suppressAnim`
+  toggles a `.no-anim` class that zeroes only the `.node-body` transition. The tab
+  `flip` already self-gates (no position change → no flip), so only the body needs it.
 - **Tab shift (`animate:flip` + `fade`).** Strip tabs are keyed by `node.key`;
   `animate:flip` animates the left/right shift when the active index moves (the
-  persisting tabs slide to their new slots). Cross-strip enter/exit (a tab leaving
-  the top strip / appearing in the bottom strip) uses `in/out:fade` — they're
-  separate `{#each}` blocks so a tab can't fly continuously across the body; the
-  fade + the body slide together read as the motion.
+  persisting tabs slide to their new window slots). Tabs scrolling into/out of the
+  3-window use `in/out:fade`; the fade + the body slide together read as the motion.
 - **Initial-flash guard.** A `ready` flag (`onMount`) keeps all transition/flip
   durations at `0` until after mount, so the first render doesn't play every tab's
   intro at once.
@@ -257,7 +285,7 @@ shared body re-loaded mid-flight.
 
 The root `stopPropagation`s a fixed `ISOLATED_EVENTS` set (keydown, input,
 composition, clipboard, pointer/mouse/touch down, click, drag/drop) so the
-**outer** PM never sees the embedded editor's events. Two consequences:
+**outer** PM never sees the embedded editor's events. Three consequences:
 
 1. **Svelte 5 delegates `click`/`pointer*` at the document root** — the barrier
    blocks delegated handlers. So the stack's interactions use the **`direct`
@@ -268,6 +296,14 @@ composition, clipboard, pointer/mouse/touch down, click, drag/drop) so the
 2. **Child Svelte components** (`TerminalView`, `MusicPlayerBar`) are mounted
    with an **independent `mount()`** into a div inside the barrier, so their
    delegation root is inside and their onclick works.
+3. **The barrier stops `keydown`/`keyup` from reaching `window`** — so the
+   global `modKeys` store (`lib/desktop/modKeys.svelte.ts`) would never see a
+   Ctrl/Alt press while an embedded editor is focused, leaving `modKeys.ctrl`
+   stuck `false` in edit mode (browse mode worked because focus was outside the
+   barrier). Fix lives in `modKeys`, not here: its `window` keydown/keyup
+   listeners are **capture phase**, which runs before any descendant can
+   `stopPropagation`. Don't re-add a per-bundle Ctrl forwarder — physical
+   modifier state is global and must stay barrier-immune.
 
 ### Caret-escape guard
 
@@ -301,16 +337,24 @@ termConnect, scrollBottom, isMusic}`.
 
 - **browse** — wheel/swipe anywhere flips notes (`flipWheel`/`step`); active body
   grayed (`#ecebe6`) + `touch-action:none`. A `≥30px` vertical swipe steps. Body
-  tap (`<8px`, no capture) differs per component:
-  - **Tab** (NoteBundleStack): tap on active body → `mode='edit'` **only** (no
-    focus/keyboard — see two-tap below).
-  - **Cabinet** (NoteBundleCabinet): tap on the open body → `oninternallink(active)`
-    (**open the note standalone**); **Ctrl/⌘+tap → `mode='edit'`** instead. (Per
-    request: 묶음 click opens the note, ctrl+click edits. On mobile, no ctrl → tap
-    always opens; edit the note in its own screen.)
-- **edit** — a plain wheel over `.bundle-body` scrolls the note; white body bg.
-- **Exits to browse**: `Esc` (skipped inside `.bundle-term` for vim/TUI), title
-  bar/tab click, or any flip scroll. `step`/`flipWheel` call `exitEdit` first.
+  tap (`<8px`, no capture) → `mode='edit'` **only** (no focus/keyboard — see
+  two-tap below) in **both** components. (Cabinet previously opened the note
+  standalone on plain tap; per request that's now an explicit eject icon — see
+  Single-note view. Title-bar/tab **double**-tap still opens standalone.)
+- **edit (single-note view)** — a plain wheel over `.bundle-body` scrolls the note;
+  white body bg. **All nav chrome is hidden** so only the active note shows:
+  `.bundle-stack.edit .tab-strip{display:none}` (tab) / `.bundle-stack.edit
+  .bundle-bar{display:none}` (cabinet) — the active body (`.node-body.active` /
+  `.bundle-body.open` flex-grow:1) already fills, the chrome is the only extra.
+  An **edit header** (`.edit-header`, green) tops the view: `←` (`handleEditBack`
+  → `exitEdit`) left of the `.edit-title`, `↗` (`handleEject` →
+  `oninternallink(activeTitle)`, **꺼내기** = open standalone) at the right. Both
+  buttons `use:direct` (barrier) + `pointerdown/mousedown` `stopEvt` (don't start a
+  swipe). The 꺼내기 icon is the **only** standalone-open path from the body now;
+  shared by both components.
+- **Exits to browse**: `Esc` (skipped inside `.bundle-term` for vim/TUI), the `←`
+  back button, title bar/tab click, or any flip scroll. `step`/`flipWheel` call
+  `exitEdit` first.
 
 **Capture-phase wheel preemption (terminal scroll-leak fix).** A capture-phase
 `wheel` listener on `rootEl` (BOTH components):
@@ -341,8 +385,8 @@ must not raise the keyboard (the entering touch isn't necessarily to type). A
 `preventDefault`s the focus default for any target inside `.bundle-body` **unless**
 `mode==='edit'` AND that body is the active one (`.bundle-body.open` for the
 cabinet; `.node-body.active .bundle-body` for the tab). So entering edit never
-focuses (no keyboard): **tab** — first browse tap → `mode='edit'` only; **cabinet**
-— Ctrl+click → `mode='edit'` only. Then a tap in edit → PM focuses → keyboard.
+focuses (no keyboard): **both** components — first browse tap → `mode='edit'`
+only. Then a tap in edit → PM focuses → keyboard.
 Scoped to `.bundle-body` only so bars/tabs keep their native `click` (mobile tab
 switching survives — do **not** widen the scope). Tapping a title bar/tab to exit
 never focuses the editor and `exitEdit` blurs, so exiting never raises the
@@ -361,6 +405,17 @@ keyboard either.
   (`handlePointerDown` ignores `.bundle-music`).
 - **Scroll-bottom ("하단이 최신")** — `scrollBottomInit` action; rAF×2 sets
   `node.scrollTop = node.scrollHeight` on the leaf `.bundle-body` first mount.
+- **일정 노트 / 보내기 (schedule)** — each `EditorComponent` is passed
+  `isScheduleNote={session.guid === scheduleNoteGuid}` (auto-weekday `(요일)`
+  fill, resolved once via `getScheduleNoteGuid()` in `onMount`) and
+  `sendListItemActive={shouldSendListBeActive({ guid: session.guid, sourceGuid:
+  SEND_SOURCE_GUID, ctrlHeld: modKeys.ctrl, focusedGuid: null, ignoreFocus:
+  true })}` (the floating "보내기" button on each list item of the source note,
+  shown while Ctrl is held — `ignoreFocus` like the mobile route, no
+  multi-window focus inside a bundle). The transfer itself is self-contained in
+  `TomboyEditor` (`createSendListItemPlugin.onSend → transferListItem`); the
+  bundle just flips the two props. Both depend on the capture-phase `modKeys`
+  fix above so Ctrl is detected in edit mode. See `tomboy-schedule`.
 
 ### Height basis — desktop vs mobile
 
@@ -415,13 +470,102 @@ but its windowing was **changed to fixed slot-3 centering** (`centeredWindow`)
 per the bundle use case — the old `clampWindow`/`stepWindow`/`initialWindow`
 band + eager-slide are gone. It is independent of `stackMath` (tab tree-nav).
 
+## 전용 노트 (dedicated note — the whole note IS the cabinet)
+
+A note whose **title** starts `탭::` or `묶음::` opens not as an in-body widget
+but as a **full-note takeover view** (terminal/music-note pattern) — the entire
+body is the cabinet. No checkbox / keyword needed; just list links in the body.
+
+**Parser (`parser.ts`, JSON-based).** The host is `note/[id]` / `NoteWindow`,
+which hold `editorContent` (JSONContent), not a live PMNode — so the dedicated
+parser is a **JSON twin** of the PMNode walk (own `collectLinksJson` /
+`paragraphTextJson` / `parseTreeJson` / `parseListIntoJson`), NOT a reuse of the
+PMNode helpers.
+
+- `dedicatedBundleKind(title)` → `'tab'` / `'bundle'` / `null` (trimStart, then
+  `탭::` / `묶음::` prefix; single-colon `탭:` does NOT match).
+- `parseDedicatedBundle(jsonDoc, kind): BundleSpec` — synthetic spec from the
+  **whole body**. `checked=true`, `heightPct=100`, write-back fields `-1`/`null`
+  (no checkbox/list/digits to persist). `tree` for tab, `entries` for bundle.
+
+**Depth model — body is the "depth-1 list".** Walk top-level body blocks,
+**skipping block 0 (the title line)**:
+
+- A top-level **textblock** (paragraph/heading) with links → **depth-1**
+  leaves/entries (one per link).
+- A textblock **immediately followed by a list** → that textblock is the
+  **category** (its text = label), the list its children (**depth-2**). This is
+  the old "listItem + nested bulletList" relation lifted one level up — that's
+  why "리스트는 깊이2로 시작". The textblock's own links become the first
+  children (tab) / get the inherited category (bundle).
+- A list with **no preceding textblock** (first block, or list-after-list) →
+  its items fall in at **depth-1** directly (fallback, no category).
+- Nested lists recurse exactly as in-body (`parseTreeJson`/`parseListIntoJson`).
+- 묶음 keeps `category` too (parent textblock title) — depth is NOT flat-only.
+
+**Component reuse via `variant`.** `NoteBundleStack`/`NoteBundleCabinet` gained
+`variant: 'inline' | 'dedicated'` (default inline), nullable `view`, and
+`onclose?` / `onraw?`:
+
+- `dedicated` → root `flex:1` (fills `.editor-area`/`.body`), no inline height,
+  the `onMount` height-basis block + resize handle are skipped, `view` is null
+  so `writeBundleHeightPct`/`setBundleChecked` are guarded out.
+- Browse-mode top-right **dedicated chrome**: `[✎ 편집 (Ctrl)] [↗ 꺼내기]
+  [✕ 닫기]`. **닫기 only when `onclose` is provided** (NoteWindow → `handleClose`;
+  the mobile route omits it → no 닫기). Chrome is browse-only; in edit mode the
+  existing `.edit-header` (← 돌아가기 / ↗ 꺼내기) takes over (so 닫기 never shows
+  in edit mode). 꺼내기 = `oninternallink(active title)` standalone-open.
+- Ctrl→`✎ 편집` calls `onraw()`. The **host** (route/window) owns a
+  `showRawBundle` toggle: true → render the plain `TomboyEditor` on the host note
+  (edit the link list) with a Ctrl-gated `↩ 묶음` back button (`exitRawBundle`,
+  which pulls the live editor doc into `editorContent` so the re-parsed spec
+  reflects unsaved edits). `showRawBundle` resets to false on note change.
+- Ctrl gating means the raw toggle is **desktop-only** (same limitation as the
+  in-body Ctrl 편집 button); on mobile, escape a dedicated note by editing its
+  title (remove the `탭::`/`묶음::` prefix).
+
+The dedicated host editors are **not recursive** — a child note opened inside
+the cabinet renders via the embedded `EditorComponent` (route-level title-sig
+detection never fires for it), so a child titled `묶음::…` just shows as a normal
+note, no nested takeover.
+
+**Host chrome in cabinet view.** When `dedicatedKind && !showRawBundle`, both
+hosts **hide the note title-bar AND the bottom `Toolbar`** (`.toolbar-area` /
+`.toolbar-slot`): the title is already on the bars, and `getEditor()` is null in
+cabinet view (no host editor) so the Toolbar would be inert and overlap the body
+(the "목록 하단 가림" bug). Both return in raw/edit mode (`showRawBundle` true) so
+it "looks like a normal note". **Desktop NoteWindow also hides its window
+title-bar** in cabinet view (user choice) — drag + 📌 pin are lost there, close
+is via the dchrome `✕`, and the resize handles still work; the title-bar (and
+drag/pin) returns in raw mode.
+
+**Teardown-safety: `bind:this` must key on the stable node, not the session.**
+The embedded editor binds `bind:this={editorRefs[node.guid!]}` (Stack) /
+`editorRefs[e.guid!]` (Cabinet) — **NOT** `editorRefs[session.guid]`. On the
+cabinet→raw transition the component unmounts: `onDestroy`→`teardownSession`
+`sessions.delete(guid)` runs, and the editor binding's teardown re-reads its key
+expression. If keyed on the deleted `session` (`{@const session=sessions.get(...)}`
+→ now `undefined`), `session.guid` throws `Cannot read properties of undefined
+(reading 'guid')` **during destroy**, which white-screens the whole route (one
+throw per leaf = "몇십 개"). `node.guid`/`e.guid` are stable snippet/#each params,
+so the teardown can't crash. (A separate `state_unsafe_mutation` from the embedded
+editor's blur-transaction during teardown — `TomboyEditor` `selectionUpdate`/find
+handlers — is pre-existing and non-fatal; it also fires during normal typing.)
+
 ## Invariants
 
 - **View layer only — `.note` XML never restructured, list never mutated.**
   Persisted state = checkbox `checked` + `:N` digits. `activePath`, mode,
   sessions are ephemeral; reopening shows the first note.
+- **Checked hides BOTH the declaration line and the list.** The declaration
+  (checkbox + keyword paragraph, `keywordPos..keywordEnd`) gets the same
+  `tomboy-note-bundle-hidden` node decoration as the list — space-saving, the
+  bundle widget is the only visible thing. The checkbox is then off-screen, so
+  the **only** un-check path is the Ctrl-held "✎ 편집" button →
+  `setBundleChecked(false)`. Don't reintroduce a visible checkbox while checked.
 - **`ordinal` is the identity, and it renumbers.** Re-look-up by ordinal before
-  the height write-back. `StackController.update` is a full spec replacement.
+  the height / checked write-back. `StackController.update` is a full spec
+  replacement.
 - **Titles resolve to guids via `lookupGuidByTitle`** (exact-case trimmed).
   Unresolved → `broken` leaf (gray tab, not navigable); `ensureTitleIndexReady` +
   `titleEpoch` bump re-resolve. **Self-reference excluded** (`guid === hostGuid`).
@@ -431,6 +575,11 @@ band + eager-slide are gone. It is independent of `stackMath` (tab tree-nav).
   `enableNoteBundle={false}` + `hrSplitEnabled={false}` (a bundle inside a bundled
   note is a plain list). This is distinct from the *category* tree depth, which is
   unbounded within one bundle.
+- **Both hide the title line.** The embedded `EditorComponent` (cabinet AND tab)
+  gets `hideTitleLine={true}` (`createTitleIsolationPlugin` — display:none on the
+  first top-level node + caret clamp out of it). The bar/tab already shows the note
+  title, so the body starts from content — matches the standalone note route
+  (`note/[id]/+page.svelte` passes the same).
 - **heightPct clamped 20–90, default 50.** Drag the bottom edge; persisted on pointer-up.
 - **Widget container cached per ordinal** — never recreate it or the Svelte stack is lost.
 - **Full-tree render is required for keep-alive** — visited leaf editors must stay
@@ -469,13 +618,17 @@ band + eager-slide are gone. It is independent of `stackMath` (tab tree-nav).
   `묶음:` → kind 'bundle' + flat entries with category (legacy `노트 묶음`);
   the unused field stays `[]`; mixed-keyword doc; prefix/checkbox/adjacency;
   height clamp.
-- `noteBundlePlugin.test.ts` — hide-list + widget decorations (both kinds via
-  `hasContent`), **no** radio insert (list unmutated), `writeBundleHeightPct`,
-  ordinal renumber (`tree[0].label`, tab keyword), and **kind-change remount**
-  (`탭:`→`묶음:` ⇒ destroy + remount with `mountedSpecs[1].kind==='bundle'`).
-- `stackMath.test.ts` (tab) — `tabWindow` overflow + `firstNavPath`/`drillFrom`/
+- `noteBundlePlugin.test.ts` — hide-declaration + hide-list + widget decorations
+  (both kinds via `hasContent`; declaration hidden even with no list — node deco
+  at `keywordPos..keywordEnd`), **no** radio insert (list unmutated),
+  `writeBundleHeightPct`, **`setBundleChecked(false)`** (un-toggle → destroy +
+  decos cleared + idempotent), ordinal renumber (`tree[0].label`, tab keyword),
+  and **kind-change remount** (`탭:`→`묶음:` ⇒ destroy + remount with
+  `mountedSpecs[1].kind==='bundle'`).
+- `stackMath.test.ts` (tab) — `tabView` active-centred window (≤4 fixed, ≥5 → 3 +
+  edge badges, first/last exceptions, clamp) + `firstNavPath`/`drillFrom`/
   `repairPath`/`stepPath`/`pickPath` over leaf/category/broken trees, **stepPath
-  parent-bubble** (level-end toss), and **`clampIndex`/`topItems`/`bottomItems`
+  parent-bubble** (level-end toss), and **`clampIndex`/`visibleTabs`
   range-safety** (the out-of-range → `undefined`-node crash repro).
 - `cabinetMath.test.ts` (bundle) — **window-5** algebra: `windowWidth` min(5,N),
   `centeredWindow` fixed slot-3 (`start = clamp(active-2, 0, n-W)`): mid-stack
