@@ -1,0 +1,54 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-14-new-note-result-panel.md",
+  "specPath": "docs/superpowers/specs/2026-06-14-new-note-result-panel-design.md",
+  "tasks": [
+    {
+      "id": 8,
+      "subject": "Task 1: addInternalLinksForTitle (pure JSON linker)",
+      "status": "pending",
+      "description": "**Goal:** Schema-free additive linker adding `tomboyInternalLink` to whole-word matches of ONE title in JSONContent, reusing findTitleMatches; idempotent; suppress + title-line skip.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/autoLink/linkifyDocJson.ts\", \"app/tests/unit/editor/linkifyDocJson.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/linkifyDocJson.test.ts\", \"acceptanceCriteria\": [\"adds mark on whole-word match, target===title\", \"no-op on sub-word/absence\", \"idempotent on already-marked span\", \"skips title line only when doc has body\", \"skips suppressed marks\", \"recurses into list items\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 2: linkSweep count/apply over corpus",
+      "status": "pending",
+      "blockedBy": [8],
+      "description": "**Goal:** Headless countLinkSweep/applyLinkSweep: XML-substring prefilter → addInternalLinksForTitle per candidate → (apply) putNote + noteMutated; progress + cancel.\n\n```json:metadata\n{\"files\": [\"app/src/lib/core/linkSweep.ts\", \"app/tests/unit/core/linkSweep.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/core/linkSweep.test.ts\", \"acceptanceCriteria\": [\"count returns would-change guids, excludes target/deleted/non-substring\", \"already-linked not counted\", \"apply writes only matched + returns {updated,failed}\", \"per-note throw -> failed, no abort\", \"cancel stops + returns subset\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 3: newNoteFlow result phase + sweep orchestration",
+      "status": "pending",
+      "blockedBy": [9],
+      "description": "**Goal:** Add persistent `result` phase (no auto-close) + sweep sub-state with startSweepCount/applySweep/cancelSweep/dismiss wired to linkSweep + flushAll/reloadWindows/emitNoteReload.\n\n```json:metadata\n{\"files\": [\"app/src/lib/stores/newNoteFlow.svelte.ts\", \"app/tests/unit/stores/newNoteFlow.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/stores/newNoteFlow.test.ts && npm run check\", \"acceptanceCriteria\": [\"submit -> phase result, stages keep ms\", \"dismiss clears + idle\", \"startSweepCount -> confirm with matched/total\", \"applySweep -> done + reloadWindows(updated)\", \"cancelSweep ends without confirm\", \"stage failure -> toast + idle\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 4: NewNoteResultPanel + layout wiring",
+      "status": "pending",
+      "blockedBy": [10],
+      "description": "**Goal:** Render persistent result/sweep UI for phase==='result' (stages+ms, sweep button, count/confirm/apply/done, close), wired in +layout.svelte.\n\n```json:metadata\n{\"files\": [\"app/src/lib/components/NewNoteResultPanel.svelte\", \"app/src/routes/+layout.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"result phase shows stages + ms\", \"sweep button drives count/confirm/apply/done states with Korean labels\", \"적용/취소/닫기 wired\", \"npm run check clean\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 5: Guide card (설정 → 가이드 notes)",
+      "status": "pending",
+      "blockedBy": [11],
+      "description": "**Goal:** Document result panel + 전체 문서 반영 in 설정 → 가이드 notes sub-tab (CLAUDE.md guide rule).\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"guide-card added under notes sub-tab with summary/info-text/guide-list\", \"npm run check clean\"]}\n```"
+    },
+    {
+      "id": 13,
+      "subject": "Task 6: titleProvider delta + shouldRescanForDelta",
+      "status": "pending",
+      "description": "**Goal:** Broadcast {added,removed} from doSharedRefresh; pure shouldRescanForDelta predicate; onChange signature (delta?)=>void (backward-compatible).\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/autoLink/shouldRescanForDelta.ts\", \"app/src/lib/editor/autoLink/titleProvider.ts\", \"app/tests/unit/editor/shouldRescanForDelta.test.ts\", \"app/tests/unit/editor/titleProvider.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/shouldRescanForDelta.test.ts tests/unit/editor/titleProvider.test.ts && npm run check\", \"acceptanceCriteria\": [\"predicate: removed->true, added-in-text->true, added-absent->false, empty->false\", \"doSharedRefresh computes+broadcasts {added,removed}, no broadcast when unchanged\", \"existing onChange consumers compile/fire\"]}\n```"
+    },
+    {
+      "id": 14,
+      "subject": "Task 7: Delta-gate TomboyEditor automatic rescan",
+      "status": "pending",
+      "blockedBy": [13],
+      "description": "**Goal:** Gate the automatic full rescan on shouldRescanForDelta(delta, editor.state.doc.textContent) — kills the new-note stutter.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/TomboyEditor.svelte\"], \"verifyCommand\": \"cd app && npm run check && npx vitest run tests/unit/editor/\", \"acceptanceCriteria\": [\"onChange gated by shouldRescanForDelta(delta, doc.textContent), fallback true when no editor\", \"npm run check clean + editor tests pass\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-14"
+}
