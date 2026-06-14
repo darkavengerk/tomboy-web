@@ -272,3 +272,30 @@ def test_pull_builds_rsync_with_ssh_transport_and_lowercase_p(tmp_path: Path):
     assert "-p 2222" in transport_cmd
     assert "-P" not in transport_cmd
     assert any("abc-123.*" in a for a in argv), f"argv missing page-uuid glob: {argv}"
+
+
+def test_refetch_cascade_clears_composite_keys(tmp_path):
+    from desktop.lib.log import StageLogger
+
+    raw_root = tmp_path / "raw"
+    state = StateFile(tmp_path / "state" / "fetched.json")
+    # Already fetched at mtime 100.
+    state.write({"slip": {"fetched_at": "x", "source_mtime": 100}})
+    prepared = StateFile(tmp_path / "state" / "prepared.json")
+    prepared.write({"slip#0": {"a": 1}, "slip#1": {"b": 2}})
+    ocr = StateFile(tmp_path / "state" / "ocr-done.json")
+    ocr.write({"slip#0": {"c": 3}, "slip#1": {"d": 4}})
+    log = StageLogger("s1_fetch", tmp_path)
+
+    # Pi index reports a NEWER mtime → re-fetch.
+    transport = FakeTransport(
+        index={"slip": {"present": True, "mtime": 200}},
+        files={"slip": {"slip.rm": b"\x00", "slip.metadata": b"{}"}},
+    )
+
+    fetch(raw_root=raw_root, state=state, log=log, transport=transport,
+          downstream_states=[prepared, ocr])
+
+    # Both composite keys cleared from downstream so s2/s3 reprocess.
+    assert prepared.read() == {}
+    assert ocr.read() == {}

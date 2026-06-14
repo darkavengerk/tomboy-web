@@ -105,7 +105,7 @@ def fetch(
     for u in force:
         state.remove(u)
         for s in downstream:
-            s.remove(u)
+            s.remove_page(u)
 
     index = transport.fetch_index()
     fetched_uuids: list[str] = []
@@ -127,7 +127,7 @@ def fetch(
             log.info("re_fetch_mtime_bump", uuid=uuid, prev=prev_mtime, new=new_mtime)
             state.remove(uuid)
             for s in downstream:
-                s.remove(uuid)
+                s.remove_page(uuid)
         target = raw_root / uuid
         try:
             if target.exists():

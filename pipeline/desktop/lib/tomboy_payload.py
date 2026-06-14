@@ -50,24 +50,23 @@ def _xml_escape(s: str) -> str:
     )
 
 
-def build_note_content_xml(title: str, ocr_text: str, image_url: str) -> str:
-    """Produce the ``<note-content>`` block per spec I7.
+def build_note_content_xml(title: str, ocr_text: str, *, slip: bool = False) -> str:
+    """Produce the ``<note-content>`` block.
 
-    The image URL is wrapped in a ``<link:url>`` mark (Tomboy's clickable
-    URL element — see ``app/src/lib/core/noteContentArchiver.ts:14,
-    457-461, 779-780``). Spec §9 left this as a deferred decision:
-    "Initial: plain text; revisit if the auto-link extension doesn't
-    pick it up reliably." It doesn't — ``TomboyUrlLink`` has no input
-    or paste rule, so a plain URL loaded from xmlContent renders as
-    unclickable text. Emitting the mark at write time is what makes
-    the link actually live in the rendered note.
+    이미지 폐지: 본문에 더 이상 ``<link:url>`` 이미지 링크나 ``---`` 구분선이
+    없다. 일반 노트는 ``제목 + OCR``, 슬립 노트는 앱 ``validateSlipNoteFormat``
+    레이아웃([0]제목 [1]공백 [2]이전 [3]다음 [4]공백 [5+]본문)에 맞춘 스켈레톤을
+    쓴다. ``이전``/``다음``은 '없음'으로 두고 사용자가 수동 연결한다.
     """
-    body = (
-        f"{_xml_escape(title)}\n\n"
-        f"{_xml_escape(ocr_text)}\n\n"
-        f"---\n\n"
-        f"<link:url>{_xml_escape(image_url)}</link:url>"
-    )
+    if slip:
+        body = (
+            f"{_xml_escape(title)}\n\n"
+            f"이전: 없음\n"
+            f"다음: 없음\n\n"
+            f"{_xml_escape(ocr_text)}"
+        )
+    else:
+        body = f"{_xml_escape(title)}\n\n{_xml_escape(ocr_text)}"
     return f'<note-content version="{NOTE_CONTENT_VERSION}">{body}</note-content>'
 
 
@@ -76,22 +75,34 @@ def build_payload(
     guid: str,
     page_uuid: str,
     ocr_text: str,
-    image_url: str,
     notebook_name: str,
     title_format: str,
     create_date: datetime,
     change_date: datetime,
     metadata_change_date: datetime | None = None,
+    unit_key: str | None = None,
+    label: str = "",
+    slip: bool = False,
 ) -> dict[str, Any]:
     """Build the FirestoreNotePayload dict (sans ``serverUpdatedAt``).
 
-    The writer (``firestore_client``) adds ``serverUpdatedAt = SERVER_TIMESTAMP``
-    at write time.
+    ``unit_key`` is the title marker + state key unit (``page_uuid`` for whole
+    pages, ``<uuid>#<half>`` for slip halves). Title format placeholders:
+    ``{date}`` (yyyy-mm-dd), ``{datetime}`` (yyyy-mm-dd HH:mm), ``{page_uuid}``,
+    ``{unit_key}``, ``{label}``. Unused placeholders are ignored by ``str.format``.
     """
+    unit_key = unit_key if unit_key is not None else page_uuid
     metadata_change_date = metadata_change_date or change_date
     date_str = change_date.strftime("%Y-%m-%d")
-    title = title_format.format(date=date_str, page_uuid=page_uuid)
-    xml_content = build_note_content_xml(title, ocr_text, image_url)
+    datetime_str = change_date.strftime("%Y-%m-%d %H:%M")
+    title = title_format.format(
+        date=date_str,
+        datetime=datetime_str,
+        page_uuid=page_uuid,
+        unit_key=unit_key,
+        label=label,
+    )
+    xml_content = build_note_content_xml(title, ocr_text, slip=slip)
     payload: dict[str, Any] = {
         "guid": guid,
         "uri": f"note://tomboy/{guid}",

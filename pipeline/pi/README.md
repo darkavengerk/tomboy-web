@@ -231,23 +231,29 @@ derive Tomboy's `createDate` / `changeDate`.
 Data model assumed on the rM (see `pipeline/pi/README.md` "rM-side"
 section for the design intent):
 
-- A folder visibly named **"Diary"** (`CollectionType`, `parent=""`) is
-  the top-level container.
-- Direct children are `DocumentType` notebooks (e.g. one per month).
+- Three top-level folders are scanned: **Diary**, **Notes**, and
+  **Slip-Notes** — each a `CollectionType` on the rM root.
+- Direct children of each folder are `DocumentType` notebooks (e.g. one
+  per month for Diary, or any ad-hoc notebooks for Notes / Slip-Notes).
 - Each notebook's pages live as `<notebook-uuid>/<page-uuid>.rm`.
 - rM has no per-page `.metadata` natively — the script **synthesizes**
   one stub per page from the `.rm` file's mtime.
+- Each synthesized stub now carries a **`sourceFolder`** field (one of
+  `"Diary"`, `"Notes"`, `"Slip-Notes"`). The desktop pipeline reads this
+  to route each page to the correct Tomboy notebook, derive its title, or
+  apply the Slip-Notes top/bottom split that produces two separate notes.
 
 Imported PDFs (`fileType: "pdf"` in the notebook's `.content`) are
-skipped: they aren't handwritten diary entries.
+skipped: they aren't handwritten entries. Per-page uuid is globally
+unique, so the flat inbox remains collision-free across all three folders.
 
 Create `/home/root/diary-push.sh`:
 
 ```bash
 #!/bin/sh
-# Push each Diary-folder page (.rm) to the Pi inbox as a flat
-# <page-uuid>.{rm,metadata} pair. Synthesizes the per-page .metadata stub
-# that the Pi watcher globs and s4_write reads.
+# Push pages from each target reMarkable folder to the Pi inbox as flat
+# <page-uuid>.{rm,metadata} pairs. Each .metadata stub carries `sourceFolder`
+# so the desktop pipeline routes per folder (notebook, title, slip-split).
 #
 # rM userland is busybox + dropbear:
 #   - `head -n 1` (busybox rejects `-1`)
@@ -257,57 +263,59 @@ SRC=/home/root/.local/share/remarkable/xochitl/
 DEST=diary-sync@<PI-HOST>:diary/inbox/
 SSH_E="ssh -p 2222 -i /home/root/.ssh/id_diary -y"
 STAGING=/tmp/diary-push-staging
+TARGET_FOLDERS="Diary Notes Slip-Notes"
 
-# 1. Find the Diary FOLDER (CollectionType, visibleName "Diary").
-DIARY_FOLDER_UUID=""
-for meta in "$SRC"*.metadata; do
-    if grep -q '"visibleName": "Diary"' "$meta" \
-       && grep -q '"type": "CollectionType"' "$meta"; then
-        DIARY_FOLDER_UUID="$(basename "$meta" .metadata)"
-        break
-    fi
-done
-
-if [ -z "$DIARY_FOLDER_UUID" ]; then
-    echo "No Diary folder (CollectionType) found"
-    exit 0
-fi
-
-# 2. Stage <page-uuid>.{rm,metadata} for every page in every native
-#    DocumentType notebook directly inside the Diary folder. Skip PDFs.
 rm -rf "$STAGING"
 mkdir -p "$STAGING"
-
 count=0
-for meta in "$SRC"*.metadata; do
-    grep -q '"type": "DocumentType"' "$meta" || continue
-    grep -q "\"parent\": \"$DIARY_FOLDER_UUID\"" "$meta" || continue
 
-    nb_uuid="$(basename "$meta" .metadata)"
-    nb_dir="$SRC$nb_uuid"
-    [ -d "$nb_dir" ] || continue
-
-    content="$SRC$nb_uuid.content"
-    if [ -f "$content" ] && grep -q '"fileType":[[:space:]]*"pdf"' "$content"; then
+for folder in $TARGET_FOLDERS; do
+    # 1. Find the folder (CollectionType, visibleName == "$folder").
+    folder_uuid=""
+    for meta in "$SRC"*.metadata; do
+        if grep -q "\"visibleName\": \"$folder\"" "$meta" \
+           && grep -q '"type": "CollectionType"' "$meta"; then
+            folder_uuid="$(basename "$meta" .metadata)"
+            break
+        fi
+    done
+    if [ -z "$folder_uuid" ]; then
+        echo "No '$folder' folder (CollectionType) found"
         continue
     fi
 
-    for rm_file in "$nb_dir"/*.rm; do
-        [ -f "$rm_file" ] || continue
-        page_uuid="$(basename "$rm_file" .rm)"
-        cp -p "$rm_file" "$STAGING/$page_uuid.rm"
-        mtime_secs="$(stat -c %Y "$rm_file")"
-        mtime_ms="$((mtime_secs * 1000))"
-        cat > "$STAGING/$page_uuid.metadata" <<EOF
+    # 2. Stage pages of every native DocumentType notebook inside it. Skip PDFs.
+    for meta in "$SRC"*.metadata; do
+        grep -q '"type": "DocumentType"' "$meta" || continue
+        grep -q "\"parent\": \"$folder_uuid\"" "$meta" || continue
+
+        nb_uuid="$(basename "$meta" .metadata)"
+        nb_dir="$SRC$nb_uuid"
+        [ -d "$nb_dir" ] || continue
+
+        content="$SRC$nb_uuid.content"
+        if [ -f "$content" ] && grep -q '"fileType":[[:space:]]*"pdf"' "$content"; then
+            continue
+        fi
+
+        for rm_file in "$nb_dir"/*.rm; do
+            [ -f "$rm_file" ] || continue
+            page_uuid="$(basename "$rm_file" .rm)"
+            cp -p "$rm_file" "$STAGING/$page_uuid.rm"
+            mtime_secs="$(stat -c %Y "$rm_file")"
+            mtime_ms="$((mtime_secs * 1000))"
+            cat > "$STAGING/$page_uuid.metadata" <<EOF
 {
     "lastModified": "$mtime_ms",
     "notebookUuid": "$nb_uuid",
-    "visibleName": "Diary",
+    "visibleName": "$folder",
+    "sourceFolder": "$folder",
     "type": "PageType"
 }
 EOF
-        touch -r "$rm_file" "$STAGING/$page_uuid.metadata"
-        count=$((count + 1))
+            touch -r "$rm_file" "$STAGING/$page_uuid.metadata"
+            count=$((count + 1))
+        done
     done
 done
 
@@ -429,10 +437,12 @@ suspect. After every firmware update:
 
 ## Verify
 
-Draw a new page on the rM in the Diary notebook. Within 5 minutes:
+Draw a new page on the rM in any of the **Diary / Notes / Slip-Notes** folders. Within 5 minutes:
 
 ```bash
 # On the Pi:
 ls /home/diary-sync/diary/inbox/        # should contain <uuid>.rm + <uuid>.metadata
 cat /home/diary-sync/diary/state/index.json   # should include the new uuid
 ```
+
+Note: a Slip-Notes page written with two cards (top and bottom) produces **two separate notes** — the desktop pipeline splits at the screen center using the `sourceFolder: "Slip-Notes"` signal.
