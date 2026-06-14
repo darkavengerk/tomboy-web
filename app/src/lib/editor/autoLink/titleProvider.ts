@@ -22,14 +22,17 @@
 import { listNotesShared } from '$lib/core/noteManager.js';
 import { onInvalidate } from '$lib/stores/noteListCache.js';
 import type { TitleEntry } from './findTitleMatches.js';
+import type { TitleDelta } from './shouldRescanForDelta.js';
 
 export interface TitleProvider {
 	/** Current snapshot of title entries. Excludes blank titles. */
 	getTitles(): TitleEntry[];
 	/** Re-fetch from the note store. Coalesces concurrent callers. */
 	refresh(): Promise<void>;
-	/** Subscribe to refresh completions. Returns unsubscribe fn. */
-	onChange(cb: () => void): () => void;
+	/** Subscribe to refresh completions. Returns unsubscribe fn.
+	 *  The callback receives a `TitleDelta` describing what changed.
+	 *  Consumers that ignore the arg (0-arg callbacks) keep working unchanged. */
+	onChange(cb: (delta?: TitleDelta) => void): () => void;
 	/** Release this handle's forward listener and its user listeners. Does NOT touch the shared module-level subscription. */
 	dispose(): void;
 }
@@ -41,7 +44,7 @@ export type TitleProviderOptions = Record<string, never>;
 let sharedEntries: TitleEntry[] = [];
 let sharedByTitle = new Map<string, string>(); // title → guid (case-sensitive, first-wins)
 let sharedInFlight: Promise<void> | null = null;
-const sharedListeners = new Set<() => void>();
+const sharedListeners = new Set<(delta?: TitleDelta) => void>();
 let invalidateOff: (() => void) | null = null;
 
 async function doSharedRefresh(): Promise<void> {
@@ -69,36 +72,33 @@ async function doSharedRefresh(): Promise<void> {
 		}
 		sharedByTitle = nextByTitle;
 
-		// Skip the fan-out to subscribers when the title set is identical to
-		// what we had before. Many callers of invalidateCache() don't
-		// actually change the title list (toggleFavorite, a body-only edit
-		// that happens to race a refresh, etc.) and each broadcast triggers
-		// a full-document auto-link rescan on EVERY open editor — so a
-		// single unnecessary broadcast in a workspace with N editors costs
-		// O(N * doc * titles) main-thread work with no observable effect.
-		//
-		// Equivalence is checked order-independently on (guid, title).
-		const unchanged = entriesEquivalent(sharedEntries, next);
+		// Compute a {added, removed} delta before reassigning sharedEntries.
+		// "added" = entries in next whose guid is absent from old, or whose
+		//   title changed for the same guid (rename: new title is "added").
+		// "removed" = entries in old whose guid is absent from next, or whose
+		//   title changed (rename: old title is "removed").
+		// This replaces the former `entriesEquivalent` boolean early-out:
+		// when both arrays are empty the set is unchanged and we skip broadcast,
+		// exactly preserving the previous "no broadcast when nothing changed"
+		// guarantee (O(N * doc * titles) saved for body-only edits, toggleFavorite, …).
+		const oldByGuid = new Map<string, TitleEntry>(sharedEntries.map((e) => [e.guid, e]));
+		const nextByGuid = new Map<string, TitleEntry>(next.map((e) => [e.guid, e]));
+		const added = next.filter((e) => {
+			const o = oldByGuid.get(e.guid);
+			return !o || o.title !== e.title;
+		});
+		const removed = sharedEntries.filter((e) => {
+			const n = nextByGuid.get(e.guid);
+			return !n || n.title !== e.title;
+		});
 		sharedEntries = next;
-		if (unchanged) return;
-		for (const l of sharedListeners) l();
+		if (added.length === 0 && removed.length === 0) return;
+		const delta: TitleDelta = { added, removed };
+		for (const l of sharedListeners) l(delta);
 	})().finally(() => {
 		sharedInFlight = null;
 	});
 	return sharedInFlight;
-}
-
-function entriesEquivalent(a: TitleEntry[], b: TitleEntry[]): boolean {
-	if (a.length !== b.length) return false;
-	if (a.length === 0) return true;
-	const byGuid = new Map<string, TitleEntry>();
-	for (const e of a) byGuid.set(e.guid, e);
-	for (const e of b) {
-		const match = byGuid.get(e.guid);
-		if (!match) return false;
-		if (match.title !== e.title) return false;
-	}
-	return true;
 }
 
 function ensureSubscribed(): void {
@@ -112,11 +112,11 @@ function ensureSubscribed(): void {
 
 export function createTitleProvider(_opts: TitleProviderOptions = {}): TitleProvider {
 	let disposed = false;
-	const myListeners = new Set<() => void>();
+	const myListeners = new Set<(delta?: TitleDelta) => void>();
 
-	const forward = () => {
+	const forward = (delta?: TitleDelta) => {
 		if (disposed) return;
-		for (const l of myListeners) l();
+		for (const l of myListeners) l(delta);
 	};
 	sharedListeners.add(forward);
 	ensureSubscribed();
@@ -143,7 +143,7 @@ export function createTitleProvider(_opts: TitleProviderOptions = {}): TitleProv
 			if (sharedEntries.length > 0 && !sharedInFlight) return Promise.resolve();
 			return doSharedRefresh();
 		},
-		onChange(cb) {
+		onChange(cb: (delta?: TitleDelta) => void) {
 			myListeners.add(cb);
 			return () => myListeners.delete(cb);
 		},
