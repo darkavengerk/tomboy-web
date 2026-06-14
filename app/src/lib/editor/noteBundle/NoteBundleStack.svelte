@@ -27,15 +27,11 @@
 	 * 커서·실행취소 노트별 보존. EditorComponent 는 TomboyEditor 자신(셀프
 	 * 임포트 주입, prop 으로 받아 순환 회피).
 	 *
-	 * ── 훑어보기 / 편집 모드 ─────────────────────────────────────────────
-	 * 훑어보기(기본): 휠/스와이프 = 탭 전환. 데스크톱 휠은 우세축(deltaX|deltaY)
-	 * 양수면 다음(이후) 노트. 모바일은 좌우 스와이프만 인식(왼쪽으로 끌면 다음),
-	 * 상하 제스처는 무시. 활성 본문은 회색조. 본문 탭/클릭 → 편집 모드.
-	 * ctrl+휠은 모드 무관 활성 본문 스크롤(편집 진입 없이 내용 확인).
-	 *
-	 * 편집(단일 노트 뷰): 탭 스트립을 전부 숨겨(.edit) 노트 한 개만 보이는 듯한
-	 * UI. 상단에 편집 헤더 — 제목 왼쪽 ← 돌아가기(훑어보기 복귀), 우측 ↗ 꺼내기
-	 * (oninternallink 로 단독 열기). Esc · ← · 묶음 스크롤(휠/스와이프) → 훑어보기.
+	 * ── 항상 편집 ───────────────────────────────────────────────────────
+	 * 모드 없음 — 탭 스트립이 항상 보이고 활성 잎은 항상 편집 가능한 임베디드
+	 * 에디터. 탭 이동은 탭 클릭(더블클릭=단독 열기)으로만. 휠은 본문 네이티브
+	 * 스크롤. (옛 훑어보기/편집 2모드 — 휠·스와이프 탭전환, 회색조, 탭 스트립을
+	 * 숨겨 노트 하나처럼 보이던 단일 노트 뷰 — 는 모두 제거.)
 	 *
 	 * ── 호스트 셸 배선 ──────────────────────────────────────────────────
 	 * 터미널/음악/하단최신은 잎 본문에 그대로. TerminalView·MusicPlayerBar 는
@@ -52,7 +48,6 @@
 	import { writeBundleHeightPct, setBundleChecked } from './noteBundlePlugin.js';
 	import {
 		repairPath,
-		stepPath,
 		pickPath,
 		visibleTabs,
 		clampIndex,
@@ -331,10 +326,6 @@
 			if ((ke.ctrlKey || ke.metaKey) && (ke.key === 'Home' || ke.key === 'End')) {
 				ke.preventDefault();
 			}
-			if (ke.key === 'Escape' && mode === 'edit') {
-				const t = ke.target as HTMLElement | null;
-				if (!t?.closest?.('.bundle-term')) exitEdit();
-			}
 			if (NAV_KEYS.has(ke.key)) guardCaretEscape();
 			ke.stopPropagation();
 		};
@@ -342,38 +333,8 @@
 			(t) => [t, t === 'keydown' ? stopKeydown : stop]
 		);
 		for (const [t, h] of pairs) el.addEventListener(t, h);
-		// 휠은 캡처 단계에서 선점 — xterm/임베디드 PM 이 타깃 단계에서 자체
-		// 스크롤해 버리면 버블 preventDefault 로 못 되돌린다.
-		//  - ctrl/⌘+휠: 활성 본문 스크롤(편집 진입 없이 내용 확인) + 줌 차단.
-		//  - 훑어보기: 탭 전환. 편집(ctrl 없음): 통과 → 본문 네이티브 스크롤.
-		const captureWheel = (e: Event) => {
-			const we = e as WheelEvent;
-			if (we.ctrlKey || we.metaKey) {
-				scrollActiveBody(we);
-				return;
-			}
-			if (mode === 'browse') flipWheel(we);
-		};
-		el.addEventListener('wheel', captureWheel, { capture: true, passive: false });
-		// 모바일 편집-진입 키보드 억제: 임베디드 PM 은 "편집 모드 + 활성 본문 직접
-		// 탭"일 때만 포커스(=키보드)를 얻는다. 그 외 본문 위 mousedown/touchstart 는
-		// 캡처 단계에서 preventDefault 로 포커스 디폴트를 차단 — 훑어보기에서 본문을
-		// 탭하면 모드만 바뀌고(키보드 안 뜸), 다시 탭해야 타이핑이 시작된다.
-		// 탭 스트립(.tab)은 click 으로 전환하므로 건드리지 않는다(모바일 탭 click 보존).
-		const suppressEditorFocus = (e: Event) => {
-			const t = e.target as HTMLElement | null;
-			const body = t?.closest?.('.bundle-body');
-			if (!body) return;
-			if (mode === 'edit' && body.closest('.node-body')?.classList.contains('active')) return;
-			e.preventDefault();
-		};
-		el.addEventListener('mousedown', suppressEditorFocus, { capture: true });
-		el.addEventListener('touchstart', suppressEditorFocus, { capture: true, passive: false });
 		return () => {
 			for (const [t, h] of pairs) el.removeEventListener(t, h);
-			el.removeEventListener('wheel', captureWheel, { capture: true });
-			el.removeEventListener('mousedown', suppressEditorFocus, { capture: true });
-			el.removeEventListener('touchstart', suppressEditorFocus, { capture: true });
 		};
 	});
 
@@ -575,22 +536,7 @@
 		onclose?.();
 	}
 
-	// --- 훑어보기 / 편집 모드 ---------------------------------------------------
-	let mode = $state<'browse' | 'edit'>('browse');
-
-	function exitEdit() {
-		if (mode !== 'edit') return;
-		mode = 'browse';
-		const ae = document.activeElement as HTMLElement | null;
-		if (ae && rootEl?.contains(ae)) ae.blur();
-	}
-
-	// 편집 헤더 — ← 돌아가기(훑어보기) / ↗ 꺼내기(단독 열기).
-	function handleEditBack(e: Event) {
-		e.preventDefault();
-		e.stopPropagation();
-		exitEdit();
-	}
+	// ↗ 꺼내기 — 활성 잎 노트를 단독으로 열기(전용 크롬 / 탭 더블클릭 공용).
 	function handleEject(e: Event) {
 		e.preventDefault();
 		e.stopPropagation();
@@ -648,47 +594,10 @@
 		};
 	}
 
-	// --- 전환 (휠 / 스와이프 / 탭 클릭) ------------------------------------------
-	function step(dir: 1 | -1) {
-		exitEdit();
-		const next = stepPath(tree, activePath, dir);
-		if (next !== activePath) setActive(next);
-	}
-
-	/** ctrl/⌘+휠 — 활성 잎 노트 본문을 직접 스크롤(편집 진입 없이 내용 확인).
-	 *  preventDefault 로 줌·네이티브 스크롤을 막고 scrollTop 직접 이동.
-	 *  활성 잎 본문 = 가장 깊은 .node-body.active 의 직속 .bundle-body. */
-	function scrollActiveBody(e: WheelEvent) {
-		e.preventDefault();
-		e.stopPropagation();
-		const body = rootEl?.querySelector<HTMLElement>('.node-body.active > .bundle-body') ?? null;
-		if (body) body.scrollTop += e.deltaY;
-	}
-
-	let wheelAcc = 0;
-	function flipWheel(e: WheelEvent) {
-		exitEdit();
-		e.preventDefault(); // 네이티브 본문 스크롤 차단(브라우징 중)
-		e.stopPropagation();
-		// 가로 탭이라 우세축 사용 — 마우스 휠(deltaY) / 트랙패드 가로(deltaX) 둘 다.
-		const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
-		if (Math.sign(d) !== Math.sign(wheelAcc)) wheelAcc = 0;
-		wheelAcc += d;
-		// 양수(아래/오른쪽)면 다음(이후) 노트. 노치당 정확히 한 칸(잔여 폐기).
-		if (wheelAcc >= 50) {
-			step(1);
-			wheelAcc = 0;
-		} else if (wheelAcc <= -50) {
-			step(-1);
-			wheelAcc = 0;
-		}
-	}
-
 	// 탭 클릭: 단일=선택(+drill), 더블=단독 열기(잎). 격벽 때문에 manual 더블 판정.
 	let lastTabKey: string | null = null;
 	let lastTabTime = 0;
 	function handleTabClick(depth: number, idx: number, node: ResolvedNode) {
-		exitEdit();
 		const id = `${depth}:${idx}:${node.key}`;
 		const now = performance.now();
 		if (lastTabKey === id && now - lastTabTime < 300) {
@@ -700,50 +609,6 @@
 		lastTabTime = now;
 		if (!node.navigable) return;
 		setActive(pickPath(tree, activePath, depth, idx));
-	}
-
-	// 본문 위 가로 스와이프(전환) + 탭(편집 진입). 가로만 — 상하 제스처는 무시
-	// (스크롤 의도). 캡처 안 함 — 캡처하면 click 이 retarget 돼 PM 포커스(모바일
-	// 키보드)가 안 뜬다.
-	let swipeX: number | null = null;
-	let downX = 0;
-	let downY = 0;
-	let swiped = false;
-	let downOnBody = false;
-	function handlePointerDown(e: PointerEvent) {
-		const t = e.target as HTMLElement;
-		if (t.closest?.('.tab') || t.closest?.('.bundle-music') || t.closest?.('.bar-term-btn')) return;
-		swipeX = e.clientX;
-		downX = e.clientX;
-		downY = e.clientY;
-		swiped = false;
-		downOnBody = !!t.closest?.('.bundle-body');
-	}
-	function handlePointerMove(e: PointerEvent) {
-		if (swipeX === null) return;
-		const dx = e.clientX - swipeX;
-		if (Math.abs(dx) >= 30) {
-			swiped = true;
-			if (mode === 'browse') step(dx < 0 ? 1 : -1); // 왼쪽으로 끌면 다음(이후)
-			swipeX = e.clientX;
-		}
-	}
-	function handlePointerUp(e: Event) {
-		const pe = e as PointerEvent;
-		if (
-			downOnBody &&
-			!swiped &&
-			Math.abs(pe.clientX - downX) < 8 &&
-			Math.abs(pe.clientY - downY) < 8 &&
-			mode === 'browse'
-		) {
-			// 본문 탭 → 편집 모드만 전환. 포커스는 suppressEditorFocus 가 막아
-			// 키보드 안 뜸 — 타이핑은 편집 모드에서 다시 탭.
-			mode = 'edit';
-		}
-		swipeX = null;
-		swiped = false;
-		downOnBody = false;
 	}
 
 	// --- 하단 리사이즈 핸들 -------------------------------------------------------
@@ -771,36 +636,11 @@
 
 <div
 	class="bundle-stack"
-	class:browse={mode === 'browse'}
-	class:edit={mode === 'edit'}
 	class:no-anim={suppressAnim}
 	class:dedicated
 	bind:this={rootEl}
 	style:height={dedicated ? null : `${stackH}px`}
-	use:direct={{
-		pointerdown: handlePointerDown as (e: Event) => void,
-		pointermove: handlePointerMove as (e: Event) => void,
-		pointerup: handlePointerUp,
-		pointercancel: handlePointerUp
-	}}
 >
-	{#if mode === 'edit' && activeLeaf}
-		<div class="edit-header">
-			<button
-				type="button"
-				class="edit-nav edit-back"
-				title="훑어보기로 돌아가기"
-				use:direct={{ click: handleEditBack, pointerdown: stopEvt, mousedown: stopEvt }}
-			>←</button>
-			<span class="edit-title">{activeLeaf.label || '(제목 없음)'}</span>
-			<button
-				type="button"
-				class="edit-nav edit-eject"
-				title="노트 단독으로 열기"
-				use:direct={{ click: handleEject, pointerdown: stopEvt, mousedown: stopEvt }}
-			>↗</button>
-		</div>
-	{/if}
 	{#if tree.length === 0}
 		<div class="bundle-empty">묶을 노트 없음</div>
 	{:else if activePath.length === 0}
@@ -809,34 +649,31 @@
 		{@render tabLevel(tree, 0, true)}
 	{/if}
 	{#if dedicated}
-		<!-- 전용 노트 크롬(훑어보기 전용) — 우상단 [✎편집(Ctrl)][↗꺼내기][✕닫기].
-		     편집 모드에선 .edit-header 가 ←/↗ 를 맡으므로 여기선 안 띄운다. -->
-		{#if mode === 'browse'}
-			<div class="dedicated-chrome">
-				{#if modKeys.ctrl && onraw}
-					<button
-						type="button"
-						class="dchrome-btn"
-						title="편집 (일반 노트로 보기)"
-						use:direct={{ click: handleRawEdit, pointerdown: stopEvt, mousedown: stopEvt }}
-					>✎ 편집</button>
-				{/if}
+		<!-- 전용 노트 크롬 — 우상단 [✎편집(Ctrl)][↗꺼내기][✕닫기]. 항상 표시. -->
+		<div class="dedicated-chrome">
+			{#if modKeys.ctrl && onraw}
 				<button
 					type="button"
 					class="dchrome-btn"
-					title="활성 노트 단독으로 열기"
-					use:direct={{ click: handleEject, pointerdown: stopEvt, mousedown: stopEvt }}
-				>↗ 꺼내기</button>
-				{#if onclose}
-					<button
-						type="button"
-						class="dchrome-btn dchrome-close"
-						title="닫기"
-						use:direct={{ click: handleClose, pointerdown: stopEvt, mousedown: stopEvt }}
-					>✕</button>
-				{/if}
-			</div>
-		{/if}
+					title="편집 (일반 노트로 보기)"
+					use:direct={{ click: handleRawEdit, pointerdown: stopEvt, mousedown: stopEvt }}
+				>✎ 편집</button>
+			{/if}
+			<button
+				type="button"
+				class="dchrome-btn"
+				title="활성 노트 단독으로 열기"
+				use:direct={{ click: handleEject, pointerdown: stopEvt, mousedown: stopEvt }}
+			>↗ 꺼내기</button>
+			{#if onclose}
+				<button
+					type="button"
+					class="dchrome-btn dchrome-close"
+					title="닫기"
+					use:direct={{ click: handleClose, pointerdown: stopEvt, mousedown: stopEvt }}
+				>✕</button>
+			{/if}
+		</div>
 	{:else if modKeys.ctrl}
 		<button
 			type="button"
@@ -918,7 +755,6 @@
 					use:direct={{
 						click: () => {
 							setTermConnect(node.guid!, true);
-							mode = 'edit';
 						}
 					}}
 				>접속 — {session.termSpec.target}</button>
@@ -1106,11 +942,8 @@
 		opacity: 0.6;
 	}
 	.tab.active {
-		background: #2d5a3d;
-		color: #fff;
-	}
-	.bundle-stack:not(.browse) .tab.active {
 		background: #3f8657;
+		color: #fff;
 	}
 	.tab.broken {
 		color: #777;
@@ -1128,48 +961,6 @@
 		background: #202020;
 		padding: clamp(4px, 0.9vw, 6px) 7px;
 	}
-	/* --- 편집 모드(단일 노트 뷰) ------------------------------------------- */
-	/* 탭 스트립 전부 숨김 → 활성 본문만 남아 노트 한 개처럼 보인다. */
-	.bundle-stack.edit .tab-strip {
-		display: none;
-	}
-	.edit-header {
-		flex-shrink: 0;
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: clamp(4px, 0.9vw, 6px) clamp(6px, 1.4vw, 10px);
-		background: #2d5a3d;
-		border-bottom: 1px solid #1a1a1a;
-	}
-	.edit-nav {
-		flex-shrink: 0;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 22px;
-		height: 22px;
-		border: none;
-		border-radius: 4px;
-		background: rgba(255, 255, 255, 0.14);
-		color: #fff;
-		font-size: 0.85rem;
-		line-height: 1;
-		cursor: pointer;
-	}
-	.edit-nav:hover {
-		background: rgba(255, 255, 255, 0.28);
-	}
-	.edit-title {
-		flex: 1;
-		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-		color: #fff;
-		font-size: 0.8rem;
-		font-weight: 500;
-	}
 	/* --- 본문 -------------------------------------------------------------- */
 	.bundle-body {
 		flex: 1;
@@ -1178,13 +969,6 @@
 		overscroll-behavior: contain;
 		background: var(--color-bg, #fff);
 		transition: background-color 160ms ease-out;
-	}
-	/* 훑어보기 모드 — 활성 본문 회색조 + 탭 힌트. touch-action:pan-y 로 좌우
-	   스와이프는 JS(탭 전환)가, 상하는 브라우저(페이지 스크롤)가 가져간다. */
-	.bundle-stack.browse .bundle-body {
-		background: #ecebe6;
-		cursor: pointer;
-		touch-action: pan-y;
 	}
 	.bundle-term {
 		height: 100%;
