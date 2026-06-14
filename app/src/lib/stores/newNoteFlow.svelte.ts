@@ -5,6 +5,9 @@ import { ensureBacklinkIndexReady } from '$lib/core/backlinkIndex.js';
 import { composeTitle, bodyFirstLine } from '$lib/noteTypes/registry.js';
 import * as noteStore from '$lib/storage/noteStore.js';
 import { pushToast } from '$lib/stores/toast.js';
+import { countLinkSweep, applyLinkSweep } from '$lib/core/linkSweep.js';
+import { desktopSession } from '$lib/desktop/session.svelte.js';
+import { emitNoteReload } from '$lib/core/noteReloadBus.js';
 
 export interface Stage {
 	name: string;
@@ -12,15 +15,34 @@ export interface Stage {
 	status: 'pending' | 'active' | 'done';
 }
 
+export interface SweepState {
+	status: 'idle' | 'counting' | 'confirm' | 'applying' | 'done';
+	scanned: number;
+	total: number;
+	matched: number;
+	updated: number;
+	failed: number;
+	ms: number;
+}
+
 type NavigateFn = (note: NoteData) => void | Promise<void>;
 
-let phase = $state<'idle' | 'input' | 'creating'>('idle');
+function emptySweep(): SweepState {
+	return { status: 'idle', scanned: 0, total: 0, matched: 0, updated: 0, failed: 0, ms: 0 };
+}
+
+let phase = $state<'idle' | 'input' | 'creating' | 'result'>('idle');
 let stages = $state<Stage[]>([]);
 let defaultNotebook = $state<string | null>(null);
+let sweep = $state<SweepState>(emptySweep());
 
 let navigateFn: NavigateFn | null = null;
 let pendingGuid: string | null = null;
 let readyResolve: (() => void) | null = null;
+let createdGuid: string | null = null;
+let createdTitle: string | null = null;
+let matchedGuids: string[] = [];
+let cancelFlag: { cancelled: boolean } = { cancelled: false };
 
 const READY_TIMEOUT_MS = 5000;
 
@@ -32,6 +54,7 @@ export const newNoteFlow = {
 	get phase() { return phase; },
 	get stages() { return stages; },
 	get defaultNotebook() { return defaultNotebook; },
+	get sweep() { return sweep; },
 
 	open(opts: { notebook?: string | null; navigate: NavigateFn }) {
 		defaultNotebook = opts.notebook ?? null;
@@ -46,6 +69,10 @@ export const newNoteFlow = {
 		navigateFn = null;
 		pendingGuid = null;
 		readyResolve = null;
+		createdGuid = null;
+		createdTitle = null;
+		matchedGuids = [];
+		sweep = emptySweep();
 	},
 
 	/** 에디터가 새 노트 콘텐츠 스왑을 끝냈을 때 호출(TomboyEditor onnoteready). */
@@ -72,6 +99,8 @@ export const newNoteFlow = {
 			{ name: '에디터 여는 중', ms: null, status: 'pending' }
 		];
 
+		let succeeded = false;
+		let noteGuid: string | null = null;
 		try {
 			// 1) 노트 생성
 			let t0 = performance.now();
@@ -100,15 +129,90 @@ export const newNoteFlow = {
 				new Promise<void>((res) => setTimeout(res, READY_TIMEOUT_MS))
 			]);
 			setStage(2, { ms: Math.round(performance.now() - t0), status: 'done' });
+
+			noteGuid = note.guid;
+			succeeded = true;
 		} catch (err) {
 			console.error('[newNoteFlow] 노트 생성 실패', err);
 			pushToast('노트 생성 중 오류가 발생했습니다.', { kind: 'error' });
-		} finally {
+		}
+
+		if (succeeded && noteGuid) {
+			// Success path: persist result state
+			createdGuid = noteGuid;
+			createdTitle = finalTitle;
+			matchedGuids = [];
+			sweep = emptySweep();
+			navigateFn = null;
+			pendingGuid = null;
+			readyResolve = null;
+			phase = 'result';
+		} else {
+			// Error path: return to idle and clear everything
 			phase = 'idle';
 			stages = [];
 			pendingGuid = null;
 			readyResolve = null;
 			navigateFn = null;
 		}
+	},
+
+	async startSweepCount() {
+		if (!createdTitle || !createdGuid) return;
+		cancelFlag = { cancelled: false };
+		sweep = { ...sweep, status: 'counting', scanned: 0, total: 0, matched: 0 };
+		await desktopSession.flushAll();
+		const { matched, total } = await countLinkSweep(createdTitle, createdGuid, {
+			cancelToken: cancelFlag,
+			onProgress: (p) => {
+				sweep = { ...sweep, scanned: p.scanned, total: p.total, matched: p.matched };
+			}
+		});
+		if (cancelFlag.cancelled) {
+			sweep = { ...sweep, status: 'idle' };
+			return;
+		}
+		matchedGuids = matched;
+		sweep = { ...sweep, status: 'confirm', total, matched: matched.length };
+	},
+
+	async applySweep() {
+		if (!createdTitle || !createdGuid) return;
+		cancelFlag = { cancelled: false };
+		const t0 = performance.now();
+		sweep = { ...sweep, status: 'applying', updated: 0, failed: 0, total: matchedGuids.length };
+		const { updated, failed } = await applyLinkSweep(createdTitle, createdGuid, matchedGuids, {
+			cancelToken: cancelFlag,
+			onProgress: (p) => {
+				sweep = { ...sweep, scanned: p.scanned, updated: p.matched };
+			}
+		});
+		if (updated.length) {
+			await emitNoteReload(updated);
+			await desktopSession.reloadWindows(updated);
+		}
+		sweep = {
+			...sweep,
+			status: 'done',
+			updated: updated.length,
+			failed,
+			ms: Math.round(performance.now() - t0)
+		};
+	},
+
+	cancelSweep() {
+		cancelFlag.cancelled = true;
+	},
+
+	dismiss() {
+		phase = 'idle';
+		stages = [];
+		navigateFn = null;
+		pendingGuid = null;
+		readyResolve = null;
+		createdGuid = null;
+		createdTitle = null;
+		matchedGuids = [];
+		sweep = emptySweep();
 	}
 };
