@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import 'fake-indexeddb/auto';
+import { IDBFactory } from 'fake-indexeddb';
 import * as noteStore from '$lib/storage/noteStore.js';
 import { createEmptyNote } from '$lib/core/note.js';
 import { updateNoteFromEditor } from '$lib/core/noteManager.js';
@@ -7,7 +8,11 @@ import {
 	subscribeNoteReload,
 	_resetForTest as resetBus
 } from '$lib/core/noteReloadBus.js';
+import { clear as clearIndex } from '$lib/core/backlinkIndex.js';
+import { _resetForTest as resetCache } from '$lib/stores/noteListCache.js';
+import { _resetForTest as resetTitleProvider } from '$lib/editor/autoLink/titleProvider.js';
 import { deserializeContent } from '$lib/core/noteContentArchiver.js';
+import { _resetDBForTest } from '$lib/storage/db.js';
 
 // Firebase + schedule hooks are no-ops here; stub to keep the test offline.
 vi.mock('$lib/sync/firebase/orchestrator.js', () => ({ notifyNoteSaved: vi.fn() }));
@@ -17,7 +22,12 @@ vi.mock('$lib/schedule/syncSchedule.js', () => ({
 vi.mock('$lib/schedule/flushScheduler.js', () => ({ flushIfEnabled: vi.fn(async () => {}) }));
 
 beforeEach(() => {
+	clearIndex();
 	resetBus();
+	resetCache();
+	resetTitleProvider();
+	globalThis.indexedDB = new IDBFactory();
+	_resetDBForTest();
 });
 
 describe('same-note convergence', () => {
