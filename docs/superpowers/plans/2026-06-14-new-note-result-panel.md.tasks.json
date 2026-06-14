@@ -45,10 +45,10 @@
     {
       "id": 14,
       "subject": "Task 7: Delta-gate TomboyEditor automatic rescan",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [13],
       "description": "**Goal:** Gate the automatic full rescan on shouldRescanForDelta(delta, editor.state.doc.textContent) — kills the new-note stutter.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/TomboyEditor.svelte\"], \"verifyCommand\": \"cd app && npm run check && npx vitest run tests/unit/editor/\", \"acceptanceCriteria\": [\"onChange gated by shouldRescanForDelta(delta, doc.textContent), fallback true when no editor\", \"npm run check clean + editor tests pass\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-06-14"
+  "lastUpdated": "2026-06-14T19:26:00Z"
 }
