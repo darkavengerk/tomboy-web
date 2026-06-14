@@ -228,16 +228,17 @@
 			// idle siblings still reload and converge.
 			const ed = editorComponent?.getEditor?.();
 			if (ed?.isFocused && pendingDoc) return;
-			// Cancel any pending debounced save so the stale doc it holds
-			// doesn't win the race with the fresh IDB content.
+			const fresh = await getNote(g);
+			if (!fresh) return;
+			// No-op ping (xml unchanged): keep this editor's pending edit intact.
+			if (fresh.xmlContent === note?.xmlContent) return;
+			// Real change incoming — drop the stale debounced doc so it can't
+			// clobber the fresh content on the next flush.
 			if (saveTimer) {
 				clearTimeout(saveTimer);
 				saveTimer = null;
 			}
 			pendingDoc = null;
-			const fresh = await getNote(g);
-			if (!fresh) return;
-			if (fresh.xmlContent === note?.xmlContent) return;
 			note = fresh;
 			// Swap content prop — TomboyEditor's $effect keyed on `content`
 			// performs the setContent + clearDirty dance. Fingerprint reset
