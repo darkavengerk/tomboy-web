@@ -30,9 +30,12 @@
 	 * ── 훑어보기 / 편집 모드 ─────────────────────────────────────────────
 	 * 훑어보기(기본): 휠/스와이프 = 탭 전환. 데스크톱 휠은 우세축(deltaX|deltaY)
 	 * 양수면 다음(이후) 노트. 모바일은 좌우 스와이프만 인식(왼쪽으로 끌면 다음),
-	 * 상하 제스처는 무시. 활성 본문은 회색조. 본문 탭/클릭 → 편집 모드(흰 배경).
+	 * 상하 제스처는 무시. 활성 본문은 회색조. 본문 탭/클릭 → 편집 모드.
 	 * ctrl+휠은 모드 무관 활성 본문 스크롤(편집 진입 없이 내용 확인).
-	 * Esc · 탭 클릭 · 묶음 스크롤(휠/스와이프) → 훑어보기 복귀.
+	 *
+	 * 편집(단일 노트 뷰): 탭 스트립을 전부 숨겨(.edit) 노트 한 개만 보이는 듯한
+	 * UI. 상단에 편집 헤더 — 제목 왼쪽 ← 돌아가기(훑어보기 복귀), 우측 ↗ 꺼내기
+	 * (oninternallink 로 단독 열기). Esc · ← · 묶음 스크롤(휠/스와이프) → 훑어보기.
 	 *
 	 * ── 호스트 셸 배선 ──────────────────────────────────────────────────
 	 * 터미널/음악/하단최신은 잎 본문에 그대로. TerminalView·MusicPlayerBar 는
@@ -536,6 +539,19 @@
 		if (ae && rootEl?.contains(ae)) ae.blur();
 	}
 
+	// 편집 헤더 — ← 돌아가기(훑어보기) / ↗ 꺼내기(단독 열기).
+	function handleEditBack(e: Event) {
+		e.preventDefault();
+		e.stopPropagation();
+		exitEdit();
+	}
+	function handleEject(e: Event) {
+		e.preventDefault();
+		e.stopPropagation();
+		const l = activeLeaf;
+		if (l && !l.broken && l.link) oninternallink?.(l.link);
+	}
+
 	/** "하단이 최신" 노트 — 본문 첫 마운트 직후 끝으로 스크롤(rAF×2). */
 	function scrollBottomInit(node: HTMLElement, enabled: boolean) {
 		if (!enabled) return;
@@ -710,6 +726,7 @@
 <div
 	class="bundle-stack"
 	class:browse={mode === 'browse'}
+	class:edit={mode === 'edit'}
 	class:no-anim={suppressAnim}
 	bind:this={rootEl}
 	style:height={`${stackH}px`}
@@ -720,6 +737,23 @@
 		pointercancel: handlePointerUp
 	}}
 >
+	{#if mode === 'edit' && activeLeaf}
+		<div class="edit-header">
+			<button
+				type="button"
+				class="edit-nav edit-back"
+				title="훑어보기로 돌아가기"
+				use:direct={{ click: handleEditBack, pointerdown: stopEvt, mousedown: stopEvt }}
+			>←</button>
+			<span class="edit-title">{activeLeaf.label || '(제목 없음)'}</span>
+			<button
+				type="button"
+				class="edit-nav edit-eject"
+				title="노트 단독으로 열기"
+				use:direct={{ click: handleEject, pointerdown: stopEvt, mousedown: stopEvt }}
+			>↗</button>
+		</div>
+	{/if}
 	{#if tree.length === 0}
 		<div class="bundle-empty">묶을 노트 없음</div>
 	{:else if activePath.length === 0}
@@ -978,6 +1012,48 @@
 		cursor: default;
 		background: #202020;
 		padding: clamp(4px, 0.9vw, 6px) 7px;
+	}
+	/* --- 편집 모드(단일 노트 뷰) ------------------------------------------- */
+	/* 탭 스트립 전부 숨김 → 활성 본문만 남아 노트 한 개처럼 보인다. */
+	.bundle-stack.edit .tab-strip {
+		display: none;
+	}
+	.edit-header {
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: clamp(4px, 0.9vw, 6px) clamp(6px, 1.4vw, 10px);
+		background: #3f8657;
+		border-bottom: 1px solid #1a1a1a;
+	}
+	.edit-nav {
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		border: none;
+		border-radius: 4px;
+		background: rgba(255, 255, 255, 0.14);
+		color: #fff;
+		font-size: 1rem;
+		line-height: 1;
+		cursor: pointer;
+	}
+	.edit-nav:hover {
+		background: rgba(255, 255, 255, 0.28);
+	}
+	.edit-title {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: #fff;
+		font-size: 0.9rem;
+		font-weight: 600;
 	}
 	/* --- 본문 -------------------------------------------------------------- */
 	.bundle-body {

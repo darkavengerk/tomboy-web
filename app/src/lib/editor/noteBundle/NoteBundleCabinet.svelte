@@ -32,10 +32,13 @@
 	 *
 	 * ── 훑어보기 / 편집 모드 ─────────────────────────────────────────────
 	 * 훑어보기(기본): 스택 어디서든 휠/스와이프 = 묶음 브라우징(노트 전환),
-	 * 활성 본문은 회색조 + 포인터 커서. 본문 클릭 → 활성 노트 단독 열기,
-	 * ctrl+클릭 → 편집 모드(흰 배경, 휠/스크롤이 노트 내부로). ctrl+휠은 모드
-	 * 무관 활성 본문 스크롤(편집 진입 없이 내용 확인). Esc · 타이틀 바 클릭 ·
-	 * 묶음 스크롤(바 위 휠/스와이프) → 훑어보기 복귀.
+	 * 활성 본문은 회색조 + 포인터 커서. 본문 클릭/탭 → 편집 모드. ctrl+휠은
+	 * 모드 무관 활성 본문 스크롤(편집 진입 없이 내용 확인).
+	 *
+	 * 편집(단일 노트 뷰): 제목 바를 전부 숨겨(.edit) 노트 한 개만 보이는 듯한
+	 * UI. 상단에 편집 헤더 — 제목 왼쪽 ← 돌아가기(훑어보기 복귀), 우측 ↗ 꺼내기
+	 * (oninternallink 로 단독 열기). Esc · ← · 타이틀 바 클릭 · 묶음 스크롤(바 위
+	 * 휠/스와이프) → 훑어보기 복귀. (제목 바 더블탭은 여전히 단독 열기.)
 	 *
 	 * ── 호스트 셸 배선 ──────────────────────────────────────────────────
 	 * 터미널 노트: 활성 바에 "접속" 버튼 → TerminalView 를 본문에 별도
@@ -495,6 +498,18 @@
 		if (ae && rootEl?.contains(ae)) ae.blur();
 	}
 
+	// 편집 헤더 — ← 돌아가기(훑어보기) / ↗ 꺼내기(단독 열기).
+	function handleEditBack(e: Event) {
+		e.preventDefault();
+		e.stopPropagation();
+		exitEdit();
+	}
+	function handleEject(e: Event) {
+		e.preventDefault();
+		e.stopPropagation();
+		if (expanded && !expanded.broken) oninternallink?.(expanded.title);
+	}
+
 	/** "하단이 최신" 노트 — 세션 첫 마운트 직후 본문 스크롤을 끝으로.
 	 *  rAF×2: 임베디드 에디터가 setContent + 레이아웃을 마친 다음 프레임. */
 	function scrollBottomInit(node: HTMLElement, enabled: boolean) {
@@ -659,14 +674,10 @@
 		// pointerup 에서 탭·더블탭을 수동 판정한다.
 		if (!swiped && Math.abs(pe.clientY - downBarY) < 8) {
 			if (downOnBody) {
-				// 훑어보기에서 열린 본문 탭 → 활성 노트 단독 열기. ctrl/⌘ 동반
-				// 시에만 편집 모드 진입(포커스는 suppressEditorFocus 가 막아 키보드
-				// 안 뜸 — 타이핑은 편집 모드에서 재탭).
-				if (pe.ctrlKey || pe.metaKey) {
-					mode = 'edit';
-				} else if (expanded && !expanded.broken) {
-					oninternallink?.(expanded.title);
-				}
+				// 훑어보기에서 열린 본문 탭 → 편집 모드 진입(단일 노트 뷰).
+				// 단독 열기는 편집 헤더의 꺼내기(↗). 포커스는 suppressEditorFocus
+				// 가 막아 키보드 안 뜸 — 타이핑은 편집 모드에서 재탭.
+				mode = 'edit';
 			} else if (downBarIdx !== null) {
 				const now = performance.now();
 				if (lastTapIdx === downBarIdx && now - lastTapTime < 300) {
@@ -712,9 +723,27 @@
 <div
 	class="bundle-stack"
 	class:browse={mode === 'browse'}
+	class:edit={mode === 'edit'}
 	bind:this={rootEl}
 	style:height={`${stackH}px`}
 >
+	{#if mode === 'edit' && expanded}
+		<div class="edit-header">
+			<button
+				type="button"
+				class="edit-nav edit-back"
+				title="훑어보기로 돌아가기"
+				use:direct={{ click: handleEditBack, pointerdown: stopEvt, mousedown: stopEvt }}
+			>←</button>
+			<span class="edit-title">{expanded.title}</span>
+			<button
+				type="button"
+				class="edit-nav edit-eject"
+				title="노트 단독으로 열기"
+				use:direct={{ click: handleEject, pointerdown: stopEvt, mousedown: stopEvt }}
+			>↗</button>
+		</div>
+	{/if}
 	{#if resolved.length === 0}
 		<div class="bundle-empty">묶을 노트 없음</div>
 	{:else}
@@ -948,6 +977,48 @@
 	}
 	.bar-term-btn:hover {
 		background: #163022;
+	}
+	/* --- 편집 모드(단일 노트 뷰) ------------------------------------------- */
+	/* 제목 바 전부 숨김 → 열린 본문(flex-grow:1)만 남아 노트 한 개처럼 보인다. */
+	.bundle-stack.edit .bundle-bar {
+		display: none;
+	}
+	.edit-header {
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: clamp(4px, 1vw, 6px) clamp(8px, 2vw, 12px);
+		background: #3f8657;
+		border-bottom: 1px solid #1a1a1a;
+	}
+	.edit-nav {
+		flex-shrink: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		border: none;
+		border-radius: 4px;
+		background: rgba(255, 255, 255, 0.14);
+		color: #fff;
+		font-size: 1rem;
+		line-height: 1;
+		cursor: pointer;
+	}
+	.edit-nav:hover {
+		background: rgba(255, 255, 255, 0.28);
+	}
+	.edit-title {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: #fff;
+		font-size: 0.9rem;
+		font-weight: 600;
 	}
 	/* 모든 세션 본문이 자기 바 밑에 상주 — 활성만 flex-grow:1. 전환은
 	   flex-grow transition: 옛 본문 접히고 새 본문 펼쳐지는 서랍 모션이
