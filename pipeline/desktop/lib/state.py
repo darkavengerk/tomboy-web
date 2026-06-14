@@ -60,3 +60,17 @@ class StateFile:
         if key in current:
             del current[key]
             self.write(current)
+
+    def remove_page(self, page_uuid: str) -> None:
+        """Drop the page's own key and every ``<page_uuid>#<half>`` derived
+        unit key. Used by the s1 re-fetch cascade and s2 force handling so a
+        re-edited split page is fully re-processed (the bare ``remove`` only
+        matched the whole-page key)."""
+        current = self.read()
+        prefix = page_uuid + "#"
+        keys = [k for k in current if k == page_uuid or k.startswith(prefix)]
+        if not keys:
+            return
+        for k in keys:
+            del current[k]
+        self.write(current)
