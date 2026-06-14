@@ -53,7 +53,7 @@ sync see a normal checkbox + bullet list; the bundle never mutates the list.
 | File | Role |
 |------|------|
 | `lib/editor/noteBundle/parser.ts` | Pure `parseNoteBundles(doc): BundleSpec[]`. Atom-aware PMNode walk; **both keywords** (`탭:`→kind 'tab', `묶음:`→kind 'bundle'). Per kind it fills **either** `tree: BundleNode{label,link,children}` (tab, recursive — `parseTree`) **or** `entries: BundleEntry{title,category}` (bundle, flat — `parseEntries`); the other field stays `[]`. No IDB, no title index. |
-| `lib/editor/noteBundle/noteBundlePlugin.ts` | ProseMirror plugin, **kind-agnostic**. Hide-list node decoration gated on `hasContent` (`tree.length \|\| entries.length`) + cached widget container per ordinal + `StackController` lifecycle. **Kind-change (탭↔묶음) on a live ordinal = destroy + remount** (`controllerKind` map). Exports `writeBundleHeightPct` only. **No list mutation.** |
+| `lib/editor/noteBundle/noteBundlePlugin.ts` | ProseMirror plugin, **kind-agnostic**. Hide-list node decoration gated on `hasContent` (`tree.length \|\| entries.length`) + cached widget container per ordinal + `StackController` lifecycle. **Kind-change (탭↔묶음) on a live ordinal = destroy + remount** (`controllerKind` map). Checked → hides declaration line (`keywordPos..keywordEnd`) **and** list. Exports `writeBundleHeightPct` + `setBundleChecked` (Ctrl 편집 버튼 → 체크 해제). **No list mutation** (only the checkbox attr / `:N` digits). |
 | `lib/editor/noteBundle/stackMath.ts` | **Tab** tree-navigation — `firstNavPath`, `drillFrom`, `repairPath`, `stepPath` (bubbles to parent at level ends), `pickPath`, `nodesAtDepth`, `clampIndex`, `topItems`/`bottomItems` (range-safe), `tabWindow`/`TAB_CAP`. |
 | `lib/editor/noteBundle/cabinetMath.ts` | **Bundle** title-window algebra — `WINDOW_SIZE=5`, `ACTIVE_SLOT=2`, `windowWidth`, `centeredWindow` (active fixed at slot 3 / index 2 regardless of scroll direction, end-pinned), `firstValidIndex`/`nextValidIndex` (broken-skip). |
 | `lib/editor/noteBundle/NoteBundleStack.svelte` | **Tab** UI (kind 'tab'). `activePath` + recursive `tabLevel` snippet + keep-alive `EditorSession` map + barrier + browse/edit + host-shell wiring. |
@@ -113,11 +113,22 @@ Kind-agnostic. State rebuilt on every `docChanged` (`buildState`). For each
 **checked** bundle with `hasContent(b)` (`tree.length || entries.length` — works
 for both kinds):
 
+0. `Decoration.node(keywordPos, keywordEnd, {class:'tomboy-note-bundle-hidden'})`
+   hides the **declaration line** (checkbox + keyword paragraph) to save space —
+   added even when there is no list. `keywordPos` is the keyword paragraph's node
+   start (always a top-level paragraph; the bundle parser only recognizes those).
 1. `Decoration.node(listPos, listEnd, {class:'tomboy-note-bundle-hidden'})` hides
    the raw list (nested lists included — the whole top-level list range).
 2. `Decoration.widget(listEnd ?? keywordEnd, …, {key:'note-bundle-<ordinal>',
    side:1})` whose `toDOM` returns a **container cached by ordinal** so the
    mounted Svelte component survives re-renders.
+
+Re-edit path: with the declaration hidden there's no visible checkbox to
+un-toggle, so both components show a Ctrl-only **"✎ 편집" button** (top-right,
+`{#if modKeys.ctrl}`, `use:direct` click) → `setBundleChecked(view, ordinal,
+false)` re-looks-up by ordinal and `setNodeAttribute(checkboxPos, 'checked',
+false)`. Unchecking drops all three decorations (declaration + list reappear) and
+`syncControllers` destroys the widget. No-op if already that value.
 
 `view().update` runs `syncControllers`: `update(spec)` an existing controller
 **of the same kind**, else (no controller, or **kind changed**) `mountStack` when
@@ -439,8 +450,15 @@ band + eager-slide are gone. It is independent of `stackMath` (tab tree-nav).
 - **View layer only — `.note` XML never restructured, list never mutated.**
   Persisted state = checkbox `checked` + `:N` digits. `activePath`, mode,
   sessions are ephemeral; reopening shows the first note.
+- **Checked hides BOTH the declaration line and the list.** The declaration
+  (checkbox + keyword paragraph, `keywordPos..keywordEnd`) gets the same
+  `tomboy-note-bundle-hidden` node decoration as the list — space-saving, the
+  bundle widget is the only visible thing. The checkbox is then off-screen, so
+  the **only** un-check path is the Ctrl-held "✎ 편집" button →
+  `setBundleChecked(false)`. Don't reintroduce a visible checkbox while checked.
 - **`ordinal` is the identity, and it renumbers.** Re-look-up by ordinal before
-  the height write-back. `StackController.update` is a full spec replacement.
+  the height / checked write-back. `StackController.update` is a full spec
+  replacement.
 - **Titles resolve to guids via `lookupGuidByTitle`** (exact-case trimmed).
   Unresolved → `broken` leaf (gray tab, not navigable); `ensureTitleIndexReady` +
   `titleEpoch` bump re-resolve. **Self-reference excluded** (`guid === hostGuid`).
@@ -493,10 +511,13 @@ band + eager-slide are gone. It is independent of `stackMath` (tab tree-nav).
   `묶음:` → kind 'bundle' + flat entries with category (legacy `노트 묶음`);
   the unused field stays `[]`; mixed-keyword doc; prefix/checkbox/adjacency;
   height clamp.
-- `noteBundlePlugin.test.ts` — hide-list + widget decorations (both kinds via
-  `hasContent`), **no** radio insert (list unmutated), `writeBundleHeightPct`,
-  ordinal renumber (`tree[0].label`, tab keyword), and **kind-change remount**
-  (`탭:`→`묶음:` ⇒ destroy + remount with `mountedSpecs[1].kind==='bundle'`).
+- `noteBundlePlugin.test.ts` — hide-declaration + hide-list + widget decorations
+  (both kinds via `hasContent`; declaration hidden even with no list — node deco
+  at `keywordPos..keywordEnd`), **no** radio insert (list unmutated),
+  `writeBundleHeightPct`, **`setBundleChecked(false)`** (un-toggle → destroy +
+  decos cleared + idempotent), ordinal renumber (`tree[0].label`, tab keyword),
+  and **kind-change remount** (`탭:`→`묶음:` ⇒ destroy + remount with
+  `mountedSpecs[1].kind==='bundle'`).
 - `stackMath.test.ts` (tab) — `tabWindow` overflow + `firstNavPath`/`drillFrom`/
   `repairPath`/`stepPath`/`pickPath` over leaf/category/broken trees, **stepPath
   parent-bubble** (level-end toss), and **`clampIndex`/`topItems`/`bottomItems`

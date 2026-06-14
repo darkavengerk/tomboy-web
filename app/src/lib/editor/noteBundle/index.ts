@@ -3,6 +3,7 @@ export type { BundleSpec, BundleNode, BundleEntry, BundleKind } from './parser.j
 export {
 	createNoteBundlePlugin,
 	noteBundlePluginKey,
-	writeBundleHeightPct
+	writeBundleHeightPct,
+	setBundleChecked
 } from './noteBundlePlugin.js';
 export type { NoteBundleOptions, StackController } from './noteBundlePlugin.js';

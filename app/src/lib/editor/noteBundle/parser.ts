@@ -53,6 +53,8 @@ export interface BundleSpec {
 	/** `:` 뒤 숫자 텍스트 범위 — 높이 쓰기백 대상. 숫자 없으면 from===to */
 	digitsFrom: number;
 	digitsTo: number;
+	/** 키워드 paragraph 시작 pos — 체크 시 선언 라인 숨김 노드 데코 대상 */
+	keywordPos: number;
 	/** 키워드 paragraph 끝 pos — 리스트 없을 때 위젯 fallback 위치 */
 	keywordEnd: number;
 	listPos: number | null;
@@ -81,6 +83,7 @@ interface KeywordInfo {
 	heightPct: number;
 	digitsFrom: number;
 	digitsTo: number;
+	keywordPos: number;
 	keywordEnd: number;
 }
 
@@ -112,6 +115,7 @@ function keywordAfterCheckbox(
 		heightPct: m[1] ? clampHeightPct(parseInt(m[1], 10)) : DEFAULT_HEIGHT_PCT,
 		digitsFrom: textBase + colonIdx + 1,
 		digitsTo: textBase + colonIdx + 1 + digitsLen,
+		keywordPos: paraPos,
 		keywordEnd: paraPos + para.nodeSize
 	};
 }
@@ -250,6 +254,7 @@ export function parseNoteBundles(doc: PMNode): BundleSpec[] {
 			heightPct: pending.heightPct,
 			digitsFrom: pending.digitsFrom,
 			digitsTo: pending.digitsTo,
+			keywordPos: pending.keywordPos,
 			keywordEnd: pending.keywordEnd,
 			listPos,
 			listEnd: list && listPos !== null ? listPos + list.nodeSize : null,

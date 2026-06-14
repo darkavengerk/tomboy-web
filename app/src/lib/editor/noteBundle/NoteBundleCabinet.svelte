@@ -49,7 +49,7 @@
 	import type { EditorView } from '@tiptap/pm/view';
 	import type { JSONContent } from '@tiptap/core';
 	import type { BundleSpec } from './parser.js';
-	import { writeBundleHeightPct } from './noteBundlePlugin.js';
+	import { writeBundleHeightPct, setBundleChecked } from './noteBundlePlugin.js';
 	import {
 		windowWidth,
 		centeredWindow,
@@ -469,6 +469,18 @@
 		};
 	}
 
+	// Ctrl 누른 채 우상단 편집 버튼 → 체크 해제. 선언 라인 + 리스트가 다시
+	// 보이고(데코 해제) 위젯이 파괴되어 직접 편집 가능. modKeys.ctrl 로만 노출.
+	const stopEvt = (e: Event) => {
+		e.preventDefault();
+		e.stopPropagation();
+	};
+	function handleUncheck(e: Event) {
+		e.preventDefault();
+		e.stopPropagation();
+		setBundleChecked(view, spec.ordinal, false);
+	}
+
 	// --- 훑어보기 / 편집 모드 ---------------------------------------------------
 	// browse(기본): 묶음 전체가 휠/스와이프를 받아 노트를 브라우징. 본문 클릭=
 	//   활성 노트 단독 열기. ctrl+휠=활성 본문 스크롤(모드 무관).
@@ -803,6 +815,14 @@
 			{/if}
 		</div>
 	{/if}
+	{#if modKeys.ctrl}
+		<button
+			type="button"
+			class="bundle-edit-btn"
+			title="편집 (체크 해제)"
+			use:direct={{ click: handleUncheck, pointerdown: stopEvt, mousedown: stopEvt }}
+		>✎ 편집</button>
+	{/if}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="bundle-resize"
@@ -996,5 +1016,25 @@
 		border-radius: 2px;
 		margin: 2.5px auto;
 		background: #555;
+	}
+	/* Ctrl 누른 동안만 노출되는 편집(체크 해제) 버튼 — 우상단 오버레이. */
+	.bundle-edit-btn {
+		position: absolute;
+		top: 4px;
+		right: 4px;
+		z-index: 5;
+		padding: 2px 8px;
+		font-size: 12px;
+		line-height: 1.4;
+		color: #fff;
+		background: #3f8657;
+		border: none;
+		border-radius: 4px;
+		cursor: pointer;
+		opacity: 0.92;
+		box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+	}
+	.bundle-edit-btn:hover {
+		opacity: 1;
 	}
 </style>

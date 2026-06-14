@@ -1,9 +1,10 @@
 /**
  * 묶음 ProseMirror 플러그인.
  *
- * - 체크된 번들: 링크 리스트에 .tomboy-note-bundle-hidden 노드 데코레이션
- *   + 리스트 끝(리스트 없으면 키워드 끝)에 위젯 → mountStack 콜백으로
- *   Svelte 스택 마운트. 순수 뷰 레이어, XML 무변경 (geoMap 패턴).
+ * - 체크된 번들: 선언 라인(체크박스 키워드 paragraph) + 링크 리스트에
+ *   .tomboy-note-bundle-hidden 노드 데코레이션(공간 절약) + 리스트 끝(리스트
+ *   없으면 키워드 끝)에 위젯 → mountStack 콜백으로 Svelte 스택 마운트. 순수
+ *   뷰 레이어, XML 무변경 (geoMap 패턴). 다시 편집은 setBundleChecked(false).
  * - 위젯 컨테이너는 ordinal 키로 캐시 — 호스트 타이핑마다 스택이
  *   리마운트되지 않는다. spec 변경은 StackController.update 로 전달.
  *
@@ -46,6 +47,11 @@ function buildState(doc: PMNode, containers: Map<number, HTMLElement>): PluginSt
 	const decos: Decoration[] = [];
 	for (const b of bundles) {
 		if (!b.checked) continue;
+		// 체크 시 선언 라인(체크박스 + 키워드 paragraph)도 숨겨 공간 절약 —
+		// 다시 편집하려면 Ctrl 누르고 스택 우상단 편집 버튼(체크 해제).
+		decos.push(
+			Decoration.node(b.keywordPos, b.keywordEnd, { class: 'tomboy-note-bundle-hidden' })
+		);
 		if (b.listPos !== null && b.listEnd !== null && hasContent(b)) {
 			decos.push(
 				Decoration.node(b.listPos, b.listEnd, { class: 'tomboy-note-bundle-hidden' })
@@ -164,4 +170,17 @@ export function writeBundleHeightPct(view: EditorView, ordinal: number, pct: num
 	const clamped = clampHeightPct(pct);
 	if (clamped === bundle.heightPct) return;
 	view.dispatch(view.state.tr.insertText(String(clamped), bundle.digitsFrom, bundle.digitsTo));
+}
+
+/** 번들 체크박스 attr 토글. ordinal 로 신선한 번들 재조회 → 체크박스 atom 의
+ *  `checked` 설정. 스택 우상단 편집 버튼이 false 로 호출 → 선언 라인 + 리스트
+ *  다시 보임(데코 해제) + 위젯 파괴(컨트롤러). 변화 없으면 no-op. */
+export function setBundleChecked(view: EditorView, ordinal: number, checked: boolean): void {
+	const bundle = noteBundlePluginKey
+		.getState(view.state)
+		?.bundles.find((b) => b.ordinal === ordinal);
+	if (!bundle || bundle.checked === checked) return;
+	const node = view.state.doc.nodeAt(bundle.checkboxPos);
+	if (!node || node.type.name !== 'inlineCheckbox') return;
+	view.dispatch(view.state.tr.setNodeAttribute(bundle.checkboxPos, 'checked', checked));
 }
