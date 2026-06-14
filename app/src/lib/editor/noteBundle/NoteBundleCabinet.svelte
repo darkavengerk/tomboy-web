@@ -861,7 +861,7 @@
 								<div class="bundle-music" use:mountMusicBar={{ guid: session.guid }}></div>
 							{/if}
 							<EditorComponent
-								bind:this={editorRefs[session.guid]}
+								bind:this={editorRefs[e.guid!]}
 								content={session.content}
 								currentGuid={session.guid}
 								onchange={(doc: JSONContent) => handleEmbeddedChange(session.guid, doc)}

@@ -817,7 +817,9 @@
 		{/if}
 	</div>
 
-	{#if note}
+	{#if note && !(dedicatedKind && !showRawBundle)}
+		<!-- 전용 파일철 뷰(탭/묶음)는 제목을 바에 이미 노출 — 타이틀 바 숨김.
+		     Ctrl→편집(raw) 모드에선 일반 노트처럼 보이도록 다시 표시(제목 수정 가능). -->
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			class="title-bar"
@@ -947,7 +949,9 @@
 		{/if}
 	</div>
 
-	{#if !showTerminal && !showKeys}
+	{#if !showTerminal && !showKeys && !(dedicatedKind && !showRawBundle)}
+		<!-- 전용 파일철 뷰엔 호스트 에디터가 없어 툴바가 무의미(getEditor()=null) +
+		     본문을 덮음 — 숨김. raw 편집 모드에선 다시 표시. -->
 		<div class="toolbar-area" bind:this={toolbarAreaEl}>
 			<Toolbar
 				editor={getEditor()}
