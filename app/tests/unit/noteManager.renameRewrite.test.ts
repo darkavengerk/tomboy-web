@@ -49,10 +49,10 @@ vi.mock('$lib/editor/autoLink/titleProvider.js', () => ({
 	ensureTitleIndexReady: () => ensureTitleIndexReadySpy()
 }));
 
-const emitNoteReloadSpy = vi.fn(async (_guids: Iterable<string>) => {});
+const emitNoteReloadSpy = vi.fn(async (_guids: Iterable<string>, _opts?: { except?: unknown }) => {});
 const emitNoteFlushSpy = vi.fn(async (_guids: Iterable<string>) => {});
 vi.mock('$lib/core/noteReloadBus.js', () => ({
-	emitNoteReload: (guids: Iterable<string>) => emitNoteReloadSpy(guids),
+	emitNoteReload: (guids: Iterable<string>, opts?: { except?: unknown }) => emitNoteReloadSpy(guids, opts),
 	emitNoteFlush: (guids: Iterable<string>) => emitNoteFlushSpy(guids),
 	subscribeNoteReload: vi.fn(() => () => {}),
 	subscribeNoteFlush: vi.fn(() => () => {}),
@@ -179,6 +179,11 @@ describe('updateNoteFromEditor — rename rewrite of backlinks', () => {
 		const emittedArr = Array.from(emitNoteReloadSpy.mock.calls[1]![0] as Iterable<string>);
 		expect(new Set(emittedArr)).toEqual(new Set(['B', 'C']));
 		expect(emittedArr).not.toContain('A');
+
+		// Self-emit carries the saver's except token (undefined here — no editor
+		// instance in this unit test); the backlink emit carries no options.
+		expect(emitNoteReloadSpy.mock.calls[0]![1]).toEqual({ except: undefined });
+		expect(emitNoteReloadSpy.mock.calls[1]![1]).toBeUndefined();
 
 		// The renamed note itself patches the cache (noteMutated); the bulk
 		// rewrite batch (B, C) then forces a hard invalidate.
@@ -371,12 +376,10 @@ describe('updateNoteFromEditor — rename rewrite of backlinks', () => {
 		);
 		expect(putF).toBeUndefined();
 
-		// emit NOT called (or called with empty list — both OK; assert F absent).
-		if (emitNoteReloadSpy.mock.calls.length > 0) {
-			const arr = Array.from(
-				emitNoteReloadSpy.mock.calls[0]![0] as Iterable<string>
-			);
-			expect(arr).not.toContain('F');
-		}
+		// Self-convergence fires for A; F (deleted) is never emitted.
+		expect(emitNoteReloadSpy).toHaveBeenCalledTimes(1);
+		const arr = Array.from(emitNoteReloadSpy.mock.calls[0]![0] as Iterable<string>);
+		expect(arr).toEqual(['A']);
+		expect(arr).not.toContain('F');
 	});
 });

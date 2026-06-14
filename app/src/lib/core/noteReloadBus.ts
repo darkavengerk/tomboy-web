@@ -7,10 +7,12 @@
  *
  * Two channels, both keyed by guid:
  *
- * - **Reload** (`emitNoteReload`) — fired by `updateNoteFromEditor` AFTER a
- *   rename-triggered backlink rewrite so the open editor for each affected
- *   note picks up the freshly-rewritten xml instead of clobbering it on the
- *   next debounced save with a stale pendingDoc.
+ * - **Reload** (`emitNoteReload`) — fired by `updateNoteFromEditor` on every
+ *   successful write so other open editors of the SAME note converge (the
+ *   saving editor excludes itself via `{ except: token }`), and additionally
+ *   for each backlink-affected note after a rename-triggered rewrite so its
+ *   open editor picks up the freshly-rewritten xml instead of clobbering it on
+ *   the next debounced save with a stale pendingDoc.
  *
  * - **Flush** (`emitNoteFlush`) — fired by the rename sweep BEFORE it reads +
  *   rewrites a backlinked note, so any open editor's unsaved pending body
