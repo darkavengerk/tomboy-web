@@ -3,11 +3,24 @@
 	import { newNoteFlow } from '$lib/stores/newNoteFlow.svelte.js';
 
 	const s = $derived(newNoteFlow.sweep);
+	// While a sweep count/apply is in flight, the panel must NOT be closed out
+	// from under the running op (Esc / backdrop / 닫기 are suppressed). The
+	// in-flight op exposes 취소, which stops it cleanly via the cancel token.
+	const busy = $derived(s.status === 'counting' || s.status === 'applying');
+
+	function closeIfIdle() {
+		if (!busy) newNoteFlow.dismiss();
+	}
+	function onKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape') closeIfIdle();
+	}
 </script>
+
+<svelte:window onkeydown={onKeydown} />
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="backdrop" use:portal></div>
+<div class="backdrop" use:portal onclick={closeIfIdle}></div>
 
 <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="new-note-result-heading" use:portal>
 	<div class="dlg-title" id="new-note-result-heading">새 노트 생성 완료</div>
@@ -35,13 +48,16 @@
 		</div>
 	{:else if s.status === 'applying'}
 		<p class="info">적용 중… {s.updated}/{s.total}</p>
+		<button class="btn" onclick={() => newNoteFlow.cancelSweep()}>취소</button>
 	{:else if s.status === 'done'}
 		<p class="info">{s.updated}개 완료 ({s.ms}ms){#if s.failed > 0}, {s.failed}개 실패{/if}</p>
 	{/if}
 
-	<div class="actions">
-		<button class="btn primary" onclick={() => newNoteFlow.dismiss()}>닫기</button>
-	</div>
+	{#if !busy}
+		<div class="actions">
+			<button class="btn primary" onclick={() => newNoteFlow.dismiss()}>닫기</button>
+		</div>
+	{/if}
 </div>
 
 <style>

@@ -166,6 +166,7 @@ export const newNoteFlow = {
 
 	async startSweepCount() {
 		if (!createdTitle || !createdGuid) return;
+		if (sweep.status !== 'idle') return; // already counting/confirmed/applying
 		cancelFlag = { cancelled: false };
 		sweep = { ...sweep, status: 'counting', scanned: 0, total: 0, matched: 0 };
 		try {

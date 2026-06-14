@@ -25,7 +25,7 @@
     {
       "id": 11,
       "subject": "Task 4: NewNoteResultPanel + layout wiring",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [10],
       "description": "**Goal:** Render persistent result/sweep UI for phase==='result' (stages+ms, sweep button, count/confirm/apply/done, close), wired in +layout.svelte.\n\n```json:metadata\n{\"files\": [\"app/src/lib/components/NewNoteResultPanel.svelte\", \"app/src/routes/+layout.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"result phase shows stages + ms\", \"sweep button drives count/confirm/apply/done states with Korean labels\", \"적용/취소/닫기 wired\", \"npm run check clean\"]}\n```"
     },
