@@ -5,7 +5,7 @@
     {
       "id": 8,
       "subject": "Task 1: addInternalLinksForTitle (pure JSON linker)",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Schema-free additive linker adding `tomboyInternalLink` to whole-word matches of ONE title in JSONContent, reusing findTitleMatches; idempotent; suppress + title-line skip.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/autoLink/linkifyDocJson.ts\", \"app/tests/unit/editor/linkifyDocJson.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/linkifyDocJson.test.ts\", \"acceptanceCriteria\": [\"adds mark on whole-word match, target===title\", \"no-op on sub-word/absence\", \"idempotent on already-marked span\", \"skips title line only when doc has body\", \"skips suppressed marks\", \"recurses into list items\"]}\n```"
     },
     {

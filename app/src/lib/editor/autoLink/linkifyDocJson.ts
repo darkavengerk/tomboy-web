@@ -5,6 +5,7 @@ const LINK_MARK = 'tomboyInternalLink';
 const DEFAULT_SUPPRESS = ['tomboyUrlLink', 'tomboyMonospace', 'code'];
 
 interface CharMeta { node: JSONContent; suppressed: boolean; hasLink: boolean; }
+type MarkJSON = { type: string; attrs?: Record<string, unknown> };
 
 /**
  * Add the `tomboyInternalLink` mark to whole-word matches of `title` in `docJson`.
@@ -91,8 +92,8 @@ export function addInternalLinksForTitle(
         let j = i;
         while (j < t.length && marked[gi + j] === want) j++;
         const piece = t.slice(i, j);
-        const baseMarks = (n.marks ?? []) as JSONContent[];
-        const marks = want ? [...baseMarks, { type: LINK_MARK, attrs: { target: trimmed } }] : baseMarks;
+        const baseMarks = (n.marks ?? []) as MarkJSON[];
+        const marks: MarkJSON[] = want ? [...baseMarks, { type: LINK_MARK, attrs: { target: trimmed } }] : baseMarks;
         result.push({ type: 'text', text: piece, ...(marks.length ? { marks } : {}) });
         i = j;
       }
