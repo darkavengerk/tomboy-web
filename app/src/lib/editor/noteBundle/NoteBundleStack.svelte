@@ -8,15 +8,15 @@
 	 * 하는 editor-in-editor 격벽.
 	 *
 	 * ── 탭 모델 ─────────────────────────────────────────────────────────
-	 * 각 레벨(루트/카테고리)은 [위 탭 스트립][본문][아래 탭 스트립] 구조.
-	 * - 위 스트립: 활성 + 이후 노트(활성이 최좌측), 왼→오.
-	 * - 본문: 활성 탭의 노트(잎=에디터, 카테고리=재귀 탭 레벨).
-	 * - 아래 스트립: 지나간(스크롤로 내려간) 노트, 역순(가장 오래된 게 최우측).
-	 * 카테고리가 활성이면 본문 상단/하단에 자기 탭 스트립이 재귀로 생긴다.
+	 * 각 레벨(루트/카테고리)은 [탭 스트립(상단)][본문] 구조. 하단 스트립 없음.
+	 * - 스트립: 항상 상단. 활성 탭을 가운데에 두는 윈도우(stackMath.visibleTabs).
+	 * - 본문: 활성 탭의 노트(잎=에디터, 카테고리=재귀 탭 레벨). 가로 슬라이드.
+	 * 카테고리가 활성이면 본문 상단에 자기 탭 스트립이 재귀로 생긴다.
 	 * 카테고리가 자기 링크를 가지면 그 링크가 첫 하위 탭(자신을 첫 탭에 로드).
 	 *
-	 * 탭 폭은 균등 분배(최소 1/4, 말줄임). 한 스트립에 최대 4개, 넘치면
-	 * 우측에 작은 +N 탭(stackMath.tabWindow).
+	 * 탭 폭은 내용(타이틀)에 맞춰 커지되 최소 1/4, 넘치면 말줄임. 4개 이하는
+	 * 전부 고정 표시(활성 하이라이트만 이동); 5개 이상은 3개 윈도우 + 좌우 +N
+	 * 작은 탭(숨은 수). 활성은 가운데(2번째), 처음/끝 탭만 예외.
 	 *
 	 * 활성 경로(activePath)는 영속하지 않는 컴포넌트 로컬 상태 — 재오픈/리마운트
 	 * 시 첫 노트로. 파서/플러그인은 리스트 내용을 수정하지 않는다.
@@ -28,9 +28,9 @@
 	 * 임포트 주입, prop 으로 받아 순환 회피).
 	 *
 	 * ── 훑어보기 / 편집 모드 ─────────────────────────────────────────────
-	 * 훑어보기(기본): 휠/스와이프 = 탭 전환. 데스크톱 휠은 아래로 굴리면
-	 * 다음(이후) 노트 — 탭 구조라 이전 세로 스택과 방향이 반대. 활성 본문은
-	 * 회색조. 본문 탭/클릭 → 편집 모드(흰 배경, 휠/스크롤이 노트 안으로).
+	 * 훑어보기(기본): 휠/스와이프 = 탭 전환. 데스크톱 휠은 우세축(deltaX|deltaY)
+	 * 양수면 다음(이후) 노트. 모바일은 좌우 스와이프만 인식(왼쪽으로 끌면 다음),
+	 * 상하 제스처는 무시. 활성 본문은 회색조. 본문 탭/클릭 → 편집 모드(흰 배경).
 	 * ctrl+휠은 모드 무관 활성 본문 스크롤(편집 진입 없이 내용 확인).
 	 * Esc · 탭 클릭 · 묶음 스크롤(휠/스와이프) → 훑어보기 복귀.
 	 *
@@ -47,16 +47,8 @@
 	import type { JSONContent } from '@tiptap/core';
 	import type { BundleSpec, BundleNode } from './parser.js';
 	import { writeBundleHeightPct, setBundleChecked } from './noteBundlePlugin.js';
-	import {
-		firstNavPath,
-		repairPath,
-		stepPath,
-		pickPath,
-		tabWindow,
-		clampIndex,
-		topItems,
-		bottomItems
-	} from './stackMath.js';
+	import { repairPath, stepPath, pickPath, visibleTabs, clampIndex } from './stackMath.js';
+	import type { VisibleTabs } from './stackMath.js';
 	import { lookupGuidByTitle, ensureTitleIndexReady } from '../autoLink/titleProvider.js';
 	import {
 		getNote,
@@ -185,8 +177,8 @@
 	});
 	const activeLeafGuid = $derived(activeLeaf?.guid ?? null);
 
-	// 스트립 항목 빌더는 stackMath(topItems/bottomItems)로 이동 — activeIdx 가
-	// 범위 밖이어도(재귀 비활성 형제) undefined 노드를 만들지 않게 clamp 포함.
+	// 스트립 윈도우는 stackMath(visibleTabs)로 — activeIdx 가 범위 밖이어도
+	// (재귀 비활성 형제) undefined 노드를 만들지 않게 clamp 포함.
 
 	// --- 높이 ----------------------------------------------------------------
 	let rootEl = $state<HTMLElement | null>(null);
@@ -575,10 +567,11 @@
 		exitEdit();
 		e.preventDefault(); // 네이티브 본문 스크롤 차단(브라우징 중)
 		e.stopPropagation();
-		if (Math.sign(e.deltaY) !== Math.sign(wheelAcc)) wheelAcc = 0;
-		wheelAcc += e.deltaY;
-		// 탭 구조: 아래로 굴리면(deltaY>0) 다음(이후) 노트 — 이전 세로 스택과
-		// 방향 반대. 노치당 정확히 한 칸(잔여 폐기).
+		// 가로 탭이라 우세축 사용 — 마우스 휠(deltaY) / 트랙패드 가로(deltaX) 둘 다.
+		const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+		if (Math.sign(d) !== Math.sign(wheelAcc)) wheelAcc = 0;
+		wheelAcc += d;
+		// 양수(아래/오른쪽)면 다음(이후) 노트. 노치당 정확히 한 칸(잔여 폐기).
 		if (wheelAcc >= 50) {
 			step(1);
 			wheelAcc = 0;
@@ -606,37 +599,46 @@
 		activePath = pickPath(tree, activePath, depth, idx);
 	}
 
-	// 본문 위 스와이프(전환) + 탭(편집 진입). 캡처 안 함 — 캡처하면 click 이
-	// retarget 돼 PM 포커스(모바일 키보드)가 안 뜬다.
-	let swipeY: number | null = null;
+	// 본문 위 가로 스와이프(전환) + 탭(편집 진입). 가로만 — 상하 제스처는 무시
+	// (스크롤 의도). 캡처 안 함 — 캡처하면 click 이 retarget 돼 PM 포커스(모바일
+	// 키보드)가 안 뜬다.
+	let swipeX: number | null = null;
+	let downX = 0;
 	let downY = 0;
 	let swiped = false;
 	let downOnBody = false;
 	function handlePointerDown(e: PointerEvent) {
 		const t = e.target as HTMLElement;
 		if (t.closest?.('.tab') || t.closest?.('.bundle-music') || t.closest?.('.bar-term-btn')) return;
-		swipeY = e.clientY;
+		swipeX = e.clientX;
+		downX = e.clientX;
 		downY = e.clientY;
 		swiped = false;
 		downOnBody = !!t.closest?.('.bundle-body');
 	}
 	function handlePointerMove(e: PointerEvent) {
-		if (swipeY === null) return;
-		const dy = e.clientY - swipeY;
-		if (Math.abs(dy) >= 30) {
+		if (swipeX === null) return;
+		const dx = e.clientX - swipeX;
+		if (Math.abs(dx) >= 30) {
 			swiped = true;
-			if (mode === 'browse') step(dy < 0 ? 1 : -1); // 위로 끌면 다음
-			swipeY = e.clientY;
+			if (mode === 'browse') step(dx < 0 ? 1 : -1); // 왼쪽으로 끌면 다음(이후)
+			swipeX = e.clientX;
 		}
 	}
 	function handlePointerUp(e: Event) {
 		const pe = e as PointerEvent;
-		if (downOnBody && !swiped && Math.abs(pe.clientY - downY) < 8 && mode === 'browse') {
+		if (
+			downOnBody &&
+			!swiped &&
+			Math.abs(pe.clientX - downX) < 8 &&
+			Math.abs(pe.clientY - downY) < 8 &&
+			mode === 'browse'
+		) {
 			// 본문 탭 → 편집 모드만 전환. 포커스는 suppressEditorFocus 가 막아
 			// 키보드 안 뜸 — 타이핑은 편집 모드에서 다시 탭.
 			mode = 'edit';
 		}
-		swipeY = null;
+		swipeX = null;
 		swiped = false;
 		downOnBody = false;
 	}
@@ -704,20 +706,17 @@
 	></div>
 </div>
 
-{#snippet strip(
-	items: Array<{ node: ResolvedNode; idx: number }>,
-	depth: number,
-	isTop: boolean,
-	activeIdx: number
-)}
-	{#if items.length > 0}
-		{@const win = tabWindow(items.length)}
-		<div class="tab-strip" class:bottom={!isTop}>
-			{#each items.slice(0, win.shown) as it (it.node.key)}
+{#snippet strip(vis: VisibleTabs<ResolvedNode>, depth: number, activeIdx: number)}
+	{#if vis.items.length > 0}
+		<div class="tab-strip">
+			{#if vis.leftPlus > 0}
+				<span class="tab tab-plus">+{vis.leftPlus}</span>
+			{/if}
+			{#each vis.items as it (it.node.key)}
 				<button
 					type="button"
 					class="tab"
-					class:active={isTop && it.idx === activeIdx}
+					class:active={it.idx === activeIdx}
 					class:broken={it.node.isLeaf && it.node.broken}
 					class:cat={!it.node.isLeaf}
 					title={it.node.label}
@@ -729,8 +728,8 @@
 					<span class="tab-label">{it.node.label || '(빈 카테고리)'}</span>
 				</button>
 			{/each}
-			{#if win.plus > 0}
-				<span class="tab tab-plus">+{win.plus}</span>
+			{#if vis.rightPlus > 0}
+				<span class="tab tab-plus">+{vis.rightPlus}</span>
 			{/if}
 		</div>
 	{/if}
@@ -802,7 +801,7 @@
 	     새어들어와 범위를 넘겨도 undefined 노드를 만들지 않는다. -->
 	{@const activeIdx = clampIndex(nodes.length, onPath ? (activePath[depth] ?? 0) : 0)}
 	<div class="tab-level">
-		{@render strip(topItems(nodes, activeIdx), depth, true, activeIdx)}
+		{@render strip(visibleTabs(nodes, activeIdx), depth, activeIdx)}
 		<div class="level-body">
 			{#each nodes as node, i (node.key)}
 				<div class="node-body" class:active={i === activeIdx} class:before={i < activeIdx}>
@@ -814,7 +813,6 @@
 				</div>
 			{/each}
 		</div>
-		{@render strip(bottomItems(nodes, activeIdx), depth, false, activeIdx)}
 	</div>
 {/snippet}
 
@@ -871,7 +869,7 @@
 			transition: none;
 		}
 	}
-	/* --- 탭 스트립 ---------------------------------------------------------- */
+	/* --- 탭 스트립(상단 전용) ----------------------------------------------- */
 	.tab-strip {
 		flex-shrink: 0;
 		display: flex;
@@ -881,12 +879,11 @@
 		background: #1a1a1a;
 		overflow: hidden;
 	}
-	.tab-strip.bottom {
-		padding: 0 2px 2px;
-	}
 	.tab {
-		flex: 1 1 0;
-		min-width: 0; /* 최소 1/4 는 최대 4탭(tabWindow) 보장으로 충족 */
+		/* 내용(타이틀) 폭에 맞춰 커지되 넘치면 shrink+말줄임, 최소 1/4. */
+		flex: 0 1 auto;
+		min-width: 25%;
+		max-width: 100%;
 		display: flex;
 		align-items: center;
 		border: none;
@@ -900,11 +897,6 @@
 		touch-action: manipulation;
 		user-select: none;
 		transition: background-color 140ms ease-out, color 140ms ease-out;
-	}
-	.tab-strip.bottom .tab {
-		border-radius: 0 0 5px 5px;
-		background: #232323;
-		color: #9a9a9a;
 	}
 	.tab-label {
 		flex: 1;
@@ -929,14 +921,17 @@
 		color: #777;
 		cursor: default;
 	}
+	/* 숨은 탭 수 배지 — 좌/우 끝의 작은 고정폭 탭([+N]). */
 	.tab-plus {
 		flex: 0 0 auto;
+		min-width: 0;
+		justify-content: center;
 		color: #999;
 		font-size: 0.72rem;
+		font-weight: 600;
 		cursor: default;
 		background: #202020;
-		justify-content: center;
-		padding: clamp(4px, 0.9vw, 6px) 8px;
+		padding: clamp(4px, 0.9vw, 6px) 7px;
 	}
 	/* --- 본문 -------------------------------------------------------------- */
 	.bundle-body {
@@ -947,12 +942,12 @@
 		background: var(--color-bg, #fff);
 		transition: background-color 160ms ease-out;
 	}
-	/* 훑어보기 모드 — 활성 본문 회색조 + 탭 힌트. touch-action:none 으로
-	   네이티브 스크롤 대신 스와이프 전환을 받는다. */
+	/* 훑어보기 모드 — 활성 본문 회색조 + 탭 힌트. touch-action:pan-y 로 좌우
+	   스와이프는 JS(탭 전환)가, 상하는 브라우저(페이지 스크롤)가 가져간다. */
 	.bundle-stack.browse .bundle-body {
 		background: #ecebe6;
 		cursor: pointer;
-		touch-action: none;
+		touch-action: pan-y;
 	}
 	.bundle-term {
 		height: 100%;

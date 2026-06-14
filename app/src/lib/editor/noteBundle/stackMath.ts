@@ -15,13 +15,39 @@ export interface NavNode {
 	children: NavNode[];
 }
 
-/** 한 줄(스트립)에 보일 탭 수 — 최소 1/4 너비 → 최대 4. 넘치면 +N. */
-export const TAB_CAP = 4;
+/** 4개 이하 → 전부 고정 표시. 5개 이상 → 3개 윈도우(활성 가운데) + 좌우 +N 배지. */
+export const TAB_FIT_MAX = 4;
+export const TAB_WINDOW = 3;
 
-/** total 개 탭 중 몇 개를 보이고 +N 은 몇인지. CAP 초과면 (CAP-1)개 + 나머지. */
-export function tabWindow(total: number): { shown: number; plus: number } {
-	if (total <= TAB_CAP) return { shown: Math.max(0, total), plus: 0 };
-	return { shown: TAB_CAP - 1, plus: total - (TAB_CAP - 1) };
+export interface TabView {
+	/** 첫 보이는 인덱스 */
+	start: number;
+	/** 보이는 탭 수 */
+	count: number;
+	/** 윈도우 앞(왼쪽)에 숨은 탭 수 — 좌측 +N 배지 */
+	leftPlus: number;
+	/** 윈도우 뒤(오른쪽)에 숨은 탭 수 — 우측 +N 배지 */
+	rightPlus: number;
+}
+
+/**
+ * 활성 탭 중심 윈도우.
+ * - total ≤ 4 : 전부 표시(고정). 스크롤해도 탭 불변, 활성 하이라이트만 이동.
+ * - total ≥ 5 : 3개만. 활성을 가운데(2번째)에 두려 start=clamp(active-1, 0, total-3).
+ *   처음/끝 탭이면 가운데 불가 → 활성이 좌/우 끝. 숨은 수는 좌우 +N 배지.
+ */
+export function tabView(total: number, active: number): TabView {
+	if (total <= 0) return { start: 0, count: 0, leftPlus: 0, rightPlus: 0 };
+	if (total <= TAB_FIT_MAX) return { start: 0, count: total, leftPlus: 0, rightPlus: 0 };
+	const a = clampIndex(total, active);
+	// start ∈ [0, total-WINDOW] — clampIndex(len, idx) 는 [0, len-1] 클램프.
+	const start = clampIndex(total - TAB_WINDOW + 1, a - 1);
+	return {
+		start,
+		count: TAB_WINDOW,
+		leftPlus: start,
+		rightPlus: total - (start + TAB_WINDOW)
+	};
 }
 
 /** 주어진 깊이의 형제 노드 목록(path 따라 내려간). 범위 밖이면 null. */
@@ -99,23 +125,21 @@ export function clampIndex(len: number, idx: number): number {
 	return Math.min(Math.max(0, idx), len - 1);
 }
 
-/** 위 스트립 항목: 활성(보정된)부터 끝까지, 활성 최좌측. activeIdx 가 범위
- *  밖이어도 절대 undefined 노드를 만들지 않는다(재귀 비활성 형제 보호). */
-export function topItems<T>(nodes: T[], activeIdx: number): Array<{ node: T; idx: number }> {
-	const out: Array<{ node: T; idx: number }> = [];
-	if (nodes.length === 0) return out;
-	const start = clampIndex(nodes.length, activeIdx);
-	for (let i = start; i < nodes.length; i++) out.push({ node: nodes[i], idx: i });
-	return out;
+export interface VisibleTabs<T> {
+	items: Array<{ node: T; idx: number }>;
+	leftPlus: number;
+	rightPlus: number;
 }
 
-/** 아래 스트립 항목: 활성 직전부터 0 까지 **역순**(가장 최근=좌측). */
-export function bottomItems<T>(nodes: T[], activeIdx: number): Array<{ node: T; idx: number }> {
-	const out: Array<{ node: T; idx: number }> = [];
-	if (nodes.length === 0) return out;
-	const start = clampIndex(nodes.length, activeIdx);
-	for (let i = start - 1; i >= 0; i--) out.push({ node: nodes[i], idx: i });
-	return out;
+/** 활성 중심 윈도우의 보이는 탭들 + 좌우 숨김 수. activeIdx 가 범위 밖이어도
+ *  절대 undefined 노드를 만들지 않는다(재귀 비활성 형제 보호 — tabView 가 clamp). */
+export function visibleTabs<T>(nodes: T[], activeIdx: number): VisibleTabs<T> {
+	const n = nodes.length;
+	if (n === 0) return { items: [], leftPlus: 0, rightPlus: 0 };
+	const v = tabView(n, activeIdx);
+	const items: Array<{ node: T; idx: number }> = [];
+	for (let i = v.start; i < v.start + v.count; i++) items.push({ node: nodes[i], idx: i });
+	return { items, leftPlus: v.leftPlus, rightPlus: v.rightPlus };
 }
 
 /** depth 레벨의 idx 탭을 선택(+drill). navigable 아니면 path 유지. */
