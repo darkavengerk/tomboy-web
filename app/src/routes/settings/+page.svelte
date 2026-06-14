@@ -185,8 +185,22 @@ __th_emit_C() {
   # internals fire DEBUG without the file present, so they're skipped.
   [ -e "$__th_state_file" ] || return
   rm -f "$__th_state_file"
-  local hex win payload
-  hex=$(printf '%s' "$1" | od -An -tx1 | tr -d ' \\n')
+  # Capture the command the user actually TYPED via 'history 1' — NOT
+  # $BASH_COMMAND, which exposes alias/function expansion (an aliased
+  # 'cd' would otherwise be recorded as its wrapper's internal name,
+  # e.g. __fncd). HISTTIMEFORMAT='' strips any timestamp column.
+  local cmd hex win payload
+  cmd=$(HISTTIMEFORMAT='' builtin history 1)
+  cmd="\${cmd#"\${cmd%%[0-9]*}"}"          # drop leading whitespace
+  cmd="\${cmd#"\${cmd%%[^0-9]*}"}"         # drop the history index digits
+  cmd="\${cmd#"\${cmd%%[![:space:]]*}"}"   # drop whitespace after the index
+  [ -z "$cmd" ] && return
+  # HISTCONTROL=ignorespace: a space-prefixed command never enters
+  # history, so 'history 1' still shows the PREVIOUS line — skip it so we
+  # do not re-record the prior command.
+  [ "$cmd" = "$__th_last_hist" ] && return
+  __th_last_hist="$cmd"
+  hex=$(printf '%s' "$cmd" | od -An -tx1 | tr -d ' \\n')
   if [ -e "\${__th_state_file}.win" ]; then
     win=$(cat "\${__th_state_file}.win" 2>/dev/null)
     rm -f "\${__th_state_file}.win"
@@ -224,7 +238,7 @@ PS0='$(: > "$__th_state_file" 2>/dev/null
 PS1='\\[$(__th_osc A)$(__th_emit_W)\\]'"$PS1"'\\[$(__th_osc B)\\]'
 PROMPT_COMMAND='rm -f "$__th_state_file" "\${__th_state_file}.win" 2>/dev/null
                 __th_osc "D;$?"'"\${PROMPT_COMMAND:+; \$PROMPT_COMMAND}"
-trap '__th_emit_C "$BASH_COMMAND"' DEBUG`;
+trap '__th_emit_C' DEBUG`;
 
 	const tmuxHookSnippet = `# Append to ~/.tmux.conf (optional — reduces panel-update latency).
 # The bash snippet above polls the current shell context on every prompt,
