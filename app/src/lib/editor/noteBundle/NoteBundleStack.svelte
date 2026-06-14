@@ -813,7 +813,7 @@
 		     편집 모드에선 .edit-header 가 ←/↗ 를 맡으므로 여기선 안 띄운다. -->
 		{#if mode === 'browse'}
 			<div class="dedicated-chrome">
-				{#if modKeys.ctrl}
+				{#if modKeys.ctrl && onraw}
 					<button
 						type="button"
 						class="dchrome-btn"

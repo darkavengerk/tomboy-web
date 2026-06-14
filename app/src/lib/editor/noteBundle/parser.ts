@@ -463,3 +463,27 @@ export function parseDedicatedBundle(doc: JSONContent, kind: BundleKind): Bundle
 		entries: kind === 'bundle' ? parseDedicatedEntries(root) : []
 	};
 }
+
+/** 임시(합성) 파일철 — 노트 제목 리스트를 평탄 BundleSpec 으로. 역참조 등
+ *  실제 노트/리스트가 아닌 동적 목록을 띄울 때 쓴다. 전용 노트와 같은 합성
+ *  필드 규약(checkboxPos/digits/keyword/list = -1/null, checked=true,
+ *  heightPct=100). IDB/타이틀 인덱스를 건드리지 않는다 — guid 해석은 컴포넌트가
+ *  lookupGuidByTitle 로 수행. */
+export function buildSyntheticBundleSpec(titles: string[], kind: BundleKind): BundleSpec {
+	const clean = titles.map((t) => (t ?? '').trim()).filter(Boolean);
+	return {
+		ordinal: 0,
+		kind,
+		checkboxPos: -1,
+		checked: true,
+		heightPct: 100,
+		digitsFrom: -1,
+		digitsTo: -1,
+		keywordPos: -1,
+		keywordEnd: -1,
+		listPos: null,
+		listEnd: null,
+		tree: kind === 'tab' ? clean.map((t) => ({ label: t, link: t, children: [] })) : [],
+		entries: kind === 'bundle' ? clean.map((t) => ({ title: t, category: null })) : []
+	};
+}

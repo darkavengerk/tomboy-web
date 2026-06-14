@@ -2465,7 +2465,25 @@ Complete:</pre>
 						<li>우측 상단 <strong>↗ 꺼내기</strong> = 지금 보고 있는 노트를 단독 화면으로 열기, <strong>✕ 닫기</strong> = 창 닫기(<strong>데스크탑 창에서만</strong> 표시 — 모바일·편집 모드에선 숨김)</li>
 						<li>본문/링크 리스트를 고치려면 <kbd>Ctrl</kbd>을 누르고 우측 상단 <strong>✎ 편집</strong> → 일반 노트처럼 보임. 그 상태에서 다시 <kbd>Ctrl</kbd>을 누르면 좌측 상단 <strong>↩ 묶음</strong> 버튼으로 파일철 뷰 복귀</li>
 						<li>훑어보기/편집(단일 노트 뷰)·휠/스와이프·터미널/음악 배선은 본문 속 탭/묶음과 똑같이 동작</li>
-						<li>제목에서 <strong>탭::</strong>/<strong>묶음::</strong> 접두를 지우면 다시 평범한 노트가 됨</li>
+					<li>제목에서 <strong>탭::</strong>/<strong>묶음::</strong> 접두를 지우면 다시 평범한 노트가 됨</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
+					<summary>역참조를 묶음으로 보기 — 이 노트를 가리키는 쪽지들</summary>
+					<p class="info-text">
+						노트 메뉴(모바일은 하단 시트의 <strong>⋯</strong>, 데스크탑 창은 제목 줄
+						<strong>우클릭</strong>)에서 <strong>🔗 역참조</strong>를 누르면, 지금 노트를
+						내부 링크로 <strong>가리키는 다른 쪽지들</strong>이 <strong>임시 묶음 파일철</strong>로
+						열립니다. 5칸 서류함처럼 제목 바를 넘기며 각 쪽지 본문을 그 자리에서 훑어보고,
+						<strong>↗ 꺼내기</strong>로 단독으로 열 수 있어요.
+					</p>
+					<ul class="guide-list">
+						<li>이건 <strong>임시 화면</strong>입니다 — 진짜 노트를 만들지 않고, 백링크 인덱스 같은 것도 건드리지 않습니다. 닫으면 사라집니다.</li>
+						<li>안에서 보이는 쪽지들은 진짜라서, 본문을 <strong>실제로 고치면 그 쪽지에 저장</strong>됩니다(그 쪽지를 직접 연 것과 같음).</li>
+						<li>편집할 묶음 원본이 없으므로 <strong>✎ 편집</strong> 버튼은 안 보입니다 — <strong>↗ 꺼내기</strong>와 <strong>✕ 닫기</strong>만 있습니다.</li>
+						<li>내부 링크(<code>[[제목]]</code>)와 끊긴 링크 둘 다 역참조로 셉니다.</li>
+						<li>가리키는 쪽지가 없으면 "이 쪽지로 연결된 쪽지가 없습니다"라고 표시됩니다.</li>
 					</ul>
 				</details>
 			</section>

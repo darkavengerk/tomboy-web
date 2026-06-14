@@ -227,6 +227,16 @@ under `/admin` because general users don't need to know the index exists.
   Same reasoning — auto-link plugin re-evaluates broken marks against
   current titles when the holding note opens.
 
+## The user-facing 역참조 view does NOT use this index
+
+The note action menu's 🔗 역참조 (which opens backlinks as a throwaway
+묶음 cabinet — see `tomboy-notebundle` `BacklinkBundleOverlay`) deliberately
+runs its **own** `getAllNotes()` + `xml.includes('>TITLE</link:internal>')`
+scan rather than `getSourcesFor(title)`. Don't "optimize" it onto this index:
+it needs note **titles** (not guids), it must also match `<link:broken>`, and
+it's a one-shot read on explicit user action where an O(N) scan is fine. The
+index stays a rename-sweep concern; the UI is a separate read path.
+
 ## Files
 
 - `app/src/lib/core/backlinkIndex.ts` — module (extract, updateNote, install, ensureReady, getSourcesFor, clear).

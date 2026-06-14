@@ -34,6 +34,7 @@
 	import { isMusicNoteDoc } from '$lib/music/parseMusicNote.js';
 	import NoteBundleStack from '$lib/editor/noteBundle/NoteBundleStack.svelte';
 	import NoteBundleCabinet from '$lib/editor/noteBundle/NoteBundleCabinet.svelte';
+	import BacklinkBundleOverlay from '$lib/editor/noteBundle/BacklinkBundleOverlay.svelte';
 	import {
 		dedicatedBundleKind,
 		parseDedicatedBundle
@@ -89,6 +90,7 @@
 	let editorComponent: TomboyEditor | undefined = $state(undefined);
 	let editorContent: JSONContent | undefined = $state.raw(undefined);
 	let actionSheetOpen = $state(false);
+	let backlinkBundleOpen = $state(false);
 	let pickerOpen = $state(false);
 	let xmlViewerOpen = $state(false);
 	let titleDialogOpen = $state(false);
@@ -995,7 +997,16 @@
 		isScrollBottomNote={isScrollBottomState}
 		onaction={handleAction}
 		onclose={() => (actionSheetOpen = false)}
-		ongoto={(guid) => { actionSheetOpen = false; goto(`/note/${guid}`); }}
+		onbacklinks={() => { actionSheetOpen = false; backlinkBundleOpen = true; }}
+	/>
+{/if}
+
+{#if backlinkBundleOpen && note}
+	<BacklinkBundleOverlay
+		targetTitle={note.title}
+		targetGuid={note.guid}
+		onclose={() => (backlinkBundleOpen = false)}
+		oninternallink={(t) => { backlinkBundleOpen = false; handleInternalLink(t); }}
 	/>
 {/if}
 
