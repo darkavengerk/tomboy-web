@@ -1032,13 +1032,13 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 28px;
-		height: 28px;
+		width: 22px;
+		height: 22px;
 		border: none;
 		border-radius: 4px;
 		background: rgba(255, 255, 255, 0.14);
 		color: #fff;
-		font-size: 1rem;
+		font-size: 0.85rem;
 		line-height: 1;
 		cursor: pointer;
 	}
@@ -1052,8 +1052,8 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		color: #fff;
-		font-size: 0.9rem;
-		font-weight: 600;
+		font-size: 0.8rem;
+		font-weight: 500;
 	}
 	/* --- 본문 -------------------------------------------------------------- */
 	.bundle-body {

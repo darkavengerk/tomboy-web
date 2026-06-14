@@ -997,13 +997,13 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		width: 28px;
-		height: 28px;
+		width: 22px;
+		height: 22px;
 		border: none;
 		border-radius: 4px;
 		background: rgba(255, 255, 255, 0.14);
 		color: #fff;
-		font-size: 1rem;
+		font-size: 0.85rem;
 		line-height: 1;
 		cursor: pointer;
 	}
@@ -1017,8 +1017,8 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		color: #fff;
-		font-size: 0.9rem;
-		font-weight: 600;
+		font-size: 0.85rem;
+		font-weight: 500;
 	}
 	/* 모든 세션 본문이 자기 바 밑에 상주 — 활성만 flex-grow:1. 전환은
 	   flex-grow transition: 옛 본문 접히고 새 본문 펼쳐지는 서랍 모션이
