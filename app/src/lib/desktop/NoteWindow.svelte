@@ -931,6 +931,9 @@
 	onpointerdowncapture={handleWindowPointerDown}
 	onkeydown={handleKeyDown}
 >
+	<!-- 전용 파일철 뷰는 창 타이틀바 숨김(제목은 바에 노출, 닫기는 dchrome ✕).
+	     드래그/핀은 사라지지만 리사이즈 핸들은 유지. raw 편집 모드선 다시 표시. -->
+	{#if !(dedicatedKind && !showRawBundle)}
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
 		class="title-bar"
@@ -960,6 +963,7 @@
 			data-no-drag
 		>✕</button>
 	</div>
+	{/if}
 
 	<div bind:this={bodyEl} class="body" class:terminal-edit={(!!terminalSpec && !showTerminal) || (!!keysSpec && !showKeys)}>
 		{#if loading}
