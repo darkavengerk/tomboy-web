@@ -1,0 +1,183 @@
+# New-note result panel + whole-corpus link sweep
+
+**Date:** 2026-06-14
+**Status:** Approved
+
+## Problem
+
+Creating a new note feels "instant, then janky for a long while." Two distinct issues:
+
+1. **The progress popup lied about completion.** `newNoteFlow` (`lib/stores/newNoteFlow.svelte.ts`)
+   closed the popup the instant `onnoteready` fired, but `onnoteready` was emitted one
+   `requestAnimationFrame` after `setContent` — before the editor's first paint + plugin
+   decoration pass. *(Already fixed: `signalNoteReadyAfterPaint` double-rAF in
+   `TomboyEditor.svelte`. This spec does not re-litigate it.)*
+
+2. **The real sustained cost is invisible and unmeasured.** When a note is created, the new
+   title changes the global title set, which broadcasts (`titleProvider.onInvalidate` →
+   per-editor `scheduleAutoLinkScan({full:true})`) and makes **every currently-open editor**
+   re-scan its whole document against ~all titles (`findTitleMatches` is O(D×T)). On a desktop
+   multi-window workspace with thousands of notes this is the multi-hundred-ms-to-second stutter
+   the user feels, ~1–1.5s *after* the popup is already gone. None of it is shown or timed.
+
+The user's actual request was **not** "make it faster" — it is **"keep the popup open and run/show
+the work that accompanies note creation, with per-task timing,"** and to add a deliberate,
+informed way to propagate the new title across the corpus.
+
+## Goal
+
+Turn the new-note popup from a fire-and-close progress dialog into a **persistent result panel**:
+
+- After create + index + open complete, the popup **does not auto-close**. It shows the completed
+  stages with elapsed times, and a follow-up action. The user dismisses it manually (option **A** —
+  always stays open, no toggle).
+- Add a **"전체 문서에 이 제목 반영"** action: a whole-corpus sweep that links the new note's title
+  into every existing note that mentions it (so those notes resolve as backlinks of the new note).
+- The sweep is **two-phase with a confirmation gate**: first count how many notes *would* be
+  updated, show **"N개 노트가 업데이트됩니다"**, and only write after the user confirms — so the
+  blast radius (and its sync side-effect) is seen before any commit.
+
+Non-goals: making the existing open-editor autolink faster; sweeping on every creation
+automatically; corpus sweep for renames/deletes (creation only).
+
+## Behavior overview
+
+Inside the result panel, after a note is created:
+
+```
+[단계 결과 + ms]              ← 노트 생성 / 인덱스 갱신 / 에디터 열기 (기존 3단계, 이미 측정됨)
+[전체 문서에 이 제목 반영]    ← button
+   → count (진행률)           ← scan corpus, no writes
+   → "N개 노트가 업데이트됩니다"  [적용] [취소]
+   → apply (진행률 M/N + ms)  ← write only on 적용
+   → "M개 완료 (xxx ms[, K 실패])"
+[닫기]                         ← dismiss()
+```
+
+`취소` at the gate returns to the result view with nothing written. The sweep is **cancelable**
+mid-count and mid-apply.
+
+## Architecture — `newNoteFlow` state machine
+
+Extend `phase` from `'idle' | 'input' | 'creating'` to add **`'result'`**.
+
+- The current `finally { phase = 'idle' }` in `submit()` becomes `phase = 'result'` (success) — the
+  flow no longer tears itself down on completion. Failure (stage 0–2 throw) keeps the existing
+  catch → toast → `phase = 'idle'`.
+- `result` state holds: the completed `stages[]` (with `ms`), plus a `sweep` sub-state:
+  `{ status: 'idle' | 'counting' | 'confirm' | 'applying' | 'done', scanned, total, matched, updated, failed, ms, cancelRequested }`.
+- New methods on the store:
+  - `startSweepCount()` → `flushAll` (see below) then run count, populate `matched`/`total`,
+    transition `counting → confirm`.
+  - `applySweep()` → run apply over the matched guids, transition `confirm → applying → done`.
+  - `cancelSweep()` → sets `cancelRequested`; count discards, apply stops and reports partial.
+  - `dismiss()` → `phase = 'idle'`, clear all state (`stages`, `sweep`, `navigateFn`, guids).
+
+The double-rAF `onnoteready` fix stays: it still governs when the "에디터 열기" stage is marked done;
+the panel simply persists afterward instead of closing.
+
+## Components (small, single-purpose units)
+
+| Unit | Responsibility | Depends on |
+|---|---|---|
+| `newNoteFlow.svelte.ts` (extend) | State machine + sweep orchestration; no DOM | `linkSweep`, `noteStore`, `desktopSession`, `noteReloadBus` |
+| `NewNoteResultPanel.svelte` (new) | Render result view: stages+ms, sweep button, count/confirm/apply progress, close. Pure view over `newNoteFlow`. | `newNoteFlow`, `portal` |
+| `+layout.svelte` (extend) | Add `{:else if newNoteFlow.phase === 'result'}` to the existing phase block (`:374`) → render `NewNoteResultPanel`. | — |
+| `lib/core/linkSweep.ts` (new, headless) | `countLinkSweep` / `applyLinkSweep` over the corpus; cancel token; progress callback. No Svelte, no DOM. | `noteStore`, `noteContentArchiver`, `linkifyDoc` |
+| `lib/editor/autoLink/linkifyDoc.ts` (new, extracted) | Pure `linkifyDocJson(docJson, titles, schema, markType, suppress) → { docJson, changed }` — the whole-doc match+mark reconcile lifted out of `autoLinkPlugin.applyInRange`, runnable without an editor view. **Shared by the plugin and the sweep** so linking is byte-identical. | `findTitleMatches`, prosemirror-model |
+
+`NoteTitleDialog.svelte` stays focused on `input` + `creating` only; the result view is its own
+component (separation of concerns; the result panel's interaction model is materially different).
+
+## Data flow
+
+1. `[전체 문서에 이 제목 반영]` → `startSweepCount()`:
+   - `await desktopSession.flushAll()` first — persist any unsaved edits in open windows so the
+     count/apply read the latest content (CLAUDE.md cross-window mutation pattern).
+   - `countLinkSweep(title, newGuid, { onProgress, cancelToken })`:
+     - List all notes (`noteStore.getAllNotes()` / warm cache).
+     - **Cheap prefilter:** skip unless `note.xmlContent.includes(title)` (and not deleted, not
+       `newGuid`). A unique new title yields few candidates → most notes never get parsed.
+     - For each candidate: `deserializeContent(xml)` → `linkifyDocJson([{title, guid:newGuid}], …)`
+       in dry-run → if `changed`, record the guid.
+     - Returns `{ matched: guid[], total: candidatesScanned }`. Panel shows "N개".
+2. `[취소]` → `cancelSweep()` → back to result, no writes.
+3. `[적용]` → `applySweep()`:
+   - For each matched guid: load note, `deserializeContent` → `linkifyDocJson` → `serializeContent`
+     → `noteStore.putNote` (this also updates the in-memory backlink index per the backlink-index
+     contract) → `noteMutated(note)`. Collect `updated` / `failed`, report progress M/N.
+   - After (or on cancel, for the subset written): `emitNoteReload(written)` +
+     `desktopSession.reloadWindows(written)` so open editors of swept notes drop stale docs and
+     reload. Panel shows "M개 완료 (xxx ms)".
+4. `[닫기]` → `dismiss()`.
+
+## Matching / link insertion detail
+
+- **Idempotent:** `linkifyDocJson` reconciles marks the same way the editor does — a note that
+  already carries the `<link:internal>` mark for this title is a no-op (so re-running the sweep
+  adds nothing, and notes already auto-linked while open are correctly counted as 0 changes).
+- **Consistency:** because both the live editor plugin and the sweep call the *same*
+  `linkifyDocJson`, the sweep can never diverge from interactive autolink behavior (word
+  boundaries, suppressed marks in code/monospace, longest-title-wins, self-exclusion).
+- **Headless schema:** `linkSweep` builds the editor schema once via TipTap `getSchema(extensions)`
+  (the same extension list `TomboyEditor` uses) and reuses it across all notes. `markType` =
+  the `tomboyInternalLink` mark type from that schema.
+
+## Error handling
+
+- **Cancelable:** a cancel flag is checked between notes. Count → discard results. Apply → stop,
+  `emitNoteReload`/`reloadWindows` for the subset already written, report partial "M / N".
+- **Per-note failure** (parse / serialize / write throws): skip that note, increment `failed`,
+  continue (no abort). Final line shows "M개 완료, K개 실패".
+- **Create failure** (stage 0–2): unchanged — existing catch → toast → `phase = 'idle'`.
+
+## Side effects (surfaced, intentional)
+
+Swept notes become `localDirty` → uploaded on the next manual Dropbox "지금 동기화"; if Firestore
+realtime sync is on, each fires a debounced push. The **count + confirm gate** is exactly the
+mechanism that shows the user this blast radius (N notes) before any write happens.
+
+## Interaction with the automatic per-editor rescan (out of scope — flagged for review)
+
+Creating a note still triggers the existing automatic propagation: the new title changes the title
+set → `titleProvider` broadcasts → every open editor runs `scheduleAutoLinkScan({full:true})`
+(`TomboyEditor.svelte:1147`), a deferred whole-document O(D×T) rescan ~1–1.5s later. **This is the
+original sustained-stutter source (#4), and this spec does NOT change it.** The explicit corpus
+sweep is the comprehensive, measured, confirmed propagation path the user asked for; it does not
+remove the silent automatic one.
+
+Consequence: with this feature alone, the silent ~1.5s background rescan of open editors still
+happens on every creation, sweep or not. Two coherent end states to choose between (review gate):
+
+- **(i) Ship sweep only** (this spec as written): the panel makes the new propagation explicit and
+  measured; the silent open-editor rescan remains as today.
+- **(ii) Sweep + narrow the automatic rescan**: additionally change the create-triggered rescan so
+  it only checks the *delta* title (O(D×1)) instead of all titles — eliminating the silent stutter.
+  This touches `autoLink` broadcast semantics shared with rename/delete, so it is a separate,
+  larger change deferred unless explicitly approved.
+
+Default in this spec is **(i)**; (ii) is recorded so the decision is explicit, not accidental.
+
+## Files
+
+1. **New** `app/src/lib/editor/autoLink/linkifyDoc.ts` — extract `linkifyDocJson` from
+   `autoLinkPlugin.applyInRange`; refactor the plugin to call it.
+2. `app/src/lib/editor/autoLink/autoLinkPlugin.ts` — delegate its whole-doc reconcile to the
+   extracted helper (no behavior change).
+3. **New** `app/src/lib/core/linkSweep.ts` — `countLinkSweep` / `applyLinkSweep`.
+4. `app/src/lib/stores/newNoteFlow.svelte.ts` — add `'result'` phase + sweep orchestration methods.
+5. **New** `app/src/lib/components/NewNoteResultPanel.svelte` — result/sweep UI.
+6. `app/src/routes/+layout.svelte` — `result` phase branch renders the panel.
+7. `app/src/routes/settings/+page.svelte` — 가이드 → `notes` sub-tab
+   `<details class="guide-card">` documenting the result panel + 전체 문서 반영 (CLAUDE.md guide rule).
+
+## Tests
+
+- `app/tests/unit/.../linkifyDoc.test.ts` — pure matcher/mark reconcile: word boundaries, code
+  suppression, existing-mark idempotency, longest-title-wins (reuse autolink fixtures).
+- `app/tests/unit/.../linkSweep.test.ts` (fake-indexeddb) — seed notes (matching / non-matching /
+  already-linked / deleted / the new note itself); count returns the correct guid set; apply marks
+  only matches; **idempotent** on re-run; new note excluded; backlink index updated; cancel yields a
+  valid partial; per-note failure is skipped not fatal.
+- `app/tests/unit/.../newNoteFlow.test.ts` (extend) — `submit` → `result` persists (no auto-close);
+  `startSweepCount` → `confirm`; `applySweep` → `done`; `cancelSweep`; `dismiss` clears state.
