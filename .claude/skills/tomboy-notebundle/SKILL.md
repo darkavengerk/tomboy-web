@@ -260,6 +260,14 @@ both must keep working with keep-alive (no unmount):
   index relation, so backward steps reverse automatically with no direction state.
   `prefers-reduced-motion` zeroes it. (Earlier it was vertical translateY; switched to
   X because the horizontal tab shift made a vertical body slide feel disjoint.)
+  **Slide suppressed when the window doesn't move.** A transition where the visible
+  3-window stays put (≥5 tabs: active 0↔1 or (n-2)↔(n-1); all ≤4-tab switches; tree
+  repair) is an instant cut — the tabs are physically in place, so a slide reads as
+  noise. `setActive(next)` sets `suppressAnim = !windowMoved(activePath, next)`, and
+  `windowMoved` compares `tabView(n, idx).start` at the **shallowest changed depth**
+  (parents above it are shared, so the sibling list is well-defined). `suppressAnim`
+  toggles a `.no-anim` class that zeroes only the `.node-body` transition. The tab
+  `flip` already self-gates (no position change → no flip), so only the body needs it.
 - **Tab shift (`animate:flip` + `fade`).** Strip tabs are keyed by `node.key`;
   `animate:flip` animates the left/right shift when the active index moves (the
   persisting tabs slide to their new window slots). Tabs scrolling into/out of the

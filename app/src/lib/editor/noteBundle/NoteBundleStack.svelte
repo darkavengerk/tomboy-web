@@ -47,7 +47,15 @@
 	import type { JSONContent } from '@tiptap/core';
 	import type { BundleSpec, BundleNode } from './parser.js';
 	import { writeBundleHeightPct, setBundleChecked } from './noteBundlePlugin.js';
-	import { repairPath, stepPath, pickPath, visibleTabs, clampIndex } from './stackMath.js';
+	import {
+		repairPath,
+		stepPath,
+		pickPath,
+		visibleTabs,
+		clampIndex,
+		tabView,
+		nodesAtDepth
+	} from './stackMath.js';
 	import type { VisibleTabs } from './stackMath.js';
 	import { lookupGuidByTitle, ensureTitleIndexReady } from '../autoLink/titleProvider.js';
 	import {
@@ -154,13 +162,46 @@
 
 	// --- 활성 경로 (로컬 state, 영속 안 함) -------------------------------------
 	let activePath = $state<number[]>([]);
+	// 본문 슬라이드 억제 — 보이는 탭 윈도우가 실제로 이동하지 않는 전환에서는
+	// 탭이 제자리라 슬라이드가 어색하다(5개+ 에서 활성 0↔1, 끝-1↔끝; 4개 이하
+	// 전부 고정). 그땐 즉시 컷. activePath 바꾸기 직전 setActive 에서 계산.
+	// (탭 flip 은 위치 변화가 없으면 자동으로 안 뜨므로 본문만 제어한다.)
+	let suppressAnim = $state(false);
+
+	/** old→new 전환에서 (가장 얕은 변경 레벨의) 윈도우 start 가 바뀌면 true. */
+	function windowMoved(oldPath: number[], newPath: number[]): boolean {
+		const maxLen = Math.max(oldPath.length, newPath.length);
+		let d = -1;
+		for (let i = 0; i < maxLen; i++) {
+			if (oldPath[i] !== newPath[i]) {
+				d = i;
+				break;
+			}
+		}
+		if (d < 0) return false;
+		// d 위쪽 부모는 old/new 동일(첫 변경 깊이) → newPath 로 형제 목록 조회 OK.
+		const nodes = nodesAtDepth(tree, newPath, d);
+		if (!nodes) return false;
+		const n = nodes.length;
+		return tabView(n, oldPath[d] ?? 0).start !== tabView(n, newPath[d] ?? 0).start;
+	}
+
+	/** activePath 교체 + 윈도우 이동 여부로 본문 슬라이드 on/off. */
+	function setActive(next: number[]) {
+		suppressAnim = !windowMoved(activePath, next);
+		activePath = next;
+	}
+
 	// tree 변화 시 경로 보정: 여전히 navigable 잎을 가리키면 유지, 아니면 첫 잎.
 	// activePath 를 읽고 쓰므로 untrack — tree 변화에만 반응.
 	$effect(() => {
 		const t = tree;
 		untrack(() => {
 			const repaired = repairPath(t, activePath);
-			if (repaired !== activePath) activePath = repaired;
+			if (repaired !== activePath) {
+				suppressAnim = true; // 구조 보정 — 슬라이드 없이 즉시
+				activePath = repaired;
+			}
 		});
 	});
 
@@ -549,7 +590,7 @@
 	function step(dir: 1 | -1) {
 		exitEdit();
 		const next = stepPath(tree, activePath, dir);
-		if (next !== activePath) activePath = next;
+		if (next !== activePath) setActive(next);
 	}
 
 	/** ctrl/⌘+휠 — 활성 잎 노트 본문을 직접 스크롤(편집 진입 없이 내용 확인).
@@ -596,7 +637,7 @@
 		lastTabKey = id;
 		lastTabTime = now;
 		if (!node.navigable) return;
-		activePath = pickPath(tree, activePath, depth, idx);
+		setActive(pickPath(tree, activePath, depth, idx));
 	}
 
 	// 본문 위 가로 스와이프(전환) + 탭(편집 진입). 가로만 — 상하 제스처는 무시
@@ -669,6 +710,7 @@
 <div
 	class="bundle-stack"
 	class:browse={mode === 'browse'}
+	class:no-anim={suppressAnim}
 	bind:this={rootEl}
 	style:height={`${stackH}px`}
 	use:direct={{
@@ -863,6 +905,10 @@
 		pointer-events: auto;
 		transform: translateX(0);
 		z-index: 1;
+	}
+	/* 윈도우가 안 움직이는 전환(탭 제자리) — 본문 슬라이드 생략, 즉시 컷. */
+	.bundle-stack.no-anim .node-body {
+		transition: none;
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.node-body {
