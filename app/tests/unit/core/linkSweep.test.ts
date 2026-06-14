@@ -50,6 +50,15 @@ describe('countLinkSweep', () => {
 		expect(matched).toHaveLength(0);
 	});
 
+	it('matches titles with XML-special chars (body stores them escaped)', async () => {
+		// Real serialization escapes & < > in body text, so the prefilter must
+		// probe the escaped form. xmlContent here holds "R&amp;D" as it would
+		// on disk; the raw title is "R&D". The old raw-substring probe missed it.
+		await seed('g1', 'Other', 'see R&amp;D here');
+		const { matched } = await countLinkSweep('R&D', 'gT');
+		expect(matched).toEqual(['g1']);
+	});
+
 	it('does not count already-linked notes (idempotent)', async () => {
 		// Seed a note that already has the link mark in XML
 		const n = createEmptyNote('g1');

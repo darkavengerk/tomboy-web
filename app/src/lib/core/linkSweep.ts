@@ -2,6 +2,7 @@ import { getAllNotesIncludingDeleted, getNote, putNote } from '$lib/storage/note
 import { deserializeContent, serializeContent } from './noteContentArchiver.js';
 import { addInternalLinksForTitle } from '$lib/editor/autoLink/linkifyDocJson.js';
 import { noteMutated } from '$lib/stores/noteListCache.js';
+import { xmlEscapeTitle } from './titleRewrite.js';
 
 export interface CancelToken {
 	cancelled: boolean;
@@ -22,7 +23,11 @@ type OnProgress = (p: SweepProgress) => void;
  */
 async function candidates(title: string, targetGuid: string) {
 	const all = await getAllNotesIncludingDeleted();
-	return all.filter((n) => !n.deleted && n.guid !== targetGuid && n.xmlContent.includes(title));
+	// Probe the XML-ESCAPED title: body text in xmlContent is stored with &,<,>
+	// escaped, so includes(rawTitle) would false-negative for titles containing
+	// those characters. xmlEscapeTitle matches the archiver's body escaping.
+	const probe = xmlEscapeTitle(title);
+	return all.filter((n) => !n.deleted && n.guid !== targetGuid && n.xmlContent.includes(probe));
 }
 
 /**
@@ -83,20 +88,24 @@ export async function applyLinkSweep(
 		if (opts.cancelToken?.cancelled) break;
 		try {
 			const n = await getNote(guids[i]);
-			if (!n) continue;
-			const { docJson, changed } = addInternalLinksForTitle(
-				deserializeContent(n.xmlContent),
-				title,
-				targetGuid
-			);
-			if (!changed) continue;
-			n.xmlContent = serializeContent(docJson);
-			await putNote(n);
-			noteMutated(n);
-			updated.push(n.guid);
+			if (n) {
+				const { docJson, changed } = addInternalLinksForTitle(
+					deserializeContent(n.xmlContent),
+					title,
+					targetGuid
+				);
+				if (changed) {
+					n.xmlContent = serializeContent(docJson);
+					await putNote(n);
+					noteMutated(n);
+					updated.push(n.guid);
+				}
+			}
 		} catch {
 			failed++;
 		}
+		// Outside try so every attempted guid advances progress (incl. not-found
+		// and already-linked notes), keeping scanned in lockstep with total.
 		opts.onProgress?.({ scanned: i + 1, total: guids.length, matched: updated.length });
 	}
 
