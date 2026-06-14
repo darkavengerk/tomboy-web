@@ -160,7 +160,7 @@ describe('titleProvider', () => {
 		p.dispose();
 	});
 
-	it('onChange still fires when a note is reordered but set is equivalent — order alone is ignored', async () => {
+	it('onChange does NOT fire when only order changes (set is equivalent)', async () => {
 		// Equality check is order-independent — reordering with no content
 		// change should NOT fire onChange.
 		listNotesMock

@@ -32,14 +32,14 @@
     {
       "id": 12,
       "subject": "Task 5: Guide card (설정 → 가이드 notes)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [11],
       "description": "**Goal:** Document result panel + 전체 문서 반영 in 설정 → 가이드 notes sub-tab (CLAUDE.md guide rule).\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"guide-card added under notes sub-tab with summary/info-text/guide-list\", \"npm run check clean\"]}\n```"
     },
     {
       "id": 13,
       "subject": "Task 6: titleProvider delta + shouldRescanForDelta",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Broadcast {added,removed} from doSharedRefresh; pure shouldRescanForDelta predicate; onChange signature (delta?)=>void (backward-compatible).\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/autoLink/shouldRescanForDelta.ts\", \"app/src/lib/editor/autoLink/titleProvider.ts\", \"app/tests/unit/editor/shouldRescanForDelta.test.ts\", \"app/tests/unit/editor/titleProvider.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/shouldRescanForDelta.test.ts tests/unit/editor/titleProvider.test.ts && npm run check\", \"acceptanceCriteria\": [\"predicate: removed->true, added-in-text->true, added-absent->false, empty->false\", \"doSharedRefresh computes+broadcasts {added,removed}, no broadcast when unchanged\", \"existing onChange consumers compile/fire\"]}\n```"
     },
     {
