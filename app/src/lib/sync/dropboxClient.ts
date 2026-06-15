@@ -753,12 +753,11 @@ export function collectNoteRevisions(
 		if (match.metadata['.tag'] !== 'metadata') continue;
 		const md = match.metadata.metadata;
 		if (md['.tag'] !== 'file') continue;
-		const fileMd = md as files.FileMetadataReference;
-		const path = fileMd.path_display ?? fileMd.path_lower ?? '';
+		const path = md.path_display ?? md.path_lower ?? '';
 		const rev = parseNoteRevFromPath(path, guid);
 		if (rev === null || seen.has(rev)) continue;
 		seen.add(rev);
-		out.push({ rev, date: fileMd.server_modified });
+		out.push({ rev, date: md.server_modified });
 	}
 	out.sort((a, b) => b.rev - a.rev);
 	return out;
@@ -773,8 +772,11 @@ export async function searchNoteRevisions(guid: string): Promise<NoteRevisionRef
 	const dbx = getClient();
 	if (!dbx) throw new Error('Not authenticated');
 	const notesPath = getNotesPath();
-	const options: files.SearchOptions = { filename_only: true, max_results: 1000 };
-	if (notesPath) options.path = notesPath;
+	const options: files.SearchOptions = {
+		filename_only: true,
+		max_results: 1000,
+		...(notesPath ? { path: notesPath } : {})
+	};
 
 	const all: files.SearchMatchV2[] = [];
 	let res = await withRetry(() =>
@@ -783,7 +785,8 @@ export async function searchNoteRevisions(guid: string): Promise<NoteRevisionRef
 	all.push(...res.result.matches);
 	let hasMore = res.result.has_more;
 	let cursor = res.result.cursor;
-	while (hasMore && cursor) {
+	while (hasMore) {
+		if (!cursor) throw new Error('Dropbox search: has_more=true but no cursor');
 		const c = cursor;
 		res = await withRetry(() => dbx.filesSearchContinueV2({ cursor: c }));
 		all.push(...res.result.matches);

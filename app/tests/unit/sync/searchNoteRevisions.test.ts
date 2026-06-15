@@ -23,6 +23,9 @@ describe('parseNoteRevFromPath', () => {
 	it('rejects non-numeric rev', () => {
 		expect(parseNoteRevFromPath(`/3/xx/${G}.note`, G)).toBeNull();
 	});
+	it('rejects empty path', () => {
+		expect(parseNoteRevFromPath('', G)).toBeNull();
+	});
 });
 
 describe('collectNoteRevisions', () => {
