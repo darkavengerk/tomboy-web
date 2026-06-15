@@ -1975,6 +1975,23 @@ https://www.youtube.com/playlist?list=…  (재생목록: 일반 줄)</pre>
 						<li>닫기 전까지 결과·소요 시간이 유지됩니다.</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>노트 리비전 히스토리 (데스크탑)</summary>
+					<p class="info-text">
+						데스크탑 노트 창의 <b>⋯ → 🕘 히스토리</b>를 누르면 노트 옆에 같은 크기의 임시
+						창이 열립니다. 상단 드롭다운에서 Dropbox에 저장된 과거 버전을 고르면 그때 그
+						버전만 내려받아 읽기 전용으로 보여줘요. 기본 선택은 현재 바로 직전 버전입니다.
+					</p>
+					<ul class="guide-list">
+						<li><b>↔ diff</b> 버튼을 누르면 지금 쓰고 있는 노트와 선택한 버전의 줄 단위
+							차이를 색으로 보여줍니다.</li>
+						<li>전체 버전을 미리 받지 않고, 드롭다운에서 고른 버전만 그때 내려받아요.</li>
+						<li>선행: <b>Dropbox 동기화</b> 연결이 필요합니다(히스토리는 Dropbox 리비전 기반).</li>
+						<li>이 창은 임시예요. 닫으면 사라지고, 원본 노트 창을 닫으면 같이 닫힙니다.</li>
+						<li>과거 버전으로 <b>되돌리려면</b> 고급 → admin 의 노트 히스토리에서 복원하세요(여기선 열람·비교만).</li>
+					</ul>
+				</details>
 			</section>
 
 			{:else if guideSubTab === 'editor'}

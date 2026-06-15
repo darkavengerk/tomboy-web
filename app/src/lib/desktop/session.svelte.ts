@@ -22,13 +22,16 @@ const WORKSPACE_COUNT = 4;
  */
 export const DESKTOP_PINNED_Z = 1_000_000;
 
-export type DesktopWindowKind = 'note' | 'settings' | 'admin';
+export type DesktopWindowKind = 'note' | 'settings' | 'admin' | 'history';
 
 /** Singleton guid used for the settings window. */
 export const SETTINGS_WINDOW_GUID = '__settings__';
 
 /** Singleton guid used for the admin window. */
 export const ADMIN_WINDOW_GUID = '__admin__';
+
+/** Prefix for ephemeral revision-history windows. Source note guid follows. */
+export const HISTORY_GUID_PREFIX = '__history__';
 
 export interface DesktopWindowState {
 	guid: string;
@@ -254,10 +257,14 @@ async function persistNow(): Promise<void> {
 	// deeper objects — e.g. the geometry values inside `geometryByGuid` —
 	// still wrapped. `$state.snapshot` returns a plain deep copy, which is
 	// safe to persist.
+	const sanitizedWorkspaces = workspaces.map((ws) => ({
+		...ws,
+		windows: ws.windows.filter((w) => w.kind !== 'history')
+	}));
 	const snapshot: PersistedV3 = $state.snapshot({
 		version: VERSION,
 		currentWorkspace: currentWorkspaceIndex,
-		workspaces
+		workspaces: sanitizedWorkspaces
 	}) as PersistedV3;
 	try {
 		await setSetting(STORAGE_KEY, snapshot);
@@ -614,6 +621,45 @@ export const desktopSession = {
 		schedulePersist();
 	},
 
+	/**
+	 * Open an ephemeral revision-history window for `sourceGuid`, placed
+	 * directly to the right of the source window at the SAME size. Singleton
+	 * per source note; reopening just focuses. No-ops if the source isn't open.
+	 */
+	openHistory(sourceGuid: string): void {
+		const ws = current();
+		const source = ws.windows.find((w) => w.guid === sourceGuid);
+		if (!source) return;
+		const guid = `${HISTORY_GUID_PREFIX}${sourceGuid}`;
+		const existing = ws.windows.find((w) => w.guid === guid);
+		if (existing) {
+			bumpZ(ws, existing);
+			focusRequest = { guid, token: ++focusRequestCounter };
+			schedulePersist();
+			return;
+		}
+		const width = source.width;
+		const height = source.height;
+		const viewportW =
+			typeof window !== 'undefined' ? window.innerWidth - railWidth() : 1200;
+		const maxX = Math.max(0, viewportW - width);
+		const x = Math.max(0, Math.min(source.x + source.width, maxX));
+		const y = Math.max(0, source.y);
+		const win: DesktopWindowState = {
+			guid,
+			kind: 'history',
+			x: Math.round(x),
+			y: Math.round(y),
+			width,
+			height,
+			z: ++ws.nextZ
+		};
+		ws.windows.push(win);
+		// Intentionally NOT cacheGeometry'd / recorded in recents: ephemeral.
+		focusRequest = { guid, token: ++focusRequestCounter };
+		schedulePersist();
+	},
+
 	async openByTitle(title: string): Promise<void> {
 		const trimmed = title.trim();
 		if (!trimmed) return;
@@ -820,6 +866,13 @@ export const desktopSession = {
 		cacheGeometry(ws, ws.windows[idx]);
 		const closedKind = ws.windows[idx].kind;
 		ws.windows.splice(idx, 1);
+		// Close any ephemeral history window bound to this note — it would
+		// otherwise float with no source.
+		if (closedKind === 'note') {
+			const histGuid = `${HISTORY_GUID_PREFIX}${guid}`;
+			const hidx = ws.windows.findIndex((w) => w.guid === histGuid);
+			if (hidx >= 0) ws.windows.splice(hidx, 1);
+		}
 		// Remember note closes so Alt+Esc can reopen the last one. Settings /
 		// admin are singletons reopened from the rail, so they're skipped.
 		// De-dupe to keep the most recent position when a guid is closed twice.

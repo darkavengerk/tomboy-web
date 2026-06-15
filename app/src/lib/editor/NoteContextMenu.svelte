@@ -11,7 +11,8 @@
 		| 'unsetHome'
 		| 'toggleScrollBottom'
 		| 'compareWithServer'
-		| 'viewXml';
+		| 'viewXml'
+		| 'history';
 
 	interface Props {
 		note: NoteData;
@@ -101,6 +102,9 @@
 			</button>
 			<button class="item" onclick={() => onaction('viewXml')}>
 				<span class="icon">📄</span>원본 XML 보기
+			</button>
+			<button class="item" onclick={() => onaction('history')}>
+				<span class="icon">🕘</span>히스토리
 			</button>
 			<div class="sep"></div>
 			<button class="item danger" onclick={handleDelete}>

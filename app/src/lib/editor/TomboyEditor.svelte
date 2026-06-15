@@ -259,6 +259,8 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		/** 콘텐츠 스왑(setContent)이 settle 된 뒤 1회 호출. 생성 로딩 플로우가
 		 *  '에디터 여는 중' 단계를 종료하는 신호로 쓴다. */
 		onnoteready?: (guid: string | null) => void;
+		/** 읽기 전용 렌더(히스토리 창). editable=false + autolink 스캔 skip. 기본 false. */
+		readOnly?: boolean;
 	}
 
 	let {
@@ -294,6 +296,7 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		enableNoteBundle = true,
 		hideTitleLine = false,
 		onnoteready = () => {},
+		readOnly = false,
 	}: Props = $props();
 
 	let ctxMenu = $state<{ x: number; y: number } | null>(null);
@@ -409,6 +412,7 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 	}
 
 	function scheduleAutoLinkScan(opts?: { full?: boolean }): void {
+		if (readOnly) return;
 		if (opts?.full) autoLinkPendingFull = true;
 		cancelAutoLinkScan();
 		autoLinkTimer = setTimeout(() => {
@@ -464,6 +468,7 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 
 		editor = new Editor({
 			element: editorElement,
+			editable: !readOnly,
 			extensions: [
 				StarterKit.configure({
 					// Disable code (we use tomboyMonospace instead)
