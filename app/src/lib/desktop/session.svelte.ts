@@ -28,6 +28,16 @@ export type WallpaperMode = 'cover' | 'contain' | 'fill' | 'center' | 'tile';
 const WALLPAPER_MODES: readonly WallpaperMode[] = ['cover', 'contain', 'fill', 'center', 'tile'];
 const DEFAULT_WALLPAPER_MODE: WallpaperMode = 'contain';
 
+// Per-note background + window opacity (desktop, LOCAL-ONLY). Keyed by note
+// guid. appSettings (IndexedDB) is never synced to Dropbox/Firestore, so these
+// visual prefs stay on this device — matching the requested behavior.
+const NOTE_BG_KEY = 'note:bg';
+const NOTE_BG_MODE_KEY = 'note:bg-mode';
+const NOTE_OPACITY_KEY = 'note:opacity';
+// Floor on note-window opacity so a note can never be dialed fully invisible
+// (and thus impossible to find/click to restore).
+const MIN_NOTE_OPACITY = 0.2;
+
 /**
  * 데스크탑 윈도우 z 모델 (CLAUDE.md "z-index 레이어 규약" 참고):
  * 각 윈도우의 z 는 `++nextZ` 로 단조 증가(포커스/열기마다 상승)하고, pinned 윈도우는
@@ -138,6 +148,11 @@ let currentWorkspaceIndex = $state(0);
 // $effect reads `desktopSession.wallpaperEpoch` so re-setting the SAME
 // workspace's wallpaper (same currentWorkspace) still triggers a reload.
 let wallpaperEpoch = $state(0);
+// Bumped whenever any note's background is set/cleared. A NoteWindow reads
+// `desktopSession.noteChromeEpoch` so a background change made from another
+// component (the image right-click menu) makes the target window reload its
+// background. Opacity is set from the window's own menu, so it doesn't need this.
+let noteChromeEpoch = $state(0);
 // Incrementing token consumed by NoteWindow to grab keyboard focus + play
 // the opened/refocus flash animation. Using a counter (instead of a guid)
 // means two consecutive requests for the same window still re-trigger.
@@ -485,6 +500,10 @@ export const desktopSession = {
 
 	get wallpaperEpoch(): number {
 		return wallpaperEpoch;
+	},
+
+	get noteChromeEpoch(): number {
+		return noteChromeEpoch;
 	},
 
 	/** Set the wallpaper (and optionally its display mode) for the currently-active workspace. */
@@ -1138,6 +1157,41 @@ export async function clearWallpaper(i: number): Promise<void> {
 export async function loadWallpaperMode(i: number): Promise<WallpaperMode> {
 	const stored = await getSetting<WallpaperMode>(`${WALLPAPER_MODE_KEY}:${i}`);
 	return stored && WALLPAPER_MODES.includes(stored) ? stored : DEFAULT_WALLPAPER_MODE;
+}
+
+// --- Per-note background + opacity (desktop, local-only) -----------------
+
+export async function loadNoteBg(guid: string): Promise<Blob | null> {
+	return (await getSetting<Blob>(`${NOTE_BG_KEY}:${guid}`)) ?? null;
+}
+
+export async function loadNoteBgMode(guid: string): Promise<WallpaperMode> {
+	const stored = await getSetting<WallpaperMode>(`${NOTE_BG_MODE_KEY}:${guid}`);
+	return stored && WALLPAPER_MODES.includes(stored) ? stored : DEFAULT_WALLPAPER_MODE;
+}
+
+export async function setNoteBg(guid: string, blob: Blob, mode: WallpaperMode): Promise<void> {
+	await setSetting(`${NOTE_BG_KEY}:${guid}`, blob);
+	await setSetting(`${NOTE_BG_MODE_KEY}:${guid}`, mode);
+	noteChromeEpoch += 1;
+}
+
+export async function clearNoteBg(guid: string): Promise<void> {
+	await deleteSetting(`${NOTE_BG_KEY}:${guid}`);
+	await deleteSetting(`${NOTE_BG_MODE_KEY}:${guid}`);
+	noteChromeEpoch += 1;
+}
+
+/** Per-note window opacity, clamped to [MIN_NOTE_OPACITY, 1]. Defaults to 1 (opaque). */
+export async function loadNoteOpacity(guid: string): Promise<number> {
+	const v = await getSetting<number>(`${NOTE_OPACITY_KEY}:${guid}`);
+	if (typeof v !== 'number' || !Number.isFinite(v)) return 1;
+	return Math.min(1, Math.max(MIN_NOTE_OPACITY, v));
+}
+
+export async function setNoteOpacity(guid: string, value: number): Promise<void> {
+	const clamped = Math.min(1, Math.max(MIN_NOTE_OPACITY, value));
+	await setSetting(`${NOTE_OPACITY_KEY}:${guid}`, clamped);
 }
 
 export const DESKTOP_WINDOW_MIN_WIDTH = MIN_WIDTH;

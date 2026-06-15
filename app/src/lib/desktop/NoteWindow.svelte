@@ -67,7 +67,13 @@
 		registerFlushHook,
 		registerReloadHook,
 		registerSnapshotSource,
-		desktopSession
+		desktopSession,
+		loadNoteBg,
+		loadNoteBgMode,
+		clearNoteBg,
+		loadNoteOpacity,
+		setNoteOpacity,
+		type WallpaperMode
 	} from './session.svelte.js';
 	import { modKeys } from './modKeys.svelte.js';
 	import { SEND_SOURCE_GUID } from '$lib/editor/sendListItem/transferListItem.js';
@@ -147,6 +153,12 @@
 	let isScheduleNote = $state(false);
 	let isMusicNote = $state(false);
 	let windowEl: HTMLDivElement | undefined = $state(undefined);
+	// Per-note background (local-only) + window opacity. Background is a CSS
+	// background on `.body` (behind the transparent editor content); opacity
+	// fades the whole window so stacked notes show through.
+	let noteBgUrl = $state<string | null>(null);
+	let noteBgMode = $state<WallpaperMode>('contain');
+	let noteOpacity = $state(1);
 	let terminalSpec: TerminalNoteSpec | null = $state.raw(null);
 	let terminalConnectMode = $state(false);
 	const showTerminal = $derived(!!terminalSpec && terminalConnectMode);
@@ -320,6 +332,9 @@
 			offSlipChange();
 			dateTitleProvider?.dispose();
 			dateTitleProvider = null;
+			// Revoke the live background ObjectURL (the bg effect's cleanup only
+			// aborts an in-flight load; the currently-applied URL is freed here).
+			if (noteBgUrl) URL.revokeObjectURL(noteBgUrl);
 			if (saveTimer) {
 				clearTimeout(saveTimer);
 				saveTimer = null;
@@ -397,6 +412,54 @@
 			offFlush();
 		};
 	});
+
+	// Load this note's background reactively: on guid change and on
+	// noteChromeEpoch (a set/clear from the image right-click menu or this
+	// window's own 해제). Token + cancelled guards mirror the workspace
+	// wallpaper loader so a fast guid swap can't apply a stale image, and an
+	// in-flight load resolving after unmount can't create an orphan ObjectURL.
+	let noteBgToken = 0;
+	$effect(() => {
+		const g = guid;
+		void desktopSession.noteChromeEpoch; // reactive dependency
+		const token = ++noteBgToken;
+		let cancelled = false;
+		void (async () => {
+			const [blob, mode] = await Promise.all([loadNoteBg(g), loadNoteBgMode(g)]);
+			if (cancelled || token !== noteBgToken) return;
+			const next = blob ? URL.createObjectURL(blob) : null;
+			const prev = noteBgUrl;
+			noteBgUrl = next;
+			noteBgMode = mode;
+			if (prev) URL.revokeObjectURL(prev);
+		})();
+		return () => {
+			cancelled = true;
+		};
+	});
+
+	// Load this note's saved window opacity on guid change. Set from the ⋯ menu
+	// slider (local state drives the render immediately; persistence is async).
+	$effect(() => {
+		const g = guid;
+		let cancelled = false;
+		void loadNoteOpacity(g).then((v) => {
+			if (!cancelled) noteOpacity = v;
+		});
+		return () => {
+			cancelled = true;
+		};
+	});
+
+	function handleOpacityChange(v: number) {
+		noteOpacity = v;
+		void setNoteOpacity(guid, v);
+	}
+
+	async function handleClearBackground() {
+		await clearNoteBg(guid); // bumps noteChromeEpoch → bg effect reloads to null
+		pushToast('노트 배경을 해제했습니다.');
+	}
 
 	function handleEditorChange(doc: JSONContent) {
 		isMusicNote = isMusicNoteDoc(doc);
@@ -906,6 +969,11 @@
 			desktopSession.openHistory(note.guid);
 			return;
 		}
+
+		if (kind === 'clearBackground') {
+			await handleClearBackground();
+			return;
+		}
 	}
 
 	async function handleNotebookChange(e: Event) {
@@ -957,6 +1025,7 @@
 	class="note-window"
 	class:hidden={!active}
 	style="left:{x}px; top:{y}px; width:{width}px; height:{height}px; z-index:{z};"
+	style:opacity={noteOpacity}
 	onpointerdowncapture={handleWindowPointerDown}
 	onkeydown={handleKeyDown}
 >
@@ -995,7 +1064,13 @@
 	</div>
 	{/if}
 
-	<div bind:this={bodyEl} class="body" class:terminal-edit={(!!terminalSpec && !showTerminal) || (!!keysSpec && !showKeys)}>
+	<div
+		bind:this={bodyEl}
+		class="body"
+		class:terminal-edit={(!!terminalSpec && !showTerminal) || (!!keysSpec && !showKeys)}
+		data-bg-mode={noteBgUrl ? noteBgMode : undefined}
+		style:background-image={noteBgUrl ? `url(${noteBgUrl})` : undefined}
+	>
 		{#if loading}
 			<div class="loading">로딩 중...</div>
 		{:else if showTerminal && terminalSpec}
@@ -1179,8 +1254,11 @@
 		isFavoriteNote={isFavoriteState}
 		isHomeNote={isHomeState}
 		isScrollBottomNote={isScrollBottomState}
+		opacity={noteOpacity}
+		hasBackground={!!noteBgUrl}
 		anchor={menuAnchor}
 		onaction={handleAction}
+		onopacity={handleOpacityChange}
 		onclose={() => (menuAnchor = null)}
 		onbacklinks={() => { menuAnchor = null; backlinkBundleOpen = true; }}
 	/>
@@ -1404,6 +1482,32 @@
 		overflow: hidden;
 		/* 음악 컨트롤 패널(absolute)의 offsetParent 기준. */
 		position: relative;
+	}
+
+	/* Per-note background — a CSS background on .body so it paints behind the
+	   (transparent) editor content with no z-index juggling. data-bg-mode
+	   mirrors the workspace wallpaper modes. */
+	.body[data-bg-mode] {
+		background-repeat: no-repeat;
+		background-position: center;
+		background-size: contain;
+	}
+	.body[data-bg-mode='cover'] {
+		background-size: cover;
+	}
+	.body[data-bg-mode='contain'] {
+		background-size: contain;
+	}
+	.body[data-bg-mode='fill'] {
+		background-size: 100% 100%;
+	}
+	.body[data-bg-mode='center'] {
+		background-size: auto;
+	}
+	.body[data-bg-mode='tile'] {
+		background-position: top left;
+		background-repeat: repeat;
+		background-size: auto;
 	}
 
 	.body :global(.tomboy-editor-shell) {

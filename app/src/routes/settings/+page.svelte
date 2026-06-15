@@ -2638,6 +2638,31 @@ Complete:</pre>
 					</ul>
 				</details>
 
+				<details class="guide-card">
+					<summary>데스크탑 — 노트별 배경 &amp; 투명도</summary>
+					<p class="info-text">
+						데스크탑 노트창은 <strong>노트마다 개별 배경 이미지</strong>와
+						<strong>창 투명도</strong>를 둘 수 있습니다. 둘 다 <strong>이 기기에만</strong>
+						저장되며(다른 기기와 동기화되지 않음) 노트 본문이나 Dropbox 백업에는 영향을
+						주지 않습니다.
+					</p>
+					<ul class="guide-list">
+						<li><strong>노트 배경</strong> — 노트 속 이미지를 <strong>우클릭</strong> →
+							「노트 배경으로 지정」에 올리면 표시 방식 세부메뉴(채우기 / 맞춤 / 확대 /
+							가운데 / 바둑판식, 바탕화면과 동일)가 펼쳐집니다. 고른 방식이
+							<strong>지금 포커스된 노트창</strong>의 배경이 됩니다(글자는 그 위에 그대로).</li>
+						<li><strong>투명도</strong> — 노트창 하단 <strong>⋯ 더 보기</strong> 메뉴의
+							슬라이더로 조절합니다. 배경 유무와 무관하며, 창 전체가 반투명해져
+							<strong>아래에 포개진 노트가 비쳐 보입니다</strong>(최소 20%까지 — 완전히
+							사라져 못 찾는 일은 없도록).</li>
+						<li><strong>배경 해제</strong> — 배경이 있는 노트의 ⋯ 메뉴에
+							「노트 배경 해제」가 나타납니다. (투명도엔 해제가 따로 필요 없고 100%로
+							올리면 됩니다.)</li>
+						<li>설정값은 노트 guid 기준 로컬 저장이라, 노트를 닫았다 열어도 유지되고
+							기기마다 따로 적용됩니다.</li>
+					</ul>
+				</details>
+
 				<details class="guide-card" open>
 					<summary>Firefox — 세로 칼럼 분할 활성화</summary>
 					<p class="info-text">
