@@ -879,6 +879,11 @@
 			xmlViewerOpen = true;
 			return;
 		}
+
+		if (kind === 'history') {
+			desktopSession.openHistory(note.guid);
+			return;
+		}
 	}
 
 	async function handleNotebookChange(e: Event) {

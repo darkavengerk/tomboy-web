@@ -866,6 +866,13 @@ export const desktopSession = {
 		cacheGeometry(ws, ws.windows[idx]);
 		const closedKind = ws.windows[idx].kind;
 		ws.windows.splice(idx, 1);
+		// Close any ephemeral history window bound to this note — it would
+		// otherwise float with no source.
+		if (closedKind === 'note') {
+			const histGuid = `${HISTORY_GUID_PREFIX}${guid}`;
+			const hidx = ws.windows.findIndex((w) => w.guid === histGuid);
+			if (hidx >= 0) ws.windows.splice(hidx, 1);
+		}
 		// Remember note closes so Alt+Esc can reopen the last one. Settings /
 		// admin are singletons reopened from the rail, so they're skipped.
 		// De-dupe to keep the most recent position when a guid is closed twice.

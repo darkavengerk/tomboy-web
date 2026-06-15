@@ -3,6 +3,7 @@
 	import NoteWindow from './NoteWindow.svelte';
 	import SettingsWindow from './SettingsWindow.svelte';
 	import AdminWindow from './AdminWindow.svelte';
+	import HistoryWindow from './HistoryWindow.svelte';
 	import SidePanel from './SidePanel.svelte';
 	import {
 		desktopSession,
@@ -316,6 +317,21 @@
 					/>
 				{:else if win.kind === 'admin'}
 					<AdminWindow
+						x={win.x}
+						y={win.y}
+						width={win.width}
+						height={win.height}
+						z={(win.pinned ? DESKTOP_PINNED_Z : 0) + win.z}
+						pinned={win.pinned}
+						active={active}
+						onfocus={handleFocus}
+						onclose={handleClose}
+						onmove={handleMove}
+						onresize={handleResize}
+					/>
+				{:else if win.kind === 'history'}
+					<HistoryWindow
+						guid={win.guid}
 						x={win.x}
 						y={win.y}
 						width={win.width}

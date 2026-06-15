@@ -41,6 +41,14 @@ describe('openHistory', () => {
 		expect(all.length).toBe(1);
 	});
 
+	it('closes the bound history window when the source note closes', async () => {
+		desktopSession.openWindowAt('src3', { x: 0, y: 0, width: 300, height: 300 });
+		desktopSession.openHistory('src3');
+		expect(desktopSession.windows.some((w) => w.guid === `${HISTORY_GUID_PREFIX}src3`)).toBe(true);
+		await desktopSession.closeWindow('src3');
+		expect(desktopSession.windows.some((w) => w.guid === `${HISTORY_GUID_PREFIX}src3`)).toBe(false);
+	});
+
 	it('excludes history windows from the persisted snapshot', async () => {
 		const note = createEmptyNote('22222222-2222-2222-2222-222222222222');
 		await putNote(note);
