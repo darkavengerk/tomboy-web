@@ -1,0 +1,32 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-15-per-workspace-wallpaper.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Index-aware wallpaper functions + epoch signal (session.svelte.ts)",
+      "status": "pending",
+      "description": "**Goal:** Make loadWallpaper/setWallpaper/clearWallpaper take a workspace index, add the wallpaperEpoch change signal and a setWallpaperForCurrent convenience, all unit-tested.\n\n**Files:** Modify app/src/lib/desktop/session.svelte.ts; create app/tests/unit/desktop/wallpaper.test.ts\n\n**Verify:** cd app && npm run test -- tests/unit/desktop/wallpaper.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/session.svelte.ts\", \"app/tests/unit/desktop/wallpaper.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- tests/unit/desktop/wallpaper.test.ts\", \"acceptanceCriteria\": [\"setWallpaper(blob,i) writes only desktop:wallpaper:i and bumps epoch\", \"loadWallpaper(i) per-ws then legacy fallback then null\", \"clearWallpaper(i) deletes key and bumps epoch\", \"wallpaperEpoch getter + setWallpaperForCurrent target currentWorkspace\", \"npm run check passes\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Reactive per-workspace wallpaper render (DesktopWorkspace.svelte)",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** Load the active workspace's wallpaper reactively (on switch + on wallpaperEpoch) with an async race guard; make drag-drop target the current workspace.\n\n**Files:** Modify app/src/lib/desktop/DesktopWorkspace.svelte\n\n**Verify:** cd app && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/DesktopWorkspace.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"wallpaper matches active workspace, swaps on switch\", \"token guard prevents stale wallpaper on fast switch\", \"drag-drop sets only current workspace\", \"no ObjectURL leak (revoke on swap + unmount)\", \"npm run check passes\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Right-click image → 바탕화면으로 지정 (ImageActionMenu.svelte)",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** Add a desktop-only third item to the image right-click menu that sets the clicked image as the current workspace's wallpaper.\n\n**Files:** Modify app/src/lib/components/ImageActionMenu.svelte\n\n**Verify:** cd app && npm run check && npm run test\n\n```json:metadata\n{\"files\": [\"app/src/lib/components/ImageActionMenu.svelte\"], \"verifyCommand\": \"cd app && npm run check && npm run test\", \"acceptanceCriteria\": [\"item shown on /desktop, absent on mobile routes\", \"click sets current-workspace wallpaper + success toast + close\", \"fetch failure toasts error and leaves wallpaper unchanged\", \"npm run check + full suite pass\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Guide card in 설정 → 가이드 (env sub-tab)",
+      "status": "pending",
+      "description": "**Goal:** Document the feature in the user-facing guide (env sub-tab of 설정 → 가이드).\n\n**Files:** Modify app/src/routes/settings/+page.svelte\n\n**Verify:** cd app && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"env-tab guide-card covers desktop-only + per-workspace + right-click + drag-drop + no-removal-UI\", \"matches existing card pattern\", \"npm run check passes\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-15"
+}
