@@ -53,10 +53,34 @@ export function unfocusedCaretPlugin(): Plugin {
 			},
 			handleDOMEvents: {
 				focus(view) {
-					view.dispatch(view.state.tr.setMeta(key, { focused: true }));
+					// Tearing the decoration down *synchronously* here makes
+					// ProseMirror rewrite the pre-blur state.selection onto the
+					// DOM during the redraw, clobbering the caret the click is
+					// placing — the click's selection isn't synced into state
+					// until the selectionchange / mouseup that *follows* this
+					// focus event. So defer one macrotask (the caret has landed
+					// by then) and flush() to pull the click selection into
+					// state BEFORE the redraw dispatch, so state == DOM and the
+					// redraw can't fight it. Desktop symptom this fixes:
+					// clicking an unfocused note window snapped the cursor back
+					// to its previous spot, ignoring where you clicked.
+					setTimeout(() => {
+						if (view.isDestroyed || !view.hasFocus()) return;
+						// domObserver is internal to prosemirror-view but its
+						// flush() has been stable for years; it syncs any pending
+						// DOM selection change into state.
+						(
+							view as unknown as { domObserver: { flush(): void } }
+						).domObserver.flush();
+						const s = key.getState(view.state);
+						if (s && !s.focused) {
+							view.dispatch(view.state.tr.setMeta(key, { focused: true }));
+						}
+					}, 0);
 					return false;
 				},
 				blur(view) {
+					if (view.isDestroyed) return false;
 					view.dispatch(view.state.tr.setMeta(key, { focused: false }));
 					return false;
 				}
