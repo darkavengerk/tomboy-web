@@ -809,6 +809,23 @@
 		});
 	}
 
+	// 전용 파일철 노트(탭::/묶음::)는 창 타이틀바를 숨기므로 드래그 이동 수단이
+	// 없다 — 번들의 "활성 노트 타이틀"(탭 스트립의 활성 탭 / 묶음의 활성 바·편집
+	// 헤더)에서 온 pointerdown 을 받아 일반 타이틀바와 동일하게 창을 이동시킨다.
+	// 번들이 이벤트를 동기로 넘기므로 e.currentTarget(= 그 타이틀 엘리먼트)에
+	// startPointerDrag 의 포인터 캡처가 걸린다.
+	function handleBundleTitleDrag(e: PointerEvent) {
+		if (e.button !== 0) return;
+		onfocus(guid);
+		const origX = x;
+		const origY = y;
+		startPointerDrag(e, {
+			onMove: (dx, dy) => {
+				onmove(guid, origX + dx, origY + dy);
+			}
+		});
+	}
+
 	function handlePinToggle(e: MouseEvent) {
 		e.stopPropagation();
 		desktopSession.togglePin(guid);
@@ -1103,6 +1120,7 @@
 						oninternallink={handleInternalLink}
 						onraw={() => (showRawBundle = true)}
 						onclose={handleClose}
+						onwindowdrag={handleBundleTitleDrag}
 					/>
 				{:else}
 					<NoteBundleStack
@@ -1114,6 +1132,7 @@
 						oninternallink={handleInternalLink}
 						onraw={() => (showRawBundle = true)}
 						onclose={handleClose}
+						onwindowdrag={handleBundleTitleDrag}
 					/>
 				{/if}
 			{/key}

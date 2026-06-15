@@ -543,9 +543,29 @@ hosts **hide the note title-bar AND the bottom `Toolbar`** (`.toolbar-area` /
 cabinet view (no host editor) so the Toolbar would be inert and overlap the body
 (the "목록 하단 가림" bug). Both return in raw/edit mode (`showRawBundle` true) so
 it "looks like a normal note". **Desktop NoteWindow also hides its window
-title-bar** in cabinet view (user choice) — drag + 📌 pin are lost there, close
-is via the dchrome `✕`, and the resize handles still work; the title-bar (and
-drag/pin) returns in raw mode.
+title-bar** in cabinet view (user choice) — 📌 pin is lost there, close is via
+the dchrome `✕`, and the resize handles still work; the title-bar (and pin)
+returns in raw mode.
+
+**Window-drag via the active title (replaces the lost title-bar drag).** Because
+the window title-bar is hidden, NoteWindow passes `onwindowdrag?: (e:
+PointerEvent) => void` (`handleBundleTitleDrag` → `startPointerDrag` snapshotting
+`x`/`y`) into the dedicated Stack/Cabinet. The bundle forwards the **active
+note's title** pointerdown so the host moves the window like a normal title-bar.
+Contract relies on synchronous dispatch: the bundle calls `onwindowdrag(e)`
+inside its own `direct` pointerdown listener, so `e.currentTarget` (= the title
+element) is still valid when `startPointerDrag` captures on it. Wiring:
+- **Stack (`탭::`)** — `handleTabPointerDown` on the **active tab only** (`it.idx
+  === activeIdx`); `↗`/접속 self-`stopEvt` so they don't drag; double-click eject
+  still works (drag only `preventDefault`s, click survives). `.tab.draggable`
+  cursor.
+- **Cabinet (`묶음::`)** — browse: `handleListPointerDown` branches when `barIdx
+  === k` (active bar) → `onwindowdrag(e)` + early-return so swipe/tap tracking
+  never starts (`swipeY` stays null; `handleListPointerUp` early-returns on null
+  to avoid stale-state misfire). Edit: `handleEditHeaderDown` on the `.edit-header`
+  (← self-`stopEvt`). `.expanded-bar`/`.edit-header.draggable` grab cursor.
+Only provided by NoteWindow (desktop) — the mobile `note/[id]` route omits it, so
+mobile keeps the existing tap/swipe gestures untouched.
 
 **Teardown-safety: `bind:this` must key on the stable node, not the session.**
 The embedded editor binds `bind:this={editorRefs[node.guid!]}` (Stack) /
