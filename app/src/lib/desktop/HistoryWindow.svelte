@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { startPointerDrag } from './dragResize.js';
 	import ResizeHandles from './ResizeHandles.svelte';
 	import {
@@ -27,6 +28,7 @@
 	let { guid, x, y, width, height, z, pinned = false, active = true,
 		onfocus, onclose, onmove, onresize }: Props = $props();
 
+	// svelte-ignore state_referenced_locally
 	const sourceGuid = guid.slice(HISTORY_GUID_PREFIX.length);
 	const history = createNoteHistory(sourceGuid);
 
@@ -38,13 +40,7 @@
 	let sourceTitle = $state('');
 	let liveText = '';
 	let diffOps = $state<DiffOp[]>([]);
-	let started = false;
-
-	$effect(() => {
-		if (started) return;
-		started = true;
-		void init();
-	});
+	onMount(() => { void init(); });
 
 	async function init() {
 		const live = await getNote(sourceGuid);
