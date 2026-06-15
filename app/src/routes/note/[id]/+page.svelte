@@ -799,6 +799,9 @@
 		}
 		const updated = await getNote(note.guid);
 		if (updated) note = updated;
+		// 패널은 renameNote 의 emitNoteReload 진행 중에 열려도 안전 — 사용자가 스윕을
+		// 확정하면 applySweep 가 먼저 flushAll 로 미저장 편집을 내리고, 대상 노트(이 노트)는
+		// 스윕 candidates 에서 제외되므로 리로드 레이스로 내용이 깨지지 않는다.
 		newNoteFlow.openResult({
 			heading: '제목 변경 완료',
 			title: r.title,

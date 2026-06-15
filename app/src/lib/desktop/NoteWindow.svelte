@@ -782,6 +782,8 @@
 		// 로컬 note 에서 파생되므로 재조회로 갱신.
 		const updated = await getNote(note.guid);
 		if (updated) note = updated;
+		// 패널은 renameNote 의 noteReload 진행 중에 열려도 안전 — 스윕 확정 시 applySweep 가
+		// 먼저 flushAll 하고, 대상 노트(이 창)는 스윕 candidates 에서 제외된다.
 		newNoteFlow.openResult({
 			heading: '제목 변경 완료',
 			title: r.title,
