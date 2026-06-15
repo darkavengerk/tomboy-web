@@ -2904,6 +2904,13 @@ Complete:</pre>
 					확실히 적용하려면 <strong>노트를 다시 열거나 새로고침</strong>하세요.
 					데스크톱 창에는 영향을 주지 않습니다.
 				</p>
+				<p class="info-text small">
+					현재 기본값은 <strong>native 전용</strong> 조합입니다 —
+					<strong>scroll-padding-bottom</strong>·<strong>빈 공간 탭 → 끝 포커스</strong>만
+					켜고, 커스텀 보정 3종(JS 커서 보정 / PM 기본 스크롤 억제 / 키보드 inset)은
+					꺼져 있습니다. 위로 튐·출렁임이 재발하면 이 3종을 하나씩 다시 켜며 원인을
+					좁히세요.
+				</p>
 				{#each cursorDebugItems as item (item.flag)}
 					<div class="debug-toggle">
 						<label class="profile-row">
@@ -2918,13 +2925,8 @@ Complete:</pre>
 					</div>
 				{/each}
 				<button class="btn btn-secondary" onclick={resetCursorDebug}>
-					기본값으로 되돌리기 (전부 켜기)
+					기본값(native 전용)으로 되돌리기
 				</button>
-				<p class="info-text small">
-					참고: “strip-to-native” 실험 = <strong>JS 커서 보정</strong>·<strong>PM 기본
-					스크롤 억제</strong> 끄고 나머지 켠 상태. native 스크롤 + scroll-padding 만으로
-					두 증상이 사라지는지 확인하세요.
-				</p>
 			</section>
 		{/if}
 	</main>
@@ -2993,6 +2995,17 @@ Complete:</pre>
 		background: var(--color-bg, #fff);
 		flex-shrink: 0;
 		overflow-x: auto;
+		/* overflow-x:auto 만 두면 overflow-y 가 암묵적으로 auto 가 되어(스펙),
+		   가로 스크롤바가 세로 공간을 먹으며 세로 오버플로가 생긴다 → 가로
+		   스와이프 때 세로로 출렁임. 세로 축을 명시적으로 막고, 가로 스크롤바도
+		   숨겨 세로 공간 잠식을 없앤다. (탭은 스와이프/클릭으로 이동) */
+		overflow-y: hidden;
+		overscroll-behavior-x: contain;
+		scrollbar-width: none; /* Firefox */
+	}
+
+	.settings-tabs::-webkit-scrollbar {
+		display: none; /* WebKit / Chrome / Safari */
 	}
 
 	.tab {
