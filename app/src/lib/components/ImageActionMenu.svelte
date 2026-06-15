@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { imageActionMenu } from '$lib/stores/imageActionMenu.svelte.js';
-	import { copyImageToClipboard, copyImageUrlToClipboard } from '$lib/editor/imageActions/copyImage.js';
+	import { copyImageToClipboard, copyImageUrlToClipboard, resolveImageBlob } from '$lib/editor/imageActions/copyImage.js';
 	import { portal } from '$lib/utils/portal.js';
+	import { page } from '$app/state';
+	import { desktopSession } from '$lib/desktop/session.svelte.js';
+	import { pushToast } from '$lib/stores/toast.js';
 
 	const menu = $derived(imageActionMenu.state);
 
@@ -43,6 +46,22 @@
 		close();
 		if (href) await copyImageUrlToClipboard(href);
 	}
+
+	const isDesktop = $derived(page.url.pathname.startsWith('/desktop'));
+
+	async function doSetWallpaper() {
+		const href = menu?.href;
+		close();
+		if (!href) return;
+		try {
+			const blob = await resolveImageBlob(href);
+			if (!blob) throw new Error('image bytes unavailable');
+			await desktopSession.setWallpaperForCurrent(blob);
+			pushToast('배경화면으로 지정했습니다');
+		} catch {
+			pushToast('배경화면 지정 실패', { kind: 'error' });
+		}
+	}
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -64,6 +83,9 @@
 	>
 		<button class="item" onclick={doCopyImage}>이미지 복사</button>
 		<button class="item" onclick={doCopyUrl}>이미지 주소 복사</button>
+		{#if isDesktop}
+			<button class="item" onclick={doSetWallpaper}>바탕화면으로 지정</button>
+		{/if}
 	</div>
 {/if}
 

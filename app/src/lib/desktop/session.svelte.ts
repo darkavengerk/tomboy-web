@@ -117,6 +117,10 @@ let workspaces = $state<WorkspaceState[]>(
 	Array.from({ length: WORKSPACE_COUNT }, () => emptyWorkspace())
 );
 let currentWorkspaceIndex = $state(0);
+// Bumped whenever any workspace's wallpaper is set/cleared. DesktopWorkspace's
+// $effect reads `desktopSession.wallpaperEpoch` so re-setting the SAME
+// workspace's wallpaper (same currentWorkspace) still triggers a reload.
+let wallpaperEpoch = $state(0);
 // Incrementing token consumed by NoteWindow to grab keyboard focus + play
 // the opened/refocus flash animation. Using a counter (instead of a guid)
 // means two consecutive requests for the same window still re-trigger.
@@ -460,6 +464,15 @@ export const desktopSession = {
 
 	get currentWorkspace(): number {
 		return currentWorkspaceIndex;
+	},
+
+	get wallpaperEpoch(): number {
+		return wallpaperEpoch;
+	},
+
+	/** Set the wallpaper for the currently-active workspace. */
+	async setWallpaperForCurrent(blob: Blob): Promise<void> {
+		await setWallpaper(blob, currentWorkspaceIndex);
 	},
 
 	get workspaceCount(): number {
@@ -1074,17 +1087,27 @@ export const desktopSession = {
 
 // --- Wallpaper -----------------------------------------------------------
 
-export async function loadWallpaper(): Promise<Blob | null> {
-	const blob = await getSetting<Blob>(WALLPAPER_KEY);
-	return blob ?? null;
+/**
+ * Load workspace `i`'s wallpaper. Falls back to the legacy global
+ * `desktop:wallpaper` key (pre-per-workspace) when the workspace has none,
+ * so existing users keep their wallpaper on every workspace until they set
+ * a per-workspace one.
+ */
+export async function loadWallpaper(i: number): Promise<Blob | null> {
+	const own = await getSetting<Blob>(`${WALLPAPER_KEY}:${i}`);
+	if (own) return own;
+	const legacy = await getSetting<Blob>(WALLPAPER_KEY);
+	return legacy ?? null;
 }
 
-export async function setWallpaper(file: File): Promise<void> {
-	await setSetting(WALLPAPER_KEY, file);
+export async function setWallpaper(blob: Blob, i: number): Promise<void> {
+	await setSetting(`${WALLPAPER_KEY}:${i}`, blob);
+	wallpaperEpoch += 1;
 }
 
-export async function clearWallpaper(): Promise<void> {
-	await deleteSetting(WALLPAPER_KEY);
+export async function clearWallpaper(i: number): Promise<void> {
+	await deleteSetting(`${WALLPAPER_KEY}:${i}`);
+	wallpaperEpoch += 1;
 }
 
 export const DESKTOP_WINDOW_MIN_WIDTH = MIN_WIDTH;

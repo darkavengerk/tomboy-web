@@ -31,8 +31,6 @@
 		(async () => {
 			await desktopSession.load();
 			ready = true;
-			const blob = await loadWallpaper();
-			if (blob) wallpaperUrl = URL.createObjectURL(blob);
 		})();
 
 		const handler = (e: KeyboardEvent) => onKey(e);
@@ -53,6 +51,31 @@
 				URL.revokeObjectURL(wallpaperUrl);
 				wallpaperUrl = null;
 			}
+		};
+	});
+
+	// Reload the canvas wallpaper for the active workspace. Re-runs on
+	// workspace switch (currentWorkspace) and on any wallpaper set/clear
+	// (wallpaperEpoch). The token guards against a fast switch resolving an
+	// older load after a newer one; the cleanup `cancelled` flag also aborts
+	// an in-flight load on unmount, so a load that resolves after the component
+	// is gone can't create an orphan ObjectURL the unmount revoke already missed.
+	let wallpaperLoadToken = 0;
+	$effect(() => {
+		const ws = desktopSession.currentWorkspace;
+		void desktopSession.wallpaperEpoch; // reactive dependency
+		const token = ++wallpaperLoadToken;
+		let cancelled = false;
+		void (async () => {
+			const blob = await loadWallpaper(ws);
+			if (cancelled || token !== wallpaperLoadToken) return; // superseded or unmounted
+			const next = blob ? URL.createObjectURL(blob) : null;
+			const prev = wallpaperUrl;
+			wallpaperUrl = next;
+			if (prev) URL.revokeObjectURL(prev);
+		})();
+		return () => {
+			cancelled = true;
 		};
 	});
 
@@ -270,13 +293,10 @@
 		if (!file || !file.type.startsWith('image/')) return;
 		e.preventDefault();
 		try {
-			await setWallpaper(file);
+			await setWallpaper(file, desktopSession.currentWorkspace);
 		} catch {
 			return;
 		}
-		const prev = wallpaperUrl;
-		wallpaperUrl = URL.createObjectURL(file);
-		if (prev) URL.revokeObjectURL(prev);
 	}
 </script>
 
