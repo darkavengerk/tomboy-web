@@ -58,6 +58,7 @@
 		border-bottom: 1px solid var(--color-border, #e5e7eb);
 		padding: 12px 24px 0;
 		background: var(--color-bg-secondary, #f7f7f8);
+		flex-shrink: 0;
 	}
 	.admin-title {
 		display: flex;
@@ -82,8 +83,20 @@
 	.admin-tabs {
 		display: flex;
 		gap: 4px;
+		/* 좁은 화면에서 탭들이 짓눌려 라벨이 글자 단위로 세로 줄바꿈되던 문제.
+		   가로 스크롤로 넘기게 하고(탭은 줄바꿈/축소 금지), overflow-x:auto 가
+		   암묵적으로 켜는 세로 축은 막아 출렁임을 방지. 스크롤바는 숨김. */
+		overflow-x: auto;
+		overflow-y: hidden;
+		overscroll-behavior-x: contain;
+		scrollbar-width: none; /* Firefox */
+	}
+	.admin-tabs::-webkit-scrollbar {
+		display: none; /* WebKit / Chrome / Safari */
 	}
 	.tab {
+		flex: 0 0 auto;
+		white-space: nowrap;
 		padding: 8px 14px;
 		text-decoration: none;
 		color: var(--color-text-secondary, #6b7280);
