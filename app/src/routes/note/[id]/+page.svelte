@@ -775,17 +775,24 @@
 		titleDialogOpen = false;
 		if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
 		await flushSave();
-		const ok = await renameNote(note.guid, r.title);
+		const t0 = performance.now();
+		const { ok, backlinksUpdated } = await renameNote(note.guid, r.title);
 		if (!ok) {
 			pushToast('이미 같은 제목의 노트가 있거나 제목이 비어 있습니다.', { kind: 'error' });
 			return;
 		}
+		const ms = Math.round(performance.now() - t0);
 		if (r.notebook !== currentNotebook) {
 			await assignNotebook(note.guid, r.notebook);
 		}
 		const updated = await getNote(note.guid);
 		if (updated) note = updated;
-		pushToast('제목이 변경되었습니다.');
+		newNoteFlow.openResult({
+			heading: '제목 변경 완료',
+			title: r.title,
+			guid: note.guid,
+			stages: [{ name: `제목 변경 · 백링크 ${backlinksUpdated}개 갱신`, ms, status: 'done' }]
+		});
 	}
 </script>
 

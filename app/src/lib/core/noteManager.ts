@@ -215,19 +215,24 @@ export async function updateNoteFromEditor(
 /**
  * 에디터 밖(타이틀 수정 다이얼로그/메뉴)에서 노트 제목을 바꾼다.
  * note-content 첫 줄 + note.title 동기 갱신 → 백링크 rename 캐스케이드 →
- * 열린 에디터 리로드. 충돌이면 아무것도 바꾸지 않고 false.
+ * 열린 에디터 리로드. 충돌이면 아무것도 바꾸지 않고 ok:false.
  */
-export async function renameNote(guid: string, newTitle: string): Promise<boolean> {
+export async function renameNote(
+	guid: string,
+	newTitle: string
+): Promise<{ ok: boolean; backlinksUpdated: number }> {
 	const note = await noteStore.getNote(guid);
-	if (!note) return false;
+	if (!note) return { ok: false, backlinksUpdated: 0 };
 	const trimmed = newTitle.trim();
-	if (!trimmed) return false;
-	if (trimmed === note.title) return true; // no-op (성공 취급)
+	if (!trimmed) return { ok: false, backlinksUpdated: 0 };
+	if (trimmed === note.title) return { ok: true, backlinksUpdated: 0 }; // no-op (성공 취급)
 
 	// 권위 있는 충돌 검사 — by-title IDB 인덱스를 읽는 full lookup 이라 워밍된
 	// in-memory 인덱스에 의존하지 않는다(테스트/직접-IDB 경로에서도 정확).
 	const existing = await noteStore.findNoteByTitle(trimmed);
-	if (existing && existing.guid !== guid && !existing.deleted) return false;
+	if (existing && existing.guid !== guid && !existing.deleted) {
+		return { ok: false, backlinksUpdated: 0 };
+	}
 
 	const oldTitle = note.title;
 	const now = formatTomboyDate(new Date());
@@ -244,7 +249,7 @@ export async function renameNote(guid: string, newTitle: string): Promise<boolea
 	// 자기 자신 + 백링크 대상 에디터를 리로드 — 자기 노트의 in-memory doc 은
 	// 아직 옛 첫 줄을 들고 있어 리로드하지 않으면 다음 저장에 덮어쓴다.
 	await emitNoteReload([guid, ...affected]);
-	return true;
+	return { ok: true, backlinksUpdated: affected.length };
 }
 
 /**
