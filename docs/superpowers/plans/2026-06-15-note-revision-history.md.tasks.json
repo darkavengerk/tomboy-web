@@ -1,0 +1,52 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-15-note-revision-history.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: searchNoteRevisions via filesSearchV2",
+      "status": "pending",
+      "description": "**Goal:** dropboxClient.searchNoteRevisions(guid) returns all stored versions {rev,date} (desc) via filesSearchV2; parse/collect split into pure exported helpers.\n\n**Files:** Modify app/src/lib/sync/dropboxClient.ts; Test app/tests/unit/lib/sync/searchNoteRevisions.test.ts\n\n**Verify:** cd app && npm run test -- searchNoteRevisions\n\n```json:metadata\n{\"files\": [\"app/src/lib/sync/dropboxClient.ts\", \"app/tests/unit/lib/sync/searchNoteRevisions.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- searchNoteRevisions\", \"acceptanceCriteria\": [\"parseNoteRevFromPath parses/rejects\", \"collectNoteRevisions filters/dedupes/sorts desc\", \"searchNoteRevisions paginates\", \"throws unauthenticated\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: noteHistory data module",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** createNoteHistory(guid) fills versions via search (inject current rev; manifest-scan fallback + load-more), lazy body cache, pure label/plaintext helpers.\n\n**Files:** Create app/src/lib/desktop/noteHistory.svelte.ts; Test app/tests/unit/lib/desktop/noteHistory.test.ts\n\n**Verify:** cd app && npm run test -- noteHistory\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/noteHistory.svelte.ts\", \"app/tests/unit/lib/desktop/noteHistory.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- noteHistory\", \"acceptanceCriteria\": [\"load desc + inject current rev\", \"empty search => fallback scan\", \"fetchBody caches\", \"noteToPlainText + formatVersionLabel\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: TomboyEditor readOnly prop",
+      "status": "pending",
+      "description": "**Goal:** Add readOnly?:boolean (default false) → editable:!readOnly + skip autolink scan. Existing callers unchanged.\n\n**Files:** Modify app/src/lib/editor/TomboyEditor.svelte; Test app/tests/unit/lib/editor/tomboyEditorReadOnly.test.ts\n\n**Verify:** cd app && npm run test -- tomboyEditorReadOnly\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/TomboyEditor.svelte\", \"app/tests/unit/lib/editor/tomboyEditorReadOnly.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- tomboyEditorReadOnly\", \"acceptanceCriteria\": [\"default editable true\", \"readOnly=>contenteditable false\", \"autolink skipped\", \"no regression\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: session kind 'history' + openHistory + persist exclude",
+      "status": "pending",
+      "description": "**Goal:** Add kind:'history', HISTORY_GUID_PREFIX, openHistory(sourceGuid) (singleton beside source, same size); exclude history windows from persistence.\n\n**Files:** Modify app/src/lib/desktop/session.svelte.ts; Test app/tests/unit/lib/desktop/openHistory.test.ts\n\n**Verify:** cd app && npm run test -- openHistory\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/session.svelte.ts\", \"app/tests/unit/lib/desktop/openHistory.test.ts\"], \"verifyCommand\": \"cd app && npm run test -- openHistory\", \"acceptanceCriteria\": [\"beside source same size clamped x\", \"no-op absent source\", \"singleton focus\", \"persist excludes history\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: HistoryWindow component",
+      "status": "pending",
+      "blockedBy": [2, 3, 4],
+      "description": "**Goal:** HistoryWindow.svelte — title bar + toolbar (dropdown + diff toggle + load-more) + body (read-only TomboyEditor or line-diff). Mount: cache live text, load, default-select versions[1]??[0].\n\n**Files:** Create app/src/lib/desktop/HistoryWindow.svelte\n\n**Verify:** cd app && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/HistoryWindow.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"title-bar/resize skeleton\", \"dropdown->fetchBody->read-only editor\", \"diff vs live note\", \"live text cached\", \"loading/error/fallback\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: wire menu action + workspace render branch",
+      "status": "pending",
+      "blockedBy": [4, 5],
+      "description": "**Goal:** NoteContextMenu '🕘 히스토리' item (ActionKind 'history'), NoteWindow.handleAction → openHistory, DesktopWorkspace renders kind:'history' as HistoryWindow.\n\n**Files:** Modify app/src/lib/editor/NoteContextMenu.svelte, app/src/lib/desktop/NoteWindow.svelte, app/src/lib/desktop/DesktopWorkspace.svelte\n\n**Verify:** cd app && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/NoteContextMenu.svelte\", \"app/src/lib/desktop/NoteWindow.svelte\", \"app/src/lib/desktop/DesktopWorkspace.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"menu item wired to openHistory\", \"history kind renders HistoryWindow\", \"check passes\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: guide card + full verify",
+      "status": "pending",
+      "blockedBy": [6],
+      "description": "**Goal:** 설정→가이드 notes sub-tab history card (documentation invariant); full check + test pass.\n\n**Files:** Modify app/src/routes/settings/+page.svelte\n\n**Verify:** cd app && npm run check && npm run test\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check && npm run test\", \"acceptanceCriteria\": [\"guide card matches pattern\", \"check passes\", \"full test passes\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-15"
+}
