@@ -536,12 +536,12 @@
 		onclose?.();
 	}
 
-	// ↗ 꺼내기 — 활성 잎 노트를 단독으로 열기(전용 크롬 / 탭 더블클릭 공용).
-	function handleEject(e: Event) {
+	// ↗ 탭별 꺼내기 — 해당 잎 노트를 단독으로 열기(탭 스트립 전용). 카테고리
+	// 탭엔 안 붙는다(단독 열 노트가 없음). 탭 더블클릭 경로도 그대로 유지.
+	function handleTabEject(e: Event, node: ResolvedNode) {
 		e.preventDefault();
 		e.stopPropagation();
-		const l = activeLeaf;
-		if (l && !l.broken && l.link) oninternallink?.(l.link);
+		if (node.isLeaf && !node.broken && node.link) oninternallink?.(node.link);
 	}
 
 	/** "하단이 최신" 노트 — 본문 첫 마운트 직후 끝으로 스크롤(rAF×2). */
@@ -649,7 +649,8 @@
 		{@render tabLevel(tree, 0, true)}
 	{/if}
 	{#if dedicated}
-		<!-- 전용 노트 크롬 — 우상단 [✎편집(Ctrl)][↗꺼내기][✕닫기]. 항상 표시. -->
+		<!-- 전용 노트 크롬 — 우상단 [✎편집(Ctrl)][✕닫기]. 꺼내기는 탭 스트립의
+		     타이틀별 ↗ 버튼이 맡는다. 항상 표시. -->
 		<div class="dedicated-chrome">
 			{#if modKeys.ctrl && onraw}
 				<button
@@ -659,12 +660,6 @@
 					use:direct={{ click: handleRawEdit, pointerdown: stopEvt, mousedown: stopEvt }}
 				>✎ 편집</button>
 			{/if}
-			<button
-				type="button"
-				class="dchrome-btn"
-				title="활성 노트 단독으로 열기"
-				use:direct={{ click: handleEject, pointerdown: stopEvt, mousedown: stopEvt }}
-			>↗ 꺼내기</button>
 			{#if onclose}
 				<button
 					type="button"
@@ -716,6 +711,22 @@
 					out:fade={{ duration: ready ? 120 : 0 }}
 					use:direct={{ click: () => handleTabClick(depth, it.idx, it.node) }}
 				>
+					{#if it.node.isLeaf && !it.node.broken && it.node.link}
+						<!-- ↗ 꺼내기 — 라벨 왼쪽. 잎 탭에서 바로 단독 열기. 격벽이
+						     Svelte 위임 click 을 죽이므로 direct 로 직접 바인딩하고
+						     stopEvt 로 탭 선택/더블클릭 판정에서 분리한다. -->
+						<span
+							class="tab-eject"
+							role="button"
+							tabindex="-1"
+							title="노트 단독으로 열기"
+							use:direct={{
+								click: (ev) => handleTabEject(ev, it.node),
+								pointerdown: stopEvt,
+								mousedown: stopEvt
+							}}
+						>↗</span>
+					{/if}
 					<span class="tab-label">{it.node.label || '(빈 카테고리)'}</span>
 				</button>
 			{/each}
@@ -811,6 +822,9 @@
 	.bundle-stack {
 		display: flex;
 		flex-direction: column;
+		/* 편집 버튼(.bundle-edit-btn, position:absolute) 의 기준 — 없으면 상위
+		   에디터 컨테이너 우상단으로 새어나가 노트에 여러 탭이 있을 때 겹친다. */
+		position: relative;
 		margin: 8px 0;
 		border: 1px solid #444;
 		border-radius: 6px;
@@ -936,6 +950,19 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		text-align: left;
+	}
+	/* ↗ 타이틀별 꺼내기 — 라벨 왼쪽의 작은 아이콘 버튼. */
+	.tab-eject {
+		flex-shrink: 0;
+		margin-right: 4px;
+		color: inherit;
+		opacity: 0.6;
+		cursor: pointer;
+		font-size: 0.78rem;
+		line-height: 1;
+	}
+	.tab-eject:hover {
+		opacity: 1;
 	}
 	.tab.cat .tab-label::before {
 		content: '▤ ';

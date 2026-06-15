@@ -543,16 +543,18 @@
 		if (ae && rootEl?.contains(ae)) ae.blur();
 	}
 
-	// 편집 헤더 — ← 돌아가기(훑어보기) / ↗ 꺼내기(단독 열기).
+	// 편집 헤더 — ← 돌아가기(훑어보기). 꺼내기는 훑어보기 목록의 타이틀별
+	// ↗ 버튼이 맡는다(편집 중엔 불필요).
 	function handleEditBack(e: Event) {
 		e.preventDefault();
 		e.stopPropagation();
 		exitEdit();
 	}
-	function handleEject(e: Event) {
+	// ↗ 타이틀별 꺼내기 — 해당 노트를 단독으로 열기(훑어보기 목록 전용).
+	function handleBarEject(e: Event, title: string) {
 		e.preventDefault();
 		e.stopPropagation();
-		if (expanded && !expanded.broken) oninternallink?.(expanded.title);
+		oninternallink?.(title);
 	}
 
 	/** "하단이 최신" 노트 — 세션 첫 마운트 직후 본문 스크롤을 끝으로.
@@ -782,12 +784,6 @@
 				use:direct={{ click: handleEditBack, pointerdown: stopEvt, mousedown: stopEvt }}
 			>←</button>
 			<span class="edit-title">{expanded.title}</span>
-			<button
-				type="button"
-				class="edit-nav edit-eject"
-				title="노트 단독으로 열기"
-				use:direct={{ click: handleEject, pointerdown: stopEvt, mousedown: stopEvt }}
-			>↗</button>
 		</div>
 	{/if}
 	{#if resolved.length === 0}
@@ -815,6 +811,22 @@
 					class:off
 					data-idx={idx}
 				>
+					{#if !e.broken}
+						<!-- ↗ 꺼내기 — 타이틀 왼쪽. 목록에서 바로 단독 열기. 격벽이
+						     Svelte 위임 click 을 죽이므로 direct 액션으로 직접 바인딩.
+						     pointerdown stopEvt 로 바 스와이프/탭 판정에서 분리. -->
+						<span
+							class="bar-eject"
+							role="button"
+							tabindex="-1"
+							title="노트 단독으로 열기"
+							use:direct={{
+								click: (ev) => handleBarEject(ev, e.title),
+								pointerdown: stopEvt,
+								mousedown: stopEvt
+							}}
+						>↗</span>
+					{/if}
 					{#if e.category}
 						<!-- 카테고리(상위 들여쓰기 항목 타이틀) — 제목 왼쪽에 표시.
 						     우측 +N 배지와 엉키지 않게 좌측으로 옮김. -->
@@ -892,8 +904,8 @@
 		</div>
 	{/if}
 	{#if dedicated}
-		<!-- 전용 노트 크롬(훑어보기 전용) — 우상단 [✎편집(Ctrl)][↗꺼내기][✕닫기].
-		     편집 모드에선 .edit-header 가 ←/↗ 를 맡으므로 여기선 안 띄운다. -->
+		<!-- 전용 노트 크롬(훑어보기 전용) — 우상단 [✎편집(Ctrl)][✕닫기]. 꺼내기는
+		     목록 타이틀별 ↗ 버튼이 맡는다. 편집 모드에선 .edit-header 가 ← 를 맡는다. -->
 		{#if mode === 'browse'}
 			<div class="dedicated-chrome">
 				{#if modKeys.ctrl && onraw}
@@ -904,12 +916,6 @@
 						use:direct={{ click: handleRawEdit, pointerdown: stopEvt, mousedown: stopEvt }}
 					>✎ 편집</button>
 				{/if}
-				<button
-					type="button"
-					class="dchrome-btn"
-					title="활성 노트 단독으로 열기"
-					use:direct={{ click: handleEject, pointerdown: stopEvt, mousedown: stopEvt }}
-				>↗ 꺼내기</button>
 				{#if onclose}
 					<button
 						type="button"
@@ -947,6 +953,9 @@
 	.bundle-stack {
 		display: flex;
 		flex-direction: column;
+		/* 편집 버튼(.bundle-edit-btn, position:absolute) 의 기준 — 없으면 상위
+		   에디터 컨테이너 우상단으로 새어나가 노트에 여러 묶음이 있을 때 겹친다. */
+		position: relative;
 		margin: 8px 0;
 		border: 1px solid #444;
 		border-radius: 6px;
@@ -1062,6 +1071,21 @@
 		margin-left: 6px;
 		vertical-align: -1px;
 		background: #556;
+	}
+	/* ↗ 타이틀별 꺼내기 — 타이틀 왼쪽의 작은 아이콘 버튼. */
+	.bar-eject {
+		flex-shrink: 0;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		color: #9fd4b3;
+		opacity: 0.7;
+		cursor: pointer;
+		font-size: 0.9rem;
+		line-height: 1;
+	}
+	.bar-eject:hover {
+		opacity: 1;
 	}
 	.bar-badge {
 		flex-shrink: 0;
