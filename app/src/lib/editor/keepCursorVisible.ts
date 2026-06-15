@@ -33,6 +33,14 @@ import type { Editor } from "@tiptap/core";
 export interface CursorVisibilityOptions {
 	/** Scroll model. Defaults to "window" (mobile body-scroll layout). */
 	mode?: "window" | "container";
+	/**
+	 * Gate for the scroll nudge. Read fresh on every check(), so a caller can
+	 * flip the module off live (the 설정 → 디버그 toggle does this on mobile).
+	 * Defaults to always-on; desktop container mode never passes a disabling
+	 * getter, since its overflow scroller is the only thing keeping the caret
+	 * above the toolbar.
+	 */
+	enabled?: () => boolean;
 }
 
 // A focus precedes the on-screen keyboard animation; the visualViewport only
@@ -119,6 +127,8 @@ export function installCursorVisibility(
 
 	const check = () => {
 		frame = 0;
+		// Debug gate (live): module switched off → leave native scroll alone.
+		if (opts.enabled && !opts.enabled()) return;
 		// A pointer landed between scheduling and this frame — re-latch.
 		if (pointersDown > 0) {
 			pendingAfterPointer = true;

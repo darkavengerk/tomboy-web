@@ -14,6 +14,7 @@
 	import { appMode, modeFromUrl } from '$lib/stores/appMode.svelte.js';
 	import { mode } from '$lib/stores/guestMode.svelte.js';
 	import { bindViewportHeight } from '$lib/viewport/viewportHeight.js';
+	import { cursorDebug } from '$lib/stores/cursorDebug.svelte.js';
 	import {
 		installOnlineFlushListener,
 		flushIfEnabled
@@ -218,8 +219,6 @@
 		};
 		window.addEventListener('beforeinstallprompt', onInstallPrompt);
 
-		const unbindViewport = bindViewportHeight();
-
 		// 즐겨찾기 — 로컬 전용 set 을 appSettings 에서 복원.
 		void favoriteStore.load();
 
@@ -282,10 +281,17 @@
 			window.removeEventListener('beforeinstallprompt', onInstallPrompt);
 			window.removeEventListener('keydown', swallowAlt);
 			window.removeEventListener('keyup', swallowAlt);
-			unbindViewport();
 			unsubFcm?.();
 			uninstallMusicAudio();
 		};
+	});
+
+	// --keyboard-inset 발행 (고정 툴바가 키보드 위로 뜨도록 + scroll-padding 계산).
+	// onMount 가 아니라 $effect 로 둬서 디버그 토글(설정 → 디버그)이 켜고 끌 때
+	// 즉시 바인딩/해제되게 한다. 끄면 cleanup 이 --keyboard-inset 을 제거한다.
+	$effect(() => {
+		if (!cursorDebug.keyboardInset) return;
+		return bindViewportHeight();
 	});
 
 	// 새 배포 감지 안내 — version.pollInterval(svelte.config.js) 이 새 버전을

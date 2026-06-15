@@ -155,6 +155,36 @@ describe("installCursorVisibility — selection-mode regression", () => {
 	});
 });
 
+describe("installCursorVisibility — enabled gate (debug toggle)", () => {
+	it("does NOT scroll a collapsed caret under the toolbar when enabled() is false", () => {
+		const editor = makeFakeEditor({ empty: true, caretBottom: 790 });
+		install(editor, { mode: "window", enabled: () => false });
+		editor.fire("selectionUpdate");
+		expect(scrollBy).not.toHaveBeenCalled();
+	});
+
+	it("scrolls when enabled() is true (same as no gate)", () => {
+		const editor = makeFakeEditor({ empty: true, caretBottom: 790 });
+		install(editor, { mode: "window", enabled: () => true });
+		editor.fire("selectionUpdate");
+		expect(scrollBy).toHaveBeenCalledTimes(1);
+	});
+
+	it("re-reads enabled() live (the check honours a flip, not the install-time value)", () => {
+		let on = false;
+		const editor = makeFakeEditor({ empty: true, caretBottom: 790 });
+		install(editor, { mode: "window", enabled: () => on });
+		// The pointer gate latches the trigger WITHOUT consuming an rAF, so the
+		// deferred check on pointerup is a fresh check() — it re-reads enabled()
+		// at that moment. A value captured at install (false) would never scroll.
+		document.dispatchEvent(new Event("pointerdown"));
+		editor.fire("selectionUpdate");
+		on = true; // flip AFTER install, BEFORE the deferred check runs
+		document.dispatchEvent(new Event("pointerup"));
+		expect(scrollBy).toHaveBeenCalledTimes(1);
+	});
+});
+
 describe("installCursorVisibility — pointer-down gate (collapsed-caret drag)", () => {
 	// iOS loupe / Android teardrop caret-handle drags keep the selection
 	// COLLAPSED the whole time, so the selection.empty guard never engages.

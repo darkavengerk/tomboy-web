@@ -5,6 +5,7 @@
 		installCursorVisibility,
 		shouldDeferScrollToSelection,
 	} from "./keepCursorVisible.js";
+	import { cursorDebug } from "$lib/stores/cursorDebug.svelte.js";
 	import { applyCommandModeKeyboard } from "./commandModeKeyboard.js";
 	import StarterKit from "@tiptap/starter-kit";
 	import Highlight from "@tiptap/extension-highlight";
@@ -835,8 +836,17 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 				// stay with PM (returning false keeps its default behaviour).
 				...(keepCursorVisible
 					? {
-							handleScrollToSelection: (view: Editor["view"]) =>
-								shouldDeferScrollToSelection(view, cursorVisibilityMode),
+							handleScrollToSelection: (view: Editor["view"]) => {
+								// Debug (mobile/window only): with PM-scroll-defer off,
+								// return false so ProseMirror runs its own native
+								// scrollToSelection. Desktop container mode ignores the flag.
+								if (
+									cursorVisibilityMode === "window" &&
+									!cursorDebug.pmScrollDefer
+								)
+									return false;
+								return shouldDeferScrollToSelection(view, cursorVisibilityMode);
+							},
 						}
 					: {}),
 				handleKeyDown: (_view, event) => {
@@ -1169,7 +1179,15 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		// note route + desktop NoteWindow opt in). No-op unless the mode's
 		// toolbar var (--toolbar-height / --toolbar-h) is set.
 		const uninstallCursorVisibility = keepCursorVisible
-			? installCursorVisibility(editor, { mode: cursorVisibilityMode })
+			? installCursorVisibility(editor, {
+					mode: cursorVisibilityMode,
+					// Debug (mobile/window only): jsCursorNudge gates the scrollBy.
+					// Desktop container mode always runs — its overflow scroller
+					// ignores scroll-padding, so the JS nudge is the only thing
+					// keeping the caret above the toolbar.
+					enabled: () =>
+						cursorVisibilityMode === "container" || cursorDebug.jsCursorNudge,
+				})
 			: () => {};
 
 		return () => {

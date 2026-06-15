@@ -97,8 +97,14 @@
 	} from '$lib/storage/appSettings.js';
 	import { CLAUDE_VALID_EFFORTS } from '$lib/chatNote/defaults.js';
 	import RemarkableSendSettings from '$lib/remarkable/RemarkableSendSettings.svelte';
+	import {
+		cursorDebug,
+		setCursorDebug,
+		resetCursorDebug,
+		type CursorDebugFlag
+	} from '$lib/stores/cursorDebug.svelte.js';
 
-	type Tab = 'sync' | 'config' | 'share' | 'terminal' | 'notify' | 'guide' | 'shortcuts' | 'advanced' | 'claude' | 'remarkable';
+	type Tab = 'sync' | 'config' | 'share' | 'terminal' | 'notify' | 'guide' | 'shortcuts' | 'advanced' | 'claude' | 'remarkable' | 'debug';
 	let activeTab = $state<Tab>('sync');
 
 	// 가이드 탭 내부 sub-tab. 콘텐츠 양이 많아 카테고리별 분리.
@@ -894,13 +900,46 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 		{ id: 'shortcuts', label: '단축키' },
 		{ id: 'advanced', label: '고급' },
 		{ id: 'claude', label: 'Claude' },
-		{ id: 'remarkable', label: '리마커블' }
+		{ id: 'remarkable', label: '리마커블' },
+		{ id: 'debug', label: '디버그' }
 	];
 
 	const guideSubTabs: { id: GuideSubTab; label: string }[] = [
 		{ id: 'notes', label: '노트 형식' },
 		{ id: 'editor', label: '에디터 블록' },
 		{ id: 'env', label: '환경 / 호환성' }
+	];
+
+	// 디버그 탭 — 모바일 커서/스크롤 동작을 액터별로 켜고 끄는 토글. 각 항목은
+	// keepCursorVisible / scroll-padding / --keyboard-inset / 빈공간 탭 포커스를
+	// 가린다. 데스크톱 창에는 영향 없음(window 모드 전용). 자세한 배경은
+	// cursorDebug.svelte.ts 주석 참고.
+	const cursorDebugItems: { flag: CursorDebugFlag; label: string; desc: string }[] = [
+		{
+			flag: 'jsCursorNudge',
+			label: 'JS 커서 보정 (installCursorVisibility)',
+			desc: '타이핑/탭마다 캐럿이 하단 툴바에 가렸는지 계산해 window.scrollBy 로 살짝 내려주는 모듈. 끄면 브라우저/PM 기본 스크롤에만 의존합니다.'
+		},
+		{
+			flag: 'pmScrollDefer',
+			label: 'PM 기본 스크롤 억제 (handleScrollToSelection)',
+			desc: '켜짐: ProseMirror 자체 scroll-into-view 를 막고 위 JS 보정에 위임. 끄면 PM 이 매 키 입력마다 직접 캐럿을 스크롤합니다 (위로 튐의 유력 후보).'
+		},
+		{
+			flag: 'scrollPadding',
+			label: 'scroll-padding-bottom 예약',
+			desc: '스크롤 루트 하단에 (툴바+키보드) 높이만큼 여백을 예약해 브라우저 native 스크롤이 캐럿을 툴바 위에 유지하게 하는 표준 방식.'
+		},
+		{
+			flag: 'keyboardInset',
+			label: '키보드 inset 추적 (--keyboard-inset)',
+			desc: 'visualViewport 로 키보드 높이를 재서 CSS 변수로 발행. 고정 툴바를 키보드 위로 띄우고 scroll-padding 계산에도 쓰입니다. 끄면 0 으로 간주.'
+		},
+		{
+			flag: 'whitespaceTapFocus',
+			label: '빈 공간 탭 → 문서 끝 포커스',
+			desc: '에디터의 빈 영역을 탭하면 focus("end") 로 캐럿을 문서 끝에 두고 키보드를 올립니다. 긴 노트에서 잘못 새면 페이지가 끝으로 튈 수 있음.'
+		}
 	];
 </script>
 
@@ -2834,6 +2873,39 @@ Complete:</pre>
 		{:else if activeTab === 'remarkable'}
 			<!-- ── 리마커블 탭 ───────────────────────────────────────────── -->
 			<RemarkableSendSettings />
+		{:else if activeTab === 'debug'}
+			<!-- ── 디버그 탭 ─────────────────────────────────────────────── -->
+			<section class="section">
+				<h2>모바일 커서 / 스크롤</h2>
+				<p class="info-text">
+					모바일 노트 편집 중 뷰포트를 움직이는 동작들을 개별로 켜고 끕니다.
+					“타이핑 시 커서가 위로 튐 / 선택 시 화면이 내려감” 증상을 어느 동작이
+					만드는지 조합을 바꿔가며 찾기 위한 진단 도구입니다. 대부분 즉시 반영되지만,
+					확실히 적용하려면 <strong>노트를 다시 열거나 새로고침</strong>하세요.
+					데스크톱 창에는 영향을 주지 않습니다.
+				</p>
+				{#each cursorDebugItems as item (item.flag)}
+					<div class="debug-toggle">
+						<label class="profile-row">
+							<input
+								type="checkbox"
+								checked={cursorDebug[item.flag]}
+								onchange={(e) => setCursorDebug(item.flag, e.currentTarget.checked)}
+							/>
+							<span>{item.label}</span>
+						</label>
+						<p class="info-text small">{item.desc}</p>
+					</div>
+				{/each}
+				<button class="btn btn-secondary" onclick={resetCursorDebug}>
+					기본값으로 되돌리기 (전부 켜기)
+				</button>
+				<p class="info-text small">
+					참고: “strip-to-native” 실험 = <strong>JS 커서 보정</strong>·<strong>PM 기본
+					스크롤 억제</strong> 끄고 나머지 켠 상태. native 스크롤 + scroll-padding 만으로
+					두 증상이 사라지는지 확인하세요.
+				</p>
+			</section>
 		{/if}
 	</main>
 </div>
@@ -3103,6 +3175,18 @@ Complete:</pre>
 		gap: 8px;
 		margin-top: 8px;
 		margin-bottom: 4px;
+	}
+
+	/* 디버그 탭: 토글 한 줄 + 설명 단락을 한 묶음으로 띄움. */
+	.debug-toggle {
+		margin-bottom: 14px;
+	}
+	.debug-toggle .profile-row {
+		font-weight: 600;
+	}
+	.debug-toggle .info-text.small {
+		margin-top: 4px;
+		margin-bottom: 0;
 	}
 
 	.profile-btn {

@@ -19,6 +19,7 @@
 	import type { NoteData } from '$lib/core/note.js';
 	import { createTitleProvider } from '$lib/editor/autoLink/titleProvider.js';
 	import { isEditorAreaWhitespaceClick } from '$lib/editor/editorAreaClick.js';
+	import { cursorDebug } from '$lib/stores/cursorDebug.svelte.js';
 	import { findAdjacentDateNotes } from '$lib/editor/dateLink/findAdjacentDateNotes.js';
 	import TomboyEditor from '$lib/editor/TomboyEditor.svelte';
 	import Toolbar from '$lib/editor/Toolbar.svelte';
@@ -117,8 +118,15 @@
 		const el = toolbarAreaEl;
 		const root = document.documentElement;
 		if (!el) return;
-		root.style.scrollPaddingBottom =
-			"calc(var(--toolbar-height, 0px) + var(--keyboard-inset, 0px))";
+		// Debug toggle: the scroll-padding-bottom reservation (native-scroll
+		// path). --toolbar-height is published regardless — the JS nudge reads
+		// it too — so only the padding is gated here.
+		if (cursorDebug.scrollPadding) {
+			root.style.scrollPaddingBottom =
+				"calc(var(--toolbar-height, 0px) + var(--keyboard-inset, 0px))";
+		} else {
+			root.style.removeProperty("scroll-padding-bottom");
+		}
 		const sync = () =>
 			root.style.setProperty("--toolbar-height", `${el.offsetHeight}px`);
 		sync();
@@ -397,6 +405,7 @@
 	// predicate — focus('end') scrolls to the document end, so a leak here is
 	// a full-page jump mid-read (see editorAreaClick.ts).
 	function handleEditorAreaClick(event: MouseEvent) {
+		if (!cursorDebug.whitespaceTapFocus) return; // debug toggle
 		if (!isEditorAreaWhitespaceClick(event.target as Element | null)) return;
 		const ed = getEditor();
 		if (!ed) return;
