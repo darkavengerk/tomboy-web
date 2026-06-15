@@ -8,8 +8,25 @@ import { sidePanelLayout } from './sidePanelLayout.svelte.js';
 
 const STORAGE_KEY = 'desktop:session';
 const WALLPAPER_KEY = 'desktop:wallpaper';
+const WALLPAPER_MODE_KEY = 'desktop:wallpaper-mode';
 const VERSION = 3;
 const WORKSPACE_COUNT = 4;
+
+/**
+ * How a workspace wallpaper image fills the canvas. Mirrors the common
+ * desktop-OS options. `contain` is the historical default (the original
+ * single-wallpaper render used `object-fit: contain`), so existing wallpapers
+ * keep their look until a mode is explicitly chosen.
+ *
+ * - `cover`   — 채우기: scale to fill, crop overflow
+ * - `contain` — 맞춤: scale to fit whole image, letterbox
+ * - `fill`    — 확대: stretch to exactly fill (may distort)
+ * - `center`  — 가운데: original size, centered
+ * - `tile`    — 바둑판식: repeat at original size
+ */
+export type WallpaperMode = 'cover' | 'contain' | 'fill' | 'center' | 'tile';
+const WALLPAPER_MODES: readonly WallpaperMode[] = ['cover', 'contain', 'fill', 'center', 'tile'];
+const DEFAULT_WALLPAPER_MODE: WallpaperMode = 'contain';
 
 /**
  * 데스크탑 윈도우 z 모델 (CLAUDE.md "z-index 레이어 규약" 참고):
@@ -470,9 +487,9 @@ export const desktopSession = {
 		return wallpaperEpoch;
 	},
 
-	/** Set the wallpaper for the currently-active workspace. */
-	async setWallpaperForCurrent(blob: Blob): Promise<void> {
-		await setWallpaper(blob, currentWorkspaceIndex);
+	/** Set the wallpaper (and optionally its display mode) for the currently-active workspace. */
+	async setWallpaperForCurrent(blob: Blob, mode?: WallpaperMode): Promise<void> {
+		await setWallpaper(blob, currentWorkspaceIndex, mode);
 	},
 
 	get workspaceCount(): number {
@@ -1100,14 +1117,27 @@ export async function loadWallpaper(i: number): Promise<Blob | null> {
 	return legacy ?? null;
 }
 
-export async function setWallpaper(blob: Blob, i: number): Promise<void> {
+export async function setWallpaper(blob: Blob, i: number, mode?: WallpaperMode): Promise<void> {
 	await setSetting(`${WALLPAPER_KEY}:${i}`, blob);
+	if (mode) await setSetting(`${WALLPAPER_MODE_KEY}:${i}`, mode);
 	wallpaperEpoch += 1;
 }
 
 export async function clearWallpaper(i: number): Promise<void> {
 	await deleteSetting(`${WALLPAPER_KEY}:${i}`);
+	await deleteSetting(`${WALLPAPER_MODE_KEY}:${i}`);
 	wallpaperEpoch += 1;
+}
+
+/**
+ * Load workspace `i`'s wallpaper display mode. Unlike the wallpaper blob, the
+ * mode does NOT fall back to a legacy global — there was none — so an unset or
+ * unrecognized value resolves to {@link DEFAULT_WALLPAPER_MODE} (`contain`),
+ * preserving the original render for wallpapers set before modes existed.
+ */
+export async function loadWallpaperMode(i: number): Promise<WallpaperMode> {
+	const stored = await getSetting<WallpaperMode>(`${WALLPAPER_MODE_KEY}:${i}`);
+	return stored && WALLPAPER_MODES.includes(stored) ? stored : DEFAULT_WALLPAPER_MODE;
 }
 
 export const DESKTOP_WINDOW_MIN_WIDTH = MIN_WIDTH;

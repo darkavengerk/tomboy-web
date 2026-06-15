@@ -8,8 +8,10 @@
 	import {
 		desktopSession,
 		loadWallpaper,
+		loadWallpaperMode,
 		setWallpaper,
-		DESKTOP_PINNED_Z
+		DESKTOP_PINNED_Z,
+		type WallpaperMode
 	} from './session.svelte.js';
 	import { sidePanelLayout } from './sidePanelLayout.svelte.js';
 	import { installModKeyListeners } from './modKeys.svelte.js';
@@ -26,6 +28,7 @@
 
 	let ready = $state(false);
 	let wallpaperUrl = $state<string | null>(null);
+	let wallpaperMode = $state<WallpaperMode>('contain');
 
 	onMount(() => {
 		(async () => {
@@ -67,11 +70,12 @@
 		const token = ++wallpaperLoadToken;
 		let cancelled = false;
 		void (async () => {
-			const blob = await loadWallpaper(ws);
+			const [blob, mode] = await Promise.all([loadWallpaper(ws), loadWallpaperMode(ws)]);
 			if (cancelled || token !== wallpaperLoadToken) return; // superseded or unmounted
 			const next = blob ? URL.createObjectURL(blob) : null;
 			const prev = wallpaperUrl;
 			wallpaperUrl = next;
+			wallpaperMode = mode;
 			if (prev) URL.revokeObjectURL(prev);
 		})();
 		return () => {
@@ -309,7 +313,12 @@
 		ondrop={onCanvasDrop}
 	>
 		{#if wallpaperUrl}
-			<img class="wallpaper" src={wallpaperUrl} alt="" aria-hidden="true" />
+			<div
+				class="wallpaper"
+				data-mode={wallpaperMode}
+				style:background-image="url({wallpaperUrl})"
+				aria-hidden="true"
+			></div>
 		{/if}
 		{#if ready}
 			<!-- Render every workspace's windows at once and hide non-active
@@ -433,9 +442,30 @@
 		left: 0;
 		width: 100%;
 		height: 100%;
-		object-fit: contain;
 		pointer-events: none;
 		user-select: none;
 		z-index: 0;
+		/* Base = 맞춤(contain). data-mode overrides below; an unknown mode
+		   keeps this default so old wallpapers render unchanged. */
+		background-repeat: no-repeat;
+		background-position: center;
+		background-size: contain;
+	}
+	.wallpaper[data-mode='cover'] {
+		background-size: cover;
+	}
+	.wallpaper[data-mode='contain'] {
+		background-size: contain;
+	}
+	.wallpaper[data-mode='fill'] {
+		background-size: 100% 100%;
+	}
+	.wallpaper[data-mode='center'] {
+		background-size: auto;
+	}
+	.wallpaper[data-mode='tile'] {
+		background-position: top left;
+		background-repeat: repeat;
+		background-size: auto;
 	}
 </style>
