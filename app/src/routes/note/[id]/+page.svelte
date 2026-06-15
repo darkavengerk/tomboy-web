@@ -716,6 +716,18 @@
 			return;
 		}
 
+		if (kind === 'reflectTitle') {
+			if (!note!.title.trim()) return;
+			newNoteFlow.openResult({
+				heading: '전체 문서에 제목 반영',
+				title: note!.title,
+				guid: note!.guid,
+				stages: []
+			});
+			void newNoteFlow.startSweepCount();
+			return;
+		}
+
 		if (kind === 'toggleScrollBottom') {
 			const next = !isScrollBottomState;
 			await setScrollBottomNote(note!.guid, next);
