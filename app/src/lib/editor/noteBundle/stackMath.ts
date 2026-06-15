@@ -100,6 +100,22 @@ export function repairPath(tree: NavNode[], path: number[]): number[] {
 	return firstNavPath(tree) ?? [];
 }
 
+/** 특정 깊이(strip)의 dir 방향 다음 navigable 형제로 이동 + drill.
+ *  stepPath 와 달리 **부모로 버블하지 않고** 그 레벨 끝에서 그대로 멈춘다
+ *  (path 유지) — 탭 줄 위 휠 내비게이션처럼 "이 스트립 안에서만" 넘길 때 쓴다.
+ *  형제가 카테고리면 그 안 첫 잎까지 내려간다. */
+export function stepPathAtDepth(tree: NavNode[], path: number[], depth: number, dir: 1 | -1): number[] {
+	const nodes = nodesAtDepth(tree, path, depth);
+	if (!nodes) return path;
+	let j = (path[depth] ?? 0) + dir;
+	while (j >= 0 && j < nodes.length) {
+		const drilled = drillFrom(nodes, j);
+		if (drilled) return path.slice(0, depth).concat(drilled);
+		j += dir;
+	}
+	return path; // 이 레벨 끝 — 멈춤(버블 없음)
+}
+
 /** 가장 깊은(현재) 레벨에서 dir 방향 다음 navigable 형제로 이동 + drill.
  *  형제가 카테고리면 그 안 첫 잎까지 내려간다. 현재 레벨에서 더 갈 곳이
  *  없으면 부모 레벨로 **버블** — 카테고리 끝에서 스크롤하면 부모의 다음

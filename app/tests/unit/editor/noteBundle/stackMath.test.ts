@@ -9,6 +9,7 @@ import {
 	drillFrom,
 	repairPath,
 	stepPath,
+	stepPathAtDepth,
 	pickPath,
 	clampIndex,
 	type NavNode
@@ -130,6 +131,35 @@ describe('stepPath — 가장 깊은 레벨 이동', () => {
 		const t = [cat([cat([lf(), lf()])]), lf()];
 		// [0,0,1] = catB 마지막 → catB·catA 못 감 → 루트 형제 leaf(1)
 		expect(stepPath(t, [0, 0, 1], 1)).toEqual([1]);
+	});
+});
+
+describe('stepPathAtDepth — 특정 깊이 strip 휠 이동(버블 없음)', () => {
+	it('루트(depth 0) 형제 잎 이동, 끝에서 멈춤', () => {
+		const t = [lf(), lf(), lf()];
+		expect(stepPathAtDepth(t, [0], 0, 1)).toEqual([1]);
+		expect(stepPathAtDepth(t, [2], 0, 1)).toEqual([2]); // 끝 — 유지
+		expect(stepPathAtDepth(t, [1], 0, -1)).toEqual([0]);
+		expect(stepPathAtDepth(t, [0], 0, -1)).toEqual([0]); // 처음 — 유지
+	});
+	it('비navigable 형제 스킵', () => {
+		const t = [lf(), lf(false), lf()];
+		expect(stepPathAtDepth(t, [0], 0, 1)).toEqual([2]);
+	});
+	it('형제 카테고리로 이동하면 drill', () => {
+		const t = [lf(), cat([lf(), lf()])];
+		expect(stepPathAtDepth(t, [0], 0, 1)).toEqual([1, 0]);
+	});
+	it('카테고리 끝에서 부모로 버블하지 않음(stepPath 와 차이) — depth 지정 레벨에서만 멈춤', () => {
+		const t = [cat([lf(), lf()]), lf()];
+		// depth 1(카테고리 내부) 마지막 자식에서 다음 → 그 레벨 끝, 부모로 안 올라감 → 유지
+		expect(stepPathAtDepth(t, [0, 1], 1, 1)).toEqual([0, 1]);
+		// 같은 위치를 depth 0 으로 넘기면 루트 레벨에서 이동 → 다음 형제 잎
+		expect(stepPathAtDepth(t, [0, 1], 0, 1)).toEqual([1]);
+	});
+	it('범위 밖/없는 깊이는 path 유지', () => {
+		const t = [lf(), lf()];
+		expect(stepPathAtDepth(t, [0], 5, 1)).toEqual([0]);
 	});
 });
 

@@ -29,8 +29,10 @@
 	 *
 	 * ── 항상 편집 ───────────────────────────────────────────────────────
 	 * 모드 없음 — 탭 스트립이 항상 보이고 활성 잎은 항상 편집 가능한 임베디드
-	 * 에디터. 탭 이동은 탭 클릭(더블클릭=단독 열기)으로만. 휠은 본문 네이티브
-	 * 스크롤. (옛 훑어보기/편집 2모드 — 휠·스와이프 탭전환, 회색조, 탭 스트립을
+	 * 에디터. 탭 이동은 탭 클릭(더블클릭=단독 열기) 또는 **탭 줄 위 휠 스크롤**
+	 * (handleStripWheel — 그 깊이의 stepPathAtDepth). 본문 위 휠은 그대로 노트
+	 * 네이티브 스크롤(strip 핸들러만 휠을 가로채고 본문은 안 건드림). (옛
+	 * 훑어보기/편집 2모드 — 본문 어디서나 휠·스와이프 탭전환, 회색조, 탭 스트립을
 	 * 숨겨 노트 하나처럼 보이던 단일 노트 뷰 — 는 모두 제거.)
 	 *
 	 * ── 호스트 셸 배선 ──────────────────────────────────────────────────
@@ -49,6 +51,7 @@
 	import {
 		repairPath,
 		pickPath,
+		stepPathAtDepth,
 		visibleTabs,
 		clampIndex,
 		tabView,
@@ -611,6 +614,37 @@
 		setActive(pickPath(tree, activePath, depth, idx));
 	}
 
+	// 탭 줄 위 휠 = 탭 네비게이션. 본문 휠은 그대로 네이티브 스크롤(여기 안 걸림).
+	// 휠 델타는 브라우저/입력장치마다 단위(px/줄/페이지)가 달라 deltaMode 로
+	// 정규화한 뒤 누적, 한 칸 분량(WHEEL_STEP)을 넘으면 그 깊이의 다음 탭으로.
+	// 아래로 스크롤 = 다음 탭(오른쪽) — 탭의 본문 가로 슬라이드 방향과 맞춤.
+	const WHEEL_STEP = 80;
+	let wheelAccum = 0;
+	let wheelDepth = -1;
+	function handleStripWheel(depth: number, e: WheelEvent) {
+		let delta = e.deltaY !== 0 ? e.deltaY : e.deltaX;
+		if (delta === 0) return;
+		e.preventDefault();
+		e.stopPropagation();
+		if (e.deltaMode === 1) delta *= 40; // 줄 → px 근사
+		else if (e.deltaMode === 2) delta *= 800; // 페이지 → px 근사
+		if (depth !== wheelDepth) {
+			wheelAccum = 0;
+			wheelDepth = depth;
+		}
+		wheelAccum += delta;
+		while (Math.abs(wheelAccum) >= WHEEL_STEP) {
+			const dir: 1 | -1 = wheelAccum > 0 ? 1 : -1;
+			wheelAccum -= dir * WHEEL_STEP;
+			const next = stepPathAtDepth(tree, activePath, depth, dir);
+			if (next === activePath) {
+				wheelAccum = 0; // 그 레벨 끝 — 남은 누적 버림
+				break;
+			}
+			setActive(next);
+		}
+	}
+
 	// --- 하단 리사이즈 핸들 -------------------------------------------------------
 	let resizeStartY = 0;
 	let resizeStartH = 0;
@@ -694,7 +728,11 @@
 
 {#snippet strip(vis: VisibleTabs<ResolvedNode>, depth: number, activeIdx: number)}
 	{#if vis.items.length > 0}
-		<div class="tab-strip">
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="tab-strip"
+			use:direct={{ wheel: (e: Event) => handleStripWheel(depth, e as WheelEvent) }}
+		>
 			{#if vis.leftPlus > 0}
 				<span class="tab tab-plus">+{vis.leftPlus}</span>
 			{/if}
@@ -918,9 +956,11 @@
 	.tab-strip {
 		flex-shrink: 0;
 		display: flex;
-		align-items: stretch;
+		/* 탭은 본문(아래)에 붙도록 하단 정렬 — 활성 탭만 더 커서 위로 솟는다.
+		   top 패딩 0 = 활성 탭이 스트립 맨 위에 딱 붙어 위쪽 어두운 틈이 없음. */
+		align-items: flex-end;
 		gap: 2px;
-		padding: 2px 2px 0;
+		padding: 0 2px 0;
 		background: #1a1a1a;
 		overflow: hidden;
 	}
@@ -971,6 +1011,14 @@
 	.tab.active {
 		background: #3f8657;
 		color: #fff;
+		/* 위로 솟음 — 여유 top 패딩으로 키를 키워 비활성 탭보다 높이 뜬다(하단
+		   정렬이라 본문엔 그대로 붙음). 좌우 -2px 으로 양옆 어두운 틈(테두리)을
+		   덮어 탭이 테두리까지 확장. z-index 로 이웃 위에 깔끔히 겹친다. */
+		padding-top: calc(clamp(4px, 0.9vw, 6px) + 3px);
+		margin: 0 -2px;
+		position: relative;
+		z-index: 1;
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
 	}
 	.tab.broken {
 		color: #777;
