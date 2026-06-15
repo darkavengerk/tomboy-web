@@ -45,6 +45,13 @@
 	 * mount() (격벽이 Svelte 위임 이벤트를 죽이므로 — 위임 루트가 격벽
 	 * 안쪽이 되도록 독립 마운트). "하단이 최신" 노트는 세션 첫 마운트 때
 	 * 본문(.bundle-body 스크롤 컨테이너)을 끝까지 내린다.
+	 *
+	 * ── 전용 노트 창 이동 ───────────────────────────────────────────────
+	 * 전용 노트(`묶음::`)는 호스트(NoteWindow)가 창 타이틀바를 숨긴다.
+	 * onwindowdrag 가 있으면(데스크탑 전용) 활성(펼친) 바 — 편집 모드선 편집
+	 * 헤더 — 의 pointerdown 을 호스트에 넘겨 창을 옮긴다. 활성 바 드래그는
+	 * handleListPointerDown 에서 스와이프/탭 추적 대신 분기(swipeY 미설정 →
+	 * move/up 무동작), 편집 헤더는 handleEditHeaderDown.
 	 */
 	import { onMount, onDestroy, untrack, mount as mountComponent, unmount as unmountComponent } from 'svelte';
 	import { SvelteMap } from 'svelte/reactivity';
@@ -94,6 +101,9 @@
 		onclose?: () => void;
 		/** dedicated Ctrl→편집 — 호스트 노트를 일반 노트로 보기(링크 리스트 편집). */
 		onraw?: () => void;
+		/** dedicated 데스크탑 창 — 활성 노트 타이틀(활성 바 / 편집 헤더) pointerdown 을
+		 *  넘기면 호스트가 창을 이동시킨다(전용 노트는 창 타이틀바가 없음). */
+		onwindowdrag?: (e: PointerEvent) => void;
 	}
 	let {
 		spec,
@@ -103,7 +113,8 @@
 		oninternallink,
 		variant = 'inline',
 		onclose,
-		onraw
+		onraw,
+		onwindowdrag
 	}: Props = $props();
 	const dedicated = $derived(variant === 'dedicated');
 
@@ -557,6 +568,12 @@
 		oninternallink?.(title);
 	}
 
+	// 편집 모드 헤더(활성 노트 타이틀) pointerdown = 창 이동(전용 데스크탑).
+	// ← 돌아가기 버튼은 자체 stopEvt 로 여기 도달 전에 막혀 드래그하지 않는다.
+	function handleEditHeaderDown(e: PointerEvent) {
+		onwindowdrag?.(e);
+	}
+
 	/** "하단이 최신" 노트 — 세션 첫 마운트 직후 본문 스크롤을 끝으로.
 	 *  rAF×2: 임베디드 에디터가 setContent + 레이아웃을 마친 다음 프레임. */
 	function scrollBottomInit(node: HTMLElement, enabled: boolean) {
@@ -699,11 +716,19 @@
 		}
 		const bar = t.closest?.('.bundle-bar') as HTMLElement | null;
 		if (!bar) return;
+		const barIdx = bar.dataset.idx != null ? Number(bar.dataset.idx) : null;
+		// 전용 데스크탑 — 활성(펼친) 바를 잡으면 창 이동(타이틀바 대용). 스와이프/
+		// 탭 추적을 시작하지 않고 호스트에 넘긴다(접속 버튼·꺼내기 ↗ 는 위에서/자체
+		// stopEvt 로 이미 제외됨). swipeY 를 안 세팅 → pointermove/up 핸들러는 무동작.
+		if (onwindowdrag && barIdx === k) {
+			onwindowdrag(e);
+			return;
+		}
 		swipeY = e.clientY;
 		downBarY = e.clientY;
 		swiped = false;
 		downOnBody = false;
-		downBarIdx = bar.dataset.idx != null ? Number(bar.dataset.idx) : null;
+		downBarIdx = barIdx;
 		try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* pointer already released */ }
 	}
 	function handleListPointerMove(e: PointerEvent) {
@@ -717,6 +742,9 @@
 	}
 	function handleListPointerUp(e: Event) {
 		const pe = e as PointerEvent;
+		// pointerdown 이 일찍 빠진 제스처(접속/음악/비-open 본문/활성 바 창드래그)는
+		// swipeY 가 null — 이 핸들러는 그때 무동작(stale 상태로 오작동하지 않게).
+		if (swipeY === null) return;
 		// 캡처가 click 을 컨테이너로 retarget 하므로 click/dblclick 대신
 		// pointerup 에서 탭·더블탭을 수동 판정한다.
 		if (!swiped && Math.abs(pe.clientY - downBarY) < 8) {
@@ -776,7 +804,12 @@
 	style:height={dedicated ? null : `${stackH}px`}
 >
 	{#if mode === 'edit' && expanded}
-		<div class="edit-header">
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div
+			class="edit-header"
+			class:draggable={!!onwindowdrag}
+			use:direct={{ pointerdown: handleEditHeaderDown as (e: Event) => void }}
+		>
 			<button
 				type="button"
 				class="edit-nav edit-back"
@@ -1129,6 +1162,13 @@
 		padding: clamp(4px, 1vw, 6px) clamp(8px, 2vw, 12px);
 		background: #2d5a3d;
 		border-bottom: 1px solid #1a1a1a;
+	}
+	/* 전용 데스크탑 — 편집 헤더(활성 타이틀)가 창 드래그 핸들. */
+	.edit-header.draggable {
+		cursor: grab;
+	}
+	.edit-header.draggable:active {
+		cursor: grabbing;
 	}
 	.edit-nav {
 		flex-shrink: 0;

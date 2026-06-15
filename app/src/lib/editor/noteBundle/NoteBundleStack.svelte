@@ -38,6 +38,11 @@
 	 * ── 호스트 셸 배선 ──────────────────────────────────────────────────
 	 * 터미널/음악/하단최신은 잎 본문에 그대로. TerminalView·MusicPlayerBar 는
 	 * 격벽이 Svelte 위임 이벤트를 죽이므로 본문에 독립 mount().
+	 *
+	 * ── 전용 노트 창 이동 ───────────────────────────────────────────────
+	 * 전용 노트(`탭::`)는 호스트(NoteWindow)가 창 타이틀바를 숨기므로 드래그
+	 * 이동 수단이 없다. onwindowdrag 가 있으면(데스크탑 전용) 활성 탭 pointerdown
+	 * 을 그대로 호스트에 넘겨 일반 타이틀바처럼 창을 옮긴다(handleTabPointerDown).
 	 */
 	import { onMount, onDestroy, untrack, mount as mountComponent, unmount as unmountComponent } from 'svelte';
 	import { flip } from 'svelte/animate';
@@ -93,6 +98,9 @@
 		onclose?: () => void;
 		/** dedicated Ctrl→편집 — 호스트 노트를 일반 노트로 보기(링크 리스트 편집). */
 		onraw?: () => void;
+		/** dedicated 데스크탑 창 — 활성 탭(타이틀) pointerdown 을 넘기면 호스트가
+		 *  창을 이동시킨다(전용 노트는 창 타이틀바가 없어 드래그 수단이 없음). */
+		onwindowdrag?: (e: PointerEvent) => void;
 	}
 	let {
 		spec,
@@ -102,7 +110,8 @@
 		oninternallink,
 		variant = 'inline',
 		onclose,
-		onraw
+		onraw,
+		onwindowdrag
 	}: Props = $props();
 	const dedicated = $derived(variant === 'dedicated');
 
@@ -614,6 +623,15 @@
 		setActive(pickPath(tree, activePath, depth, idx));
 	}
 
+	// 활성 탭(타이틀) pointerdown = 창 이동(전용 데스크탑). 호스트가 startPointerDrag
+	// 으로 캡처하므로 currentTarget(= 탭) 에 캡처가 걸린다. ↗ 꺼내기/접속 버튼은
+	// 자체 stopEvt 로 여기 도달 전에 막혀 드래그를 시작하지 않는다. 더블클릭
+	// 꺼내기는 click 이벤트라 그대로(드래그는 preventDefault 만, click 은 살아 있음).
+	function handleTabPointerDown(e: PointerEvent, isActive: boolean) {
+		if (!onwindowdrag || !isActive) return;
+		onwindowdrag(e);
+	}
+
 	// 탭 줄 위 휠 = 탭 네비게이션. 본문 휠은 그대로 네이티브 스크롤(여기 안 걸림).
 	// 휠 델타는 브라우저/입력장치마다 단위(px/줄/페이지)가 달라 deltaMode 로
 	// 정규화한 뒤 누적, 한 칸 분량(WHEEL_STEP)을 넘으면 그 깊이의 다음 탭으로.
@@ -747,7 +765,11 @@
 					animate:flip={{ duration: ready ? 220 : 0 }}
 					in:fade={{ duration: ready ? 150 : 0 }}
 					out:fade={{ duration: ready ? 120 : 0 }}
-					use:direct={{ click: () => handleTabClick(depth, it.idx, it.node) }}
+					class:draggable={onwindowdrag && it.idx === activeIdx}
+					use:direct={{
+						click: () => handleTabClick(depth, it.idx, it.node),
+						pointerdown: (e: Event) => handleTabPointerDown(e as PointerEvent, it.idx === activeIdx)
+					}}
 				>
 					{#if it.node.isLeaf && !it.node.broken && it.node.link}
 						<!-- ↗ 꺼내기 — 라벨 왼쪽. 잎 탭에서 바로 단독 열기. 격벽이
@@ -1023,6 +1045,13 @@
 	.tab.broken {
 		color: #777;
 		cursor: default;
+	}
+	/* 전용 데스크탑 — 활성 탭이 창 드래그 핸들(타이틀바 대용). 잡는 손 커서로 힌트. */
+	.tab.draggable {
+		cursor: grab;
+	}
+	.tab.draggable:active {
+		cursor: grabbing;
 	}
 	/* 숨은 탭 수 배지 — 좌/우 끝의 작은 고정폭 탭([+N]). */
 	.tab-plus {
