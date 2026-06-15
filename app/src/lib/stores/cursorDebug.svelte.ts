@@ -6,10 +6,15 @@
 // down on selection. This store exposes each actor as its own on/off flag so the
 // combination can be bisected by hand from 설정 → 디버그 — without a rebuild.
 //
-// Defaults reproduce the current production behaviour (everything ON). The flags
-// are read live at each actor's call site, so most take effect immediately;
-// editor-init wiring (handleScrollToSelection) re-reads on the next caret move.
-// Persisted to localStorage so a reload keeps the chosen combination.
+// Defaults are the "native-only" combination found to behave best on real
+// devices (2026-06-15): keep the browser's own scroll path (scroll-padding +
+// the whitespace-tap focus affordance) and turn OFF the three custom actors
+// that fought it (the JS scrollBy nudge, the PM-scroll suppression, and the
+// --keyboard-inset tracking). The custom actors stay in the codebase and remain
+// toggleable here so the combination can be re-tested if a device regresses.
+// The flags are read live at each actor's call site, so most take effect
+// immediately; editor-init wiring (handleScrollToSelection) re-reads on the next
+// caret move. Persisted to localStorage so a reload keeps the chosen set.
 //
 // DESKTOP (cursor-visibility "container" mode) deliberately ignores these — the
 // call sites gate on cursorVisibilityMode === "window". A desktop NoteWindow's
@@ -28,10 +33,10 @@ export type CursorDebugFlags = Record<CursorDebugFlag, boolean>;
 const STORAGE_KEY = "tomboy:cursor-debug";
 
 const DEFAULTS: CursorDebugFlags = {
-	jsCursorNudge: true,
-	pmScrollDefer: true,
+	jsCursorNudge: false,
+	pmScrollDefer: false,
 	scrollPadding: true,
-	keyboardInset: true,
+	keyboardInset: false,
 	whitespaceTapFocus: true,
 };
 
