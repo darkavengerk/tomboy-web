@@ -79,7 +79,7 @@
 			</button>
 			{#if note.title.trim()}
 				<button class="item" onclick={() => onaction('reflectTitle')}>
-					<span class="icon">🔗</span>전체 문서에 이 제목 반영
+					<span class="icon">🌐</span>전체 문서에 이 제목 반영
 				</button>
 			{/if}
 			<div class="sep"></div>

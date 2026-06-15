@@ -84,7 +84,7 @@
 				</button>
 				{#if note.title.trim()}
 					<button class="action-btn" onclick={() => onaction('reflectTitle')}>
-						<span class="action-icon">🔗</span>
+						<span class="action-icon">🌐</span>
 						전체 문서에 이 제목 반영
 					</button>
 				{/if}
