@@ -54,9 +54,10 @@ function buildDecorations(doc: PMNode): DecorationSet {
   if (!spec) return DecorationSet.empty;
   const first = doc.firstChild;
   if (!first) return DecorationSet.empty;
-  // Anchor at end of the title paragraph (same convention as automationNotePlugin).
-  const headerEndPos = first.nodeSize - 1;
-  const widget = Decoration.widget(headerEndPos, (view) => renderButton(view, spec), {
+  // Boundary AFTER the title (not inside it) — same convention as
+  // automationNotePlugin; keeps the button out of the display:none title node.
+  const afterTitlePos = first.nodeSize;
+  const widget = Decoration.widget(afterTitlePos, (view) => renderButton(view, spec), {
     side: 1,
     key: `remarkable:${spec.notebook ?? '_default'}`
   });

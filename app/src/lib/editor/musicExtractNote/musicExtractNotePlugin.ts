@@ -32,8 +32,10 @@ function renderButton(view: EditorView): HTMLElement {
 function buildDecorations(doc: PMNode): DecorationSet {
 	const first = doc.firstChild;
 	if (!first || !isExtractTitle(first.textContent)) return DecorationSet.empty;
-	const headerEndPos = first.nodeSize - 1;
-	const widget = Decoration.widget(headerEndPos, (view) => renderButton(view), { side: 1, key: 'music-extract-run' });
+	// Boundary AFTER the title (not inside it) — the title is display:none'd by
+	// titleIsolation; a widget inside it would vanish too. See automationNotePlugin.
+	const afterTitlePos = first.nodeSize;
+	const widget = Decoration.widget(afterTitlePos, (view) => renderButton(view), { side: 1, key: 'music-extract-run' });
 	return DecorationSet.create(doc, [widget]);
 }
 
