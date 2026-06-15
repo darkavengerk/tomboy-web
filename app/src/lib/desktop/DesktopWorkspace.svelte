@@ -57,20 +57,26 @@
 	// Reload the canvas wallpaper for the active workspace. Re-runs on
 	// workspace switch (currentWorkspace) and on any wallpaper set/clear
 	// (wallpaperEpoch). The token guards against a fast switch resolving an
-	// older load after a newer one.
+	// older load after a newer one; the cleanup `cancelled` flag also aborts
+	// an in-flight load on unmount, so a load that resolves after the component
+	// is gone can't create an orphan ObjectURL the unmount revoke already missed.
 	let wallpaperLoadToken = 0;
 	$effect(() => {
 		const ws = desktopSession.currentWorkspace;
 		void desktopSession.wallpaperEpoch; // reactive dependency
 		const token = ++wallpaperLoadToken;
+		let cancelled = false;
 		void (async () => {
 			const blob = await loadWallpaper(ws);
-			if (token !== wallpaperLoadToken) return; // superseded by a newer load
+			if (cancelled || token !== wallpaperLoadToken) return; // superseded or unmounted
 			const next = blob ? URL.createObjectURL(blob) : null;
 			const prev = wallpaperUrl;
 			wallpaperUrl = next;
 			if (prev) URL.revokeObjectURL(prev);
 		})();
+		return () => {
+			cancelled = true;
+		};
 	});
 
 	const openGuidSet = $derived(new Set(desktopSession.windows.map((w) => w.guid)));
