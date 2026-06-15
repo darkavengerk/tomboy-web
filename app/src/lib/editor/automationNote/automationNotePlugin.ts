@@ -33,9 +33,13 @@ function buildDecorations(doc: PMNode): DecorationSet {
   const first = doc.firstChild;
   const commandId = parseAutomationTitle(first?.textContent ?? '');
   if (!first || !commandId) return DecorationSet.empty;
-  // Anchor just inside the end of the title paragraph (mirrors chartBlock).
-  const headerEndPos = first.nodeSize - 1;
-  const widget = Decoration.widget(headerEndPos, (view) => renderButton(view, commandId), {
+  // Anchor at the top-level boundary just AFTER the title node — NOT inside it
+  // (first.nodeSize - 1). The title is `display:none`'d by titleIsolation
+  // (hideTitleLine), and a widget inside it would be hidden too; placed at the
+  // boundary the button becomes a sibling of the hidden title → first visible
+  // body element.
+  const afterTitlePos = first.nodeSize;
+  const widget = Decoration.widget(afterTitlePos, (view) => renderButton(view, commandId), {
     side: 1,
     key: `automation:${commandId}`
   });
