@@ -42,12 +42,26 @@
 	 *  the free viewport for note content begins at its bottom edge. Chromeless
 	 *  desktop windows (element scroll containers) have no such nav. */
 	function navOffset(): number {
+		let offset = 0;
 		const nav = document.querySelector('.topnav') as HTMLElement | null;
-		if (!nav) return 0;
-		const pos = getComputedStyle(nav).position;
-		if (pos !== 'sticky' && pos !== 'fixed') return 0;
-		const r = nav.getBoundingClientRect();
-		return r.top <= 0.5 ? Math.max(0, r.bottom) : 0;
+		if (nav) {
+			const pos = getComputedStyle(nav).position;
+			if (pos === 'sticky' || pos === 'fixed') {
+				const r = nav.getBoundingClientRect();
+				if (r.top <= 0.5) offset = Math.max(offset, r.bottom);
+			}
+		}
+		// Mobile note route has a sticky title bar pinned just under the nav;
+		// stack below it so the eq-header mirror doesn't collide with the title.
+		const titleBar = document.querySelector('.editor-page .title-bar') as HTMLElement | null;
+		if (titleBar) {
+			const pos = getComputedStyle(titleBar).position;
+			if (pos === 'sticky' || pos === 'fixed') {
+				const r = titleBar.getBoundingClientRect();
+				if (r.top <= offset + 0.5) offset = Math.max(offset, r.bottom);
+			}
+		}
+		return offset;
 	}
 
 	function cloneHeader() {

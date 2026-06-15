@@ -41,6 +41,7 @@
 	import NoteContextMenu, { type ActionKind } from '$lib/editor/NoteContextMenu.svelte';
 	import BacklinkBundleOverlay from '$lib/editor/noteBundle/BacklinkBundleOverlay.svelte';
 	import NoteTitleDialog from '$lib/components/NoteTitleDialog.svelte';
+	import NoteDragHandle from '$lib/components/NoteDragHandle.svelte';
 	import { newNoteFlow } from '$lib/stores/newNoteFlow.svelte.js';
 	import NoteXmlViewer from '$lib/editor/NoteXmlViewer.svelte';
 	import {
@@ -944,6 +945,7 @@
 		onauxclick={handleTitleBarAuxClick}
 		ondblclick={(e) => { if ((e.target as HTMLElement)?.closest('[data-no-drag]')) return; openTitleDialog(); }}
 	>
+		<NoteDragHandle title={note?.title ?? ''} draggable={true} />
 		<span class="title-text">
 			{#if saving}<span class="save-dot" title="저장 중"></span>{/if}
 			{titleDisplay}

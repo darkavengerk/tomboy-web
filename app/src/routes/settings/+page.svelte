@@ -1984,6 +1984,24 @@ https://www.youtube.com/playlist?list=…  (재생목록: 일반 줄)</pre>
 					</ul>
 				</details>
 
+				<details class="guide-card">
+					<summary>제목 바의 📄 아이콘 — 드래그로 링크, 클릭으로 복사</summary>
+					<p class="info-text">
+						제목 왼쪽의 <strong>📄</strong> 아이콘으로 이 노트의 제목을 다른 노트에 넣거나
+						클립보드에 복사할 수 있습니다. 제목 바는 상단에 고정되고, 노트북(🗂)·메뉴(⋯)
+						버튼이 제목 바 우측에 함께 표시됩니다.
+					</p>
+					<ul class="guide-list">
+						<li><strong>데스크탑 — 드래그</strong>: 📄를 다른 노트 창의 본문으로 끌어다 놓으면
+							그 <strong>드롭 지점</strong>에 제목이 평문으로 삽입됩니다. 기존 글자와 맞닿으면
+							사이에 공백을 자동으로 넣고, 본문 아래 빈 영역처럼 커서가 닿지 않는 곳에 놓으면
+							현재 커서 위치에 줄바꿈 후 삽입됩니다.</li>
+						<li>삽입된 제목이 실제 노트 제목과 일치하면 잠시 뒤 <strong>자동 링크</strong>로 바뀝니다.</li>
+						<li><strong>클릭 — 복사</strong>: 모바일에서는 📄를 탭하면(데스크탑에서도 클릭하면)
+							제목이 클립보드에 복사됩니다.</li>
+					</ul>
+				</details>
+
 				<details class="guide-card" open>
 					<summary>표 (CSV / TSV) — 본문 안의 펜스 블록</summary>
 					<p class="info-text">

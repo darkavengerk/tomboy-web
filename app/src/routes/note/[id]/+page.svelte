@@ -50,6 +50,7 @@
 	import NoteXmlViewer from '$lib/editor/NoteXmlViewer.svelte';
 	import NotebookPicker from '$lib/components/NotebookPicker.svelte';
 	import NoteTitleDialog from '$lib/components/NoteTitleDialog.svelte';
+	import NoteDragHandle from '$lib/components/NoteDragHandle.svelte';
 	import { newNoteFlow } from '$lib/stores/newNoteFlow.svelte.js';
 	import { SLIPBOX_NOTEBOOK } from '$lib/sleepnote/validator.js';
 	import { getSlipNoteLabel } from '$lib/sleepnote/indexLabel.js';
@@ -87,6 +88,9 @@
 	let note: NoteData | undefined = $state.raw(undefined);
 	let loading = $state(true);
 	let saving = $state(false);
+	// Sticky title-bar height — exposed as --note-title-bar-h so the music bar
+	// and StickyHeader pin BELOW the title bar instead of colliding with it.
+	let titleBarHeight = $state(0);
 	let editorComponent: TomboyEditor | undefined = $state(undefined);
 	let editorContent: JSONContent | undefined = $state.raw(undefined);
 	let actionSheetOpen = $state(false);
@@ -789,48 +793,59 @@
 	}
 </script>
 
-<div class="editor-page" class:terminal-connected={showTerminal || showKeys}>
+<div
+	class="editor-page"
+	class:terminal-connected={showTerminal || showKeys}
+	style="--note-title-bar-h: {titleBarHeight}px"
+>
 	<!-- 저장 상태 + 노트북/액션 버튼을 에디터 위 간결한 바로.
 	     터미널 접속 모드에서는 숨김 — 헤더가 좁아져서 겹치고, 어차피
 	     '편집 모드' 버튼으로 빠져나오면 다시 노출되니까 안전. -->
-	<div class="editor-meta-bar">
-		<span class="save-indicator" class:visible={saving}>저장 중...</span>
-		{#if note}
-			<button
-				class="notebook-chip"
-				onclick={() => (pickerOpen = true)}
-				title="노트북"
+	{#if note}
+		{#if !(dedicatedKind && !showRawBundle)}
+			<!-- 상단 고정 타이틀바: 노트 아이콘(드래그/복사) + 제목 + 노트북/메뉴.
+			     모바일은 body 가 스크롤되므로 sticky 가 TopNav 아래에 붙는다. 높이는
+			     음악바/StickyHeader 오프셋용으로 --note-title-bar-h 에 노출. -->
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div
+				class="title-bar"
+				bind:clientHeight={titleBarHeight}
+				ondblclick={(e) => {
+					if ((e.target as HTMLElement)?.closest('button')) return;
+					openTitleDialog();
+				}}
+				title="제목 수정: 더블클릭 또는 … 메뉴"
 			>
-				{#if currentNotebook}
-					🗂 {currentNotebook}
-				{:else}
-					🗂
-				{/if}
-			</button>
-			<button
-				class="action-btn"
-				onclick={() => (actionSheetOpen = true)}
-				title="더 보기"
-			>
-				<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-					<circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
-				</svg>
-			</button>
+				<NoteDragHandle title={note.title ?? ''} />
+				<button class="title-edit-btn" onclick={openTitleDialog} aria-label="제목 수정">✎</button>
+				{#if saving}<span class="save-dot" title="저장 중"></span>{/if}
+				<span class="title-text">{note.title || '제목 없음'}</span>
+				<div class="title-controls">
+					<button class="notebook-chip" onclick={() => (pickerOpen = true)} title="노트북">
+						{#if currentNotebook}🗂 {currentNotebook}{:else}🗂{/if}
+					</button>
+					<button class="action-btn" onclick={() => (actionSheetOpen = true)} title="더 보기">
+						<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+							<circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
+						</svg>
+					</button>
+				</div>
+			</div>
+		{:else}
+			<!-- 전용 파일철 뷰(탭/묶음)는 제목을 바에 이미 노출 — 타이틀바 없음.
+			     노트북/메뉴는 옛 떠있는 바로 유지(번들 UI 위에 떠야 해서 흐리게). -->
+			<div class="editor-meta-bar">
+				<span class="save-indicator" class:visible={saving}>저장 중...</span>
+				<button class="notebook-chip" onclick={() => (pickerOpen = true)} title="노트북">
+					{#if currentNotebook}🗂 {currentNotebook}{:else}🗂{/if}
+				</button>
+				<button class="action-btn" onclick={() => (actionSheetOpen = true)} title="더 보기">
+					<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+						<circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
+					</svg>
+				</button>
+			</div>
 		{/if}
-	</div>
-
-	{#if note && !(dedicatedKind && !showRawBundle)}
-		<!-- 전용 파일철 뷰(탭/묶음)는 제목을 바에 이미 노출 — 타이틀 바 숨김.
-		     Ctrl→편집(raw) 모드에선 일반 노트처럼 보이도록 다시 표시(제목 수정 가능). -->
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div
-			class="title-bar"
-			ondblclick={openTitleDialog}
-			title="제목 수정: 더블클릭 또는 … 메뉴"
-		>
-			<button class="title-edit-btn" onclick={openTitleDialog} aria-label="제목 수정">✎</button>
-			<span class="title-text">{note.title || '제목 없음'}</span>
-		</div>
 	{/if}
 
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -1278,10 +1293,16 @@
 	.title-bar {
 		display: flex;
 		align-items: center;
-		gap: clamp(6px, 1.5vw, 12px);
-		/* 우측은 떠 있는 .editor-meta-bar(🗂 + … , top-right) 를 피하려 여유를 둔다. */
-		padding: clamp(6px, 1.5vw, 10px) clamp(84px, 24vw, 140px) clamp(6px, 1.5vw, 10px) clamp(10px, 3vw, 16px);
+		gap: clamp(4px, 1.2vw, 8px);
+		padding: clamp(6px, 1.5vw, 10px) clamp(8px, 2.5vw, 14px);
 		border-bottom: 1px solid var(--color-border, #eee);
+		/* 상단 고정 — 모바일 body 스크롤에서 TopNav 바로 아래에 붙는다. 불투명
+		   배경으로 본문이 비치지 않게. position:sticky 라 흐름에 자리를 차지해
+		   첫 본문 줄을 덮지 않는다(fixed 였다면 덮음). */
+		position: sticky;
+		top: var(--topnav-height, 0px);
+		z-index: var(--z-sticky);
+		background: var(--color-bg, #fff);
 		cursor: pointer;
 		user-select: none;
 	}
@@ -1300,5 +1321,22 @@
 		border: none; background: none; cursor: pointer;
 		font-size: 1rem; color: var(--color-text-secondary, #888);
 		padding: 4px 6px;
+	}
+	/* 노트북/메뉴를 타이틀바 우측에 고정 — 옛 흐린(opacity:0.35) 떠있는 바 대신
+	   불투명 타이틀바 안이라 색이 선명하게 보인다. */
+	.title-controls {
+		display: flex;
+		align-items: center;
+		gap: clamp(4px, 1.2vw, 8px);
+		flex-shrink: 0;
+	}
+	.title-bar .notebook-chip { box-shadow: none; }
+	.title-bar .action-btn { background: transparent; box-shadow: none; }
+	/* 저장 중 표시 — 데스크탑 NoteWindow 의 save-dot 미러. */
+	.save-dot {
+		flex-shrink: 0;
+		width: 7px; height: 7px;
+		border-radius: 50%;
+		background: #f5a623;
 	}
 </style>
