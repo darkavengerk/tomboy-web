@@ -6,7 +6,7 @@
  * The Dropbox SDK handles token refresh automatically when a refresh_token is present.
  */
 
-import { Dropbox, DropboxAuth } from 'dropbox';
+import { Dropbox, DropboxAuth, type files } from 'dropbox';
 import { env } from '$env/dynamic/public';
 
 const STORAGE_KEY_ACCESS_TOKEN = 'tomboy-dropbox-access-token';
@@ -717,3 +717,78 @@ export async function listSettingsProfiles(): Promise<string[]> {
 	}
 }
 
+// ─── Per-note revision enumeration (filesSearchV2) ───────────────────────────
+
+export interface NoteRevisionRef {
+	/** Server rev at which this version of the note was committed. */
+	rev: number;
+	/** Dropbox server_modified ISO timestamp of this version's .note file. */
+	date: string;
+}
+
+/**
+ * Parse the rev segment from a note file path `/.../{parent}/{rev}/{guid}.note`.
+ * Returns null when the basename isn't `{guid}.note` or the rev segment is not
+ * a finite integer.
+ */
+export function parseNoteRevFromPath(path: string, guid: string): number | null {
+	const segs = path.split('/').filter(Boolean);
+	if (segs.length < 2) return null;
+	if (segs[segs.length - 1] !== `${guid}.note`) return null;
+	const rev = parseInt(segs[segs.length - 2], 10);
+	return Number.isFinite(rev) ? rev : null;
+}
+
+/**
+ * Reduce raw filesSearchV2 matches to deduped, desc-sorted note revision refs.
+ * Pure — exported for unit testing.
+ */
+export function collectNoteRevisions(
+	matches: files.SearchMatchV2[],
+	guid: string
+): NoteRevisionRef[] {
+	const out: NoteRevisionRef[] = [];
+	const seen = new Set<number>();
+	for (const match of matches) {
+		if (match.metadata['.tag'] !== 'metadata') continue;
+		const md = match.metadata.metadata;
+		if (md['.tag'] !== 'file') continue;
+		const fileMd = md as files.FileMetadataReference;
+		const path = fileMd.path_display ?? fileMd.path_lower ?? '';
+		const rev = parseNoteRevFromPath(path, guid);
+		if (rev === null || seen.has(rev)) continue;
+		seen.add(rev);
+		out.push({ rev, date: fileMd.server_modified });
+	}
+	out.sort((a, b) => b.rev - a.rev);
+	return out;
+}
+
+/**
+ * Enumerate every stored revision of one note via Dropbox filename search.
+ * One paginated call (continue-cursor only for deep history); returns paths +
+ * dates, never downloads `.note` bodies.
+ */
+export async function searchNoteRevisions(guid: string): Promise<NoteRevisionRef[]> {
+	const dbx = getClient();
+	if (!dbx) throw new Error('Not authenticated');
+	const notesPath = getNotesPath();
+	const options: files.SearchOptions = { filename_only: true, max_results: 1000 };
+	if (notesPath) options.path = notesPath;
+
+	const all: files.SearchMatchV2[] = [];
+	let res = await withRetry(() =>
+		dbx.filesSearchV2({ query: `${guid}.note`, options })
+	);
+	all.push(...res.result.matches);
+	let hasMore = res.result.has_more;
+	let cursor = res.result.cursor;
+	while (hasMore && cursor) {
+		const c = cursor;
+		res = await withRetry(() => dbx.filesSearchContinueV2({ cursor: c }));
+		all.push(...res.result.matches);
+		hasMore = res.result.has_more;
+		cursor = res.result.cursor;
+	}
+	return collectNoteRevisions(all, guid);
+}
