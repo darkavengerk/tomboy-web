@@ -2574,6 +2574,26 @@ Complete:</pre>
 					</ul>
 				</details>
 
+				<details class="guide-card">
+					<summary>데스크탑 — 작업공간별 배경화면</summary>
+					<p class="info-text">
+						데스크탑 작업공간(2×2, <strong>Ctrl+Alt+방향키</strong>로 전환)마다
+						<strong>각각 다른 배경화면</strong>을 둘 수 있습니다. 배경은 작업공간별로 따로
+						기억되며, 따로 지정하지 않은 작업공간은 기존에 쓰던 공통 배경을 그대로 보여줍니다.
+					</p>
+					<ul class="guide-list">
+						<li>노트 속 이미지를 <strong>우클릭</strong>하면 「바탕화면으로 지정」이 나옵니다 —
+							누르면 그 이미지가 <strong>지금 보고 있는 작업공간</strong>의 배경이 됩니다(다른
+							작업공간은 그대로).</li>
+						<li>이미지 파일을 작업공간 빈 바탕에 <strong>드래그&amp;드롭</strong>해도 같은
+							방식으로 현재 작업공간 배경으로 설정됩니다.</li>
+						<li>원격 이미지(Dropbox / 임시 저장소)도 됩니다 — 내부 이미지 캐시를 통해 받아오므로
+							CORS 문제 없이 적용됩니다.</li>
+						<li>배경 <strong>제거</strong> 전용 버튼은 아직 없습니다 — 새 이미지를 지정하면
+							교체됩니다. (모바일에는 배경화면 개념이 없습니다.)</li>
+					</ul>
+				</details>
+
 				<details class="guide-card" open>
 					<summary>Firefox — 세로 칼럼 분할 활성화</summary>
 					<p class="info-text">
