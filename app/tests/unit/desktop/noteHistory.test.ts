@@ -93,3 +93,27 @@ describe('pure helpers', () => {
 		expect(formatVersionLabel({ rev: 9, date: '2026-01-09T00:00:00Z' })).toMatch(/^rev 9 · /);
 	});
 });
+
+describe('fallback termination + loadMore', () => {
+	it('hasMore is false once the scan reaches rev 1', async () => {
+		dlServerManifest.mockResolvedValue({ revision: 5, serverId: 's', notes: [{ guid: G, rev: 5 }] });
+		search.mockResolvedValue([]);
+		dlManifest.mockImplementation(async (rev: number) =>
+			rev === 5 ? { revision: 5, serverId: 's', notes: [{ guid: G, rev: 5 }] }
+			: { revision: rev, serverId: 's', notes: [] }
+		);
+		const h = createNoteHistory(G);
+		await h.load();
+		expect(h.usedFallback).toBe(true);
+		expect(h.hasMore).toBe(false); // batch of 30 covers revs 5..1
+	});
+
+	it('surfaces an error when the server manifest is absent', async () => {
+		dlServerManifest.mockResolvedValue(null);
+		search.mockResolvedValue([]);
+		const h = createNoteHistory(G);
+		await h.load();
+		expect(h.error).not.toBe('');
+		expect(h.versions.length).toBe(0);
+	});
+});

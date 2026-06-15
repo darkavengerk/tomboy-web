@@ -84,6 +84,7 @@ export function createNoteHistory(guid: string): NoteHistory {
 		get hasMore() { return hasMore; },
 
 		async load() {
+			if (loading) return;
 			loading = true;
 			error = '';
 			versions = [];
@@ -92,6 +93,10 @@ export function createNoteHistory(guid: string): NoteHistory {
 			try {
 				const root = await downloadServerManifest();
 				currentRev = root?.notes.find((n) => n.guid === guid)?.rev ?? root?.revision ?? 0;
+				if (currentRev === 0) {
+					error = '서버 매니페스트가 없거나 노트가 아직 동기화되지 않았습니다.';
+					return;
+				}
 				let refs: NoteRevisionRef[] = [];
 				try {
 					refs = await searchNoteRevisions(guid);
@@ -114,8 +119,9 @@ export function createNoteHistory(guid: string): NoteHistory {
 		},
 
 		async loadMore() {
-			if (!usedFallback || !hasMore) return;
+			if (!usedFallback || !hasMore || loading) return;
 			loading = true;
+			error = '';
 			try {
 				await scanMore(FALLBACK_BATCH);
 			} catch (e) {
