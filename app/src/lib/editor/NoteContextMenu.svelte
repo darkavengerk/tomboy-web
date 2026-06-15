@@ -13,7 +13,8 @@
 		| 'toggleScrollBottom'
 		| 'compareWithServer'
 		| 'viewXml'
-		| 'history';
+		| 'history'
+		| 'clearBackground';
 
 	interface Props {
 		note: NoteData;
@@ -21,9 +22,15 @@
 		isFavoriteNote?: boolean;
 		isHomeNote?: boolean;
 		isScrollBottomNote?: boolean;
+		/** Current note-window opacity (0..1). Drives the 투명도 slider. */
+		opacity?: number;
+		/** True when this note has a background set (shows the 배경 해제 item). */
+		hasBackground?: boolean;
 		anchor: { right: number; bottom: number };
 		onaction: (kind: ActionKind) => void;
 		onclose: () => void;
+		/** 투명도 슬라이더 변경 — 값은 0..1. 메뉴는 닫지 않는다. */
+		onopacity?: (value: number) => void;
 		/** 역참조 → 임시 묶음 노트 띄우기(호스트가 처리). */
 		onbacklinks?: () => void;
 	}
@@ -34,11 +41,19 @@
 		isFavoriteNote = false,
 		isHomeNote = false,
 		isScrollBottomNote = false,
+		opacity = 1,
+		hasBackground = false,
 		anchor,
 		onaction,
 		onclose,
+		onopacity,
 		onbacklinks
 	}: Props = $props();
+
+	function handleOpacityInput(e: Event) {
+		const pct = Number((e.currentTarget as HTMLInputElement).value);
+		onopacity?.(pct / 100);
+	}
 
 	let confirmDelete = $state(false);
 
@@ -113,6 +128,28 @@
 				<span class="icon">🕘</span>히스토리
 			</button>
 			<div class="sep"></div>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div class="opacity-row" title="겹친 노트가 비쳐 보이도록 이 노트를 반투명하게">
+				<span class="icon">◐</span>
+				<span class="opacity-label">투명도</span>
+				<input
+					class="opacity-slider"
+					type="range"
+					min="20"
+					max="100"
+					step="5"
+					value={Math.round(opacity * 100)}
+					oninput={handleOpacityInput}
+					aria-label="노트 투명도"
+				/>
+				<span class="opacity-val">{Math.round(opacity * 100)}%</span>
+			</div>
+			{#if hasBackground}
+				<button class="item" onclick={() => onaction('clearBackground')}>
+					<span class="icon">🖼</span>노트 배경 해제
+				</button>
+			{/if}
+			<div class="sep"></div>
 			<button class="item danger" onclick={handleDelete}>
 				<span class="icon">🗑</span>삭제
 			</button>
@@ -179,6 +216,27 @@
 		height: 1px;
 		background: #e4e8ec;
 		margin: 4px 2px;
+	}
+	.opacity-row {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 6px 10px;
+	}
+	.opacity-label {
+		flex-shrink: 0;
+	}
+	.opacity-slider {
+		flex: 1;
+		min-width: 0;
+		cursor: pointer;
+	}
+	.opacity-val {
+		flex-shrink: 0;
+		width: 34px;
+		text-align: right;
+		font-variant-numeric: tabular-nums;
+		color: #666;
 	}
 	.confirm {
 		padding: 8px 10px;

@@ -3,7 +3,7 @@
 	import { copyImageToClipboard, copyImageUrlToClipboard, resolveImageBlob } from '$lib/editor/imageActions/copyImage.js';
 	import { portal } from '$lib/utils/portal.js';
 	import { page } from '$app/state';
-	import { desktopSession, type WallpaperMode } from '$lib/desktop/session.svelte.js';
+	import { desktopSession, setNoteBg, type WallpaperMode } from '$lib/desktop/session.svelte.js';
 	import { pushToast } from '$lib/stores/toast.js';
 
 	// Display modes offered under 「바탕화면으로 지정」 — order matches the common
@@ -39,7 +39,7 @@
 	});
 
 	function close() {
-		submenuOpen = false;
+		openSubmenu = null;
 		imageActionMenu.close();
 	}
 
@@ -60,8 +60,12 @@
 	}
 
 	const isDesktop = $derived(page.url.pathname.startsWith('/desktop'));
+	// The topmost desktop note window — target for 「노트 배경으로 지정」. Null when
+	// no note window is focused (e.g. only settings open), which hides that item.
+	const focusedNoteGuid = $derived(desktopSession.focusedNoteGuid);
 
-	let submenuOpen = $state(false);
+	// Which flyout submenu is open ('wp' = 바탕화면, 'note' = 노트 배경), or null.
+	let openSubmenu = $state<'wp' | 'note' | null>(null);
 
 	// Flip the flyout to the left of its parent when the menu sits too close to
 	// the right edge to fit a right-side submenu.
@@ -82,6 +86,21 @@
 			pushToast('배경화면으로 지정했습니다');
 		} catch {
 			pushToast('배경화면 지정 실패', { kind: 'error' });
+		}
+	}
+
+	async function doSetNoteBg(mode: WallpaperMode) {
+		const href = menu?.href;
+		const guid = desktopSession.focusedNoteGuid;
+		close();
+		if (!href || !guid) return;
+		try {
+			const blob = await resolveImageBlob(href);
+			if (!blob) throw new Error('image bytes unavailable');
+			await setNoteBg(guid, blob, mode);
+			pushToast('노트 배경으로 지정했습니다');
+		} catch {
+			pushToast('노트 배경 지정 실패', { kind: 'error' });
 		}
 	}
 </script>
@@ -109,19 +128,19 @@
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
 				class="submenu-wrap"
-				onmouseenter={() => (submenuOpen = true)}
-				onmouseleave={() => (submenuOpen = false)}
+				onmouseenter={() => (openSubmenu = 'wp')}
+				onmouseleave={() => (openSubmenu = null)}
 			>
 				<button
 					class="item submenu-parent"
 					aria-haspopup="menu"
-					aria-expanded={submenuOpen}
-					onclick={() => (submenuOpen = !submenuOpen)}
+					aria-expanded={openSubmenu === 'wp'}
+					onclick={() => (openSubmenu = openSubmenu === 'wp' ? null : 'wp')}
 				>
 					<span>바탕화면으로 지정</span>
 					<span class="chev" aria-hidden="true">▸</span>
 				</button>
-				{#if submenuOpen}
+				{#if openSubmenu === 'wp'}
 					<div class="submenu" class:flip-left={flipLeft} role="menu">
 						{#each WALLPAPER_MODES as m (m.mode)}
 							<button class="item" role="menuitem" onclick={() => doSetWallpaper(m.mode)}>
@@ -131,6 +150,33 @@
 					</div>
 				{/if}
 			</div>
+			{#if focusedNoteGuid}
+				<!-- svelte-ignore a11y_no_static_element_interactions -->
+				<div
+					class="submenu-wrap"
+					onmouseenter={() => (openSubmenu = 'note')}
+					onmouseleave={() => (openSubmenu = null)}
+				>
+					<button
+						class="item submenu-parent"
+						aria-haspopup="menu"
+						aria-expanded={openSubmenu === 'note'}
+						onclick={() => (openSubmenu = openSubmenu === 'note' ? null : 'note')}
+					>
+						<span>노트 배경으로 지정</span>
+						<span class="chev" aria-hidden="true">▸</span>
+					</button>
+					{#if openSubmenu === 'note'}
+						<div class="submenu" class:flip-left={flipLeft} role="menu">
+							{#each WALLPAPER_MODES as m (m.mode)}
+								<button class="item" role="menuitem" onclick={() => doSetNoteBg(m.mode)}>
+									{m.label}
+								</button>
+							{/each}
+						</div>
+					{/if}
+				</div>
+			{/if}
 		{/if}
 	</div>
 {/if}
