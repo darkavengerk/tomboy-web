@@ -5,6 +5,7 @@
 		| 'delete'
 		| 'redownload'
 		| 'editTitle'
+		| 'reflectTitle'
 		| 'toggleFavorite'
 		| 'setHome'
 		| 'unsetHome'
@@ -81,6 +82,12 @@
 					<span class="action-icon">✎</span>
 					제목 수정
 				</button>
+				{#if note.title.trim()}
+					<button class="action-btn" onclick={() => onaction('reflectTitle')}>
+						<span class="action-icon">🌐</span>
+						전체 문서에 이 제목 반영
+					</button>
+				{/if}
 				<button class="action-btn" onclick={() => onaction('pickNotebook')}>
 					<span class="action-icon">🗂</span>
 					노트북 이동

@@ -7,7 +7,7 @@ import * as noteStore from '$lib/storage/noteStore.js';
 describe('renameNote', () => {
 	it('첫 줄과 note.title 을 함께 갱신하고 라운드트립이 일치한다', async () => {
 		const n = await createNote({ title: '예전 제목' });
-		const ok = await renameNote(n.guid, '새 제목');
+		const { ok } = await renameNote(n.guid, '새 제목');
 		expect(ok).toBe(true);
 		const fresh = await getNote(n.guid);
 		expect(fresh!.title).toBe('새 제목');
@@ -21,9 +21,9 @@ describe('renameNote', () => {
 	it('빈/동일 제목은 no-op, 충돌은 false', async () => {
 		const a = await createNote({ title: 'A 노트' });
 		await createNote({ title: 'B 노트' });
-		expect(await renameNote(a.guid, '   ')).toBe(false);
-		expect(await renameNote(a.guid, 'A 노트')).toBe(true); // 동일 → no-op 성공
-		expect(await renameNote(a.guid, 'B 노트')).toBe(false); // 충돌
+		expect((await renameNote(a.guid, '   ')).ok).toBe(false);
+		expect((await renameNote(a.guid, 'A 노트')).ok).toBe(true); // 동일 → no-op 성공
+		expect((await renameNote(a.guid, 'B 노트')).ok).toBe(false); // 충돌
 	});
 
 	it('백링크 캐스케이드: 소스 노트의 <link:internal> 이 새 타이틀로 재작성된다', async () => {
@@ -42,8 +42,9 @@ describe('renameNote', () => {
 		await noteStore.putNote(sourceWithLink);
 
 		// 3. 타깃 노트 이름 변경 → 백링크 캐스케이드 실행
-		const ok = await renameNote(target.guid, '바뀐 타깃');
+		const { ok, backlinksUpdated } = await renameNote(target.guid, '바뀐 타깃');
 		expect(ok).toBe(true);
+		expect(backlinksUpdated).toBe(1);
 
 		// 4. 소스 노트가 새 타이틀로 재작성됐는지 확인
 		const updatedSource = await noteStore.getNote(source.guid);

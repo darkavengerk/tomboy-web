@@ -5,6 +5,7 @@
 	export type ActionKind =
 		| 'delete'
 		| 'editTitle'
+		| 'reflectTitle'
 		| 'redownload'
 		| 'toggleFavorite'
 		| 'setHome'
@@ -77,6 +78,11 @@
 			<button class="item" onclick={() => onaction('editTitle')}>
 				<span class="icon">✎</span>제목 수정
 			</button>
+			{#if note.title.trim()}
+				<button class="item" onclick={() => onaction('reflectTitle')}>
+					<span class="icon">🌐</span>전체 문서에 이 제목 반영
+				</button>
+			{/if}
 			<div class="sep"></div>
 			<button class="item" onclick={() => onaction('toggleFavorite')}>
 				<span class="icon">{isFavoriteNote ? '★' : '☆'}</span>

@@ -155,5 +155,31 @@ describe('newNoteFlow', () => {
 			expect(newNoteFlow.phase).toBe('idle');
 			expect(newNoteFlow.stages).toHaveLength(0);
 		});
+
+		it('openResult() seeds result phase with heading/target/stages', async () => {
+			newNoteFlow.openResult({
+				heading: '제목 변경 완료',
+				title: '바뀐 제목',
+				guid: 'guid-xyz',
+				stages: [{ name: '백링크 2개 갱신', ms: 7, status: 'done' }]
+			});
+			expect(newNoteFlow.phase).toBe('result');
+			expect(newNoteFlow.heading).toBe('제목 변경 완료');
+			expect(newNoteFlow.stages).toHaveLength(1);
+			expect(newNoteFlow.stages[0].name).toBe('백링크 2개 갱신');
+			expect(newNoteFlow.sweep.status).toBe('idle');
+			await newNoteFlow.startSweepCount();
+			expect(newNoteFlow.sweep.status).toBe('confirm');
+			newNoteFlow.dismiss();
+			expect(newNoteFlow.heading).toBe('');
+		});
+
+		it('openResult() without stages leaves existing stages untouched', async () => {
+			newNoteFlow.dismiss();
+			newNoteFlow.openResult({ heading: '전체 문서에 제목 반영', title: 't', guid: 'g' });
+			expect(newNoteFlow.stages).toEqual([]);
+			expect(newNoteFlow.heading).toBe('전체 문서에 제목 반영');
+			newNoteFlow.dismiss();
+		});
 	});
 });

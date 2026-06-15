@@ -720,6 +720,18 @@
 			return;
 		}
 
+		if (kind === 'reflectTitle') {
+			if (!note!.title.trim()) return;
+			newNoteFlow.openResult({
+				heading: '전체 문서에 제목 반영',
+				title: note!.title,
+				guid: note!.guid,
+				stages: []
+			});
+			void newNoteFlow.startSweepCount();
+			return;
+		}
+
 		if (kind === 'toggleScrollBottom') {
 			const next = !isScrollBottomState;
 			await setScrollBottomNote(note!.guid, next);
@@ -779,17 +791,27 @@
 		titleDialogOpen = false;
 		if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
 		await flushSave();
-		const ok = await renameNote(note.guid, r.title);
+		const t0 = performance.now();
+		const { ok, backlinksUpdated } = await renameNote(note.guid, r.title);
 		if (!ok) {
 			pushToast('이미 같은 제목의 노트가 있거나 제목이 비어 있습니다.', { kind: 'error' });
 			return;
 		}
+		const ms = Math.round(performance.now() - t0);
 		if (r.notebook !== currentNotebook) {
 			await assignNotebook(note.guid, r.notebook);
 		}
 		const updated = await getNote(note.guid);
 		if (updated) note = updated;
-		pushToast('제목이 변경되었습니다.');
+		// 패널은 renameNote 의 emitNoteReload 진행 중에 열려도 안전 — 사용자가 스윕을
+		// 확정하면 applySweep 가 먼저 flushAll 로 미저장 편집을 내리고, 대상 노트(이 노트)는
+		// 스윕 candidates 에서 제외되므로 리로드 레이스로 내용이 깨지지 않는다.
+		newNoteFlow.openResult({
+			heading: '제목 변경 완료',
+			title: r.title,
+			guid: note.guid,
+			stages: [{ name: `제목 변경 · 백링크 ${backlinksUpdated}개 갱신`, ms, status: 'done' }]
+		});
 	}
 </script>
 

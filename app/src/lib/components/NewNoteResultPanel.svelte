@@ -2,6 +2,7 @@
 	import { portal } from '$lib/utils/portal.js';
 	import { newNoteFlow } from '$lib/stores/newNoteFlow.svelte.js';
 
+	// 결과 패널(공용): 생성·제목 변경·수동 "전체 문서 반영" 모두 newNoteFlow 가 구동.
 	const s = $derived(newNoteFlow.sweep);
 	// While a sweep count/apply is in flight, the panel must NOT be closed out
 	// from under the running op (Esc / backdrop / 닫기 are suppressed). The
@@ -23,7 +24,7 @@
 <div class="backdrop" use:portal onclick={closeIfIdle}></div>
 
 <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="new-note-result-heading" use:portal>
-	<div class="dlg-title" id="new-note-result-heading">새 노트 생성 완료</div>
+	<div class="dlg-title" id="new-note-result-heading">{newNoteFlow.heading}</div>
 
 	<ul class="stages">
 		{#each newNoteFlow.stages as st (st.name)}

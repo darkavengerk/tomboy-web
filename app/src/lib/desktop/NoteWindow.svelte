@@ -769,11 +769,13 @@
 		// 옛 본문을 읽어 rewrite + reload 하며 그 편집을 잃지 않도록.
 		if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
 		await flushSave();
-		const ok = await renameNote(note.guid, r.title);
+		const t0 = performance.now();
+		const { ok, backlinksUpdated } = await renameNote(note.guid, r.title);
 		if (!ok) {
 			pushToast('이미 같은 제목의 노트가 있거나 제목이 비어 있습니다.', { kind: 'error' });
 			return;
 		}
+		const ms = Math.round(performance.now() - t0);
 		if (r.notebook !== currentNotebook) {
 			await assignNotebook(note.guid, r.notebook);
 		}
@@ -781,7 +783,14 @@
 		// 로컬 note 에서 파생되므로 재조회로 갱신.
 		const updated = await getNote(note.guid);
 		if (updated) note = updated;
-		pushToast('제목이 변경되었습니다.');
+		// 패널은 renameNote 의 noteReload 진행 중에 열려도 안전 — 스윕 확정 시 applySweep 가
+		// 먼저 flushAll 하고, 대상 노트(이 창)는 스윕 candidates 에서 제외된다.
+		newNoteFlow.openResult({
+			heading: '제목 변경 완료',
+			title: r.title,
+			guid: note.guid,
+			stages: [{ name: `제목 변경 · 백링크 ${backlinksUpdated}개 갱신`, ms, status: 'done' }]
+		});
 	}
 
 	function scrollEditorToBottom() {
@@ -805,6 +814,18 @@
 		if (!note) return;
 
 		if (kind === 'editTitle') { openTitleDialog(); return; }
+
+		if (kind === 'reflectTitle') {
+			if (!note.title.trim()) return;
+			newNoteFlow.openResult({
+				heading: '전체 문서에 제목 반영',
+				title: note.title,
+				guid: note.guid,
+				stages: []
+			});
+			void newNoteFlow.startSweepCount();
+			return;
+		}
 
 		if (kind === 'delete') {
 			if (saveTimer) {

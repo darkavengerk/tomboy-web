@@ -35,12 +35,13 @@ let phase = $state<'idle' | 'input' | 'creating' | 'result'>('idle');
 let stages = $state<Stage[]>([]);
 let defaultNotebook = $state<string | null>(null);
 let sweep = $state<SweepState>(emptySweep());
+let heading = $state('');
 
 let navigateFn: NavigateFn | null = null;
 let pendingGuid: string | null = null;
 let readyResolve: (() => void) | null = null;
-let createdGuid: string | null = null;
-let createdTitle: string | null = null;
+let targetGuid: string | null = null;
+let targetTitle: string | null = null;
 let matchedGuids: string[] = [];
 let cancelFlag: { cancelled: boolean } = { cancelled: false };
 
@@ -56,13 +57,26 @@ function setStage(i: number, patch: Partial<Stage>) {
 function reset() {
 	phase = 'idle';
 	stages = [];
+	heading = '';
 	navigateFn = null;
 	pendingGuid = null;
 	readyResolve = null;
-	createdGuid = null;
-	createdTitle = null;
+	targetGuid = null;
+	targetTitle = null;
 	matchedGuids = [];
 	sweep = emptySweep();
+}
+
+/** 결과 패널을 임의의 (제목, guid)로 직접 띄운다(리네임/수동 액션 진입점).
+ *  stages 는 호출자가 만든 '이미 완료된' 단계 배열. 생략하면 기존 stages 유지. */
+function openResult(opts: { heading: string; title: string; guid: string; stages?: Stage[] }) {
+	heading = opts.heading;
+	targetTitle = opts.title;
+	targetGuid = opts.guid;
+	matchedGuids = [];
+	sweep = emptySweep();
+	if (opts.stages) stages = opts.stages;
+	phase = 'result';
 }
 
 export const newNoteFlow = {
@@ -70,6 +84,7 @@ export const newNoteFlow = {
 	get stages() { return stages; },
 	get defaultNotebook() { return defaultNotebook; },
 	get sweep() { return sweep; },
+	get heading() { return heading; },
 
 	open(opts: { notebook?: string | null; navigate: NavigateFn }) {
 		defaultNotebook = opts.notebook ?? null;
@@ -89,6 +104,9 @@ export const newNoteFlow = {
 			readyResolve = null;
 		}
 	},
+
+	/** 결과 패널을 임의의 (제목, guid)로 직접 띄운다(리네임/수동 액션 진입점). */
+	openResult,
 
 	async submit(input: { title: string; typeId: string; notebook: string | null }) {
 		const finalTitle = composeTitle(input.typeId, input.title).trim();
@@ -145,15 +163,12 @@ export const newNoteFlow = {
 		}
 
 		if (succeeded && noteGuid) {
-			// Success path: persist result state
-			createdGuid = noteGuid;
-			createdTitle = finalTitle;
-			matchedGuids = [];
-			sweep = emptySweep();
+			// Success path: hand off to the shared result-panel seeder. Null the
+			// create-only handshake fields first (openResult doesn't touch them).
 			navigateFn = null;
 			pendingGuid = null;
 			readyResolve = null;
-			phase = 'result';
+			openResult({ heading: '새 노트 생성 완료', title: finalTitle, guid: noteGuid });
 		} else {
 			// Error path: return to idle and clear everything
 			phase = 'idle';
@@ -165,13 +180,13 @@ export const newNoteFlow = {
 	},
 
 	async startSweepCount() {
-		if (!createdTitle || !createdGuid) return;
+		if (!targetTitle || !targetGuid) return;
 		if (sweep.status !== 'idle') return; // already counting/confirmed/applying
 		cancelFlag = { cancelled: false };
 		sweep = { ...sweep, status: 'counting', scanned: 0, total: 0, matched: 0 };
 		try {
 			await desktopSession.flushAll();
-			const { matched, total } = await countLinkSweep(createdTitle, createdGuid, {
+			const { matched, total } = await countLinkSweep(targetTitle, targetGuid, {
 				cancelToken: cancelFlag,
 				onProgress: (p) => {
 					sweep = { ...sweep, scanned: p.scanned, total: p.total, matched: p.matched };
@@ -193,7 +208,7 @@ export const newNoteFlow = {
 	},
 
 	async applySweep() {
-		if (!createdTitle || !createdGuid) return;
+		if (!targetTitle || !targetGuid) return;
 		if (sweep.status !== 'confirm') return; // only after a count produced a confirm
 		cancelFlag = { cancelled: false };
 		const t0 = performance.now();
@@ -203,7 +218,7 @@ export const newNoteFlow = {
 			// the count→confirm gap must land in IDB first, else reloadWindows below
 			// would clobber them (CLAUDE.md cross-window mutation pattern).
 			await desktopSession.flushAll();
-			const { updated, failed } = await applyLinkSweep(createdTitle, createdGuid, matchedGuids, {
+			const { updated, failed } = await applyLinkSweep(targetTitle, targetGuid, matchedGuids, {
 				cancelToken: cancelFlag,
 				onProgress: (p) => {
 					sweep = { ...sweep, scanned: p.scanned, updated: p.matched };
