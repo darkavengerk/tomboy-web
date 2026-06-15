@@ -3,8 +3,19 @@
 	import { copyImageToClipboard, copyImageUrlToClipboard, resolveImageBlob } from '$lib/editor/imageActions/copyImage.js';
 	import { portal } from '$lib/utils/portal.js';
 	import { page } from '$app/state';
-	import { desktopSession } from '$lib/desktop/session.svelte.js';
+	import { desktopSession, type WallpaperMode } from '$lib/desktop/session.svelte.js';
 	import { pushToast } from '$lib/stores/toast.js';
+
+	// Display modes offered under 「바탕화면으로 지정」 — order matches the common
+	// desktop-OS wallpaper picker. Selecting one sets the image AND its fill mode
+	// for the current workspace in one shot.
+	const WALLPAPER_MODES: { mode: WallpaperMode; label: string }[] = [
+		{ mode: 'cover', label: '채우기' },
+		{ mode: 'contain', label: '맞춤' },
+		{ mode: 'fill', label: '확대' },
+		{ mode: 'center', label: '가운데' },
+		{ mode: 'tile', label: '바둑판식' }
+	];
 
 	const menu = $derived(imageActionMenu.state);
 
@@ -28,6 +39,7 @@
 	});
 
 	function close() {
+		submenuOpen = false;
 		imageActionMenu.close();
 	}
 
@@ -49,14 +61,24 @@
 
 	const isDesktop = $derived(page.url.pathname.startsWith('/desktop'));
 
-	async function doSetWallpaper() {
+	let submenuOpen = $state(false);
+
+	// Flip the flyout to the left of its parent when the menu sits too close to
+	// the right edge to fit a right-side submenu.
+	const SUBMENU_W = 150;
+	const flipLeft = $derived.by(() => {
+		if (!pos || typeof window === 'undefined') return false;
+		return pos.left + 168 + SUBMENU_W > window.innerWidth;
+	});
+
+	async function doSetWallpaper(mode: WallpaperMode) {
 		const href = menu?.href;
 		close();
 		if (!href) return;
 		try {
 			const blob = await resolveImageBlob(href);
 			if (!blob) throw new Error('image bytes unavailable');
-			await desktopSession.setWallpaperForCurrent(blob);
+			await desktopSession.setWallpaperForCurrent(blob, mode);
 			pushToast('배경화면으로 지정했습니다');
 		} catch {
 			pushToast('배경화면 지정 실패', { kind: 'error' });
@@ -84,7 +106,31 @@
 		<button class="item" onclick={doCopyImage}>이미지 복사</button>
 		<button class="item" onclick={doCopyUrl}>이미지 주소 복사</button>
 		{#if isDesktop}
-			<button class="item" onclick={doSetWallpaper}>바탕화면으로 지정</button>
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div
+				class="submenu-wrap"
+				onmouseenter={() => (submenuOpen = true)}
+				onmouseleave={() => (submenuOpen = false)}
+			>
+				<button
+					class="item submenu-parent"
+					aria-haspopup="menu"
+					aria-expanded={submenuOpen}
+					onclick={() => (submenuOpen = !submenuOpen)}
+				>
+					<span>바탕화면으로 지정</span>
+					<span class="chev" aria-hidden="true">▸</span>
+				</button>
+				{#if submenuOpen}
+					<div class="submenu" class:flip-left={flipLeft} role="menu">
+						{#each WALLPAPER_MODES as m (m.mode)}
+							<button class="item" role="menuitem" onclick={() => doSetWallpaper(m.mode)}>
+								{m.label}
+							</button>
+						{/each}
+					</div>
+				{/if}
+			</div>
 		{/if}
 	</div>
 {/if}
@@ -123,5 +169,36 @@
 	}
 	.item:hover {
 		background: #f0f3f7;
+	}
+	.submenu-wrap {
+		position: relative;
+	}
+	.submenu-parent {
+		justify-content: space-between;
+	}
+	.submenu-parent[aria-expanded='true'] {
+		background: #f0f3f7;
+	}
+	.chev {
+		opacity: 0.6;
+		font-size: 0.8em;
+	}
+	.submenu {
+		position: absolute;
+		top: -4px;
+		left: 100%;
+		margin-left: 2px;
+		min-width: 110px;
+		background: #fff;
+		border: 1px solid #d0d7de;
+		border-radius: 6px;
+		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+		padding: 4px;
+	}
+	.submenu.flip-left {
+		left: auto;
+		right: 100%;
+		margin-left: 0;
+		margin-right: 2px;
 	}
 </style>

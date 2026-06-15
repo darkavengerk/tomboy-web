@@ -8,12 +8,14 @@ import { getSetting, setSetting } from '$lib/storage/appSettings.js';
 import { _resetDBForTest } from '$lib/storage/db.js';
 import {
 	loadWallpaper,
+	loadWallpaperMode,
 	setWallpaper,
 	clearWallpaper,
 	desktopSession
 } from '$lib/desktop/session.svelte.js';
 
 const WALLPAPER_KEY = 'desktop:wallpaper';
+const WALLPAPER_MODE_KEY = 'desktop:wallpaper-mode';
 function blob(tag: string): Blob {
 	return new Blob([tag], { type: 'image/png' });
 }
@@ -72,5 +74,48 @@ describe('per-workspace wallpaper', () => {
 		await desktopSession.setWallpaperForCurrent(blob('cur'));
 		const i = desktopSession.currentWorkspace;
 		expect(await getSetting<Blob>(`${WALLPAPER_KEY}:${i}`)).toBeInstanceOf(Blob);
+	});
+});
+
+describe('per-workspace wallpaper mode', () => {
+	it('defaults to contain when unset', async () => {
+		expect(await loadWallpaperMode(0)).toBe('contain');
+	});
+
+	it('setWallpaper without a mode leaves the mode key unwritten', async () => {
+		await setWallpaper(blob('x'), 1);
+		expect(await getSetting(`${WALLPAPER_MODE_KEY}:1`)).toBeUndefined();
+		expect(await loadWallpaperMode(1)).toBe('contain');
+	});
+
+	it('setWallpaper with a mode writes the per-workspace mode key', async () => {
+		await setWallpaper(blob('x'), 2, 'tile');
+		expect(await getSetting(`${WALLPAPER_MODE_KEY}:2`)).toBe('tile');
+		expect(await loadWallpaperMode(2)).toBe('tile');
+	});
+
+	it('mode is independent per workspace', async () => {
+		await setWallpaper(blob('a'), 0, 'cover');
+		await setWallpaper(blob('b'), 1, 'center');
+		expect(await loadWallpaperMode(0)).toBe('cover');
+		expect(await loadWallpaperMode(1)).toBe('center');
+	});
+
+	it('falls back to contain for an unrecognized stored value', async () => {
+		await setSetting(`${WALLPAPER_MODE_KEY}:3`, 'bogus');
+		expect(await loadWallpaperMode(3)).toBe('contain');
+	});
+
+	it('clearWallpaper removes the mode key too', async () => {
+		await setWallpaper(blob('x'), 2, 'fill');
+		await clearWallpaper(2);
+		expect(await getSetting(`${WALLPAPER_MODE_KEY}:2`)).toBeUndefined();
+		expect(await loadWallpaperMode(2)).toBe('contain');
+	});
+
+	it('setWallpaperForCurrent forwards the mode', async () => {
+		await desktopSession.setWallpaperForCurrent(blob('cur'), 'fill');
+		const i = desktopSession.currentWorkspace;
+		expect(await getSetting(`${WALLPAPER_MODE_KEY}:${i}`)).toBe('fill');
 	});
 });
