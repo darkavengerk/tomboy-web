@@ -1025,7 +1025,7 @@
 	class="note-window"
 	class:hidden={!active}
 	style="left:{x}px; top:{y}px; width:{width}px; height:{height}px; z-index:{z};"
-	style:opacity={noteOpacity}
+	style:background-color="rgba(255, 255, 255, {noteOpacity})"
 	onpointerdowncapture={handleWindowPointerDown}
 	onkeydown={handleKeyDown}
 >
@@ -1064,13 +1064,21 @@
 	</div>
 	{/if}
 
-	<div
-		bind:this={bodyEl}
-		class="body"
-		class:terminal-edit={(!!terminalSpec && !showTerminal) || (!!keysSpec && !showKeys)}
-		data-bg-mode={noteBgUrl ? noteBgMode : undefined}
-		style:background-image={noteBgUrl ? `url(${noteBgUrl})` : undefined}
-	>
+	<div bind:this={bodyEl} class="body" class:terminal-edit={(!!terminalSpec && !showTerminal) || (!!keysSpec && !showKeys)}>
+		{#if noteBgUrl && !loading}
+			<!-- Per-note background image. A dedicated layer (not the window's
+			     own background) so window opacity fades ONLY the body surface —
+			     title bar, editor text, and bottom toolbar stay fully opaque.
+			     Its own opacity fades the image in step with the translucent
+			     window fill behind it. -->
+			<div
+				class="note-bg-layer"
+				data-bg-mode={noteBgMode}
+				style:background-image="url({noteBgUrl})"
+				style:opacity={noteOpacity}
+				aria-hidden="true"
+			></div>
+		{/if}
 		{#if loading}
 			<div class="loading">로딩 중...</div>
 		{:else if showTerminal && terminalSpec}
@@ -1484,27 +1492,32 @@
 		position: relative;
 	}
 
-	/* Per-note background — a CSS background on .body so it paints behind the
-	   (transparent) editor content with no z-index juggling. data-bg-mode
-	   mirrors the workspace wallpaper modes. */
-	.body[data-bg-mode] {
+	/* Per-note background image layer. Absolutely fills the body BEHIND the
+	   editor content (which is a later, positioned sibling → paints on top).
+	   data-bg-mode mirrors the workspace wallpaper modes. */
+	.note-bg-layer {
+		position: absolute;
+		inset: 0;
+		z-index: 0;
+		pointer-events: none;
+		user-select: none;
 		background-repeat: no-repeat;
 		background-position: center;
 		background-size: contain;
 	}
-	.body[data-bg-mode='cover'] {
+	.note-bg-layer[data-bg-mode='cover'] {
 		background-size: cover;
 	}
-	.body[data-bg-mode='contain'] {
+	.note-bg-layer[data-bg-mode='contain'] {
 		background-size: contain;
 	}
-	.body[data-bg-mode='fill'] {
+	.note-bg-layer[data-bg-mode='fill'] {
 		background-size: 100% 100%;
 	}
-	.body[data-bg-mode='center'] {
+	.note-bg-layer[data-bg-mode='center'] {
 		background-size: auto;
 	}
-	.body[data-bg-mode='tile'] {
+	.note-bg-layer[data-bg-mode='tile'] {
 		background-position: top left;
 		background-repeat: repeat;
 		background-size: auto;
