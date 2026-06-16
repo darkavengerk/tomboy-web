@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { musicPlayer, __resetMusicPlayer } from '$lib/music/musicPlayer.svelte.js';
-import { __resetMusicProgress } from '$lib/music/musicProgress.js';
+import { __resetMusicProgress, saveProgress } from '$lib/music/musicProgress.js';
 import type { MusicTrack } from '$lib/music/parseMusicNote.js';
 
 const t = (url: string): MusicTrack => ({ url, title: null, display: url, liPos: 0 });
@@ -252,5 +252,89 @@ describe('musicPlayer 노트별 이어듣기', () => {
 		musicPlayer.play(0);
 		expect(musicPlayer.resumeAt).toBe(0);
 		expect(musicPlayer.currentTime).toBe(0);
+	});
+});
+
+describe('musicPlayer.resumeOrRestart', () => {
+	it('빈 큐면 no-op', () => {
+		musicPlayer.resumeOrRestart();
+		expect(musicPlayer.isPlaying).toBe(false);
+		expect(musicPlayer.currentIndex).toBe(-1);
+	});
+	it('재생 중이면 일시정지', () => {
+		musicPlayer.setQueue('n1', [t('a'), t('b')]);
+		musicPlayer.play(0);
+		expect(musicPlayer.isPlaying).toBe(true);
+		musicPlayer.resumeOrRestart();
+		expect(musicPlayer.isPlaying).toBe(false);
+	});
+	it('중간에 멈췄으면 같은 곡 이어재생', () => {
+		musicPlayer.setQueue('n1', [t('a'), t('b')]);
+		musicPlayer.play(0);
+		musicPlayer.reportDuration(100);
+		musicPlayer.reportTime(30);
+		musicPlayer.pause();
+		musicPlayer.resumeOrRestart();
+		expect(musicPlayer.currentIndex).toBe(0);
+		expect(musicPlayer.isPlaying).toBe(true);
+	});
+	it('큐가 끝까지 소진됐으면 처음(0번)부터 재시작', () => {
+		musicPlayer.setQueue('n1', [t('a'), t('b')]);
+		musicPlayer.play(1);
+		musicPlayer.reportDuration(100);
+		musicPlayer.reportTime(100);
+		musicPlayer.reportEnded();
+		expect(musicPlayer.isPlaying).toBe(false);
+		musicPlayer.resumeOrRestart();
+		expect(musicPlayer.currentIndex).toBe(0);
+		expect(musicPlayer.isPlaying).toBe(true);
+	});
+	it('한 곡짜리가 끝났으면 0초로 되감아 재시작', () => {
+		musicPlayer.setQueue('n1', [t('a')]);
+		musicPlayer.play(0);
+		musicPlayer.reportDuration(50);
+		musicPlayer.reportTime(50);
+		musicPlayer.reportEnded();
+		musicPlayer.resumeOrRestart();
+		expect(musicPlayer.currentIndex).toBe(0);
+		expect(musicPlayer.isPlaying).toBe(true);
+		expect(musicPlayer.currentTime).toBe(0);
+	});
+});
+
+describe('musicPlayer.restoreSession', () => {
+	it('큐/인덱스/이름을 채우되 재생하지 않는다', () => {
+		musicPlayer.restoreSession({
+			activeNoteGuid: 'n1',
+			activeNoteName: '노트',
+			queue: [t('a'), t('b')],
+			currentIndex: 1
+		});
+		expect(musicPlayer.queue.length).toBe(2);
+		expect(musicPlayer.currentIndex).toBe(1);
+		expect(musicPlayer.isPlaying).toBe(false);
+		expect(musicPlayer.activeNoteName).toBe('노트');
+		expect(musicPlayer.activeNoteGuid).toBe('n1');
+	});
+	it('이어듣기 위치를 첫 resume 에서 resumeAt 으로 승격', () => {
+		saveProgress('n1', 'b', 42);
+		musicPlayer.restoreSession({
+			activeNoteGuid: 'n1',
+			activeNoteName: '',
+			queue: [t('a'), t('b')],
+			currentIndex: 1
+		});
+		musicPlayer.resume();
+		expect(musicPlayer.takeResumeAt()).toBe(42);
+	});
+	it('빈 큐 스냅샷은 무시', () => {
+		musicPlayer.restoreSession({
+			activeNoteGuid: 'n1',
+			activeNoteName: '',
+			queue: [],
+			currentIndex: 0
+		});
+		expect(musicPlayer.queue.length).toBe(0);
+		expect(musicPlayer.activeNoteGuid).toBeNull();
 	});
 });

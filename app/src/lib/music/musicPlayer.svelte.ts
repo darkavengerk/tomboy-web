@@ -311,5 +311,50 @@ export const musicPlayer = {
 			return;
 		}
 		this.play(i);
+	},
+
+	/** localStorage 복원용 세션 스냅샷 적용(currentTime 제외 — musicProgress 담당). 자동재생 안 함. */
+	restoreSession(snap: {
+		activeNoteGuid: string;
+		activeNoteName: string;
+		queue: MusicTrack[];
+		currentIndex: number;
+	}): void {
+		if (!snap || !Array.isArray(snap.queue) || snap.queue.length === 0) return;
+		queue = snap.queue;
+		activeNoteGuid = snap.activeNoteGuid;
+		activeNoteName = snap.activeNoteName ?? '';
+		currentIndex = clampIndex(snap.currentIndex);
+		isPlaying = false;
+		currentTime = 0;
+		duration = 0;
+		const entry = currentIndex >= 0 ? loadProgress(snap.activeNoteGuid) : null;
+		pendingRestore = entry && entry.trackUrl === queue[currentIndex]?.url ? entry.currentTime : 0;
+		if (shuffle) rebuildShuffle(true);
+	},
+
+	/** 레일 재생 버튼 진입점. 재생 중이면 일시정지; 아니면 이어재생하되 큐가 소진됐으면 처음부터. */
+	resumeOrRestart(): void {
+		if (queue.length === 0) return;
+		if (isPlaying) {
+			this.pause();
+			return;
+		}
+		const ord = playOrder();
+		const lastIdx = ord[ord.length - 1];
+		const exhausted =
+			currentIndex < 0 ||
+			(currentIndex === lastIdx && duration > 0 && currentTime >= duration - 0.5);
+		if (exhausted) {
+			const first = ord[0];
+			if (first === currentIndex) {
+				this.requestSeek(0);
+				isPlaying = true;
+			} else {
+				this.play(first);
+			}
+		} else {
+			this.resume();
+		}
 	}
 };
