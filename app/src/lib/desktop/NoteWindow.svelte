@@ -1594,14 +1594,10 @@
 	   when the background clears (data-has-bg flips to false). */
 	.note-window[data-has-bg='true'] .body :global(.tomboy-editor .tiptap) {
 		text-shadow:
-			1px 1px 0 #fff,
-			-1px 1px 0 #fff,
-			1px -1px 0 #fff,
-			-1px -1px 0 #fff,
-			1px 0 0 #fff,
-			-1px 0 0 #fff,
-			0 1px 0 #fff,
-			0 -1px 0 #fff;
+			1px 0 0 rgba(255, 255, 255, 0.55),
+			-1px 0 0 rgba(255, 255, 255, 0.55),
+			0 1px 0 rgba(255, 255, 255, 0.55),
+			0 -1px 0 rgba(255, 255, 255, 0.55);
 	}
 
 	/* 전용 노트 raw 뷰에서 Ctrl 누른 동안만 뜨는 번들 복귀 버튼 — 좌상단. */
