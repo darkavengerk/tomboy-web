@@ -1585,16 +1585,23 @@
 		min-height: 0;
 	}
 
-	/* Readability halo: when a background is set, give the (dark) editor text a
-	   white outline glow so it stays legible over busy/dark imagery. Applied on
-	   .tiptap so it inherits to all body text; the dark title bar is a separate
-	   element and unaffected. Removed automatically when the background clears
-	   (data-has-bg flips to false). */
+	/* Readability outline: when a background is set, give the (dark) editor text a
+	   crisp white border so it stays legible over busy/dark imagery. Uses 1px
+	   *offset* shadows in 8 directions with ZERO blur radius — a blur-based glow
+	   (0 0 Npx) reads hazy/fuzzy over textured backgrounds, an offset stack reads
+	   as a sharp outline. Applied on .tiptap so it inherits to all body text; the
+	   dark title bar is a separate element and unaffected. Removed automatically
+	   when the background clears (data-has-bg flips to false). */
 	.note-window[data-has-bg='true'] .body :global(.tomboy-editor .tiptap) {
 		text-shadow:
-			0 0 2px #fff,
-			0 0 3px #fff,
-			0 0 4px #fff;
+			1px 1px 0 #fff,
+			-1px 1px 0 #fff,
+			1px -1px 0 #fff,
+			-1px -1px 0 #fff,
+			1px 0 0 #fff,
+			-1px 0 0 #fff,
+			0 1px 0 #fff,
+			0 -1px 0 #fff;
 	}
 
 	/* 전용 노트 raw 뷰에서 Ctrl 누른 동안만 뜨는 번들 복귀 버튼 — 좌상단. */
