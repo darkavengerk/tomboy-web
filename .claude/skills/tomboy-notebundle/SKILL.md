@@ -88,8 +88,15 @@ N omitted (default), M=100.
   `Done:[ ]탭:` / `Done:[ ]묶음:` works). N → `heightPct`, M → `maxCount`.
 - **`heightPct` (`clampHeightPct`):** `0` = **title-only** (묶음 only — bars only,
   bodies never loaded → no IDB read, no editor mount; memory saving), `100` =
-  **fit** (묶음: body grows to content height instead of N%-of-screen; tab: full
-  host height), else clamped **20–90**. Default 50. The bottom drag-handle writes
+  **fit** — **both kinds** now grow the active body to its content height instead
+  of N%-of-screen (the host editor scrolls). 묶음: `.bundle-body.open` → `height:auto`;
+  tab: the active `.node-body` flips from `position:absolute` to in-flow
+  (`position:relative`), siblings `display:none`, slide disabled. **Both** also
+  neutralize the desktop global `.body .tomboy-editor{overflow-y:auto;flex:1}` on
+  the embedded editor via `.bundle-stack.fit :global(.tomboy-editor){flex:none;
+  height:auto;overflow-y:visible}` — without that the embedded editor scrolls
+  internally / collapses and the drawer never grows. Else clamped **20–90**.
+  Default 50. The bottom drag-handle writes
   back into the **N digits only** (`digitsFrom..digitsTo` sits between the first
   `:` and the second), never touching M; the handle is hidden in title-only/fit.
 - **`maxCount` (`clampMaxCount`, 묶음 only):** title-window width. `1–100`,
@@ -298,6 +305,13 @@ both must keep working with keep-alive (no unmount):
 - **Initial-flash guard.** A `ready` flag (`onMount`) keeps all transition/flip
   durations at `0` until after mount, so the first render doesn't play every tab's
   intro at once.
+- **Fit mode breaks the slide on purpose.** `탭:100` (`fit`) needs the active body
+  to drive the stack's height, but `position:absolute; inset:0` bodies contribute
+  **zero** height to `.level-body` (so a `height:auto` parent would collapse). So
+  `.bundle-stack.fit` flips the **active** `.node-body` to `position:relative;
+  inset:auto; transform:none` (in-flow) and `display:none`s the rest, with
+  `transition:none` + `.level-body{flex:none;overflow:visible}`. The slide is gone
+  (acceptable for a static full-height view); switching tabs is an instant cut.
 
 This is **not** the old single-body FLIP dead-end (see below): bodies are
 per-note and persistent, so the slide animates real mounted elements, not a
@@ -482,11 +496,14 @@ capture-phase wheel preemption that the tab dropped** (the tab is now always-edi
   heightPct>=100`. **title-only** skips the session-load effect entirely (and
   tears down any live sessions) → bars only, no IDB read / editor mount; bodies
   `{#if}`-suppressed; height `auto`. **fit** = `.fit` class makes `.bundle-body.open`
-  `flex:none; height:auto; overflow:visible` so it grows to content; height `auto`.
-  `wheelBrowse = !(titleOnly && W>=n)` — when a title-only list shows **all** bars
-  (count 100) it can exceed the viewport, so wheel/swipe interception + pointer
-  capture are **disabled** (`.free-scroll` → `touch-action:pan-y`) and the page
-  scrolls natively; windowed/body modes stay short so they keep intercepting.
+  `flex:none; height:auto; overflow:visible` **and** overrides the embedded editor
+  (`.bundle-stack.fit :global(.tomboy-editor){flex:none;height:auto;overflow-y:visible}`,
+  same for `-shell`) so it grows to content; height `auto`.
+  `wheelBrowse = !fit && !(titleOnly && W>=n)` — **fit** (long body) and a
+  title-only list showing **all** bars (count 100) both can exceed the viewport, so
+  wheel/swipe interception + pointer capture are **disabled** (`.free-scroll` →
+  `touch-action:pan-y` on bars **and** the open body) and the page scrolls natively;
+  note-switching is then bar-click only. Windowed/body modes stay short so they keep intercepting.
   The drag-resize handle is hidden in title-only & fit.
 - **Layout = one expanded note + collapsed bars above/below.** Every resolved
   entry is a `.bundle-bar` + its own `.bundle-body` in DOM order; only `idx===k`

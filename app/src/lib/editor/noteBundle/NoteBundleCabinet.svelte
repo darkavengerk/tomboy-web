@@ -208,11 +208,13 @@
 	const hiddenBelow = $derived(Math.max(0, resolved.length - (winStart + W)));
 	const lastVisibleIdx = $derived(Math.min(winStart + W, resolved.length) - 1);
 
-	// 휠/스와이프로 활성을 넘길지(=묶음 브라우징). 타이틀만 + 전부 표시(개수 100 등)
-	// 면 윈도우로 넘길 게 없고 목록이 화면보다 길 수 있으므로 가로채지 않고
-	// 네이티브 페이지 스크롤에 맡긴다(긴 목차). 그 외(본문 있는 묶음, 윈도우
-	// 모드)는 짧은 높이로 갇혀 있어 가로채도 스크롤이 막히지 않는다.
-	const wheelBrowse = $derived(!(titleOnly && W >= resolved.length));
+	// 휠/스와이프로 활성을 넘길지(=묶음 브라우징). 가로채면 네이티브 스크롤이
+	// 막히므로, 스택이 화면보다 길어질 수 있는 두 경우엔 가로채지 않고 네이티브
+	// 페이지 스크롤에 맡긴다(노트 전환은 바 클릭):
+	//   · fit(크기 100): 본문이 콘텐츠 끝까지 펼쳐져 길다.
+	//   · 타이틀만 + 전부 표시(개수 100 등): 긴 목차.
+	// 그 외(고정 높이 묶음, 윈도우 모드)는 짧은 높이로 갇혀 가로채도 안 막힌다.
+	const wheelBrowse = $derived(!fit && !(titleOnly && W >= resolved.length));
 
 	// --- 높이 ----------------------------------------------------------------
 	let rootEl = $state<HTMLElement | null>(null);
@@ -1057,6 +1059,18 @@
 		height: auto;
 		overflow-y: visible;
 	}
+	/* fit 의 임베디드 에디터는 내부 스크롤(데스크탑 `.body .tomboy-editor`
+	   overflow-y:auto + flex:1 전역 규칙) 대신 콘텐츠 높이로 자라야 한다 — 그래야
+	   본문이 노트 끝까지 펼쳐지고 바깥(호스트 에디터)이 스크롤한다. */
+	.bundle-stack.fit :global(.tomboy-editor-shell) {
+		flex: none;
+		height: auto;
+	}
+	.bundle-stack.fit :global(.tomboy-editor) {
+		flex: none;
+		height: auto;
+		overflow-y: visible;
+	}
 	/* 타이틀만(크기 0 / 개수 100) — 본문 없이 바만. 스택은 바 높이만큼 자란다. */
 	.bundle-stack.title-only {
 		height: auto;
@@ -1285,6 +1299,12 @@
 		background: #ecebe6;
 		cursor: pointer;
 		touch-action: none;
+	}
+	/* fit(긴 본문) — browse 의 touch-action:none 을 풀어 네이티브 세로 스크롤 허용.
+	   browse 규칙보다 뒤 + 더 높은 특정도로 확실히 이긴다. */
+	.bundle-stack.free-scroll.browse .bundle-body.open {
+		touch-action: pan-y;
+		cursor: default;
 	}
 	.bundle-term {
 		height: 100%;

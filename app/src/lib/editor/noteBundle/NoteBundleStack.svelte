@@ -114,6 +114,10 @@
 		onwindowdrag
 	}: Props = $props();
 	const dedicated = $derived(variant === 'dedicated');
+	// 크기 100(fit) — 고정 높이 대신 활성 탭 본문을 콘텐츠 끝까지 펼친다. 전용
+	// 노트는 이미 컨테이너를 flex:1 로 꽉 채우므로 제외. 탭엔 타이틀만/개수
+	// 옵션이 없어 heightPct 만 본다.
+	const fit = $derived(!dedicated && spec.heightPct >= 100);
 
 	// --- 트리 해석 ----------------------------------------------------------
 	let titleEpoch = $state(0);
@@ -695,8 +699,9 @@
 	class="bundle-stack"
 	class:no-anim={suppressAnim}
 	class:dedicated
+	class:fit
 	bind:this={rootEl}
-	style:height={dedicated ? null : `${stackH}px`}
+	style:height={dedicated || fit ? null : `${stackH}px`}
 >
 	{#if tree.length === 0}
 		<div class="bundle-empty">묶을 노트 없음</div>
@@ -734,7 +739,7 @@
 			use:direct={{ click: handleUncheck, pointerdown: stopEvt, mousedown: stopEvt }}
 		>✎ 편집</button>
 	{/if}
-	{#if !dedicated}
+	{#if !dedicated && !fit}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			class="bundle-resize"
@@ -904,6 +909,48 @@
 		border: none;
 		border-radius: 0;
 		position: relative;
+	}
+	/* 크기 100(fit) — 고정 높이 대신 활성 탭 본문을 콘텐츠 끝까지 펼친다. 본문은
+	   평소 position:absolute(가로 슬라이드용)라 부모 높이를 못 만든다 → fit 에선
+	   활성 본문만 흐름에 복귀(relative)시키고 비활성은 display:none, 슬라이드는 끈다.
+	   바깥(호스트 에디터)이 스크롤하므로 자체는 height:auto 로 자란다. */
+	.bundle-stack.fit {
+		height: auto;
+	}
+	.bundle-stack.fit .tab-level {
+		flex: none;
+	}
+	.bundle-stack.fit .level-body {
+		flex: none;
+		overflow: visible;
+	}
+	.bundle-stack.fit .node-body {
+		transition: none;
+	}
+	.bundle-stack.fit .node-body:not(.active) {
+		display: none;
+	}
+	.bundle-stack.fit .node-body.active {
+		position: relative;
+		inset: auto;
+		transform: none;
+		opacity: 1;
+	}
+	.bundle-stack.fit .bundle-body {
+		flex: none;
+		height: auto;
+		overflow-y: visible;
+	}
+	/* 임베디드 에디터도 내부 스크롤(데스크탑 `.body .tomboy-editor` overflow-y:auto +
+	   flex:1 전역 규칙) 대신 콘텐츠 높이로 자라야 본문이 끝까지 펼쳐진다. */
+	.bundle-stack.fit :global(.tomboy-editor-shell) {
+		flex: none;
+		height: auto;
+	}
+	.bundle-stack.fit :global(.tomboy-editor) {
+		flex: none;
+		height: auto;
+		overflow-y: visible;
 	}
 	/* 전용 노트 우상단 크롬 — 반투명, 본문 위로 떠 있음. */
 	.dedicated-chrome {
