@@ -160,6 +160,35 @@
 	let resizingRail = $state(false);
 	let resizingMain = $state(false);
 
+	// 고급 메뉴: 자주 안 쓰는 레일 버튼들(그래프/코드 그래프/설정/관리자/
+	// 펼쳐보기)을 하나의 토글 뒤로 접어 레일을 가볍게 유지. 플라이아웃은
+	// .rail(overflow:hidden) 바깥, aside의 마지막 자식으로 렌더해서 잘리지
+	// 않고 .main 위에 그려진다.
+	let advancedOpen = $state(false);
+
+	function toggleAdvanced() {
+		advancedOpen = !advancedOpen;
+	}
+
+	$effect(() => {
+		if (!advancedOpen) return;
+		const onDocPointer = (e: PointerEvent) => {
+			const t = e.target as HTMLElement | null;
+			// 토글 버튼이나 메뉴 내부 클릭은 닫지 않음.
+			if (t?.closest('.rail-advanced') || t?.closest('.advanced-menu')) return;
+			advancedOpen = false;
+		};
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === 'Escape') advancedOpen = false;
+		};
+		window.addEventListener('pointerdown', onDocPointer, true);
+		window.addEventListener('keydown', onKey);
+		return () => {
+			window.removeEventListener('pointerdown', onDocPointer, true);
+			window.removeEventListener('keydown', onKey);
+		};
+	});
+
 	function onRailResizeStart(e: PointerEvent) {
 		const start = sidePanelLayout.railWidth;
 		resizingRail = true;
@@ -250,48 +279,16 @@
 			{/each}
 		</div>
 
-		<a
-			class="rail-settings rail-graph"
-			href="/desktop/graph"
-			target="_blank"
-			rel="noopener"
-			title="노트 그래프 (새 탭)"
-			aria-label="노트 그래프"
-		>그래프</a>
-
-		<a
-			class="rail-settings rail-codegraph"
-			href="/desktop/codegraph"
-			target="_blank"
-			rel="noopener"
-			title="코드 그래프 (새 탭)"
-			aria-label="코드 그래프"
-		>코드 그래프</a>
-
 		<button
 			type="button"
-			class="rail-settings"
-			onclick={onopensettings}
-			title="설정"
-			aria-label="설정"
-		>설정</button>
-
-		<button
-			type="button"
-			class="rail-settings"
-			onclick={onopenadmin}
-			title="관리자"
-			aria-label="관리자"
-		>관리자</button>
-
-		<button
-			type="button"
-			class="rail-settings rail-spread"
-			onclick={onspread}
-			disabled={spreadDisabled}
-			title="펼쳐보기 (F4)"
-			aria-label="펼쳐보기"
-		>펼쳐보기</button>
+			class="rail-settings rail-advanced"
+			class:active={advancedOpen}
+			onclick={toggleAdvanced}
+			aria-haspopup="menu"
+			aria-expanded={advancedOpen}
+			title="고급"
+			aria-label="고급"
+		>고급</button>
 	</div>
 
 	<!--
@@ -377,6 +374,62 @@
 		</div>
 
 	</div>
+
+	<!--
+		고급 플라이아웃: .rail 바깥(잘림 방지) + aside의 마지막 자식(.main
+		위에 그려짐). 토글이 켜지면 레일 하단 모서리에서 위로 펼쳐진다.
+		aside는 pointer-events:none이라 메뉴는 auto로 되살린다.
+	-->
+	{#if advancedOpen}
+		<div class="advanced-menu" role="menu" aria-label="고급">
+			<a
+				class="adv-item"
+				href="/desktop/graph"
+				target="_blank"
+				rel="noopener"
+				role="menuitem"
+				title="노트 그래프 (새 탭)"
+				onclick={() => (advancedOpen = false)}
+			>그래프</a>
+			<a
+				class="adv-item"
+				href="/desktop/codegraph"
+				target="_blank"
+				rel="noopener"
+				role="menuitem"
+				title="코드 그래프 (새 탭)"
+				onclick={() => (advancedOpen = false)}
+			>코드 그래프</a>
+			<button
+				type="button"
+				class="adv-item"
+				role="menuitem"
+				onclick={() => {
+					advancedOpen = false;
+					onopensettings();
+				}}
+			>설정</button>
+			<button
+				type="button"
+				class="adv-item"
+				role="menuitem"
+				onclick={() => {
+					advancedOpen = false;
+					onopenadmin();
+				}}
+			>관리자</button>
+			<button
+				type="button"
+				class="adv-item"
+				role="menuitem"
+				disabled={spreadDisabled}
+				onclick={() => {
+					advancedOpen = false;
+					onspread();
+				}}
+			>펼쳐보기 (F4)</button>
+		</div>
+	{/if}
 </aside>
 
 <style>
@@ -698,22 +751,56 @@
 		pointer-events: none;
 	}
 
-	/* Anchor variant for the graph link — mirrors rail-settings styling so
-	   it stacks identically above the settings button. margin-top: auto on
-	   rail-settings would push this one down too; we reset it here. */
-	.rail-graph {
-		display: block;
-		text-decoration: none;
-		margin-top: auto;
+	/* 고급 토글: 레일 맨 아래에 핀(rail-settings의 margin-top:auto 상속).
+	   열려 있으면 활성 색으로 표시. */
+	.rail-advanced.active {
+		background: #2d5a3d;
+		color: #fff;
+		border-color: #3a7a50;
 	}
 
-	.rail-codegraph {
-		display: block;
-		text-decoration: none;
-		margin-top: 0;
+	/* 고급 플라이아웃 메뉴: 레일 하단 모서리에서 위로 펼쳐지는 세로 목록.
+	   aside(pointer-events:none) 안이라 auto로 되살리고, 레일보다 넓게
+	   띄워 레이블이 한 줄에 들어오게 한다. */
+	.advanced-menu {
+		position: absolute;
+		left: 6px;
+		bottom: 44px;
+		width: 150px;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding: 6px;
+		background: #1f1f1f;
+		border: 1px solid #3a3a3a;
+		border-radius: 6px;
+		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+		pointer-events: auto;
 	}
 
-	.rail-graph ~ .rail-settings {
-		margin-top: 0;
+	.adv-item {
+		display: block;
+		width: 100%;
+		padding: 7px 10px;
+		border-radius: 4px;
+		border: 1px solid transparent;
+		background: transparent;
+		color: #ddd;
+		font-size: 0.8rem;
+		text-align: left;
+		text-decoration: none;
+		cursor: pointer;
+		line-height: 1.2;
+	}
+
+	.adv-item:hover {
+		background: #2a2a2a;
+		color: #fff;
+	}
+
+	.adv-item:disabled {
+		opacity: 0.4;
+		cursor: default;
+		pointer-events: none;
 	}
 </style>
