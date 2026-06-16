@@ -256,8 +256,19 @@
 	// --- 높이 ----------------------------------------------------------------
 	let rootEl = $state<HTMLElement | null>(null);
 	let basisH = $state(600);
+	// fit(크기 100) — 묶음 위쪽의 호스트 콘텐츠 높이(= 묶음 상단 오프셋). 호스트
+	// 뷰포트 끝까지 채우려면 stackH = basisH - 이 값.
+	let fitTopOffset = $state(0);
 	let dragPx = $state<number | null>(null);
-	const stackH = $derived(dragPx ?? Math.max(140, Math.round((basisH * spec.heightPct) / 100)));
+	// fit: 호스트 노트의 끝(에디터 뷰포트 하단)에 닿을 때까지 — 묶음 상단부터 남은
+	//   높이 전부. 임베디드 노트 내용 높이가 아니라 호스트 기준(다음 내용은 없다고
+	//   가정). 그 외: 호스트 높이의 heightPct%.
+	const stackH = $derived(
+		dragPx ??
+			(fit
+				? Math.max(140, basisH - fitTopOffset)
+				: Math.max(140, Math.round((basisH * spec.heightPct) / 100)))
+	);
 
 	onMount(() => {
 		// 전용 노트는 컨테이너(.editor-area / .body)를 flex:1 로 꽉 채운다 —
@@ -272,15 +283,26 @@
 		if (inDesktopWindow) {
 			const hostEl = view!.dom.closest<HTMLElement>('.tomboy-editor') ?? view!.dom.parentElement;
 			if (!hostEl) return;
-			basisH = hostEl.clientHeight || 600;
-			const ro = new ResizeObserver(() => {
+			// basisH = 호스트 에디터 뷰포트 높이. fitTopOffset = 묶음 상단의
+			// 콘텐츠 내 위치(scrollTop 보정 → 스크롤 무관). 묶음 자체 높이가
+			// 바뀌어도 위쪽 콘텐츠는 그대로라 값이 수렴 — 피드백 루프 없음.
+			const measure = () => {
 				basisH = hostEl.clientHeight || basisH;
-			});
+				const r = rootEl?.getBoundingClientRect();
+				if (r) fitTopOffset = Math.max(0, r.top - hostEl.getBoundingClientRect().top + hostEl.scrollTop);
+			};
+			measure();
+			const ro = new ResizeObserver(measure);
 			ro.observe(hostEl);
+			ro.observe(view!.dom); // 묶음 위 콘텐츠 높이 변화 → 오프셋 갱신
 			return () => ro.disconnect();
 		}
 		const measure = () => {
 			basisH = window.innerHeight || 600;
+			// 모바일 body 스크롤 — 묶음의 뷰포트 상단 위치. 스크롤마다 갱신하면
+			// 스크롤 중 리사이즈가 되므로 resize 때만(마운트 시점 위치 기준).
+			const r = rootEl?.getBoundingClientRect();
+			if (r) fitTopOffset = Math.max(0, r.top);
 		};
 		measure();
 		window.addEventListener('resize', measure);
@@ -699,9 +721,8 @@
 	class="bundle-stack"
 	class:no-anim={suppressAnim}
 	class:dedicated
-	class:fit
 	bind:this={rootEl}
-	style:height={dedicated || fit ? null : `${stackH}px`}
+	style:height={dedicated ? null : `${stackH}px`}
 >
 	{#if tree.length === 0}
 		<div class="bundle-empty">묶을 노트 없음</div>
@@ -909,48 +930,6 @@
 		border: none;
 		border-radius: 0;
 		position: relative;
-	}
-	/* 크기 100(fit) — 고정 높이 대신 활성 탭 본문을 콘텐츠 끝까지 펼친다. 본문은
-	   평소 position:absolute(가로 슬라이드용)라 부모 높이를 못 만든다 → fit 에선
-	   활성 본문만 흐름에 복귀(relative)시키고 비활성은 display:none, 슬라이드는 끈다.
-	   바깥(호스트 에디터)이 스크롤하므로 자체는 height:auto 로 자란다. */
-	.bundle-stack.fit {
-		height: auto;
-	}
-	.bundle-stack.fit .tab-level {
-		flex: none;
-	}
-	.bundle-stack.fit .level-body {
-		flex: none;
-		overflow: visible;
-	}
-	.bundle-stack.fit .node-body {
-		transition: none;
-	}
-	.bundle-stack.fit .node-body:not(.active) {
-		display: none;
-	}
-	.bundle-stack.fit .node-body.active {
-		position: relative;
-		inset: auto;
-		transform: none;
-		opacity: 1;
-	}
-	.bundle-stack.fit .bundle-body {
-		flex: none;
-		height: auto;
-		overflow-y: visible;
-	}
-	/* 임베디드 에디터도 내부 스크롤(데스크탑 `.body .tomboy-editor` overflow-y:auto +
-	   flex:1 전역 규칙) 대신 콘텐츠 높이로 자라야 본문이 끝까지 펼쳐진다. */
-	.bundle-stack.fit :global(.tomboy-editor-shell) {
-		flex: none;
-		height: auto;
-	}
-	.bundle-stack.fit :global(.tomboy-editor) {
-		flex: none;
-		height: auto;
-		overflow-y: visible;
 	}
 	/* 전용 노트 우상단 크롬 — 반투명, 본문 위로 떠 있음. */
 	.dedicated-chrome {

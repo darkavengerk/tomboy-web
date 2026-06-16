@@ -181,8 +181,9 @@
 	// --- 묶음 전용 모드 (크기 0 / 개수 옵션) -----------------------------------
 	// 타이틀만: 크기 0(`묶음:0`) 또는 개수 100(`묶음::100`/`묶음:N:100`). 본문을
 	//   로드하지 않아(세션 mount 없음) 제목만 표시 — 많은 노트 목록 메모리 절약.
-	// fit: 크기 100(`묶음:100`) — 본문을 노트 끝까지 펼친다(고정 높이 대신 콘텐츠
-	//   높이). 전용 노트(dedicated)는 flex:1 로 이미 꽉 차므로 제외.
+	// fit: 크기 100(`묶음:100`) — 호스트 노트의 끝(에디터 뷰포트 하단)에 닿을
+	//   때까지 채운다(묶음 상단부터 남은 높이 전부). 임베디드 노트 내용 높이가
+	//   아니라 호스트 기준. 전용 노트(dedicated)는 flex:1 로 이미 꽉 차므로 제외.
 	// maxBars: 표시 바 개수(윈도우 폭). 100 = 전부.
 	const titleOnly = $derived(spec.heightPct <= 0 || spec.maxCount >= 100);
 	const fit = $derived(!dedicated && !titleOnly && spec.heightPct >= 100);
@@ -208,19 +209,27 @@
 	const hiddenBelow = $derived(Math.max(0, resolved.length - (winStart + W)));
 	const lastVisibleIdx = $derived(Math.min(winStart + W, resolved.length) - 1);
 
-	// 휠/스와이프로 활성을 넘길지(=묶음 브라우징). 가로채면 네이티브 스크롤이
-	// 막히므로, 스택이 화면보다 길어질 수 있는 두 경우엔 가로채지 않고 네이티브
-	// 페이지 스크롤에 맡긴다(노트 전환은 바 클릭):
-	//   · fit(크기 100): 본문이 콘텐츠 끝까지 펼쳐져 길다.
-	//   · 타이틀만 + 전부 표시(개수 100 등): 긴 목차.
-	// 그 외(고정 높이 묶음, 윈도우 모드)는 짧은 높이로 갇혀 가로채도 안 막힌다.
-	const wheelBrowse = $derived(!fit && !(titleOnly && W >= resolved.length));
+	// 휠/스와이프로 활성을 넘길지(=묶음 브라우징). 타이틀만 + 전부 표시(개수 100 등)
+	// 면 목록이 화면보다 길 수 있어 가로채면 네이티브 페이지 스크롤이 막히므로
+	// 가로채지 않는다(긴 목차). 그 외(fit 포함)는 고정 높이라 본문이 내부 스크롤
+	// 되고 노트 전환은 휠/스와이프로 — 가로채도 페이지 스크롤이 안 막힌다.
+	const wheelBrowse = $derived(!(titleOnly && W >= resolved.length));
 
 	// --- 높이 ----------------------------------------------------------------
 	let rootEl = $state<HTMLElement | null>(null);
 	let basisH = $state(600);
+	// fit(크기 100) — 묶음 위쪽의 호스트 콘텐츠 높이(= 묶음 상단 오프셋). 호스트
+	// 뷰포트 끝까지 채우려면 stackH = basisH - 이 값.
+	let fitTopOffset = $state(0);
 	let dragPx = $state<number | null>(null);
-	const stackH = $derived(dragPx ?? Math.max(140, Math.round((basisH * spec.heightPct) / 100)));
+	// fit: 호스트 노트의 끝(에디터 뷰포트 하단)까지 — 묶음 상단부터 남은 높이 전부
+	//   (다음 내용은 없다고 가정). 그 외: 호스트 높이의 heightPct%.
+	const stackH = $derived(
+		dragPx ??
+			(fit
+				? Math.max(140, basisH - fitTopOffset)
+				: Math.max(140, Math.round((basisH * spec.heightPct) / 100)))
+	);
 
 	onMount(() => {
 		// 전용 노트는 컨테이너(.editor-area / .body)를 flex:1 로 꽉 채운다 —
@@ -235,15 +244,24 @@
 		if (inDesktopWindow) {
 			const hostEl = view!.dom.closest<HTMLElement>('.tomboy-editor') ?? view!.dom.parentElement;
 			if (!hostEl) return;
-			basisH = hostEl.clientHeight || 600;
-			const ro = new ResizeObserver(() => {
+			// basisH = 호스트 뷰포트 높이. fitTopOffset = 묶음 상단의 콘텐츠 내
+			// 위치(scrollTop 보정 → 스크롤 무관). 묶음 높이가 바뀌어도 위쪽
+			// 콘텐츠는 그대로라 값이 수렴 — 피드백 루프 없음.
+			const measure = () => {
 				basisH = hostEl.clientHeight || basisH;
-			});
+				const r = rootEl?.getBoundingClientRect();
+				if (r) fitTopOffset = Math.max(0, r.top - hostEl.getBoundingClientRect().top + hostEl.scrollTop);
+			};
+			measure();
+			const ro = new ResizeObserver(measure);
 			ro.observe(hostEl);
+			ro.observe(view!.dom); // 묶음 위 콘텐츠 높이 변화 → 오프셋 갱신
 			return () => ro.disconnect();
 		}
 		const measure = () => {
 			basisH = window.innerHeight || 600;
+			const r = rootEl?.getBoundingClientRect();
+			if (r) fitTopOffset = Math.max(0, r.top);
 		};
 		measure();
 		window.addEventListener('resize', measure);
@@ -838,10 +856,9 @@
 	class:edit={mode === 'edit'}
 	class:dedicated
 	class:title-only={titleOnly}
-	class:fit
 	class:free-scroll={!wheelBrowse}
 	bind:this={rootEl}
-	style:height={dedicated || titleOnly || fit ? null : `${stackH}px`}
+	style:height={dedicated || titleOnly ? null : `${stackH}px`}
 >
 	{#if mode === 'edit' && expanded && !titleOnly}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1045,31 +1062,6 @@
 		border: none;
 		border-radius: 0;
 		position: relative;
-	}
-	/* 크기 100(fit) — 고정 높이 대신 활성 본문을 콘텐츠 끝까지 펼친다. 바 + 본문이
-	   자연 높이로 쌓이고 스택은 그만큼 자란다(바깥 페이지가 스크롤). */
-	.bundle-stack.fit {
-		height: auto;
-	}
-	.bundle-stack.fit .bundle-list {
-		flex: none;
-	}
-	.bundle-stack.fit .bundle-body.open {
-		flex: none;
-		height: auto;
-		overflow-y: visible;
-	}
-	/* fit 의 임베디드 에디터는 내부 스크롤(데스크탑 `.body .tomboy-editor`
-	   overflow-y:auto + flex:1 전역 규칙) 대신 콘텐츠 높이로 자라야 한다 — 그래야
-	   본문이 노트 끝까지 펼쳐지고 바깥(호스트 에디터)이 스크롤한다. */
-	.bundle-stack.fit :global(.tomboy-editor-shell) {
-		flex: none;
-		height: auto;
-	}
-	.bundle-stack.fit :global(.tomboy-editor) {
-		flex: none;
-		height: auto;
-		overflow-y: visible;
 	}
 	/* 타이틀만(크기 0 / 개수 100) — 본문 없이 바만. 스택은 바 높이만큼 자란다. */
 	.bundle-stack.title-only {
@@ -1299,12 +1291,6 @@
 		background: #ecebe6;
 		cursor: pointer;
 		touch-action: none;
-	}
-	/* fit(긴 본문) — browse 의 touch-action:none 을 풀어 네이티브 세로 스크롤 허용.
-	   browse 규칙보다 뒤 + 더 높은 특정도로 확실히 이긴다. */
-	.bundle-stack.free-scroll.browse .bundle-body.open {
-		touch-action: pan-y;
-		cursor: default;
 	}
 	.bundle-term {
 		height: 100%;

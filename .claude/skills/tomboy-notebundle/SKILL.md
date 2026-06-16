@@ -88,14 +88,15 @@ N omitted (default), M=100.
   `Done:[ ]탭:` / `Done:[ ]묶음:` works). N → `heightPct`, M → `maxCount`.
 - **`heightPct` (`clampHeightPct`):** `0` = **title-only** (묶음 only — bars only,
   bodies never loaded → no IDB read, no editor mount; memory saving), `100` =
-  **fit** — **both kinds** now grow the active body to its content height instead
-  of N%-of-screen (the host editor scrolls). 묶음: `.bundle-body.open` → `height:auto`;
-  tab: the active `.node-body` flips from `position:absolute` to in-flow
-  (`position:relative`), siblings `display:none`, slide disabled. **Both** also
-  neutralize the desktop global `.body .tomboy-editor{overflow-y:auto;flex:1}` on
-  the embedded editor via `.bundle-stack.fit :global(.tomboy-editor){flex:none;
-  height:auto;overflow-y:visible}` — without that the embedded editor scrolls
-  internally / collapses and the drawer never grows. Else clamped **20–90**.
+  **fit** — **both kinds** fill from the bundle's top down to the **bottom of the
+  host note's editor viewport** (NOT the embedded note's content height — host-
+  relative; "다음 내용 없다고 가정"). `stackH = max(140, basisH − fitTopOffset)`
+  where `fitTopOffset` = the bundle's top within the host editor content
+  (`rootEl.top − hostEl.top + hostEl.scrollTop`, scroll-invariant) measured by a
+  `ResizeObserver` on both `hostEl` and `view.dom` (content above the bundle
+  changing height re-shifts the offset; the bundle's own height does not, so it
+  converges — no feedback loop). The embedded editor still scrolls **internally**
+  (fit is just a taller fixed-height drawer). Else clamped **20–90**.
   Default 50. The bottom drag-handle writes
   back into the **N digits only** (`digitsFrom..digitsTo` sits between the first
   `:` and the second), never touching M; the handle is hidden in title-only/fit.
@@ -305,13 +306,9 @@ both must keep working with keep-alive (no unmount):
 - **Initial-flash guard.** A `ready` flag (`onMount`) keeps all transition/flip
   durations at `0` until after mount, so the first render doesn't play every tab's
   intro at once.
-- **Fit mode breaks the slide on purpose.** `탭:100` (`fit`) needs the active body
-  to drive the stack's height, but `position:absolute; inset:0` bodies contribute
-  **zero** height to `.level-body` (so a `height:auto` parent would collapse). So
-  `.bundle-stack.fit` flips the **active** `.node-body` to `position:relative;
-  inset:auto; transform:none` (in-flow) and `display:none`s the rest, with
-  `transition:none` + `.level-body{flex:none;overflow:visible}`. The slide is gone
-  (acceptable for a static full-height view); switching tabs is an instant cut.
+
+`탭:100` (`fit`) does **not** touch the body positioning — it only computes a taller
+`stackH` (fill to host viewport bottom, see Height basis); the absolute slide stays.
 
 This is **not** the old single-body FLIP dead-end (see below): bodies are
 per-note and persistent, so the slide animates real mounted elements, not a
@@ -460,8 +457,9 @@ editor right away since the tab is always in edit.)
 
 ### Height basis — desktop vs mobile
 
-`stackH = dragPx ?? max(140, round(basisH * heightPct/100))` (applies to `20–90`;
-title-only & fit set `height:auto` instead — see the cabinet modes above). In a desktop
+`stackH = dragPx ?? (fit ? max(140, basisH − fitTopOffset) : max(140, round(basisH *
+heightPct/100)))` (title-only sets `height:auto` instead — see the cabinet modes
+above; **fit** fills to the host viewport bottom, see heightPct). In a desktop
 multi-window (`view.dom.closest('.note-window')`) `basisH` = host
 `.tomboy-editor` `clientHeight` (bounded by the window, ResizeObserver). On the
 mobile route the editor is body-level scroll whose height grows with content —
@@ -495,15 +493,16 @@ capture-phase wheel preemption that the tab dropped** (the tab is now always-edi
   `titleOnly = heightPct<=0 || maxCount>=100`, `fit = !dedicated && !titleOnly &&
   heightPct>=100`. **title-only** skips the session-load effect entirely (and
   tears down any live sessions) → bars only, no IDB read / editor mount; bodies
-  `{#if}`-suppressed; height `auto`. **fit** = `.fit` class makes `.bundle-body.open`
-  `flex:none; height:auto; overflow:visible` **and** overrides the embedded editor
-  (`.bundle-stack.fit :global(.tomboy-editor){flex:none;height:auto;overflow-y:visible}`,
-  same for `-shell`) so it grows to content; height `auto`.
-  `wheelBrowse = !fit && !(titleOnly && W>=n)` — **fit** (long body) and a
-  title-only list showing **all** bars (count 100) both can exceed the viewport, so
-  wheel/swipe interception + pointer capture are **disabled** (`.free-scroll` →
-  `touch-action:pan-y` on bars **and** the open body) and the page scrolls natively;
-  note-switching is then bar-click only. Windowed/body modes stay short so they keep intercepting.
+  `{#if}`-suppressed; height `auto`. **fit** is just a taller **fixed-height**
+  drawer — `stackH = basisH − fitTopOffset` (fill to host viewport bottom, see
+  Height basis); the embedded editor scrolls internally as usual. No `.fit` CSS,
+  no embedded-editor override (that was a wrong "grow-to-content" attempt — the
+  user wants host-relative fill, not embedded-content height).
+  `wheelBrowse = !(titleOnly && W>=n)` — only a title-only list showing **all**
+  bars (count 100) can exceed the viewport, so there wheel/swipe interception +
+  pointer capture are **disabled** (`.free-scroll` → `touch-action:pan-y` on bars)
+  and the page scrolls natively. fit/windowed/body modes stay a bounded height so
+  they keep intercepting (note-switch via wheel/swipe/bar-click).
   The drag-resize handle is hidden in title-only & fit.
 - **Layout = one expanded note + collapsed bars above/below.** Every resolved
   entry is a `.bundle-bar` + its own `.bundle-body` in DOM order; only `idx===k`
@@ -700,8 +699,9 @@ dedicated-note parser, and it's the simplest: a plain title list, no doc walk.
   first top-level node + caret clamp out of it). The bar/tab already shows the note
   title, so the body starts from content — matches the standalone note route
   (`note/[id]/+page.svelte` passes the same).
-- **heightPct: `0`=title-only(묶음), `100`=fit, else 20–90, default 50.** Drag the
-  bottom edge; persisted on pointer-up (writes N digits only, handle hidden in 0/fit).
+- **heightPct: `0`=title-only(묶음), `100`=fit (fill to host viewport bottom,
+  both kinds), else 20–90, default 50.** Drag the bottom edge; persisted on
+  pointer-up (writes N digits only, handle hidden in 0/fit).
 - **maxCount (묶음 `:M`): 1–100, default 5, `100`=all+title-only.** Window width.
 - **Widget container cached per ordinal** — never recreate it or the Svelte stack is lost.
 - **Full-tree render is required for keep-alive** — visited leaf editors must stay
