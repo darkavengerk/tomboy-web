@@ -1568,6 +1568,19 @@
 			0 -1px 0 rgba(255, 255, 255, 0.55);
 	}
 
+	/* Let the note background show THROUGH an embedded note bundle. A bundle
+	   (inline 탭/묶음 in the editor, or a dedicated 탭::/묶음:: note's cabinet)
+	   renders inside this window's .body and paints its own opaque card fill
+	   (.bundle-stack) + content fill (.bundle-body) ON TOP of the bg layer,
+	   hiding it. Clearing just those two surfaces lets the layer behind paint
+	   through; the tab strips / title bars keep their own chrome colour so they
+	   stay legible. Gated on data-has-bg so a bundle without a background keeps
+	   its normal opaque look. */
+	.note-window[data-has-bg='true'] :global(.bundle-stack),
+	.note-window[data-has-bg='true'] :global(.bundle-body) {
+		background: transparent;
+	}
+
 	/* 전용 노트 raw 뷰에서 Ctrl 누른 동안만 뜨는 번들 복귀 버튼 — 좌상단. */
 	.dedicated-back-btn {
 		position: absolute;
