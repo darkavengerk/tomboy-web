@@ -144,7 +144,7 @@ describe('parseNoteBundles — 탭(tree)', () => {
 		]);
 	});
 
-	it('링크 있는 부모: 자기 링크가 children 첫 잎 + label 은 전체 타이틀', () => {
+	it('링크 있는 부모: 자식 있으면 순수 카테고리 — 자기 링크 무시, label 은 전체 타이틀', () => {
 		const ed = makeEditor(
 			doc(
 				titleLine('호스트'),
@@ -153,8 +153,9 @@ describe('parseNoteBundles — 탭(tree)', () => {
 			)
 		);
 		const b = parseNoteBundles(ed.state.doc)[0];
+		// 자식이 있으므로 부모 링크 A 는 탭으로 추가되지 않는다(의도치 않은 링크 방지).
 		expect(b.tree).toEqual([
-			{ label: '영역 A', link: null, children: [leaf('A'), leaf('자식')] }
+			{ label: '영역 A', link: null, children: [leaf('자식')] }
 		]);
 	});
 
@@ -275,7 +276,7 @@ describe('parseNoteBundles — 묶음(entries)', () => {
 		]);
 	});
 
-	it('링크 있는 부모: 자신은 부모 category 로, 자식은 부모 타이틀 category', () => {
+	it('링크 있는 부모: 자식 있으면 순수 카테고리 — 자기 링크 무시, 자식만 부모 타이틀 category', () => {
 		const ed = makeEditor(
 			doc(
 				titleLine('호스트'),
@@ -284,8 +285,8 @@ describe('parseNoteBundles — 묶음(entries)', () => {
 			)
 		);
 		const b = parseNoteBundles(ed.state.doc)[0];
-		// 부모 항목 A 는 자기 category(null), 자식은 부모 타이틀 '영역 A'
-		expect(b.entries).toEqual([ent('A'), ent('자식', '영역 A')]);
+		// 부모 링크 A 는 엔트리로 추가되지 않고, 자식만 부모 타이틀 '영역 A' category
+		expect(b.entries).toEqual([ent('자식', '영역 A')]);
 	});
 });
 
