@@ -2790,6 +2790,10 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 	.tomboy-editor :global(li.tomboy-checkbox-item.is-checked > p) {
 		opacity: 0.6;
 	}
+	/* 인라인 [x] 체크박스와 같은 자체 SVG(currentColor)를 재사용한다 —
+	   buildCheckbox 가 .tomboy-cb-svg 를 button 안에 그려넣고, SVG 자식
+	   스타일(.tomboy-cb-box/-check)은 인라인 체크박스 규칙을 공유한다.
+	   여기서는 불릿 자리 정렬용 박스모델만 둔다. */
 	.tomboy-editor :global(.tomboy-checkbox-box) {
 		display: inline-block;
 		width: 1em;
@@ -2801,18 +2805,11 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		margin-right: 0.4em;
 		padding: 0;
 		vertical-align: -0.12em;
-		border: 1.5px solid #888;
-		border-radius: 3px;
-		background: #fff;
+		border: none;
+		background: none;
+		color: currentColor;
 		cursor: pointer;
-	}
-	.tomboy-editor :global(.tomboy-checkbox-box.is-checked) {
-		border-color: #2e7d32;
-		background-color: #2e7d32;
-		background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><path d='M6.4 11.2L3 7.8l1.1-1.1 2.3 2.3L11.9 4l1.1 1.1z' fill='white'/></svg>");
-		background-repeat: no-repeat;
-		background-position: center;
-		background-size: contain;
+		box-sizing: border-box;
 	}
 
 	/* 항목 단위 라디오 — listBox 플러그인이 boxKind='radio' listItem 에
@@ -2949,21 +2946,26 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		box-sizing: border-box;
 	}
 
-	.tomboy-editor :global(.tomboy-inline-checkbox .tomboy-cb-svg) {
+	/* 인라인 [x] 체크박스와 항목 단위 [[ ]] 체크박스(.tomboy-checkbox-box)가
+	   같은 SVG 마크업을 쓰므로 자식 스타일을 공유한다. */
+	.tomboy-editor :global(.tomboy-inline-checkbox .tomboy-cb-svg),
+	.tomboy-editor :global(.tomboy-checkbox-box .tomboy-cb-svg) {
 		display: block;
 		width: 100%;
 		height: 100%;
 		overflow: visible; /* 모서리 밖으로 솟는 체크가 잘리지 않게 */
 	}
 
-	.tomboy-editor :global(.tomboy-inline-checkbox .tomboy-cb-box) {
+	.tomboy-editor :global(.tomboy-inline-checkbox .tomboy-cb-box),
+	.tomboy-editor :global(.tomboy-checkbox-box .tomboy-cb-box) {
 		fill: none;
 		stroke: currentColor;
 		stroke-width: 1.1;
 		stroke-linejoin: round;
 	}
 
-	.tomboy-editor :global(.tomboy-inline-checkbox .tomboy-cb-check) {
+	.tomboy-editor :global(.tomboy-inline-checkbox .tomboy-cb-check),
+	.tomboy-editor :global(.tomboy-checkbox-box .tomboy-cb-check) {
 		fill: none;
 		stroke: currentColor;
 		stroke-width: 1.4;
@@ -2991,8 +2993,10 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		bottom: -5px;
 	}
 
-	/* 체크 상태: 모서리 밖으로 솟는 V 표시. */
-	.tomboy-editor :global(.tomboy-inline-checkbox[data-checked='true'] .tomboy-cb-check) {
+	/* 체크 상태: 모서리 밖으로 솟는 V 표시. 인라인은 data-checked, 항목
+	   단위 [[ ]] 체크박스는 .is-checked 로 같은 체크를 드러낸다. */
+	.tomboy-editor :global(.tomboy-inline-checkbox[data-checked='true'] .tomboy-cb-check),
+	.tomboy-editor :global(.tomboy-checkbox-box.is-checked .tomboy-cb-check) {
 		display: inline;
 	}
 

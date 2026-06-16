@@ -9,6 +9,7 @@ import type { EditorView } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
 import { findChecklistRegions, findChecklistItems } from './regions.js';
+import { CHECKBOX_SVG } from '../inlineCheckbox/node.js';
 
 export interface ChecklistPluginOptions {
 	/** 체크박스 클릭 시 호출. liPos 는 listItem 노드 위치. */
@@ -39,6 +40,8 @@ export function buildCheckbox(
 	btn.setAttribute('contenteditable', 'false');
 	btn.setAttribute('data-no-drag', '');
 	btn.setAttribute('aria-label', checked ? '체크 해제' : '체크');
+	// 인라인 [x] 체크박스와 같은 자체 SVG 를 재사용 — 모양·색(currentColor) 통일.
+	btn.innerHTML = CHECKBOX_SVG;
 	btn.addEventListener('mousedown', (e) => {
 		// PM 이 포커스/선택을 위젯으로 가져가지 못하게.
 		e.preventDefault();
