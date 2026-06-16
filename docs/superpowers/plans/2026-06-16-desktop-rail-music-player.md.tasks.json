@@ -1,0 +1,46 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-16-desktop-rail-music-player.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: musicPlayer restoreSession + resumeOrRestart",
+      "status": "pending",
+      "description": "Add restoreSession (boot restore, no autoplay) + resumeOrRestart (rail play: playing->pause, paused->resume, exhausted->restart from 0) to musicPlayer. TDD. Files: app/src/lib/music/musicPlayer.svelte.ts, app/tests/unit/music/musicPlayer.test.ts. Verify: cd app && npm run test -- musicPlayer && npm run check"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: musicSession persistence module + +layout install",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "Create app/src/lib/music/musicSession.svelte.ts (save/load snapshot to localStorage + installMusicSession with $effect.root restore+persist), wire into app/src/routes/+layout.svelte. Test app/tests/unit/music/musicSession.test.ts. Verify: cd app && npm run test -- musicSession && npm run check"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: RailMusicControls.svelte + rail mount",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "Create app/src/lib/editor/musicNote/RailMusicControls.svelte (always-visible prev/play/next, disabled when no session, play=resumeOrRestart), mount in SidePanel rail between workspace-switcher and rail-chips. Verify: cd app && npm run check"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: RailNowPlaying.svelte (10min timeout) + .main mount",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "Create app/src/lib/editor/musicNote/RailNowPlaying.svelte (title+note name+seek, visible when track loaded, 10min paused timeout auto-hide), mount in SidePanel .main between header and list. Verify: cd app && npm run check"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: remove floating DesktopMiniPlayer",
+      "status": "pending",
+      "blockedBy": [3, 4],
+      "description": "Delete app/src/lib/editor/musicNote/DesktopMiniPlayer.svelte, remove its mount+import in DesktopWorkspace.svelte, remove desktopMiniPlayerVisible from miniPlayerVisibility.ts + its tests (keep mobile miniPlayerVisible). Verify: cd app && npm run test -- miniPlayerVisibility && npm run check"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: settings guide card update",
+      "status": "pending",
+      "description": "Update settings guide music-note card: split mini-player item into mobile (pill) + desktop (rail split, always-visible controls, info above list, reload restore, 10min collapse, no stop). File: app/src/routes/settings/+page.svelte. Verify: cd app && npm run check"
+    }
+  ],
+  "lastUpdated": "2026-06-16"
+}
