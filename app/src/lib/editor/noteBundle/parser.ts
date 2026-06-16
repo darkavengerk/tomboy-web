@@ -177,8 +177,8 @@ function collectLinks(para: PMNode): string[] {
 // ── 'tab' 트리 파싱 ──────────────────────────────────────────────────────
 
 /** 리스트를 트리(BundleNode[])로 재귀 파싱.
- *  - 중첩 리스트 있는 항목 → 카테고리 노드(label=항목 전체 타이틀,
- *    children=[자기 링크 잎…, 중첩 재귀…]).
+ *  - 중첩 리스트 있는 항목 → 순수 카테고리 노드(label=항목 전체 타이틀,
+ *    children=중첩 재귀만). 자기 링크는 무시한다(의도치 않은 링크 방지).
  *  - 중첩 없는 항목 → 항목의 각 링크가 형제 잎. 링크 없으면 노드 없음. */
 function parseTree(list: PMNode): BundleNode[] {
 	const out: BundleNode[] = [];
@@ -186,8 +186,6 @@ function parseTree(list: PMNode): BundleNode[] {
 		if (li.type.name !== 'listItem' || li.childCount === 0) return;
 		const para = li.child(0);
 		const isPara = para.type.name === 'paragraph';
-		const links = isPara ? collectLinks(para) : [];
-		const title = isPara ? paragraphText(para) : '';
 		let nested: PMNode | null = null;
 		for (let ci = 0; ci < li.childCount; ci++) {
 			const c = li.child(ci);
@@ -197,13 +195,10 @@ function parseTree(list: PMNode): BundleNode[] {
 			}
 		}
 		if (nested) {
-			// 카테고리 노드 — 자기 링크가 첫 children(자신을 첫 탭으로), 그 뒤 중첩.
-			const children: BundleNode[] = [];
-			for (const L of links) children.push({ label: L, link: L, children: [] });
-			children.push(...parseTree(nested));
-			out.push({ label: title || links[0] || '', link: null, children });
-		} else {
-			for (const L of links) out.push({ label: L, link: L, children: [] });
+			// 자식 있음 → 순수 카테고리. 자기 링크는 버린다.
+			out.push({ label: isPara ? paragraphText(para) : '', link: null, children: parseTree(nested) });
+		} else if (isPara) {
+			for (const L of collectLinks(para)) out.push({ label: L, link: L, children: [] });
 		}
 	});
 	return out;
@@ -212,25 +207,33 @@ function parseTree(list: PMNode): BundleNode[] {
 // ── 'bundle' 평탄 엔트리 파싱 ─────────────────────────────────────────────
 
 /** 리스트를 재귀 순회하며 엔트리 수집. category = 상위 항목의 타이틀(없으면 null).
- *  각 항목의 모든 링크를 현재 category 로 push 하고, 중첩 리스트가 있으면
- *  이 항목의 타이틀을 자식들의 category 로 넘긴다. */
+ *  자식(중첩 리스트) 없는 항목만 자기 링크를 엔트리로 push. 자식 있는 항목은
+ *  순수 카테고리 — 자기 링크는 무시하고 타이틀만 자식 category 로 넘긴다. */
 function parseListInto(list: PMNode, category: string | null, entries: BundleEntry[]): void {
 	list.forEach((li) => {
 		if (li.type.name !== 'listItem' || li.childCount === 0) return;
 		const para = li.child(0);
-		let ownTitle: string | null = null;
-		if (para.type.name === 'paragraph') {
-			for (const t of collectLinks(para)) entries.push({ title: t, category });
-			ownTitle = paragraphText(para) || null;
-		}
-		// 중첩 리스트(자식) — 이 항목의 타이틀이 자식 카테고리. 빈 타이틀이면
-		// 상위 category 를 그대로 물려준다.
-		const childCategory = ownTitle ?? category;
+		const isPara = para.type.name === 'paragraph';
+		const ownTitle = isPara ? paragraphText(para) || null : null;
+		let hasNested = false;
 		for (let ci = 0; ci < li.childCount; ci++) {
-			const child = li.child(ci);
-			if (child.type.name === 'bulletList' || child.type.name === 'orderedList') {
-				parseListInto(child, childCategory, entries);
+			const c = li.child(ci);
+			if (c.type.name === 'bulletList' || c.type.name === 'orderedList') {
+				hasNested = true;
+				break;
 			}
+		}
+		if (hasNested) {
+			// 순수 카테고리 — 자기 링크 무시, 타이틀(빈 타이틀이면 상위)을 자식 category 로.
+			const childCategory = ownTitle ?? category;
+			for (let ci = 0; ci < li.childCount; ci++) {
+				const c = li.child(ci);
+				if (c.type.name === 'bulletList' || c.type.name === 'orderedList') {
+					parseListInto(c, childCategory, entries);
+				}
+			}
+		} else if (isPara) {
+			for (const t of collectLinks(para)) entries.push({ title: t, category });
 		}
 	});
 }
@@ -352,8 +355,6 @@ function parseTreeJson(list: JSONNode): BundleNode[] {
 		if (li.type !== 'listItem' || !li.content?.length) continue;
 		const para = li.content[0];
 		const isPara = isTextblockJson(para);
-		const links = isPara ? collectLinksJson(para) : [];
-		const title = isPara ? paragraphTextJson(para) : '';
 		let nested: JSONNode | null = null;
 		for (const c of li.content) {
 			if (isListJson(c)) {
@@ -362,12 +363,10 @@ function parseTreeJson(list: JSONNode): BundleNode[] {
 			}
 		}
 		if (nested) {
-			const children: BundleNode[] = [];
-			for (const L of links) children.push({ label: L, link: L, children: [] });
-			children.push(...parseTreeJson(nested));
-			out.push({ label: title || links[0] || '', link: null, children });
-		} else {
-			for (const L of links) out.push({ label: L, link: L, children: [] });
+			// 자식 있음 → 순수 카테고리. 자기 링크는 버린다.
+			out.push({ label: isPara ? paragraphTextJson(para) : '', link: null, children: parseTreeJson(nested) });
+		} else if (isPara) {
+			for (const L of collectLinksJson(para)) out.push({ label: L, link: L, children: [] });
 		}
 	}
 	return out;
@@ -378,14 +377,17 @@ function parseListIntoJson(list: JSONNode, category: string | null, entries: Bun
 	for (const li of list.content ?? []) {
 		if (li.type !== 'listItem' || !li.content?.length) continue;
 		const para = li.content[0];
-		let ownTitle: string | null = null;
-		if (isTextblockJson(para)) {
+		const isPara = isTextblockJson(para);
+		const ownTitle = isPara ? paragraphTextJson(para) || null : null;
+		const hasNested = (li.content ?? []).some((c) => isListJson(c));
+		if (hasNested) {
+			// 순수 카테고리 — 자기 링크 무시, 타이틀을 자식 category 로.
+			const childCategory = ownTitle ?? category;
+			for (const c of li.content) {
+				if (isListJson(c)) parseListIntoJson(c, childCategory, entries);
+			}
+		} else if (isPara) {
 			for (const t of collectLinksJson(para)) entries.push({ title: t, category });
-			ownTitle = paragraphTextJson(para) || null;
-		}
-		const childCategory = ownTitle ?? category;
-		for (const c of li.content) {
-			if (isListJson(c)) parseListIntoJson(c, childCategory, entries);
 		}
 	}
 }
@@ -401,18 +403,13 @@ function parseDedicatedTree(doc: JSONNode): BundleNode[] {
 	for (let i = 0; i < blocks.length; i++) {
 		const node = blocks[i];
 		if (isTextblockJson(node)) {
-			const links = collectLinksJson(node);
-			const title = paragraphTextJson(node);
 			const next = blocks[i + 1];
 			if (next && isListJson(next)) {
-				// 단락 = 카테고리, 다음 리스트 = 자식(깊이2). 자기 링크가 첫 자식 잎.
-				const children: BundleNode[] = [];
-				for (const L of links) children.push({ label: L, link: L, children: [] });
-				children.push(...parseTreeJson(next));
-				out.push({ label: title || links[0] || '', link: null, children });
+				// 단락 = 순수 카테고리, 다음 리스트 = 자식(깊이2). 자기 링크는 버린다.
+				out.push({ label: paragraphTextJson(node), link: null, children: parseTreeJson(next) });
 				i++; // 리스트 소비
 			} else {
-				for (const L of links) out.push({ label: L, link: L, children: [] });
+				for (const L of collectLinksJson(node)) out.push({ label: L, link: L, children: [] });
 			}
 		} else if (isListJson(node)) {
 			// 부모 단락 없는 리스트 → 항목들이 깊이1로 직접
@@ -428,12 +425,13 @@ function parseDedicatedEntries(doc: JSONNode): BundleEntry[] {
 	for (let i = 0; i < blocks.length; i++) {
 		const node = blocks[i];
 		if (isTextblockJson(node)) {
-			for (const t of collectLinksJson(node)) entries.push({ title: t, category: null });
-			const ownTitle = paragraphTextJson(node) || null;
 			const next = blocks[i + 1];
 			if (next && isListJson(next)) {
-				parseListIntoJson(next, ownTitle, entries);
+				// 단락 = 순수 카테고리 — 자기 링크 무시, 타이틀만 자식 category 로.
+				parseListIntoJson(next, paragraphTextJson(node) || null, entries);
 				i++; // 리스트 소비
+			} else {
+				for (const t of collectLinksJson(node)) entries.push({ title: t, category: null });
 			}
 		} else if (isListJson(node)) {
 			parseListIntoJson(node, null, entries);

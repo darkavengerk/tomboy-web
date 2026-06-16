@@ -38,8 +38,10 @@ sessions / modes / host-shell wiring but navigates a **flat entry list with a
 multiple per line allowed) — the bundle includes *all* links regardless of item
 count. **Indented child items form a recursive category**: when a category tab
 is active, its body grows its **own** top/bottom tab strips for the children
-(recursion all the way down). A parent that also carries a link puts that link
-as the first child tab (loads itself first).
+(recursion all the way down). **A node with children is a *pure* category — its
+own link (if any) is ignored.** (Was: own link loaded as the first child tab; the
+implicit links it pulled in were unwanted, so children-bearing items are now
+category-only.)
 
 Pure **view layer over a regular note** — the `.note` XML is unchanged
 (geoMap/chartBlock pattern). The only persisted state lives in the note text
@@ -91,15 +93,22 @@ Two regexes matched against the paragraph text **after** the checkbox atom (the
   `[]`. Both share `collectLinks` (every `tomboyInternalLink` target in order;
   adjacent same-target = one link) and `paragraphText` (trimmed text-node concat).
 - **Tab tree** (`parseTree`, recursive → `BundleNode[]`): a list item **with a
-  nested list** is a **category node** (`label = paragraphText`, `link = null`,
-  `children = [own links as leaves…, …parseTree(nested)]` — own link(s) become the
-  first child tab(s)); **without** a nested list → one **leaf** per link
-  (`{label,link,children:[]}`). Leaf ⇔ `link !== null && children.length === 0`.
+  nested list** is a **pure category node** (`label = paragraphText`, `link = null`,
+  `children = parseTree(nested)` only — **its own link(s), if any, are ignored**);
+  **without** a nested list → one **leaf** per link (`{label,link,children:[]}`).
+  Leaf ⇔ `link !== null && children.length === 0`.
 - **Bundle entries** (`parseEntries` → flat `BundleEntry[]`): walks recursively
-  carrying a `category` string; each item's links push `{title, category}`, and a
-  nested list inherits this item's `paragraphText` as its children's category
-  (empty title → parent category passes through). So nesting **flattens** with the
-  parent title shown as a category label left of the title — no recursive drill-down.
+  carrying a `category` string. A **leaf item (no nested list)** pushes
+  `{title, category}` for each of its links; a **category item (has nested list)**
+  pushes **nothing of its own** — it just passes its `paragraphText` down as the
+  children's category (empty title → parent category passes through). So nesting
+  **flattens** with the parent title shown as a category label left of the title —
+  no recursive drill-down.
+- **Children-bearing = pure category (both kinds, both PMNode + JSON twins).** If
+  an item/textblock has a nested list, its own link is dropped — only the structural
+  category survives. Rationale: incidental links on a heading-ish parent were
+  silently pulled into the cabinet; treating any parent as category-only keeps the
+  set to what the user explicitly listed as leaves.
 - **Atoms, not text.** Checkboxes are atoms; the parser walks the live PMNode
   tree. Leftover `inlineRadio` atoms from older bundles are skipped (not links).
 - **`ordinal`** = index in `BundleSpec[]` (document order, renumbers on delete →
@@ -500,11 +509,12 @@ PMNode helpers.
 
 - A top-level **textblock** (paragraph/heading) with links → **depth-1**
   leaves/entries (one per link).
-- A textblock **immediately followed by a list** → that textblock is the
-  **category** (its text = label), the list its children (**depth-2**). This is
+- A textblock **immediately followed by a list** → that textblock is a **pure
+  category** (its text = label), the list its children (**depth-2**). This is
   the old "listItem + nested bulletList" relation lifted one level up — that's
-  why "리스트는 깊이2로 시작". The textblock's own links become the first
-  children (tab) / get the inherited category (bundle).
+  why "리스트는 깊이2로 시작". **The textblock's own links are ignored** (same
+  children-bearing = pure category rule as in-body) — they neither become first
+  children (tab) nor get pushed as entries (bundle).
 - A list with **no preceding textblock** (first block, or list-after-list) →
   its items fall in at **depth-1** directly (fallback, no category).
 - Nested lists recurse exactly as in-body (`parseTreeJson`/`parseListIntoJson`).

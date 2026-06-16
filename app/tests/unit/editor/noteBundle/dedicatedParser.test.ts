@@ -50,10 +50,10 @@ describe('parseDedicatedBundle — bundle(평면 엔트리)', () => {
 		expect(spec.kind).toBe('bundle');
 		expect(spec.tree).toEqual([]);
 		const entries: BundleEntry[] = spec.entries;
+		// C 는 자식 D 가 있으므로 순수 카테고리 — C 자신은 엔트리에서 빠지고 D 의 category 로만.
 		expect(entries).toEqual([
 			{ title: 'A', category: null },
 			{ title: 'B', category: '프로젝트' },
-			{ title: 'C', category: '프로젝트' },
 			{ title: 'D', category: 'C' }
 		]);
 	});
@@ -95,6 +95,7 @@ describe('parseDedicatedBundle — tab(재귀 트리)', () => {
 		expect(spec.kind).toBe('tab');
 		expect(spec.entries).toEqual([]);
 		const tree: BundleNode[] = spec.tree;
+		// C 는 자식 D 가 있으므로 순수 카테고리 — 자기 링크 C 는 탭으로 추가되지 않는다.
 		expect(tree).toEqual([
 			{ label: 'A', link: 'A', children: [] },
 			{
@@ -105,10 +106,7 @@ describe('parseDedicatedBundle — tab(재귀 트리)', () => {
 					{
 						label: 'C',
 						link: null,
-						children: [
-							{ label: 'C', link: 'C', children: [] },
-							{ label: 'D', link: 'D', children: [] }
-						]
+						children: [{ label: 'D', link: 'D', children: [] }]
 					}
 				]
 			}
