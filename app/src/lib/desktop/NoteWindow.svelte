@@ -1577,7 +1577,11 @@
 	   stay legible. Gated on data-has-bg so a bundle without a background keeps
 	   its normal opaque look. */
 	.note-window[data-has-bg='true'] :global(.bundle-stack),
-	.note-window[data-has-bg='true'] :global(.bundle-body) {
+	.note-window[data-has-bg='true'] :global(.bundle-body),
+	/* 묶음(Cabinet) 훑어보기 모드의 펼친 본문은 회색(#ecebe6)을 더 높은
+	   specificity 로 덮으므로 명시적으로 같이 투명화해 배경이 비치게 한다.
+	   (탭/Stack 에는 이 규칙이 없어 위 두 줄로 충분했다.) */
+	.note-window[data-has-bg='true'] :global(.bundle-stack.browse .bundle-body.open) {
 		background: transparent;
 	}
 
