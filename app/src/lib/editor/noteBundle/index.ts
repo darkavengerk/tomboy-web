@@ -1,7 +1,9 @@
 export {
 	parseNoteBundles,
 	clampHeightPct,
+	clampMaxCount,
 	DEFAULT_HEIGHT_PCT,
+	DEFAULT_MAX_COUNT,
 	dedicatedBundleKind,
 	parseDedicatedBundle,
 	buildSyntheticBundleSpec

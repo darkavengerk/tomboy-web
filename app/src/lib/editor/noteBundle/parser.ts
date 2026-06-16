@@ -49,9 +49,11 @@ export interface BundleSpec {
 	kind: BundleKind;
 	checkboxPos: number;
 	checked: boolean;
-	/** 20–90 클램프, 생략 시 50 */
+	/** 0=타이틀만(묶음 전용), 100=노트 끝까지 확장(fit), 그 외 20–90. 생략 시 50 */
 	heightPct: number;
-	/** `:` 뒤 숫자 텍스트 범위 — 높이 쓰기백 대상. 숫자 없으면 from===to */
+	/** 묶음 표시 바 개수(윈도우 폭). 1–100, 100=전부+타이틀만. 생략 시 5. 탭은 무시 */
+	maxCount: number;
+	/** 첫 `:` 뒤 높이 숫자 텍스트 범위 — 높이 쓰기백 대상(개수 숫자는 건드리지 않음). 숫자 없으면 from===to */
 	digitsFrom: number;
 	digitsTo: number;
 	/** 키워드 paragraph 시작 pos — 체크 시 선언 라인 숨김 노드 데코 대상 */
@@ -67,21 +69,33 @@ export interface BundleSpec {
 }
 
 export const DEFAULT_HEIGHT_PCT = 50;
+export const DEFAULT_MAX_COUNT = 5;
 
 export function clampHeightPct(n: number): number {
 	if (!Number.isFinite(n)) return DEFAULT_HEIGHT_PCT;
-	return Math.min(90, Math.max(20, Math.round(n)));
+	const r = Math.round(n);
+	if (r <= 0) return 0; // 타이틀만(묶음 전용)
+	if (r >= 100) return 100; // 노트 끝까지 확장(fit)
+	return Math.min(90, Math.max(20, r));
 }
 
-// `탭:N` / `묶음:N` (옛 `노트 ` 접두 허용). `노트` 접두는 선택.
-const TAB_RE = /^\s*(?:노트\s*)?탭:(\d+)?\s*$/;
-const BUNDLE_RE = /^\s*(?:노트\s*)?묶음:(\d+)?\s*$/;
+/** 묶음 표시 개수(윈도우 폭) 클램프 — 1–100(100=전부). 생략/NaN → 기본 5. */
+export function clampMaxCount(n: number): number {
+	if (!Number.isFinite(n)) return DEFAULT_MAX_COUNT;
+	return Math.min(100, Math.max(1, Math.round(n)));
+}
+
+// `탭:N[:M]` / `묶음:N[:M]` (옛 `노트 ` 접두 허용). N=높이%, M=표시 개수(묶음 전용).
+// `묶음::100`(N 생략 + M=100)도 매칭 — 빈 높이 + 개수 100.
+const TAB_RE = /^\s*(?:노트\s*)?탭:(\d+)?(?::(\d+))?\s*$/;
+const BUNDLE_RE = /^\s*(?:노트\s*)?묶음:(\d+)?(?::(\d+))?\s*$/;
 
 interface KeywordInfo {
 	kind: BundleKind;
 	checkboxPos: number;
 	checked: boolean;
 	heightPct: number;
+	maxCount: number;
 	digitsFrom: number;
 	digitsTo: number;
 	keywordPos: number;
@@ -114,6 +128,7 @@ function keywordAfterCheckbox(
 		checkboxPos,
 		checked: cb.attrs.checked === true,
 		heightPct: m[1] ? clampHeightPct(parseInt(m[1], 10)) : DEFAULT_HEIGHT_PCT,
+		maxCount: m[2] ? clampMaxCount(parseInt(m[2], 10)) : DEFAULT_MAX_COUNT,
 		digitsFrom: textBase + colonIdx + 1,
 		digitsTo: textBase + colonIdx + 1 + digitsLen,
 		keywordPos: paraPos,
@@ -256,6 +271,7 @@ export function parseNoteBundles(doc: PMNode): BundleSpec[] {
 			checkboxPos: pending.checkboxPos,
 			checked: pending.checked,
 			heightPct: pending.heightPct,
+			maxCount: pending.maxCount,
 			digitsFrom: pending.digitsFrom,
 			digitsTo: pending.digitsTo,
 			keywordPos: pending.keywordPos,
@@ -451,6 +467,7 @@ export function parseDedicatedBundle(doc: JSONContent, kind: BundleKind): Bundle
 		checkboxPos: -1,
 		checked: true,
 		heightPct: 100,
+		maxCount: DEFAULT_MAX_COUNT,
 		digitsFrom: -1,
 		digitsTo: -1,
 		keywordPos: -1,
@@ -475,6 +492,7 @@ export function buildSyntheticBundleSpec(titles: string[], kind: BundleKind): Bu
 		checkboxPos: -1,
 		checked: true,
 		heightPct: 100,
+		maxCount: DEFAULT_MAX_COUNT,
 		digitsFrom: -1,
 		digitsTo: -1,
 		keywordPos: -1,
