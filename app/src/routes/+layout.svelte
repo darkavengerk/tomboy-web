@@ -24,6 +24,7 @@
 	import { installBacklinkIndex } from '$lib/core/backlinkIndex.js';
 	import { installImageFetchers } from '$lib/imageCache/fetchers/install.js';
 	import { installMusicAudio } from '$lib/music/musicAudio.svelte.js';
+	import { installMusicSession } from '$lib/music/musicSession.svelte.js';
 	import GlobalMiniPlayer from '$lib/editor/musicNote/GlobalMiniPlayer.svelte';
 	import { pushToast } from '$lib/stores/toast.js';
 	import { getAllNotes } from '$lib/storage/noteStore.js';
@@ -233,6 +234,7 @@
 		// 전역 음악 오디오 엔진 — 단일 <audio> 를 musicPlayer 로 구동. 음악 노트
 		// 패널은 순수 뷰라 여러 창이 떠도 소리는 하나. idempotent 싱글톤.
 		const uninstallMusicAudio = installMusicAudio();
+		const uninstallMusicSession = installMusicSession();
 
 		// 일정 알림: 온라인 복귀 시 미발신 diff 자동 flush + 시작 시 한 번 시도.
 		installOnlineFlushListener();
@@ -283,6 +285,7 @@
 			window.removeEventListener('keyup', swallowAlt);
 			unsubFcm?.();
 			uninstallMusicAudio();
+			uninstallMusicSession();
 		};
 	});
 

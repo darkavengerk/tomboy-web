@@ -23,6 +23,8 @@
 		MAIN_MAX_WIDTH
 	} from './sidePanelLayout.svelte.js';
 	import { startPointerDrag } from './dragResize.js';
+	import RailMusicControls from '$lib/editor/musicNote/RailMusicControls.svelte';
+	import RailNowPlaying from '$lib/editor/musicNote/RailNowPlaying.svelte';
 
 	// Workspace 1 (top-right of the 2x2 grid) is the dedicated slipnote
 	// workspace: entering it auto-selects the [0] Slip-Box notebook and
@@ -214,6 +216,8 @@
 			{/each}
 		</div>
 
+		<RailMusicControls />
+
 		<div class="rail-chips" role="tablist" aria-label="노트북 필터">
 			<button
 				type="button"
@@ -345,6 +349,8 @@
 			/>
 			<button type="button" class="new-btn" onclick={handleNew} title="새 노트">＋ 새 노트</button>
 		</div>
+
+		<RailNowPlaying />
 
 		<div class="list">
 			{#if loading}

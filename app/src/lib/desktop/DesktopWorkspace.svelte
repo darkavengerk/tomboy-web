@@ -17,7 +17,6 @@
 	import { installModKeyListeners } from './modKeys.svelte.js';
 	import { extractNoteGuidFromText, openNoteByGuid } from './openByClipboard.js';
 	import SpreadOverlay from './spreadView/SpreadOverlay.svelte';
-	import DesktopMiniPlayer from '$lib/editor/musicNote/DesktopMiniPlayer.svelte';
 	import { spreadView } from './spreadView/spreadView.svelte.js';
 	import { createNote } from '$lib/core/noteManager.js';
 	import {
@@ -393,8 +392,6 @@
 			{/each}
 		{/if}
 	</div>
-
-	<DesktopMiniPlayer />
 
 	<SidePanel
 		openGuids={openGuidSet}
