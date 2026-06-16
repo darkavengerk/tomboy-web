@@ -636,6 +636,12 @@
 	// 휠 델타는 브라우저/입력장치마다 단위(px/줄/페이지)가 달라 deltaMode 로
 	// 정규화한 뒤 누적, 한 칸 분량(WHEEL_STEP)을 넘으면 그 깊이의 다음 탭으로.
 	// 아래로 스크롤 = 다음 탭(오른쪽) — 탭의 본문 가로 슬라이드 방향과 맞춤.
+	//
+	// 임계 이하(트랙패드 미세 델타)는 계속 누적하지만, 임계를 넘으면 그 이벤트의
+	// 정수 칸만 소비하고 **나머지는 버린다**(wheelAccum=0). 나머지를 다음
+	// 이벤트로 이월하면 마우스 노치(≈120px)와 WHEEL_STEP(80)이 안 맞아떨어져
+	// 누적 위상이 경계를 지날 때마다 노치당 1칸↔2칸으로 들쭉날쭉해지고("안
+	// 바뀌다가 다음에 한 칸 건너뜀") 한다. 이월을 끊으면 노치당 결정적으로 1칸.
 	const WHEEL_STEP = 80;
 	let wheelAccum = 0;
 	let wheelDepth = -1;
@@ -651,14 +657,13 @@
 			wheelDepth = depth;
 		}
 		wheelAccum += delta;
-		while (Math.abs(wheelAccum) >= WHEEL_STEP) {
-			const dir: 1 | -1 = wheelAccum > 0 ? 1 : -1;
-			wheelAccum -= dir * WHEEL_STEP;
+		if (Math.abs(wheelAccum) < WHEEL_STEP) return; // 미세 델타 — 계속 누적
+		const dir: 1 | -1 = wheelAccum > 0 ? 1 : -1;
+		const steps = Math.trunc(Math.abs(wheelAccum) / WHEEL_STEP);
+		wheelAccum = 0; // 정수 칸 소비 후 나머지 버림 — 이월 없음(들쭉날쭉 방지)
+		for (let i = 0; i < steps; i++) {
 			const next = stepPathAtDepth(tree, activePath, depth, dir);
-			if (next === activePath) {
-				wheelAccum = 0; // 그 레벨 끝 — 남은 누적 버림
-				break;
-			}
+			if (next === activePath) break; // 그 레벨 끝 — 멈춤
 			setActive(next);
 		}
 	}
