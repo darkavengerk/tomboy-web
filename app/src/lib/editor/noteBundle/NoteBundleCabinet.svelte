@@ -178,24 +178,41 @@
 	});
 	const expanded = $derived(k >= 0 && k < resolved.length ? resolved[k] : null);
 
+	// --- 묶음 전용 모드 (크기 0 / 개수 옵션) -----------------------------------
+	// 타이틀만: 크기 0(`묶음:0`) 또는 개수 100(`묶음::100`/`묶음:N:100`). 본문을
+	//   로드하지 않아(세션 mount 없음) 제목만 표시 — 많은 노트 목록 메모리 절약.
+	// fit: 크기 100(`묶음:100`) — 본문을 노트 끝까지 펼친다(고정 높이 대신 콘텐츠
+	//   높이). 전용 노트(dedicated)는 flex:1 로 이미 꽉 차므로 제외.
+	// maxBars: 표시 바 개수(윈도우 폭). 100 = 전부.
+	const titleOnly = $derived(spec.heightPct <= 0 || spec.maxCount >= 100);
+	const fit = $derived(!dedicated && !titleOnly && spec.heightPct >= 100);
+	const maxBars = $derived(spec.maxCount >= 100 ? resolved.length : spec.maxCount);
+
 	// --- 타이틀 윈도우 ---------------------------------------------------------
 	// winStart·k(활성) 모두 컴포넌트 로컬 — 영속 안 함.
 	let winStart = $state(0);
 
-	// 활성 k 를 따라 윈도우를 이동 — 항상 active 를 3번째 자리에 고정(스크롤
+	// 활성 k 를 따라 윈도우를 이동 — 항상 active 를 가운데 자리에 고정(스크롤
 	// 방향 무관). winStart 를 읽고 쓰므로 untrack 필수(effect_update_depth 함정).
 	$effect(() => {
 		const n = resolved.length;
 		const kk = k;
+		const max = maxBars;
 		untrack(() => {
-			winStart = kk < 0 ? 0 : centeredWindow(kk, n);
+			winStart = kk < 0 ? 0 : centeredWindow(kk, n, max);
 		});
 	});
 
-	const W = $derived(windowWidth(resolved.length));
+	const W = $derived(windowWidth(resolved.length, maxBars));
 	const hiddenAbove = $derived(winStart);
 	const hiddenBelow = $derived(Math.max(0, resolved.length - (winStart + W)));
 	const lastVisibleIdx = $derived(Math.min(winStart + W, resolved.length) - 1);
+
+	// 휠/스와이프로 활성을 넘길지(=묶음 브라우징). 타이틀만 + 전부 표시(개수 100 등)
+	// 면 윈도우로 넘길 게 없고 목록이 화면보다 길 수 있으므로 가로채지 않고
+	// 네이티브 페이지 스크롤에 맡긴다(긴 목차). 그 외(본문 있는 묶음, 윈도우
+	// 모드)는 짧은 높이로 갇혀 있어 가로채도 스크롤이 막히지 않는다.
+	const wheelBrowse = $derived(!(titleOnly && W >= resolved.length));
 
 	// --- 높이 ----------------------------------------------------------------
 	let rootEl = $state<HTMLElement | null>(null);
@@ -316,10 +333,10 @@
 		const captureWheel = (e: Event) => {
 			const we = e as WheelEvent;
 			if (we.ctrlKey || we.metaKey) {
-				scrollActiveBody(we);
+				if (wheelBrowse) scrollActiveBody(we);
 				return;
 			}
-			if (mode === 'browse') flipWheel(we);
+			if (mode === 'browse' && wheelBrowse) flipWheel(we);
 		};
 		el.addEventListener('wheel', captureWheel, { capture: true, passive: false });
 		// 모바일 편집-진입 키보드 억제: 임베디드 PM 은 "편집 모드 + 활성 본문 직접
@@ -480,10 +497,21 @@
 		sessions.delete(guid);
 	}
 
-	// 활성 노트 세션 보장
+	// 활성 노트 세션 보장 — 타이틀만 모드는 본문을 안 띄우므로 로드하지 않는다(메모리 절약).
 	$effect(() => {
+		if (titleOnly) return;
 		const g = expanded?.guid ?? null;
 		if (g && !sessions.has(g)) void loadSession(g);
+	});
+
+	// 타이틀만 모드로 전환되면(라이브 편집으로 `묶음:0`/`:100`) 이미 띄운 세션 정리 —
+	// 본문이 사라지므로 메모리/구독을 들고 있을 이유가 없다.
+	$effect(() => {
+		if (!titleOnly) return;
+		untrack(() => {
+			for (const guid of [...sessions.keys()]) teardownSession(guid);
+		});
+		if (mode === 'edit') exitEdit();
 	});
 
 	// spec 에서 빠진 노트 세션 정리 (사용자가 목록을 편집한 경우).
@@ -670,6 +698,8 @@
 	}
 	function handleListWheel(e: Event) {
 		const we = e as WheelEvent;
+		// 타이틀만 + 전부 표시 = 긴 목차 → 가로채지 않고 페이지 스크롤(captureWheel 도 통과).
+		if (!wheelBrowse) return;
 		// ctrl+휠은 캡처 단계 captureWheel 이 본문 스크롤로 선점(stopPropagation).
 		// 여기 도달 = 편집 모드 일반 휠: 본문 위면 임베디드 네이티브 스크롤, 바 위면 브라우징.
 		if (mode === 'edit' && (we.target as HTMLElement).closest?.('.bundle-body')) return;
@@ -729,10 +759,15 @@
 		swiped = false;
 		downOnBody = false;
 		downBarIdx = barIdx;
-		try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* pointer already released */ }
+		// 타이틀만 + 전부 표시(긴 목차)는 포인터를 잡지 않는다 — 잡으면 네이티브
+		// 스크롤이 막힌다. 탭/더블탭 판정은 pointerup 이 그대로 처리.
+		if (wheelBrowse) {
+			try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* pointer already released */ }
+		}
 	}
 	function handleListPointerMove(e: PointerEvent) {
 		if (swipeY === null) return;
+		if (!wheelBrowse) return; // 긴 목차 — 스와이프 넘김 대신 네이티브 스크롤
 		const dy = e.clientY - swipeY;
 		if (Math.abs(dy) >= 30) {
 			swiped = true;
@@ -800,10 +835,13 @@
 	class:browse={mode === 'browse'}
 	class:edit={mode === 'edit'}
 	class:dedicated
+	class:title-only={titleOnly}
+	class:fit
+	class:free-scroll={!wheelBrowse}
 	bind:this={rootEl}
-	style:height={dedicated ? null : `${stackH}px`}
+	style:height={dedicated || titleOnly || fit ? null : `${stackH}px`}
 >
-	{#if mode === 'edit' && expanded}
+	{#if mode === 'edit' && expanded && !titleOnly}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			class="edit-header"
@@ -888,7 +926,9 @@
 						<span class="bar-badge">+{hiddenBelow}</span>
 					{/if}
 				</button>
-				{#if session}
+				{#if titleOnly}
+					<!-- 타이틀만 모드 — 본문 없음(세션 미로드). 바만 표시. -->
+				{:else if session}
 					<div class="bundle-body" class:open={idx === k} use:scrollBottomInit={session.scrollBottom}>
 						{#if session.termSpec && session.termConnect}
 							{#key session.termSpec}
@@ -967,7 +1007,7 @@
 			use:direct={{ click: handleUncheck, pointerdown: stopEvt, mousedown: stopEvt }}
 		>✎ 편집</button>
 	{/if}
-	{#if !dedicated}
+	{#if !dedicated && !titleOnly && !fit}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			class="bundle-resize"
@@ -1003,6 +1043,31 @@
 		border: none;
 		border-radius: 0;
 		position: relative;
+	}
+	/* 크기 100(fit) — 고정 높이 대신 활성 본문을 콘텐츠 끝까지 펼친다. 바 + 본문이
+	   자연 높이로 쌓이고 스택은 그만큼 자란다(바깥 페이지가 스크롤). */
+	.bundle-stack.fit {
+		height: auto;
+	}
+	.bundle-stack.fit .bundle-list {
+		flex: none;
+	}
+	.bundle-stack.fit .bundle-body.open {
+		flex: none;
+		height: auto;
+		overflow-y: visible;
+	}
+	/* 타이틀만(크기 0 / 개수 100) — 본문 없이 바만. 스택은 바 높이만큼 자란다. */
+	.bundle-stack.title-only {
+		height: auto;
+	}
+	.bundle-stack.title-only .bundle-list {
+		flex: none;
+	}
+	/* 긴 목차(타이틀만 + 전부 표시) — 바에서 시작한 터치가 페이지를 스크롤하도록
+	   touch-action 을 푼다(윈도우 모드의 스와이프 넘김 none 과 반대). */
+	.bundle-stack.free-scroll .bundle-bar {
+		touch-action: pan-y;
 	}
 	/* 전용 노트 우상단 크롬 — 반투명, 본문 위로 떠 있음. */
 	.dedicated-chrome {

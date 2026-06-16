@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	WINDOW_SIZE,
 	ACTIVE_SLOT,
+	activeSlot,
 	windowWidth,
 	centeredWindow,
 	firstValidIndex,
@@ -52,6 +53,30 @@ describe('centeredWindow — 활성 3번째 자리 고수', () => {
 	});
 	it('broken 스킵 멀티 점프도 3번째 고수', () => {
 		expect(centeredWindow(6, 10)).toBe(4); // [4..8], active 6 = 3번째
+	});
+});
+
+describe('가변 윈도우 폭 (개수 옵션 :M)', () => {
+	it('windowWidth(N, max) = min(max, N)', () => {
+		expect(windowWidth(20, 10)).toBe(10);
+		expect(windowWidth(7, 10)).toBe(7); // N < max → N
+		expect(windowWidth(50, 100)).toBe(50); // 전부(개수 100)
+	});
+	it('activeSlot = floor(w/2) — 가운데 자리', () => {
+		expect(activeSlot(5)).toBe(2); // 기본 = ACTIVE_SLOT
+		expect(activeSlot(5)).toBe(ACTIVE_SLOT);
+		expect(activeSlot(10)).toBe(5);
+		expect(activeSlot(1)).toBe(0);
+	});
+	it('centeredWindow 가 max 에 맞춰 가운데 고수', () => {
+		// N=20, max=10 → w=10, slot=5
+		expect(centeredWindow(7, 20, 10)).toBe(2); // active 7 = 6번째(slot 5)
+		expect(centeredWindow(0, 20, 10)).toBe(0); // 맨 앞 고정
+		expect(centeredWindow(19, 20, 10)).toBe(10); // 맨 뒤: maxStart = 20-10
+	});
+	it('개수 ≥ N(전부) → start 0, 윈도우 = N', () => {
+		expect(centeredWindow(8, 12, 12)).toBe(0);
+		expect(windowWidth(12, 12)).toBe(12);
 	});
 });
 

@@ -7,7 +7,9 @@ import { TomboyInternalLink } from '$lib/editor/extensions/TomboyInternalLink.js
 import {
 	parseNoteBundles,
 	clampHeightPct,
+	clampMaxCount,
 	DEFAULT_HEIGHT_PCT,
+	DEFAULT_MAX_COUNT,
 	type BundleNode,
 	type BundleEntry
 } from '$lib/editor/noteBundle/parser.js';
@@ -333,10 +335,66 @@ describe('parseNoteBundles — 미인식 / 제목 라인', () => {
 });
 
 describe('clampHeightPct', () => {
-	it('20–90 클램프, NaN → 기본값', () => {
+	it('중간값은 20–90 클램프, NaN → 기본값', () => {
 		expect(clampHeightPct(5)).toBe(20);
 		expect(clampHeightPct(95)).toBe(90);
 		expect(clampHeightPct(50)).toBe(50);
 		expect(clampHeightPct(NaN)).toBe(DEFAULT_HEIGHT_PCT);
+	});
+	it('0 = 타이틀만, 100 = fit (특수값은 통과)', () => {
+		expect(clampHeightPct(0)).toBe(0);
+		expect(clampHeightPct(-5)).toBe(0);
+		expect(clampHeightPct(100)).toBe(100);
+		expect(clampHeightPct(120)).toBe(100);
+	});
+});
+
+describe('clampMaxCount', () => {
+	it('1–100 클램프, NaN/생략 → 기본 5', () => {
+		expect(clampMaxCount(NaN)).toBe(DEFAULT_MAX_COUNT);
+		expect(clampMaxCount(0)).toBe(1);
+		expect(clampMaxCount(10)).toBe(10);
+		expect(clampMaxCount(100)).toBe(100);
+		expect(clampMaxCount(250)).toBe(100);
+	});
+});
+
+describe('parseNoteBundles — 묶음 크기/개수 옵션', () => {
+	it('기본 maxCount = 5, heightPct 기본 50', () => {
+		const ed = makeEditor(doc(titleLine('호스트'), kw('묶음:', true), list(li('A'))));
+		const b = parseNoteBundles(ed.state.doc)[0];
+		expect(b.maxCount).toBe(DEFAULT_MAX_COUNT);
+		expect(b.heightPct).toBe(DEFAULT_HEIGHT_PCT);
+	});
+	it('묶음:0 = 타이틀만(높이 0), 개수 기본', () => {
+		const ed = makeEditor(doc(titleLine('호스트'), kw('묶음:0', true), list(li('A'))));
+		const b = parseNoteBundles(ed.state.doc)[0];
+		expect(b.heightPct).toBe(0);
+		expect(b.maxCount).toBe(DEFAULT_MAX_COUNT);
+	});
+	it('묶음:100 = fit(높이 100)', () => {
+		const ed = makeEditor(doc(titleLine('호스트'), kw('묶음:100', true), list(li('A'))));
+		expect(parseNoteBundles(ed.state.doc)[0].heightPct).toBe(100);
+	});
+	it('묶음:50:10 = 높이 50 + 개수 10, digits 는 높이("50")만', () => {
+		const ed = makeEditor(doc(titleLine('호스트'), kw('묶음:50:10', true), list(li('A'))));
+		const b = parseNoteBundles(ed.state.doc)[0];
+		expect(b.heightPct).toBe(50);
+		expect(b.maxCount).toBe(10);
+		expect(ed.state.doc.textBetween(b.digitsFrom, b.digitsTo)).toBe('50');
+	});
+	it('묶음::100 = 높이 생략(기본 50) + 개수 100(전부+타이틀만)', () => {
+		const ed = makeEditor(doc(titleLine('호스트'), kw('묶음::100', true), list(li('A'))));
+		const b = parseNoteBundles(ed.state.doc)[0];
+		expect(b.kind).toBe('bundle');
+		expect(b.heightPct).toBe(DEFAULT_HEIGHT_PCT);
+		expect(b.maxCount).toBe(100);
+		expect(b.digitsFrom).toBe(b.digitsTo); // 높이 숫자 없음
+	});
+	it('탭:100:10 = 탭도 두 번째 인자 허용(개수는 무시, 높이만)', () => {
+		const ed = makeEditor(doc(titleLine('호스트'), kw('탭:100:10', true), list(li('A'))));
+		const b = parseNoteBundles(ed.state.doc)[0];
+		expect(b.kind).toBe('tab');
+		expect(b.heightPct).toBe(100);
 	});
 });

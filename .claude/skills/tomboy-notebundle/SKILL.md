@@ -57,7 +57,7 @@ sync see a normal checkbox + bullet list; the bundle never mutates the list.
 | `lib/editor/noteBundle/parser.ts` | Pure `parseNoteBundles(doc): BundleSpec[]`. Atom-aware PMNode walk; **both keywords** (`탭:`→kind 'tab', `묶음:`→kind 'bundle'). Per kind it fills **either** `tree: BundleNode{label,link,children}` (tab, recursive — `parseTree`) **or** `entries: BundleEntry{title,category}` (bundle, flat — `parseEntries`); the other field stays `[]`. No IDB, no title index. **Also** the dedicated-note path: `dedicatedBundleKind(title)` (`탭::`/`묶음::` 접두 → kind, else null) + `parseDedicatedBundle(jsonDoc, kind): BundleSpec` (synthetic spec from the **whole body** — JSON-based twin of the PMNode walk; see 전용 노트 section). **And** `buildSyntheticBundleSpec(titles, kind): BundleSpec` — a flat synthetic spec straight from a title list (no doc), used by the 역참조 temporary bundle; same -1/null write-back convention as `parseDedicatedBundle`. |
 | `lib/editor/noteBundle/noteBundlePlugin.ts` | ProseMirror plugin, **kind-agnostic**. Hide-list node decoration gated on `hasContent` (`tree.length \|\| entries.length`) + cached widget container per ordinal + `StackController` lifecycle. **Kind-change (탭↔묶음) on a live ordinal = destroy + remount** (`controllerKind` map). Checked → hides declaration line (`keywordPos..keywordEnd`) **and** list. Exports `writeBundleHeightPct` + `setBundleChecked` (Ctrl 편집 버튼 → 체크 해제). **No list mutation** (only the checkbox attr / `:N` digits). |
 | `lib/editor/noteBundle/stackMath.ts` | **Tab** tree-navigation — `firstNavPath`, `drillFrom`, `repairPath`, `stepPath` (bubbles to parent at level ends), `pickPath`, `nodesAtDepth`, `clampIndex`, `visibleTabs` (range-safe), `tabView`/`TAB_FIT_MAX`/`TAB_WINDOW` (active-centred window + `[+N]` badges). |
-| `lib/editor/noteBundle/cabinetMath.ts` | **Bundle** title-window algebra — `WINDOW_SIZE=5`, `ACTIVE_SLOT=2`, `windowWidth`, `centeredWindow` (active fixed at slot 3 / index 2 regardless of scroll direction, end-pinned), `firstValidIndex`/`nextValidIndex` (broken-skip). |
+| `lib/editor/noteBundle/cabinetMath.ts` | **Bundle** title-window algebra — `WINDOW_SIZE=5` (default), `windowWidth(n, max=5)`, `activeSlot(w)=floor(w/2)` (`ACTIVE_SLOT=activeSlot(5)=2`, back-compat const), `centeredWindow(active, n, max=5)` (active fixed at the **center slot** regardless of scroll direction, end-pinned), `firstValidIndex`/`nextValidIndex` (broken-skip). The `max` arg = `maxCount` (display count `:M`); `100` → caller passes `n` so the window = all. |
 | `lib/editor/noteBundle/NoteBundleStack.svelte` | **Tab** UI (kind 'tab'). `activePath` + recursive `tabLevel` snippet + keep-alive `EditorSession` map + barrier + **always-edit** (no browse/edit mode — strip always shown, active leaf always editable) + host-shell wiring. `variant='dedicated'` + nullable `view` + `onclose`/`onraw` for the full-note path. |
 | `lib/editor/noteBundle/NoteBundleCabinet.svelte` | **Bundle** UI (kind 'bundle'). Flat `resolved` entries + `k`(active)/`winStart`(5-bar window) + flex-grow drawer + same barrier / sessions / modes / host-shell wiring. Same `variant='dedicated'` extras. |
 | `lib/editor/noteBundle/index.ts` | Barrel (exports `BundleSpec`, `BundleNode`, `BundleEntry`, `BundleKind`, `dedicatedBundleKind`, `parseDedicatedBundle`, `buildSyntheticBundleSpec`). |
@@ -76,14 +76,25 @@ There is **no Svelte component test** — both UIs are verified manually via
 
 Two regexes matched against the paragraph text **after** the checkbox atom (the
 `노트 ` prefix is optional, legacy):
-`TAB_RE = /^\s*(?:노트\s*)?탭:(\d+)?\s*$/` → `kind:'tab'`,
-`BUNDLE_RE = /^\s*(?:노트\s*)?묶음:(\d+)?\s*$/` → `kind:'bundle'`.
+`TAB_RE = /^\s*(?:노트\s*)?탭:(\d+)?(?::(\d+))?\s*$/` → `kind:'tab'`,
+`BUNDLE_RE = /^\s*(?:노트\s*)?묶음:(\d+)?(?::(\d+))?\s*$/` → `kind:'bundle'`.
 `keywordAfterCheckbox` tries TAB first; the matched kind is stamped on the spec.
+The form is `탭/묶음:N[:M]` — **N = height%** (group 1), **M = display count**
+(group 2, 묶음-only; the tab ignores M). `묶음::100` (empty N + M) is valid:
+N omitted (default), M=100.
 
 - **Keyword paragraph** (`parseKeywordParagraph`): first `inlineCheckbox` whose
   preceding text (`prefix`) is empty or, after trim, ends with `:` (so
-  `Done:[ ]탭:` / `Done:[ ]묶음:` works). The number after `:` becomes `heightPct`
-  (20–90, def 50).
+  `Done:[ ]탭:` / `Done:[ ]묶음:` works). N → `heightPct`, M → `maxCount`.
+- **`heightPct` (`clampHeightPct`):** `0` = **title-only** (묶음 only — bars only,
+  bodies never loaded → no IDB read, no editor mount; memory saving), `100` =
+  **fit** (묶음: body grows to content height instead of N%-of-screen; tab: full
+  host height), else clamped **20–90**. Default 50. The bottom drag-handle writes
+  back into the **N digits only** (`digitsFrom..digitsTo` sits between the first
+  `:` and the second), never touching M; the handle is hidden in title-only/fit.
+- **`maxCount` (`clampMaxCount`, 묶음 only):** title-window width. `1–100`,
+  default **5** (= `WINDOW_SIZE`). **`100` = show ALL bars AND force title-only**
+  (`묶음::100` ≡ `묶음:N:100`). Tab stores it but ignores it.
 - **Adjacency is strict.** A pending keyword only binds to a bulletList that is
   the **immediately next block**; any intervening block (even an empty paragraph)
   flushes it empty. Double-Enter between keyword and list = empty stack.
@@ -435,7 +446,8 @@ editor right away since the tab is always in edit.)
 
 ### Height basis — desktop vs mobile
 
-`stackH = dragPx ?? max(140, round(basisH * heightPct/100))`. In a desktop
+`stackH = dragPx ?? max(140, round(basisH * heightPct/100))` (applies to `20–90`;
+title-only & fit set `height:auto` instead — see the cabinet modes above). In a desktop
 multi-window (`view.dom.closest('.note-window')`) `basisH` = host
 `.tomboy-editor` `clientHeight` (bounded by the window, ResizeObserver). On the
 mobile route the editor is body-level scroll whose height grows with content —
@@ -457,13 +469,25 @@ capture-phase wheel preemption that the tab dropped** (the tab is now always-edi
 - **Flat `resolved` entries.** `spec.entries` (`{title, category}`) resolved to
   `{title, category, guid, broken, srcIndex}` via `lookupGuidByTitle`
   (self-reference dropped). `srcIndex` keys the `#each` (dup-link stable).
-- **`k` = active index, `winStart` = 5-bar window top** — both component-local,
-  never persisted. `cabinetMath.centeredWindow(k, n)` drives the window with a
-  single formula: active stays **fixed at slot 3** (`ACTIVE_SLOT=2` → `winStart =
-  clamp(k-2, 0, n-W)`), so scrolling keeps 2 bars above + 2 below regardless of
-  direction; only the ends pin (top → slots 1/2, bottom → last). No more
-  direction-aware eager slide / `pendingDir` — the window effect is one line.
-  `firstValidIndex`/`nextValidIndex` skip `broken`.
+- **`k` = active index, `winStart` = window top** — both component-local,
+  never persisted. `cabinetMath.centeredWindow(k, n, maxBars)` drives the window
+  with a single formula: active stays **fixed at the center slot**
+  (`activeSlot(W)=floor(W/2)` → `winStart = clamp(k-activeSlot, 0, n-W)`), so
+  scrolling keeps the active centered regardless of direction; only the ends pin.
+  `W = windowWidth(n, maxBars)` where `maxBars = spec.maxCount` (`100` → `n`, all).
+  No direction-aware eager slide / `pendingDir`. `firstValidIndex`/`nextValidIndex`
+  skip `broken`.
+- **Title-only / fit / count modes** (`묶음` extras, all derived from spec):
+  `titleOnly = heightPct<=0 || maxCount>=100`, `fit = !dedicated && !titleOnly &&
+  heightPct>=100`. **title-only** skips the session-load effect entirely (and
+  tears down any live sessions) → bars only, no IDB read / editor mount; bodies
+  `{#if}`-suppressed; height `auto`. **fit** = `.fit` class makes `.bundle-body.open`
+  `flex:none; height:auto; overflow:visible` so it grows to content; height `auto`.
+  `wheelBrowse = !(titleOnly && W>=n)` — when a title-only list shows **all** bars
+  (count 100) it can exceed the viewport, so wheel/swipe interception + pointer
+  capture are **disabled** (`.free-scroll` → `touch-action:pan-y`) and the page
+  scrolls natively; windowed/body modes stay short so they keep intercepting.
+  The drag-resize handle is hidden in title-only & fit.
 - **Layout = one expanded note + collapsed bars above/below.** Every resolved
   entry is a `.bundle-bar` + its own `.bundle-body` in DOM order; only `idx===k`
   gets `.open` (`flex-grow:1`) → the **flex-grow drawer** animates the swap with no
@@ -481,10 +505,11 @@ capture-phase wheel preemption that the tab dropped** (the tab is now always-edi
   tap = `moveTo`, double-tap = `oninternallink` (open standalone), `≥30px` swipe =
   `step`. Active-body tap (no capture) = enter edit (mode only — see focus suppression).
 
-`cabinetMath` is the window-5 algebra resurrected from before the tab redesign,
-but its windowing was **changed to fixed slot-3 centering** (`centeredWindow`)
-per the bundle use case — the old `clampWindow`/`stepWindow`/`initialWindow`
-band + eager-slide are gone. It is independent of `stackMath` (tab tree-nav).
+`cabinetMath` is the window algebra resurrected from before the tab redesign,
+but its windowing was **changed to center-slot centering** (`centeredWindow`,
+default 5-wide but `maxCount`-variable) per the bundle use case — the old
+`clampWindow`/`stepWindow`/`initialWindow` band + eager-slide are gone. It is
+independent of `stackMath` (tab tree-nav).
 
 ## 전용 노트 (dedicated note — the whole note IS the cabinet)
 
@@ -658,7 +683,9 @@ dedicated-note parser, and it's the simplest: a plain title list, no doc walk.
   first top-level node + caret clamp out of it). The bar/tab already shows the note
   title, so the body starts from content — matches the standalone note route
   (`note/[id]/+page.svelte` passes the same).
-- **heightPct clamped 20–90, default 50.** Drag the bottom edge; persisted on pointer-up.
+- **heightPct: `0`=title-only(묶음), `100`=fit, else 20–90, default 50.** Drag the
+  bottom edge; persisted on pointer-up (writes N digits only, handle hidden in 0/fit).
+- **maxCount (묶음 `:M`): 1–100, default 5, `100`=all+title-only.** Window width.
 - **Widget container cached per ordinal** — never recreate it or the Svelte stack is lost.
 - **Full-tree render is required for keep-alive** — visited leaf editors must stay
   mounted (transformed off-screen, not `display:none`) across tab switches; don't
@@ -695,7 +722,8 @@ dedicated-note parser, and it's the simplest: a plain title list, no doc walk.
   nested category, self-link-first, 3-level recursion, legacy `노트 탭`);
   `묶음:` → kind 'bundle' + flat entries with category (legacy `노트 묶음`);
   the unused field stays `[]`; mixed-keyword doc; prefix/checkbox/adjacency;
-  height clamp.
+  height clamp (incl. `0`/`100`), `clampMaxCount`, and the size/count options
+  (`묶음:0`, `묶음:100`, `묶음:50:10` digits=N only, `묶음::100`, `탭:100:10`).
 - `noteBundlePlugin.test.ts` — hide-declaration + hide-list + widget decorations
   (both kinds via `hasContent`; declaration hidden even with no list — node deco
   at `keywordPos..keywordEnd`), **no** radio insert (list unmutated),
@@ -708,11 +736,11 @@ dedicated-note parser, and it's the simplest: a plain title list, no doc walk.
   `repairPath`/`stepPath`/`pickPath` over leaf/category/broken trees, **stepPath
   parent-bubble** (level-end toss), and **`clampIndex`/`visibleTabs`
   range-safety** (the out-of-range → `undefined`-node crash repro).
-- `cabinetMath.test.ts` (bundle) — **window-5** algebra: `windowWidth` min(5,N),
-  `centeredWindow` fixed slot-3 (`start = clamp(active-2, 0, n-W)`): mid-stack
-  centering, end-pinning (top slots 1/2, bottom last), direction-independence
-  (same map scrolling up or down), broken-skip multi-jump, `firstValidIndex`/
-  `nextValidIndex`.
+- `cabinetMath.test.ts` (bundle) — window algebra: `windowWidth` min(max,N),
+  `centeredWindow` center-slot (`start = clamp(active-activeSlot(W), 0, n-W)`):
+  mid-stack centering, end-pinning, direction-independence (same map scrolling up
+  or down), broken-skip multi-jump, plus **variable `max` / `activeSlot`** (count
+  `:M`, 100=all) and `firstValidIndex`/`nextValidIndex`.
 - No component test. Drive the UIs with `npm run dev` (host note with a checked
   `탭:`/`묶음:` + link list, including a nested category) or the `/tmp/nb-verify/`
   headless probes. The `npm run test` flake "document is not defined" (DOMObserver
