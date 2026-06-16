@@ -12,6 +12,7 @@ import {
 	cursorSumSize,
 	clearImageStore,
 	countRecords,
+	getAllImageRecords,
 	type ImageCacheRecord
 } from './imageCacheStore.js';
 import * as pool from './objectUrlPool.js';
@@ -26,6 +27,13 @@ import {
 export interface LookupResult {
 	src: string;
 	fromCache: boolean;
+}
+
+export interface CachedImageInfo {
+	url: string;
+	size: number;
+	contentType: string;
+	lastAccess: number;
 }
 
 // ── Module-level state ─────────────────────────────────────────────────
@@ -240,6 +248,24 @@ export async function getStats(): Promise<{
 	const count = await countRecords();
 	const quotaBytes = await getImageCacheQuotaBytes();
 	return { count, totalBytes: actual, quotaBytes };
+}
+
+/**
+ * Enumerate every currently-cached image as lightweight metadata
+ * (no blobs), sorted most-recently-accessed first. For pickers that let
+ * the user choose an existing cached image; fetch the actual bytes per
+ * selection via {@link getBlob}.
+ */
+export async function listCached(): Promise<CachedImageInfo[]> {
+	const recs = await getAllImageRecords();
+	return recs
+		.map((r) => ({
+			url: r.url,
+			size: r.size,
+			contentType: r.contentType,
+			lastAccess: r.lastAccess
+		}))
+		.sort((a, b) => b.lastAccess - a.lastAccess);
 }
 
 /**

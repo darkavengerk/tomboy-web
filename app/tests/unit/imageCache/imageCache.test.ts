@@ -9,8 +9,10 @@ import {
 	clearAll,
 	getStats,
 	setQuota,
+	listCached,
 	__resetForTest as resetCache
 } from '$lib/imageCache/imageCache.js';
+import { putImageRecord } from '$lib/imageCache/imageCacheStore.js';
 import { __resetForTest as resetPool } from '$lib/imageCache/objectUrlPool.js';
 import {
 	registerFetcher,
@@ -247,5 +249,52 @@ describe('imageCache', () => {
 		expect(r.fromCache).toBe(false);
 		expect(r.src.startsWith('blob:')).toBe(true);
 		expect(fetchMock).toHaveBeenCalledOnce();
+	});
+
+	it('listCached returns metadata sorted by lastAccess descending', async () => {
+		await putImageRecord({
+			url: 'https://a/old.png',
+			blob: fakeBlob(10),
+			contentType: 'image/png',
+			size: 10,
+			lastAccess: 100,
+			insertedAt: 100
+		});
+		await putImageRecord({
+			url: 'https://a/new.png',
+			blob: fakeBlob(20),
+			contentType: 'image/jpeg',
+			size: 20,
+			lastAccess: 300,
+			insertedAt: 300
+		});
+		await putImageRecord({
+			url: 'https://a/mid.png',
+			blob: fakeBlob(15),
+			contentType: 'image/png',
+			size: 15,
+			lastAccess: 200,
+			insertedAt: 200
+		});
+
+		const list = await listCached();
+
+		expect(list.map((i) => i.url)).toEqual([
+			'https://a/new.png',
+			'https://a/mid.png',
+			'https://a/old.png'
+		]);
+		expect(list[0]).toMatchObject({
+			url: 'https://a/new.png',
+			size: 20,
+			contentType: 'image/jpeg',
+			lastAccess: 300
+		});
+		// lightweight list must not carry the blob
+		expect((list[0] as unknown as Record<string, unknown>).blob).toBeUndefined();
+	});
+
+	it('listCached returns empty array when cache is empty', async () => {
+		expect(await listCached()).toEqual([]);
 	});
 });
