@@ -184,9 +184,13 @@
 	// fit: 크기 100(`묶음:100`) — 호스트 노트의 끝(에디터 뷰포트 하단)에 닿을
 	//   때까지 채운다(묶음 상단부터 남은 높이 전부). 임베디드 노트 내용 높이가
 	//   아니라 호스트 기준. 전용 노트(dedicated)는 flex:1 로 이미 꽉 차므로 제외.
+	//   titleOnly 와 공존 가능: `묶음:100:100` = 본문 없는 타이틀 색인이 노트
+	//   끝까지 고정 높이로 차고, 타이틀이 넘치면 목록 내부 스크롤.
+	// autoHeight: titleOnly 이면서 fit 아님(크기 0 등) — 바 개수만큼 자란다(height:auto).
 	// maxBars: 표시 바 개수(윈도우 폭). 100 = 전부.
 	const titleOnly = $derived(spec.heightPct <= 0 || spec.maxCount >= 100);
-	const fit = $derived(!dedicated && !titleOnly && spec.heightPct >= 100);
+	const fit = $derived(!dedicated && spec.heightPct >= 100);
+	const autoHeight = $derived(titleOnly && !fit);
 	const maxBars = $derived(spec.maxCount >= 100 ? resolved.length : spec.maxCount);
 
 	// --- 타이틀 윈도우 ---------------------------------------------------------
@@ -221,13 +225,17 @@
 	// fit(크기 100) — 묶음 위쪽의 호스트 콘텐츠 높이(= 묶음 상단 오프셋). 호스트
 	// 뷰포트 끝까지 채우려면 stackH = basisH - 이 값.
 	let fitTopOffset = $state(0);
+	// 하단 떠 있는 툴바가 가리는 높이(데스크탑 --toolbar-h=30 / 모바일 고정 툴바
+	// --toolbar-height). fit 이 여기까지 채우면 툴바에 가리거나 툴바를 덮으므로
+	// 그만큼 빼서 툴바 바로 위에서 멈춘다(0 = 툴바 없음).
+	let bottomReserve = $state(0);
 	let dragPx = $state<number | null>(null);
-	// fit: 호스트 노트의 끝(에디터 뷰포트 하단)까지 — 묶음 상단부터 남은 높이 전부
-	//   (다음 내용은 없다고 가정). 그 외: 호스트 높이의 heightPct%.
+	// fit: 호스트 노트의 끝(에디터 뷰포트 하단, 툴바 위)까지 — 묶음 상단부터 남은
+	//   높이 전부(다음 내용은 없다고 가정). 그 외: 호스트 높이의 heightPct%.
 	const stackH = $derived(
 		dragPx ??
 			(fit
-				? Math.max(140, basisH - fitTopOffset)
+				? Math.max(140, basisH - fitTopOffset - bottomReserve)
 				: Math.max(140, Math.round((basisH * spec.heightPct) / 100)))
 	);
 
@@ -249,6 +257,8 @@
 			// 콘텐츠는 그대로라 값이 수렴 — 피드백 루프 없음.
 			const measure = () => {
 				basisH = hostEl.clientHeight || basisH;
+				// 호스트 .tiptap 의 padding-bottom = 떠 있는 툴바 자리(--toolbar-h).
+				bottomReserve = parseFloat(getComputedStyle(view!.dom).paddingBottom) || 0;
 				const r = rootEl?.getBoundingClientRect();
 				if (r) fitTopOffset = Math.max(0, r.top - hostEl.getBoundingClientRect().top + hostEl.scrollTop);
 			};
@@ -260,6 +270,8 @@
 		}
 		const measure = () => {
 			basisH = window.innerHeight || 600;
+			// 모바일 고정 툴바 높이 — /note/[id] 가 <html> 에 게시(--toolbar-height).
+			bottomReserve = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--toolbar-height')) || 0;
 			const r = rootEl?.getBoundingClientRect();
 			if (r) fitTopOffset = Math.max(0, r.top);
 		};
@@ -856,9 +868,10 @@
 	class:edit={mode === 'edit'}
 	class:dedicated
 	class:title-only={titleOnly}
+	class:fit
 	class:free-scroll={!wheelBrowse}
 	bind:this={rootEl}
-	style:height={dedicated || titleOnly ? null : `${stackH}px`}
+	style:height={dedicated || autoHeight ? null : `${stackH}px`}
 >
 	{#if mode === 'edit' && expanded && !titleOnly}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1063,12 +1076,23 @@
 		border-radius: 0;
 		position: relative;
 	}
-	/* 타이틀만(크기 0 / 개수 100) — 본문 없이 바만. 스택은 바 높이만큼 자란다. */
-	.bundle-stack.title-only {
+	/* 타이틀만(크기 0 / 개수 100) — 본문 없이 바만. fit 아니면 바 높이만큼 자란다. */
+	.bundle-stack.title-only:not(.fit) {
 		height: auto;
 	}
-	.bundle-stack.title-only .bundle-list {
+	.bundle-stack.title-only:not(.fit) .bundle-list {
 		flex: none;
+	}
+	/* `묶음:100:100` — 타이틀 색인이 노트 끝까지 고정 높이로 차고, 넘치면 목록
+	   내부에서 스크롤(.bundle-list 는 flex:1 + min-height:0 이라 그대로 차고
+	   overflow 만 켜면 된다). */
+	.bundle-stack.title-only.fit .bundle-list {
+		overflow-y: auto;
+	}
+	/* fit(노트 끝까지 채움) — 하단 좌우 둥근 모서리가 잘려 어색하므로 직각. */
+	.bundle-stack.fit {
+		border-bottom-left-radius: 0;
+		border-bottom-right-radius: 0;
 	}
 	/* 긴 목차(타이틀만 + 전부 표시) — 바에서 시작한 터치가 페이지를 스크롤하도록
 	   touch-action 을 푼다(윈도우 모드의 스와이프 넘김 none 과 반대). */

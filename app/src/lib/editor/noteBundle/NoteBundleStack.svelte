@@ -259,14 +259,18 @@
 	// fit(크기 100) — 묶음 위쪽의 호스트 콘텐츠 높이(= 묶음 상단 오프셋). 호스트
 	// 뷰포트 끝까지 채우려면 stackH = basisH - 이 값.
 	let fitTopOffset = $state(0);
+	// 하단 떠 있는 툴바가 가리는 높이(데스크탑 --toolbar-h=30 / 모바일 고정 툴바
+	// --toolbar-height). fit 이 여기까지 채우면 툴바를 덮으므로 그만큼 빼서 툴바
+	// 바로 위에서 멈춘다(0 = 툴바 없음).
+	let bottomReserve = $state(0);
 	let dragPx = $state<number | null>(null);
-	// fit: 호스트 노트의 끝(에디터 뷰포트 하단)에 닿을 때까지 — 묶음 상단부터 남은
-	//   높이 전부. 임베디드 노트 내용 높이가 아니라 호스트 기준(다음 내용은 없다고
-	//   가정). 그 외: 호스트 높이의 heightPct%.
+	// fit: 호스트 노트의 끝(에디터 뷰포트 하단, 툴바 위)에 닿을 때까지 — 묶음
+	//   상단부터 남은 높이 전부. 임베디드 노트 내용 높이가 아니라 호스트 기준
+	//   (다음 내용은 없다고 가정). 그 외: 호스트 높이의 heightPct%.
 	const stackH = $derived(
 		dragPx ??
 			(fit
-				? Math.max(140, basisH - fitTopOffset)
+				? Math.max(140, basisH - fitTopOffset - bottomReserve)
 				: Math.max(140, Math.round((basisH * spec.heightPct) / 100)))
 	);
 
@@ -288,6 +292,8 @@
 			// 바뀌어도 위쪽 콘텐츠는 그대로라 값이 수렴 — 피드백 루프 없음.
 			const measure = () => {
 				basisH = hostEl.clientHeight || basisH;
+				// 호스트 .tiptap 의 padding-bottom = 떠 있는 툴바 자리(--toolbar-h).
+				bottomReserve = parseFloat(getComputedStyle(view!.dom).paddingBottom) || 0;
 				const r = rootEl?.getBoundingClientRect();
 				if (r) fitTopOffset = Math.max(0, r.top - hostEl.getBoundingClientRect().top + hostEl.scrollTop);
 			};
@@ -299,6 +305,8 @@
 		}
 		const measure = () => {
 			basisH = window.innerHeight || 600;
+			// 모바일 고정 툴바 높이 — /note/[id] 가 <html> 에 게시(--toolbar-height).
+			bottomReserve = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--toolbar-height')) || 0;
 			// 모바일 body 스크롤 — 묶음의 뷰포트 상단 위치. 스크롤마다 갱신하면
 			// 스크롤 중 리사이즈가 되므로 resize 때만(마운트 시점 위치 기준).
 			const r = rootEl?.getBoundingClientRect();
@@ -721,6 +729,7 @@
 	class="bundle-stack"
 	class:no-anim={suppressAnim}
 	class:dedicated
+	class:fit
 	bind:this={rootEl}
 	style:height={dedicated ? null : `${stackH}px`}
 >
@@ -930,6 +939,11 @@
 		border: none;
 		border-radius: 0;
 		position: relative;
+	}
+	/* fit(노트 끝까지 채움) — 하단 좌우 둥근 모서리가 잘려 어색하므로 직각. */
+	.bundle-stack.fit {
+		border-bottom-left-radius: 0;
+		border-bottom-right-radius: 0;
 	}
 	/* 전용 노트 우상단 크롬 — 반투명, 본문 위로 떠 있음. */
 	.dedicated-chrome {
