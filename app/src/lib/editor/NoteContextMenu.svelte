@@ -14,6 +14,7 @@
 		| 'compareWithServer'
 		| 'viewXml'
 		| 'history'
+		| 'setBackground'
 		| 'clearBackground';
 
 	interface Props {
@@ -144,9 +145,12 @@
 				/>
 				<span class="opacity-val">{Math.round(opacity * 100)}%</span>
 			</div>
+			<button class="item" onclick={() => onaction('setBackground')}>
+				<span class="icon">🖼</span>노트 배경 지정
+			</button>
 			{#if hasBackground}
 				<button class="item" onclick={() => onaction('clearBackground')}>
-					<span class="icon">🖼</span>노트 배경 해제
+					<span class="icon">🧹</span>노트 배경 해제
 				</button>
 			{/if}
 			<div class="sep"></div>

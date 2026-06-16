@@ -39,6 +39,7 @@
 		getTerminalBridgeToken
 	} from '$lib/editor/terminal/bridgeSettings.js';
 	import NoteContextMenu, { type ActionKind } from '$lib/editor/NoteContextMenu.svelte';
+	import NoteBackgroundPicker, { type BgSource } from './NoteBackgroundPicker.svelte';
 	import BacklinkBundleOverlay from '$lib/editor/noteBundle/BacklinkBundleOverlay.svelte';
 	import NoteTitleDialog from '$lib/components/NoteTitleDialog.svelte';
 	import NoteDragHandle from '$lib/components/NoteDragHandle.svelte';
@@ -70,11 +71,14 @@
 		desktopSession,
 		loadNoteBg,
 		loadNoteBgMode,
+		setNoteBg,
 		clearNoteBg,
 		loadNoteOpacity,
 		setNoteOpacity,
 		type WallpaperMode
 	} from './session.svelte.js';
+	import { resolveImageBlob } from '$lib/editor/imageActions/copyImage.js';
+	import { getBlob } from '$lib/imageCache/imageCache.js';
 	import { modKeys } from './modKeys.svelte.js';
 	import { SEND_SOURCE_GUID } from '$lib/editor/sendListItem/transferListItem.js';
 	import { shouldSendListBeActive } from '$lib/editor/sendListItem/sendActiveGate.js';
@@ -143,6 +147,7 @@
 	let editorComponent: TomboyEditor | undefined = $state(undefined);
 	let bodyEl: HTMLDivElement | undefined;
 	let menuAnchor = $state<{ right: number; bottom: number } | null>(null);
+	let bgPickerAnchor = $state<{ right: number; bottom: number } | null>(null);
 	let backlinkBundleOpen = $state(false);
 	let xmlViewerOpen = $state(false);
 	let sendRemarkableOpen = $state(false);
@@ -459,6 +464,23 @@
 	async function handleClearBackground() {
 		await clearNoteBg(guid); // bumps noteChromeEpoch → bg effect reloads to null
 		pushToast('노트 배경을 해제했습니다.');
+	}
+
+	// Apply a background chosen in NoteBackgroundPicker. URL sources are fetched
+	// (and cached) via resolveImageBlob; cache sources are read straight from the
+	// image cache. Either way we hand bytes to setNoteBg (which bumps
+	// noteChromeEpoch → the bg effect reloads).
+	async function handleApplyBackground(source: BgSource, mode: WallpaperMode) {
+		bgPickerAnchor = null;
+		try {
+			const blob =
+				source.kind === 'url' ? await resolveImageBlob(source.url) : await getBlob(source.url);
+			if (!blob) throw new Error('image bytes unavailable');
+			await setNoteBg(guid, blob, mode);
+			pushToast('노트 배경으로 지정했습니다.');
+		} catch {
+			pushToast('노트 배경 지정 실패', { kind: 'error' });
+		}
 	}
 
 	function handleEditorChange(doc: JSONContent) {
@@ -890,8 +912,15 @@
 	}
 
 	async function handleAction(kind: ActionKind) {
+		const anchor = menuAnchor;
 		menuAnchor = null;
 		if (!note) return;
+
+		if (kind === 'setBackground') {
+			// Reuse the context-menu anchor so the picker pops where the menu was.
+			bgPickerAnchor = anchor ?? { right: 8, bottom: 8 };
+			return;
+		}
 
 		if (kind === 'editTitle') { openTitleDialog(); return; }
 
@@ -1041,6 +1070,7 @@
 	bind:this={windowEl}
 	class="note-window"
 	class:hidden={!active}
+	data-has-bg={noteBgUrl ? 'true' : 'false'}
 	style="left:{x}px; top:{y}px; width:{width}px; height:{height}px; z-index:{z};"
 	style:background-color="rgba(255, 255, 255, {noteOpacity})"
 	onpointerdowncapture={handleWindowPointerDown}
@@ -1288,6 +1318,14 @@
 		onopacity={handleOpacityChange}
 		onclose={() => (menuAnchor = null)}
 		onbacklinks={() => { menuAnchor = null; backlinkBundleOpen = true; }}
+	/>
+{/if}
+
+{#if bgPickerAnchor && note}
+	<NoteBackgroundPicker
+		anchor={bgPickerAnchor}
+		onapply={handleApplyBackground}
+		onclose={() => (bgPickerAnchor = null)}
 	/>
 {/if}
 
@@ -1545,6 +1583,18 @@
 	.body :global(.tomboy-editor-shell) {
 		flex: 1;
 		min-height: 0;
+	}
+
+	/* Readability halo: when a background is set, give the (dark) editor text a
+	   white outline glow so it stays legible over busy/dark imagery. Applied on
+	   .tiptap so it inherits to all body text; the dark title bar is a separate
+	   element and unaffected. Removed automatically when the background clears
+	   (data-has-bg flips to false). */
+	.note-window[data-has-bg='true'] .body :global(.tomboy-editor .tiptap) {
+		text-shadow:
+			0 0 2px #fff,
+			0 0 3px #fff,
+			0 0 4px #fff;
 	}
 
 	/* 전용 노트 raw 뷰에서 Ctrl 누른 동안만 뜨는 번들 복귀 버튼 — 좌상단. */

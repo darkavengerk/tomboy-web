@@ -9,6 +9,10 @@ export interface ImageCacheRecord {
 	insertedAt: number;
 }
 
+/** A cache record without its blob — for enumeration UIs that don't want to
+ * hold every cached image in memory at once. */
+export type ImageCacheMeta = Omit<ImageCacheRecord, 'blob'>;
+
 const STORE = 'imageCache' as const;
 const INDEX_LAST_ACCESS = 'by-lastAccess' as const;
 
@@ -84,4 +88,23 @@ export async function cursorSumSize(): Promise<number> {
 export async function countRecords(): Promise<number> {
 	const db = await getDB();
 	return db.count(STORE);
+}
+
+/**
+ * Cursor-scan all records and return their metadata (everything but the blob).
+ * The blob is dropped so callers enumerating the whole cache don't pull every
+ * image into memory at once. Operates in a single readonly transaction.
+ */
+export async function getAllImageRecords(): Promise<ImageCacheMeta[]> {
+	const db = await getDB();
+	const tx = db.transaction(STORE, 'readonly');
+	const out: ImageCacheMeta[] = [];
+	let cursor = await tx.store.openCursor();
+	while (cursor) {
+		const { url, contentType, size, lastAccess, insertedAt } = cursor.value;
+		out.push({ url, contentType, size, lastAccess, insertedAt });
+		cursor = await cursor.continue();
+	}
+	await tx.done;
+	return out;
 }

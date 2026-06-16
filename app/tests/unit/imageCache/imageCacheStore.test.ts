@@ -9,6 +9,7 @@ import {
 	evictLRU,
 	cursorSumSize,
 	countRecords,
+	getAllImageRecords,
 	type ImageCacheRecord
 } from '$lib/imageCache/imageCacheStore.js';
 
@@ -117,5 +118,25 @@ describe('imageCacheStore', () => {
 		const { evictedUrls, freedBytes } = await evictLRU(100);
 		expect(evictedUrls).toEqual(['https://a/big.png']);
 		expect(freedBytes).toBe(500);
+	});
+
+	it('getAllImageRecords returns lightweight metadata for every record (no blob)', async () => {
+		await putImageRecord(makeRecord('https://a/1.png', 100, 100));
+		await putImageRecord(makeRecord('https://a/2.png', 200, 200));
+
+		const all = await getAllImageRecords();
+
+		expect(all).toHaveLength(2);
+		expect(all.map((r) => r.url).sort()).toEqual(['https://a/1.png', 'https://a/2.png']);
+		const two = all.find((r) => r.url === 'https://a/2.png')!;
+		expect(two.size).toBe(200);
+		expect(two.contentType).toBe('image/png');
+		expect(two.lastAccess).toBe(200);
+		// the blob is intentionally NOT carried in the lightweight metadata
+		expect((two as unknown as Record<string, unknown>).blob).toBeUndefined();
+	});
+
+	it('getAllImageRecords returns empty array for empty store', async () => {
+		expect(await getAllImageRecords()).toEqual([]);
 	});
 });
