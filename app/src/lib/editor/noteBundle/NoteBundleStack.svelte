@@ -77,6 +77,9 @@
 	import { isMusicNoteDoc } from '$lib/music/parseMusicNote.js';
 	import MusicPlayerBar from '../musicNote/MusicPlayerBar.svelte';
 	import { modKeys } from '$lib/desktop/modKeys.svelte.js';
+	import { desktopSession } from '$lib/desktop/session.svelte.js';
+	import NoteBgLayer from '$lib/desktop/NoteBgLayer.svelte';
+	import { createNoteBgPool } from '$lib/desktop/noteBgPool.js';
 	import { SEND_SOURCE_GUID } from '../sendListItem/transferListItem.js';
 	import { shouldSendListBeActive } from '../sendListItem/sendActiveGate.js';
 	import { getScheduleNoteGuid } from '$lib/core/schedule.js';
@@ -398,6 +401,12 @@
 	const loading = new Set<string>();
 	let destroyed = false;
 
+	// Per-leaf background image pool. Each note's background is stored by guid in
+	// appSettings (decoupled from any window), so a leaf only loads its OWN guid.
+	// The pool owns the ObjectURL lifecycle (release on teardown / releaseAll on
+	// destroy / reload on a cross-window bg change).
+	const bgPool = createNoteBgPool();
+
 	async function flushSession(guid: string): Promise<void> {
 		const s = sessions.get(guid);
 		if (!s) return;
@@ -482,6 +491,7 @@
 				scrollBottom,
 				isMusic: isMusicNoteDoc(content)
 			});
+			void bgPool.load(guid); // surface this leaf's background, if any
 		} finally {
 			loading.delete(guid);
 		}
@@ -501,7 +511,18 @@
 		s.offReload();
 		s.offFlush();
 		sessions.delete(guid);
+		bgPool.release(guid);
 	}
+
+	// Reload every loaded leaf's background when a bg is set/cleared anywhere
+	// (the picker / image menu bumps desktopSession.noteChromeEpoch). Without
+	// this a bundle leaf would keep showing a stale or missing background.
+	$effect(() => {
+		void desktopSession.noteChromeEpoch; // reactive dependency
+		untrack(() => {
+			for (const guid of sessions.keys()) void bgPool.load(guid);
+		});
+	});
 
 	// 활성 잎 세션 보장 (활성화될 때 visible 상태로 mount → 측정 정상)
 	$effect(() => {
@@ -529,6 +550,7 @@
 	onDestroy(() => {
 		destroyed = true;
 		for (const guid of [...sessions.keys()]) teardownSession(guid);
+		bgPool.releaseAll();
 	});
 
 	/** Svelte 5 는 click/pointer* 를 document 루트 위임으로 처리하는데, 루트
@@ -848,7 +870,15 @@
 			{/key}
 		</div>
 	{:else}
-		<div class="bundle-body" use:scrollBottomInit={session.scrollBottom}>
+		{@const bg = bgPool.entries.get(session.guid)}
+		<div
+			class="bundle-body"
+			data-has-bg={bg ? 'true' : 'false'}
+			use:scrollBottomInit={session.scrollBottom}
+		>
+			{#if bg}
+				<NoteBgLayer url={bg.url} mode={bg.mode} />
+			{/if}
 			{#if session.termSpec && !session.termConnect}
 				<button
 					type="button"
@@ -1104,6 +1134,19 @@
 		overscroll-behavior: contain;
 		background: var(--color-bg, #fff);
 		transition: background-color 160ms ease-out;
+		/* offsetParent for the absolute NoteBgLayer (painted behind the editor,
+		   which is a positioned later sibling → stays on top). */
+		position: relative;
+	}
+	/* Readability outline for a leaf that has a background — same crisp, thin,
+	   semi-transparent white border as NoteWindow so dark body text stays legible
+	   over busy imagery. Applied only when data-has-bg flips true. */
+	.bundle-body[data-has-bg='true'] :global(.tomboy-editor .tiptap) {
+		text-shadow:
+			1px 0 0 rgba(255, 255, 255, 0.55),
+			-1px 0 0 rgba(255, 255, 255, 0.55),
+			0 1px 0 rgba(255, 255, 255, 0.55),
+			0 -1px 0 rgba(255, 255, 255, 0.55);
 	}
 	.bundle-term {
 		height: 100%;
@@ -1128,6 +1171,8 @@
 		color: #9fd4b3;
 		font-size: 0.78rem;
 		cursor: pointer;
+		/* keep above an absolute NoteBgLayer sibling. */
+		position: relative;
 	}
 	.bar-term-btn:hover {
 		background: #163022;

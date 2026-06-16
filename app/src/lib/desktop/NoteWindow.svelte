@@ -62,6 +62,7 @@
 	import type { JSONContent, Editor } from '@tiptap/core';
 	import { startPointerDrag } from './dragResize.js';
 	import ResizeHandles from './ResizeHandles.svelte';
+	import NoteBgLayer from './NoteBgLayer.svelte';
 	import {
 		DESKTOP_WINDOW_MIN_WIDTH,
 		DESKTOP_WINDOW_MIN_HEIGHT,
@@ -1118,13 +1119,7 @@
 			     title bar, editor text, and bottom toolbar stay fully opaque.
 			     Its own opacity fades the image in step with the translucent
 			     window fill behind it. -->
-			<div
-				class="note-bg-layer"
-				data-bg-mode={noteBgMode}
-				style:background-image="url({noteBgUrl})"
-				style:opacity={noteOpacity}
-				aria-hidden="true"
-			></div>
+			<NoteBgLayer url={noteBgUrl} mode={noteBgMode} opacity={noteOpacity} />
 		{/if}
 		{#if loading}
 			<div class="loading">로딩 중...</div>
@@ -1549,36 +1544,9 @@
 		position: relative;
 	}
 
-	/* Per-note background image layer. Absolutely fills the body BEHIND the
-	   editor content (which is a later, positioned sibling → paints on top).
-	   data-bg-mode mirrors the workspace wallpaper modes. */
-	.note-bg-layer {
-		position: absolute;
-		inset: 0;
-		z-index: 0;
-		pointer-events: none;
-		user-select: none;
-		background-repeat: no-repeat;
-		background-position: center;
-		background-size: contain;
-	}
-	.note-bg-layer[data-bg-mode='cover'] {
-		background-size: cover;
-	}
-	.note-bg-layer[data-bg-mode='contain'] {
-		background-size: contain;
-	}
-	.note-bg-layer[data-bg-mode='fill'] {
-		background-size: 100% 100%;
-	}
-	.note-bg-layer[data-bg-mode='center'] {
-		background-size: auto;
-	}
-	.note-bg-layer[data-bg-mode='tile'] {
-		background-position: top left;
-		background-repeat: repeat;
-		background-size: auto;
-	}
+	/* Per-note background image layer lives in the shared NoteBgLayer component
+	   (also used by the note bundle stack); its 5 display modes are defined
+	   there, not duplicated here. */
 
 	.body :global(.tomboy-editor-shell) {
 		flex: 1;
@@ -1594,14 +1562,10 @@
 	   when the background clears (data-has-bg flips to false). */
 	.note-window[data-has-bg='true'] .body :global(.tomboy-editor .tiptap) {
 		text-shadow:
-			1px 1px 0 #fff,
-			-1px 1px 0 #fff,
-			1px -1px 0 #fff,
-			-1px -1px 0 #fff,
-			1px 0 0 #fff,
-			-1px 0 0 #fff,
-			0 1px 0 #fff,
-			0 -1px 0 #fff;
+			1px 0 0 rgba(255, 255, 255, 0.55),
+			-1px 0 0 rgba(255, 255, 255, 0.55),
+			0 1px 0 rgba(255, 255, 255, 0.55),
+			0 -1px 0 rgba(255, 255, 255, 0.55);
 	}
 
 	/* 전용 노트 raw 뷰에서 Ctrl 누른 동안만 뜨는 번들 복귀 버튼 — 좌상단. */
