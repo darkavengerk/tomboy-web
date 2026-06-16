@@ -13,7 +13,9 @@ import type { EditorView } from '@tiptap/pm/view';
 // 둥근 모서리 사각형 외곽선 + 모서리 밖으로 살짝 솟는 체크 V.
 // 색은 모두 CSS 의 currentColor 로 그려 라이트/다크 글자색을 따른다.
 // data-checked='true' 일 때만 .tomboy-cb-check 가 보인다(CSS).
-const CHECKBOX_SVG =
+// 항목 단위 [[ ]] 체크박스(checklist/plugin.ts buildCheckbox)도 같은 마크업을
+// 재사용해 인라인 [x] 체크박스와 모양·색을 통일한다.
+export const CHECKBOX_SVG =
 	'<svg class="tomboy-cb-svg" viewBox="0 0 16 16" aria-hidden="true" focusable="false">' +
 	'<rect class="tomboy-cb-box" x="2.5" y="2.5" width="11" height="11" rx="3"/>' +
 	'<polyline class="tomboy-cb-check" points="5 8.2 7.4 10.8 13 2.6"/>' +
