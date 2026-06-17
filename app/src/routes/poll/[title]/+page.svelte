@@ -14,6 +14,12 @@
 	import { goto } from '$app/navigation';
 	import { getAllNotes, findNoteByTitle } from '$lib/storage/noteStore.js';
 	import { isTallyTitle, tallyName } from '$lib/tally';
+	import { mode } from '$lib/stores/guestMode.svelte.js';
+	import { ensureGuestSignedIn } from '$lib/firebase/app.js';
+	import {
+		getCachedPublicConfig,
+		discoverPublicConfigForGuest
+	} from '$lib/sync/firebase/publicConfig.js';
 
 	let status = $state<'resolving' | 'notfound'>('resolving');
 	// SvelteKit 이 라우트 파라미터를 이미 디코드해 준다(중복 디코드 금지).
@@ -33,6 +39,17 @@
 		if (!n) {
 			status = 'notfound';
 			return;
+		}
+		// 게스트는 익명 로그인 + 공개설정 캐시를 먼저 보장한다. 안 그러면 노트가
+		// 이미 IDB 에 있는 재방문에서 너무 빨리 /note 로 넘어가, note 페이지의
+		// 게스트 게이트가 (아직 캐시 미스라) /notes 로 튕긴다.
+		if (mode.value === 'guest') {
+			try {
+				await ensureGuestSignedIn();
+				if (!getCachedPublicConfig()) await discoverPublicConfigForGuest();
+			} catch {
+				/* 부트스트랩 실패 → 아래 해석/대기로 진행 */
+			}
 		}
 		// 게스트 첫 동기화 대기 — 20 × 400ms ≈ 8초.
 		for (let attempt = 0; attempt < 20; attempt++) {

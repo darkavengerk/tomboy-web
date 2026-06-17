@@ -75,7 +75,7 @@
 	import { assignNotebook, getNotebook, listNotebooks } from '$lib/core/notebooks.js';
 	import { setHomeNote, clearHomeNote, getHomeNoteGuid } from '$lib/core/home.js';
 	import { mode } from '$lib/stores/guestMode.svelte.js';
-	import { getCachedPublicConfig } from '$lib/sync/firebase/publicConfig.js';
+	import { getCachedPublicConfig, discoverPublicConfigForGuest } from '$lib/sync/firebase/publicConfig.js';
 	import { getScheduleNoteGuid } from '$lib/core/schedule.js';
 	import { isScrollBottomNote, setScrollBottomNote } from '$lib/core/scrollBottom.js';
 	import { modKeys, installModKeyListeners } from '$lib/desktop/modKeys.svelte.js';
@@ -376,8 +376,20 @@
 				return;
 			}
 			if (mode.value === 'guest' && !isPublicForGuest(loaded)) {
-				void goto('/notes', { replaceState: true });
-				return;
+				// 캐시 미스(딥링크 직후 = 공개설정 아직 미발견)면 한 번 발견을 기다린 뒤
+				// 재판정. 안 그러면 IDB 에 이미 있는 노트로 빨리 들어올 때 false 로 튕긴다.
+				if (!getCachedPublicConfig()) {
+					try {
+						await discoverPublicConfigForGuest();
+					} catch {
+						/* 발견 실패 → 아래에서 그대로 튕김 */
+					}
+					if (id !== noteId) return;
+				}
+				if (!isPublicForGuest(loaded)) {
+					void goto('/notes', { replaceState: true });
+					return;
+				}
 			}
 			note = loaded;
 			editorContent = getNoteEditorContent(loaded);

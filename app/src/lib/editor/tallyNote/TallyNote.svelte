@@ -103,10 +103,10 @@
 		};
 	});
 
-	// 게스트: 내 표(이미 투표했는지) 로드.
+	// 내 표(이미 투표했는지) 로드 — 호스트도 투표할 수 있으므로 공통.
 	$effect(() => {
 		const g = guid;
-		if (!g || !isGuest) {
+		if (!g) {
 			loadingMine = false;
 			return;
 		}
@@ -200,6 +200,37 @@
 		{/if}
 	</header>
 
+	{#snippet voteForm()}
+		{#each spec.questions as q (q.index)}
+			<section class="q-block">
+				<h2 class="q-text">
+					{q.text || `문제 ${q.index + 1}`}
+					{#if q.allowMultiple}<span class="q-hint">(중복 선택 가능)</span>{/if}
+				</h2>
+				<ul class="q-options">
+					{#each q.options as opt, oi (oi)}
+						<li>
+							<label class="opt" class:selected={isPicked(q.index, oi)}>
+								<input
+									type={q.allowMultiple ? 'checkbox' : 'radio'}
+									name={`q-${guid}-${q.index}`}
+									checked={isPicked(q.index, oi)}
+									onchange={() => pick(q.index, oi, q.allowMultiple)}
+								/>
+								<span class="opt-label">{opt}</span>
+							</label>
+						</li>
+					{/each}
+				</ul>
+			</section>
+		{/each}
+		{#if submitErr}<p class="tally-err">{submitErr}</p>{/if}
+		<button class="submit-btn" type="button" disabled={!allAnswered || submitting} onclick={submit}>
+			{submitting ? '제출 중...' : '투표 제출'}
+		</button>
+		{#if !allAnswered}<p class="tally-info">모든 문제에 답해야 제출할 수 있습니다.</p>{/if}
+	{/snippet}
+
 	{#if spec.questions.length === 0}
 		<p class="tally-empty">
 			문제가 없습니다.{#if !isGuest} 본문에 「질문 |중복가능|정답:N」 줄과 보기 리스트를 추가하세요 (Ctrl→편집).{/if}
@@ -240,34 +271,7 @@
 			{/if}
 		{:else}
 			<!-- 투표 폼 -->
-			{#each spec.questions as q (q.index)}
-				<section class="q-block">
-					<h2 class="q-text">
-						{q.text || `문제 ${q.index + 1}`}
-						{#if q.allowMultiple}<span class="q-hint">(중복 선택 가능)</span>{/if}
-					</h2>
-					<ul class="q-options">
-						{#each q.options as opt, oi (oi)}
-							<li>
-								<label class="opt" class:selected={isPicked(q.index, oi)}>
-									<input
-										type={q.allowMultiple ? 'checkbox' : 'radio'}
-										name={`q-${guid}-${q.index}`}
-										checked={isPicked(q.index, oi)}
-										onchange={() => pick(q.index, oi, q.allowMultiple)}
-									/>
-									<span class="opt-label">{opt}</span>
-								</label>
-							</li>
-						{/each}
-					</ul>
-				</section>
-			{/each}
-			{#if submitErr}<p class="tally-err">{submitErr}</p>{/if}
-			<button class="submit-btn" type="button" disabled={!allAnswered || submitting} onclick={submit}>
-				{submitting ? '제출 중...' : '투표 제출'}
-			</button>
-			{#if !allAnswered}<p class="tally-info">모든 문제에 답해야 제출할 수 있습니다.</p>{/if}
+			{@render voteForm()}
 		{/if}
 	{:else}
 		<!-- ── 호스트(나) ─────────────────────────────────────── -->
@@ -295,6 +299,23 @@
 		<p class="tally-hint">
 			다른 사람이 투표하려면 이 노트를 <strong>공유 노트북</strong>에 넣고(설정 → 공유) 공유 모드 규칙을 적용해야 합니다.
 		</p>
+
+		<!-- 호스트도 투표 가능 -->
+		{#if loadingMine}
+			<p class="tally-info">불러오는 중...</p>
+		{:else if !hasVoted}
+			<section class="host-vote">
+				<h2 class="host-vote-title">나도 투표</h2>
+				{@render voteForm()}
+			</section>
+		{:else}
+			<div class="tally-done host-voted">✓ 내 투표 완료</div>
+			{#if myScore && myScore.scored > 0}
+				<div class="tally-score">내 퀴즈 점수: <strong>{myScore.correct}/{myScore.scored}</strong></div>
+			{/if}
+		{/if}
+
+		<h2 class="results-heading">결과</h2>
 		{#each spec.questions as q (q.index)}
 			<section class="q-block">
 				<h2 class="q-text">
@@ -509,6 +530,28 @@
 	}
 	.host-controls {
 		margin: 0.5rem 0;
+	}
+	.host-vote {
+		margin: 0.75rem 0 1rem;
+		padding: 0.75rem 0.9rem;
+		border: 1px solid var(--border-color, #e0e0e0);
+		border-radius: 12px;
+		background: var(--bg-surface, #fafafa);
+	}
+	.host-vote-title {
+		font-size: 0.95rem;
+		font-weight: 700;
+		margin: 0 0 0.5rem;
+	}
+	.host-voted {
+		font-size: 0.95rem;
+	}
+	.results-heading {
+		font-size: 1.05rem;
+		font-weight: 700;
+		margin: 1.25rem 0 0.25rem;
+		padding-top: 0.75rem;
+		border-top: 2px solid var(--border-color, #eee);
 	}
 	.public-toggle {
 		display: inline-flex;
