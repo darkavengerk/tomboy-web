@@ -7,7 +7,8 @@ import {
 	centeredWindow,
 	firstValidIndex,
 	nextValidIndex,
-	bundleBox
+	bundleBox,
+	barCapacity
 } from '$lib/editor/noteBundle/cabinetMath.js';
 
 const e = (broken: boolean) => ({ broken });
@@ -102,6 +103,24 @@ describe('bundleBox — 높이/스크롤 모드 (앞=100 fit 이 개수보다 �
 		expect(bundleBox(100, true, true)).toBe('dedicated'); // :100:100
 		expect(bundleBox(0, true, true)).toBe('dedicated'); // :0
 		expect(bundleBox(50, false, true)).toBe('dedicated');
+	});
+});
+
+describe('barCapacity — 고정 박스에 들어가는 바 수 (window+배지 클램프)', () => {
+	it('floor((box - reserve) / bar), 타이틀만은 reserve 0', () => {
+		expect(barCapacity(400, 40, 0)).toBe(10);
+		expect(barCapacity(420, 40, 0)).toBe(10); // 나머지 버림
+	});
+	it('본문 모드 reserve(활성 본문 최소 높이)만큼 뺀다', () => {
+		expect(barCapacity(400, 40, 160)).toBe(6); // floor(240/40)
+	});
+	it('미측정(barPx<=0) → Infinity = 클램프 안 함', () => {
+		expect(barCapacity(400, 0, 0)).toBe(Infinity);
+		expect(barCapacity(400, -1, 0)).toBe(Infinity);
+	});
+	it('최소 1 — 박스가 바 하나도 못 담아도 1칸은 보장', () => {
+		expect(barCapacity(30, 40, 0)).toBe(1);
+		expect(barCapacity(400, 40, 500)).toBe(1); // reserve 가 박스보다 커도
 	});
 });
 

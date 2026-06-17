@@ -65,7 +65,8 @@
 		centeredWindow,
 		firstValidIndex,
 		nextValidIndex,
-		bundleBox
+		bundleBox,
+		barCapacity
 	} from './cabinetMath.js';
 	import { lookupGuidByTitle, ensureTitleIndexReady } from '../autoLink/titleProvider.js';
 	import {
@@ -184,15 +185,31 @@
 	//   로드하지 않아(세션 mount 없음) 제목만 표시 — 많은 노트 목록 메모리 절약.
 	// box(bundleBox): 높이/스크롤 모드. fit(앞=100)이 grow(개수 100·타이틀만)보다
 	//   우선 — `묶음:100:100` 은 페이지 스크롤(긴 목차)로 새지 않고 노트 끝까지
-	//   고정 + 타이틀 넘치면 목록 내부 스크롤(.title-only.fit .bundle-list:
-	//   overflow-y:auto + overscroll-behavior:contain). 자세한 정의는 cabinetMath.
+	//   고정. 자세한 정의는 cabinetMath.
 	// fit: 노트 끝까지 고정(개수 무관). grow: 타이틀만+앞<100 → height:auto+페이지 스크롤.
-	// maxBars: 표시 바 개수(윈도우 폭). 100 = 전부.
 	const titleOnly = $derived(spec.heightPct <= 0 || spec.maxCount >= 100);
 	const box = $derived(bundleBox(spec.heightPct, titleOnly, dedicated));
 	const fit = $derived(box === 'fit');
 	const grow = $derived(box === 'grow');
-	const maxBars = $derived(spec.maxCount >= 100 ? resolved.length : spec.maxCount);
+	// capacity(들어가는 바 수) 측정값 — boxPx=스택 안쪽 높이, barPx=바 1개 높이.
+	// barPx<=0(미측정)이면 barCapacity 가 Infinity 라 클램프 안 함(첫 프레임 안전).
+	let boxPx = $state(0);
+	let barPx = $state(0);
+	// 본문 모드(window/fit non-titleOnly)에서 활성 본문에 남겨둘 최소 높이 —
+	// 바로 다 채우지 않고 본문이 읽힐 만큼 확보(없으면 본문이 0 으로 찌부).
+	const RESERVE_BODY_PX = 160;
+	// maxBars: 실제 표시할 바 개수(윈도우 폭). 요청 개수(`:M`, 100=전부)를 물리적
+	//   capacity 로 깎는다 — 고정 박스(fit/window/dedicated)에 M 바가 다 안 들어가면
+	//   들어가는 만큼만 윈도우로 띄우고 나머지는 `.off`(접힘) + `+N` 배지 + 스와이프
+	//   브라우즈로 넘긴다(스크롤바 없이). grow(긴 목차)는 박스가 내용만큼 자라므로
+	//   클램프 안 함(barPx 미측정도 Infinity → 무클램프).
+	const rawMaxBars = $derived(spec.maxCount >= 100 ? resolved.length : spec.maxCount);
+	// grow(긴 목차) 또는 아직 미측정(box/bar=0)이면 클램프 안 함(=Infinity) — 측정
+	// 전에 box=0 으로 1칸까지 깎이는 걸 막는다(barCapacity 의 barPx<=0 가드와 같은 취지).
+	const capacity = $derived(
+		grow || boxPx <= 0 ? Infinity : barCapacity(boxPx, barPx, titleOnly ? 0 : RESERVE_BODY_PX)
+	);
+	const maxBars = $derived(Math.min(rawMaxBars, capacity));
 
 	// --- 타이틀 윈도우 ---------------------------------------------------------
 	// winStart·k(활성) 모두 컴포넌트 로컬 — 영속 안 함.
@@ -214,10 +231,10 @@
 	const hiddenBelow = $derived(Math.max(0, resolved.length - (winStart + W)));
 	const lastVisibleIdx = $derived(Math.min(winStart + W, resolved.length) - 1);
 
-	// 휠/스와이프로 활성을 넘길지(=묶음 브라우징). 타이틀만 + 전부 표시(개수 100 등)
-	// 면 목록이 화면보다 길 수 있어 가로채면 네이티브 페이지 스크롤이 막히므로
-	// 가로채지 않는다(긴 목차). 그 외(fit 포함)는 고정 높이라 본문이 내부 스크롤
-	// 되고 노트 전환은 휠/스와이프로 — 가로채도 페이지 스크롤이 안 막힌다.
+	// 휠/스와이프로 활성을 넘길지(=묶음 브라우징). W < n 이면(요청/capacity 로 윈도우가
+	// 전체보다 작음 → +N 배지 존재) 가로채 윈도우를 넘긴다 — capacity 클램프 덕에
+	// `묶음:100:100`/`묶음:100:15` 도 안 들어가는 만큼 W<n 이 돼 여기서 브라우징.
+	// W >= n(전부 들어감)일 때만 가로채지 않아(타이틀만 한정) 잔여 네이티브 스크롤 허용.
 	const wheelBrowse = $derived(!(titleOnly && W >= resolved.length));
 
 	// --- 높이 ----------------------------------------------------------------
@@ -239,6 +256,22 @@
 				? Math.max(140, basisH - fitTopOffset - bottomReserve)
 				: Math.max(140, Math.round((basisH * spec.heightPct) / 100)))
 	);
+
+	// capacity 측정 — 실제 렌더된 박스(rootEl) 안쪽 높이 + 바 1개 높이. 고정 박스
+	// (fit/window/dedicated)는 바 개수와 무관하게 높이가 일정해 값이 수렴(루프 없음).
+	// resolved/stackH 변화 때만 재측정하고 쓰기는 untrack — boxPx/barPx 가 maxBars→
+	// 렌더에 영향을 주지만 박스/바 높이는 그대로라 effect 가 다시 안 돈다.
+	$effect(() => {
+		void resolved.length;
+		void stackH;
+		void dedicated;
+		untrack(() => {
+			if (!rootEl) return;
+			boxPx = rootEl.clientHeight || boxPx;
+			const bar = rootEl.querySelector<HTMLElement>('.bundle-bar:not(.off)');
+			if (bar) barPx = bar.offsetHeight || barPx;
+		});
+	});
 
 	onMount(() => {
 		// 전용 노트는 컨테이너(.editor-area / .body)를 flex:1 로 꽉 채운다 —
@@ -1091,15 +1124,14 @@
 	.bundle-stack.title-only:not(.fit):not(.dedicated) .bundle-list {
 		flex: none;
 	}
-	/* 고정 박스 타이틀 색인 — `묶음:100:100`(fit, 노트 끝까지) 또는 전용 노트
-	   (컨테이너 채움). 타이틀이 넘치면 목록 내부에서만 스크롤(.bundle-list 는
-	   flex:1 + min-height:0 이라 그대로 차고 overflow 만 켜면 된다).
-	   overscroll-behavior:contain — 목록 끝에서 페이지로 스크롤이 새지 않게.
-	   앞=100 이면 개수(M)와 무관하게 항상 이쪽(긴 목차 페이지 스크롤과의 충돌 해소). */
+	/* 고정 박스 타이틀 색인 — `묶음:100:100`(fit) 또는 전용 노트(컨테이너 채움).
+	   바가 안 들어가면 스크롤바 대신 capacity 클램프로 윈도우를 줄여(.off 접힘 +
+	   `+N` 배지) 스와이프/휠로 브라우즈한다(묶음 본연의 훑어보기). 그래서 목록 자체
+	   overflow 는 hidden — 넘침을 노출하지 않는다(.bundle-list 는 flex:1 + min-height:0
+	   로 박스를 채우고, 안 들어간 바는 윈도우 밖이라 이미 max-height:0 으로 접힘). */
 	.bundle-stack.title-only.fit .bundle-list,
 	.bundle-stack.title-only.dedicated .bundle-list {
-		overflow-y: auto;
-		overscroll-behavior: contain;
+		overflow: hidden;
 	}
 	/* fit(노트 끝까지 채움) — 하단 좌우 둥근 모서리가 잘려 어색하므로 직각. */
 	.bundle-stack.fit {
