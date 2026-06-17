@@ -33,16 +33,27 @@ function eqWidget(playing: boolean): HTMLElement {
 	return span;
 }
 
+/** 묶음 훑어보기 모드 안인가 — 그렇다면 제스처를 삼키지 않는다. 묶음은 여러
+ *  노트를 관리하는 용도라 본문 어디서든(트랙 행 포함) 스와이프=노트 전환,
+ *  탭=편집 진입이 일관돼야 한다. 재생/편집 도구 조작은 편집 모드(.bundle-stack.edit)
+ *  에서만. 묶음 밖(일반 노트 에디터)에선 closest 가 null 이라 항상 삼킨다 —
+ *  회귀 없음. (상단 재생 패널 .bundle-music 은 묶음이 별도 마운트·예외 처리.) */
+function inBrowseBundle(el: HTMLElement): boolean {
+	return !!el.closest('.bundle-stack.browse');
+}
+
 /** pointerdown+mousedown+click 을 모두 삼켜 탭이 contenteditable 로 새지 않게 한다.
  *  (mousedown 만으론 모바일에서 캐럿/키보드를 못 막는다 — pointerdown 까지 필요.) */
 function swallowGesture(el: HTMLElement, onClick: () => void): void {
 	const swallow = (e: Event) => {
+		if (inBrowseBundle(el)) return;
 		e.preventDefault();
 		e.stopPropagation();
 	};
 	el.addEventListener('pointerdown', swallow);
 	el.addEventListener('mousedown', swallow);
 	el.addEventListener('click', (e) => {
+		if (inBrowseBundle(el)) return; // 재생은 편집 모드에서만 — 묶음으로 흐름
 		e.preventDefault();
 		e.stopPropagation();
 		onClick();
@@ -117,12 +128,14 @@ function playlistPlayButton(opts: BuildOpts, startIndex: number): HTMLElement {
  *  편집 도구(이동/복사/삭제)는 재생을 시작/이어가면 안 되므로 resume 호출이 없다. */
 function swallowAction(el: HTMLElement, onClick: () => void): void {
 	const swallow = (e: Event) => {
+		if (inBrowseBundle(el)) return;
 		e.preventDefault();
 		e.stopPropagation();
 	};
 	el.addEventListener('pointerdown', swallow);
 	el.addEventListener('mousedown', swallow);
 	el.addEventListener('click', (e) => {
+		if (inBrowseBundle(el)) return; // 편집 도구는 편집 모드에서만
 		e.preventDefault();
 		e.stopPropagation();
 		onClick();

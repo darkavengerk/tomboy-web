@@ -805,11 +805,11 @@
 	function handleListPointerMove(e: PointerEvent) {
 		if (swipeY === null) return;
 		if (!wheelBrowse) return; // 긴 목차 — 스와이프 넘김 대신 네이티브 스크롤
+		if (swiped) return; // 한 스와이프 제스처 = 한 칸만(연속 드래그로 여러 칸 넘어가 UI 불안정 방지)
 		const dy = e.clientY - swipeY;
 		if (Math.abs(dy) >= 30) {
 			swiped = true;
-			step(dy < 0 ? 1 : -1); // 위로 끌면 다음 파일철
-			swipeY = e.clientY;
+			step(dy < 0 ? 1 : -1); // 위로 끌면 다음 파일철. swipeY 재설정 안 함 — 다음 칸은 손을 뗀 뒤(pointerup→재down)
 		}
 	}
 	function handleListPointerUp(e: Event) {
