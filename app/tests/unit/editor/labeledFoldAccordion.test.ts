@@ -100,4 +100,27 @@ describe('assignAccordion', () => {
 		expect(members).toEqual([]);
 		expect(memberCountByGroup.size).toBe(0);
 	});
+
+	it('headerCount larger than kinds.length is clamped to empty', () => {
+		const { members } = assignAccordion({
+			kinds: ['divider', 'list'],
+			headerCount: 99
+		});
+		expect(members).toEqual([]);
+	});
+
+	it('divider inside the header range is excluded', () => {
+		const { members } = assignAccordion({
+			kinds: ['divider', 'list', 'divider', 'list'],
+			headerCount: 2
+		});
+		expect(members).toHaveLength(1);
+		expect(members[0].index).toBe(2);
+	});
+
+	it('empty kinds array → empty output', () => {
+		const { members, memberCountByGroup } = assignAccordion({ kinds: [] });
+		expect(members).toEqual([]);
+		expect(memberCountByGroup.size).toBe(0);
+	});
 });
