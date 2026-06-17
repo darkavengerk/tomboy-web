@@ -59,6 +59,19 @@ export function bundleBox(heightPct: number, titleOnly: boolean, dedicated: bool
 	return 'window';
 }
 
+/**
+ * 고정 박스에 물리적으로 들어가는 바 수 — 순수. 요청 개수(`:M`)가 이보다 크면
+ * 호출부가 실효 윈도우를 이만큼 깎아(`min(M, capacity)`) 못 들어간 바를 `.off`로
+ * 접고 `+N` 배지 + 스와이프 브라우즈로 넘긴다(스크롤바 없이, 묶음 본연의 훑어보기).
+ * @param boxPx 박스(스택) 안쪽 높이
+ * @param barPx 바 1개 높이(border 포함). `<=0`(미측정) → `Infinity` = 클램프 안 함
+ * @param reservePx 바 외 예약 높이(본문 모드의 활성 본문 최소; 타이틀만 0)
+ */
+export function barCapacity(boxPx: number, barPx: number, reservePx: number): number {
+	if (barPx <= 0) return Infinity;
+	return Math.max(1, Math.floor((boxPx - Math.max(0, reservePx)) / barPx));
+}
+
 export interface ResolvedEntryLike {
 	broken: boolean;
 }
