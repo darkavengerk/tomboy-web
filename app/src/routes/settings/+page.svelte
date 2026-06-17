@@ -2344,6 +2344,43 @@ https://www.youtube.com/playlist?list=…  (재생목록: 일반 줄)</pre>
 				</details>
 
 				<details class="guide-card">
+					<summary>제목 수평선 + 리스트 아코디언 (<code>텍스트 ---</code>)</summary>
+					<p class="info-text">
+						<code>텍스트 ---</code>(왼쪽) 또는 <code>-- 텍스트 --</code>(가운데)처럼
+						<strong>라벨이 박힌 구분선</strong>을 만들 수 있습니다. 그 구분선
+						<strong>바로 다음 줄이 리스트</strong>면, 구분선 우측 끝의
+						<code>−</code> / <code>+</code> 버튼으로 <strong>그룹당 한 리스트만</strong>
+						펼쳐 볼 수 있습니다 — 리스트가 많아 길어질 때 하나씩 보기 위한 기능입니다.
+					</p>
+					<pre class="snippet">개요 ---            [−]
+- 개요 항목 1
+- 개요 항목 2
+상세 ---            [+]   ← 접힘
+- 상세 항목 1
+---                       ← 여기서 그룹이 나뉨(독립)
+부록 ---
+- 부록 항목</pre>
+					<ul class="guide-list">
+						<li><strong>멤버 조건</strong> — 구분선 <strong>바로 다음 블록이 리스트</strong>일 때만
+							접기 버튼이 생깁니다. 다음이 리스트가 아니면 그냥 라벨 구분선입니다. 접히는 건
+							<strong>리스트뿐</strong> — 구분선과 다른 문단은 그대로 남습니다.</li>
+						<li><strong>그룹</strong> — 대시만 있는 <code>---</code> 한 줄이 경계입니다. 같은 그룹
+							안에서만 "한 개만 펼침"이 적용되고, <code>---</code> 경계를 넘으면 서로 영향을 주지
+							않습니다. (<code>---</code>가 없으면 노트 전체가 한 그룹.)</li>
+						<li><strong>펼치기 / 순환</strong> — 닫힌 리스트의 <code>+</code>를 누르면 그 리스트가
+							열리고 같은 그룹의 나머지는 접힙니다. 열린 리스트의 <code>−</code>를 누르면
+							<strong>다음 리스트로 넘어갑니다</strong>(맨 끝이면 처음으로 순환). 항상 그룹당 하나만
+							열립니다.</li>
+						<li>같은 그룹에 접을 수 있는 리스트가 <strong>2개 이상</strong>일 때만 버튼이 나타납니다.</li>
+						<li>접기 상태는 <strong>이 기기(브라우저)에만</strong> 저장됩니다 — 노트 내용·동기화에는
+							영향이 없습니다. 모바일 · 데스크탑 모두 동작합니다.</li>
+						<li><strong>나란히 보기(세로 칼럼 분할)가 켜진 동안에는 동작하지 않습니다</strong> — 분할이
+							모든 블록이 보인다고 가정하기 때문입니다.</li>
+						<li>숨겨진 리스트도 전체 선택 · 복사 · 검색에는 그대로 포함됩니다.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
 					<summary>프로세스 블록 — 멀티스테이지 칸반 (<code>Process:</code> … <code>Complete:</code>)</summary>
 					<p class="info-text">
 						<kbd>Alt</kbd>+<kbd>P</kbd> 로 삽입합니다. <code>Process:</code> 로 시작하는 문단부터
