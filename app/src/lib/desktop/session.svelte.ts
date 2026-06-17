@@ -69,6 +69,14 @@ export interface DesktopWindowState {
 	height: number;
 	z: number;
 	pinned?: boolean;
+	/**
+	 * Minimized windows stay in `windows[]` (so they remain part of the
+	 * workspace — F4 spread still sees them) but render hidden. Restored via
+	 * the SidePanel 최소화됨 list or an F4-spread card click. Per-workspace by
+	 * construction (windows are per-workspace). Persisted (additive optional
+	 * field, like `pinned` — no VERSION bump). Desktop-only.
+	 */
+	minimized?: boolean;
 }
 
 interface GeometrySnapshot {
@@ -392,7 +400,14 @@ function restoreWorkspaceFromPersisted(
 			width: Math.max(MIN_WIDTH, w.width),
 			height: Math.max(MIN_HEIGHT, w.height)
 		};
-		windows.push({ guid: w.guid, kind, ...geom, z: w.z, pinned: w.pinned ?? false });
+		windows.push({
+			guid: w.guid,
+			kind,
+			...geom,
+			z: w.z,
+			pinned: w.pinned ?? false,
+			minimized: w.minimized ?? false
+		});
 		geometryByGuid[w.guid] = geom;
 	}
 	const nextZ =
@@ -541,9 +556,24 @@ export const desktopSession = {
 		let top: DesktopWindowState | null = null;
 		for (const w of ws.windows) {
 			if (w.kind !== 'note') continue;
+			if (w.minimized) continue;
 			if (!top || w.z > top.z) top = w;
 		}
 		return top?.guid ?? null;
+	},
+
+	/**
+	 * Minimized note windows in the current workspace, most-recently-minimized
+	 * first. Ordering is z-descending: clicking the minimize button raises the
+	 * window (handleWindowPointerDown → onfocus) before minimizing, so the
+	 * just-minimized note holds the highest z and sorts to the top — the
+	 * 제일 상단 the SidePanel 최소화됨 list wants. Per-workspace by construction.
+	 */
+	get minimizedWindows(): DesktopWindowState[] {
+		return current()
+			.windows.filter((w) => w.kind === 'note' && w.minimized)
+			.slice()
+			.sort((a, b) => b.z - a.z);
 	},
 
 	async load(): Promise<void> {
@@ -560,6 +590,10 @@ export const desktopSession = {
 		const ws = current();
 		const existing = ws.windows.find((w) => w.guid === guid);
 		if (existing) {
+			// Re-opening a minimized note restores it (otherwise it would stay
+			// hidden yet receive focus). Common path: clicking the note in the
+			// SidePanel main list while it's minimized.
+			existing.minimized = false;
 			bumpZ(ws, existing);
 			focusRequest = { guid, token: ++focusRequestCounter };
 			recentOpens.record(guid);
@@ -596,6 +630,10 @@ export const desktopSession = {
 		const ws = current();
 		const existing = ws.windows.find((w) => w.guid === guid);
 		if (existing) {
+			// Re-opening a minimized note restores it (otherwise it would stay
+			// hidden yet receive focus). Common path: clicking the note in the
+			// SidePanel main list while it's minimized.
+			existing.minimized = false;
 			bumpZ(ws, existing);
 			focusRequest = { guid, token: ++focusRequestCounter };
 			recentOpens.record(guid);
@@ -750,6 +788,7 @@ export const desktopSession = {
 		const y = Math.max(0, source.y);
 
 		if (existing) {
+			existing.minimized = false;
 			existing.x = Math.round(x);
 			existing.y = Math.round(y);
 			cacheGeometry(ws, existing);
@@ -800,6 +839,7 @@ export const desktopSession = {
 
 		const existing = ws.windows.find((w) => w.guid === linked.guid);
 		if (existing) {
+			existing.minimized = false;
 			existing.x = x;
 			existing.y = y;
 			cacheGeometry(ws, existing);
@@ -868,6 +908,7 @@ export const desktopSession = {
 		const y = Math.max(0, source.y);
 
 		if (existing) {
+			existing.minimized = false;
 			existing.x = Math.round(x);
 			existing.y = Math.round(y);
 			cacheGeometry(ws, existing);
@@ -936,7 +977,7 @@ export const desktopSession = {
 		// open/focus). Settings is skipped — it doesn't consume focusRequest.
 		let next: DesktopWindowState | null = null;
 		for (const w of ws.windows) {
-			if (w.kind !== 'note') continue;
+			if (w.kind !== 'note' || w.minimized) continue;
 			if (!next || w.z > next.z) next = w;
 		}
 		if (next) focusRequest = { guid: next.guid, token: ++focusRequestCounter };
@@ -1017,6 +1058,50 @@ export const desktopSession = {
 		if (others.length === 0) return;
 		const minZ = others.reduce((m, w) => Math.min(m, w.z), Infinity);
 		win.z = minZ - 1;
+		schedulePersist();
+	},
+
+	isMinimized(guid: string): boolean {
+		const win = current().windows.find((w) => w.guid === guid);
+		return win?.minimized ?? false;
+	},
+
+	/**
+	 * Hide a note window without closing it. It stays in `windows[]` (still part
+	 * of the workspace → F4 spread still shows it) but renders `display:none`,
+	 * keeping its editor / terminal / Firebase / snapshot alive. If it was the
+	 * focused note, focus chains to the next topmost non-minimized note (mirror
+	 * of closeWindow) so Esc / keyboard targets a visible window. No flush hook
+	 * needed — nothing is torn down. Only note windows minimize.
+	 */
+	minimizeWindow(guid: string): void {
+		const ws = current();
+		const win = ws.windows.find((w) => w.guid === guid);
+		if (!win || win.kind !== 'note' || win.minimized) return;
+		win.minimized = true;
+		// Chain focus to the most-recently-focused remaining visible note.
+		let next: DesktopWindowState | null = null;
+		for (const w of ws.windows) {
+			if (w.kind !== 'note' || w.minimized) continue;
+			if (!next || w.z > next.z) next = w;
+		}
+		if (next) focusRequest = { guid: next.guid, token: ++focusRequestCounter };
+		schedulePersist();
+	},
+
+	/**
+	 * Bring a minimized window back: clear the flag, raise it, focus + flash.
+	 * Superset of focusWindow, so it also serves the F4-spread-card click on a
+	 * non-minimized note (just raises + focuses, the clear is a no-op).
+	 */
+	restoreWindow(guid: string): void {
+		const ws = current();
+		const win = ws.windows.find((w) => w.guid === guid);
+		if (!win) return;
+		win.minimized = false;
+		bumpZ(ws, win);
+		if (win.kind === 'note') recentOpens.record(guid);
+		focusRequest = { guid, token: ++focusRequestCounter };
 		schedulePersist();
 	},
 

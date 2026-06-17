@@ -2623,6 +2623,27 @@ Complete:</pre>
 				</details>
 
 				<details class="guide-card">
+					<summary>데스크탑 — 노트 최소화</summary>
+					<p class="info-text">
+						노트 창 제목 줄의 <strong>🗕</strong> 버튼을 누르면 노트가 캔버스에서 사라지고
+						왼쪽 <strong>작업표시줄 확장 영역(마우스를 올리면 펼쳐지는 칸)의 제일 위</strong>
+						<strong>「최소화됨」</strong> 목록으로 들어갑니다. 목록의 노트를 <strong>클릭</strong>하면
+						다시 펼쳐지며 포커스됩니다.
+					</p>
+					<ul class="guide-list">
+						<li>최소화해도 노트는 <strong>그 작업공간에 그대로 남아 있습니다</strong> — 닫는 게 아닙니다.
+							편집 내용·터미널 연결·포커스 맥락이 살아 있어, 복원하면 그대로 이어집니다.</li>
+						<li><strong>F4 펼쳐보기</strong>에도 최소화된 노트가 그대로 포함됩니다. 펼쳐보기에서
+							최소화된 노트를 클릭하면 그대로 <strong>복원</strong>됩니다.</li>
+						<li>최소화 목록은 <strong>작업공간마다 따로</strong> 관리됩니다(2×2, <strong>Ctrl+Alt+방향키</strong>로 전환).</li>
+						<li>가장 최근에 최소화한 노트가 목록 <strong>맨 위</strong>에 옵니다.</li>
+						<li>확장 영역은 마우스를 올려야 펼쳐지므로, 최소화된 노트도 레일에 마우스를 올려야 보입니다.</li>
+						<li>제목 줄이 없는 <strong>전용 파일철 노트</strong>(<code>탭::</code>/<code>묶음::</code>)는 아직 최소화 버튼이 없습니다.</li>
+						<li>데스크탑 전용 기능입니다(모바일은 한 노트만 보는 단일 화면).</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
 					<summary>데스크탑 — 작업공간별 배경화면</summary>
 					<p class="info-text">
 						데스크탑 작업공간(2×2, <strong>Ctrl+Alt+방향키</strong>로 전환)마다

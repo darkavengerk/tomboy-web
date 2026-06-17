@@ -36,7 +36,11 @@
 		openGuids: Set<string>;
 		currentWorkspace: number;
 		workspaceSummaries: Array<{ index: number; windowCount: number }>;
+		/** Current-workspace minimized note guids, most-recently-minimized first. */
+		minimizedGuids: string[];
 		onopen: (guid: string) => void;
+		/** Restore (un-minimize + focus) a minimized note window. */
+		onrestore: (guid: string) => void;
 		onopensettings: () => void;
 		onopenadmin: () => void;
 		onswitchworkspace: (index: number) => void;
@@ -48,7 +52,9 @@
 		openGuids,
 		currentWorkspace,
 		workspaceSummaries,
+		minimizedGuids,
 		onopen,
+		onrestore,
 		onopensettings,
 		onopenadmin,
 		onswitchworkspace,
@@ -93,6 +99,13 @@
 		});
 		keyed.sort((a, b) => b.key - a.key);
 		return keyed.slice(0, 50).map((x) => x.n);
+	});
+
+	// Minimized note entries (title resolved from the loaded corpus). Order is
+	// preserved from minimizedGuids (most-recently-minimized first).
+	const minimizedItems = $derived.by(() => {
+		const byGuid = new Map(allNotes.map((n) => [n.guid, n.title] as const));
+		return minimizedGuids.map((guid) => ({ guid, title: byGuid.get(guid) || '제목 없음' }));
 	});
 
 	async function refresh() {
@@ -337,6 +350,31 @@
 		overlays the canvas on hover. Canvas geometry is unaffected.
 	-->
 	<div class="main" style="flex-basis: {sidePanelLayout.mainWidth}px;">
+		<!--
+			최소화됨: 확장 영역(.main)의 제일 상단. 최소화된 노트는 캔버스에서
+			숨겨지지만 작업공간에는 그대로 남아(F4 펼쳐보기 포함) 여기서 복원한다.
+			작업공간별 목록(minimizedGuids는 현재 작업공간 것만).
+		-->
+		{#if minimizedItems.length > 0}
+			<div class="minimized">
+				<div class="minimized-label">최소화됨 · {minimizedItems.length}</div>
+				<ul>
+					{#each minimizedItems as m (m.guid)}
+						<li>
+							<button
+								type="button"
+								class="min-item"
+								onclick={() => onrestore(m.guid)}
+								title={`${m.title} — 복원`}
+							>
+								<span class="min-glyph" aria-hidden="true">&#x1F5D6;</span>
+								<span class="title">{m.title}</span>
+							</button>
+						</li>
+					{/each}
+				</ul>
+			</div>
+		{/if}
 		<div class="header">
 			<input
 				type="search"
@@ -719,6 +757,58 @@
 		text-align: center;
 		color: #888;
 		font-size: 0.85rem;
+	}
+
+	/* 최소화됨 섹션: .main 최상단(헤더 위). 너무 길어지지 않게 자체 스크롤. */
+	.minimized {
+		flex-shrink: 0;
+		max-height: 40%;
+		overflow-y: auto;
+		border-bottom: 1px solid #2a2a2a;
+		background: #161616;
+	}
+
+	.minimized-label {
+		padding: 8px 12px 4px;
+		font-size: 0.68rem;
+		font-weight: 600;
+		letter-spacing: 0.03em;
+		text-transform: uppercase;
+		color: #888;
+	}
+
+	.minimized ul {
+		list-style: none;
+		padding: 0 0 4px;
+		margin: 0;
+	}
+
+	.min-item {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		width: 100%;
+		padding: 6px 12px;
+		background: transparent;
+		border: none;
+		border-right: 3px solid transparent;
+		color: #ccc;
+		text-align: left;
+		cursor: pointer;
+		font-size: 0.82rem;
+		overflow: hidden;
+	}
+
+	.min-item:hover {
+		background: #232323;
+		color: #fff;
+		border-right-color: #5a9;
+	}
+
+	.min-glyph {
+		flex-shrink: 0;
+		font-size: 0.8rem;
+		opacity: 0.6;
 	}
 
 	/* Settings lives in the rail so it stays visible when the panel is

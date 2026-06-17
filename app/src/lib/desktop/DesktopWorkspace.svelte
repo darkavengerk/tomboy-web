@@ -96,6 +96,14 @@
 		void desktopSession.closeWindow(guid);
 	}
 
+	function handleMinimize(guid: string) {
+		desktopSession.minimizeWindow(guid);
+	}
+
+	function handleRestore(guid: string) {
+		desktopSession.restoreWindow(guid);
+	}
+
 	function handleMove(guid: string, x: number, y: number) {
 		desktopSession.moveWindow(guid, x, y);
 	}
@@ -121,6 +129,10 @@
 	}
 
 	const hasNoteWindows = $derived(desktopSession.windows.some((w) => w.kind === 'note'));
+
+	// Current-workspace minimized notes (most-recently-minimized first) for the
+	// SidePanel 최소화됨 list. SidePanel resolves titles from its own corpus.
+	const minimizedGuids = $derived(desktopSession.minimizedWindows.map((w) => w.guid));
 
 	function handleSpread() {
 		if (hasNoteWindows) spreadView.open();
@@ -382,8 +394,10 @@
 						z={(win.pinned ? DESKTOP_PINNED_Z : 0) + win.z}
 						pinned={win.pinned}
 						active={active}
+						minimized={win.minimized}
 						onfocus={handleFocus}
 						onclose={handleClose}
+						onminimize={handleMinimize}
 						onmove={handleMove}
 						onresize={handleResize}
 						onopenlink={handleOpenLink}
@@ -397,7 +411,9 @@
 		openGuids={openGuidSet}
 		currentWorkspace={desktopSession.currentWorkspace}
 		workspaceSummaries={desktopSession.workspaceSummaries}
+		{minimizedGuids}
 		onopen={handleOpen}
+		onrestore={handleRestore}
 		onopensettings={handleOpenSettings}
 		onopenadmin={handleOpenAdmin}
 		onswitchworkspace={handleSwitchWorkspace}

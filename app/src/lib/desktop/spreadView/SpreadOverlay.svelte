@@ -67,7 +67,10 @@
 
 	function jumpTo(guid: string) {
 		spreadView.close();
-		desktopSession.focusWindow(guid);
+		// restoreWindow is a superset of focusWindow: it un-minimizes a
+		// minimized card (F4 still shows minimized notes) and otherwise just
+		// raises + focuses, so it's correct for both minimized and visible notes.
+		desktopSession.restoreWindow(guid);
 	}
 
 	// Per-card ✕ — actually close the underlying note window (not just hide the
