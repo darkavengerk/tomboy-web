@@ -17,6 +17,7 @@
  */
 
 import type { Node as PMNode } from '@tiptap/pm/model';
+import { dedicatedBundleKind } from './noteBundle/parser.js';
 
 /** Root class added to the editable DOM when the subtitle slot is suppressed. */
 export const NO_SUBTITLE_CLASS = 'tomboy-no-subtitle';
@@ -24,8 +25,14 @@ export const NO_SUBTITLE_CLASS = 'tomboy-no-subtitle';
 /**
  * True when the note's title (first top-level paragraph) suppresses the
  * subtitle slot — i.e. the title contains `::`.
+ *
+ * Exception: dedicated filing notes (`탭::`/`묶음::`) use their second line as a
+ * structured options slot (`:높이:개수`), not a freeform log, so they KEEP the
+ * subtitle treatment (the placeholder there shows the option-syntax hint).
  */
 export function suppressesSubtitle(doc: PMNode): boolean {
 	const title = doc.firstChild?.textContent ?? '';
-	return title.includes('::');
+	if (!title.includes('::')) return false;
+	if (dedicatedBundleKind(title)) return false;
+	return true;
 }

@@ -158,6 +158,28 @@ describe('TomboySubtitlePlaceholder', () => {
 		expect(editor.view.dom.classList.contains('tomboy-no-subtitle')).toBe(true);
 	});
 
+	it('KEEPS the subtitle slot for dedicated filing notes (탭::/묶음::) despite "::"', () => {
+		// Their second line is a structured options slot (`:높이:개수`), so the
+		// placeholder (option-syntax hint) must show and the root must NOT be tagged.
+		for (const t of ['묶음::메뉴', '탭::메뉴']) {
+			const editor = makeEditor({
+				content: {
+					type: 'doc',
+					content: [
+						{ type: 'paragraph', content: [{ type: 'text', text: t }] },
+						{ type: 'paragraph' },
+						{ type: 'paragraph' }
+					]
+				},
+				text: ':높이:개수  예) :50:10'
+			});
+			editor.commands.setTextSelection(1);
+			expect(editor.view.dom.classList.contains('tomboy-no-subtitle')).toBe(false);
+			expect(hasPlaceholderClass(editor)).toBe(true);
+			expect(placeholderAttr(editor)).toBe(':높이:개수  예) :50:10');
+		}
+	});
+
 	it('does NOT tag the root for ordinary titles', () => {
 		const editor = makeEditor({
 			content: {

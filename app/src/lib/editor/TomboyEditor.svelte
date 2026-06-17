@@ -156,6 +156,7 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 	import NoteBundleCabinet from "./noteBundle/NoteBundleCabinet.svelte";
 	import { createNoteBundlePlugin } from "./noteBundle/noteBundlePlugin.js";
 	import type { BundleSpec } from "./noteBundle/parser.js";
+	import { dedicatedBundleKind } from "./noteBundle/parser.js";
 
 	interface Props {
 		content?: JSONContent;
@@ -400,11 +401,15 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		ed.view.dispatch(ed.state.tr.setMeta(autoLinkPluginKey, meta));
 	}
 
-	// Subtitle placeholder text for the empty second line. Slip notes show
-	// their chain's category label (resolved by the parent and passed via
-	// `slipNoteLabel`); regular notes show the creation date. Returns null
-	// when neither is available, so the placeholder is simply skipped.
+	// Subtitle placeholder text for the empty second line. Dedicated filing
+	// notes (`탭::`/`묶음::`) use that line as an options slot, so they show the
+	// `:높이:개수` syntax hint instead of a date. Slip notes show their chain's
+	// category label (resolved by the parent and passed via `slipNoteLabel`);
+	// regular notes show the creation date. Returns null when none apply, so
+	// the placeholder is simply skipped.
 	function subtitlePlaceholderText(): string | null {
+		const title = editor?.state.doc.firstChild?.textContent ?? "";
+		if (dedicatedBundleKind(title)) return ":높이:개수  예) :50:10";
 		if (isSlipNote) return slipNoteLabel ?? null;
 		if (!createDate) return null;
 		const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(createDate);

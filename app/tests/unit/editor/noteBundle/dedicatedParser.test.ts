@@ -127,6 +127,64 @@ describe('parseDedicatedBundle — tab(재귀 트리)', () => {
 	});
 });
 
+describe('parseDedicatedBundle — 옵션 라인(본문 2번째 줄 `:높이:개수`)', () => {
+	it(':50:10 → heightPct 50 + maxCount 10, 옵션 라인은 엔트리에서 제외', () => {
+		const d = doc(title('묶음::메뉴'), para(txt(':50:10')), para(link('A')), para(link('B')));
+		const spec = parseDedicatedBundle(d, 'bundle');
+		expect(spec.heightPct).toBe(50);
+		expect(spec.maxCount).toBe(10);
+		expect(spec.entries).toEqual([
+			{ title: 'A', category: null },
+			{ title: 'B', category: null }
+		]);
+	});
+	it('::10 → 높이 생략은 기본 100 유지, 개수만 10', () => {
+		const d = doc(title('묶음::x'), para(txt('::10')), para(link('A')));
+		const spec = parseDedicatedBundle(d, 'bundle');
+		expect(spec.heightPct).toBe(100);
+		expect(spec.maxCount).toBe(10);
+		expect(spec.entries).toEqual([{ title: 'A', category: null }]);
+	});
+	it(':50 → 높이만, 개수 기본 5', () => {
+		const d = doc(title('묶음::x'), para(txt(':50')), para(link('A')));
+		const spec = parseDedicatedBundle(d, 'bundle');
+		expect(spec.heightPct).toBe(50);
+		expect(spec.maxCount).toBe(5);
+	});
+	it(':0 → 타이틀만(heightPct 0)', () => {
+		const d = doc(title('묶음::x'), para(txt(':0')), para(link('A')));
+		const spec = parseDedicatedBundle(d, 'bundle');
+		expect(spec.heightPct).toBe(0);
+	});
+	it('개수 클램프 — :50:999 → 100', () => {
+		const d = doc(title('묶음::x'), para(txt(':50:999')), para(link('A')));
+		const spec = parseDedicatedBundle(d, 'bundle');
+		expect(spec.maxCount).toBe(100);
+	});
+	it('옵션 라인 없으면 기본(100/5) + 2번째 줄 링크는 정상 엔트리', () => {
+		const d = doc(title('묶음::x'), para(link('A')), para(link('B')));
+		const spec = parseDedicatedBundle(d, 'bundle');
+		expect(spec.heightPct).toBe(100);
+		expect(spec.maxCount).toBe(5);
+		expect(spec.entries).toEqual([
+			{ title: 'A', category: null },
+			{ title: 'B', category: null }
+		]);
+	});
+	it('콜론만(:)·일반 텍스트는 옵션으로 소비하지 않음', () => {
+		const d = doc(title('묶음::x'), para(txt(':')), para(link('A')));
+		const spec = parseDedicatedBundle(d, 'bundle');
+		expect(spec.maxCount).toBe(5);
+		expect(spec.entries).toEqual([{ title: 'A', category: null }]);
+	});
+	it('tab 종류도 옵션 라인 제외하고 트리 파싱', () => {
+		const d = doc(title('탭::x'), para(txt(':50:10')), para(link('A')));
+		const spec = parseDedicatedBundle(d, 'tab');
+		expect(spec.maxCount).toBe(10);
+		expect(spec.tree).toEqual([{ label: 'A', link: 'A', children: [] }]);
+	});
+});
+
 describe('parseDedicatedBundle — 합성 spec 메타', () => {
 	it('checked=true, heightPct=100, 쓰기백 위치는 의미없는 -1/null', () => {
 		const spec = parseDedicatedBundle(doc(title('탭::x')), 'tab');

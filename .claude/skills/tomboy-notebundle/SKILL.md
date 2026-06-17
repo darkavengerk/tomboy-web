@@ -555,8 +555,20 @@ PMNode helpers.
 - `dedicatedBundleKind(title)` → `'tab'` / `'bundle'` / `null` (trimStart, then
   `탭::` / `묶음::` prefix; single-colon `탭:` does NOT match).
 - `parseDedicatedBundle(jsonDoc, kind): BundleSpec` — synthetic spec from the
-  **whole body**. `checked=true`, `heightPct=100`, write-back fields `-1`/`null`
+  **whole body**. `checked=true`, write-back fields `-1`/`null`
   (no checkbox/list/digits to persist). `tree` for tab, `entries` for bundle.
+- **Options line (`parseDedicatedOptions`).** Body block **1** (note's 2nd line,
+  the subtitle slot) matching `/^\s*:(\d+)?(?::(\d+))?\s*$/` with ≥1 digit group
+  → consumed as `:height:count` (same meaning as inline `묶음:N:M`): `heightPct`
+  (omitted → dedicated default **100**), `maxCount` (omitted → `DEFAULT_MAX_COUNT`
+  5). Consumed line is **excluded** from the link list via `bodyStart` (1 → 2)
+  passed to `parseDedicatedTree`/`parseDedicatedEntries`. No match (link/text/lone
+  `:`) → `heightPct=100, maxCount=5, bodyStart=1` (block 1 stays a list item).
+  Tab ignores `maxCount` (no count-window) but the line is still consumed.
+- **Placeholder hint.** `subtitleSlot.suppressesSubtitle` excludes `탭::`/`묶음::`
+  (their 2nd line is this structured options slot, not a `::` log slot), so
+  `TomboySubtitlePlaceholder` shows the `:높이:개수  예) :50:10` hint there
+  (`TomboyEditor.subtitlePlaceholderText` branches on `dedicatedBundleKind`).
 
 **Depth model — body is the "depth-1 list".** Walk top-level body blocks,
 **skipping block 0 (the title line)**:
