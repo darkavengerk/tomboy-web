@@ -110,8 +110,15 @@
 		 *  state in memory, but skip Firebase attach and global editor
 		 *  registration so they aren't mistaken for the user's focus target. */
 		active?: boolean;
+		/** Minimized: render hidden (display:none) but stay mounted so editor /
+		 *  terminal / Firebase / spread-snapshot survive. Restored from the
+		 *  SidePanel 최소화됨 list or an F4-spread card click. */
+		minimized?: boolean;
 		onfocus: (guid: string) => void;
 		onclose: (guid: string) => void;
+		/** Minimize handler. Omitted by embedders without a taskbar (e.g. the
+		 *  graph view) — the minimize button only renders when this is set. */
+		onminimize?: (guid: string) => void;
 		onmove: (guid: string, x: number, y: number) => void;
 		onresize: (guid: string, width: number, height: number) => void;
 		onopenlink: (title: string) => void;
@@ -126,8 +133,10 @@
 		z,
 		pinned = false,
 		active = true,
+		minimized = false,
 		onfocus,
 		onclose,
+		onminimize = undefined,
 		onmove,
 		onresize,
 		onopenlink
@@ -1071,6 +1080,7 @@
 	bind:this={windowEl}
 	class="note-window"
 	class:hidden={!active}
+	class:minimized
 	data-has-bg={noteBgUrl ? 'true' : 'false'}
 	style="left:{x}px; top:{y}px; width:{width}px; height:{height}px; z-index:{z};"
 	style:background-color="rgba(255, 255, 255, {noteOpacity})"
@@ -1102,6 +1112,16 @@
 			title={pinned ? '항상 위 해제' : '항상 위'}
 			data-no-drag
 		>&#x1F4CC;</button>
+		{#if onminimize}
+			<button
+				type="button"
+				class="min-btn"
+				onclick={() => onminimize?.(guid)}
+				aria-label="최소화"
+				title="최소화"
+				data-no-drag
+			>&#x1F5D5;</button>
+		{/if}
 		<button
 			type="button"
 			class="close-btn"
@@ -1380,8 +1400,11 @@
 
 	/* Windows belonging to an inactive workspace stay mounted so editor
 	   state and terminal connections survive workspace switches, but are
-	   completely hidden from layout, hit-testing, and focus. */
-	.note-window.hidden {
+	   completely hidden from layout, hit-testing, and focus. Minimized
+	   windows use the same mechanism: hidden but mounted, so the editor /
+	   terminal / spread-snapshot stay live and F4 still sees the note. */
+	.note-window.hidden,
+	.note-window.minimized {
 		display: none;
 	}
 
@@ -1444,6 +1467,26 @@
 
 	.pin-btn:hover,
 	.pin-btn.pinned {
+		opacity: 1;
+		background: rgba(255, 255, 255, 0.15);
+		color: #fff;
+	}
+
+	.min-btn {
+		flex-shrink: 0;
+		width: 22px;
+		height: 22px;
+		border: none;
+		background: transparent;
+		color: #ccc;
+		font-size: 0.85rem;
+		line-height: 1;
+		cursor: pointer;
+		border-radius: 3px;
+		opacity: 0.6;
+	}
+
+	.min-btn:hover {
 		opacity: 1;
 		background: rgba(255, 255, 255, 0.15);
 		color: #fff;

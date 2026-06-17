@@ -11,8 +11,9 @@ class RO {
 
 // vi.mock is hoisted above all `const` declarations, so mocks that reference
 // outer variables must use vi.hoisted() to avoid TDZ errors.
-const { focusWindow, close, closeWindow } = vi.hoisted(() => ({
+const { focusWindow, restoreWindow, close, closeWindow } = vi.hoisted(() => ({
 	focusWindow: vi.fn(),
+	restoreWindow: vi.fn(),
 	close: vi.fn(),
 	closeWindow: vi.fn()
 }));
@@ -27,6 +28,7 @@ vi.mock('$lib/desktop/session.svelte.js', () => ({
 		},
 		getSnapshotSource: (g: string) => sources[g] ?? null,
 		focusWindow,
+		restoreWindow,
 		closeWindow
 	}
 }));
@@ -45,6 +47,7 @@ import SpreadOverlay from '$lib/desktop/spreadView/SpreadOverlay.svelte';
 
 beforeEach(() => {
 	focusWindow.mockClear();
+	restoreWindow.mockClear();
 	close.mockClear();
 	closeWindow.mockClear();
 	const a = document.createElement('div');
@@ -70,10 +73,12 @@ describe('SpreadOverlay', () => {
 		expect(queryByText('__settings__')).toBeNull();
 	});
 
-	it('clicking a card jumps to that window and closes the overlay', async () => {
+	it('clicking a card restores that window (un-minimize + focus) and closes the overlay', async () => {
 		const { getByTitle } = render(SpreadOverlay);
 		await fireEvent.click(getByTitle('Note A'));
-		expect(focusWindow).toHaveBeenCalledWith('a');
+		// jumpTo routes through restoreWindow so a minimized note un-minimizes;
+		// for a visible note it just raises + focuses.
+		expect(restoreWindow).toHaveBeenCalledWith('a');
 		expect(close).toHaveBeenCalled();
 	});
 
@@ -87,8 +92,8 @@ describe('SpreadOverlay', () => {
 		const { getByLabelText } = render(SpreadOverlay);
 		await fireEvent.click(getByLabelText('Note A 닫기'));
 		expect(closeWindow).toHaveBeenCalledWith('a');
-		// stopPropagation: the card's jumpTo (focus + overlay close) must not fire.
-		expect(focusWindow).not.toHaveBeenCalled();
+		// stopPropagation: the card's jumpTo (restore + overlay close) must not fire.
+		expect(restoreWindow).not.toHaveBeenCalled();
 		expect(close).not.toHaveBeenCalled();
 	});
 });
