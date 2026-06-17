@@ -30,6 +30,8 @@
 		dedicatedBundleKind,
 		parseDedicatedBundle
 	} from '$lib/editor/noteBundle/parser.js';
+	import TallyNote from '$lib/editor/tallyNote/TallyNote.svelte';
+	import { isTallyTitle, parseTallyNote } from '$lib/tally';
 	import RemarkableActionBar from '$lib/editor/remarkable/RemarkableActionBar.svelte';
 	import SendToRemarkableModal from '$lib/remarkable/SendToRemarkableModal.svelte';
 	import { parseOcrNote } from '$lib/ocrNote/parseOcrNote.js';
@@ -190,15 +192,32 @@
 		if (!dedicatedKind || !editorContent) return null;
 		return parseDedicatedBundle(editorContent, dedicatedKind);
 	});
-	// 창의 노트가 바뀌면 항상 번들 뷰로 시작.
+	// 집계(투표/퀴즈) 전용 노트 — 제목 `집계::`. 번들과 같은 raw 토글.
+	let showRawTally = $state(false);
+	const isTallyNote = $derived.by(() => {
+		const t = note?.title;
+		return !!t && isTallyTitle(t);
+	});
+	const tallySpec = $derived.by(() => {
+		const t = note?.title;
+		if (!t || !editorContent || !isTallyTitle(t)) return null;
+		return parseTallyNote(editorContent, t);
+	});
+	// 창의 노트가 바뀌면 항상 번들/집계 뷰로 시작.
 	$effect(() => {
 		void guid;
 		showRawBundle = false;
+		showRawTally = false;
 	});
 	function exitRawBundle() {
 		const ed = editorComponent?.getEditor();
 		if (ed) editorContent = ed.getJSON();
 		showRawBundle = false;
+	}
+	function exitRawTally() {
+		const ed = editorComponent?.getEditor();
+		if (ed) editorContent = ed.getJSON();
+		showRawTally = false;
 	}
 
 	// Bridge settings for ChatSendBar — loaded once on mount from appSettings.
@@ -1189,12 +1208,22 @@
 					/>
 				{/if}
 			{/key}
+		{:else if tallySpec && !showRawTally}
+			<!-- 집계 전용 노트 — 본문 = 투표/퀴즈 뷰. Ctrl→편집(onraw)으로 raw 토글. -->
+			{#key guid}
+				<TallyNote spec={tallySpec} guid={guid} onraw={() => (showRawTally = true)} />
+			{/key}
 		{:else}
 			{#if editorContent}
-				<!-- 전용 노트 raw 뷰 — Ctrl 누르면 ↩ 묶음 버튼으로 번들 뷰 복귀. -->
+				<!-- 전용 노트 raw 뷰 — Ctrl 누르면 ↩ 묶음/집계 버튼으로 복귀. -->
 				{#if dedicatedKind && showRawBundle && modKeys.ctrl}
 					<button class="dedicated-back-btn" onclick={exitRawBundle} title="묶음 뷰로 돌아가기"
 						>↩ 묶음</button
+					>
+				{/if}
+				{#if isTallyNote && showRawTally && modKeys.ctrl}
+					<button class="dedicated-back-btn" onclick={exitRawTally} title="집계 뷰로 돌아가기"
+						>↩ 집계</button
 					>
 				{/if}
 				<!-- 재생 컨트롤은 창 본문 상단(제목 줄 위)에 고정 — 편집 영역을 가리지 않도록. -->
@@ -1276,8 +1305,8 @@
 		>키</button>
 	{/if}
 
-	{#if !loading && editorContent && isFocused && !showTerminal && !showKeys && !(dedicatedKind && !showRawBundle)}
-		<!-- 전용 파일철 뷰엔 호스트 에디터가 없어 툴바가 무의미 — 숨김. raw 편집 모드에선 표시. -->
+	{#if !loading && editorContent && isFocused && !showTerminal && !showKeys && !(dedicatedKind && !showRawBundle) && !(tallySpec && !showRawTally)}
+		<!-- 전용 파일철/집계 뷰엔 호스트 에디터가 없어 툴바가 무의미 — 숨김. raw 편집 모드에선 표시. -->
 		<div class="toolbar-slot">
 			<Toolbar
 				editor={getEditor()}

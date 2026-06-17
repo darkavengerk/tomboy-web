@@ -18,5 +18,26 @@ service cloud.firestore {
     match /users/{uid}/{document=**} {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
+
+    // 집계(투표/퀴즈) 노트. top-level 이라 위 users/** 규칙이 닿지 않으므로
+    // 호스트가 메타를 쓰고 표를 읽으려면 이 블록이 필요하다(solo 모드).
+    //   polls/{noteGuid}                    메타(ownerUid, resultsPublic) — 호스트만 쓰기
+    //   polls/{noteGuid}/ballots/{voterUid} 표 — 투표자당 1개, 불변(1인 1표 = 익명 uid 단위)
+    match /polls/{noteGuid} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+                    && request.resource.data.ownerUid == request.auth.uid;
+      allow update, delete: if request.auth != null
+                    && resource.data.ownerUid == request.auth.uid;
+
+      match /ballots/{voterUid} {
+        allow create: if request.auth != null && request.auth.uid == voterUid;
+        allow update, delete: if false; // 불변 — 한 번 제출하면 끝
+        allow read: if request.auth != null && (
+          request.auth.uid == voterUid                                                              // 투표자는 자기 표
+          || get(/databases/$(database)/documents/polls/$(noteGuid)).data.ownerUid == request.auth.uid // 주최자
+          || get(/databases/$(database)/documents/polls/$(noteGuid)).data.resultsPublic == true);    // 결과 공개 시 모두
+      }
+    }
   }
 }

@@ -18,5 +18,28 @@ service cloud.firestore {
     match /{document=**} {
       allow read, write: if request.auth != null;
     }
+
+    // 집계(투표/퀴즈) 노트 — solo 규칙(firestore.rules)과 대칭으로 둔다.
+    // ⚠️ 위의 blanket `match /{document=**}` 가 OR-semantics 로 우선하므로 공유
+    // 모드에서는 이 블록이 실효되지 않는다(1인 1표·결과 비공개는 클라이언트 soft
+    // 강제). 공유 모드 자체가 이미 게스트에게 호스트 네임스페이스를 전부 열어두는
+    // 트레이드오프이므로 일관적. catch-all 을 좁히면 공개 노트 collectionGroup
+    // 쿼리가 깨질 수 있어(이 파일 상단/소로 규칙 주석 참고) 손대지 않는다.
+    match /polls/{noteGuid} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+                    && request.resource.data.ownerUid == request.auth.uid;
+      allow update, delete: if request.auth != null
+                    && resource.data.ownerUid == request.auth.uid;
+
+      match /ballots/{voterUid} {
+        allow create: if request.auth != null && request.auth.uid == voterUid;
+        allow update, delete: if false;
+        allow read: if request.auth != null && (
+          request.auth.uid == voterUid
+          || get(/databases/$(database)/documents/polls/$(noteGuid)).data.ownerUid == request.auth.uid
+          || get(/databases/$(database)/documents/polls/$(noteGuid)).data.resultsPublic == true);
+      }
+    }
   }
 }
