@@ -4,33 +4,33 @@
     {
       "id": 1,
       "subject": "Task 1: assignAccordion.ts — 순수 구조 계산 + 테스트",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** top-level 블록 분류 배열 → 라벨 디바이더 멤버 테이블(ord/group/소유 리스트 인덱스/list-bearing) + 그룹별 멤버 수를 내는 순수 함수.\n\n**Files:**\n- Create: app/src/lib/editor/labeledDivider/assignAccordion.ts\n- Test: app/tests/unit/editor/labeledFoldAccordion.test.ts\n\n**Verify:** cd app && npx vitest run tests/unit/editor/labeledFoldAccordion.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/labeledDivider/assignAccordion.ts\", \"app/tests/unit/editor/labeledFoldAccordion.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/labeledFoldAccordion.test.ts\", \"acceptanceCriteria\": [\"divider+list → isListBearing true, listIndices=consecutive run\", \"divider+non-list → not list-bearing, excluded\", \"--- increments group\", \"ordinal counts all dividers doc-order\", \"headerCount skips; memberCountByGroup correct\"]}\n```"
     },
     {
       "id": 2,
       "subject": "Task 2: labeledFoldStore.ts — per-guid 영속 + 테스트",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** 포커스된 ordinal 집합을 per-guid localStorage(tomboy.labeledFold.<guid>)에 저장/로드. hrFoldStore 패턴 복제.\n\n**Files:**\n- Create: app/src/lib/editor/labeledDivider/labeledFoldStore.ts\n- Test: app/tests/unit/editor/labeledFoldStore.test.ts\n\n**Verify:** cd app && npx vitest run tests/unit/editor/labeledFoldStore.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/labeledDivider/labeledFoldStore.ts\", \"app/tests/unit/editor/labeledFoldStore.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/labeledFoldStore.test.ts\", \"acceptanceCriteria\": [\"unknown guid → empty\", \"round-trip + per-guid scope\", \"empty set removes key\", \"corrupt JSON / null guid → empty, no throw\"]}\n```"
     },
     {
       "id": 3,
       "subject": "Task 3: labeledFoldPlugin.ts — ProseMirror 플러그인 + 테스트",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1, 2],
       "description": "**Goal:** 포커스 상태·데코(위젯 버튼+리스트 숨김)·토글 순환·doc reconcile·split-inert PM 플러그인. 토글은 버튼만(handleClick 없음).\n\n**Files:**\n- Create: app/src/lib/editor/labeledDivider/labeledFoldPlugin.ts\n- Test: app/tests/unit/editor/labeledFoldPlugin.test.ts\n\n**Verify:** cd app && npx vitest run tests/unit/editor/labeledFoldPlugin.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/labeledDivider/labeledFoldPlugin.ts\", \"app/tests/unit/editor/labeledFoldPlugin.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/labeledFoldPlugin.test.ts\", \"acceptanceCriteria\": [\"default: buttons only on ≥2-member groups, 0 hidden\", \"<2-member group: no button, ignores toggle\", \"focus hides group siblings only\", \"toggle open member cycles to next (wraps)\", \"toggle closed member jumps\", \"inert while hrSplit active\", \"docChanged prunes invalid ordinals\"]}\n```"
     },
     {
       "id": 4,
       "subject": "Task 4: TomboyEditor.svelte 배선 + CSS",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [3],
       "description": "**Goal:** 새 플러그인 Extension 등록, 노트 로드 시 포커스 reseed(두 지점), onChange 영속, 버튼·숨김 CSS 추가.\n\n**Files:**\n- Modify: app/src/lib/editor/TomboyEditor.svelte\n\n**Verify:** cd app && npm run check (0 errors) + 브라우저 수동\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/TomboyEditor.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"Extension registered after tomboyLabeledDivider\", \"both reseed blocks dispatch labeledFold replace\", \"onChange persists via saveFocusedOrdinals\", \"CSS for fold-btn + fold-hidden added\", \"npm run check 0 errors\"]}\n```"
     },
     {
       "id": 5,
       "subject": "Task 5: 설정 → 가이드 카드",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [4],
       "description": "**Goal:** 설정 → 가이드 → 편집 탭에 제목 수평선 리스트 아코디언 카드 추가. CLAUDE.md 필수.\n\n**Files:**\n- Modify: app/src/routes/settings/+page.svelte\n\n**Verify:** cd app && npm run check (0 errors) + 브라우저 노출 확인\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"new guide-card in editor subtab\", \"explains format/member/group/cycle/persistence/split-exclusion\", \"follows existing card pattern\", \"npm run check passes\"]}\n```"
     }
