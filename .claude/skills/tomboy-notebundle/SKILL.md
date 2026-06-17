@@ -139,7 +139,8 @@ N omitted (default), M=100.
 - **`ordinal`** = index in `BundleSpec[]` (document order, renumbers on delete →
   full-replacement contract below).
 
-`BundleSpec` carries `kind`, `checkboxPos`, `digitsFrom/To`, `keywordEnd`,
+`BundleSpec` carries `kind`, `checkboxPos`, `digitsFrom/To`, `keywordPos/End`,
+`hideFrom` (declaration-line hide start — prefix-aware, see plugin step 0),
 `listPos/End` (for the height write-back + hide decoration), `tree:
 BundleNode[]` (tab), and `entries: BundleEntry[]` (bundle). **Nodes/entries carry
 no positions** — selection is local state, never written back.
@@ -150,10 +151,19 @@ Kind-agnostic. State rebuilt on every `docChanged` (`buildState`). For each
 **checked** bundle with `hasContent(b)` (`tree.length || entries.length` — works
 for both kinds):
 
-0. `Decoration.node(keywordPos, keywordEnd, {class:'tomboy-note-bundle-hidden'})`
-   hides the **declaration line** (checkbox + keyword paragraph) to save space —
-   added even when there is no list. `keywordPos` is the keyword paragraph's node
-   start (always a top-level paragraph; the bundle parser only recognizes those).
+0. Hides the **declaration line** to save space — added even when there is no
+   list. `keywordPos` is the keyword paragraph's node start (always a top-level
+   paragraph; the bundle parser only recognizes those). **Prefix-aware:** when
+   the line has a kept prefix (`Done:묶음:N`), `hideFrom > keywordPos+1`, so it
+   uses `Decoration.inline(hideFrom, keywordEnd-1, …)` — hides only the keyword
+   region **incl. the leading separator colon** (`:묶음:N`) and leaves the prefix
+   text (`Done`) visible. `hideFrom===keywordPos+1` (empty / colon-only prefix —
+   nothing to keep) falls back to `Decoration.node(keywordPos, keywordEnd, …)`
+   hiding the whole paragraph. Both use class `tomboy-note-bundle-hidden`
+   (`display:none`, works as node or inline span). `hideFrom` is computed in the
+   parser: `kept = prefix.replace(/[:\s]+$/,'')`; `checkboxPos - (prefix.length -
+   kept.length)` lands on the trailing colon (the trailing run is the text right
+   before the checkbox).
 1. `Decoration.node(listPos, listEnd, {class:'tomboy-note-bundle-hidden'})` hides
    the raw list (nested lists included — the whole top-level list range).
 2. `Decoration.widget(listEnd ?? keywordEnd, …, {key:'note-bundle-<ordinal>',

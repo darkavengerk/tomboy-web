@@ -334,6 +334,43 @@ describe('parseNoteBundles — 미인식 / 제목 라인', () => {
 	});
 });
 
+// ── hideFrom: 키워드 뒤 prefix 보존(앞 옵션 텍스트만 남기고 키워드만 숨김) ──
+describe('parseNoteBundles — hideFrom (prefix 보존)', () => {
+	it('Done:[x]묶음:50:10 → "Done" 보존, ":묶음:50:10"(선행 콜론 포함) 숨김', () => {
+		const ed = makeEditor(
+			doc(titleLine('호스트'), kwWith([txt('Done:'), cb(true), txt('묶음:50:10')]), list(li('A')))
+		);
+		const b = parseNoteBundles(ed.state.doc)[0];
+		// 보이는 부분(콜론 앞까지) = 'Done'
+		expect(ed.state.doc.textBetween(b.keywordPos + 1, b.hideFrom)).toBe('Done');
+		// 숨길 부분 = 선행 콜론 + 키워드(체크박스 atom 은 텍스트 0)
+		expect(ed.state.doc.textBetween(b.hideFrom, b.keywordEnd - 1)).toBe(':묶음:50:10');
+	});
+
+	it('탭도 동일: Done:[x]탭:30 → "Done" 보존, ":탭:30" 숨김', () => {
+		const ed = makeEditor(
+			doc(titleLine('호스트'), kwWith([txt('Done:'), cb(true), txt('탭:30')]), list(li('A')))
+		);
+		const b = parseNoteBundles(ed.state.doc)[0];
+		expect(ed.state.doc.textBetween(b.keywordPos + 1, b.hideFrom)).toBe('Done');
+		expect(ed.state.doc.textBetween(b.hideFrom, b.keywordEnd - 1)).toBe(':탭:30');
+	});
+
+	it('prefix 없음(바로 [x]묶음:50) → hideFrom === keywordPos+1 (라인 전체 숨김 신호)', () => {
+		const ed = makeEditor(doc(titleLine('호스트'), kw('묶음:50', true), list(li('A'))));
+		const b = parseNoteBundles(ed.state.doc)[0];
+		expect(b.hideFrom).toBe(b.keywordPos + 1);
+	});
+
+	it('콜론만 prefix(:[x]묶음:50) → 남길 게 없으니 hideFrom === keywordPos+1', () => {
+		const ed = makeEditor(
+			doc(titleLine('호스트'), kwWith([txt(':'), cb(true), txt('묶음:50')]), list(li('A')))
+		);
+		const b = parseNoteBundles(ed.state.doc)[0];
+		expect(b.hideFrom).toBe(b.keywordPos + 1);
+	});
+});
+
 describe('clampHeightPct', () => {
 	it('중간값은 20–90 클램프, NaN → 기본값', () => {
 		expect(clampHeightPct(5)).toBe(20);

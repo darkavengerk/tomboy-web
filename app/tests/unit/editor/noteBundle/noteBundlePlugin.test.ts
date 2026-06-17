@@ -84,6 +84,9 @@ const kw = (text: string, checked: boolean) => ({
 	type: 'paragraph',
 	content: [{ type: 'inlineCheckbox', attrs: { checked } }, { type: 'text', text }]
 });
+const txt = (text: string) => ({ type: 'text', text });
+const cb = (checked: boolean) => ({ type: 'inlineCheckbox', attrs: { checked } });
+const kwWith = (nodes: object[]) => ({ type: 'paragraph', content: nodes });
 const li = (t: string) => ({
 	type: 'listItem',
 	content: [
@@ -210,6 +213,31 @@ describe('noteBundlePlugin', () => {
 			return dd.from === b.keywordPos && dd.to === b.keywordEnd;
 		});
 		expect(kwDecos.length).toBe(1);
+	});
+
+	it('prefix 있는 선언 라인 → 라인 전체 숨김 대신 키워드만 inline 숨김(앞 옵션 보존)', async () => {
+		const { mountStack } = makeStub();
+		const ed = makeEditor(
+			doc(
+				titleLine('호스트'),
+				kwWith([txt('Done:'), cb(true), txt('묶음:50')]),
+				list(li('A'))
+			),
+			mountStack
+		);
+		await tick();
+		const st = noteBundlePluginKey.getState(ed.state)!;
+		const b = st.bundles[0];
+		const all = st.decorations.find(b.keywordPos, b.keywordEnd) as Array<{
+			from: number;
+			to: number;
+		}>;
+		// 'Done' 이 남아야 하므로 hideFrom 은 paragraph 내용 시작보다 뒤
+		expect(b.hideFrom).toBeGreaterThan(b.keywordPos + 1);
+		// 라인 전체를 덮는 노드 데코는 없어야 한다
+		expect(all.some((d) => d.from === b.keywordPos && d.to === b.keywordEnd)).toBe(false);
+		// 대신 [hideFrom, keywordEnd-1] inline 숨김 데코
+		expect(all.some((d) => d.from === b.hideFrom && d.to === b.keywordEnd - 1)).toBe(true);
 	});
 
 	it('setBundleChecked(false) → 체크 해제 + 데코/위젯 제거', async () => {

@@ -1881,7 +1881,8 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		height: 100%;
 	}
 
-	/* 노트 묶음: 체크 시 링크 리스트 숨김 (노드 데코레이션 클래스) */
+	/* 노트 묶음: 체크 시 선언 라인/리스트 숨김 (노드 + inline 데코레이션 클래스).
+	   prefix 있는 선언 라인은 키워드만 inline 으로 숨겨 앞 옵션 텍스트는 남긴다. */
 	.tomboy-editor :global(.tomboy-note-bundle-hidden) {
 		display: none;
 	}

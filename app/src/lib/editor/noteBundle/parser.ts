@@ -60,6 +60,11 @@ export interface BundleSpec {
 	keywordPos: number;
 	/** 키워드 paragraph 끝 pos — 리스트 없을 때 위젯 fallback 위치 */
 	keywordEnd: number;
+	/** 키워드(체크박스 + `묶음:N` …) + 선행 구분 콜론이 시작하는 abs pos.
+	 *  prefix(`Done:` 등)가 있으면 그 콜론 위치 — 앞 옵션 텍스트(`Done`)는 남기고
+	 *  여기부터 끝까지만 inline 숨김. 남길 prefix 가 없으면 keywordPos+1(내용 시작)
+	 *  = 라인 전체 숨김 신호. */
+	hideFrom: number;
 	listPos: number | null;
 	listEnd: number | null;
 	/** kind==='tab' 일 때만 채워짐(최상위 트리 노드들). 아니면 [] */
@@ -100,13 +105,15 @@ interface KeywordInfo {
 	digitsTo: number;
 	keywordPos: number;
 	keywordEnd: number;
+	hideFrom: number;
 }
 
 function keywordAfterCheckbox(
 	para: PMNode,
 	paraPos: number,
 	cbIndex: number,
-	checkboxPos: number
+	checkboxPos: number,
+	prefix: string
 ): KeywordInfo | null {
 	const cb = para.child(cbIndex);
 	let text = '';
@@ -123,6 +130,13 @@ function keywordAfterCheckbox(
 	const digitsLen = m[1]?.length ?? 0;
 	// 키워드 텍스트 시작 abs pos = 체크박스 pos + nodeSize(1)
 	const textBase = checkboxPos + 1;
+	// prefix(`Done:`) 가 있으면 끝의 구분 콜론/공백만 키워드와 함께 숨기고 앞 옵션
+	// 텍스트(`Done`)는 남긴다. trailing `[:\s]+` 는 체크박스 직전 텍스트 런이므로
+	// checkboxPos 에서 그 길이만큼 당기면 콜론 위치가 나온다. 남길 게 없으면
+	// (빈/콜론만 prefix) keywordPos+1 = 라인 전체 숨김 신호.
+	const kept = prefix.replace(/[:\s]+$/, '');
+	const trailingLen = prefix.length - kept.length;
+	const hideFrom = kept.trim() === '' ? paraPos + 1 : checkboxPos - trailingLen;
 	return {
 		kind,
 		checkboxPos,
@@ -132,7 +146,8 @@ function keywordAfterCheckbox(
 		digitsFrom: textBase + colonIdx + 1,
 		digitsTo: textBase + colonIdx + 1 + digitsLen,
 		keywordPos: paraPos,
-		keywordEnd: paraPos + para.nodeSize
+		keywordEnd: paraPos + para.nodeSize,
+		hideFrom
 	};
 }
 
@@ -149,7 +164,7 @@ function parseKeywordParagraph(para: PMNode, paraPos: number): KeywordInfo | nul
 		if (child.type.name === 'inlineCheckbox') {
 			const trimmed = prefix.trim();
 			if (trimmed === '' || trimmed.endsWith(':')) {
-				const info = keywordAfterCheckbox(para, paraPos, i, paraPos + 1 + offset);
+				const info = keywordAfterCheckbox(para, paraPos, i, paraPos + 1 + offset, prefix);
 				if (info) return info;
 			}
 		}
@@ -276,6 +291,7 @@ export function parseNoteBundles(doc: PMNode): BundleSpec[] {
 			digitsTo: pending.digitsTo,
 			keywordPos: pending.keywordPos,
 			keywordEnd: pending.keywordEnd,
+			hideFrom: pending.hideFrom,
 			listPos,
 			listEnd: list && listPos !== null ? listPos + list.nodeSize : null,
 			tree: list && pending.kind === 'tab' ? parseTree(list) : [],
@@ -506,6 +522,7 @@ export function parseDedicatedBundle(doc: JSONContent, kind: BundleKind): Bundle
 		digitsTo: -1,
 		keywordPos: -1,
 		keywordEnd: -1,
+		hideFrom: -1,
 		listPos: null,
 		listEnd: null,
 		tree: kind === 'tab' ? parseDedicatedTree(root, opts.bodyStart) : [],
@@ -531,6 +548,7 @@ export function buildSyntheticBundleSpec(titles: string[], kind: BundleKind): Bu
 		digitsTo: -1,
 		keywordPos: -1,
 		keywordEnd: -1,
+		hideFrom: -1,
 		listPos: null,
 		listEnd: null,
 		tree: kind === 'tab' ? clean.map((t) => ({ label: t, link: t, children: [] })) : [],
