@@ -49,7 +49,8 @@
 		isDesktopRoute ||
 		isEmbedded ||
 		inIframe ||
-		page.url.pathname.startsWith('/welcome')
+		page.url.pathname.startsWith('/welcome') ||
+		page.url.pathname.startsWith('/poll/')
 	);
 
 	function isFramed(): boolean {
@@ -85,11 +86,23 @@
 		if (mode.value === 'visitor'
 				&& !page.url.pathname.startsWith('/welcome')
 				&& !isOauthCallback) {
-			// 공유 투표 딥링크는 게스트 가입 후 되돌아오도록 next 로 보존.
-			const deep = page.url.pathname.startsWith('/poll/')
-				? '?next=' + encodeURIComponent(page.url.pathname + page.url.search)
-				: '';
-			void goto('/welcome' + deep, { replaceState: true });
+			// 공유 투표 키오스크(/poll)는 닉네임 없이 익명 게스트로 자동 진입.
+			// 게스트 어댑터 배선을 위해 전체 리로드(installRealNoteSync 는
+			// installed 게이트라 soft goto 로는 안 걸림). 재방문은 이미 게스트라
+			// 이 분기를 안 탄다.
+			if (page.url.pathname.startsWith('/poll/')) {
+				if (!mode.getGuestName()) mode.setGuestName('익명');
+				if (mode.getGuestName()) {
+					window.location.href = page.url.pathname + page.url.search;
+					return;
+				}
+				// localStorage 불가(시크릿 등) — 닉네임 폼으로 폴백(리로드 루프 방지).
+				void goto('/welcome?next=' + encodeURIComponent(page.url.pathname + page.url.search), {
+					replaceState: true
+				});
+				return;
+			}
+			void goto('/welcome', { replaceState: true });
 			return;
 		}
 		if (mode.value === 'guest') {
