@@ -47,11 +47,22 @@ function buildState(doc: PMNode, containers: Map<number, HTMLElement>): PluginSt
 	const decos: Decoration[] = [];
 	for (const b of bundles) {
 		if (!b.checked) continue;
-		// 체크 시 선언 라인(체크박스 + 키워드 paragraph)도 숨겨 공간 절약 —
+		// 체크 시 선언 라인(체크박스 + 키워드 paragraph)을 숨겨 공간 절약 —
 		// 다시 편집하려면 Ctrl 누르고 스택 우상단 편집 버튼(체크 해제).
-		decos.push(
-			Decoration.node(b.keywordPos, b.keywordEnd, { class: 'tomboy-note-bundle-hidden' })
-		);
+		// prefix(`Done:묶음:N`)가 있으면 라인 전체가 아니라 키워드 부분만 inline
+		// 으로 숨겨 앞 옵션 텍스트(`Done`)는 남긴다. hideFrom===keywordPos+1 은
+		// 남길 게 없다는 신호(빈/콜론만 prefix) → 라인 전체 노드 데코.
+		if (b.hideFrom > b.keywordPos + 1) {
+			decos.push(
+				Decoration.inline(b.hideFrom, b.keywordEnd - 1, {
+					class: 'tomboy-note-bundle-hidden'
+				})
+			);
+		} else {
+			decos.push(
+				Decoration.node(b.keywordPos, b.keywordEnd, { class: 'tomboy-note-bundle-hidden' })
+			);
+		}
 		if (b.listPos !== null && b.listEnd !== null && hasContent(b)) {
 			decos.push(
 				Decoration.node(b.listPos, b.listEnd, { class: 'tomboy-note-bundle-hidden' })
