@@ -40,6 +40,8 @@
 		dedicatedBundleKind,
 		parseDedicatedBundle
 	} from '$lib/editor/noteBundle/parser.js';
+	import TallyNote from '$lib/editor/tallyNote/TallyNote.svelte';
+	import { isTallyTitle, parseTallyNote } from '$lib/tally';
 	import RemarkableActionBar from '$lib/editor/remarkable/RemarkableActionBar.svelte';
 	import { parseOcrNote } from '$lib/ocrNote/parseOcrNote.js';
 	import { runOcrInEditor } from '$lib/ocrNote/runOcrInEditor.js';
@@ -160,10 +162,22 @@
 		if (!dedicatedKind || !editorContent) return null;
 		return parseDedicatedBundle(editorContent, dedicatedKind);
 	});
-	// 노트 전환 시 항상 번들 뷰로 시작(showRawBundle 만 쓰고 읽지 않아 루프 없음).
+	// 집계(투표/퀴즈) 전용 노트 — 제목 `집계::`. 번들과 같은 raw 토글 패턴.
+	let showRawTally = $state(false);
+	const isTallyNote = $derived.by(() => {
+		const t = note?.title;
+		return !!t && isTallyTitle(t);
+	});
+	const tallySpec = $derived.by(() => {
+		const t = note?.title;
+		if (!t || !editorContent || !isTallyTitle(t)) return null;
+		return parseTallyNote(editorContent, t);
+	});
+	// 노트 전환 시 항상 번들/집계 뷰로 시작(showRaw* 만 쓰고 읽지 않아 루프 없음).
 	$effect(() => {
 		void noteId;
 		showRawBundle = false;
+		showRawTally = false;
 	});
 	// raw→번들 복귀: 마운트된 호스트 에디터의 현재 doc 을 editorContent 로 끌어와
 	// dedicatedSpec 이 최신 링크 리스트를 반영하게 한다(디바운스 저장과 별개).
@@ -171,6 +185,11 @@
 		const ed = editorComponent?.getEditor();
 		if (ed) editorContent = ed.getJSON();
 		showRawBundle = false;
+	}
+	function exitRawTally() {
+		const ed = editorComponent?.getEditor();
+		if (ed) editorContent = ed.getJSON();
+		showRawTally = false;
 	}
 
 	// Bridge settings for ChatSendBar — loaded once on mount from appSettings.
@@ -932,12 +951,22 @@
 					/>
 				{/if}
 			{/key}
+		{:else if tallySpec && !showRawTally}
+			<!-- 집계 전용 노트 — 본문 = 투표/퀴즈 뷰. Ctrl→편집(onraw)으로 raw 토글. -->
+			{#key noteId}
+				<TallyNote spec={tallySpec} guid={noteId ?? ''} onraw={() => (showRawTally = true)} />
+			{/key}
 		{:else}
 			{#if editorContent}
 				<!-- 전용 노트 raw 뷰 — Ctrl 누르면 ↩ 묶음 버튼으로 번들 뷰 복귀. -->
 				{#if dedicatedKind && showRawBundle && modKeys.ctrl}
 					<button class="dedicated-back-btn" onclick={exitRawBundle} title="묶음 뷰로 돌아가기"
 						>↩ 묶음</button
+					>
+				{/if}
+				{#if isTallyNote && showRawTally && modKeys.ctrl}
+					<button class="dedicated-back-btn" onclick={exitRawTally} title="집계 뷰로 돌아가기"
+						>↩ 집계</button
 					>
 				{/if}
 				<!-- 재생 컨트롤은 노트 상단(제목 줄 위)에 고정 — 하단 편집 툴바를
@@ -998,8 +1027,8 @@
 		{/if}
 	</div>
 
-	{#if !showTerminal && !showKeys && !(dedicatedKind && !showRawBundle)}
-		<!-- 전용 파일철 뷰엔 호스트 에디터가 없어 툴바가 무의미(getEditor()=null) +
+	{#if !showTerminal && !showKeys && !(dedicatedKind && !showRawBundle) && !(tallySpec && !showRawTally)}
+		<!-- 전용 파일철/집계 뷰엔 호스트 에디터가 없어 툴바가 무의미(getEditor()=null) +
 		     본문을 덮음 — 숨김. raw 편집 모드에선 다시 표시. -->
 		<div class="toolbar-area" bind:this={toolbarAreaEl}>
 			<Toolbar

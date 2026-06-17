@@ -277,6 +277,36 @@ Invariants:
 
 ⚠️ Claude backend prereq: run `claude login` once on the desktop. Setup: `claude-service/deploy/README.md`.
 
+## 집계 노트 (`집계::` 투표/퀴즈)
+
+전용 노트(제목 `집계::<제목>`) — 기존 노트북-공유 인프라 위에 익명 투표/퀴즈를
+얹는다. 본문 = 문제들: **단락(질문 `|중복가능|정답:N`) + 직후 bulletList(보기 평문)**.
+탭/묶음 전용 노트와 같은 디스패치 패턴(제목 시그니처 → note 페이지 + NoteWindow 분기,
+Ctrl→편집 raw 토글). 순수 뷰 레이어 — `.note` XML 불변.
+
+파일: `lib/tally/` (`parseTally`, `aggregate`, `tallyClient`, `types`),
+`lib/editor/tallyNote/` (`TallyNote.svelte` 게스트/호스트 분기, `TallyResultChart.svelte`
+= `lib/chart` mountChart 재사용). 디스패치는 `isTallyTitle`/`parseTallyNote`.
+
+데이터 모델(전용 top-level Firestore 컬렉션, `users/**` 밖):
+- `polls/{noteGuid}` 메타 `{ ownerUid, resultsPublic }` — 호스트 작성.
+- `polls/{noteGuid}/ballots/{voterUid}` 표 `{ answers: {qIndex: optIdx[]} }` — 투표자당 1개, **불변**.
+- `voterUid` = Firebase uid(게스트=익명/호스트=Dropbox 브리지). `correctIndex` 는
+  노트 본문에서 파싱(Firestore 미저장).
+
+규칙: `firestore.rules`(solo) + `firestore.rules.shared` 양쪽에 `polls` 블록.
+**solo 에선 강제**(호스트가 top-level `polls` 를 쓰려면 필수 — `users/**` 가 안 닿음).
+**shared 에선 blanket `match /{document=**}` catch-all 이 OR-우선**해 실효 없음 →
+게스트 투표 중(=shared 모드)의 1인 1표·결과 비공개는 **클라 soft 강제**(공유 모드
+자체가 이미 호스트 네임스페이스를 다 여는 트레이드오프와 일관). catch-all 좁히면
+공개 노트 collectionGroup 쿼리가 깨질 위험 → 손대지 말 것.
+
+불변/한계: ① 1인 1표 = 브라우저(익명 uid) 단위 soft. ② shared 모드 결과 비공개는
+soft. ③ 퀴즈 `|정답:N` 은 게스트가 동기화하는 본문 평문이라 추출 가능(가벼운 퀴즈용).
+④ ballot 은 문제 순번 키 → **투표 시작 후 문제 편집 금지**. ⑤ 게스트가 보려면 노트가
+**공유 노트북 + 공유 모드 규칙** 활성 상태여야 함(기존 게스트 모드 경로 재사용).
+가이드: 설정 → 가이드 → notes 탭 "집계 노트".
+
 ## Deployment
 
 - **Frontend**: Vercel via `adapter-vercel`. Produces `.vercel/output/` with static SPA + `functions/api/temp-image/`. Env vars: `PUBLIC_DROPBOX_APP_KEY` (Vite public), `BLOB_READ_WRITE_TOKEN` (Vercel auto), `IMAGE_STORAGE_TOKEN` (manual, byte-identical to app's "이미지 서버 토큰"). See `app/README.md`.
