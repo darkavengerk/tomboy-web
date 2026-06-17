@@ -90,6 +90,14 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 	} from "./eqHeader/eqHeaderPlugin.js";
 	import StickyHeader from "./eqHeader/StickyHeader.svelte";
 	import { createLabeledDividerPlugin } from "./labeledDivider/labeledDividerPlugin.js";
+	import {
+		createLabeledFoldPlugin,
+		labeledFoldPluginKey,
+	} from "./labeledDivider/labeledFoldPlugin.js";
+	import {
+		loadFocusedOrdinals,
+		saveFocusedOrdinals,
+	} from "./labeledDivider/labeledFoldStore.js";
 	import { restoreSelectionClamped } from "$lib/editor/restoreSelection.js";
 	import {
 		loadActiveOrdinals,
@@ -740,6 +748,18 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 						return [createLabeledDividerPlugin()];
 					},
 				}),
+				Extension.create({
+					name: "tomboyLabeledFold",
+					addProseMirrorPlugins() {
+						return [
+							createLabeledFoldPlugin({
+								onChange: (focused) => {
+									saveFocusedOrdinals(lastAppliedGuid, focused);
+								},
+							}),
+						];
+					},
+				}),
 				SlipNoteArrows,
 				DateArrows,
 				TomboyTodoRegion.configure({
@@ -1302,6 +1322,11 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 						replace: Array.from(loadFoldedOrdinals(g)),
 					}),
 				);
+				ed.view.dispatch(
+					ed.state.tr.setMeta(labeledFoldPluginKey, {
+						replace: Array.from(loadFocusedOrdinals(g)),
+					}),
+				);
 			}
 			applyNewNoteIntent(ed, g);
 			signalNoteReadyAfterPaint(ed, g);
@@ -1340,6 +1365,11 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 			ed.view.dispatch(
 				ed.state.tr.setMeta(hrFoldPluginKey, {
 					replace: Array.from(loadFoldedOrdinals(g)),
+				}),
+			);
+			ed.view.dispatch(
+				ed.state.tr.setMeta(labeledFoldPluginKey, {
+					replace: Array.from(loadFocusedOrdinals(g)),
 				}),
 			);
 		}
@@ -2070,6 +2100,43 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 	}
 	/* Folded section: remaining blocks fully hidden. */
 	.tomboy-editor :global(.tomboy-hr-fold-hidden) {
+		display: none;
+	}
+
+	/* Labeled-divider list accordion — `+/−` 버튼으로 그룹당 한 리스트만
+	   펼침. 버튼은 라벨 디바이더(position:relative + isolation:isolate)
+	   안에 절대배치; 숨김은 소유 리스트 블록에 display:none. */
+	.tomboy-editor :global(.tomboy-labeled-fold-btn) {
+		position: absolute;
+		right: 0;
+		top: 50%;
+		transform: translateY(-50%);
+		width: 22px;
+		height: 22px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0;
+		border: 1.5px solid #777;
+		border-radius: 4px;
+		background: #fff;
+		color: #333;
+		font-size: 15px;
+		font-weight: 700;
+		line-height: 1;
+		cursor: pointer;
+		user-select: none;
+		opacity: 0.9;
+		/* Above the label (z-index:1) and the ::before line (z-index:0). */
+		z-index: 2;
+	}
+	.tomboy-editor :global(.tomboy-labeled-fold-btn:hover) {
+		opacity: 1;
+		color: #000;
+		border-color: #444;
+		background: #f2f2f2;
+	}
+	.tomboy-editor :global(.tomboy-labeled-fold-hidden) {
 		display: none;
 	}
 
