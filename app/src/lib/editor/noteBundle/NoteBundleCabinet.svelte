@@ -381,10 +381,11 @@
 			const body = t?.closest?.('.bundle-body');
 			if (!body) return;
 			if (mode === 'edit' && body.classList.contains('open')) return;
-			// 음악 노트 본문 = 라이브 플레이리스트. 트랙 행은 click 으로 재생되는데
-			// touchstart preventDefault 는 모바일에서 합성 click 을 없애 탭이 죽는다.
-			// (재생바·트랙 행은 자체 pointerdown/mousedown 을 삼켜 캐럿이 안 잡힌다.)
-			if (body.classList.contains('music-body')) return;
+			// 예외: 음악 노트 상단 재생 제어 패널(.bundle-music)은 훑어보기에서도
+			// 클릭(재생/이전/다음)을 받아야 한다. touchstart preventDefault 는
+			// 모바일에서 합성 click 을 없애 버튼이 죽으므로 이 영역만 건너뛴다.
+			// 나머지 본문(트랙 목록 등)은 다른 묶음 본문과 동일 — 탭=편집 진입.
+			if (t?.closest?.('.bundle-music')) return;
 			e.preventDefault();
 		};
 		el.addEventListener('mousedown', suppressEditorFocus, { capture: true });
@@ -769,10 +770,6 @@
 		if (body) {
 			// 편집 모드: 노트 내부 인터랙션 — 손대지 않음.
 			if (mode === 'edit') return;
-			// 음악 노트 본문 = 라이브 플레이리스트. 스와이프=목록 네이티브 스크롤,
-			// 탭=트랙 재생(행 위젯이 처리)이라 묶음 브라우징/편집진입으로 가로채지
-			// 않는다(touch-action:pan-y 와 짝). 노트 넘김은 제목 바 스와이프로.
-			if (body.classList.contains('music-body')) return;
 			// 훑어보기: 열린 본문 위 제스처를 추적 — 탭=노트 열기(ctrl=편집), 스와이프=브라우징.
 			// 캡처는 안 한다 — 캡처하면 click 이 리스트로 retarget 돼 탭 시
 			// PM 포커스(모바일 키보드)가 안 뜬다.
@@ -969,12 +966,7 @@
 				{#if titleOnly}
 					<!-- 타이틀만 모드 — 본문 없음(세션 미로드). 바만 표시. -->
 				{:else if session}
-					<div
-						class="bundle-body"
-						class:open={idx === k}
-						class:music-body={session.isMusic}
-						use:scrollBottomInit={session.scrollBottom}
-					>
+					<div class="bundle-body" class:open={idx === k} use:scrollBottomInit={session.scrollBottom}>
 						{#if session.termSpec && session.termConnect}
 							{#key session.termSpec}
 								<div
@@ -1328,13 +1320,6 @@
 		background: #ecebe6;
 		cursor: pointer;
 		touch-action: none;
-	}
-	/* 음악 노트 본문 = 라이브 플레이리스트. 훑어보기의 swipe-flip 용
-	   touch-action:none 을 풀어(pan-y) 트랙 목록이 네이티브로 세로 스크롤되고
-	   행을 탭하면 재생되게 한다. 노트 넘김은 제목 바 스와이프로. */
-	.bundle-stack.browse .bundle-body.open.music-body {
-		touch-action: pan-y;
-		cursor: default;
 	}
 	.bundle-term {
 		height: 100%;
