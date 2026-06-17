@@ -2566,6 +2566,7 @@ Complete:</pre>
 	• [[버그 재현 노트]]</pre>
 					<ul class="guide-list">
 						<li>제목이 <strong>탭::</strong> = 재귀 탭, <strong>묶음::</strong> = 5칸 서류함 — 동작은 본문 속 탭/묶음과 동일</li>
+						<li><strong>묶음 보임 개수 설정</strong> — <strong>묶음::</strong> 노트는 본문 <strong>2번째 줄</strong>(제목 다음 첫 줄, 비어 있으면 <code>:높이:개수</code> 안내가 흐리게 뜸)에 <code>:50:10</code> 처럼 적어 한 번에 보일 제목 바 수(<strong>기본 5</strong>)를 지정합니다. <code>::10</code>(높이 생략) = 개수만 10, <code>:0</code> = 타이틀만, <code>::100</code> = 전부. 인라인 <code>묶음:N:M</code> 과 같은 의미이며, 이 옵션 줄은 링크 목록에서 자동으로 빠집니다</li>
 						<li>본문 최상위 단락의 링크 = <strong>깊이1 항목</strong>. 단락 바로 <strong>아래에 리스트</strong>를 두면 그 단락이 <strong>순수 카테고리</strong>가 되고 리스트 항목은 그 하위(깊이2) — 카테고리 단락에 링크가 걸려 있어도 항목으로 추가되지 않음(의도치 않은 링크 방지)</li>
 						<li>부모 단락 없이 시작하는 리스트는 그냥 깊이1 항목들로 들어감</li>
 						<li>제목 줄(첫 줄)의 링크는 항목으로 치지 않음 — 제목이니까</li>

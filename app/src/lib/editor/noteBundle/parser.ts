@@ -408,14 +408,45 @@ function parseListIntoJson(list: JSONNode, category: string | null, entries: Bun
 	}
 }
 
-/** 제목 라인(블록 0)을 제외한 최상위 블록들. */
-function bodyBlocks(doc: JSONNode): JSONNode[] {
-	return (doc.content ?? []).slice(1);
+/** 제목 라인(블록 0) — 옵션 라인 소비 시 추가로 블록 1 — 을 제외한 본문 블록들.
+ *  start: 링크 목록이 시작하는 블록 인덱스(옵션 없으면 1, 옵션 라인 있으면 2). */
+function bodyBlocks(doc: JSONNode, start = 1): JSONNode[] {
+	return (doc.content ?? []).slice(start);
 }
 
-function parseDedicatedTree(doc: JSONNode): BundleNode[] {
+// 전용 노트 옵션 라인 — 본문 2번째 줄(제목 다음 첫 블록)이 `:높이[:개수]` 면
+// 파일철 옵션으로 소비(링크 목록에서 제외). 인라인 `묶음:N:M` 과 같은 의미:
+// N=높이%(전용 뷰는 컨테이너를 채우므로 0=타이틀만 외엔 사실상 무의미),
+// M=표시 바 개수(윈도우 폭, 기본 5, 100=전부). 선행 `:` + 숫자 한 그룹 이상
+// 일 때만 매칭 — 일반 첫 줄/링크를 잘못 먹지 않는다. 높이 생략(`::개수`)은
+// 전용 기본 100 유지.
+const DEDICATED_OPTS_RE = /^\s*:(\d+)?(?::(\d+))?\s*$/;
+
+interface DedicatedOpts {
+	heightPct: number;
+	maxCount: number;
+	/** 링크 목록이 시작하는 본문 블록 인덱스 — 옵션 라인 소비 시 2, 아니면 1. */
+	bodyStart: number;
+}
+
+function parseDedicatedOptions(root: JSONNode): DedicatedOpts {
+	const opt = (root.content ?? [])[1];
+	if (opt && isTextblockJson(opt)) {
+		const m = DEDICATED_OPTS_RE.exec(paragraphTextJson(opt));
+		if (m && (m[1] || m[2])) {
+			return {
+				heightPct: m[1] ? clampHeightPct(parseInt(m[1], 10)) : 100,
+				maxCount: m[2] ? clampMaxCount(parseInt(m[2], 10)) : DEFAULT_MAX_COUNT,
+				bodyStart: 2
+			};
+		}
+	}
+	return { heightPct: 100, maxCount: DEFAULT_MAX_COUNT, bodyStart: 1 };
+}
+
+function parseDedicatedTree(doc: JSONNode, start = 1): BundleNode[] {
 	const out: BundleNode[] = [];
-	const blocks = bodyBlocks(doc);
+	const blocks = bodyBlocks(doc, start);
 	for (let i = 0; i < blocks.length; i++) {
 		const node = blocks[i];
 		if (isTextblockJson(node)) {
@@ -435,9 +466,9 @@ function parseDedicatedTree(doc: JSONNode): BundleNode[] {
 	return out;
 }
 
-function parseDedicatedEntries(doc: JSONNode): BundleEntry[] {
+function parseDedicatedEntries(doc: JSONNode, start = 1): BundleEntry[] {
 	const entries: BundleEntry[] = [];
-	const blocks = bodyBlocks(doc);
+	const blocks = bodyBlocks(doc, start);
 	for (let i = 0; i < blocks.length; i++) {
 		const node = blocks[i];
 		if (isTextblockJson(node)) {
@@ -457,25 +488,28 @@ function parseDedicatedEntries(doc: JSONNode): BundleEntry[] {
 }
 
 /** 전용 노트 본문(JSONContent)을 합성 BundleSpec 으로. 인-에디터 쓰기백
- *  필드(checkboxPos/digits/keyword/list pos)는 의미 없어 -1/null, checked=true,
- *  heightPct=100(전용 뷰는 컨테이너를 꽉 채운다). */
+ *  필드(checkboxPos/digits/keyword/list pos)는 의미 없어 -1/null, checked=true.
+ *  heightPct/maxCount 는 본문 2번째 줄 옵션 라인(`:높이:개수`)에서 — 없으면
+ *  heightPct=100(컨테이너를 꽉 채움)·maxCount=5(윈도우 폭). 옵션 라인은 링크
+ *  목록에서 제외된다(bodyStart). */
 export function parseDedicatedBundle(doc: JSONContent, kind: BundleKind): BundleSpec {
 	const root = doc as JSONNode;
+	const opts = parseDedicatedOptions(root);
 	return {
 		ordinal: 0,
 		kind,
 		checkboxPos: -1,
 		checked: true,
-		heightPct: 100,
-		maxCount: DEFAULT_MAX_COUNT,
+		heightPct: opts.heightPct,
+		maxCount: opts.maxCount,
 		digitsFrom: -1,
 		digitsTo: -1,
 		keywordPos: -1,
 		keywordEnd: -1,
 		listPos: null,
 		listEnd: null,
-		tree: kind === 'tab' ? parseDedicatedTree(root) : [],
-		entries: kind === 'bundle' ? parseDedicatedEntries(root) : []
+		tree: kind === 'tab' ? parseDedicatedTree(root, opts.bodyStart) : [],
+		entries: kind === 'bundle' ? parseDedicatedEntries(root, opts.bodyStart) : []
 	};
 }
 
