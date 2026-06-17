@@ -51,6 +51,7 @@ Most subsystems have dedicated skills — invoke via the `Skill` tool when worki
 | `tomboy-musicplayer` | `음악::` 노트 재생 — 전역 단일 오디오 엔진 + 싱글톤 큐, 노트별 이어듣기, 세션 복원, 모바일 알약/데스크탑 레일, iOS 자동재생 함정 | `lib/music/`, `lib/editor/musicNote/` |
 | `tomboy-remarkable-send` | 노트 → PDF 번들(forward + backward 트리 + 이미지/차트) → 브릿지 SSH → reMarkable xochitl | `lib/remarkable/`, `bridge/src/remarkableSendPdf.ts` |
 | `tomboy-notebundle` | `[체크박스]탭:N`/`묶음:N` + 내부링크 리스트 → 인-에디터 파일철 두 종류(탭=활성중심 재귀 윈도우 / 묶음=5바 타이틀 윈도우) + 임베디드 TomboyEditor. 제목 `탭::`/`묶음::` → 본문 전체가 풀-노트 파일철(전용 노트) | `lib/editor/noteBundle/` |
+| `tomboy-tally` | `집계::` 익명 투표/퀴즈 전용 노트 — 본문 파싱(`|중복가능|정답:N`) + 클라 집계/채점 + top-level Firestore `polls/{guid}` + 호스트/게스트 분기 + `/poll/<제목>` 키오스크 공유링크 | `lib/tally/`, `lib/editor/tallyNote/`, `routes/poll/[title]/` |
 
 Two features have no dedicated skill yet and live inline below: **이미지 임시 저장소** (Vercel Blob) and **채팅 노트** (`llm://` + `claude://`).
 
@@ -276,36 +277,6 @@ Invariants:
 - **`llm://` notes unchanged.** `LlmNoteSpec` / `LLM_*` constants remain as aliases inside `chatNote/`.
 
 ⚠️ Claude backend prereq: run `claude login` once on the desktop. Setup: `claude-service/deploy/README.md`.
-
-## 집계 노트 (`집계::` 투표/퀴즈)
-
-전용 노트(제목 `집계::<제목>`) — 기존 노트북-공유 인프라 위에 익명 투표/퀴즈를
-얹는다. 본문 = 문제들: **단락(질문 `|중복가능|정답:N`) + 직후 bulletList(보기 평문)**.
-탭/묶음 전용 노트와 같은 디스패치 패턴(제목 시그니처 → note 페이지 + NoteWindow 분기,
-Ctrl→편집 raw 토글). 순수 뷰 레이어 — `.note` XML 불변.
-
-파일: `lib/tally/` (`parseTally`, `aggregate`, `tallyClient`, `types`),
-`lib/editor/tallyNote/` (`TallyNote.svelte` 게스트/호스트 분기, `TallyResultChart.svelte`
-= `lib/chart` mountChart 재사용). 디스패치는 `isTallyTitle`/`parseTallyNote`.
-
-데이터 모델(전용 top-level Firestore 컬렉션, `users/**` 밖):
-- `polls/{noteGuid}` 메타 `{ ownerUid, resultsPublic }` — 호스트 작성.
-- `polls/{noteGuid}/ballots/{voterUid}` 표 `{ answers: {qIndex: optIdx[]} }` — 투표자당 1개, **불변**.
-- `voterUid` = Firebase uid(게스트=익명/호스트=Dropbox 브리지). `correctIndex` 는
-  노트 본문에서 파싱(Firestore 미저장).
-
-규칙: `firestore.rules`(solo) + `firestore.rules.shared` 양쪽에 `polls` 블록.
-**solo 에선 강제**(호스트가 top-level `polls` 를 쓰려면 필수 — `users/**` 가 안 닿음).
-**shared 에선 blanket `match /{document=**}` catch-all 이 OR-우선**해 실효 없음 →
-게스트 투표 중(=shared 모드)의 1인 1표·결과 비공개는 **클라 soft 강제**(공유 모드
-자체가 이미 호스트 네임스페이스를 다 여는 트레이드오프와 일관). catch-all 좁히면
-공개 노트 collectionGroup 쿼리가 깨질 위험 → 손대지 말 것.
-
-불변/한계: ① 1인 1표 = 브라우저(익명 uid) 단위 soft. ② shared 모드 결과 비공개는
-soft. ③ 퀴즈 `|정답:N` 은 게스트가 동기화하는 본문 평문이라 추출 가능(가벼운 퀴즈용).
-④ ballot 은 문제 순번 키 → **투표 시작 후 문제 편집 금지**. ⑤ 게스트가 보려면 노트가
-**공유 노트북 + 공유 모드 규칙** 활성 상태여야 함(기존 게스트 모드 경로 재사용).
-가이드: 설정 → 가이드 → notes 탭 "집계 노트".
 
 ## Deployment
 
