@@ -63,6 +63,11 @@ export const NOTE_TYPES: NoteTypeSpec[] = [
 		help: '타이틀 DATA::<project>. 본문의 ```csv 펜스가 차트로 렌더됩니다.'
 	},
 	{
+		id: 'tally', label: '집계 (투표/퀴즈)', trigger: 'title-prefix',
+		titlePrefix: '집계::',
+		help: '타이틀 집계::<제목>. 「질문 |중복가능|정답:N」 줄 + 보기 리스트로 익명 투표/퀴즈를 만듭니다(공유 노트북 필요).'
+	},
+	{
 		id: 'music-extract', label: '음악 추출', trigger: 'title-prefix',
 		titlePrefix: '음악추출::',
 		help: '타이틀 음악추출::<이름>. 본문에 유튜브 URL 목록을 두면 ⟳ 로 mp3 추출합니다.'
