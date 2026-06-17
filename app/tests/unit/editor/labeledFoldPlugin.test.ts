@@ -149,4 +149,22 @@ describe('labeledFoldPlugin', () => {
 		ed.view.dispatch(ed.state.tr.insertText('x', 1));
 		expect(focusedArr(ed)).toEqual([]);
 	});
+
+	it('skips reconcile for editor-appended (normalization) transactions', () => {
+		// A `replace` reseed can be immediately followed by an editor-appended
+		// normalization transaction (e.g. StarterKit's trailing-node insert),
+		// which is docChanged. Reconciling on it would prematurely prune the
+		// just-seeded focus before the matching member is even parsed. The
+		// plugin guards on PM's genuine `appendedTransaction` meta. A real
+		// user edit (no such meta) still reconciles — covered above.
+		const ed = makeEditor();
+		ed.view.dispatch(
+			ed.state.tr.setMeta(labeledFoldPluginKey, { replace: [99] })
+		);
+		const appended = ed.state.tr.insertText('x', 1);
+		appended.setMeta('appendedTransaction', ed.state.tr);
+		ed.view.dispatch(appended);
+		// Still [99] — the appended transaction must NOT prune it.
+		expect(focusedArr(ed)).toEqual([99]);
+	});
 });
