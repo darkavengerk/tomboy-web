@@ -374,7 +374,9 @@
 	.llm-send-bar {
 		position: absolute;
 		right: clamp(0.5rem, 2vw, 1.5rem);
-		bottom: clamp(0.5rem, 2vw, 1.5rem);
+		/* 제목 바로 아래(에디터 영역 상단 우측)에 고정 — 하단 편집 툴바와
+		   겹쳐 가려지던 문제 해결. 본문 위에 떠 있는 오버레이는 유지. */
+		top: clamp(0.5rem, 2vw, 1.5rem);
 		display: flex;
 		gap: 0.5rem;
 		align-items: center;
