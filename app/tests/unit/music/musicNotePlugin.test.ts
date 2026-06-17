@@ -117,6 +117,80 @@ describe('buildMusicDecorations — 플레이리스트 렌더링', () => {
 	});
 });
 
+describe('묶음 훑어보기 게이트 — 트랙 행 제스처', () => {
+	// 트랙 제목 위젯 DOM 을 주어진 .bundle-stack 모드 래퍼 안에 붙인다.
+	function mountRowIn(mode: 'browse' | 'edit' | null): { dom: HTMLElement; played: () => number; cleanup: () => void } {
+		const d = doc(TWO);
+		const tracks = parseMusicNote(d).flatQueue;
+		let played = -1;
+		const set = buildMusicDecorations(d, { currentUrl: null, isPlaying: false, onPlay: (i) => { played = i; } });
+		const dom = widgetDom(nameWidgets(set).find((w) => w.from === tracks[1].liPos + 2)!);
+		let root: HTMLElement;
+		if (mode) {
+			const stack = document.createElement('div');
+			stack.className = `bundle-stack ${mode}`;
+			const body = document.createElement('div');
+			body.className = 'bundle-body open';
+			body.appendChild(dom);
+			stack.appendChild(body);
+			root = stack;
+		} else {
+			root = document.createElement('div'); // 묶음 밖(일반 노트 에디터)
+			root.appendChild(dom);
+		}
+		document.body.appendChild(root);
+		return { dom, played: () => played, cleanup: () => document.body.removeChild(root) };
+	}
+
+	it('훑어보기(.bundle-stack.browse): 클릭이 재생을 삼키지 않고 통과 — 묶음이 스와이프/탭 처리', () => {
+		const { dom, played, cleanup } = mountRowIn('browse');
+		try {
+			const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
+			dom.dispatchEvent(ev);
+			expect(played()).toBe(-1); // 재생 안 함(편집 모드 전용)
+			expect(ev.defaultPrevented).toBe(false); // 삼키지 않음 → 묶음으로 흐름
+		} finally {
+			cleanup();
+		}
+	});
+
+	it('훑어보기: pointerdown 도 삼키지 않아 묶음 스와이프가 살아 있음', () => {
+		const { dom, cleanup } = mountRowIn('browse');
+		try {
+			let bubbled = false;
+			document.body.addEventListener('pointerdown', () => { bubbled = true; }, { once: true });
+			const ev = new Event('pointerdown', { bubbles: true, cancelable: true });
+			dom.dispatchEvent(ev);
+			expect(ev.defaultPrevented).toBe(false);
+			expect(bubbled).toBe(true); // stopPropagation 안 함 → 묶음 핸들러까지 버블
+		} finally {
+			cleanup();
+		}
+	});
+
+	it('편집(.bundle-stack.edit): 클릭이 정상 재생', () => {
+		const { dom, played, cleanup } = mountRowIn('edit');
+		try {
+			const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
+			dom.dispatchEvent(ev);
+			expect(played()).toBe(1);
+			expect(ev.defaultPrevented).toBe(true); // 편집 모드 = 삼킴(재생)
+		} finally {
+			cleanup();
+		}
+	});
+
+	it('묶음 밖(일반 노트): 클릭이 정상 재생 — 회귀 없음', () => {
+		const { dom, played, cleanup } = mountRowIn(null);
+		try {
+			(dom as HTMLElement).click();
+			expect(played()).toBe(1);
+		} finally {
+			cleanup();
+		}
+	});
+});
+
 describe('handleTrackButtonClick', () => {
 	it('비현재 트랙 클릭 → onPlay(index) 호출', () => {
 		let called = -1;
