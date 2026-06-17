@@ -6,7 +6,8 @@ import {
 	windowWidth,
 	centeredWindow,
 	firstValidIndex,
-	nextValidIndex
+	nextValidIndex,
+	bundleBox
 } from '$lib/editor/noteBundle/cabinetMath.js';
 
 const e = (broken: boolean) => ({ broken });
@@ -77,6 +78,30 @@ describe('가변 윈도우 폭 (개수 옵션 :M)', () => {
 	it('개수 ≥ N(전부) → start 0, 윈도우 = N', () => {
 		expect(centeredWindow(8, 12, 12)).toBe(0);
 		expect(windowWidth(12, 12)).toBe(12);
+	});
+});
+
+describe('bundleBox — 높이/스크롤 모드 (앞=100 fit 이 개수보다 우선)', () => {
+	// 인자: (heightPct, titleOnly, dedicated)
+	// titleOnly = heightPct<=0 || maxCount>=100 (호출부가 계산해 넘김)
+	it('앞=100 → fit, 개수(뒤=100 으로 titleOnly)와 무관', () => {
+		// 묶음:100:100 — 종전엔 개수 100 의 "긴 목차" 동작이 fit 을 덮어썼다.
+		expect(bundleBox(100, true, false)).toBe('fit');
+		// 묶음:100 (개수 기본 5 → titleOnly 아님)
+		expect(bundleBox(100, false, false)).toBe('fit');
+	});
+	it('타이틀만 + 앞<100 → grow (긴 목차, 페이지 스크롤)', () => {
+		expect(bundleBox(50, true, false)).toBe('grow'); // 묶음:50:100 / 묶음::100
+		expect(bundleBox(0, true, false)).toBe('grow'); // 묶음:0
+	});
+	it('일반(앞<100, 본문 로드) → window', () => {
+		expect(bundleBox(50, false, false)).toBe('window'); // 묶음:50
+		expect(bundleBox(90, false, false)).toBe('window');
+	});
+	it('전용 노트 → dedicated, 높이/개수 무관(fit/grow 가 가로채지 않음)', () => {
+		expect(bundleBox(100, true, true)).toBe('dedicated'); // :100:100
+		expect(bundleBox(0, true, true)).toBe('dedicated'); // :0
+		expect(bundleBox(50, false, true)).toBe('dedicated');
 	});
 });
 

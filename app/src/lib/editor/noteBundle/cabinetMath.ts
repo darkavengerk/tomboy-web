@@ -33,6 +33,32 @@ export function centeredWindow(active: number, n: number, max: number = WINDOW_S
 	return clamp(active - activeSlot(w), 0, n - w);
 }
 
+/** 묶음 박스 높이/스크롤 모드. */
+export type BundleBox =
+	/** 전용 노트(`묶음::`) — 컨테이너를 flex 로 채우고 넘치면 내부 스크롤. */
+	| 'dedicated'
+	/** 앞 인자 100(`묶음:100[:M]`) — 호스트 노트 끝까지 고정 높이 + 넘치면 내부
+	 *  스크롤. **개수(M)와 무관** — M=100 이어도 fit 이 우선(긴 목차 페이지 스크롤 X). */
+	| 'fit'
+	/** 타이틀만(앞<100) + 전부 표시 = 긴 목차 — 높이 auto, 페이지 스크롤. */
+	| 'grow'
+	/** 그 외 — 높이 % 고정 박스 + 활성 본문 내부 스크롤. */
+	| 'window';
+
+/**
+ * 묶음 박스 모드 결정 — 순수. fit(앞=100)이 grow(개수 100·타이틀만)보다 우선해
+ * `묶음:100:100` 이 페이지 스크롤로 새지 않고 고정+내부 스크롤이 된다.
+ * @param heightPct 앞 인자(클램프됨: 0 타이틀만 / 100 fit / 20–90)
+ * @param titleOnly heightPct<=0 || maxCount>=100 (본문 미로드 여부, 호출부 계산)
+ * @param dedicated 전용 노트(`묶음::`) 여부
+ */
+export function bundleBox(heightPct: number, titleOnly: boolean, dedicated: boolean): BundleBox {
+	if (dedicated) return 'dedicated';
+	if (heightPct >= 100) return 'fit';
+	if (titleOnly) return 'grow';
+	return 'window';
+}
+
 export interface ResolvedEntryLike {
 	broken: boolean;
 }

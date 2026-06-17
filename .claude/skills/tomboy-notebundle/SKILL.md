@@ -57,7 +57,7 @@ sync see a normal checkbox + bullet list; the bundle never mutates the list.
 | `lib/editor/noteBundle/parser.ts` | Pure `parseNoteBundles(doc): BundleSpec[]`. Atom-aware PMNode walk; **both keywords** (`탭:`→kind 'tab', `묶음:`→kind 'bundle'). Per kind it fills **either** `tree: BundleNode{label,link,children}` (tab, recursive — `parseTree`) **or** `entries: BundleEntry{title,category}` (bundle, flat — `parseEntries`); the other field stays `[]`. No IDB, no title index. **Also** the dedicated-note path: `dedicatedBundleKind(title)` (`탭::`/`묶음::` 접두 → kind, else null) + `parseDedicatedBundle(jsonDoc, kind): BundleSpec` (synthetic spec from the **whole body** — JSON-based twin of the PMNode walk; see 전용 노트 section). **And** `buildSyntheticBundleSpec(titles, kind): BundleSpec` — a flat synthetic spec straight from a title list (no doc), used by the 역참조 temporary bundle; same -1/null write-back convention as `parseDedicatedBundle`. |
 | `lib/editor/noteBundle/noteBundlePlugin.ts` | ProseMirror plugin, **kind-agnostic**. Hide-list node decoration gated on `hasContent` (`tree.length \|\| entries.length`) + cached widget container per ordinal + `StackController` lifecycle. **Kind-change (탭↔묶음) on a live ordinal = destroy + remount** (`controllerKind` map). Checked → hides declaration line (`keywordPos..keywordEnd`) **and** list. Exports `writeBundleHeightPct` + `setBundleChecked` (Ctrl 편집 버튼 → 체크 해제). **No list mutation** (only the checkbox attr / `:N` digits). |
 | `lib/editor/noteBundle/stackMath.ts` | **Tab** tree-navigation — `firstNavPath`, `drillFrom`, `repairPath`, `stepPath` (bubbles to parent at level ends), `pickPath`, `nodesAtDepth`, `clampIndex`, `visibleTabs` (range-safe), `tabView`/`TAB_FIT_MAX`/`TAB_WINDOW` (active-centred window + `[+N]` badges). |
-| `lib/editor/noteBundle/cabinetMath.ts` | **Bundle** title-window algebra — `WINDOW_SIZE=5` (default), `windowWidth(n, max=5)`, `activeSlot(w)=floor(w/2)` (`ACTIVE_SLOT=activeSlot(5)=2`, back-compat const), `centeredWindow(active, n, max=5)` (active fixed at the **center slot** regardless of scroll direction, end-pinned), `firstValidIndex`/`nextValidIndex` (broken-skip). The `max` arg = `maxCount` (display count `:M`); `100` → caller passes `n` so the window = all. |
+| `lib/editor/noteBundle/cabinetMath.ts` | **Bundle** title-window algebra — `WINDOW_SIZE=5` (default), `windowWidth(n, max=5)`, `activeSlot(w)=floor(w/2)` (`ACTIVE_SLOT=activeSlot(5)=2`, back-compat const), `centeredWindow(active, n, max=5)` (active fixed at the **center slot** regardless of scroll direction, end-pinned), `firstValidIndex`/`nextValidIndex` (broken-skip), `bundleBox(heightPct, titleOnly, dedicated)` → `'dedicated'|'fit'|'grow'|'window'` (height/scroll mode; **fit/앞=100 wins over count** so `묶음:100:100` is fit, not page-scroll grow). The `max` arg = `maxCount` (display count `:M`); `100` → caller passes `n` so the window = all. |
 | `lib/editor/noteBundle/NoteBundleStack.svelte` | **Tab** UI (kind 'tab'). `activePath` + recursive `tabLevel` snippet + keep-alive `EditorSession` map + barrier + **always-edit** (no browse/edit mode — strip always shown, active leaf always editable) + host-shell wiring. `variant='dedicated'` + nullable `view` + `onclose`/`onraw` for the full-note path. |
 | `lib/editor/noteBundle/NoteBundleCabinet.svelte` | **Bundle** UI (kind 'bundle'). Flat `resolved` entries + `k`(active)/`winStart`(5-bar window) + flex-grow drawer + same barrier / sessions / modes / host-shell wiring. Same `variant='dedicated'` extras. |
 | `lib/editor/noteBundle/index.ts` | Barrel (exports `BundleSpec`, `BundleNode`, `BundleEntry`, `BundleKind`, `dedicatedBundleKind`, `parseDedicatedBundle`, `buildSyntheticBundleSpec`). |
@@ -106,9 +106,11 @@ N omitted (default), M=100.
 - **`maxCount` (`clampMaxCount`, 묶음 only):** title-window width. `1–100`,
   default **5** (= `WINDOW_SIZE`). **`100` = show ALL bars AND (when heightPct<100)
   title-only** (`묶음::100` ≡ `묶음:N:100`). **`묶음:100:100` = fit + all bars**:
-  fixed fill-to-note-end height with the full title index scrolling **inside** the
-  list (`titleOnly` and `fit` now coexist — `autoHeight = titleOnly && !fit` is the
-  only `height:auto` case; fit always uses `stackH`). Tab stores M but ignores it.
+  `bundleBox` returns `'fit'` (앞=100 wins over M), so it's a fixed
+  fill-to-note-end height with the full title index scrolling **inside** the list
+  (`overflow-y:auto + overscroll-behavior:contain`), never page-scrolling. The only
+  `height:auto` case is `'grow'` (title-only + heightPct<100). Tab stores M but
+  ignores it.
 - **Adjacency is strict.** A pending keyword only binds to a bulletList that is
   the **immediately next block**; any intervening block (even an empty paragraph)
   flushes it empty. Double-Enter between keyword and list = empty stack.
@@ -474,9 +476,10 @@ editor right away since the tab is always in edit.)
 ### Height basis — desktop vs mobile
 
 `stackH = dragPx ?? (fit ? max(140, basisH − fitTopOffset − bottomReserve) :
-max(140, round(basisH * heightPct/100)))` (`autoHeight = titleOnly && !fit` sets
-`height:auto` instead — see the cabinet modes above; **fit** fills to the host
-viewport bottom **above the floating toolbar**, see heightPct). In a desktop
+max(140, round(basisH * heightPct/100)))` (the `'grow'`/`'dedicated'` box modes set
+`style:height` null → `height:auto`/`flex:1` instead — see the cabinet modes above;
+**fit** fills to the host viewport bottom **above the floating toolbar**, see
+heightPct). In a desktop
 multi-window (`view.dom.closest('.note-window')`) `basisH` = host
 `.tomboy-editor` `clientHeight` (bounded by the window, ResizeObserver). On the
 mobile route the editor is body-level scroll whose height grows with content —
@@ -506,27 +509,38 @@ capture-phase wheel preemption that the tab dropped** (the tab is now always-edi
   `W = windowWidth(n, maxBars)` where `maxBars = spec.maxCount` (`100` → `n`, all).
   No direction-aware eager slide / `pendingDir`. `firstValidIndex`/`nextValidIndex`
   skip `broken`.
-- **Title-only / fit / count modes** (`묶음` extras, all derived from spec):
-  `titleOnly = heightPct<=0 || maxCount>=100`, `fit = !dedicated &&
-  heightPct>=100`, `autoHeight = titleOnly && !fit`. **title-only** skips the
-  session-load effect entirely (and tears down any live sessions) → bars only, no
-  IDB read / editor mount; bodies `{#if}`-suppressed. **fit** is a taller
-  **fixed-height** drawer — `stackH = basisH − fitTopOffset − bottomReserve` (fill
-  to host viewport bottom, above the floating toolbar; see Height basis); the
-  embedded editor scrolls internally as usual. No "grow-to-embedded-content" CSS
-  (that was a wrong attempt — the user wants host-relative fill).
-  **`titleOnly` and `fit` now coexist** — `묶음:100:100` is fit (fixed fill height)
-  **with** the full title index, the list (`flex:1; min-height:0;
-  overflow-y:auto`) scrolling inside; `autoHeight` (`height:auto`, list grows) is
-  the only non-fixed case (e.g. `묶음:0`). `.bundle-stack.fit` also squares the
-  bottom corners (rounded looked clipped flush against the note end).
-  `wheelBrowse = !(titleOnly && W>=n)` — a title-only list showing **all** bars
-  (count 100, incl. `묶음:100:100`) can exceed its box, so there wheel/swipe
-  interception + pointer capture are **disabled** (`.free-scroll` →
-  `touch-action:pan-y` on bars) and it scrolls natively (the page for `auto`, the
-  list for fit). Windowed/body modes stay bounded so they keep intercepting
-  (note-switch via wheel/swipe/bar-click). The drag-resize handle is hidden in
-  title-only & fit.
+- **Title-only / box modes** (`묶음` extras, derived from spec):
+  `titleOnly = heightPct<=0 || maxCount>=100` (body-load gate); the height/scroll
+  mode is the pure `bundleBox(heightPct, titleOnly, dedicated)` (`cabinetMath.ts`)
+  → `'dedicated' | 'fit' | 'grow' | 'window'`, with `fit = box==='fit'`,
+  `grow = box==='grow'`. **`fit` (앞=100) wins over count** — `묶음:100:100` is
+  `'fit'`, NOT `'grow'`, so it never falls into the 긴-목차 page-scroll path
+  regardless of M (the prior `autoHeight = titleOnly && !fit` derivation let a
+  fit box still be treated as a page-scroll list — `bundleBox` makes fit explicit).
+  **title-only** skips the session-load effect entirely (and tears down any live
+  sessions) → bars only, no IDB read / editor mount; bodies `{#if}`-suppressed.
+  **fit** is a taller **fixed-height** drawer — `stackH = basisH − fitTopOffset −
+  bottomReserve` (fill to host viewport bottom, above the floating toolbar; see
+  Height basis). **grow** (`titleOnly && heightPct<100`, e.g. `묶음:0` / `묶음::100`)
+  is the only `height:auto` case — `style:height` is null and `.bundle-list`
+  is `flex:none`, so the box grows to its bars and the **page** scrolls (긴 목차).
+  - **Internal-scroll containment (the `묶음:100:100` fix).** Fixed-box title
+    indexes — `.bundle-stack.title-only.fit .bundle-list` AND
+    `.bundle-stack.title-only.dedicated .bundle-list` — get `overflow-y:auto +
+    overscroll-behavior:contain`, so an overflowing title list scrolls **inside the
+    box** and never chains out to the page. The grow rules
+    (`.title-only:not(.fit):not(.dedicated)` → `height:auto` / list `flex:none`)
+    **exclude `.dedicated`** — a dedicated note (`fit` forced false) used to match
+    the grow rule → `flex:none` natural-height list clipped by the
+    `overflow:hidden` stack; now it stays `flex:1` + bounded + internal-scroll.
+  - `.bundle-stack.fit` squares the bottom corners (rounded looked clipped flush
+    against the note end). `wheelBrowse = !(titleOnly && W>=n)` — a title-only list
+    showing **all** bars (count 100, incl. `묶음:100:100`) disables wheel/swipe
+    interception + pointer capture (`.free-scroll` → `touch-action:pan-y` on bars)
+    and scrolls natively — the **list** for fit/dedicated (overscroll-contained),
+    the **page** for grow. Windowed/body modes stay bounded so they keep
+    intercepting (note-switch via wheel/swipe/bar-click). The drag-resize handle is
+    hidden in title-only & fit.
 - **Layout = one expanded note + collapsed bars above/below.** Every resolved
   entry is a `.bundle-bar` + its own `.bundle-body` in DOM order; only `idx===k`
   gets `.open` (`flex-grow:1`) → the **flex-grow drawer** animates the swap with no
@@ -739,9 +753,10 @@ dedicated-note parser, and it's the simplest: a plain title list, no doc walk.
   50.** Drag the bottom edge; persisted on pointer-up (writes N digits only, handle
   hidden in 0/fit). `.bundle-stack.fit` squares the bottom corners.
 - **maxCount (묶음 `:M`): 1–100, default 5, `100`=all bars.** Window width. With
-  `heightPct<100` it forces title-only (`auto` height, grows). **`묶음:100:100` =
-  fit + all** — fixed fill-to-note-end height, title index scrolls inside the list
-  (`titleOnly` and `fit` coexist; `autoHeight = titleOnly && !fit`).
+  `heightPct<100` it forces title-only `'grow'` (`auto` height, page-scrolls).
+  **`묶음:100:100` = fit + all** — `bundleBox` returns `'fit'` (앞=100 beats M),
+  fixed fill-to-note-end height, title index scrolls **inside** the list
+  (`overflow-y:auto + overscroll-behavior:contain`, no page leak).
 - **Widget container cached per ordinal** — never recreate it or the Svelte stack is lost.
 - **Full-tree render is required for keep-alive** — visited leaf editors must stay
   mounted (transformed off-screen, not `display:none`) across tab switches; don't

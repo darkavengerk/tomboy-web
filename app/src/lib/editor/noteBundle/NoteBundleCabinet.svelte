@@ -64,7 +64,8 @@
 		windowWidth,
 		centeredWindow,
 		firstValidIndex,
-		nextValidIndex
+		nextValidIndex,
+		bundleBox
 	} from './cabinetMath.js';
 	import { lookupGuidByTitle, ensureTitleIndexReady } from '../autoLink/titleProvider.js';
 	import {
@@ -181,16 +182,16 @@
 	// --- 묶음 전용 모드 (크기 0 / 개수 옵션) -----------------------------------
 	// 타이틀만: 크기 0(`묶음:0`) 또는 개수 100(`묶음::100`/`묶음:N:100`). 본문을
 	//   로드하지 않아(세션 mount 없음) 제목만 표시 — 많은 노트 목록 메모리 절약.
-	// fit: 크기 100(`묶음:100`) — 호스트 노트의 끝(에디터 뷰포트 하단)에 닿을
-	//   때까지 채운다(묶음 상단부터 남은 높이 전부). 임베디드 노트 내용 높이가
-	//   아니라 호스트 기준. 전용 노트(dedicated)는 flex:1 로 이미 꽉 차므로 제외.
-	//   titleOnly 와 공존 가능: `묶음:100:100` = 본문 없는 타이틀 색인이 노트
-	//   끝까지 고정 높이로 차고, 타이틀이 넘치면 목록 내부 스크롤.
-	// autoHeight: titleOnly 이면서 fit 아님(크기 0 등) — 바 개수만큼 자란다(height:auto).
+	// box(bundleBox): 높이/스크롤 모드. fit(앞=100)이 grow(개수 100·타이틀만)보다
+	//   우선 — `묶음:100:100` 은 페이지 스크롤(긴 목차)로 새지 않고 노트 끝까지
+	//   고정 + 타이틀 넘치면 목록 내부 스크롤(.title-only.fit .bundle-list:
+	//   overflow-y:auto + overscroll-behavior:contain). 자세한 정의는 cabinetMath.
+	// fit: 노트 끝까지 고정(개수 무관). grow: 타이틀만+앞<100 → height:auto+페이지 스크롤.
 	// maxBars: 표시 바 개수(윈도우 폭). 100 = 전부.
 	const titleOnly = $derived(spec.heightPct <= 0 || spec.maxCount >= 100);
-	const fit = $derived(!dedicated && spec.heightPct >= 100);
-	const autoHeight = $derived(titleOnly && !fit);
+	const box = $derived(bundleBox(spec.heightPct, titleOnly, dedicated));
+	const fit = $derived(box === 'fit');
+	const grow = $derived(box === 'grow');
 	const maxBars = $derived(spec.maxCount >= 100 ? resolved.length : spec.maxCount);
 
 	// --- 타이틀 윈도우 ---------------------------------------------------------
@@ -876,7 +877,7 @@
 	class:fit
 	class:free-scroll={!wheelBrowse}
 	bind:this={rootEl}
-	style:height={dedicated || autoHeight ? null : `${stackH}px`}
+	style:height={dedicated || grow ? null : `${stackH}px`}
 >
 	{#if mode === 'edit' && expanded && !titleOnly}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1081,18 +1082,24 @@
 		border-radius: 0;
 		position: relative;
 	}
-	/* 타이틀만(크기 0 / 개수 100) — 본문 없이 바만. fit 아니면 바 높이만큼 자란다. */
-	.bundle-stack.title-only:not(.fit) {
+	/* 긴 목차(grow): 인라인 타이틀만 + 앞<100 — 본문 없이 바만, 바 높이만큼
+	   자라고(height:auto) 페이지 스크롤. 전용 노트(.dedicated)는 제외 — 컨테이너를
+	   채우고 내부 스크롤한다(아래 고정 박스 규칙). */
+	.bundle-stack.title-only:not(.fit):not(.dedicated) {
 		height: auto;
 	}
-	.bundle-stack.title-only:not(.fit) .bundle-list {
+	.bundle-stack.title-only:not(.fit):not(.dedicated) .bundle-list {
 		flex: none;
 	}
-	/* `묶음:100:100` — 타이틀 색인이 노트 끝까지 고정 높이로 차고, 넘치면 목록
-	   내부에서 스크롤(.bundle-list 는 flex:1 + min-height:0 이라 그대로 차고
-	   overflow 만 켜면 된다). */
-	.bundle-stack.title-only.fit .bundle-list {
+	/* 고정 박스 타이틀 색인 — `묶음:100:100`(fit, 노트 끝까지) 또는 전용 노트
+	   (컨테이너 채움). 타이틀이 넘치면 목록 내부에서만 스크롤(.bundle-list 는
+	   flex:1 + min-height:0 이라 그대로 차고 overflow 만 켜면 된다).
+	   overscroll-behavior:contain — 목록 끝에서 페이지로 스크롤이 새지 않게.
+	   앞=100 이면 개수(M)와 무관하게 항상 이쪽(긴 목차 페이지 스크롤과의 충돌 해소). */
+	.bundle-stack.title-only.fit .bundle-list,
+	.bundle-stack.title-only.dedicated .bundle-list {
 		overflow-y: auto;
+		overscroll-behavior: contain;
 	}
 	/* fit(노트 끝까지 채움) — 하단 좌우 둥근 모서리가 잘려 어색하므로 직각. */
 	.bundle-stack.fit {
