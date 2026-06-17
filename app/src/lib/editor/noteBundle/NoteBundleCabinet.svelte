@@ -381,6 +381,11 @@
 			const body = t?.closest?.('.bundle-body');
 			if (!body) return;
 			if (mode === 'edit' && body.classList.contains('open')) return;
+			// 예외: 음악 노트 상단 재생 제어 패널(.bundle-music)은 훑어보기에서도
+			// 클릭(재생/이전/다음)을 받아야 한다. touchstart preventDefault 는
+			// 모바일에서 합성 click 을 없애 버튼이 죽으므로 이 영역만 건너뛴다.
+			// 나머지 본문(트랙 목록 등)은 다른 묶음 본문과 동일 — 탭=편집 진입.
+			if (t?.closest?.('.bundle-music')) return;
 			e.preventDefault();
 		};
 		el.addEventListener('mousedown', suppressEditorFocus, { capture: true });
