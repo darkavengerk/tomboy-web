@@ -827,6 +827,7 @@
 <div
 	class="editor-page"
 	class:terminal-connected={showTerminal || showKeys}
+	class:dedicated-fill={dedicatedKind && !showRawBundle}
 	style="--note-title-bar-h: {titleBarHeight}px"
 >
 	<!-- 저장 상태 + 노트북/액션 버튼을 에디터 위 간결한 바로.
@@ -1090,6 +1091,26 @@
 		flex: 1;
 		min-height: 0;
 		position: relative;
+	}
+
+	/* 전용 파일철 노트(`탭::`/`묶음::`) 풀-노트 뷰 — 본문 전체가 파일철 스택
+	   (NoteBundleStack/Cabinet, variant="dedicated")이고 이 스택은 컨테이너를
+	   .bundle-stack.dedicated{flex:1} 로 꽉 채우길 기대한다. 그런데 모바일
+	   .app-shell 은 body-scroll(min-height:100dvh — 정의된 높이 없음)이라 flex:1
+	   이 분배할 기준 높이가 없어 스택이 임베디드 본문 높이만큼 자라 화면을 넘긴다
+	   (첫 노트 본문만 보이고 아래 타이틀 바·내부 스크롤·하단이 뷰포트 밖으로 밀림).
+	   페이지를 뷰포트(- 고정 TopNav)로 못박아 정의된 높이를 주면 스택이 그 안을
+	   채우고 활성 본문이 내부에서 스크롤된다. 데스크탑은 .chromeless 가 이미
+	   position:fixed 로 높이를 한정하므로 무관. raw 편집(showRawBundle)은 일반
+	   노트라 제외 → body-scroll 유지. */
+	.editor-page.dedicated-fill {
+		flex: none;
+		height: calc(100dvh - var(--topnav-height, 0px));
+	}
+	/* 전용 노트는 하단 편집 툴바가 미렌더라 자리 확보용 padding-bottom 불필요 —
+	   스택이 뷰포트 바닥까지 닿게 0. */
+	.editor-page.dedicated-fill .editor-area {
+		padding-bottom: 0;
 	}
 
 	.editor-meta-bar {
