@@ -46,6 +46,26 @@
 	let submitting = $state(false);
 	let submitErr = $state<string | null>(null);
 	let togglingPublic = $state(false);
+	let copied = $state(false);
+
+	// 공유 링크 — uid 가 아니라 노트 제목 기반(/poll/<제목>). 게스트는 이 링크로
+	// 들어오면 제목→guid 로 풀려 같은 투표를 본다.
+	const shareUrl = $derived(
+		typeof window !== 'undefined' && spec.title
+			? `${window.location.origin}/poll/${encodeURIComponent(spec.title)}`
+			: ''
+	);
+
+	async function copyShareUrl(): Promise<void> {
+		if (!shareUrl) return;
+		try {
+			await navigator.clipboard.writeText(shareUrl);
+			copied = true;
+			setTimeout(() => (copied = false), 1500);
+		} catch {
+			/* 클립보드 거부(권한/비보안 컨텍스트) — 사용자가 입력칸에서 직접 복사 */
+		}
+	}
 
 	const resultsPublic = $derived(meta?.resultsPublic ?? false);
 	const results = $derived(aggregate(spec, ballots));
@@ -251,6 +271,21 @@
 		{/if}
 	{:else}
 		<!-- ── 호스트(나) ─────────────────────────────────────── -->
+		{#if shareUrl}
+			<div class="share-row">
+				<span class="share-label">공유 링크</span>
+				<input
+					class="share-url"
+					type="text"
+					readonly
+					value={shareUrl}
+					onclick={(e) => e.currentTarget.select()}
+				/>
+				<button class="copy-btn" type="button" onclick={copyShareUrl}>
+					{copied ? '복사됨 ✓' : '복사'}
+				</button>
+			</div>
+		{/if}
 		<div class="host-controls">
 			<label class="public-toggle">
 				<input type="checkbox" checked={resultsPublic} disabled={togglingPublic} onchange={togglePublic} />
@@ -437,6 +472,40 @@
 		font-size: 0.85rem;
 		color: #ef4444;
 		margin: 0.5rem 0;
+	}
+	.share-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin: 0.5rem 0;
+		flex-wrap: wrap;
+	}
+	.share-label {
+		font-size: 0.85rem;
+		font-weight: 600;
+		color: var(--text-muted, #777);
+		flex: none;
+	}
+	.share-url {
+		flex: 1 1 12rem;
+		min-width: 0;
+		padding: 0.45rem 0.6rem;
+		font-size: 0.85rem;
+		border: 1px solid var(--border-color, #ddd);
+		border-radius: 8px;
+		background: var(--bg-surface, #fafafa);
+		color: inherit;
+	}
+	.copy-btn {
+		flex: none;
+		padding: 0.45rem 0.8rem;
+		font-size: 0.85rem;
+		font-weight: 600;
+		color: #fff;
+		background: #3b82f6;
+		border: none;
+		border-radius: 8px;
+		cursor: pointer;
 	}
 	.host-controls {
 		margin: 0.5rem 0;

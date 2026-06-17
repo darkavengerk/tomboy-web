@@ -85,7 +85,11 @@
 		if (mode.value === 'visitor'
 				&& !page.url.pathname.startsWith('/welcome')
 				&& !isOauthCallback) {
-			void goto('/welcome', { replaceState: true });
+			// 공유 투표 딥링크는 게스트 가입 후 되돌아오도록 next 로 보존.
+			const deep = page.url.pathname.startsWith('/poll/')
+				? '?next=' + encodeURIComponent(page.url.pathname + page.url.search)
+				: '';
+			void goto('/welcome' + deep, { replaceState: true });
 			return;
 		}
 		if (mode.value === 'guest') {

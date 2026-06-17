@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { mode } from '$lib/stores/guestMode.svelte.js';
 	import { startAuth, isAuthenticated } from '$lib/sync/dropboxClient.js';
@@ -7,6 +8,13 @@
 	let name = $state('');
 	let error = $state('');
 	let busy = $state(false);
+
+	// 가입 후 돌아갈 곳(공유 투표 딥링크 등). 같은-오리진 경로만 허용.
+	function safeNext(): string {
+		const n = page.url.searchParams.get('next');
+		if (n && n.startsWith('/') && !n.startsWith('//') && !n.startsWith('/welcome')) return n;
+		return '';
+	}
 
 	// Defense-in-depth: if the user already has a Dropbox token or a stored
 	// guest name in localStorage, the welcome page is the wrong place to
@@ -20,7 +28,7 @@
 			return;
 		}
 		if (mode.getGuestName()) {
-			void goto('/notes', { replaceState: true });
+			void goto(safeNext() || '/notes', { replaceState: true });
 		}
 	});
 
@@ -37,7 +45,8 @@
 		// (it's `installed`-flag-gated) so guest mode would never wire its
 		// adapters. A reload re-initialises every module with the new
 		// localStorage state, including `db.ts` picking up `dbMode = 'guest'`.
-		window.location.href = '/';
+		// next 가 있으면(공유 투표 딥링크) 그쪽으로 부팅.
+		window.location.href = safeNext() || '/';
 	}
 
 	async function connectDropbox() {
