@@ -842,8 +842,13 @@
 		onfocus(guid);
 		const origX = x;
 		const origY = y;
+		// 임계(4px) 전까진 창을 안 움직인다 — 번들 타이틀/탭은 클릭(선택) 겸용이라
+		// 작은 지터로 창이 흔들리면 안 된다. 임계 넘으면 그때부터 드래그 이동.
+		let dragging = false;
 		startPointerDrag(e, {
 			onMove: (dx, dy) => {
+				if (!dragging && Math.hypot(dx, dy) < 4) return;
+				dragging = true;
 				onmove(guid, origX + dx, origY + dy);
 			}
 		});

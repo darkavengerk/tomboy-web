@@ -687,6 +687,8 @@
 	function handleTabClick(depth: number, idx: number, node: ResolvedNode) {
 		// 합성 click 이 touchend 직후 새어 들어오면 무시(더블탭=꺼내기 오인 방지).
 		if (performance.now() - touchHandledAt < 700) return;
+		// 창 드래그 직후의 click 은 무시(드래그로 탭이 바뀌지 않게).
+		if (performance.now() - windowDragMovedAt < 400) return;
 		selectTab(depth, idx, node);
 	}
 	function handleTabTouchEnd(e: Event, depth: number, idx: number, node: ResolvedNode) {
@@ -702,12 +704,27 @@
 		selectTab(depth, idx, node);
 	}
 
-	// 활성 탭(타이틀) pointerdown = 창 이동(전용 데스크탑). 호스트가 startPointerDrag
+	// 탭(타이틀) pointerdown = 창 이동(전용 데스크탑). 활성 탭뿐 아니라 **어느 탭이든**
+	// 잡고 끌면 창이 따라온다(타이틀 영역 전체가 드래그 핸들). 호스트가 startPointerDrag
 	// 으로 캡처하므로 currentTarget(= 탭) 에 캡처가 걸린다. ↗ 꺼내기/접속 버튼은
-	// 자체 stopEvt 로 여기 도달 전에 막혀 드래그를 시작하지 않는다. 더블클릭
-	// 꺼내기는 click 이벤트라 그대로(드래그는 preventDefault 만, click 은 살아 있음).
-	function handleTabPointerDown(e: PointerEvent, isActive: boolean) {
-		if (!onwindowdrag || !isActive) return;
+	// 자체 stopEvt 로 여기 도달 전에 막혀 드래그를 시작하지 않는다.
+	//
+	// 클릭(선택)과의 충돌: 드래그 후 pointerup 은 click 도 발생시켜 selectTab 이 탭을
+	// 바꿔 버린다. pointerup 에서 이동 거리(>4px)를 보고 "드래그였다"를 기록(windowDragMovedAt)
+	// → 직후 들어오는 click 을 handleTabClick 에서 무시한다. 작은 움직임=탭(선택)은 통과.
+	let windowDragMovedAt = 0;
+	function handleTabPointerDown(e: PointerEvent) {
+		if (!onwindowdrag || e.button !== 0) return;
+		const sx = e.clientX;
+		const sy = e.clientY;
+		const target = e.currentTarget as HTMLElement;
+		const onUp = (ev: PointerEvent) => {
+			target.removeEventListener('pointerup', onUp);
+			target.removeEventListener('pointercancel', onUp);
+			if (Math.hypot(ev.clientX - sx, ev.clientY - sy) > 4) windowDragMovedAt = performance.now();
+		};
+		target.addEventListener('pointerup', onUp);
+		target.addEventListener('pointercancel', onUp);
 		onwindowdrag(e);
 	}
 
@@ -850,11 +867,11 @@
 					animate:flip={{ duration: ready ? 220 : 0 }}
 					in:fade={{ duration: ready ? 150 : 0 }}
 					out:fade={{ duration: ready ? 120 : 0 }}
-					class:draggable={onwindowdrag && it.idx === activeIdx}
+					class:draggable={!!onwindowdrag}
 					use:direct={{
 						click: () => handleTabClick(depth, it.idx, it.node),
 						touchend: (e: Event) => handleTabTouchEnd(e, depth, it.idx, it.node),
-						pointerdown: (e: Event) => handleTabPointerDown(e as PointerEvent, it.idx === activeIdx)
+						pointerdown: (e: Event) => handleTabPointerDown(e as PointerEvent)
 					}}
 				>
 					{#if it.node.isLeaf && !it.node.broken && it.node.link}
