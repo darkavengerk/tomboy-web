@@ -446,6 +446,20 @@ never focuses the editor and `exitEdit` blurs, so exiting never raises the
 keyboard either. (The **tab** dropped this listener — a body tap focuses the
 editor right away since the tab is always in edit.)
 
+**Tab-strip tap keyboard fix (stack only).** Because the stack tab is always in
+edit, a **tab** tap (switching the active leaf) must still NOT raise the keyboard.
+On mobile the tap's synthetic mouse cascade (`mousedown`/`click`) drops — after the
+`animate:flip` layout shift — onto the embedded leaf editor *under the finger* → PM
+focus → keyboard. The bulkhead only stops these from bubbling **out** to the host
+PM; it can't stop the inner leaf editor catching its own ghost tap. Fix: the tab
+`<button>` handles `touchend` (`use:direct`) → `preventDefault()` kills the whole
+synthetic cascade, then `selectTab` runs directly. `handleTabClick` (mouse path)
+guards on `touchHandledAt` (700 ms) so a leaked synthetic click can't be misread as
+a double-tap (=eject). The `.tab-eject` ↗ span is a tab child so its `touchend`
+bubbles here too — `handleTabTouchEnd` reroutes to `handleTabEject` when the target
+is inside `.tab-eject` (else `preventDefault` would kill eject's own synthetic
+click). This is the stack analogue of the cabinet's `suppressEditorFocus`.
+
 ### Host-shell wiring (per session, inside `leafBody`)
 
 - **Terminal note** — when `termSpec` resolves and not connected, the body top
@@ -657,23 +671,34 @@ title-bar** in cabinet view (user choice) — 📌 pin is lost there, close is v
 the dchrome `✕`, and the resize handles still work; the title-bar (and pin)
 returns in raw mode.
 
-**Window-drag via the active title (replaces the lost title-bar drag).** Because
+**Window-drag via ANY title (replaces the lost title-bar drag).** Because
 the window title-bar is hidden, NoteWindow passes `onwindowdrag?: (e:
 PointerEvent) => void` (`handleBundleTitleDrag` → `startPointerDrag` snapshotting
-`x`/`y`) into the dedicated Stack/Cabinet. The bundle forwards the **active
-note's title** pointerdown so the host moves the window like a normal title-bar.
-Contract relies on synchronous dispatch: the bundle calls `onwindowdrag(e)`
+`x`/`y`) into the dedicated Stack/Cabinet. **Every** title (any tab / any bar) is
+a window-drag handle — not just the active one — so the whole title area moves the
+window. Contract relies on synchronous dispatch: the bundle calls `onwindowdrag(e)`
 inside its own `direct` pointerdown listener, so `e.currentTarget` (= the title
-element) is still valid when `startPointerDrag` captures on it. Wiring:
-- **Stack (`탭::`)** — `handleTabPointerDown` on the **active tab only** (`it.idx
-  === activeIdx`); `↗`/접속 self-`stopEvt` so they don't drag; double-click eject
-  still works (drag only `preventDefault`s, click survives). `.tab.draggable`
-  cursor.
-- **Cabinet (`묶음::`)** — browse: `handleListPointerDown` branches when `barIdx
-  === k` (active bar) → `onwindowdrag(e)` + early-return so swipe/tap tracking
-  never starts (`swipeY` stays null; `handleListPointerUp` early-returns on null
-  to avoid stale-state misfire). Edit: `handleEditHeaderDown` on the `.edit-header`
-  (← self-`stopEvt`). `.expanded-bar`/`.edit-header.draggable` grab cursor.
+element) is still valid when `startPointerDrag` captures on it.
+
+`handleBundleTitleDrag` has a **4px move threshold** (`Math.hypot(dx,dy) < 4` →
+no-op) so a tap never nudges the window — the title doubles as a click (select)
+target, and the bundle must distinguish drag-vs-tap on pointerup (the "key up"
+disambiguation):
+- **Stack (`탭::`)** — `handleTabPointerDown` fires on **any tab** (`isActive`
+  param dropped). On pointerdown it adds a one-shot `pointerup` listener that, if
+  the pointer moved >4px, stamps `windowDragMovedAt`; `handleTabClick` then
+  ignores any `click` within 400ms (so a drag doesn't switch tabs). Taps (<4px)
+  fall through to `selectTab`. `↗`/접속 self-`stopEvt` so they don't drag.
+  `.tab.draggable` cursor on all tabs.
+- **Cabinet (`묶음::`)** — `handleListPointerDown`: `onwindowdrag` present → call it
+  for **any bar**. Active bar (`barIdx === k`) = drag-only (no tap tracking,
+  `swipeY` stays null). Non-active bar → set `barWindowDrag=true` + tap tracking
+  (`downBarX/Y`, `swipeY`); `handleListPointerMove` records `barDragMoved` once
+  movement >4px and **skips browse-step** (window drag owns the gesture);
+  `handleListPointerUp` treats it as a tap (→ `moveTo`/double-tap eject) only if
+  `!barDragMoved && hypot(dx,dy) < 8`, else it was a window drag → no select.
+  Reset `barWindowDrag`/`barDragMoved` on up. Edit: `handleEditHeaderDown` on the
+  `.edit-header`. `.bundle-bar.draggable`/`.edit-header.draggable` grab cursor.
 Only provided by NoteWindow (desktop) — the mobile `note/[id]` route omits it, so
 mobile keeps the existing tap/swipe gestures untouched.
 

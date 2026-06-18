@@ -787,8 +787,13 @@
 
 	let swipeY: number | null = null;
 	let downBarIdx: number | null = null;
+	let downBarX = 0;
 	let downBarY = 0;
 	let swiped = false;
+	// 전용 데스크탑 — 비활성 바를 잡았을 때: 작은 움직임=탭(선택), 큰 움직임=창 이동.
+	// barWindowDrag = 그 추적 중, barDragMoved = 실제로 끌려 창이 움직임(→ 선택 억제).
+	let barWindowDrag = false;
+	let barDragMoved = false;
 	/** 훑어보기 모드에서 열린 본문 위 pointerdown — 탭이면 노트 열기(ctrl=편집) */
 	let downOnBody = false;
 	let lastTapIdx: number | null = null;
@@ -818,14 +823,27 @@
 		const bar = t.closest?.('.bundle-bar') as HTMLElement | null;
 		if (!bar) return;
 		const barIdx = bar.dataset.idx != null ? Number(bar.dataset.idx) : null;
-		// 전용 데스크탑 — 활성(펼친) 바를 잡으면 창 이동(타이틀바 대용). 스와이프/
-		// 탭 추적을 시작하지 않고 호스트에 넘긴다(접속 버튼·꺼내기 ↗ 는 위에서/자체
-		// stopEvt 로 이미 제외됨). swipeY 를 안 세팅 → pointermove/up 핸들러는 무동작.
-		if (onwindowdrag && barIdx === k) {
+		// 전용 데스크탑 — **어느 바든** 잡고 끌면 창 이동(타이틀바 대용). 타이틀이
+		// 상하로 퍼진 묶음에서 모든 바가 드래그 핸들. 접속 버튼·꺼내기 ↗ 는 위에서/자체
+		// stopEvt 로 이미 제외됨.
+		if (onwindowdrag) {
 			onwindowdrag(e);
+			// 활성 바는 이미 펼침 — 창 이동 전용(탭 추적 불필요). 비활성 바는 작은
+			// 움직임=선택(탭)/큰 움직임=창 이동을 pointerup 에서 가린다.
+			if (barIdx !== null && barIdx !== k) {
+				swipeY = e.clientY;
+				downBarX = e.clientX;
+				downBarY = e.clientY;
+				downBarIdx = barIdx;
+				swiped = false;
+				downOnBody = false;
+				barWindowDrag = true;
+				barDragMoved = false;
+			}
 			return;
 		}
 		swipeY = e.clientY;
+		downBarX = e.clientX;
 		downBarY = e.clientY;
 		swiped = false;
 		downOnBody = false;
@@ -838,6 +856,14 @@
 	}
 	function handleListPointerMove(e: PointerEvent) {
 		if (swipeY === null) return;
+		if (barWindowDrag) {
+			// 창 이동은 startPointerDrag(호스트)가 처리 — 여기선 끌렸는지만 기록해
+			// pointerup 에서 탭(선택)과 가른다. 브라우즈 스텝은 안 한다.
+			if (!barDragMoved && Math.hypot(e.clientX - downBarX, e.clientY - downBarY) > 4) {
+				barDragMoved = true;
+			}
+			return;
+		}
 		if (!wheelBrowse) return; // 긴 목차 — 스와이프 넘김 대신 네이티브 스크롤
 		if (swiped) return; // 한 스와이프 제스처 = 한 칸만(연속 드래그로 여러 칸 넘어가 UI 불안정 방지)
 		const dy = e.clientY - swipeY;
@@ -852,8 +878,12 @@
 		// swipeY 가 null — 이 핸들러는 그때 무동작(stale 상태로 오작동하지 않게).
 		if (swipeY === null) return;
 		// 캡처가 click 을 컨테이너로 retarget 하므로 click/dblclick 대신
-		// pointerup 에서 탭·더블탭을 수동 판정한다.
-		if (!swiped && Math.abs(pe.clientY - downBarY) < 8) {
+		// pointerup 에서 탭·더블탭을 수동 판정한다. 창 드래그였으면(barDragMoved)
+		// 선택 안 함 — 끌어서 창만 옮긴 것. 가로 이동도 잡으려 거리(hypot)로 본다.
+		const isTap = barWindowDrag
+			? !barDragMoved && Math.hypot(pe.clientX - downBarX, pe.clientY - downBarY) < 8
+			: Math.abs(pe.clientY - downBarY) < 8;
+		if (!swiped && isTap) {
 			if (downOnBody) {
 				// 훑어보기에서 열린 본문 탭 → 편집 모드 진입(단일 노트 뷰).
 				// 단독 열기는 편집 헤더의 꺼내기(↗). 포커스는 suppressEditorFocus
@@ -876,6 +906,8 @@
 		swipeY = null;
 		downBarIdx = null;
 		downOnBody = false;
+		barWindowDrag = false;
+		barDragMoved = false;
 	}
 
 	// --- 하단 리사이즈 핸들 -------------------------------------------------------
@@ -951,6 +983,7 @@
 					class:broken={e.broken}
 					class:expanded-bar={idx === k}
 					class:off
+					class:draggable={!!onwindowdrag}
 					data-idx={idx}
 				>
 					{#if !e.broken}
@@ -1275,6 +1308,13 @@
 	/* 편집 모드 — 활성 바를 한 단계 밝게 */
 	.bundle-stack:not(.browse) .bundle-bar.expanded-bar {
 		background: #3f8657;
+	}
+	/* 전용 데스크탑 — 모든 바가 창 드래그 핸들(타이틀 영역 전체). */
+	.bundle-bar.draggable {
+		cursor: grab;
+	}
+	.bundle-bar.draggable:active {
+		cursor: grabbing;
 	}
 	.bar-term-btn {
 		flex-shrink: 0;
