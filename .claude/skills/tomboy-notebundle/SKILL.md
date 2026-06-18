@@ -446,6 +446,20 @@ never focuses the editor and `exitEdit` blurs, so exiting never raises the
 keyboard either. (The **tab** dropped this listener — a body tap focuses the
 editor right away since the tab is always in edit.)
 
+**Tab-strip tap keyboard fix (stack only).** Because the stack tab is always in
+edit, a **tab** tap (switching the active leaf) must still NOT raise the keyboard.
+On mobile the tap's synthetic mouse cascade (`mousedown`/`click`) drops — after the
+`animate:flip` layout shift — onto the embedded leaf editor *under the finger* → PM
+focus → keyboard. The bulkhead only stops these from bubbling **out** to the host
+PM; it can't stop the inner leaf editor catching its own ghost tap. Fix: the tab
+`<button>` handles `touchend` (`use:direct`) → `preventDefault()` kills the whole
+synthetic cascade, then `selectTab` runs directly. `handleTabClick` (mouse path)
+guards on `touchHandledAt` (700 ms) so a leaked synthetic click can't be misread as
+a double-tap (=eject). The `.tab-eject` ↗ span is a tab child so its `touchend`
+bubbles here too — `handleTabTouchEnd` reroutes to `handleTabEject` when the target
+is inside `.tab-eject` (else `preventDefault` would kill eject's own synthetic
+click). This is the stack analogue of the cabinet's `suppressEditorFocus`.
+
 ### Host-shell wiring (per session, inside `leafBody`)
 
 - **Terminal note** — when `termSpec` resolves and not connected, the body top

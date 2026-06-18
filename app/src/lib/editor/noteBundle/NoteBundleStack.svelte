@@ -665,7 +665,7 @@
 	// 탭 클릭: 단일=선택(+drill), 더블=단독 열기(잎). 격벽 때문에 manual 더블 판정.
 	let lastTabKey: string | null = null;
 	let lastTabTime = 0;
-	function handleTabClick(depth: number, idx: number, node: ResolvedNode) {
+	function selectTab(depth: number, idx: number, node: ResolvedNode) {
 		const id = `${depth}:${idx}:${node.key}`;
 		const now = performance.now();
 		if (lastTabKey === id && now - lastTabTime < 300) {
@@ -677,6 +677,29 @@
 		lastTabTime = now;
 		if (!node.navigable) return;
 		setActive(pickPath(tree, activePath, depth, idx));
+	}
+
+	// 모바일: 탭 탭(touch) → 합성 마우스 캐스케이드(mousedown/click)가 flip 레이아웃
+	// 시프트로 탭 아래 임베디드 에디터에 떨어져 PM 포커스→키보드가 올라온다. 격벽은
+	// 합성 이벤트가 호스트로 새는 것만 막고 잎 에디터가 직접 받는 건 못 막는다.
+	// touchend 에서 preventDefault 로 합성 캐스케이드를 끊고 선택을 직접 처리한다.
+	let touchHandledAt = 0;
+	function handleTabClick(depth: number, idx: number, node: ResolvedNode) {
+		// 합성 click 이 touchend 직후 새어 들어오면 무시(더블탭=꺼내기 오인 방지).
+		if (performance.now() - touchHandledAt < 700) return;
+		selectTab(depth, idx, node);
+	}
+	function handleTabTouchEnd(e: Event, depth: number, idx: number, node: ResolvedNode) {
+		e.preventDefault();
+		e.stopPropagation();
+		touchHandledAt = performance.now();
+		// ↗ 꺼내기 span 은 탭의 자식 — 그 touchend 도 여기로 버블한다. preventDefault 가
+		// 꺼내기의 합성 click 을 죽이므로, 꺼내기 탭이면 선택 대신 직접 꺼낸다.
+		if ((e.target as HTMLElement | null)?.closest?.('.tab-eject')) {
+			handleTabEject(e, node);
+			return;
+		}
+		selectTab(depth, idx, node);
 	}
 
 	// 활성 탭(타이틀) pointerdown = 창 이동(전용 데스크탑). 호스트가 startPointerDrag
@@ -830,6 +853,7 @@
 					class:draggable={onwindowdrag && it.idx === activeIdx}
 					use:direct={{
 						click: () => handleTabClick(depth, it.idx, it.node),
+						touchend: (e: Event) => handleTabTouchEnd(e, depth, it.idx, it.node),
 						pointerdown: (e: Event) => handleTabPointerDown(e as PointerEvent, it.idx === activeIdx)
 					}}
 				>
