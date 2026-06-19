@@ -52,9 +52,9 @@ describe('parseDedicatedBundle — bundle(평면 엔트리)', () => {
 		const entries: BundleEntry[] = spec.entries;
 		// C 는 자식 D 가 있으므로 순수 카테고리 — C 자신은 엔트리에서 빠지고 D 의 category 로만.
 		expect(entries).toEqual([
-			{ title: 'A', category: null },
-			{ title: 'B', category: '프로젝트' },
-			{ title: 'D', category: 'C' }
+			{ title: 'A', category: null, srcTop: 1 },
+			{ title: 'B', category: '프로젝트', srcTop: 2 },
+			{ title: 'D', category: 'C', srcTop: 2 }
 		]);
 	});
 	it('제목 라인(블록 0)의 링크는 제외', () => {
@@ -63,22 +63,22 @@ describe('parseDedicatedBundle — bundle(평면 엔트리)', () => {
 			para(link('A'))
 		);
 		const spec = parseDedicatedBundle(d, 'bundle');
-		expect(spec.entries).toEqual([{ title: 'A', category: null }]);
+		expect(spec.entries).toEqual([{ title: 'A', category: null, srcTop: 1 }]);
 	});
 	it('부모 단락 없는 리스트 → 카테고리 null', () => {
 		const d = doc(title('묶음::x'), ul(pli(link('X')), pli(link('Y'))));
 		const spec = parseDedicatedBundle(d, 'bundle');
 		expect(spec.entries).toEqual([
-			{ title: 'X', category: null },
-			{ title: 'Y', category: null }
+			{ title: 'X', category: null, srcTop: 1 },
+			{ title: 'Y', category: null, srcTop: 1 }
 		]);
 	});
 	it('한 단락 안의 여러 링크 모두 수집', () => {
 		const d = doc(title('묶음::x'), para(link('A'), txt(', '), link('B')));
 		const spec = parseDedicatedBundle(d, 'bundle');
 		expect(spec.entries).toEqual([
-			{ title: 'A', category: null },
-			{ title: 'B', category: null }
+			{ title: 'A', category: null, srcTop: 1 },
+			{ title: 'B', category: null, srcTop: 1 }
 		]);
 	});
 });
@@ -134,8 +134,8 @@ describe('parseDedicatedBundle — 옵션 라인(본문 2번째 줄 `:높이:개
 		expect(spec.heightPct).toBe(50);
 		expect(spec.maxCount).toBe(10);
 		expect(spec.entries).toEqual([
-			{ title: 'A', category: null },
-			{ title: 'B', category: null }
+			{ title: 'A', category: null, srcTop: 2 },
+			{ title: 'B', category: null, srcTop: 3 }
 		]);
 	});
 	it('::10 → 높이 생략은 기본 100 유지, 개수만 10', () => {
@@ -143,7 +143,7 @@ describe('parseDedicatedBundle — 옵션 라인(본문 2번째 줄 `:높이:개
 		const spec = parseDedicatedBundle(d, 'bundle');
 		expect(spec.heightPct).toBe(100);
 		expect(spec.maxCount).toBe(10);
-		expect(spec.entries).toEqual([{ title: 'A', category: null }]);
+		expect(spec.entries).toEqual([{ title: 'A', category: null, srcTop: 2 }]);
 	});
 	it(':50 → 높이만, 개수 기본 5', () => {
 		const d = doc(title('묶음::x'), para(txt(':50')), para(link('A')));
@@ -167,15 +167,15 @@ describe('parseDedicatedBundle — 옵션 라인(본문 2번째 줄 `:높이:개
 		expect(spec.heightPct).toBe(100);
 		expect(spec.maxCount).toBe(5);
 		expect(spec.entries).toEqual([
-			{ title: 'A', category: null },
-			{ title: 'B', category: null }
+			{ title: 'A', category: null, srcTop: 1 },
+			{ title: 'B', category: null, srcTop: 2 }
 		]);
 	});
 	it('콜론만(:)·일반 텍스트는 옵션으로 소비하지 않음', () => {
 		const d = doc(title('묶음::x'), para(txt(':')), para(link('A')));
 		const spec = parseDedicatedBundle(d, 'bundle');
 		expect(spec.maxCount).toBe(5);
-		expect(spec.entries).toEqual([{ title: 'A', category: null }]);
+		expect(spec.entries).toEqual([{ title: 'A', category: null, srcTop: 2 }]);
 	});
 	it('tab 종류도 옵션 라인 제외하고 트리 파싱', () => {
 		const d = doc(title('탭::x'), para(txt(':50:10')), para(link('A')));
@@ -202,9 +202,9 @@ describe('buildSyntheticBundleSpec — 역참조 등 합성 목록', () => {
 		const spec = buildSyntheticBundleSpec(['가', '나', '다'], 'bundle');
 		expect(spec.kind).toBe('bundle');
 		expect(spec.entries).toEqual([
-			{ title: '가', category: null },
-			{ title: '나', category: null },
-			{ title: '다', category: null }
+			{ title: '가', category: null, srcTop: -1 },
+			{ title: '나', category: null, srcTop: -1 },
+			{ title: '다', category: null, srcTop: -1 }
 		]);
 		expect(spec.tree).toEqual([]);
 		expect(spec.checked).toBe(true);
@@ -226,8 +226,8 @@ describe('buildSyntheticBundleSpec — 역참조 등 합성 목록', () => {
 	it('공백/빈 제목은 trim 후 제외', () => {
 		const spec = buildSyntheticBundleSpec(['  가  ', '', '   ', '나'], 'bundle');
 		expect(spec.entries).toEqual([
-			{ title: '가', category: null },
-			{ title: '나', category: null }
+			{ title: '가', category: null, srcTop: -1 },
+			{ title: '나', category: null, srcTop: -1 }
 		]);
 	});
 

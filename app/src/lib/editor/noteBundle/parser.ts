@@ -41,6 +41,9 @@ export interface BundleEntry {
 	title: string;
 	/** 부모(상위 들여쓰기) 항목의 전체 타이틀 — 바에 우측정렬 표시. 없으면 null */
 	category: string | null;
+	/** 이 엔트리가 속한 최상위 구조 단위의 인덱스 — 드래그-드롭 삽입 경계 매핑용.
+	 *  in-body=최상위 listItem 인덱스, 전용=doc.content 블록 인덱스, 합성=-1. */
+	srcTop: number;
 }
 
 export interface BundleSpec {
@@ -239,9 +242,15 @@ function parseTree(list: PMNode): BundleNode[] {
 /** 리스트를 재귀 순회하며 엔트리 수집. category = 상위 항목의 타이틀(없으면 null).
  *  자식(중첩 리스트) 없는 항목만 자기 링크를 엔트리로 push. 자식 있는 항목은
  *  순수 카테고리 — 자기 링크는 무시하고 타이틀만 자식 category 로 넘긴다. */
-function parseListInto(list: PMNode, category: string | null, entries: BundleEntry[]): void {
-	list.forEach((li) => {
+function parseListInto(
+	list: PMNode,
+	category: string | null,
+	entries: BundleEntry[],
+	topIndex: number | null
+): void {
+	list.forEach((li, _off, idx) => {
 		if (li.type.name !== 'listItem' || li.childCount === 0) return;
+		const myTop = topIndex ?? idx;
 		const para = li.child(0);
 		const isPara = para.type.name === 'paragraph';
 		const ownTitle = isPara ? paragraphText(para) || null : null;
@@ -259,18 +268,18 @@ function parseListInto(list: PMNode, category: string | null, entries: BundleEnt
 			for (let ci = 0; ci < li.childCount; ci++) {
 				const c = li.child(ci);
 				if (c.type.name === 'bulletList' || c.type.name === 'orderedList') {
-					parseListInto(c, childCategory, entries);
+					parseListInto(c, childCategory, entries, myTop);
 				}
 			}
 		} else if (isPara) {
-			for (const t of collectLinks(para)) entries.push({ title: t, category });
+			for (const t of collectLinks(para)) entries.push({ title: t, category, srcTop: myTop });
 		}
 	});
 }
 
 function parseEntries(list: PMNode): BundleEntry[] {
 	const entries: BundleEntry[] = [];
-	parseListInto(list, null, entries);
+	parseListInto(list, null, entries, null);
 	return entries;
 }
 
@@ -405,7 +414,12 @@ function parseTreeJson(list: JSONNode): BundleNode[] {
 }
 
 /** 리스트(JSON)를 'bundle' 평탄 엔트리로 — parseListInto 의 JSON 판. */
-function parseListIntoJson(list: JSONNode, category: string | null, entries: BundleEntry[]): void {
+function parseListIntoJson(
+	list: JSONNode,
+	category: string | null,
+	entries: BundleEntry[],
+	topIndex: number
+): void {
 	for (const li of list.content ?? []) {
 		if (li.type !== 'listItem' || !li.content?.length) continue;
 		const para = li.content[0];
@@ -416,10 +430,10 @@ function parseListIntoJson(list: JSONNode, category: string | null, entries: Bun
 			// 순수 카테고리 — 자기 링크 무시, 타이틀을 자식 category 로.
 			const childCategory = ownTitle ?? category;
 			for (const c of li.content) {
-				if (isListJson(c)) parseListIntoJson(c, childCategory, entries);
+				if (isListJson(c)) parseListIntoJson(c, childCategory, entries, topIndex);
 			}
 		} else if (isPara) {
-			for (const t of collectLinksJson(para)) entries.push({ title: t, category });
+			for (const t of collectLinksJson(para)) entries.push({ title: t, category, srcTop: topIndex });
 		}
 	}
 }
@@ -487,17 +501,19 @@ function parseDedicatedEntries(doc: JSONNode, start = 1): BundleEntry[] {
 	const blocks = bodyBlocks(doc, start);
 	for (let i = 0; i < blocks.length; i++) {
 		const node = blocks[i];
+		const blockIndex = start + i; // doc.content 의 절대 인덱스
 		if (isTextblockJson(node)) {
 			const next = blocks[i + 1];
 			if (next && isListJson(next)) {
 				// 단락 = 순수 카테고리 — 자기 링크 무시, 타이틀만 자식 category 로.
-				parseListIntoJson(next, paragraphTextJson(node) || null, entries);
+				parseListIntoJson(next, paragraphTextJson(node) || null, entries, blockIndex);
 				i++; // 리스트 소비
 			} else {
-				for (const t of collectLinksJson(node)) entries.push({ title: t, category: null });
+				for (const t of collectLinksJson(node))
+					entries.push({ title: t, category: null, srcTop: blockIndex });
 			}
 		} else if (isListJson(node)) {
-			parseListIntoJson(node, null, entries);
+			parseListIntoJson(node, null, entries, blockIndex);
 		}
 	}
 	return entries;
@@ -552,6 +568,6 @@ export function buildSyntheticBundleSpec(titles: string[], kind: BundleKind): Bu
 		listPos: null,
 		listEnd: null,
 		tree: kind === 'tab' ? clean.map((t) => ({ label: t, link: t, children: [] })) : [],
-		entries: kind === 'bundle' ? clean.map((t) => ({ title: t, category: null })) : []
+		entries: kind === 'bundle' ? clean.map((t) => ({ title: t, category: null, srcTop: -1 })) : []
 	};
 }

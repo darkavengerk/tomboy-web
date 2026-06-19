@@ -73,7 +73,11 @@ const list = (...items: object[]) => ({ type: 'bulletList', content: items });
 const doc = (...blocks: object[]) => ({ type: 'doc', content: blocks });
 
 const leaf = (t: string): BundleNode => ({ label: t, link: t, children: [] });
-const ent = (title: string, category: string | null = null): BundleEntry => ({ title, category });
+const ent = (title: string, category: string | null = null, srcTop = 0): BundleEntry => ({
+	title,
+	category,
+	srcTop
+});
 
 // ── 'tab' (탭:) — 재귀 트리 ───────────────────────────────────────────────
 describe('parseNoteBundles — 탭(tree)', () => {
@@ -238,7 +242,7 @@ describe('parseNoteBundles — 묶음(entries)', () => {
 		const b = parseNoteBundles(ed.state.doc)[0];
 		expect(b.kind).toBe('bundle');
 		expect(b.heightPct).toBe(30);
-		expect(b.entries).toEqual([ent('노트A'), ent('노트B')]);
+		expect(b.entries).toEqual([ent('노트A', null, 0), ent('노트B', null, 1)]);
 		expect(b.tree).toEqual([]);
 	});
 
@@ -259,7 +263,7 @@ describe('parseNoteBundles — 묶음(entries)', () => {
 			)
 		);
 		const b = parseNoteBundles(ed.state.doc)[0];
-		expect(b.entries).toEqual([ent('A'), ent('B'), ent('C')]);
+		expect(b.entries).toEqual([ent('A', null, 0), ent('B', null, 0), ent('C', null, 1)]);
 	});
 
 	it('중첩 리스트 = 카테고리 평탄화: 자식 엔트리에 부모 타이틀 category', () => {
@@ -272,9 +276,9 @@ describe('parseNoteBundles — 묶음(entries)', () => {
 		);
 		const b = parseNoteBundles(ed.state.doc)[0];
 		expect(b.entries).toEqual([
-			ent('하위1', '프로젝트'),
-			ent('하위2', '프로젝트'),
-			ent('루트노트')
+			ent('하위1', '프로젝트', 0),
+			ent('하위2', '프로젝트', 0),
+			ent('루트노트', null, 1)
 		]);
 	});
 
@@ -433,5 +437,43 @@ describe('parseNoteBundles — 묶음 크기/개수 옵션', () => {
 		const b = parseNoteBundles(ed.state.doc)[0];
 		expect(b.kind).toBe('tab');
 		expect(b.heightPct).toBe(100);
+	});
+});
+
+describe('parseNoteBundles — srcTop (bundle 엔트리)', () => {
+	it('최상위 잎 항목 → srcTop = 최상위 listItem 인덱스', () => {
+		const ed = makeEditor(
+			doc(titleLine('호스트'), kw('묶음:50', true), list(li('A'), li('B'), li('C')))
+		);
+		const b = parseNoteBundles(ed.state.doc)[0];
+		expect(b.entries).toEqual([ent('A', null, 0), ent('B', null, 1), ent('C', null, 2)]);
+	});
+
+	it('한 줄 다중 링크 → 같은 srcTop 공유', () => {
+		const ed = makeEditor(
+			doc(
+				titleLine('호스트'),
+				kw('묶음:50', true),
+				list(li('A'), liNodes([link('B'), txt(' '), link('C')]))
+			)
+		);
+		const b = parseNoteBundles(ed.state.doc)[0];
+		expect(b.entries).toEqual([ent('A', null, 0), ent('B', null, 1), ent('C', null, 1)]);
+	});
+
+	it('중첩 카테고리 자식 → 부모 최상위 srcTop 상속', () => {
+		const ed = makeEditor(
+			doc(
+				titleLine('호스트'),
+				kw('묶음:50', true),
+				list(li('A'), liNodes([txt('분류')], list(li('자식1'), li('자식2'))))
+			)
+		);
+		const b = parseNoteBundles(ed.state.doc)[0];
+		expect(b.entries).toEqual([
+			ent('A', null, 0),
+			ent('자식1', '분류', 1),
+			ent('자식2', '분류', 1)
+		]);
 	});
 });
