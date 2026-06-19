@@ -16,6 +16,7 @@
 	import { getCachedNotes, onInvalidate } from '$lib/stores/noteListCache.js';
 	import { recentOpens } from './recentOpens.svelte.js';
 	import { activeNotebooks } from './activeNotebooks.svelte.js';
+	import { SLIPNOTE_WORKSPACE_INDEX } from './session.svelte.js';
 	import {
 		sidePanelLayout,
 		RAIL_MIN_WIDTH,
@@ -27,11 +28,10 @@
 	import RailMusicControls from '$lib/editor/musicNote/RailMusicControls.svelte';
 	import RailNowPlaying from '$lib/editor/musicNote/RailNowPlaying.svelte';
 
-	// Workspace 1 (top-right of the 2x2 grid) is the dedicated slipnote
-	// workspace: entering it auto-selects the [0] Slip-Box notebook and
-	// pins the .main panel open so the user can navigate slipnotes
-	// without having to hover the rail every time.
-	const SLIPNOTE_WORKSPACE_INDEX = 1;
+	// SLIPNOTE_WORKSPACE_INDEX (workspace 1, the dedicated slipnote
+	// workspace) is shared from session.svelte.ts so DesktopWorkspace and
+	// SidePanel agree on which workspace auto-selects [0] Slip-Box and pins
+	// .main open.
 
 	interface Props {
 		openGuids: Set<string>;
@@ -142,7 +142,10 @@
 	});
 
 	function handleNew() {
-		if (displayedNotebook === SLIPBOX_NOTEBOOK) {
+		// 슬립노트 작업공간(ws1)은 항상 슬립노트를 만든다. displayedNotebook만
+		// 보면 칩을 호버해 래치된 상태에서 새 노트를 누르면 일반 노트가 만들어져
+		// 버리므로, 작업공간(alwaysOpen)으로도 분기한다.
+		if (alwaysOpen || displayedNotebook === SLIPBOX_NOTEBOOK) {
 			// 슬립노트는 전용 생성 경로 유지(다이얼로그 미사용).
 			void createSlipNote().then((note) => {
 				void assignNotebook(note.guid, SLIPBOX_NOTEBOOK);
@@ -165,16 +168,6 @@
 	// 클릭할 수 있다. null=전체, ''=미분류, string=노트북. "없음"은 undefined.
 	let latched = $state<string | null | undefined>(undefined);
 
-	// .main에 표시할 노트북. 래치가 있으면 그것, 없으면 작업공간 기본값
-	// (슬립노트 ws=슬립박스, 그 외=최상단 활성 노트북, 없으면 전체=null).
-	const displayedNotebook = $derived(
-		latched !== undefined
-			? latched
-			: alwaysOpen
-				? SLIPBOX_NOTEBOOK
-				: (activeNotebooks.top(currentWorkspace) ?? null)
-	);
-
 	// 고정 스트립에 그릴 활성 노트북(삭제/이름변경된 키는 제외).
 	const pinnedNotebooks = $derived(
 		activeNotebooks
@@ -182,9 +175,22 @@
 			.filter((k) => k === '' || notebooks.includes(k))
 	);
 
+	// .main에 표시할 노트북. 래치가 있으면 그것, 없으면 작업공간 기본값
+	// (슬립노트 ws=슬립박스, 그 외=최상단 활성 노트북, 없으면 전체=null).
+	// 기본값은 raw top()이 아니라 pinnedNotebooks[0]에서 가져온다 — 삭제/이름변경된
+	// 노트북 키가 top에 남아 있으면 칩 없이 빈 목록에 갇히기 때문.
+	const displayedNotebook = $derived(
+		latched !== undefined
+			? latched
+			: alwaysOpen
+				? SLIPBOX_NOTEBOOK
+				: (pinnedNotebooks[0] ?? null)
+	);
+
 	// 무한 스크롤: 초기 50개, 바닥 근처에서 50개씩 증가.
 	const PAGE = 50;
 	let visibleCount = $state(PAGE);
+	let listEl = $state<HTMLElement | undefined>();
 	const visibleNotes = $derived(fullList.slice(0, visibleCount));
 
 	// 표시 노트북/검색어가 바뀌면 처음부터 다시. (visibleCount는 읽지 않고
@@ -214,6 +220,22 @@
 			});
 		}
 	}
+
+	// 목록이 뷰포트보다 짧아 스크롤바가 안 생기면(큰 모니터) onListScroll이
+	// 영영 안 떠서 51번째 이후가 닿지 않는다. 렌더 후 콘텐츠가 컨테이너를
+	// 안 넘으면 한 페이지씩 더 채운다. growScheduled 래치 + visibleCount<len
+	// 가드로 프레임당 한 번, 가득 차거나 소진될 때까지만 — 동기 무한루프 없음.
+	$effect(() => {
+		void visibleNotes;
+		if (!listEl || growScheduled) return;
+		if (listEl.scrollHeight <= listEl.clientHeight && visibleCount < fullList.length) {
+			growScheduled = true;
+			visibleCount += PAGE;
+			requestAnimationFrame(() => {
+				growScheduled = false;
+			});
+		}
+	});
 
 	// 작업공간 전환 시 호버 래치 해제: 레일 쿼드런트로 작업공간을 바꾸면
 	// 포인터가 aside 안에 머물러 onpointerleave가 안 떠서 이전 작업공간의
@@ -462,7 +484,7 @@
 
 		<RailNowPlaying />
 
-		<div class="list" onscroll={onListScroll}>
+		<div class="list" bind:this={listEl} onscroll={onListScroll}>
 			{#if loading}
 				<div class="empty">로딩 중...</div>
 			{:else if fullList.length === 0}

@@ -61,6 +61,13 @@ export const ADMIN_WINDOW_GUID = '__admin__';
 /** Prefix for ephemeral revision-history windows. Source note guid follows. */
 export const HISTORY_GUID_PREFIX = '__history__';
 
+/**
+ * Workspace 1 (top-right of the 2x2 grid) is the dedicated slipnote
+ * workspace: the SidePanel auto-selects [0] Slip-Box and pins .main open
+ * there. Shared so DesktopWorkspace can treat its canvas specially.
+ */
+export const SLIPNOTE_WORKSPACE_INDEX = 1;
+
 export interface DesktopWindowState {
 	guid: string;
 	kind: DesktopWindowKind;

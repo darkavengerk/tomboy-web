@@ -11,6 +11,7 @@
 		loadWallpaperMode,
 		setWallpaper,
 		DESKTOP_PINNED_Z,
+		SLIPNOTE_WORKSPACE_INDEX,
 		type WallpaperMode
 	} from './session.svelte.js';
 	import { sidePanelLayout } from './sidePanelLayout.svelte.js';
@@ -332,6 +333,9 @@
 		canvasDownAt = null;
 		if (!down) return; // 드래그가 캔버스 밖(창 등)에서 시작
 		if (Math.abs(e.clientX - down.x) > 4 || Math.abs(e.clientY - down.y) > 4) return; // 드래그였음
+		// 슬립노트 작업공간은 .main이 항상 열림(always-open)이라 잠금 토글이
+		// 화면엔 안 보이면서 lockedOpen만 켜져 다른 작업공간으로 새어나간다. 무시.
+		if (desktopSession.currentWorkspace === SLIPNOTE_WORKSPACE_INDEX) return;
 		activeNotebooks.toggleLockedOpen();
 	}
 </script>
