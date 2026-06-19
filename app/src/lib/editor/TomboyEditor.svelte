@@ -47,6 +47,7 @@
 import { createTitleIsolationPlugin } from "./titleIsolation/titleIsolationPlugin.js";
 import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 import { createAutomationNotePlugin } from "./automationNote/automationNotePlugin.js";
+import { createHueNotePlugin } from "./hueNote/hueNotePlugin.js";
 import { createRemarkableNotePlugin } from "./remarkableNote/remarkableNotePlugin.js";
 import { createNoteTitleDropPlugin } from "./noteTitleDrop/noteTitleDropPlugin.js";
 import { TomboyMusicNote } from "./musicNote/index.js";
@@ -612,6 +613,17 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 					name: "tomboyAutomationNote",
 					addProseMirrorPlugins() {
 						return [createAutomationNotePlugin()];
+					},
+				}),
+				Extension.create({
+					name: "tomboyHueNote",
+					addProseMirrorPlugins() {
+						return [
+							createHueNotePlugin({
+								getGuid: () => currentGuid ?? "",
+								oninternallink: (t) => oninternallink?.(t),
+							}),
+						];
 					},
 				}),
 				Extension.create({
