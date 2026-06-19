@@ -2185,6 +2185,20 @@ https://www.youtube.com/playlist?list=…  (재생목록: 일반 줄)</pre>
 						<li>주의: 퀴즈 정답은 노트 본문에 평문으로 들어가 기술에 밝은 참여자는 미리 알 수 있어요(가벼운 퀴즈용). 또 <b>투표 시작 후엔 문제를 바꾸지 마세요</b> — 표가 문제 순서로 묶여 어긋납니다.</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>조명 노트 (Hue)</summary>
+					<p class="info-text">같은 네트워크의 Philips Hue 허브를 노트로 제어합니다. 먼저 설정 → 터미널 탭에서 허브를 연결하세요.</p>
+					<pre class="snippet">조명::전체      ← 마스터(전구 가져오기·전체 on/off)
+조명::거실 등   본문 첫 줄: light:&lt;uuid&gt;
+조명::침실      본문 첫 줄: zone  + 전구 링크 리스트</pre>
+					<ul class="guide-list">
+						<li>마스터 노트의 <b>전구 가져오기</b>로 전구별 노트가 자동 생성됩니다.</li>
+						<li>상태는 <b>⟳</b>로 새로고침 — 물리 스위치/Hue 앱 변경은 자동 반영되지 않습니다.</li>
+						<li>존 노트: 본문에 전구 노트 링크를 적고 <b>[Hue에 반영]</b>으로 그룹을 만듭니다(양방향).</li>
+						<li>씬: 존 노트에서 적용/현재 상태 저장.</li>
+					</ul>
+				</details>
 			</section>
 
 			{:else if guideSubTab === 'editor'}
