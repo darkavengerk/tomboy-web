@@ -627,7 +627,9 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 					},
 				}),
 				TomboyMusicNote.configure({ getGuid: () => currentGuid ?? "" }),
-				TomboyMusicExtractNote,
+				TomboyMusicExtractNote.configure({
+					oninternallink: (t: string) => oninternallink?.(t),
+				}),
 				TomboySunoImport,
 				Extension.create({
 					name: "tomboySendListItem",
@@ -2506,6 +2508,25 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		cursor: pointer;
 	}
 	.tomboy-editor :global(.tomboy-music-extract-run:disabled) {
+		opacity: 0.6;
+		cursor: default;
+	}
+	.tomboy-editor :global(.tomboy-music-extract-makenote) {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3em;
+		margin-left: 0.5em;
+		padding: 0.1rem 0.55rem;
+		font-size: 0.8rem;
+		border: 1px solid var(--border, #ddd);
+		border-radius: 6px;
+		background: var(--surface, #fff);
+		color: var(--accent, #a05);
+		cursor: pointer;
+		vertical-align: middle;
+		user-select: none;
+	}
+	.tomboy-editor :global(.tomboy-music-extract-makenote:disabled) {
 		opacity: 0.6;
 		cursor: default;
 	}
