@@ -149,8 +149,8 @@
 			});
 			return;
 		}
-		const target =
-			displayedNotebook && displayedNotebook !== '' ? displayedNotebook : null;
+		// '' (미분류) and null (전체) both mean "no notebook" for a new note.
+		const target = displayedNotebook || null;
 		newNoteFlow.open({
 			notebook: target,
 			navigate: (n) => onopen(n.guid)
@@ -180,6 +180,14 @@
 			.list(currentWorkspace)
 			.filter((k) => k === '' || notebooks.includes(k))
 	);
+
+	// 작업공간 전환 시 호버 래치 해제: 레일 쿼드런트로 작업공간을 바꾸면
+	// 포인터가 aside 안에 머물러 onpointerleave가 안 떠서 이전 작업공간의
+	// 래치가 남는다. currentWorkspace만 읽고 latched는 쓰기만 하므로 루프 없음.
+	$effect(() => {
+		void currentWorkspace;
+		latched = undefined;
+	});
 
 	let resizingRail = $state(false);
 	let resizingMain = $state(false);
