@@ -43,7 +43,7 @@ describe('activeNotebooks', () => {
 	it('persists and reloads round-trip', async () => {
 		activeNotebooks.toggle(0, 'A');
 		activeNotebooks.toggle(2, 'X');
-		await new Promise((r) => setTimeout(r, 400)); // 300ms 디바운스 flush
+		await activeNotebooks._flushPersist(); // deterministic flush (no wall-clock wait)
 		const raw = await getSetting<Record<number, string[]>>('desktop:activeNotebooks');
 		expect(raw).toBeTruthy();
 

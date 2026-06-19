@@ -23,17 +23,21 @@ let lockedOpen = $state(false);
 let loaded = false;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 
+// Deep-copy to plain arrays so fake-indexeddb / structuredClone sees no
+// Svelte proxy wrappers when serialising.
+function buildSnapshot(): Record<number, string[]> {
+	const snapshot: Record<number, string[]> = {};
+	for (const [k, v] of Object.entries(sets)) {
+		snapshot[Number(k)] = [...v];
+	}
+	return snapshot;
+}
+
 function schedulePersist(): void {
 	if (persistTimer) clearTimeout(persistTimer);
 	persistTimer = setTimeout(() => {
 		persistTimer = null;
-		// Deep-copy to plain arrays so fake-indexeddb / structuredClone
-		// sees no Svelte proxy wrappers when serialising.
-		const snapshot: Record<number, string[]> = {};
-		for (const [k, v] of Object.entries(sets)) {
-			snapshot[Number(k)] = [...v];
-		}
-		void setSetting(STORAGE_KEY, snapshot);
+		void setSetting(STORAGE_KEY, buildSnapshot());
 	}, PERSIST_DEBOUNCE_MS);
 }
 
@@ -91,6 +95,15 @@ export const activeNotebooks = {
 			}
 			sets = clean;
 		}
+	},
+
+	/** Test-only: cancel any pending debounced persist and write now (awaitable). */
+	async _flushPersist(): Promise<void> {
+		if (persistTimer) {
+			clearTimeout(persistTimer);
+			persistTimer = null;
+		}
+		await setSetting(STORAGE_KEY, buildSnapshot());
 	},
 
 	_reset(): void {
