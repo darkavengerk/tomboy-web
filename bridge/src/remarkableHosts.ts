@@ -76,3 +76,8 @@ export function lookupRemarkableHost(alias: string): RemarkableHost | null {
 export function remarkableHostsConfigured(): boolean {
 	return table.size > 0;
 }
+
+/** 대시보드(`/status`)용 — 등록된 reMarkable 호스트 수. */
+export function remarkableHostCount(): number {
+	return table.size;
+}

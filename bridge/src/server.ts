@@ -20,6 +20,7 @@ import { handleAutomationRun } from './automation.js';
 import { handleRemarkableUpload } from './remarkableUpload.js';
 import { handleMusicExtract, handleMusicEnumerate, handleMusicChapters, handleSunoPlaylist } from './music.js';
 import { handleGpuStatus, handleGpuUnload } from './gpu.js';
+import { handleStatus } from './status.js';
 import { handleRemarkableWallpaper } from './remarkable.js';
 import { handleRemarkableFolders } from './remarkableFolders.js';
 import { handleRemarkableSendPdf } from './remarkableSendPdf.js';
@@ -60,6 +61,8 @@ const SUNO_MAX_PLAYLIST = Number(process.env.SUNO_MAX_PLAYLIST) || 100;
 // remote-LAN Ollama) can override it. `llm.ts` reads the same env var
 // independently — keep them in sync.
 const OLLAMA_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+// `/status` 대시보드 프로브용 — rag.ts 가 읽는 기본값과 동일하게 맞춘다.
+const RAG_SEARCH_URL = process.env.RAG_SEARCH_URL || 'http://localhost:8743/search';
 const HOSTS_FILE = process.env.BRIDGE_HOSTS_FILE;
 const REMARKABLE_HOSTS_FILE = process.env.BRIDGE_REMARKABLE_HOSTS_FILE;
 const SSH_HOSTS_FILE = process.env.BRIDGE_SSH_HOSTS_FILE;
@@ -201,6 +204,24 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 
 	if (url === '/gpu/unload' && req.method === 'POST') {
 		await handleGpuUnload(req, res, SECRET, OCR_SERVICE_URL, OLLAMA_URL);
+		return;
+	}
+
+	if (url === '/status' && req.method === 'GET') {
+		await handleStatus(req, res, {
+			secret: SECRET,
+			filesDir: BRIDGE_FILES_DIR,
+			publicBaseUrl: BRIDGE_PUBLIC_BASE_URL,
+			port: PORT,
+			services: [
+				{ name: 'ocr', url: OCR_SERVICE_URL, path: '/status', auth: true },
+				{ name: 'ollama', url: OLLAMA_URL, path: '/api/version' },
+				{ name: 'music', url: MUSIC_SERVICE_URL },
+				{ name: 'automation', url: AUTOMATION_SERVICE_URL },
+				{ name: 'claude', url: CLAUDE_SERVICE_URL },
+				{ name: 'rag', url: RAG_SEARCH_URL }
+			]
+		});
 		return;
 	}
 

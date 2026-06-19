@@ -52,6 +52,7 @@ import { createNoteTitleDropPlugin } from "./noteTitleDrop/noteTitleDropPlugin.j
 import { TomboyMusicNote } from "./musicNote/index.js";
 import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 import { TomboySunoImport } from "./sunoNote/index.js";
+import { TomboyBridgeNote } from "./bridgeNote/index.js";
 	import {
 		createSendListItemPlugin,
 		sendListItemPluginKey,
@@ -631,6 +632,7 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 					oninternallink: (t: string) => oninternallink?.(t),
 				}),
 				TomboySunoImport,
+				TomboyBridgeNote,
 				Extension.create({
 					name: "tomboySendListItem",
 					addProseMirrorPlugins() {
@@ -2494,7 +2496,8 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		cursor: default;
 	}
 
-	.tomboy-editor :global(.tomboy-music-extract-run) {
+	.tomboy-editor :global(.tomboy-music-extract-run),
+	.tomboy-editor :global(.tomboy-bridge-run) {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.3em;
@@ -2507,7 +2510,8 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		color: var(--accent, #a05);
 		cursor: pointer;
 	}
-	.tomboy-editor :global(.tomboy-music-extract-run:disabled) {
+	.tomboy-editor :global(.tomboy-music-extract-run:disabled),
+	.tomboy-editor :global(.tomboy-bridge-run:disabled) {
 		opacity: 0.6;
 		cursor: default;
 	}
