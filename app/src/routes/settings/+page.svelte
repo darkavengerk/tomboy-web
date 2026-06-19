@@ -1988,7 +1988,8 @@ SUNO:https://suno.com/playlist/&lt;id&gt;  (가져오기 → 플레이리스트 
 
 - https://www.youtube.com/watch?v=…      (단일 곡: 불릿)
 - Artist - Title                         (검색어도 가능)
-https://www.youtube.com/playlist?list=…  (재생목록: 일반 줄)</pre>
+https://www.youtube.com/playlist?list=…  (재생목록: 일반 줄)
+챕터:https://www.youtube.com/watch?v=…   (챕터 분할: '챕터:' 줄)</pre>
 					<ul class="guide-list">
 						<li>⟳ 는 <b>결과가 아직 없는 항목만</b> 처리해요. 소스를 더 추가하고 다시 눌러도
 							이미 받은 곡은 건너뜁니다.</li>
@@ -1996,7 +1997,12 @@ https://www.youtube.com/playlist?list=…  (재생목록: 일반 줄)</pre>
 						<li><b>재생목록/믹스</b>는 <b>불릿이 아닌 일반 텍스트 줄</b>에 URL을 적으세요. ⟳ 를 누르면
 							전체 곡을 추출해 그 줄 <b>바로 아래</b>에 <code>[ ]플레이리스트: …</code> 블록(헤더+곡 목록)을
 							만들어 줍니다. 그 블록을 통째로 복사해 <code>음악::</code> 노트에 붙이고 체크박스를 켜면 재생돼요.</li>
-						<li>재생목록은 한 번에 <b>최대 50곡</b>까지 받고, 초과하면 앞 50곡만 받은 뒤 안내해요.</li>
+						<li><b>긴 영상을 챕터별로 쪼개기</b>: 단일 곡은 <b>120MB</b> 상한이라 1~2시간짜리는 받다 끊겨요.
+							이때 영상에 <b>챕터(타임스탬프 구간)</b>가 있으면 <code>챕터:&lt;영상 URL&gt;</code> 형식의
+							<b>일반 텍스트 줄</b>로 적으세요. ⟳ 를 누르면 풀 영상을 받아 챕터마다 별도 곡으로 잘라
+							재생목록과 <b>똑같은</b> <code>[ ]플레이리스트: …</code> 블록을 바로 아래에 만들어 줍니다.
+							챕터가 없는 영상이면 통곡 한 개로 받아요.</li>
+						<li>재생목록/챕터는 한 번에 <b>최대 50곡(챕터)</b>까지 받고, 초과하면 앞 50개만 받은 뒤 안내해요.</li>
 						<li>유튜브 자동 <b>믹스(<code>RD…</code>)</b>는 접속할 때마다 곡이 조금씩 바뀌고 개수도 제한적이에요.
 							한 가수 곡을 확실히 모으려면 정규 재생목록(<code>list=PL…</code> 또는 앨범
 							<code>OLAK5uy…</code>)이 안정적입니다.</li>

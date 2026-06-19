@@ -64,4 +64,24 @@ describe('writePlaylistBlock', () => {
 		expect(text).toContain('[ ]플레이리스트: 폴백');
 		ed.destroy();
 	});
+
+	it('챕터 마커 줄(챕터:URL) 아래에도 같은 블록을 삽입하고 done 처리', () => {
+		const CHSRC = 'https://www.youtube.com/watch?v=ch1';
+		const ed = fullEditor(`<p>음악추출::x</p><p>챕터:${CHSRC}</p>`);
+		const wrote = writePlaylistBlock(ed.view, { source: CHSRC, label: '영상 제목', urls: [U1, U2] });
+		expect(wrote).toBe(true);
+		const note = parseExtractNote(ed.state.doc);
+		const ch = note.items.find((i) => i.kind === 'chapter');
+		expect(ch && ch.kind === 'chapter' && ch.done).toBe(true);
+		// 삽입된 블록은 재생목록과 동형(헤더 체크박스 + mp3 불릿) — 음악:: 호환은 위 재생목록 테스트가 보장.
+		expect(ed.state.doc.textContent).toContain('플레이리스트: 영상 제목');
+		ed.destroy();
+	});
+
+	it('챕터 줄에 이미 결과 헤더가 있으면 미삽입', () => {
+		const CHSRC = 'https://www.youtube.com/watch?v=ch1';
+		const ed = fullEditor(`<p>음악추출::x</p><p>챕터:${CHSRC}</p><p>플레이리스트: 기존</p><ul><li><p>${U1}</p></li></ul>`);
+		expect(writePlaylistBlock(ed.view, { source: CHSRC, label: '새로', urls: [U2] })).toBe(false);
+		ed.destroy();
+	});
 });

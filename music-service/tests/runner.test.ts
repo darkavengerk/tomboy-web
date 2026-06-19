@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { extract, enumerate } from '../src/runner.js';
+import { extract, enumerate, extractChapters } from '../src/runner.js';
 
 // args에서 --paths <dir>를 찾아 그 디렉토리에 mp3를 떨구고 종료코드로 닫는 가짜 spawn.
 function fakeSpawn(exitCode: number, title = 'Song') {
@@ -144,5 +144,119 @@ describe('enumerate', () => {
 	});
 	it('비정상 종료 → throw', async () => {
 		await expect(enumerate('https://yt/x?list=PL', { spawn: fakeSpawnJson(1, '') as never })).rejects.toThrow();
+	});
+});
+
+// 챕터 분할 가짜 spawn: 두 번째 `--paths chapter:<dir>` 에 챕터 mp3 들을, 첫 `--paths <dir>` 에
+// 풀 mp3 를 떨군다. chapterTitles 비면 챕터 디렉토리를 만들지 않아(챕터 없는 영상) 폴백 경로 검증.
+function fakeChapterSpawn(opts: { full: string; chapters: string[]; exit?: number }) {
+	return (_cmd: string, args: string[]) => {
+		const paths: string[] = [];
+		args.forEach((a, i) => { if (a === '--paths') paths.push(args[i + 1]); });
+		const fullDir = paths.find((p) => !p.startsWith('chapter:')) ?? '.';
+		const chapDir = (paths.find((p) => p.startsWith('chapter:')) ?? 'chapter:.').slice('chapter:'.length);
+		const child = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; kill: () => void };
+		child.stdout = new EventEmitter();
+		child.stderr = new EventEmitter();
+		child.kill = () => {};
+		queueMicrotask(() => {
+			const exit = opts.exit ?? 0;
+			if (exit === 0) {
+				writeFileSync(join(fullDir, `${opts.full}.mp3`), 'FULL');
+				if (opts.chapters.length > 0) {
+					mkdirSync(chapDir, { recursive: true });
+					opts.chapters.forEach((t) => writeFileSync(join(chapDir, `${t}.mp3`), 'CH'));
+				}
+			}
+			child.emit('close', exit);
+		});
+		return child as never;
+	};
+}
+
+const chDeps = (over: Partial<Parameters<typeof extractChapters>[1]> = {}) => ({
+	spawn: fakeChapterSpawn({ full: '풀 영상', chapters: ['001 인트로', '002 1악장', '003 2악장'] }) as never,
+	bridgeFilesUrl: 'http://bridge',
+	sharedToken: 'tok',
+	uploadFn: vi.fn(async (_b: Buffer, fn: string) => `http://bridge/files/uuid/${encodeURIComponent(fn)}`),
+	...over
+});
+
+describe('extractChapters', () => {
+	it('챕터별 mp3 → tracks(순서/제목) + label=풀 제목', async () => {
+		const d = chDeps();
+		const out = await extractChapters('https://yt/abc', d);
+		expect(out.label).toBe('풀 영상');
+		expect(out.total).toBe(3);
+		expect(out.truncated).toBe(false);
+		expect(out.tracks.map((t) => t.title)).toEqual(['001 인트로', '002 1악장', '003 2악장']);
+		expect(out.tracks).toHaveLength(3);
+		expect(d.uploadFn).toHaveBeenCalledTimes(3);
+	});
+
+	it('--split-chapters 인자 포함, chapter: 경로 라우팅', async () => {
+		let captured: string[] = [];
+		const rec = (cmd: string, args: string[]) => { captured = args; return fakeChapterSpawn({ full: 'F', chapters: ['001 A'] })(cmd, args); };
+		await extractChapters('https://yt/abc', chDeps({ spawn: rec as never }));
+		expect(captured).toContain('--split-chapters');
+		expect(captured.some((a) => a.startsWith('chapter:'))).toBe(true);
+		// 풀 다운로드 상한은 넉넉한 기본 1G.
+		const mi = captured.indexOf('--max-filesize');
+		expect(captured[mi + 1]).toBe('1G');
+	});
+
+	it('챕터 없는 영상 → 풀 곡 한 개로 폴백', async () => {
+		const d = chDeps({ spawn: fakeChapterSpawn({ full: '단일곡', chapters: [] }) as never });
+		const out = await extractChapters('https://yt/abc', d);
+		expect(out.total).toBe(1);
+		expect(out.tracks).toHaveLength(1);
+		expect(out.tracks[0].title).toBe('단일곡');
+		expect(out.label).toBe('단일곡');
+	});
+
+	it('maxChapters 상한으로 자르고 truncated=true', async () => {
+		const d = chDeps({
+			spawn: fakeChapterSpawn({ full: 'F', chapters: ['001 A', '002 B', '003 C'] }) as never,
+			maxChapters: 2
+		});
+		const out = await extractChapters('https://yt/abc', d);
+		expect(out.tracks).toHaveLength(2);
+		expect(out.total).toBe(3);
+		expect(out.truncated).toBe(true);
+	});
+
+	it('검색어(비-URL) → bad_source:not_a_url', async () => {
+		await expect(extractChapters('lofi mix', chDeps())).rejects.toThrow(/bad_source:not_a_url/);
+	});
+
+	it('reject 소스 → bad_source', async () => {
+		await expect(extractChapters('-x', chDeps())).rejects.toThrow(/bad_source/);
+	});
+
+	it('아무 파일 없이 종료 → no_output', async () => {
+		const noFile = (_cmd: string, _args: string[]) => {
+			const child = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; kill: () => void };
+			child.stdout = new EventEmitter();
+			child.stderr = new EventEmitter();
+			child.kill = () => {};
+			queueMicrotask(() => child.emit('close', 0));
+			return child as never;
+		};
+		await expect(extractChapters('https://yt/abc', chDeps({ spawn: noFile as never }))).rejects.toThrow('no_output');
+	});
+
+	it('max-filesize 초과(stdout 마커) → too_large', async () => {
+		const over = (_cmd: string, _args: string[]) => {
+			const child = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; kill: () => void };
+			child.stdout = new EventEmitter();
+			child.stderr = new EventEmitter();
+			child.kill = () => {};
+			queueMicrotask(() => {
+				child.stdout.emit('data', Buffer.from('File is larger than max-filesize (2000000000 bytes > 1073741824 bytes). Aborting.\n', 'utf8'));
+				child.emit('close', 0);
+			});
+			return child as never;
+		};
+		await expect(extractChapters('https://yt/abc', chDeps({ spawn: over as never }))).rejects.toThrow('too_large');
 	});
 });

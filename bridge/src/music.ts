@@ -18,6 +18,12 @@ export async function handleMusicEnumerate(req: IncomingMessage, res: ServerResp
 	return proxyMusic(req, res, secret, musicServiceUrl, '/enumerate', 120_000);
 }
 
+/** POST /music/chapters → desktop music-service /chapters (풀 영상 다운+분할, 느림).
+ *  /extract 와 동일하게 600 s 백스톱 — 긴 영상 통째 다운로드를 끊지 않도록. */
+export async function handleMusicChapters(req: IncomingMessage, res: ServerResponse, secret: string, musicServiceUrl: string): Promise<void> {
+	return proxyMusic(req, res, secret, musicServiceUrl, '/chapters', 600_000);
+}
+
 /**
  * 음악 서비스 공통 프록시. 클라 Bearer 검증 후 BRIDGE_SECRET 으로 재-Bearer 하여
  * upstream path 로 릴레이하고 응답을 그대로 파이프. /automation/run 패턴과 동일.

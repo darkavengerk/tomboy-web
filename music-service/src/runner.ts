@@ -17,6 +17,15 @@ export interface RunnerDeps {
 	uploadFn?: (mp3: Buffer, filename: string) => Promise<string>;
 }
 
+export interface ChapterTrack { url: string; title: string; }
+export interface ChaptersOk { label: string; tracks: ChapterTrack[]; total: number; truncated: boolean; }
+export interface ChaptersDeps extends RunnerDeps {
+	// 챕터 모드는 풀 영상 오디오를 통째로 받은 뒤 잘라야 하므로(분할은 postprocessor),
+	// 풀 다운로드 상한은 단일(maxFilesize)보다 넉넉히 잡는다. 잘린 챕터들은 자연히 작다.
+	maxChapterDownload?: string;
+	maxChapters?: number;
+}
+
 export async function extract(source: string, deps: RunnerDeps): Promise<ExtractOk> {
 	const resolved = resolveSource(source);
 	if (resolved.kind === 'reject') throw new Error(`bad_source:${resolved.reason}`);
@@ -37,11 +46,67 @@ export async function extract(source: string, deps: RunnerDeps): Promise<Extract
 	}
 }
 
+/**
+ * 챕터가 있는 영상을 챕터별 mp3 로 쪼개 각각 업로드한다. 챕터가 없으면 풀 곡 한 개로 폴백.
+ * 결과는 재생목록과 동형({label, tracks, total, truncated}) — 앱이 같은 플레이리스트 블록에 기록.
+ */
+export async function extractChapters(source: string, deps: ChaptersDeps): Promise<ChaptersOk> {
+	const resolved = resolveSource(source);
+	if (resolved.kind === 'reject') throw new Error(`bad_source:${resolved.reason}`);
+	// 챕터는 특정 영상 단위 — 검색어(ytsearch1:)는 챕터 개념이 없어 거부.
+	if (resolved.kind === 'search') throw new Error('bad_source:not_a_url');
+	const maxChapters = deps.maxChapters ?? 50;
+
+	const dir = await mkdtemp(join(tmpdir(), 'music-ch-'));
+	const chapDir = join(dir, 'chapters');
+	try {
+		await runYtdlpChapters(resolved.value, dir, chapDir, deps);
+
+		const fullFiles = (await readdir(dir)).filter((f) => f.toLowerCase().endsWith('.mp3')).sort();
+		let chapterFiles: string[] = [];
+		try {
+			chapterFiles = (await readdir(chapDir)).filter((f) => f.toLowerCase().endsWith('.mp3')).sort();
+		} catch {
+			/* 챕터 디렉토리 없음 = 챕터 없는 영상 */
+		}
+		const stripExt = (f: string) => f.replace(/\.mp3$/i, '');
+		const label = fullFiles.length
+			? stripExt(fullFiles[0])
+			: chapterFiles.length
+				? stripExt(chapterFiles[0]).replace(/^\d{3}\s+/, '')
+				: '챕터';
+
+		let picks: { path: string; title: string }[];
+		let total: number;
+		let truncated = false;
+		if (chapterFiles.length > 0) {
+			total = chapterFiles.length;
+			const capped = chapterFiles.slice(0, maxChapters);
+			truncated = total > maxChapters;
+			picks = capped.map((f) => ({ path: join(chapDir, f), title: stripExt(f) }));
+		} else {
+			// 챕터 없는 영상 → 풀 곡 한 개로 폴백(요청한 곡은 최소한 받게).
+			if (fullFiles.length === 0) throw new Error('no_output');
+			total = 1;
+			picks = [{ path: join(dir, fullFiles[0]), title: stripExt(fullFiles[0]) }];
+		}
+
+		const upload = deps.uploadFn ?? ((b, fn) => uploadToBridge(b, fn, deps.bridgeFilesUrl, deps.sharedToken));
+		const tracks: ChapterTrack[] = [];
+		for (const p of picks) {
+			const buf = await readFile(p.path);
+			const url = await upload(buf, `${p.title}.mp3`);
+			tracks.push({ url, title: p.title });
+		}
+		if (tracks.length === 0) throw new Error('no_output');
+		return { label, tracks, total, truncated };
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+}
+
 function runYtdlp(arg: string, dir: string, deps: RunnerDeps): Promise<void> {
-	const spawn = deps.spawn ?? nodeSpawn;
-	const bin = deps.ytdlpPath ?? 'yt-dlp';
-	const timeoutMs = deps.timeoutMs ?? 180_000;
-	const maxFilesize = deps.maxFilesize ?? '40M';
+	const maxFilesize = deps.maxFilesize ?? '120M';
 	const args = [
 		// NOTE: NO `--embed-thumbnail`. yt-dlp embeds the cover as an APIC frame at
 		// the FRONT of the ID3v2 tag, pushing the first MPEG sync frame deep into
@@ -56,6 +121,35 @@ function runYtdlp(arg: string, dir: string, deps: RunnerDeps): Promise<void> {
 		...(deps.ffmpegPath ? ['--ffmpeg-location', deps.ffmpegPath] : []),
 		'-o', '%(title)s.%(ext)s', '--paths', dir, arg
 	];
+	return spawnYtdlpDownload(args, deps);
+}
+
+/**
+ * 챕터 분할 다운로드. `--split-chapters` 로 풀 오디오를 받은 뒤 챕터별 mp3 로 쪼갠다.
+ * 챕터 파일은 `chapter:` 프리픽스로 chapDir 에, 풀 파일은 dir 에 분리 배치 →
+ * 호출부가 chapDir 유무로 챕터 유무를 판정. 풀 다운로드 상한은 maxChapterDownload(넉넉).
+ */
+function runYtdlpChapters(arg: string, dir: string, chapDir: string, deps: ChaptersDeps): Promise<void> {
+	const maxDownload = deps.maxChapterDownload ?? '1G';
+	const args = [
+		'-x', '--audio-format', 'mp3', '--embed-metadata',
+		'--no-playlist', '--no-exec', '--socket-timeout', '30',
+		'--split-chapters',
+		'--max-filesize', maxDownload,
+		...(deps.ffmpegPath ? ['--ffmpeg-location', deps.ffmpegPath] : []),
+		'--paths', dir, '--paths', `chapter:${chapDir}`,
+		'-o', '%(title)s.%(ext)s',
+		'-o', 'chapter:%(section_number)03d %(section_title)s.%(ext)s',
+		arg
+	];
+	return spawnYtdlpDownload(args, deps);
+}
+
+/** yt-dlp 다운로드 공통 실행 — too_large(stdout 마커) 분류 + 타임아웃 + close 처리. */
+function spawnYtdlpDownload(args: string[], deps: RunnerDeps): Promise<void> {
+	const spawn = deps.spawn ?? nodeSpawn;
+	const bin = deps.ytdlpPath ?? 'yt-dlp';
+	const timeoutMs = deps.timeoutMs ?? 180_000;
 	return new Promise((resolve, reject) => {
 		// stdout 도 캡처: yt-dlp 는 --max-filesize 초과 시 "larger than max-filesize ...
 		// Aborting." 을 stdout 에 찍고 종료코드 0 으로 끝낸다(파일 미생성). 이를 잡아

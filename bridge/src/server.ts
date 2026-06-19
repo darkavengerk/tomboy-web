@@ -18,7 +18,7 @@ import { handleOcrProxy } from './ocr.js';
 import { handleClaudeChat } from './claude.js';
 import { handleAutomationRun } from './automation.js';
 import { handleRemarkableUpload } from './remarkableUpload.js';
-import { handleMusicExtract, handleMusicEnumerate, handleSunoPlaylist } from './music.js';
+import { handleMusicExtract, handleMusicEnumerate, handleMusicChapters, handleSunoPlaylist } from './music.js';
 import { handleGpuStatus, handleGpuUnload } from './gpu.js';
 import { handleRemarkableWallpaper } from './remarkable.js';
 import { handleRemarkableFolders } from './remarkableFolders.js';
@@ -181,6 +181,11 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 
 	if (url === '/music/enumerate' && req.method === 'POST') {
 		await handleMusicEnumerate(req, res, SECRET, MUSIC_SERVICE_URL);
+		return;
+	}
+
+	if (url === '/music/chapters' && req.method === 'POST') {
+		await handleMusicChapters(req, res, SECRET, MUSIC_SERVICE_URL);
 		return;
 	}
 

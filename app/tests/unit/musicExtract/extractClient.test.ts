@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { extractOne, enumeratePlaylist, ExtractError } from '$lib/musicExtract/extractClient.js';
+import { extractOne, enumeratePlaylist, extractChapters, ExtractError } from '$lib/musicExtract/extractClient.js';
 
 vi.mock('$lib/editor/terminal/bridgeSettings.js', () => ({
 	getDefaultTerminalBridge: vi.fn(async () => 'https://bridge.example'),
@@ -106,4 +106,45 @@ it('enumeratePlaylist: label 없으면 재생목록 폴백', async () => {
 	globalThis.fetch = (async () => new Response(JSON.stringify({ entries: [{ url: 'https://yt/1', title: 'a' }], total: 1, truncated: false }), { status: 200 })) as unknown as typeof fetch;
 	const out = await enumeratePlaylist({ source: 'x' });
 	expect(out.label).toBe('재생목록');
+});
+
+it('extractChapters: 성공 응답 파싱 + Bearer/본문/URL', async () => {
+	let url = '', auth = '', body = '';
+	globalThis.fetch = (async (u: string, init: RequestInit) => {
+		url = String(u); auth = (init.headers as Record<string, string>).Authorization; body = String(init.body);
+		return new Response(JSON.stringify({ label: '영상', tracks: [{ url: 'https://bridge.example/files/x/1.mp3', title: '001 A' }, { url: 'https://bridge.example/files/x/2.mp3', title: '002 B' }], total: 2, truncated: false }), { status: 200 });
+	}) as unknown as typeof fetch;
+	const out = await extractChapters({ source: 'https://yt/abc' });
+	expect(out.label).toBe('영상');
+	expect(out.tracks).toHaveLength(2);
+	expect(out.total).toBe(2);
+	expect(url).toBe('https://bridge.example/music/chapters');
+	expect(auth).toBe('Bearer tok');
+	expect(JSON.parse(body)).toEqual({ source: 'https://yt/abc' });
+});
+
+it('extractChapters: 미설정이면 not_configured + fetch 미호출', async () => {
+	(bs.getTerminalBridgeToken as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+	const spy = vi.fn();
+	globalThis.fetch = spy as unknown as typeof fetch;
+	await expect(extractChapters({ source: 'x' })).rejects.toMatchObject({ kind: 'not_configured' });
+	expect(spy).not.toHaveBeenCalled();
+});
+
+it('extractChapters: 빈 tracks → upstream_error', async () => {
+	globalThis.fetch = (async () => new Response(JSON.stringify({ label: 'L', tracks: [], total: 0, truncated: false }), { status: 200 })) as unknown as typeof fetch;
+	await expect(extractChapters({ source: 'x' })).rejects.toMatchObject({ kind: 'upstream_error', detail: 'no_chapters' });
+});
+
+it.each([[401, 'unauthorized'], [413, 'too_large'], [500, 'upstream_error'], [400, 'bad_request']])(
+	'extractChapters 상태 %i → %s', async (status, kind) => {
+		globalThis.fetch = (async () => new Response(JSON.stringify({ error: 'e' }), { status })) as unknown as typeof fetch;
+		await expect(extractChapters({ source: 'x' })).rejects.toMatchObject({ kind });
+	}
+);
+
+it('extractChapters: label 없으면 챕터 폴백', async () => {
+	globalThis.fetch = (async () => new Response(JSON.stringify({ tracks: [{ url: 'https://yt/1', title: 'a' }], total: 1, truncated: false }), { status: 200 })) as unknown as typeof fetch;
+	const out = await extractChapters({ source: 'x' });
+	expect(out.label).toBe('챕터');
 });
