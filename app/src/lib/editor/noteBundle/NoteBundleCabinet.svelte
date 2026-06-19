@@ -59,7 +59,9 @@
 	import type { EditorView } from '@tiptap/pm/view';
 	import type { JSONContent } from '@tiptap/core';
 	import type { BundleSpec } from './parser.js';
-	import { writeBundleHeightPct, setBundleChecked } from './noteBundlePlugin.js';
+	import { writeBundleHeightPct, setBundleChecked, insertBundleListItemLink } from './noteBundlePlugin.js';
+	import { NOTE_TITLE_DND_MIME } from '../noteTitleDrop/noteTitleDropPlugin.js';
+	import { pushToast } from '$lib/stores/toast.js';
 	import {
 		windowWidth,
 		centeredWindow,
@@ -106,6 +108,10 @@
 		/** dedicated 데스크탑 창 — 활성 노트 타이틀(활성 바 / 편집 헤더) pointerdown 을
 		 *  넘기면 호스트가 창을 이동시킨다(전용 노트는 창 타이틀바가 없음). */
 		onwindowdrag?: (e: PointerEvent) => void;
+		/** dedicated(전용 노트) 드래그-드롭 — 호스트가 본문 JSON 에 링크 항목을
+		 *  삽입+저장. boundary=null=끝. in-body(view 있음)는 이 콜백 대신 플러그인
+		 *  으로 직접 삽입하므로 미사용. */
+		oninsertentry?: (boundary: number | null, title: string) => void;
 	}
 	let {
 		spec,
@@ -116,7 +122,8 @@
 		variant = 'inline',
 		onclose,
 		onraw,
-		onwindowdrag
+		onwindowdrag,
+		oninsertentry
 	}: Props = $props();
 	const dedicated = $derived(variant === 'dedicated');
 
@@ -142,6 +149,8 @@
 		broken: boolean;
 		/** spec.entries 인덱스 — #each 키 안정화용(중복 링크 구분) */
 		srcIndex: number;
+		/** 최상위 구조 단위 인덱스(파서 stamp) — 드롭 경계 매핑. */
+		srcTop: number;
 	}
 	const resolved = $derived.by<ResolvedEntry[]>(() => {
 		void titleEpoch;
@@ -154,7 +163,8 @@
 				category: e.category,
 				guid,
 				broken: guid === null,
-				srcIndex: i
+				srcIndex: i,
+				srcTop: e.srcTop
 			});
 		});
 		return out;
@@ -910,6 +920,88 @@
 		barDragMoved = false;
 	}
 
+	// --- 드래그-드롭(노트 추가) -------------------------------------------------
+	// 데스크탑 노트 드래그 핸들(NoteDragHandle)을 묶음 바 위로 드롭 → 그 경계의
+	// 최상위 리스트 위치에 새 내부링크 항목 추가. 바디(임베디드 에디터) 위 드롭은
+	// 건드리지 않는다(그 에디터 자체 드롭이 처리).
+	let dropActive = $state(false);
+	let dropTargetIdx = $state(-1);
+	let dropBefore = $state(true);
+
+	function clearDrop() {
+		if (dropActive) dropActive = false;
+		if (dropTargetIdx !== -1) dropTargetIdx = -1;
+	}
+
+	function dropTargetFromEvent(ev: DragEvent): { idx: number; topHalf: boolean } | null {
+		const barEl = (ev.target as HTMLElement | null)?.closest?.('.bundle-bar') as HTMLElement | null;
+		if (!barEl) return null;
+		const idx = Number(barEl.dataset.idx);
+		if (!Number.isFinite(idx) || idx < 0 || idx >= resolved.length) return null;
+		const r = barEl.getBoundingClientRect();
+		return { idx, topHalf: ev.clientY < r.top + r.height / 2 };
+	}
+
+	function boundaryFor(idx: number, topHalf: boolean): number | null {
+		const s = resolved[idx]?.srcTop ?? -1;
+		if (s < 0) return null;
+		if (topHalf) return s;
+		const tops = [...new Set(resolved.map((r) => r.srcTop))]
+			.filter((x) => x >= 0)
+			.sort((a, b) => a - b);
+		const j = tops.indexOf(s);
+		return j >= 0 && j + 1 < tops.length ? tops[j + 1] : null;
+	}
+
+	function handleListDragOver(ev: DragEvent) {
+		const dt = ev.dataTransfer;
+		if (!dt || !dt.types.includes(NOTE_TITLE_DND_MIME)) return;
+		if ((ev.target as HTMLElement | null)?.closest?.('.bundle-body')) {
+			clearDrop();
+			return;
+		}
+		const t = dropTargetFromEvent(ev);
+		if (!t) {
+			clearDrop();
+			return;
+		}
+		ev.preventDefault();
+		dt.dropEffect = 'copy';
+		dropActive = true;
+		dropTargetIdx = t.idx;
+		dropBefore = t.topHalf;
+	}
+
+	function handleListDragLeave(ev: DragEvent) {
+		if (!rootEl) return;
+		const to = ev.relatedTarget as Node | null;
+		if (to && rootEl.contains(to)) return;
+		clearDrop();
+	}
+
+	function handleListDrop(ev: DragEvent) {
+		const dt = ev.dataTransfer;
+		const t = dropTargetFromEvent(ev);
+		clearDrop();
+		if (!dt || !t) return;
+		const title = dt.getData(NOTE_TITLE_DND_MIME);
+		if (!title) return;
+		if ((ev.target as HTMLElement | null)?.closest?.('.bundle-body')) return;
+		ev.preventDefault();
+		const guid = lookupGuidByTitle(title);
+		if (guid !== null && guid === hostGuid) {
+			pushToast('자기 자신은 묶음에 추가할 수 없어요');
+			return;
+		}
+		if (resolved.some((r) => r.title === title)) {
+			pushToast('이미 묶음에 있는 노트예요');
+			return;
+		}
+		const boundary = boundaryFor(t.idx, t.topHalf);
+		if (view) insertBundleListItemLink(view, spec.ordinal, boundary, title);
+		else oninsertentry?.(boundary, title);
+	}
+
 	// --- 하단 리사이즈 핸들 -------------------------------------------------------
 	let resizeStartY = 0;
 	let resizeStartH = 0;
@@ -966,12 +1058,16 @@
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			class="bundle-list"
+			class:drop-active={dropActive}
 			use:direct={{
 				wheel: handleListWheel,
 				pointerdown: handleListPointerDown as (e: Event) => void,
 				pointermove: handleListPointerMove as (e: Event) => void,
 				pointerup: handleListPointerUp,
-				pointercancel: handleListPointerUp
+				pointercancel: handleListPointerUp,
+				dragover: handleListDragOver as (e: Event) => void,
+				dragleave: handleListDragLeave as (e: Event) => void,
+				drop: handleListDrop as (e: Event) => void
 			}}
 		>
 			{#each resolved as e, idx (e.srcIndex)}
@@ -984,6 +1080,8 @@
 					class:expanded-bar={idx === k}
 					class:off
 					class:draggable={!!onwindowdrag}
+					class:drop-before={dropActive && dropTargetIdx === idx && dropBefore}
+					class:drop-after={dropActive && dropTargetIdx === idx && !dropBefore}
 					data-idx={idx}
 				>
 					{#if !e.broken}
@@ -1464,5 +1562,16 @@
 	}
 	.bundle-edit-btn:hover {
 		opacity: 1;
+	}
+	.bundle-list.drop-active {
+		outline: 2px dashed #3f8657;
+		outline-offset: -2px;
+		border-radius: 6px;
+	}
+	.bundle-bar.drop-before {
+		box-shadow: inset 0 3px 0 0 #3f8657;
+	}
+	.bundle-bar.drop-after {
+		box-shadow: inset 0 -3px 0 0 #3f8657;
 	}
 </style>
