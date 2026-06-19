@@ -5,6 +5,7 @@ import { getSetting, setSetting, deleteSetting } from '$lib/storage/appSettings.
 import { pushToast } from '$lib/stores/toast.js';
 import { recentOpens } from './recentOpens.svelte.js';
 import { sidePanelLayout } from './sidePanelLayout.svelte.js';
+import { activeNotebooks } from './activeNotebooks.svelte.js';
 
 const STORAGE_KEY = 'desktop:session';
 const WALLPAPER_KEY = 'desktop:wallpaper';
@@ -579,7 +580,12 @@ export const desktopSession = {
 	async load(): Promise<void> {
 		if (loaded) return;
 		loaded = true;
-		await Promise.all([loadPersisted(), recentOpens.load(), sidePanelLayout.load()]);
+		await Promise.all([
+			loadPersisted(),
+			recentOpens.load(),
+			sidePanelLayout.load(),
+			activeNotebooks.load()
+		]);
 		if (current().windows.length === 0) {
 			const home = await getHomeNote();
 			if (home) this.openWindow(home.guid);
