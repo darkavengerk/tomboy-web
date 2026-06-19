@@ -5,6 +5,7 @@ import { getSetting, setSetting, deleteSetting } from '$lib/storage/appSettings.
 import { pushToast } from '$lib/stores/toast.js';
 import { recentOpens } from './recentOpens.svelte.js';
 import { sidePanelLayout } from './sidePanelLayout.svelte.js';
+import { activeNotebooks } from './activeNotebooks.svelte.js';
 
 const STORAGE_KEY = 'desktop:session';
 const WALLPAPER_KEY = 'desktop:wallpaper';
@@ -59,6 +60,13 @@ export const ADMIN_WINDOW_GUID = '__admin__';
 
 /** Prefix for ephemeral revision-history windows. Source note guid follows. */
 export const HISTORY_GUID_PREFIX = '__history__';
+
+/**
+ * Workspace 1 (top-right of the 2x2 grid) is the dedicated slipnote
+ * workspace: the SidePanel auto-selects [0] Slip-Box and pins .main open
+ * there. Shared so DesktopWorkspace can treat its canvas specially.
+ */
+export const SLIPNOTE_WORKSPACE_INDEX = 1;
 
 export interface DesktopWindowState {
 	guid: string;
@@ -579,7 +587,12 @@ export const desktopSession = {
 	async load(): Promise<void> {
 		if (loaded) return;
 		loaded = true;
-		await Promise.all([loadPersisted(), recentOpens.load(), sidePanelLayout.load()]);
+		await Promise.all([
+			loadPersisted(),
+			recentOpens.load(),
+			sidePanelLayout.load(),
+			activeNotebooks.load()
+		]);
 		if (current().windows.length === 0) {
 			const home = await getHomeNote();
 			if (home) this.openWindow(home.guid);

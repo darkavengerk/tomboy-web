@@ -11,9 +11,11 @@
 		loadWallpaperMode,
 		setWallpaper,
 		DESKTOP_PINNED_Z,
+		SLIPNOTE_WORKSPACE_INDEX,
 		type WallpaperMode
 	} from './session.svelte.js';
 	import { sidePanelLayout } from './sidePanelLayout.svelte.js';
+	import { activeNotebooks } from './activeNotebooks.svelte.js';
 	import { installModKeyListeners } from './modKeys.svelte.js';
 	import { extractNoteGuidFromText, openNoteByGuid } from './openByClipboard.js';
 	import SpreadOverlay from './spreadView/SpreadOverlay.svelte';
@@ -313,15 +315,41 @@
 			return;
 		}
 	}
+
+	// 빈 캔버스 배경 클릭 → SidePanel .main 잠금 열기/닫기 토글. 노트 창을
+	// 클릭하면 e.target이 창 내부라 currentTarget(.canvas)과 달라 무시된다.
+	// 벽지 div는 pointer-events:none이라 그 위 클릭도 target=.canvas로 도달.
+	//
+	// 드래그-끝 오토글 방지: pointerdown이 빈 캔버스에서 시작했고(창에서
+	// 드래그해 캔버스에서 놓으면 click이 공통조상=.canvas로 떠서 target===
+	// currentTarget이 됨), 이동량이 작을 때만 토글한다.
+	let canvasDownAt: { x: number; y: number } | null = null;
+	function onCanvasPointerDown(e: PointerEvent) {
+		canvasDownAt = e.target === e.currentTarget ? { x: e.clientX, y: e.clientY } : null;
+	}
+	function onCanvasClick(e: MouseEvent) {
+		if (e.target !== e.currentTarget) return;
+		const down = canvasDownAt;
+		canvasDownAt = null;
+		if (!down) return; // 드래그가 캔버스 밖(창 등)에서 시작
+		if (Math.abs(e.clientX - down.x) > 4 || Math.abs(e.clientY - down.y) > 4) return; // 드래그였음
+		// 슬립노트 작업공간은 .main이 항상 열림(always-open)이라 잠금 토글이
+		// 화면엔 안 보이면서 lockedOpen만 켜져 다른 작업공간으로 새어나간다. 무시.
+		if (desktopSession.currentWorkspace === SLIPNOTE_WORKSPACE_INDEX) return;
+		activeNotebooks.toggleLockedOpen();
+	}
 </script>
 
 <div class="desktop-root" style="--rail-width: {sidePanelLayout.railWidth}px;">
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
 		class="canvas"
 		aria-label="노트 작업 공간"
 		ondragover={onCanvasDragOver}
 		ondrop={onCanvasDrop}
+		onpointerdown={onCanvasPointerDown}
+		onclick={onCanvasClick}
 	>
 		{#if wallpaperUrl}
 			<div

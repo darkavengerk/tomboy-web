@@ -1,0 +1,40 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-19-desktop-sidepanel-rail-redesign.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: activeNotebooks 모듈 + 단위 테스트",
+      "status": "completed",
+      "description": "**Goal:** 작업공간별 활성 노트북 셋(영구) + 런타임 lockedOpen 런 모듈 TDD 구현.\n\n**Files:**\n- Create: app/src/lib/desktop/activeNotebooks.svelte.ts\n- Test: app/tests/unit/desktop/activeNotebooks.test.ts\n\n**Acceptance Criteria:**\n- toggle prepends new key / removes existing\n- list/top/isActive per-workspace\n- clear empties one ws only\n- persist+load round-trip\n- lockedOpen toggles, not persisted\n\n**Verify:** cd app && npx vitest run tests/unit/desktop/activeNotebooks.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/activeNotebooks.svelte.ts\", \"app/tests/unit/desktop/activeNotebooks.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/desktop/activeNotebooks.test.ts\", \"acceptanceCriteria\": [\"toggle prepends/removes\", \"per-workspace list/top/isActive\", \"clear one ws\", \"persist+load round-trip\", \"lockedOpen not persisted\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: activeNotebooks.load()를 세션 로드에 연결",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "**Goal:** desktopSession.load() Promise.all에 activeNotebooks.load() 추가.\n\n**Files:**\n- Modify: app/src/lib/desktop/session.svelte.ts:7, :582\n\n**Acceptance Criteria:**\n- load() awaited in Promise.all\n- svelte-check passes\n\n**Verify:** cd app && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/session.svelte.ts\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"load() awaited\", \"svelte-check passes\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: SidePanel — 호버 래치 + 표시 노트북 + 칩 토글 + 고정 스트립",
+      "status": "completed",
+      "blockedBy": [1],
+      "description": "**Goal:** selectedNotebook → 호버 래치 displayedNotebook 대체, 칩 클릭=고정 토글(전체=clear), 음악 밑 고정 스트립.\n\n**Files:**\n- Modify: app/src/lib/desktop/SidePanel.svelte\n\n**Acceptance Criteria:**\n- hover preview + latch revert to default\n- chip click toggles pin / 전체 clears\n- pinned strip below music, original chip stays green\n- viewing highlight on displayed chip\n- new-note targets displayed notebook\n- svelte-check passes\n\n**Verify:** cd app && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/SidePanel.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"hover preview + latch\", \"chip toggle / 전체 clear\", \"pinned strip + green active\", \"viewing highlight\", \"new-note target\", \"svelte-check\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: SidePanel — 무한 스크롤",
+      "status": "completed",
+      "blockedBy": [3],
+      "description": "**Goal:** 50개 캡 제거, 바닥 스크롤 시 +50, 표시 노트북/검색어 변경 시 리셋.\n\n**Files:**\n- Modify: app/src/lib/desktop/SidePanel.svelte\n\n**Acceptance Criteria:**\n- initial 50 + grows by 50 on bottom scroll\n- resets to 50 on notebook/query change\n- empty state only when fullList empty\n- svelte-check passes\n\n**Verify:** cd app && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/SidePanel.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"initial 50 + grow 50\", \"reset on change\", \"empty only when fullList empty\", \"svelte-check\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: 배경 클릭 잠금 열기 (SidePanel reveal + DesktopWorkspace 캔버스)",
+      "status": "completed",
+      "blockedBy": [4],
+      "description": "**Goal:** 빈 캔버스 클릭으로 .main 잠금 열기/닫기 토글.\n\n**Files:**\n- Modify: app/src/lib/desktop/SidePanel.svelte (reveal + CSS)\n- Modify: app/src/lib/desktop/DesktopWorkspace.svelte (canvas onclick)\n\n**Acceptance Criteria:**\n- empty canvas click toggles .main lock open/close\n- note window click ignored (e.target===currentTarget)\n- locked-open shows default list, hover latch overlays\n- svelte-check passes\n\n**Verify:** cd app && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/SidePanel.svelte\", \"app/src/lib/desktop/DesktopWorkspace.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"canvas click toggles lock\", \"window click ignored\", \"locked-open default + hover overlay\", \"svelte-check\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-19"
+}

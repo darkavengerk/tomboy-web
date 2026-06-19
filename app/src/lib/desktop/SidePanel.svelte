@@ -15,6 +15,8 @@
 	import { searchNotes } from '$lib/search/noteSearch.js';
 	import { getCachedNotes, onInvalidate } from '$lib/stores/noteListCache.js';
 	import { recentOpens } from './recentOpens.svelte.js';
+	import { activeNotebooks } from './activeNotebooks.svelte.js';
+	import { SLIPNOTE_WORKSPACE_INDEX } from './session.svelte.js';
 	import {
 		sidePanelLayout,
 		RAIL_MIN_WIDTH,
@@ -26,11 +28,10 @@
 	import RailMusicControls from '$lib/editor/musicNote/RailMusicControls.svelte';
 	import RailNowPlaying from '$lib/editor/musicNote/RailNowPlaying.svelte';
 
-	// Workspace 1 (top-right of the 2x2 grid) is the dedicated slipnote
-	// workspace: entering it auto-selects the [0] Slip-Box notebook and
-	// pins the .main panel open so the user can navigate slipnotes
-	// without having to hover the rail every time.
-	const SLIPNOTE_WORKSPACE_INDEX = 1;
+	// SLIPNOTE_WORKSPACE_INDEX (workspace 1, the dedicated slipnote
+	// workspace) is shared from session.svelte.ts so DesktopWorkspace and
+	// SidePanel agree on which workspace auto-selects [0] Slip-Box and pins
+	// .main open.
 
 	interface Props {
 		openGuids: Set<string>;
@@ -65,11 +66,10 @@
 	let allNotes: NoteData[] = $state(getCachedNotes() ?? []);
 	let loading = $state(getCachedNotes() === null);
 	let notebooks: string[] = $state([]);
-	let selectedNotebook = $state<string | null>(null);
 	let query = $state('');
 
-	const filteredNotes = $derived.by(() => {
-		const filtered = filterByNotebook(allNotes, selectedNotebook);
+	const fullList = $derived.by(() => {
+		const filtered = filterByNotebook(allNotes, displayedNotebook);
 		const q = query.trim();
 		const base = q ? searchNotes(filtered, q, 200).map((r) => r.note) : filtered;
 		// Sort key depends on the workspace:
@@ -78,7 +78,8 @@
 		//   an open record fall back to changeDate.
 		// - All other workspaces: changeDate directly, so the sidebar
 		//   mirrors the 전체 page's "최근 수정순" default.
-		// Cap at 50 so long histories don't balloon DOM.
+		// Returns the full sorted list; DOM size is bounded by visibleNotes
+		// (infinite scroll grows visibleCount on scroll-to-bottom).
 		const recents = recentOpens.map;
 		const useRecents = currentWorkspace === SLIPNOTE_WORKSPACE_INDEX;
 		const keyed = base.map((n) => {
@@ -98,7 +99,7 @@
 			return { n, key };
 		});
 		keyed.sort((a, b) => b.key - a.key);
-		return keyed.slice(0, 50).map((x) => x.n);
+		return keyed.map((x) => x.n);
 	});
 
 	// Minimized note entries (title resolved from the loaded corpus). Order is
@@ -141,34 +142,108 @@
 	});
 
 	function handleNew() {
-		if (selectedNotebook === SLIPBOX_NOTEBOOK) {
+		// 슬립노트 작업공간(ws1)은 항상 슬립노트를 만든다. displayedNotebook만
+		// 보면 칩을 호버해 래치된 상태에서 새 노트를 누르면 일반 노트가 만들어져
+		// 버리므로, 작업공간(alwaysOpen)으로도 분기한다.
+		if (alwaysOpen || displayedNotebook === SLIPBOX_NOTEBOOK) {
 			// 슬립노트는 전용 생성 경로 유지(다이얼로그 미사용).
 			void createSlipNote().then((note) => {
-				if (selectedNotebook) void assignNotebook(note.guid, selectedNotebook);
+				void assignNotebook(note.guid, SLIPBOX_NOTEBOOK);
 				onopen(note.guid);
 			});
 			return;
 		}
+		// '' (미분류) and null (전체) both mean "no notebook" for a new note.
+		const target = displayedNotebook || null;
 		newNoteFlow.open({
-			notebook: selectedNotebook ?? null,
+			notebook: target,
 			navigate: (n) => onopen(n.guid)
 		});
 	}
 
-	function selectNotebook(name: string | null) {
-		selectedNotebook = name;
-	}
+	const alwaysOpen = $derived(currentWorkspace === SLIPNOTE_WORKSPACE_INDEX);
 
-	// Workspace switch resets the notebook filter: ws 1 snaps to
-	// [0] Slip-Box, every other workspace snaps to "전체" (null). The
-	// effect re-runs only when currentWorkspace changes, so manual chip
-	// clicks within a workspace are respected until the next switch.
+	// 호버 래치: 마지막으로 호버한 노트북 칩 키(undefined=없음). 칩에서 목록으로
+	// 마우스를 옮겨도 패널(aside)을 벗어나기 전까지 유지되어 그 목록의 노트를
+	// 클릭할 수 있다. null=전체, ''=미분류, string=노트북. "없음"은 undefined.
+	let latched = $state<string | null | undefined>(undefined);
+
+	// 고정 스트립에 그릴 활성 노트북(삭제/이름변경된 키는 제외).
+	const pinnedNotebooks = $derived(
+		activeNotebooks
+			.list(currentWorkspace)
+			.filter((k) => k === '' || notebooks.includes(k))
+	);
+
+	// .main에 표시할 노트북. 래치가 있으면 그것, 없으면 작업공간 기본값
+	// (슬립노트 ws=슬립박스, 그 외=최상단 활성 노트북, 없으면 전체=null).
+	// 기본값은 raw top()이 아니라 pinnedNotebooks[0]에서 가져온다 — 삭제/이름변경된
+	// 노트북 키가 top에 남아 있으면 칩 없이 빈 목록에 갇히기 때문.
+	const displayedNotebook = $derived(
+		latched !== undefined
+			? latched
+			: alwaysOpen
+				? SLIPBOX_NOTEBOOK
+				: (pinnedNotebooks[0] ?? null)
+	);
+
+	// 무한 스크롤: 초기 50개, 바닥 근처에서 50개씩 증가.
+	const PAGE = 50;
+	let visibleCount = $state(PAGE);
+	let listEl = $state<HTMLElement | undefined>();
+	const visibleNotes = $derived(fullList.slice(0, visibleCount));
+
+	// 표시 노트북/검색어가 바뀌면 처음부터 다시. (visibleCount는 읽지 않고
+	// 쓰기만 하므로 effect 갱신 루프 없음.)
 	$effect(() => {
-		selectedNotebook =
-			currentWorkspace === SLIPNOTE_WORKSPACE_INDEX ? SLIPBOX_NOTEBOOK : null;
+		void displayedNotebook;
+		void query;
+		visibleCount = PAGE;
 	});
 
-	const alwaysOpen = $derived(currentWorkspace === SLIPNOTE_WORKSPACE_INDEX);
+	// 한 프레임당 한 번만 증가(rAF 래치). 빠른 플링은 재렌더 전에 scroll
+	// 이벤트를 수십 번 쏘는데, 그때마다 scrollHeight가 아직 안 커서 임계값을
+	// 통과 → visibleCount가 한 틱에 PAGE의 몇 배로 점프(대량 목록 일괄 렌더).
+	// 래치로 프레임당 PAGE 하나로 제한한다.
+	let growScheduled = false;
+	function onListScroll(e: Event) {
+		const el = e.currentTarget as HTMLElement;
+		if (growScheduled) return;
+		if (
+			el.scrollTop + el.clientHeight >= el.scrollHeight - 200 &&
+			visibleCount < fullList.length
+		) {
+			growScheduled = true;
+			visibleCount += PAGE;
+			requestAnimationFrame(() => {
+				growScheduled = false;
+			});
+		}
+	}
+
+	// 목록이 뷰포트보다 짧아 스크롤바가 안 생기면(큰 모니터) onListScroll이
+	// 영영 안 떠서 51번째 이후가 닿지 않는다. 렌더 후 콘텐츠가 컨테이너를
+	// 안 넘으면 한 페이지씩 더 채운다. growScheduled 래치 + visibleCount<len
+	// 가드로 프레임당 한 번, 가득 차거나 소진될 때까지만 — 동기 무한루프 없음.
+	$effect(() => {
+		void visibleNotes;
+		if (!listEl || growScheduled) return;
+		if (listEl.scrollHeight <= listEl.clientHeight && visibleCount < fullList.length) {
+			growScheduled = true;
+			visibleCount += PAGE;
+			requestAnimationFrame(() => {
+				growScheduled = false;
+			});
+		}
+	});
+
+	// 작업공간 전환 시 호버 래치 해제: 레일 쿼드런트로 작업공간을 바꾸면
+	// 포인터가 aside 안에 머물러 onpointerleave가 안 떠서 이전 작업공간의
+	// 래치가 남는다. currentWorkspace만 읽고 latched는 쓰기만 하므로 루프 없음.
+	$effect(() => {
+		void currentWorkspace;
+		latched = undefined;
+	});
 
 	let resizingRail = $state(false);
 	let resizingMain = $state(false);
@@ -228,8 +303,10 @@
 <aside
 	class="side-panel"
 	class:always-open={alwaysOpen}
+	class:locked-open={activeNotebooks.lockedOpen}
 	aria-label="노트 메뉴"
 	style="width: {sidePanelLayout.railWidth + sidePanelLayout.mainWidth}px;"
+	onpointerleave={() => (latched = undefined)}
 >
 	<!--
 		Rail: always visible, hosts only the workspace switcher. Its width
@@ -260,34 +337,54 @@
 
 		<RailMusicControls />
 
+		{#if pinnedNotebooks.length > 0}
+			<div class="rail-pinned" role="group" aria-label="고정한 노트북">
+				{#each pinnedNotebooks as key (key)}
+					<button
+						type="button"
+						class="rail-chip active"
+						class:viewing={displayedNotebook === key}
+						title={key === '' ? '미분류' : key}
+						onpointerenter={() => (latched = key)}
+						onclick={() => activeNotebooks.toggle(currentWorkspace, key)}
+					>{key === '' ? '미분류' : key}</button>
+				{/each}
+			</div>
+		{/if}
+
 		<div class="rail-chips" role="tablist" aria-label="노트북 필터">
 			<button
 				type="button"
 				role="tab"
 				class="rail-chip"
-				class:active={selectedNotebook === null}
-				aria-selected={selectedNotebook === null}
+				class:viewing={displayedNotebook === null}
+				aria-selected={displayedNotebook === null}
 				title="전체"
-				onclick={() => selectNotebook(null)}
+				onpointerenter={() => (latched = null)}
+				onclick={() => activeNotebooks.clear(currentWorkspace)}
 			>전체</button>
 			<button
 				type="button"
 				role="tab"
 				class="rail-chip"
-				class:active={selectedNotebook === ''}
-				aria-selected={selectedNotebook === ''}
+				class:active={activeNotebooks.isActive(currentWorkspace, '')}
+				class:viewing={displayedNotebook === ''}
+				aria-selected={displayedNotebook === ''}
 				title="미분류"
-				onclick={() => selectNotebook('')}
+				onpointerenter={() => (latched = '')}
+				onclick={() => activeNotebooks.toggle(currentWorkspace, '')}
 			>미분류</button>
 			{#each notebooks as nb (nb)}
 				<button
 					type="button"
 					role="tab"
 					class="rail-chip"
-					class:active={selectedNotebook === nb}
-					aria-selected={selectedNotebook === nb}
+					class:active={activeNotebooks.isActive(currentWorkspace, nb)}
+					class:viewing={displayedNotebook === nb}
+					aria-selected={displayedNotebook === nb}
 					title={nb}
-					onclick={() => selectNotebook(nb)}
+					onpointerenter={() => (latched = nb)}
+					onclick={() => activeNotebooks.toggle(currentWorkspace, nb)}
 				>{nb}</button>
 			{/each}
 		</div>
@@ -387,14 +484,14 @@
 
 		<RailNowPlaying />
 
-		<div class="list">
+		<div class="list" bind:this={listEl} onscroll={onListScroll}>
 			{#if loading}
 				<div class="empty">로딩 중...</div>
-			{:else if filteredNotes.length === 0}
+			{:else if fullList.length === 0}
 				<div class="empty">노트가 없습니다.</div>
 			{:else}
 				<ul>
-					{#each filteredNotes as n (n.guid)}
+					{#each visibleNotes as n (n.guid)}
 						<li>
 							<button
 								type="button"
@@ -541,6 +638,7 @@
 	.side-panel:hover .resize-handle.main-handle,
 	.side-panel:has(.main:focus-within) .resize-handle.main-handle,
 	.side-panel.always-open .resize-handle.main-handle,
+	.side-panel.locked-open .resize-handle.main-handle,
 	.resize-handle.main-handle.resizing {
 		pointer-events: auto;
 	}
@@ -583,6 +681,23 @@
 		border-color: #3a7a50;
 	}
 
+	/* 고정 스트립: 음악 컨트롤 밑, 노트북 칩 위. 같은 칩 스타일 재사용. */
+	.rail-pinned {
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 4px;
+		width: 100%;
+		padding: 0 6px;
+		flex-shrink: 0;
+	}
+
+	/* 현재 .main에 표시 중인 노트북 칩 강조(고정=녹색 배경과 구분되는 청록 테두리). */
+	.rail-chip.viewing {
+		border-color: #5a9;
+		box-shadow: inset 0 0 0 1px #5a9;
+	}
+
 	/* Main: revealed column to the right of the rail. When collapsed it is
 	   clipped away (not translated), so expanding reveals the hidden content
 	   growing out from behind the rail rather than sliding in as a block.
@@ -612,7 +727,8 @@
 	   panel open after the mouse leaves. */
 	.side-panel:hover .main,
 	.main:focus-within,
-	.side-panel.always-open .main {
+	.side-panel.always-open .main,
+	.side-panel.locked-open .main {
 		clip-path: inset(0 0 0 0);
 		pointer-events: auto;
 	}
