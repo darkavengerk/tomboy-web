@@ -68,7 +68,7 @@
 	let notebooks: string[] = $state([]);
 	let query = $state('');
 
-	const filteredNotes = $derived.by(() => {
+	const fullList = $derived.by(() => {
 		const filtered = filterByNotebook(allNotes, displayedNotebook);
 		const q = query.trim();
 		const base = q ? searchNotes(filtered, q, 200).map((r) => r.note) : filtered;
@@ -98,7 +98,7 @@
 			return { n, key };
 		});
 		keyed.sort((a, b) => b.key - a.key);
-		return keyed.slice(0, 50).map((x) => x.n);
+		return keyed.map((x) => x.n);
 	});
 
 	// Minimized note entries (title resolved from the loaded corpus). Order is
@@ -180,6 +180,29 @@
 			.list(currentWorkspace)
 			.filter((k) => k === '' || notebooks.includes(k))
 	);
+
+	// 무한 스크롤: 초기 50개, 바닥 근처에서 50개씩 증가.
+	const PAGE = 50;
+	let visibleCount = $state(PAGE);
+	const visibleNotes = $derived(fullList.slice(0, visibleCount));
+
+	// 표시 노트북/검색어가 바뀌면 처음부터 다시. (visibleCount는 읽지 않고
+	// 쓰기만 하므로 effect 갱신 루프 없음.)
+	$effect(() => {
+		void displayedNotebook;
+		void query;
+		visibleCount = PAGE;
+	});
+
+	function onListScroll(e: Event) {
+		const el = e.currentTarget as HTMLElement;
+		if (
+			el.scrollTop + el.clientHeight >= el.scrollHeight - 200 &&
+			visibleCount < fullList.length
+		) {
+			visibleCount += PAGE;
+		}
+	}
 
 	// 작업공간 전환 시 호버 래치 해제: 레일 쿼드런트로 작업공간을 바꾸면
 	// 포인터가 aside 안에 머물러 onpointerleave가 안 떠서 이전 작업공간의
@@ -427,14 +450,14 @@
 
 		<RailNowPlaying />
 
-		<div class="list">
+		<div class="list" onscroll={onListScroll}>
 			{#if loading}
 				<div class="empty">로딩 중...</div>
-			{:else if filteredNotes.length === 0}
+			{:else if fullList.length === 0}
 				<div class="empty">노트가 없습니다.</div>
 			{:else}
 				<ul>
-					{#each filteredNotes as n (n.guid)}
+					{#each visibleNotes as n (n.guid)}
 						<li>
 							<button
 								type="button"
