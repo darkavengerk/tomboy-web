@@ -281,6 +281,7 @@
 <aside
 	class="side-panel"
 	class:always-open={alwaysOpen}
+	class:locked-open={activeNotebooks.lockedOpen}
 	aria-label="노트 메뉴"
 	style="width: {sidePanelLayout.railWidth + sidePanelLayout.mainWidth}px;"
 	onpointerleave={() => (latched = undefined)}
@@ -703,7 +704,8 @@
 	   panel open after the mouse leaves. */
 	.side-panel:hover .main,
 	.main:focus-within,
-	.side-panel.always-open .main {
+	.side-panel.always-open .main,
+	.side-panel.locked-open .main {
 		clip-path: inset(0 0 0 0);
 		pointer-events: auto;
 	}

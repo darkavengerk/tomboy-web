@@ -14,6 +14,7 @@
 		type WallpaperMode
 	} from './session.svelte.js';
 	import { sidePanelLayout } from './sidePanelLayout.svelte.js';
+	import { activeNotebooks } from './activeNotebooks.svelte.js';
 	import { installModKeyListeners } from './modKeys.svelte.js';
 	import { extractNoteGuidFromText, openNoteByGuid } from './openByClipboard.js';
 	import SpreadOverlay from './spreadView/SpreadOverlay.svelte';
@@ -313,15 +314,24 @@
 			return;
 		}
 	}
+
+	// 빈 캔버스 배경 클릭 → SidePanel .main 잠금 열기/닫기 토글. 노트 창을
+	// 클릭하면 e.target이 창 내부라 currentTarget(.canvas)과 달라 무시된다.
+	// 벽지 div는 pointer-events:none이라 그 위 클릭도 target=.canvas로 도달.
+	function onCanvasClick(e: MouseEvent) {
+		if (e.target === e.currentTarget) activeNotebooks.toggleLockedOpen();
+	}
 </script>
 
 <div class="desktop-root" style="--rail-width: {sidePanelLayout.railWidth}px;">
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<div
 		class="canvas"
 		aria-label="노트 작업 공간"
 		ondragover={onCanvasDragOver}
 		ondrop={onCanvasDrop}
+		onclick={onCanvasClick}
 	>
 		{#if wallpaperUrl}
 			<div
