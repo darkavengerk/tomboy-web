@@ -1435,7 +1435,7 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 				<p class="info-text">
 					Philips Hue 허브를 위 브릿지를 통해 연결합니다. 같은 터미널 브릿지 URL과
 					토큰을 그대로 재사용하므로, 먼저 위에서 브릿지에 로그인되어 있어야 합니다.
-					허브를 연결하면 <code>hue::</code> 노트로 조명을 제어할 수 있습니다.
+					허브를 연결하면 <code>조명::</code> 노트로 조명을 제어할 수 있습니다.
 				</p>
 
 				{#if hueConnected}
@@ -2195,8 +2195,8 @@ https://www.youtube.com/playlist?list=…  (재생목록: 일반 줄)</pre>
 					<ul class="guide-list">
 						<li>마스터 노트의 <b>전구 가져오기</b>로 전구별 노트가 자동 생성됩니다.</li>
 						<li>상태는 <b>⟳</b>로 새로고침 — 물리 스위치/Hue 앱 변경은 자동 반영되지 않습니다.</li>
-						<li>존 노트: 본문에 전구 노트 링크를 적고 <b>[Hue에 반영]</b>으로 그룹을 만듭니다(양방향).</li>
-						<li>씬: 존 노트에서 적용/현재 상태 저장.</li>
+						<li>존 노트: 본문에 전구 노트 링크를 적고 <b>[Hue에 반영]</b>으로 그룹을 만듭니다.</li>
+						<li>씬: 존 노트에서 적용.</li>
 					</ul>
 				</details>
 			</section>
