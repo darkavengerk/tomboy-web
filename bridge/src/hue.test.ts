@@ -50,3 +50,18 @@ test('unauthorized without token', async () => {
   await handleHueClip(req, res, SECRET, async () => ({ status: 200, body: '{}' }));
   assert.equal(res.statusCode, 401);
 });
+
+test('clip rejects dotdot path traversal even with whitelisted first segment', async () => {
+  let called = false;
+  const hueRequest: HueRequestFn = async () => { called = true; return { status: 200, body: '{}' }; };
+  const { req, res } = mockReqRes({ ip: '1.2.3.4', appkey: 'K', method: 'GET', path: 'light/../../config' });
+  await handleHueClip(req, res, SECRET, hueRequest);
+  assert.equal(res.statusCode, 400);
+  assert.equal(called, false);
+});
+
+test('clip rejects unknown method', async () => {
+  const { req, res } = mockReqRes({ ip: '1.2.3.4', appkey: 'K', method: 'FAKE', path: 'light/abc' });
+  await handleHueClip(req, res, SECRET, async () => ({ status: 200, body: '{}' }));
+  assert.equal(res.statusCode, 400);
+});

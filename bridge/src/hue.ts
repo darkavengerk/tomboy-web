@@ -7,6 +7,7 @@ export interface HueRequestOpts { ip: string; path: string; method: string; appk
 export type HueRequestFn = (opts: HueRequestOpts) => Promise<HueRequestResult>;
 
 const ALLOWED_RESOURCES = new Set(['light', 'zone', 'room', 'grouped_light', 'scene', 'device']);
+const ALLOWED_METHODS = new Set(['GET', 'PUT', 'POST', 'DELETE']);
 const insecureAgent = new https.Agent({ rejectUnauthorized: false });
 
 /** 실제 Hue 호출 — 자체서명 인증서 통과. 테스트는 이 함수를 주입 교체한다. */
@@ -78,7 +79,11 @@ export async function handleHueClip(req: IncomingMessage, res: ServerResponse, s
   const method = typeof body.method === 'string' ? body.method.toUpperCase() : 'GET';
   const path = typeof body.path === 'string' ? body.path.replace(/^\/+/, '') : '';
   if (!ip || !appkey || !path) { res.writeHead(400, json()).end(JSON.stringify({ error: 'bad_request' })); return; }
-  if (!ALLOWED_RESOURCES.has(path.split('/')[0])) { res.writeHead(400, json()).end(JSON.stringify({ error: 'forbidden_path' })); return; }
+  if (!ALLOWED_METHODS.has(method)) { res.writeHead(400, json()).end(JSON.stringify({ error: 'bad_method' })); return; }
+  const segments = path.split('/');
+  if (!ALLOWED_RESOURCES.has(segments[0]) || segments.some((s) => s === '.' || s === '..' || s === '')) {
+    res.writeHead(400, json()).end(JSON.stringify({ error: 'forbidden_path' })); return;
+  }
   let result: HueRequestResult;
   try {
     result = await hueRequest({ ip, appkey, method, path: `clip/v2/resource/${path}`, body: 'body' in body ? body.body : undefined });
