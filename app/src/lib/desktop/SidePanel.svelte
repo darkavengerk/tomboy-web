@@ -78,7 +78,8 @@
 		//   an open record fall back to changeDate.
 		// - All other workspaces: changeDate directly, so the sidebar
 		//   mirrors the 전체 page's "최근 수정순" default.
-		// Cap at 50 so long histories don't balloon DOM.
+		// Returns the full sorted list; DOM size is bounded by visibleNotes
+		// (infinite scroll grows visibleCount on scroll-to-bottom).
 		const recents = recentOpens.map;
 		const useRecents = currentWorkspace === SLIPNOTE_WORKSPACE_INDEX;
 		const keyed = base.map((n) => {
@@ -194,13 +195,23 @@
 		visibleCount = PAGE;
 	});
 
+	// 한 프레임당 한 번만 증가(rAF 래치). 빠른 플링은 재렌더 전에 scroll
+	// 이벤트를 수십 번 쏘는데, 그때마다 scrollHeight가 아직 안 커서 임계값을
+	// 통과 → visibleCount가 한 틱에 PAGE의 몇 배로 점프(대량 목록 일괄 렌더).
+	// 래치로 프레임당 PAGE 하나로 제한한다.
+	let growScheduled = false;
 	function onListScroll(e: Event) {
 		const el = e.currentTarget as HTMLElement;
+		if (growScheduled) return;
 		if (
 			el.scrollTop + el.clientHeight >= el.scrollHeight - 200 &&
 			visibleCount < fullList.length
 		) {
+			growScheduled = true;
 			visibleCount += PAGE;
+			requestAnimationFrame(() => {
+				growScheduled = false;
+			});
 		}
 	}
 
