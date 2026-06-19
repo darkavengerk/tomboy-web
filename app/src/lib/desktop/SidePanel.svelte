@@ -616,6 +616,7 @@
 	.side-panel:hover .resize-handle.main-handle,
 	.side-panel:has(.main:focus-within) .resize-handle.main-handle,
 	.side-panel.always-open .resize-handle.main-handle,
+	.side-panel.locked-open .resize-handle.main-handle,
 	.resize-handle.main-handle.resizing {
 		pointer-events: auto;
 	}
