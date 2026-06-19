@@ -7,8 +7,8 @@ import {
 } from '$lib/noteTypes/registry.js';
 
 describe('noteTypes registry', () => {
-	it('plain 포함 14종을 노출한다', () => {
-		expect(NOTE_TYPES.length).toBe(14);
+	it('plain 포함 15종을 노출한다', () => {
+		expect(NOTE_TYPES.length).toBe(15);
 		expect(NOTE_TYPES[0].id).toBe('plain');
 		expect(getNoteType('terminal')?.label).toContain('터미널');
 	});
