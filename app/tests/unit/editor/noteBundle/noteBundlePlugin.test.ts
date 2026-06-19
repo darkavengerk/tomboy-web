@@ -10,6 +10,7 @@ import {
 	noteBundlePluginKey,
 	writeBundleHeightPct,
 	setBundleChecked,
+	insertBundleListItemLink,
 	type BundleSpec,
 	type StackController
 } from '$lib/editor/noteBundle';
@@ -346,5 +347,47 @@ describe('noteBundlePlugin', () => {
 		const lastUpdate = calls.updates[calls.updates.length - 1];
 		expect(lastUpdate).toBeDefined();
 		expect(lastUpdate.tree[0]?.label).toBe('B');
+	});
+});
+
+function entryTitles(ed: Editor): string[] {
+	const titles: string[] = [];
+	ed.state.doc.descendants((node) => {
+		const mark = node.marks?.find((m) => m.type.name === 'tomboyInternalLink');
+		if (mark) titles.push(String(mark.attrs.target));
+	});
+	return titles;
+}
+
+describe('insertBundleListItemLink', () => {
+	it('boundary=1 → 최상위 항목 1 앞에 새 링크 항목 삽입', () => {
+		const { mountStack } = makeStub();
+		const ed = makeEditor(doc(titleLine('호스트'), kw('묶음:50', true), list(li('A'), li('B'))), mountStack);
+		const ok = insertBundleListItemLink(ed.view as EditorView, 0, 1, '새노트');
+		expect(ok).toBe(true);
+		expect(entryTitles(ed)).toEqual(['A', '새노트', 'B']);
+	});
+
+	it('boundary=null → 마지막에 추가', () => {
+		const { mountStack } = makeStub();
+		const ed = makeEditor(doc(titleLine('호스트'), kw('묶음:50', true), list(li('A'), li('B'))), mountStack);
+		insertBundleListItemLink(ed.view as EditorView, 0, null, '끝노트');
+		expect(entryTitles(ed)).toEqual(['A', 'B', '끝노트']);
+	});
+
+	it('boundary=0 → 맨 앞, 새 항목은 tomboyInternalLink target 을 갖는다', () => {
+		const { mountStack } = makeStub();
+		const ed = makeEditor(doc(titleLine('호스트'), kw('묶음:50', true), list(li('A'))), mountStack);
+		insertBundleListItemLink(ed.view as EditorView, 0, 0, '대상');
+		expect(entryTitles(ed)).toEqual(['대상', 'A']);
+	});
+
+	it('알 수 없는 ordinal → false, 문서 불변', () => {
+		const { mountStack } = makeStub();
+		const ed = makeEditor(doc(titleLine('호스트'), kw('묶음:50', true), list(li('A'))), mountStack);
+		const before = ed.state.doc.toJSON();
+		const ok = insertBundleListItemLink(ed.view as EditorView, 99, 0, 'X');
+		expect(ok).toBe(false);
+		expect(ed.state.doc.toJSON()).toEqual(before);
 	});
 });

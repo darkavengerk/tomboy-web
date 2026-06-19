@@ -13,6 +13,7 @@ export {
 	createNoteBundlePlugin,
 	noteBundlePluginKey,
 	writeBundleHeightPct,
-	setBundleChecked
+	setBundleChecked,
+	insertBundleListItemLink
 } from './noteBundlePlugin.js';
 export type { NoteBundleOptions, StackController } from './noteBundlePlugin.js';

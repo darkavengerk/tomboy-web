@@ -882,6 +882,50 @@
 		});
 	}
 
+	// 전용 묶음 노트 — 드롭된 노트를 본문 JSON 에 새 내부링크 항목으로 삽입+저장.
+	// boundary = doc.content 블록 인덱스(그 앞에 삽입), null = 끝. 인접 bulletList
+	// 있으면 합쳐 단일-항목 리스트 난립을 막는다.
+	function handleBundleInsertEntry(boundary: number | null, title: string) {
+		if (!editorContent || !note) return;
+		const t = title.trim();
+		if (!t) return;
+		const newItem = {
+			type: 'listItem',
+			content: [
+				{
+					type: 'paragraph',
+					content: [{ type: 'text', text: t, marks: [{ type: 'tomboyInternalLink', attrs: { target: t } }] }]
+				}
+			]
+		};
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const content: any[] = [...((editorContent.content as any[]) ?? [])];
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const mergeInto = (block: any, atStart: boolean) => ({
+			...block,
+			content: atStart ? [newItem, ...(block.content ?? [])] : [...(block.content ?? []), newItem]
+		});
+		if (boundary === null) {
+			const last = content[content.length - 1];
+			if (last && last.type === 'bulletList') content[content.length - 1] = mergeInto(last, false);
+			else content.push({ type: 'bulletList', content: [newItem] });
+		} else {
+			const at = content[boundary];
+			const prev = content[boundary - 1];
+			if (at && at.type === 'bulletList') content[boundary] = mergeInto(at, true);
+			else if (prev && prev.type === 'bulletList') content[boundary - 1] = mergeInto(prev, false);
+			else content.splice(boundary, 0, { type: 'bulletList', content: [newItem] });
+		}
+		const newDoc = { ...editorContent, content };
+		editorContent = newDoc; // 즉시 재파싱 → 새 바
+		// 영속 — 전용 묶음 뷰엔 라이브 에디터가 없어 pendingDoc/flushSave 경로가
+		// 없다(직접 저장). 실패하면 화면엔 항목이 남으니 토스트로 알린다.
+		void updateNoteFromEditor(note.guid, newDoc).catch((e) => {
+			console.error('[handleBundleInsertEntry]', e);
+			pushToast('노트를 묶음에 추가하지 못했습니다.', { kind: 'error' });
+		});
+	}
+
 	function handlePinToggle(e: MouseEvent) {
 		e.stopPropagation();
 		desktopSession.togglePin(guid);
@@ -1198,6 +1242,7 @@
 						onraw={() => (showRawBundle = true)}
 						onclose={handleClose}
 						onwindowdrag={handleBundleTitleDrag}
+						oninsertentry={handleBundleInsertEntry}
 					/>
 				{:else}
 					<NoteBundleStack

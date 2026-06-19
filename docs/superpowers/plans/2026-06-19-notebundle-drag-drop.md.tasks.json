@@ -1,0 +1,46 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-19-notebundle-drag-drop.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Parser — srcTop on bundle entries",
+      "status": "completed",
+      "description": "**Goal:** Every BundleEntry carries srcTop (top-level structural unit index) for drag-drop boundary mapping.\n\n**Files:** Modify app/src/lib/editor/noteBundle/parser.ts; Test app/tests/unit/editor/noteBundle/parser.test.ts\n\n**Index space:** in-body=top-level listItem index (nested inherit); dedicated=absolute doc.content block index; synthetic=-1.\n\n**Acceptance Criteria:** BundleEntry.srcTop:number; flat leaves srcTop=listItem index; multi-link line shares srcTop; nested children inherit; dedicated=block index, synthetic=-1.\n\n**Verify:** cd app && npx vitest run tests/unit/editor/noteBundle/parser.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/noteBundle/parser.ts\", \"app/tests/unit/editor/noteBundle/parser.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/noteBundle/parser.test.ts\", \"acceptanceCriteria\": [\"BundleEntry has srcTop:number\", \"top-level leaves srcTop=listItem index\", \"multi-link line shares srcTop\", \"nested children inherit top srcTop\", \"dedicated=block index, synthetic=-1\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Plugin — insertBundleListItemLink export",
+      "status": "completed",
+      "description": "**Goal:** Plugin inserts listItem>paragraph>[[title]] into an in-body 묶음 bulletList at a top-level boundary via one PM transaction.\n\n**Files:** Modify app/src/lib/editor/noteBundle/noteBundlePlugin.ts, index.ts; Test app/tests/unit/editor/noteBundle/noteBundlePlugin.test.ts\n\n**Boundary:** number|null (number=listItem index to insert before; null=append).\n\n**Acceptance Criteria:** boundary=1 before item 1; boundary=null appends; new item has tomboyInternalLink target=title; false on bad ordinal/no list; ordinal re-lookup.\n\n**Verify:** cd app && npx vitest run tests/unit/editor/noteBundle/noteBundlePlugin.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/noteBundle/noteBundlePlugin.ts\", \"app/src/lib/editor/noteBundle/index.ts\", \"app/tests/unit/editor/noteBundle/noteBundlePlugin.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/editor/noteBundle/noteBundlePlugin.test.ts\", \"acceptanceCriteria\": [\"boundary=1 inserts before item 1\", \"boundary=null appends\", \"new item carries tomboyInternalLink target\", \"false on bad ordinal/no list\", \"ordinal re-lookup\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Cabinet — drop target + feedback + dispatch",
+      "status": "completed",
+      "blockedBy": [1, 2],
+      "description": "**Goal:** NoteBundleCabinet accepts a note drop on bars: highlight + insertion line on dragover; drop inserts at hovered boundary (in-body via plugin, dedicated via oninsertentry); self/dup skipped with toast.\n\n**Files:** Modify app/src/lib/editor/noteBundle/NoteBundleCabinet.svelte\n\n**Acceptance Criteria:** oninsertentry prop; ResolvedEntry.srcTop; dragover highlight+line; drop dispatches plugin or callback; self+dup skipped (toast); .bundle-body drop untouched.\n\n**Verify:** cd app && npm run check (0 errors) + manual (Task 6)\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/noteBundle/NoteBundleCabinet.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"oninsertentry prop\", \"ResolvedEntry.srcTop\", \"dragover highlight + insertion line\", \"drop dispatches plugin or callback\", \"self+dup skipped with toast\", \"body drop untouched\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: NoteWindow — dedicated host insert callback",
+      "status": "completed",
+      "blockedBy": [3],
+      "description": "**Goal:** Dedicated 묶음:: note window persists a dropped note by splicing a new internal-link list item into body JSON and saving.\n\n**Files:** Modify app/src/lib/desktop/NoteWindow.svelte\n\n**Acceptance Criteria:** handleBundleInsertEntry(boundary,title) builds listItem JSON + splices editorContent.content (merge adjacent bulletList else new list; null=append); sets editorContent + updateNoteFromEditor(note.guid,newDoc); oninsertentry on dedicated cabinet branch ONLY.\n\n**Verify:** cd app && npm run check (0 errors) + manual (Task 6)\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/NoteWindow.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"handleBundleInsertEntry JSON splice with merge rule\", \"set editorContent + updateNoteFromEditor\", \"oninsertentry on dedicated cabinet only\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: Docs + invariant amendments",
+      "status": "completed",
+      "blockedBy": [4],
+      "description": "**Goal:** Document the capability in 설정 가이드 and amend the view-layer/list-never-mutated invariant in CLAUDE.md + skill body.\n\n**Files:** Modify CLAUDE.md; .claude/skills/tomboy-notebundle/SKILL.md; app/src/routes/settings/+page.svelte\n\n**Acceptance Criteria:** CLAUDE.md row mentions desktop drag-drop add (묶음 only); skill invariant amended for single append; new guide-card under editor sub-tab (묶음/desktop only, bars only, dup/self ignored).\n\n**Verify:** grep -n 드래그 ...; cd app && npm run check (0 errors)\n\n```json:metadata\n{\"files\": [\"CLAUDE.md\", \".claude/skills/tomboy-notebundle/SKILL.md\", \"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"CLAUDE.md row updated\", \"skill invariant amended\", \"guide-card added under editor tab\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: Final verification",
+      "status": "completed",
+      "blockedBy": [1, 2, 3, 4, 5],
+      "description": "**Goal:** Whole-suite type-check + unit tests pass; manual desktop smoke confirms the four behaviors.\n\n**Files:** none (verification only)\n\n**Acceptance Criteria:** npm run check 0 errors; noteBundle unit tests pass; manual in-body drop works; manual dedicated drop persists; dup/self skipped; body drop untouched.\n\n**Verify:** cd app && npm run check && npm run test -- tests/unit/editor/noteBundle; then npm run dev manual smoke in /desktop\n\n```json:metadata\n{\"files\": [], \"verifyCommand\": \"cd app && npm run check && npm run test -- tests/unit/editor/noteBundle\", \"acceptanceCriteria\": [\"npm run check 0 errors\", \"noteBundle unit tests pass\", \"manual in-body drop works\", \"manual dedicated drop persists\", \"dup/self skipped\", \"body drop untouched\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-19"
+}

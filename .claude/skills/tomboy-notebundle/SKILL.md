@@ -54,12 +54,12 @@ sync see a normal checkbox + bullet list; the bundle never mutates the list.
 
 | File | Role |
 |------|------|
-| `lib/editor/noteBundle/parser.ts` | Pure `parseNoteBundles(doc): BundleSpec[]`. Atom-aware PMNode walk; **both keywords** (`탭:`→kind 'tab', `묶음:`→kind 'bundle'). Per kind it fills **either** `tree: BundleNode{label,link,children}` (tab, recursive — `parseTree`) **or** `entries: BundleEntry{title,category}` (bundle, flat — `parseEntries`); the other field stays `[]`. No IDB, no title index. **Also** the dedicated-note path: `dedicatedBundleKind(title)` (`탭::`/`묶음::` 접두 → kind, else null) + `parseDedicatedBundle(jsonDoc, kind): BundleSpec` (synthetic spec from the **whole body** — JSON-based twin of the PMNode walk; see 전용 노트 section). **And** `buildSyntheticBundleSpec(titles, kind): BundleSpec` — a flat synthetic spec straight from a title list (no doc), used by the 역참조 temporary bundle; same -1/null write-back convention as `parseDedicatedBundle`. |
+| `lib/editor/noteBundle/parser.ts` | Pure `parseNoteBundles(doc): BundleSpec[]`. Atom-aware PMNode walk; **both keywords** (`탭:`→kind 'tab', `묶음:`→kind 'bundle'). Per kind it fills **either** `tree: BundleNode{label,link,children}` (tab, recursive — `parseTree`) **or** `entries: BundleEntry{title,category}` (bundle, flat — `parseEntries`); the other field stays `[]`. No IDB, no title index. **Also** the dedicated-note path: `dedicatedBundleKind(title)` (`탭::`/`묶음::` 접두 → kind, else null) + `parseDedicatedBundle(jsonDoc, kind): BundleSpec` (synthetic spec from the **whole body** — JSON-based twin of the PMNode walk; see 전용 노트 section). **And** `buildSyntheticBundleSpec(titles, kind): BundleSpec` — a flat synthetic spec straight from a title list (no doc), used by the 역참조 temporary bundle; same -1/null write-back convention as `parseDedicatedBundle`. `BundleEntry` now carries `srcTop` (최상위 구조 단위 인덱스 — 드래그-드롭 삽입 경계 매핑). |
 | `lib/editor/noteBundle/noteBundlePlugin.ts` | ProseMirror plugin, **kind-agnostic**. Hide-list node decoration gated on `hasContent` (`tree.length \|\| entries.length`) + cached widget container per ordinal + `StackController` lifecycle. **Kind-change (탭↔묶음) on a live ordinal = destroy + remount** (`controllerKind` map). Checked → hides declaration line (`keywordPos..keywordEnd`) **and** list. Exports `writeBundleHeightPct` + `setBundleChecked` (Ctrl 편집 버튼 → 체크 해제). **No list mutation** (only the checkbox attr / `:N` digits). |
 | `lib/editor/noteBundle/stackMath.ts` | **Tab** tree-navigation — `firstNavPath`, `drillFrom`, `repairPath`, `stepPath` (bubbles to parent at level ends), `pickPath`, `nodesAtDepth`, `clampIndex`, `visibleTabs` (range-safe), `tabView`/`TAB_FIT_MAX`/`TAB_WINDOW` (active-centred window + `[+N]` badges). |
 | `lib/editor/noteBundle/cabinetMath.ts` | **Bundle** title-window algebra — `WINDOW_SIZE=5` (default), `windowWidth(n, max=5)`, `activeSlot(w)=floor(w/2)` (`ACTIVE_SLOT=activeSlot(5)=2`, back-compat const), `centeredWindow(active, n, max=5)` (active fixed at the **center slot** regardless of scroll direction, end-pinned), `firstValidIndex`/`nextValidIndex` (broken-skip), `bundleBox(heightPct, titleOnly, dedicated)` → `'dedicated'|'fit'|'grow'|'window'` (height/scroll mode; **fit/앞=100 wins over count** so `묶음:100:100` is fit, not page-scroll grow), `barCapacity(boxPx, barPx, reservePx)` (bars that physically fit a fixed box → caller clamps `maxBars`; `barPx<=0` → `Infinity` no-clamp). The `max` arg = `maxCount` (display count `:M`); `100` → caller passes `n` so the window = all. |
 | `lib/editor/noteBundle/NoteBundleStack.svelte` | **Tab** UI (kind 'tab'). `activePath` + recursive `tabLevel` snippet + keep-alive `EditorSession` map + barrier + **always-edit** (no browse/edit mode — strip always shown, active leaf always editable) + host-shell wiring. `variant='dedicated'` + nullable `view` + `onclose`/`onraw` for the full-note path. |
-| `lib/editor/noteBundle/NoteBundleCabinet.svelte` | **Bundle** UI (kind 'bundle'). Flat `resolved` entries + `k`(active)/`winStart`(5-bar window) + flex-grow drawer + same barrier / sessions / modes / host-shell wiring. Same `variant='dedicated'` extras. |
+| `lib/editor/noteBundle/NoteBundleCabinet.svelte` | **Bundle** UI (kind 'bundle'). Flat `resolved` entries + `k`(active)/`winStart`(5-bar window) + flex-grow drawer + same barrier / sessions / modes / host-shell wiring. Same `variant='dedicated'` extras. 바 드롭존 소유 — 노트 드래그-드롭 수신(바 위 드롭 → 리스트 항목 추가; `oninsertentry`/in-body는 `insertBundleListItemLink`). |
 | `lib/editor/noteBundle/index.ts` | Barrel (exports `BundleSpec`, `BundleNode`, `BundleEntry`, `BundleKind`, `dedicatedBundleKind`, `parseDedicatedBundle`, `buildSyntheticBundleSpec`). |
 | `lib/editor/noteBundle/BacklinkBundleOverlay.svelte` | **역참조 임시 묶음** — full-screen portal overlay (`--z-modal`). Gathers backlinkers (`getAllNotes` + link-mark scan, read-only) → `buildSyntheticBundleSpec(titles,'bundle')` → renders `NoteBundleCabinet variant="dedicated" view={null}` **without `onraw`**. Header `「제목」 역참조 N개` + ✕. `oninternallink` = host navigate(꺼내기). No persistence, no index touch. See 역참조 section. |
 | `lib/editor/TomboyEditor.svelte` | Wires the plugin (`enableNoteBundle`, default `true`). `mountStack` **branches on `spec.kind`** → mounts `NoteBundleCabinet` (bundle) or `NoteBundleStack` (tab), both with `EditorComponent: TomboyEditorSelf` + `$state` props (inline `variant`). |
@@ -588,6 +588,19 @@ default 5-wide but `maxCount`-variable) per the bundle use case — the old
 `clampWindow`/`stepWindow`/`initialWindow` band + eager-slide are gone. It is
 independent of `stackMath` (tab tree-nav).
 
+### 드래그-드롭으로 항목 추가 (데스크탑, 묶음 전용)
+
+`NoteBundleCabinet` owns the drop zone on its bars. The drag source is
+`NoteDragHandle` (desktop `NoteWindow` only), which sets MIME type
+`application/x-tomboy-note-title` to the dragged note's title. Dropping onto a
+bar resolves the insertion boundary from that bar's `srcTop` (the top-level
+structural unit index stored on each `BundleEntry`). Self-drops and duplicate
+entries are silently skipped. In-body bundles call `insertBundleListItemLink`
+(ProseMirror transaction into the host doc); dedicated-note bundles propagate via
+the host's `oninsertentry` callback (JSON splice + save). This is **묶음-only** —
+`NoteBundleStack` (탭) has no drop zone. Desktop-only — the drag handle exists
+only in `NoteWindow`.
+
 ## 전용 노트 (dedicated note — the whole note IS the cabinet)
 
 A note whose **title** starts `탭::` or `묶음::` opens not as an in-body widget
@@ -757,9 +770,12 @@ dedicated-note parser, and it's the simplest: a plain title list, no doc walk.
 
 ## Invariants
 
-- **View layer only — `.note` XML never restructured, list never mutated.**
-  Persisted state = checkbox `checked` + `:N` digits. `activePath`, mode,
-  sessions are ephemeral; reopening shows the first note.
+- **View layer — `.note` XML never restructured.** The list is read-only **except**
+  the desktop drag-drop add: dropping a note's drag handle onto a 묶음 cabinet
+  **appends a single internal-link list item** at the hovered top-level boundary
+  (in-body via `insertBundleListItemLink`, dedicated via the host's
+  `oninsertentry` JSON splice + save). No reorder, no delete, no edit of existing
+  items. `activePath`/mode/sessions stay ephemeral.
 - **Checked hides BOTH the declaration line and the list.** The declaration
   (checkbox + keyword paragraph, `keywordPos..keywordEnd`) gets the same
   `tomboy-note-bundle-hidden` node decoration as the list — space-saving, the
