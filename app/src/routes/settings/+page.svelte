@@ -66,8 +66,17 @@
 		setDefaultTerminalBridge,
 		loginBridge,
 		logoutBridge,
-		checkBridgeAuth
+		checkBridgeAuth,
+		bridgeToHttpBase,
+		getTerminalBridgeToken
 	} from '$lib/editor/terminal/bridgeSettings.js';
+	import { hueDiscover, huePair } from '$lib/hue/hueClient.js';
+	import {
+		getHueBridgeIp,
+		getHueAppKey,
+		setHueCredentials,
+		clearHueCredentials
+	} from '$lib/storage/hueSettings.js';
 	import {
 		getTerminalHistoryPanelOpenDesktop,
 		setTerminalHistoryPanelOpenDesktop,
@@ -147,6 +156,61 @@
 	let terminalBridgeAuthed = $state<boolean | null>(null); // null = unknown
 	let terminalBridgeBusy = $state(false);
 	let terminalBridgeMessage = $state('');
+
+	// ── Hue 조명 (전역 터미널 브릿지 URL+토큰 재사용) ────────────────────
+	let hueIp = $state('');
+	let hueCandidates = $state<Array<{ ip: string; id: string }>>([]);
+	let hueConnected = $state(false);
+	let hueMsg = $state('');
+
+	async function loadHueState(): Promise<void> {
+		hueIp = await getHueBridgeIp();
+		hueConnected = !!(await getHueAppKey());
+	}
+
+	async function hueBridgeCtx(): Promise<{ base: string; token: string } | null> {
+		const b = await getDefaultTerminalBridge();
+		const t = await getTerminalBridgeToken();
+		if (!b || !t) return null;
+		return { base: bridgeToHttpBase(b), token: t };
+	}
+
+	async function findHueBridges(): Promise<void> {
+		const ctx = await hueBridgeCtx();
+		if (!ctx) {
+			hueMsg = '먼저 터미널 브릿지를 연결하세요.';
+			return;
+		}
+		hueCandidates = await hueDiscover(ctx.base, ctx.token);
+		hueMsg = hueCandidates.length ? '' : '자동 발견 실패 — IP를 직접 입력하세요.';
+	}
+
+	async function connectHue(): Promise<void> {
+		const ctx = await hueBridgeCtx();
+		if (!ctx) {
+			hueMsg = '먼저 터미널 브릿지를 연결하세요.';
+			return;
+		}
+		if (!hueIp.trim()) {
+			hueMsg = 'IP를 입력하세요.';
+			return;
+		}
+		hueMsg = '허브의 링크 버튼을 누른 뒤 잠시 기다리세요…';
+		const r = await huePair(ctx.base, ctx.token, hueIp.trim());
+		if ('error' in r) {
+			hueMsg = r.error === 'link_button' ? '허브 링크 버튼을 누르고 다시 [연결]' : 'Hue 연결 실패';
+			return;
+		}
+		await setHueCredentials(hueIp.trim(), r.appkey, r.clientkey);
+		hueConnected = true;
+		hueMsg = '연결됨';
+	}
+
+	async function disconnectHue(): Promise<void> {
+		await clearHueCredentials();
+		hueConnected = false;
+		hueMsg = '연결 해제됨';
+	}
 
 	// ── 이미지 서버 토큰 ──────────────────────────────────────────────
 	let imageStorageToken = $state('');
@@ -678,6 +742,7 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 		imagesPath = getImagesPath();
 		void loadTerminalBridgeState();
 		void loadTerminalHistorySettings();
+		void loadHueState();
 		void getImageStorageToken().then((v) => (imageStorageToken = v));
 		void getClaudeDefaultSystem().then((v) => (claudeDefSystem = v));
 		void getClaudeDefaultModel().then((v) => (claudeDefModel = v));
@@ -1362,6 +1427,55 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 
 				{#if terminalBridgeMessage}
 					<p class="info-text small">{terminalBridgeMessage}</p>
+				{/if}
+			</section>
+
+			<section class="section">
+				<h2>Hue 조명</h2>
+				<p class="info-text">
+					Philips Hue 허브를 위 브릿지를 통해 연결합니다. 같은 터미널 브릿지 URL과
+					토큰을 그대로 재사용하므로, 먼저 위에서 브릿지에 로그인되어 있어야 합니다.
+					허브를 연결하면 <code>hue::</code> 노트로 조명을 제어할 수 있습니다.
+				</p>
+
+				{#if hueConnected}
+					<p class="info-text small">상태: <code>연결됨</code> — {hueIp}</p>
+					<button class="btn btn-secondary" onclick={disconnectHue}>연결 해제</button>
+				{:else}
+					<div class="profile-row">
+						<button class="btn btn-secondary profile-btn" onclick={findHueBridges}>
+							브릿지 찾기
+						</button>
+					</div>
+
+					{#if hueCandidates.length}
+						<div class="profile-row" style="flex-wrap: wrap; gap: 0.5rem;">
+							{#each hueCandidates as c (c.ip)}
+								<button
+									type="button"
+									class="btn btn-secondary"
+									onclick={() => (hueIp = c.ip)}
+								>
+									{c.ip}
+								</button>
+							{/each}
+						</div>
+					{/if}
+
+					<div class="path-row">
+						<input
+							class="path-input"
+							type="text"
+							placeholder="허브 IP (예: 192.168.0.50)"
+							bind:value={hueIp}
+							onkeydown={(e) => e.key === 'Enter' && connectHue()}
+						/>
+						<button class="btn btn-primary" onclick={connectHue}>연결</button>
+					</div>
+				{/if}
+
+				{#if hueMsg}
+					<p class="info-text small">{hueMsg}</p>
 				{/if}
 			</section>
 
