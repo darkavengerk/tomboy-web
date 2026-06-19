@@ -66,6 +66,11 @@ export function lookupSshHost(alias: string): SshHostAlias | null {
 	return table.get(alias) ?? null;
 }
 
+/** 대시보드(`/status`)용 — 등록된 SSH 별칭 수. */
+export function sshHostCount(): number {
+	return table.size;
+}
+
 /**
  * 타깃 host가 등록된 별칭이면 alias 엔트리로 치환한다. 노트가 명시한
  * user/port는 별칭값보다 우선 보존한다(ssh://me@phone:9999 → me/9999 유지).

@@ -52,6 +52,7 @@ Most subsystems have dedicated skills — invoke via the `Skill` tool when worki
 | `tomboy-remarkable-send` | 노트 → PDF 번들(forward + backward 트리 + 이미지/차트) → 브릿지 SSH → reMarkable xochitl | `lib/remarkable/`, `bridge/src/remarkableSendPdf.ts` |
 | `tomboy-notebundle` | `[체크박스]탭:N`/`묶음:N` + 내부링크 리스트 → 인-에디터 파일철 두 종류(탭=활성중심 재귀 윈도우 / 묶음=5바 타이틀 윈도우) + 임베디드 TomboyEditor. 제목 `탭::`/`묶음::` → 본문 전체가 풀-노트 파일철(전용 노트) | `lib/editor/noteBundle/` |
 | `tomboy-tally` | `집계::` 익명 투표/퀴즈 전용 노트 — 본문 파싱(`|중복가능|정답:N`) + 클라 집계/채점 + top-level Firestore `polls/{guid}` + 호스트/게스트 분기 + `/poll/<제목>` 키오스크 공유링크 | `lib/tally/`, `lib/editor/tallyNote/`, `routes/poll/[title]/` |
+| `tomboy-bridgedash` | `브릿지::` 노트 ⟳ → 브릿지 `GET /status` 집계 → 시스템(디스크/메모리/온도)+서비스 도달성+파일+연결을 `---` 섹션·```csv 표로 본문 스냅샷 렌더 | `lib/bridgeStatus/`, `lib/editor/bridgeNote/`, `bridge/src/status.ts` |
 
 Two features have no dedicated skill yet and live inline below: **이미지 임시 저장소** (Vercel Blob) and **채팅 노트** (`llm://` + `claude://`).
 
