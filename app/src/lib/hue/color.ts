@@ -63,7 +63,8 @@ function inTriangle(p: XY, a: XY, b: XY, c: XY): boolean {
 }
 function closestOnSegment(p: XY, a: XY, b: XY): XY {
   const apx = p.x - a.x, apy = p.y - a.y, abx = b.x - a.x, aby = b.y - a.y;
-  const ab2 = abx * abx + aby * aby || 1e-12;
+  const ab2 = abx * abx + aby * aby;
+  if (ab2 < 1e-24) return { x: a.x, y: a.y };
   let t = (apx * abx + apy * aby) / ab2;
   t = Math.max(0, Math.min(1, t));
   return { x: a.x + abx * t, y: a.y + aby * t };
