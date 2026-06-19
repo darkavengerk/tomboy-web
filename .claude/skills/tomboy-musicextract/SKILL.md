@@ -7,11 +7,11 @@ description: 음악추출:: 노트 — YouTube 영상/재생목록/챕터를 데
 
 `음악추출::` 작업대 노트. 영상 URL/검색어 리스트 → ⟳ → 데스크탑 yt-dlp → mp3 → 브릿지 `/files` →
 결과 URL을 항목 자식에 기록. 재생목록 URL은 일반 텍스트 줄로 쓰면 플레이리스트 블록으로 펼쳐진다.
-재생은 `음악::` 노트로 수동 구성.
+재생은 `음악::` 노트로 수동 구성(또는 완료 재생목록의 **🎵 노트 만들기** 버튼으로 자동 생성).
 
 ## 경로
-- 앱: `app/src/lib/musicExtract/{parseExtractNote,extractClient,writeExtractResult,writePlaylistBlock}.ts`,
-  `app/src/lib/editor/musicExtractNote/{musicExtractNotePlugin,runExtractButtonClick,index}.ts`
+- 앱: `app/src/lib/musicExtract/{parseExtractNote,extractClient,writeExtractResult,writePlaylistBlock,buildMusicNote}.ts`,
+  `app/src/lib/editor/musicExtractNote/{musicExtractNotePlugin,runExtractButtonClick,createMusicNoteFromPlaylist,index}.ts`
   (`playlistSourceOf` 헬퍼는 `parseExtractNote.ts` 내부)
 - 브릿지: `bridge/src/music.ts` (`/music/extract` relay, `/music/enumerate` 재생목록 열거, `/music/chapters` 챕터 분할)
 - 데스크탑: `music-service/` (yt-dlp + Fastify `/extract`, `/enumerate`, `/chapters`)
@@ -85,6 +85,30 @@ runExtractButtonClick
   `.note` 아카이버 라운드트립 시 `<link:url>` href가 textContent에서 재구성됨
   (`tomboyUrlLink href-from-textContent` 고차 참고). 사용자가 블록 전체를
   `음악::` 노트에 붙여넣고 체크박스를 토글하면 재생.
+
+## 🎵 노트 만들기 (완료 재생목록 → 음악:: 노트 자동 생성)
+
+복사·붙여넣기 없이 재생용 `음악::` 노트를 한 번에 얻는 지름길. **완료 재생목록**(소스 줄 바로
+다음이 `플레이리스트:` 결과 헤더)에만 헤더 끝에 위젯 버튼이 뜬다.
+
+```
+donePlaylistAnchors(doc)                       (buildMusicNote.ts) → source별 헤더끝 pos
+ └─ 플러그인 widget(side:1, key=makenote:<source>)  '🎵 노트 만들기'
+     └─ click → createMusicNoteFromPlaylist(view, source, oninternallink)
+         ├─ readPlaylistResult(doc, source) → {label, urls}   (미완료/0곡 → 토스트, no-op)
+         ├─ findNoteByTitle('음악::'+label) 있으면 → 그 노트로 이동(중복 생성 X)
+         └─ createNote + updateNoteFromEditor(buildMusicNoteDoc) → oninternallink(title)
+```
+
+- **buildMusicNoteDoc** = 제목 문단 + **체크된**(`checked:true`) `inlineCheckbox` 헤더 + mp3 불릿
+  (`tomboyUrlLink` text===href). `writePlaylistBlock` 과 동일 구조지만 **체크 상태**라 열자마자 큐 활성.
+  `serializeContent`→`deserializeContent`→`parseMusicNote` 라운드트립이 트랙 복원을 보장(테스트로 박제).
+- **find-or-create**(applyChartNote 패턴): 같은 제목 있으면 새로 안 만들고 연다 — 제목 전역 유일 불변식
+  + 사용자 편집 보존. createNote 명시 제목은 `ensureUniqueTitle` 우회하므로 `findNoteByTitle` 선검사 필수.
+- **oninternallink 스레딩**: `index.ts` `addOptions` → `TomboyEditor.configure({oninternallink})`
+  (noteBundle 패턴). 호스트(`note/[id]`/`NoteWindow`)가 title→guid 해석해 이동 — 모바일 goto / 데스크탑 창.
+- **위젯 key 에 source** 포함 → 재생목록별 고정·재사용. `mousedown` preventDefault 로 contenteditable
+  캐럿/키보드 차단.
 
 ## 불변식
 - **멱등 판정 = `/files/<uuid>/` URL 결과 자식의 유무.** 있으면 done(skip), 없으면(신규/실패)

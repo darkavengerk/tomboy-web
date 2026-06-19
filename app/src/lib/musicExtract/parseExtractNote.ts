@@ -69,7 +69,7 @@ function nestedListOf(li: PMNode): PMNode | null {
 }
 
 /** node 안 첫 http URL — tomboyUrlLink/link 마크 href 우선, 없으면 본문 정규식. 링크 텍스트 동반. */
-function firstUrlAndText(node: PMNode): { url: string; text: string } | null {
+export function firstUrlAndText(node: PMNode): { url: string; text: string } | null {
 	let out: { url: string; text: string } | null = null;
 	node.descendants((n) => {
 		if (out) return false;
