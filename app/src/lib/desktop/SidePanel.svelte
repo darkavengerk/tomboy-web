@@ -15,6 +15,7 @@
 	import { searchNotes } from '$lib/search/noteSearch.js';
 	import { getCachedNotes, onInvalidate } from '$lib/stores/noteListCache.js';
 	import { recentOpens } from './recentOpens.svelte.js';
+	import { activeNotebooks } from './activeNotebooks.svelte.js';
 	import {
 		sidePanelLayout,
 		RAIL_MIN_WIDTH,
@@ -65,11 +66,10 @@
 	let allNotes: NoteData[] = $state(getCachedNotes() ?? []);
 	let loading = $state(getCachedNotes() === null);
 	let notebooks: string[] = $state([]);
-	let selectedNotebook = $state<string | null>(null);
 	let query = $state('');
 
 	const filteredNotes = $derived.by(() => {
-		const filtered = filterByNotebook(allNotes, selectedNotebook);
+		const filtered = filterByNotebook(allNotes, displayedNotebook);
 		const q = query.trim();
 		const base = q ? searchNotes(filtered, q, 200).map((r) => r.note) : filtered;
 		// Sort key depends on the workspace:
@@ -141,34 +141,45 @@
 	});
 
 	function handleNew() {
-		if (selectedNotebook === SLIPBOX_NOTEBOOK) {
+		if (displayedNotebook === SLIPBOX_NOTEBOOK) {
 			// 슬립노트는 전용 생성 경로 유지(다이얼로그 미사용).
 			void createSlipNote().then((note) => {
-				if (selectedNotebook) void assignNotebook(note.guid, selectedNotebook);
+				void assignNotebook(note.guid, SLIPBOX_NOTEBOOK);
 				onopen(note.guid);
 			});
 			return;
 		}
+		const target =
+			displayedNotebook && displayedNotebook !== '' ? displayedNotebook : null;
 		newNoteFlow.open({
-			notebook: selectedNotebook ?? null,
+			notebook: target,
 			navigate: (n) => onopen(n.guid)
 		});
 	}
 
-	function selectNotebook(name: string | null) {
-		selectedNotebook = name;
-	}
-
-	// Workspace switch resets the notebook filter: ws 1 snaps to
-	// [0] Slip-Box, every other workspace snaps to "전체" (null). The
-	// effect re-runs only when currentWorkspace changes, so manual chip
-	// clicks within a workspace are respected until the next switch.
-	$effect(() => {
-		selectedNotebook =
-			currentWorkspace === SLIPNOTE_WORKSPACE_INDEX ? SLIPBOX_NOTEBOOK : null;
-	});
-
 	const alwaysOpen = $derived(currentWorkspace === SLIPNOTE_WORKSPACE_INDEX);
+
+	// 호버 래치: 마지막으로 호버한 노트북 칩 키(undefined=없음). 칩에서 목록으로
+	// 마우스를 옮겨도 패널(aside)을 벗어나기 전까지 유지되어 그 목록의 노트를
+	// 클릭할 수 있다. null=전체, ''=미분류, string=노트북. "없음"은 undefined.
+	let latched = $state<string | null | undefined>(undefined);
+
+	// .main에 표시할 노트북. 래치가 있으면 그것, 없으면 작업공간 기본값
+	// (슬립노트 ws=슬립박스, 그 외=최상단 활성 노트북, 없으면 전체=null).
+	const displayedNotebook = $derived(
+		latched !== undefined
+			? latched
+			: alwaysOpen
+				? SLIPBOX_NOTEBOOK
+				: (activeNotebooks.top(currentWorkspace) ?? null)
+	);
+
+	// 고정 스트립에 그릴 활성 노트북(삭제/이름변경된 키는 제외).
+	const pinnedNotebooks = $derived(
+		activeNotebooks
+			.list(currentWorkspace)
+			.filter((k) => k === '' || notebooks.includes(k))
+	);
 
 	let resizingRail = $state(false);
 	let resizingMain = $state(false);
@@ -230,6 +241,7 @@
 	class:always-open={alwaysOpen}
 	aria-label="노트 메뉴"
 	style="width: {sidePanelLayout.railWidth + sidePanelLayout.mainWidth}px;"
+	onpointerleave={() => (latched = undefined)}
 >
 	<!--
 		Rail: always visible, hosts only the workspace switcher. Its width
@@ -260,34 +272,54 @@
 
 		<RailMusicControls />
 
+		{#if pinnedNotebooks.length > 0}
+			<div class="rail-pinned" role="group" aria-label="고정한 노트북">
+				{#each pinnedNotebooks as key (key)}
+					<button
+						type="button"
+						class="rail-chip active"
+						class:viewing={displayedNotebook === key}
+						title={key === '' ? '미분류' : key}
+						onpointerenter={() => (latched = key)}
+						onclick={() => activeNotebooks.toggle(currentWorkspace, key)}
+					>{key === '' ? '미분류' : key}</button>
+				{/each}
+			</div>
+		{/if}
+
 		<div class="rail-chips" role="tablist" aria-label="노트북 필터">
 			<button
 				type="button"
 				role="tab"
 				class="rail-chip"
-				class:active={selectedNotebook === null}
-				aria-selected={selectedNotebook === null}
+				class:viewing={displayedNotebook === null}
+				aria-selected={displayedNotebook === null}
 				title="전체"
-				onclick={() => selectNotebook(null)}
+				onpointerenter={() => (latched = null)}
+				onclick={() => activeNotebooks.clear(currentWorkspace)}
 			>전체</button>
 			<button
 				type="button"
 				role="tab"
 				class="rail-chip"
-				class:active={selectedNotebook === ''}
-				aria-selected={selectedNotebook === ''}
+				class:active={activeNotebooks.isActive(currentWorkspace, '')}
+				class:viewing={displayedNotebook === ''}
+				aria-selected={displayedNotebook === ''}
 				title="미분류"
-				onclick={() => selectNotebook('')}
+				onpointerenter={() => (latched = '')}
+				onclick={() => activeNotebooks.toggle(currentWorkspace, '')}
 			>미분류</button>
 			{#each notebooks as nb (nb)}
 				<button
 					type="button"
 					role="tab"
 					class="rail-chip"
-					class:active={selectedNotebook === nb}
-					aria-selected={selectedNotebook === nb}
+					class:active={activeNotebooks.isActive(currentWorkspace, nb)}
+					class:viewing={displayedNotebook === nb}
+					aria-selected={displayedNotebook === nb}
 					title={nb}
-					onclick={() => selectNotebook(nb)}
+					onpointerenter={() => (latched = nb)}
+					onclick={() => activeNotebooks.toggle(currentWorkspace, nb)}
 				>{nb}</button>
 			{/each}
 		</div>
@@ -581,6 +613,23 @@
 		background: #2d5a3d;
 		color: #fff;
 		border-color: #3a7a50;
+	}
+
+	/* 고정 스트립: 음악 컨트롤 밑, 노트북 칩 위. 같은 칩 스타일 재사용. */
+	.rail-pinned {
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		gap: 4px;
+		width: 100%;
+		padding: 0 6px;
+		flex-shrink: 0;
+	}
+
+	/* 현재 .main에 표시 중인 노트북 칩 강조(고정=녹색 배경과 구분되는 청록 테두리). */
+	.rail-chip.viewing {
+		border-color: #5a9;
+		box-shadow: inset 0 0 0 1px #5a9;
 	}
 
 	/* Main: revealed column to the right of the rail. When collapsed it is
