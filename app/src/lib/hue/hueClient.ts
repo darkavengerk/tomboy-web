@@ -32,9 +32,12 @@ export async function huePair(httpBase: string, token: string, ip: string): Prom
 }
 
 export async function hueDiscover(httpBase: string, token: string): Promise<Array<{ ip: string; id: string }>> {
-  const resp = await fetch(`${httpBase}/hue/discover`, { headers: { Authorization: `Bearer ${token}` } });
+  let resp: Response;
+  try {
+    resp = await fetch(`${httpBase}/hue/discover`, { headers: { Authorization: `Bearer ${token}` } });
+  } catch { return []; }
   if (!resp.ok) return [];
-  const body = (await resp.json()) as { bridges?: Array<{ ip: string; id: string }> };
+  const body = (await resp.json().catch(() => ({}))) as { bridges?: Array<{ ip: string; id: string }> };
   return body.bridges ?? [];
 }
 
