@@ -15,6 +15,7 @@ import { parseMusicNote } from '$lib/music/parseMusicNote.js';
 const UUID = 'ab12cd34-5678-49ab-8cde-0123456789ab';
 const SRC = 'https://www.youtube.com/watch?v=v1&list=PLaaa';
 const SRC2 = 'https://www.youtube.com/watch?v=v2&list=PLbbb';
+const CHAP_URL = 'https://www.youtube.com/watch?v=long1'; // 챕터:<URL> 의 영상 URL
 const U1 = `https://b.ex/files/${UUID}/Song1.mp3`;
 const U2 = `https://b.ex/files/${UUID}/Song2.mp3`;
 
@@ -47,6 +48,19 @@ describe('donePlaylistAnchors', () => {
 		ed = new Editor({ extensions: ext(), content: `<p>음악추출::x</p><p>${SRC}</p>` });
 		expect(donePlaylistAnchors(ed.state.doc)).toHaveLength(0);
 	});
+
+	it('완료 챕터 분할 소스(챕터:<URL>)도 anchor 를 반환', () => {
+		ed = new Editor({
+			extensions: ext(),
+			content: `<p>음악추출::x</p><p>챕터:${CHAP_URL}</p>${HEADER('긴 영상')}${TRACKS(U1, U2)}`
+		});
+		expect(donePlaylistAnchors(ed.state.doc).map((a) => a.source)).toEqual([CHAP_URL]);
+	});
+
+	it('미완료 챕터 소스는 anchor 없음', () => {
+		ed = new Editor({ extensions: ext(), content: `<p>음악추출::x</p><p>챕터:${CHAP_URL}</p>` });
+		expect(donePlaylistAnchors(ed.state.doc)).toHaveLength(0);
+	});
 });
 
 describe('readPlaylistResult', () => {
@@ -62,6 +76,14 @@ describe('readPlaylistResult', () => {
 		ed = new Editor({ extensions: ext(), content: `<p>음악추출::x</p><p>${SRC}</p>` });
 		expect(readPlaylistResult(ed.state.doc, SRC)).toBeNull();
 		expect(readPlaylistResult(ed.state.doc, SRC2)).toBeNull();
+	});
+
+	it('챕터 분할 소스의 라벨 + 트랙 URL 을 읽는다', () => {
+		ed = new Editor({
+			extensions: ext(),
+			content: `<p>음악추출::x</p><p>챕터:${CHAP_URL}</p>${HEADER('긴 영상')}${TRACKS(U1, U2)}`
+		});
+		expect(readPlaylistResult(ed.state.doc, CHAP_URL)).toEqual({ label: '긴 영상', urls: [U1, U2] });
 	});
 });
 

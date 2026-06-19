@@ -1,6 +1,11 @@
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { JSONContent } from '@tiptap/core';
-import { playlistSourceOf, isPlaylistHeaderText, firstUrlAndText } from './parseExtractNote.js';
+import {
+	playlistSourceOf,
+	chapterSourceOf,
+	isPlaylistHeaderText,
+	firstUrlAndText
+} from './parseExtractNote.js';
 
 const MUSIC_PREFIX = '음악::';
 // 헤더 텍스트에서 라벨만 추출 — 선두 [ ]/[x](폴백 텍스트) + '플레이리스트:' 접두 제거.
@@ -27,8 +32,9 @@ function isListNode(node: PMNode): boolean {
 }
 
 /**
- * 완료 재생목록 = 소스 문단 + (바로 다음) '플레이리스트:' 결과 헤더 문단의 쌍.
- * 헤더 다음 리스트 블록(있으면)을 셋째 인자로 함께 넘긴다(트랙 출처).
+ * 완료 소스 = 소스 문단 + (바로 다음) '플레이리스트:' 결과 헤더 문단의 쌍.
+ * 소스는 재생목록(`list=`) 또는 챕터 분할(`챕터:<URL>`) — 둘 다 동일한 결과 블록을 남기므로
+ * 노트 만들기 대상이 같다. 헤더 다음 리스트 블록(있으면)을 셋째 인자로 함께 넘긴다(트랙 출처).
  */
 function eachDonePlaylist(
 	doc: PMNode,
@@ -36,7 +42,7 @@ function eachDonePlaylist(
 ): void {
 	const blocks = topBlocks(doc);
 	for (let i = 1; i < blocks.length; i++) {
-		const source = playlistSourceOf(blocks[i].node);
+		const source = playlistSourceOf(blocks[i].node) ?? chapterSourceOf(blocks[i].node);
 		if (!source) continue;
 		const header = blocks[i + 1];
 		if (!header || header.node.type.name !== 'paragraph') continue;

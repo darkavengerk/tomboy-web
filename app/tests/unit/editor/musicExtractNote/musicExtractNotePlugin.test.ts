@@ -45,4 +45,13 @@ describe('musicExtractNotePlugin', () => {
 		expect(ed.view.dom.querySelectorAll('button.tomboy-music-extract-makenote')).toHaveLength(0);
 		ed.destroy();
 	});
+
+	it('완료 챕터 분할 소스에도 🎵 노트 만들기 버튼을 렌더한다', () => {
+		const ed = mount(
+			`<p>음악추출::x</p><p>챕터:https://www.youtube.com/watch?v=long1</p>` +
+				`<p>플레이리스트: 긴 영상</p><ul><li><p>${U1}</p></li></ul>`
+		);
+		expect(ed.view.dom.querySelectorAll('button.tomboy-music-extract-makenote')).toHaveLength(1);
+		ed.destroy();
+	});
 });

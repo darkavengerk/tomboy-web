@@ -86,10 +86,12 @@ runExtractButtonClick
   (`tomboyUrlLink href-from-textContent` 고차 참고). 사용자가 블록 전체를
   `음악::` 노트에 붙여넣고 체크박스를 토글하면 재생.
 
-## 🎵 노트 만들기 (완료 재생목록 → 음악:: 노트 자동 생성)
+## 🎵 노트 만들기 (완료 재생목록/챕터 → 음악:: 노트 자동 생성)
 
-복사·붙여넣기 없이 재생용 `음악::` 노트를 한 번에 얻는 지름길. **완료 재생목록**(소스 줄 바로
-다음이 `플레이리스트:` 결과 헤더)에만 헤더 끝에 위젯 버튼이 뜬다.
+복사·붙여넣기 없이 재생용 `음악::` 노트를 한 번에 얻는 지름길. **완료 소스**(소스 줄 바로
+다음이 `플레이리스트:` 결과 헤더)에만 헤더 끝에 위젯 버튼이 뜬다. 재생목록·챕터 둘 다 동일한
+결과 블록을 남기므로 `eachDonePlaylist`가 `playlistSourceOf` **또는** `chapterSourceOf`로 소스를
+잡는다 — 챕터 분할 결과도 똑같이 노트로 만들 수 있다.
 
 ```
 donePlaylistAnchors(doc)                       (buildMusicNote.ts) → source별 헤더끝 pos
@@ -107,8 +109,8 @@ donePlaylistAnchors(doc)                       (buildMusicNote.ts) → source별
   + 사용자 편집 보존. createNote 명시 제목은 `ensureUniqueTitle` 우회하므로 `findNoteByTitle` 선검사 필수.
 - **oninternallink 스레딩**: `index.ts` `addOptions` → `TomboyEditor.configure({oninternallink})`
   (noteBundle 패턴). 호스트(`note/[id]`/`NoteWindow`)가 title→guid 해석해 이동 — 모바일 goto / 데스크탑 창.
-- **위젯 key 에 source** 포함 → 재생목록별 고정·재사용. `mousedown` preventDefault 로 contenteditable
-  캐럿/키보드 차단.
+- **위젯 key 에 source** 포함 → 소스(재생목록/챕터)별 고정·재사용. `mousedown` preventDefault 로
+  contenteditable 캐럿/키보드 차단.
 
 ## 불변식
 - **멱등 판정 = `/files/<uuid>/` URL 결과 자식의 유무.** 있으면 done(skip), 없으면(신규/실패)
