@@ -50,7 +50,7 @@ Most subsystems have dedicated skills — invoke via the `Skill` tool when worki
 | `tomboy-musicextract` | `음악추출::` 노트 ⟳ → 데스크탑 yt-dlp → mp3 → 브릿지 `/files` 저장·재생 | `lib/musicExtract/`, `lib/editor/musicExtractNote/`, `bridge/src/music.ts`, `music-service/` |
 | `tomboy-musicplayer` | `음악::` 노트 재생 — 전역 단일 오디오 엔진 + 싱글톤 큐, 노트별 이어듣기, 세션 복원, 모바일 알약/데스크탑 레일, iOS 자동재생 함정 | `lib/music/`, `lib/editor/musicNote/` |
 | `tomboy-remarkable-send` | 노트 → PDF 번들(forward + backward 트리 + 이미지/차트) → 브릿지 SSH → reMarkable xochitl | `lib/remarkable/`, `bridge/src/remarkableSendPdf.ts` |
-| `tomboy-notebundle` | `[체크박스]탭:N`/`묶음:N` + 내부링크 리스트 → 인-에디터 파일철 두 종류(탭=활성중심 재귀 윈도우 / 묶음=5바 타이틀 윈도우) + 임베디드 TomboyEditor. 제목 `탭::`/`묶음::` → 본문 전체가 풀-노트 파일철(전용 노트) | `lib/editor/noteBundle/` |
+| `tomboy-notebundle` | `[체크박스]탭:N`/`묶음:N` + 내부링크 리스트 → 인-에디터 파일철 두 종류(탭=활성중심 재귀 윈도우 / 묶음=5바 타이틀 윈도우) + 임베디드 TomboyEditor. 제목 `탭::`/`묶음::` → 본문 전체가 풀-노트 파일철(전용 노트). 데스크탑 노트 드래그 핸들 → 묶음 위 드롭 = 리스트에 항목 추가(묶음 전용) | `lib/editor/noteBundle/` |
 | `tomboy-tally` | `집계::` 익명 투표/퀴즈 전용 노트 — 본문 파싱(`|중복가능|정답:N`) + 클라 집계/채점 + top-level Firestore `polls/{guid}` + 호스트/게스트 분기 + `/poll/<제목>` 키오스크 공유링크 | `lib/tally/`, `lib/editor/tallyNote/`, `routes/poll/[title]/` |
 
 Two features have no dedicated skill yet and live inline below: **이미지 임시 저장소** (Vercel Blob) and **채팅 노트** (`llm://` + `claude://`).

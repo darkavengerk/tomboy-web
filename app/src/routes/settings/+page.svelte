@@ -2663,6 +2663,21 @@ Complete:</pre>
 						<li>가리키는 쪽지가 없으면 "이 쪽지로 연결된 쪽지가 없습니다"라고 표시됩니다.</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>묶음에 노트 끌어다 넣기</summary>
+					<p class="info-text">
+						데스크탑 멀티윈도우에서 노트 창 왼쪽 위 아이콘을 다른 노트의
+						묶음(<code>묶음:</code> 또는 제목 <code>묶음::</code> 전용 노트) 위로
+						끌어다 놓으면, 놓은 자리에 맞춰 묶음 리스트에 그 노트가 추가됩니다.
+					</p>
+					<ul class="guide-list">
+						<li>데스크탑 전용 — 드래그 아이콘은 노트 창에만 있습니다.</li>
+						<li>묶음 전용 — 탭(<code>탭:</code>)은 대상이 아닙니다.</li>
+						<li>바(접힌 제목) 위에 놓으세요. 펼친 본문 위에 놓으면 그 노트 본문에 들어갑니다.</li>
+						<li>이미 있는 노트나 자기 자신은 자동으로 무시됩니다.</li>
+					</ul>
+				</details>
 			</section>
 
 			{:else if guideSubTab === 'env'}
