@@ -21,7 +21,7 @@ description: Use when working on the 조명:: Hue light-control note family — 
 - 바인딩은 항상 light/room/zone **UUID**(이름/타이틀 아님). 본문 첫 줄 시그니처: `light:<uuid>` / `room:<uuid>` / `zone:<uuid>`. 마스터 = `조명::전체`.
 - **방·존 노트 ⟳ / 노트 열기**: 허브에서 그 그룹의 전구 목록·씬 목록을 읽어 본문을 재빌드. 전구 = 체크박스 리스트(체크=on), 씬 = 라디오 리스트(선택=recall). 본문 교체는 `roomDoc` 의 `buildLightList`/`buildSceneList` + GroupControl 의 `replaceList` (PM 직접 교체, 멱등).
 - **씬은 그룹 스코프 진짜 Hue 씬(방=룸, 존=존 스코프).** Hue 앱에서 만든 씬도 라디오 목록에 나타남. "현재 상태 저장"은 그 그룹의 새 Hue 씬을 생성(CLIP v2 `POST /clip/v2/resource/scene`).
-- **체크박스/라디오는 실제 PM 인라인 원자.** GroupControl 위젯의 `view.dom` `mousedown` 핸들러가 타입별 상호 배타(라디오는 같은 `listItem` 묶음 내 단 하나)를 강제하고 즉시 PUT/recall 전송.
+- **체크박스/라디오는 항목 단위 listBox(`[[ ]]`/`(( ))`).** 인라인 atom([ ]/( )) 이 아니라 `listItem` attrs(`boxKind:'checkbox'|'radio'` + `checked`)로 상태를 들고, 불릿이 데코레이션 위젯으로 교체된다(`roomDoc.buildLightList`/`buildSceneList`). 토글은 **전역 TomboyListBox 플러그인**이 클릭에서 attr 을 뒤집고(`onToggleCheck`/`onToggleRadio` → `toggleCheckboxAt`/`toggleRadioAt`; 라디오 상호 배타·재클릭 해제 포함), GroupControl 은 `view.dom` **캡처-click** 리스너로 위젯을 잡고 `queueMicrotask` 로 **토글된 뒤** li attr 을 읽어 PUT/recall 전송(`lightContextOf`/`sceneContextOf`). 캡처는 위젯 핸들러의 `stopPropagation` 전에 통과하고 마이크로태스크는 그 뒤에 실행되므로 토글 방향이 안정적(과거 mousedown+인라인 atom race 가 방향을 뒤집던 버그 수정).
 - **room→device→light 역방향 조회.** 허브의 `room` → 멤버 `device` → 멤버 `light`(`light.owner`) 체인으로 실제 전구 uuid를 얻음. `roomOps.lightsInRoom` 참조(존은 `lightsInZone` 으로 `zone.children` 의 light 직접 — device-hop 없음).
 - 상태 읽기 = 노트 마운트 1회 자동 새로고침 + ⟳ 수동. 주기 폴링·SSE 없음. 쓰기 = 즉시 PUT + 옵티미스틱/롤백.
 - 브릿지가 같은 LAN Hue 를 자체서명(`rejectUnauthorized:false`)으로 직접 호출. `/hue/clip` 은 resource-path 화이트리스트(`room/zone/scene/grouped_light/light/device`) + `..` 거부.
