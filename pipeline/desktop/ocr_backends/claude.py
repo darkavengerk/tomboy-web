@@ -33,6 +33,12 @@ _TIMEOUT_SECONDS = 120.0
 _RETRY_DELAY_SECONDS = 5.0
 
 
+def _hash_prompt(system: str) -> str:
+    return hashlib.sha256(
+        (system + "\n---\n" + _USER_PROMPT).encode("utf-8")
+    ).hexdigest()[:12]
+
+
 @register_backend("claude")
 class ClaudeBackend(OCRBackend):
     def __init__(
@@ -49,15 +55,14 @@ class ClaudeBackend(OCRBackend):
         self._model = model
         self._effort = effort
         self._system = Path(system_prompt_path).read_text(encoding="utf-8")
-        self._prompt_hash = hashlib.sha256(
-            (self._system + "\n---\n" + _USER_PROMPT).encode("utf-8")
-        ).hexdigest()[:12]
+        self._prompt_hash = _hash_prompt(self._system)
 
-    def ocr(self, image_path: Path) -> OCRResult:
+    def ocr(self, image_path: Path, system_prompt: str | None = None) -> OCRResult:
+        system = system_prompt if system_prompt is not None else self._system
         b64 = base64.b64encode(image_path.read_bytes()).decode("ascii")
         body = {
             "model": self._model,
-            "system": self._system,
+            "system": system,
             "effort": self._effort,
             "messages": [
                 {
@@ -78,10 +83,11 @@ class ClaudeBackend(OCRBackend):
         }
         text = self._post_with_retry(body)
         model_label = self._model if self._model else "default"
+        prompt_hash = self._prompt_hash if system_prompt is None else _hash_prompt(system)
         return OCRResult(
             text=text,
             model=f"claude:{model_label}",
-            prompt_hash=self._prompt_hash,
+            prompt_hash=prompt_hash,
             ts=datetime.now(timezone.utc),
         )
 

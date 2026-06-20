@@ -165,11 +165,17 @@ class LocalVlmBackend(OCRBackend):
     def _find_gap_near(ink_rows: list[bool], target: int, search: int) -> int:
         return find_gap_near(ink_rows, target, search)
 
-    def ocr(self, image_path: Path) -> OCRResult:
-        text = self._run_inference(image_path, self.system_prompt).strip()
+    def ocr(self, image_path: Path, system_prompt: str | None = None) -> OCRResult:
+        system = system_prompt if system_prompt is not None else self.system_prompt
+        text = self._run_inference(image_path, system).strip()
+        prompt_hash = (
+            self._prompt_hash
+            if system_prompt is None
+            else hashlib.sha256(system.encode("utf-8")).hexdigest()
+        )
         return OCRResult(
             text=text,
             model=self.model_id,
-            prompt_hash=self._prompt_hash,
+            prompt_hash=prompt_hash,
             ts=datetime.now(timezone.utc),
         )

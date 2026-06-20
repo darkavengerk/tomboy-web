@@ -23,6 +23,7 @@ app/static/codegraph-communities.json
 
 # Pipeline (rM → Pi → desktop OCR → Tomboy) — see pipeline/README.md
 pipeline/config/pipeline.yaml
+pipeline/config/folders.yaml
 pipeline/data/
 pipeline/logs/
 pipeline/state/

@@ -17,7 +17,7 @@ class StubBackend(OCRBackend):
         self.text = text
         self.calls: list[Path] = []
 
-    def ocr(self, image_path: Path) -> OCRResult:
+    def ocr(self, image_path: Path, system_prompt: str | None = None) -> OCRResult:
         self.calls.append(image_path)
         return OCRResult(
             text=self.text,
@@ -28,7 +28,7 @@ class StubBackend(OCRBackend):
 
 
 class FailingBackend(OCRBackend):
-    def ocr(self, image_path: Path) -> OCRResult:
+    def ocr(self, image_path: Path, system_prompt: str | None = None) -> OCRResult:
         raise RuntimeError("model exploded")
 
 
@@ -122,3 +122,37 @@ def test_only_uuids_filters_to_requested_pages(tmp_path: Path, stub_log):
     assert ocr_state.contains("abc-2")
     assert not ocr_state.contains("abc-1")
     assert not ocr_state.contains("abc-3")
+
+
+def test_run_ocr_passes_per_folder_prompt(tmp_path):
+    from datetime import datetime, timezone
+    from desktop.lib.state import StateFile
+    from desktop.lib.log import StageLogger
+    from desktop.ocr_backends.base import OCRBackend, OCRResult
+    from desktop.stages.s3_ocr import run_ocr
+
+    png_a = tmp_path / "a.png"; png_a.write_bytes(b"a")
+    png_b = tmp_path / "b.png"; png_b.write_bytes(b"b")
+    prepared = StateFile(tmp_path / "prepared.json")
+    prepared.update({
+        "ua": {"png_path": str(png_a), "source_folder": "Diary"},
+        "ub": {"png_path": str(png_b), "source_folder": "Notes"},
+    })
+    ocr_state = StateFile(tmp_path / "ocr-done.json")
+
+    calls: dict[str, str | None] = {}
+
+    class FakeBackend(OCRBackend):
+        def ocr(self, image_path, system_prompt=None):
+            calls[image_path.name] = system_prompt
+            return OCRResult(text="t", model="fake", prompt_hash="h", ts=datetime.now(timezone.utc))
+
+    def prompt_for(folder):
+        return {"Diary": "DIARY-P", "Notes": "NOTES-P"}.get(folder)
+
+    run_ocr(
+        prepared_state=prepared, ocr_state=ocr_state, ocr_root=tmp_path / "ocr",
+        log=StageLogger("s3_ocr", tmp_path), backend=FakeBackend(), prompt_for=prompt_for,
+    )
+    assert calls["a.png"] == "DIARY-P"
+    assert calls["b.png"] == "NOTES-P"

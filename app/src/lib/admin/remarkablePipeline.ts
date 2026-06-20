@@ -251,3 +251,87 @@ export async function pingTrigger(triggerUrl: string): Promise<boolean> {
 		return false;
 	}
 }
+
+// ── Pipeline config (folders.yaml) ──────────────────────────────────────────
+//
+// GET/PUT ``<triggerUrl>/config`` — reads/writes the desktop folders.yaml
+// that controls per-folder OCR routing, prompts and title formats.
+
+export interface PipelineFolderConfig {
+	name: string;
+	notebook: string;
+	titleFormat: string;
+	split: boolean;
+	labels: string[];
+	prompt: string;
+}
+
+export interface PipelineConfig {
+	defaultPrompt: string;
+	folders: PipelineFolderConfig[];
+}
+
+export interface PipelineConfigResult {
+	ok: boolean;
+	config?: PipelineConfig;
+	error?: string;
+}
+
+/** GET ``<triggerUrl>/config`` — effective folder routing + prompts. */
+export async function fetchPipelineConfig(
+	triggerUrl: string,
+	token: string
+): Promise<PipelineConfigResult> {
+	const base = normalizeBaseUrl(triggerUrl);
+	if (!base || !token) return { ok: false, error: '트리거 URL/토큰이 설정되지 않았습니다' };
+	let res: Response;
+	try {
+		res = await fetch(base + '/config', { headers: { Authorization: 'Bearer ' + token } });
+	} catch (e) {
+		return { ok: false, error: '네트워크 오류: ' + String(e) };
+	}
+	if (res.status === 401) return { ok: false, error: '인증 실패 (토큰 확인)' };
+	if (res.status !== 200) return { ok: false, error: 'HTTP ' + String(res.status) };
+	try {
+		const body = (await res.json()) as { defaultPrompt?: string; folders?: PipelineFolderConfig[] };
+		return {
+			ok: true,
+			config: { defaultPrompt: body.defaultPrompt ?? '', folders: body.folders ?? [] }
+		};
+	} catch {
+		return { ok: false, error: 'invalid JSON' };
+	}
+}
+
+/** PUT ``<triggerUrl>/config`` — persist folders.yaml on the desktop. */
+export async function savePipelineConfig(
+	triggerUrl: string,
+	token: string,
+	config: PipelineConfig
+): Promise<{ ok: boolean; error?: string }> {
+	const base = normalizeBaseUrl(triggerUrl);
+	if (!base) return { ok: false, error: '트리거 URL이 설정되지 않았습니다' };
+	if (!token) return { ok: false, error: '트리거 토큰이 설정되지 않았습니다' };
+	let res: Response;
+	try {
+		res = await fetch(base + '/config', {
+			method: 'PUT',
+			headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+			body: JSON.stringify(config)
+		});
+	} catch (e) {
+		return { ok: false, error: '네트워크 오류: ' + String(e) };
+	}
+	if (res.status === 401) return { ok: false, error: '인증 실패 (토큰 확인)' };
+	if (res.status === 400) {
+		let msg = '';
+		try {
+			msg = ((await res.json()) as { error?: string }).error ?? '';
+		} catch {
+			/* ignore */
+		}
+		return { ok: false, error: '검증 실패: ' + msg };
+	}
+	if (res.status !== 200) return { ok: false, error: 'HTTP ' + String(res.status) };
+	return { ok: true };
+}

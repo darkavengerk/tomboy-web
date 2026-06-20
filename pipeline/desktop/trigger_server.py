@@ -41,6 +41,7 @@ import argparse
 import hmac
 import json
 import os
+import string
 import subprocess
 import sys
 import threading
@@ -50,6 +51,8 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+
+from desktop.lib.config import load_config
 
 
 # Path to the pipeline checkout, derived from this file's location. Used
@@ -171,12 +174,132 @@ def _send_cors_headers(handler: BaseHTTPRequestHandler) -> None:
     origin = handler.headers.get("Origin", "*")
     handler.send_header("Access-Control-Allow-Origin", origin)
     handler.send_header("Vary", "Origin")
-    handler.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+    handler.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
     handler.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
     handler.send_header("Access-Control-Max-Age", "600")
 
 
-def make_handler(*, token: str, state: JobState, runner: PipelineRunner):
+_ALLOWED_PLACEHOLDERS = {"date", "datetime", "unit_key", "page_uuid", "label"}
+
+
+def _validate_title_format(tf: str) -> str | None:
+    try:
+        parsed = list(string.Formatter().parse(tf))
+    except ValueError as e:
+        return f"malformed format: {e}"
+    for _, field, _, conversion in parsed:
+        if field is None:
+            continue  # literal text segment, no replacement field
+        # Only a bare whitelisted name (optionally with a :format-spec) is
+        # allowed. Reject auto/positional ({} or {0}), attribute access
+        # ({date.__class__}), index access ({date[0]}), and conversions
+        # ({date!r}) — all of which would either crash .format() or leak
+        # object reprs into the note title.
+        if conversion is not None:
+            return f"unknown placeholder: {{{field}!{conversion}}}"
+        name = field.split(":", 1)[0]
+        if not name or name not in _ALLOWED_PLACEHOLDERS:
+            return f"unknown placeholder: {{{field}}}"
+    return None
+
+
+class ConfigStore:
+    """Reads the effective tomboy folder config and writes the app-managed
+    ``folders.yaml`` overlay. NEVER writes ``pipeline.yaml`` (secrets)."""
+
+    def __init__(self, *, pipeline_yaml: Path, folders_yaml: Path, root: Path) -> None:
+        self.pipeline_yaml = pipeline_yaml
+        self.folders_yaml = folders_yaml
+        self.root = root
+
+    def read_effective(self) -> dict[str, Any]:
+        cfg = load_config(self.pipeline_yaml)
+        default_prompt = cfg.tomboy.default_prompt
+        if not default_prompt.strip():
+            default_prompt = self._read_default_prompt_file(cfg)
+        folders = [
+            {
+                "name": name,
+                "notebook": route.notebook,
+                "titleFormat": route.title_format,
+                "split": route.split,
+                "labels": list(route.labels),
+                "prompt": route.prompt,
+            }
+            for name, route in cfg.tomboy.folders.items()
+        ]
+        folders.sort(key=lambda f: f["name"])
+        return {"defaultPrompt": default_prompt, "folders": folders}
+
+    def _read_default_prompt_file(self, cfg: Any) -> str:
+        sub = cfg.ocr.claude or cfg.ocr.local_vlm
+        if sub is None:
+            return ""
+        p = Path(sub.system_prompt_path)
+        if not p.is_absolute():
+            p = self.root / p
+        try:
+            return p.read_text(encoding="utf-8")
+        except OSError:
+            return ""
+
+    @staticmethod
+    def validate(payload: Any) -> str | None:
+        if not isinstance(payload, dict):
+            return "payload must be an object"
+        if "defaultPrompt" in payload and not isinstance(payload["defaultPrompt"], str):
+            return "defaultPrompt must be a string"
+        folders = payload.get("folders")
+        if not isinstance(folders, list):
+            return "folders must be a list"
+        seen: set[str] = set()
+        for f in folders:
+            if not isinstance(f, dict):
+                return "each folder must be an object"
+            name = f.get("name")
+            if not isinstance(name, str) or not name.strip():
+                return "folder.name required"
+            if name in seen:
+                return f"duplicate folder name: {name}"
+            seen.add(name)
+            for key in ("notebook", "titleFormat", "prompt"):
+                if key in f and not isinstance(f[key], str):
+                    return f"{name}.{key} must be a string"
+            if "split" in f and not isinstance(f["split"], bool):
+                return f"{name}.split must be a boolean"
+            labels = f.get("labels", [])
+            if not isinstance(labels, list) or not all(isinstance(x, str) for x in labels):
+                return f"{name}.labels must be a string array"
+            err = _validate_title_format(f.get("titleFormat", ""))
+            if err:
+                return f"{name}.titleFormat: {err}"
+        return None
+
+    def write(self, payload: dict[str, Any]) -> None:
+        import yaml
+
+        data = {
+            "default_prompt": payload.get("defaultPrompt", ""),
+            "folders": {
+                f["name"]: {
+                    "notebook": f.get("notebook", ""),
+                    "title_format": f.get("titleFormat", ""),
+                    "split": bool(f.get("split", False)),
+                    "labels": list(f.get("labels", [])),
+                    "prompt": f.get("prompt", ""),
+                }
+                for f in payload.get("folders", [])
+            },
+        }
+        self.folders_yaml.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.folders_yaml.with_name(self.folders_yaml.name + ".tmp")
+        tmp.write_text(
+            yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8"
+        )
+        os.replace(tmp, self.folders_yaml)
+
+
+def make_handler(*, token: str, state: JobState, runner: PipelineRunner, config_store: "ConfigStore | None" = None):
     class _Handler(BaseHTTPRequestHandler):
         # Reduce default stdlib chatter; we log significant events ourselves.
         def log_message(self, fmt: str, *args: Any) -> None:  # noqa: A003
@@ -204,9 +327,55 @@ def make_handler(*, token: str, state: JobState, runner: PipelineRunner):
                     return
                 _send_json(self, 200, {"ok": True, **state.snapshot()})
                 return
+            if self.path == "/config":
+                if not self._check_bearer():
+                    return
+                if config_store is None:
+                    _send_json(self, 503, {"ok": False, "error": "config store unavailable"})
+                    return
+                try:
+                    cfg = config_store.read_effective()
+                except Exception as e:  # pragma: no cover — defensive
+                    _send_json(self, 500, {"ok": False, "error": str(e)})
+                    return
+                _send_json(self, 200, {"ok": True, **cfg})
+                return
+            _send_json(self, 404, {"ok": False, "error": "not_found"})
+
+        def _handle_config_write(self) -> None:
+            if not self._check_bearer():
+                return
+            if config_store is None:
+                _send_json(self, 503, {"ok": False, "error": "config store unavailable"})
+                return
+            length = int(self.headers.get("Content-Length", 0) or 0)
+            raw = self.rfile.read(length) if length else b""
+            try:
+                payload = json.loads(raw.decode("utf-8") or "{}")
+            except (ValueError, UnicodeDecodeError):
+                _send_json(self, 400, {"ok": False, "error": "invalid JSON"})
+                return
+            err = config_store.validate(payload)
+            if err:
+                _send_json(self, 400, {"ok": False, "error": err})
+                return
+            try:
+                config_store.write(payload)
+            except Exception as e:  # pragma: no cover — defensive
+                _send_json(self, 500, {"ok": False, "error": str(e)})
+                return
+            _send_json(self, 200, {"ok": True, "saved": True})
+
+        def do_PUT(self) -> None:  # noqa: N802
+            if self.path == "/config":
+                self._handle_config_write()
+                return
             _send_json(self, 404, {"ok": False, "error": "not_found"})
 
         def do_POST(self) -> None:  # noqa: N802
+            if self.path == "/config":
+                self._handle_config_write()
+                return
             if self.path != "/run":
                 _send_json(self, 404, {"ok": False, "error": "not_found"})
                 return
@@ -260,7 +429,12 @@ def main(argv: list[str] | None = None) -> int:
 
     state = JobState()
     runner = PipelineRunner(cwd=_PIPELINE_ROOT, python=args.python)
-    handler_cls = make_handler(token=token, state=state, runner=runner)
+    config_store = ConfigStore(
+        pipeline_yaml=args.config,
+        folders_yaml=args.config.parent / "folders.yaml",
+        root=args.config.parent.parent,
+    )
+    handler_cls = make_handler(token=token, state=state, runner=runner, config_store=config_store)
     server = ThreadingHTTPServer((args.host, args.port), handler_cls)
     sys.stderr.write(
         f"[diary-trigger] listening on http://{args.host}:{args.port} "

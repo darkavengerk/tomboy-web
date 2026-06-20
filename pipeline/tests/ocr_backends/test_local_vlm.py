@@ -206,3 +206,23 @@ def test_run_inference_concatenates_tile_outputs(monkeypatch, prompt_file, tmp_p
     # Empty/whitespace-only tile drops out; non-empty are stripped and joined.
     assert out == "tile-0\ntile-1"
     assert calls == ["system prompt"] * 3
+
+
+def test_local_vlm_ocr_uses_override_system_prompt(tmp_path, monkeypatch):
+    from desktop.ocr_backends.local_vlm import LocalVlmBackend
+    img = tmp_path / "p.png"
+    img.write_bytes(b"x")
+    prompt_file = tmp_path / "sys.txt"
+    prompt_file.write_text("DEFAULT", encoding="utf-8")
+    b = LocalVlmBackend(
+        model_id="m", quantization="none", max_new_tokens=8,
+        system_prompt_path=str(prompt_file),
+    )
+    seen = {}
+    monkeypatch.setattr(b, "_run_inference", lambda path, prompt: seen.setdefault("p", prompt) or "out")
+    r_default = b.ocr(img)
+    assert seen["p"] == "DEFAULT"
+    seen.clear()
+    r = b.ocr(img, system_prompt="OVERRIDE")
+    assert seen["p"] == "OVERRIDE"
+    assert r.prompt_hash != r_default.prompt_hash

@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import textwrap
 from pathlib import Path
 
 import pytest
 
-from desktop.lib.config import Config, ConfigError, load_config, load_config_from_string
+from desktop.lib.config import (
+    Config,
+    ConfigError,
+    DEFAULT_FOLDER_ROUTES,
+    load_config,
+    load_config_from_string,
+)
 
 
 VALID_YAML = """
@@ -204,3 +211,76 @@ def test_dropbox_keys_optional():
     cfg = load_config_from_string(yaml_text)  # must not raise
     assert cfg.dropbox_refresh_token == ""
     assert cfg.dropbox_app_key == ""
+
+
+_BASE_YAML = textwrap.dedent("""\
+    firebase_uid: "dbx-x"
+    firebase_service_account: "/tmp/sa.json"
+    remarkable: { diary_notebook_name: "Diary", ssh_host: "rm", ssh_user: "root" }
+    pi: { ssh_host: "pi", ssh_port: 2222, ssh_user: "u", ssh_key: "~/.ssh/k", inbox_path: "~/in" }
+    ocr:
+      backend: "claude"
+      claude: { service_url: "http://x", service_token: "t", effort: "high", system_prompt_path: "config/prompts/diary-ko.txt" }
+""")
+
+
+def _write_pipeline(tmp_path: Path) -> Path:
+    (tmp_path / "config").mkdir()
+    p = tmp_path / "config" / "pipeline.yaml"
+    p.write_text(_BASE_YAML, encoding="utf-8")
+    return p
+
+
+def test_no_folders_overlay_keeps_defaults(tmp_path):
+    cfg = load_config(_write_pipeline(tmp_path))
+    assert cfg.tomboy.folders["Diary"].notebook == DEFAULT_FOLDER_ROUTES["Diary"].notebook
+    assert cfg.tomboy.folders["Diary"].prompt == ""
+    assert cfg.tomboy.default_prompt == ""
+
+
+def test_folders_overlay_partial_override(tmp_path):
+    p = _write_pipeline(tmp_path)
+    (p.parent / "folders.yaml").write_text(textwrap.dedent("""\
+        default_prompt: "기본 프롬프트"
+        folders:
+          Notes:
+            prompt: "노트 전용 프롬프트"
+          New-Folder:
+            notebook: "새노트북"
+            title_format: "{date} 신규([{unit_key}])"
+            split: false
+            prompt: "신규 프롬프트"
+    """), encoding="utf-8")
+    cfg = load_config(p)
+    assert cfg.tomboy.default_prompt == "기본 프롬프트"
+    assert cfg.tomboy.folders["Notes"].prompt == "노트 전용 프롬프트"
+    assert cfg.tomboy.folders["Notes"].notebook == DEFAULT_FOLDER_ROUTES["Notes"].notebook
+    assert cfg.tomboy.folders["New-Folder"].notebook == "새노트북"
+    assert cfg.tomboy.folders["New-Folder"].prompt == "신규 프롬프트"
+
+
+def test_prompt_for_precedence(tmp_path):
+    p = _write_pipeline(tmp_path)
+    (p.parent / "folders.yaml").write_text(textwrap.dedent("""\
+        default_prompt: "DEF"
+        folders:
+          Diary: { prompt: "DIARY" }
+          Notes: { prompt: "" }
+    """), encoding="utf-8")
+    cfg = load_config(p)
+    assert cfg.tomboy.prompt_for("Diary") == "DIARY"
+    assert cfg.tomboy.prompt_for("Notes") == "DEF"
+    assert cfg.tomboy.prompt_for("Unknown") == "DEF"
+
+
+def test_prompt_for_none_when_no_prompts(tmp_path):
+    cfg = load_config(_write_pipeline(tmp_path))
+    assert cfg.tomboy.prompt_for("Diary") is None
+
+
+def test_empty_folders_yaml_is_a_noop(tmp_path):
+    p = _write_pipeline(tmp_path)
+    (p.parent / "folders.yaml").write_text("", encoding="utf-8")
+    cfg = load_config(p)
+    assert cfg.tomboy.default_prompt == ""
+    assert cfg.tomboy.folders["Diary"].prompt == ""
