@@ -271,6 +271,15 @@ The trigger NEVER passes per-page UUIDs in the body — every stage drains the F
 
 **s1 재취득 캐스케이드**: 재취득(mtime-bump) 또는 `--force` 시 s1이 `StateFile.remove_page(page_uuid)`를 호출 — 이 메서드는 `page_uuid` 자신의 키와 `page_uuid#*` 접두사로 시작하는 모든 복합 키를 한 번에 삭제한다. 덕분에 수정된 슬립 페이지는 s2~s4 상태가 완전히 지워져 전체 재처리된다. `remove(key)` 단순 삭제(단일 키만 제거)와 혼동하지 말 것.
 
+### I18. 앱에서 폴더별 프롬프트·라우팅 편집 (folders.yaml 오버레이)
+
+설정 → 리마커블 탭의 "일기 OCR 파이프라인 설정"(`app/src/lib/remarkable/DiaryOcrSettings.svelte`)에서 폴더별 OCR 프롬프트와 라우팅을 보고 편집한다. **저장 위치는 데스크탑(브릿지 아님)** — OCR이 데스크탑에서 실행되고 프롬프트/라우팅이 거기 살기 때문.
+
+- **`pipeline/config/folders.yaml` (gitignored, 앱 관리 오버레이)** — `pipeline.yaml`은 절대 건드리지 않는다(시크릿 보존, 주석 손실 방지). `config.py:load_config`가 `pipeline.yaml` 로드 후 같은 디렉터리의 `folders.yaml`을 `apply_folders_overlay`로 덮는다. 우선순위 `folders.yaml > pipeline.yaml tomboy.folders > DEFAULT_FOLDER_ROUTES`. 파일 부재 = 기존 동작 그대로.
+- **폴더별 프롬프트 해석 순서** (`s3_ocr` 페이지 루프, 각 페이지 `source_folder` 기준): `folders.<name>.prompt`(비어있지 않으면) → `default_prompt`(folders.yaml) → backend `system_prompt_path` 파일(기존 동작). `TomboyConfig.prompt_for(source_folder)`가 해석하고 `s3_ocr.run_ocr`이 `backend.ocr(png, system_prompt=...)`로 전달. `OCRBackend.ocr`의 `system_prompt: str | None = None` 인자 — `None`이면 생성자 기본값(하위호환). claude·local_vlm 둘 다 적용.
+- **trigger 서버 `GET/PUT /config`** (`trigger_server.py:ConfigStore`, Bearer 인증, I16 재사용) — GET은 effective config(`load_config` 결과)를 직렬화, PUT은 검증 후 `folders.yaml`을 원자적(temp+`os.replace`)으로 기록. `title_format`은 알려진 플레이스홀더(`date/datetime/unit_key/page_uuid/label`)만 허용하고 attribute/index/positional 접근(`{date.__class__}`/`{date[0]}`/`{}`/`{date!r}`)은 거부 — 잘못된 포맷이 노트 제목 생성을 깨뜨리는 것을 막는다. 앱은 기존 `diaryTriggerUrl`/`diaryTriggerToken`(관리자 → 리마커블)으로 이 엔드포인트를 호출.
+- **새 폴더 한계**: `folders.yaml`은 데스크탑 라우팅만 바꾼다. 완전히 새 폴더를 추가하면 태블릿 `diary-push.sh`의 `TARGET_FOLDERS`도 수동 추가해야 페이지가 Pi inbox로 들어온다(rM→Pi→데스크탑 단방향, I3). 앱이 이 경고를 고정 표시.
+
 ## 3. End-to-end workflow
 
 ### 3a. rM tablet (one-time setup)
@@ -415,7 +424,7 @@ To force a re-run of a stage: delete the relevant file or pass `--force <uuid>`.
   - `pipeline_status.py` — `PipelineStatusClient` (Firebase Admin SDK) for per-page status docs at `users/{uid}/diary-pipeline-pages/{pageUuid}` (see I12). `fetch_pending_reruns(cfg, log)` is the best-effort helper every stage's `main()` uses to fold admin-page rerun requests into its `force` set.
   - `state.py` — `StateFile`: `remove(key)` 단일 키, `remove_page(page_uuid)` page-uuid + `uuid#*` 전체 삭제.
   - `log.py` — shared StageLogger.
-- `pipeline/desktop/trigger_server.py` — stdlib HTTP trigger (see I16). Bearer-authed, CORS-enabled, fire-and-forget run of `desktop.run_pipeline`. Unit file at `pipeline/desktop/deploy/diary-trigger.service`.
+- `pipeline/desktop/trigger_server.py` — stdlib HTTP trigger (see I16). Bearer-authed, CORS-enabled, fire-and-forget run of `desktop.run_pipeline`. Unit file at `pipeline/desktop/deploy/diary-trigger.service`. 또한 `ConfigStore` + `GET/PUT /config`로 앱이 폴더별 프롬프트·라우팅을 편집해 `folders.yaml`에 저장(I18).
 - `pipeline/desktop/bootstrap.py` — `sanitize_account_id` MUST mirror `functions/src/index.ts:280-281` byte-for-byte. Tests in `tests/test_bootstrap.py` lock the contract.
 - `pipeline/config/pipeline.yaml` — gitignored. Holds `firebase_uid`, service-account path, host details. Dropbox 키(`dropbox_refresh_token`, `dropbox_app_key`)는 이미지 폐지로 **선택값**. `bootstrap.py` emits it.
 - `pipeline/config/prompts/diary-ko.txt` — Qwen2.5-VL system prompt for Korean handwriting.
