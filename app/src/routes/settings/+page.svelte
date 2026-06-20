@@ -97,6 +97,7 @@
 	} from '$lib/storage/appSettings.js';
 	import { CLAUDE_VALID_EFFORTS } from '$lib/chatNote/defaults.js';
 	import RemarkableSendSettings from '$lib/remarkable/RemarkableSendSettings.svelte';
+	import DiaryOcrSettings from '$lib/remarkable/DiaryOcrSettings.svelte';
 	import {
 		cursorDebug,
 		setCursorDebug,
@@ -2843,6 +2844,21 @@ Complete:</pre>
 						<li><button type="button" class="link-btn" onclick={() => (activeTab = 'config')}>동기화 설정 탭</button>에서 토글.</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>리마커블 OCR 프롬프트·폴더 편집</summary>
+					<p class="info-text">
+						<button type="button" class="link-btn" onclick={() => (activeTab = 'remarkable')}>설정 → 리마커블 탭</button>
+						의 "일기 OCR 파이프라인 설정"에서 폴더별 OCR 프롬프트와 라우팅(노트북/제목/분할/라벨)을
+						편집합니다. 저장하면 데스크탑 trigger 서버 경유로 <code>folders.yaml</code>에 기록됩니다.
+					</p>
+					<ul class="guide-list">
+						<li>프롬프트는 <strong>폴더별로 각각</strong> — 비우면 공용 "기본 프롬프트" 사용.</li>
+						<li>저장 위치는 <strong>데스크탑</strong>(브릿지 아님) — OCR이 거기서 실행됩니다.</li>
+						<li>완전히 새 폴더는 태블릿 <code>diary-push.sh</code>의 <code>TARGET_FOLDERS</code>도 수동 추가해야 페이지가 들어옵니다.</li>
+						<li>트리거 URL/토큰은 관리자 → 리마커블에서 등록(같은 값 재사용).</li>
+					</ul>
+				</details>
 			</section>
 			{/if}
 
@@ -3034,6 +3050,7 @@ Complete:</pre>
 		{:else if activeTab === 'remarkable'}
 			<!-- ── 리마커블 탭 ───────────────────────────────────────────── -->
 			<RemarkableSendSettings />
+			<DiaryOcrSettings />
 		{:else if activeTab === 'debug'}
 			<!-- ── 디버그 탭 ─────────────────────────────────────────────── -->
 			<section class="section">
