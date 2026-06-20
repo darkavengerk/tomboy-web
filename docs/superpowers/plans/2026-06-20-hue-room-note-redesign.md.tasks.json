@@ -20,7 +20,7 @@
       "id": 20,
       "planTask": 3,
       "subject": "Task 3: hueImport — planRoomImports",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [18],
       "description": "**Goal:** planRoomImports — 룸 노트 멱등 가져오기.\n\n**Files:** hueImport.ts(수정), hueImport.test.ts(수정)\n\n**Acceptance Criteria:** 기존 룸 skip; title 조명::<룸명> + room:<id>; 이름 폴백 방 <id>.\n\n**Verify:** cd app && npx vitest run tests/unit/hue/hueImport.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/hue/hueImport.ts\", \"app/tests/unit/hue/hueImport.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/hue/hueImport.test.ts\", \"acceptanceCriteria\": [\"planRoomImports 기존 룸 skip\", \"title+room:<id>\", \"이름 폴백\"]}\n```"
     },
