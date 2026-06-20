@@ -43,7 +43,7 @@
       "id": 23,
       "planTask": 6,
       "subject": "Task 6: MasterDashboard — 룸 가져오기 + 묶음 본문",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [20, 22],
       "description": "**Goal:** 마스터 가져오기 = 조명+룸 노트 멱등 생성 + 본문에 전구/방 묶음 2블록 기록.\n\n**Files:** MasterDashboard.svelte(수정), hueNotePlugin.ts(master view prop)\n\n**Acceptance Criteria:** 조명+룸 멱등 생성; 본문 전구/방 묶음(parser.ts BUNDLE_RE 형식); 전체 on/off 유지; npm run check.\n\n**Verify:** cd app && npm run check (+ 수동 묶음 윈도우 확인)\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/hueNote/MasterDashboard.svelte\", \"app/src/lib/editor/hueNote/hueNotePlugin.ts\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"조명+룸 멱등 생성\", \"전구/방 묶음 2블록 parser.ts 형식\", \"전체 on/off 유지\", \"npm run check\"]}\n```"
     },
