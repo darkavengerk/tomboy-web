@@ -348,7 +348,6 @@
 				role="tab"
 				class="rail-chip"
 				class:active={allSelected}
-				class:viewing={displayedNotebook === null}
 				aria-selected={displayedNotebook === null}
 				title="전체"
 				onpointerenter={() => (latched = null)}
@@ -359,7 +358,6 @@
 				role="tab"
 				class="rail-chip"
 				class:active={activeNotebooks.isActive(currentWorkspace, '')}
-				class:viewing={displayedNotebook === ''}
 				aria-selected={displayedNotebook === ''}
 				title="미분류"
 				onpointerenter={() => (latched = '')}
@@ -371,7 +369,6 @@
 					role="tab"
 					class="rail-chip"
 					class:active={activeNotebooks.isActive(currentWorkspace, nb)}
-					class:viewing={displayedNotebook === nb}
 					aria-selected={displayedNotebook === nb}
 					title={nb}
 					onpointerenter={() => (latched = nb)}
@@ -661,21 +658,18 @@
 		word-break: break-word;
 	}
 
+	/* 테두리 밝힘은 호버 때만 — 항상 떠 있으면 지저분. */
 	.rail-chip:hover {
 		background: #232323;
 		color: #fff;
+		border-color: #5a9;
+		box-shadow: inset 0 0 0 1px #5a9;
 	}
 
 	.rail-chip.active {
 		background: #2d5a3d;
 		color: #fff;
 		border-color: #3a7a50;
-	}
-
-	/* 현재 .main에 표시 중인 노트북 칩 강조(선택=녹색 배경과 구분되는 청록 테두리). */
-	.rail-chip.viewing {
-		border-color: #5a9;
-		box-shadow: inset 0 0 0 1px #5a9;
 	}
 
 	/* Main: revealed column to the right of the rail. When collapsed it is
