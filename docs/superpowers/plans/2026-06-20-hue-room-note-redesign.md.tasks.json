@@ -13,7 +13,7 @@
       "id": 19,
       "planTask": 2,
       "subject": "Task 2: hueNoteParse — bulb|room|master",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** (additive) room:<uuid> 시그 인식 추가. zone/zoneId/extractMembershipTitles 유지(Task 5 제거).\n\n**Files:** hueNoteParse.ts(수정, room 추가/zone 유지), hueNoteParse.test.ts(room 케이스 추가)\n\n**Acceptance Criteria:** master/room/bulb/null 판별; room:<uuid> 추가; zone+extractMembershipTitles 유지; 전체 hue + check 그린.\n\n**Verify:** cd app && npx vitest run tests/unit/hue/hueNoteParse.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/hue/hueNoteParse.ts\", \"app/tests/unit/hue/hueNoteParse.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/hue/hueNoteParse.test.ts\", \"acceptanceCriteria\": [\"master/room/bulb/null 판별\", \"room:<uuid> 시그 추가\", \"zone+extractMembershipTitles 유지\", \"전체 hue + check 그린\"]}\n```"
     },
     {
