@@ -1107,7 +1107,9 @@
 	class:minimized
 	data-has-bg={noteBgUrl ? 'true' : 'false'}
 	style="left:{x}px; top:{y}px; width:{width}px; height:{height}px; z-index:{z};"
-	style:background-color="rgba(255, 255, 255, {noteOpacity})"
+	style:background-color={isFocused || noteBgUrl
+		? `rgba(255, 255, 255, ${noteOpacity})`
+		: `rgba(232, 245, 233, ${noteOpacity})`}
 	onpointerdowncapture={handleWindowPointerDown}
 	onkeydown={handleKeyDown}
 >
