@@ -13,7 +13,8 @@ vi.mock('$lib/storage/hueSettings.js', () => ({
 import { getDefaultTerminalBridge, getTerminalBridgeToken } from '$lib/editor/terminal/bridgeSettings.js';
 import { getHueBridgeIp, getHueAppKey } from '$lib/storage/hueSettings.js';
 import {
-  hueHealth, hueConfigured, getHueContext, hueClip, hueClearBridgeCreds, invalidateHueHealthCache
+  hueHealth, hueConfigured, getHueContext, hueClip, hueClearBridgeCreds, invalidateHueHealthCache,
+  huePair, hueDiscover
 } from '$lib/hue/hueClient.js';
 
 const mBridge = vi.mocked(getDefaultTerminalBridge);
@@ -116,11 +117,10 @@ describe('hueClearBridgeCreds', () => {
   });
 });
 
-// Legacy tests preserved
-const BASE = 'https://bridge.example';
-const TOKEN = 'tok';
+describe('hueClient legacy coverage', () => {
+  const BASE = 'https://bridge.example';
+  const TOKEN = 'tok';
 
-describe('hueClient (legacy)', () => {
   it('hueClip posts to /hue/clip with bearer + body', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: [{ id: 'x' }] }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
@@ -131,5 +131,23 @@ describe('hueClient (legacy)', () => {
     expect(JSON.parse(init.body)).toMatchObject({ ip: '1.2.3.4', appkey: 'K', method: 'GET', path: 'light/abc' });
     expect(out.status).toBe(200);
     expect(out.data).toEqual({ data: [{ id: 'x' }] });
+  });
+
+  it('huePair maps 409 to link_button', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'link_button' }), { status: 409 })));
+    expect(await huePair(BASE, TOKEN, '1.2.3.4')).toEqual({ error: 'link_button' });
+  });
+
+  it('hueDiscover returns bridges', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ bridges: [{ ip: '1.2.3.4', id: 'b' }] }), { status: 200 })));
+    expect(await hueDiscover(BASE, TOKEN)).toEqual([{ ip: '1.2.3.4', id: 'b' }]);
+  });
+
+  it('hueHealth 실패(null)는 캐시 안 함 — 다음 호출 재시도', async () => {
+    const f = vi.fn(async () => ({ ok: false, status: 500, json: async () => ({}) }) as any);
+    vi.stubGlobal('fetch', f);
+    expect(await hueHealth()).toBeNull();
+    expect(await hueHealth()).toBeNull();
+    expect(f).toHaveBeenCalledTimes(2);
   });
 });

@@ -28,6 +28,7 @@ export async function hueClip(httpBase: string, token: string, req: ClipReq): Pr
 export async function huePair(
   httpBase: string, token: string, ip: string
 ): Promise<{ appkey: string; clientkey: string; persisted: boolean; persistError?: string } | { error: 'link_button' | 'failed' }> {
+  invalidateHueHealthCache(); // 페어링 직후 stale configured:false 가 남지 않도록 선제 무효화
   let resp: Response;
   try {
     resp = await fetch(`${httpBase}/hue/pair`, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ ip }) });
@@ -73,7 +74,7 @@ export async function hueHealth(): Promise<HueHealth | null> {
       if (d && typeof d.configured === 'boolean') val = { configured: d.configured, ip: d.ip };
     }
   } catch { val = null; }
-  healthCache = { at: now, key, val };
+  if (val !== null) healthCache = { at: now, key, val }; // 실패(null)는 캐시 안 함 → 일시적 불통 후 즉시 재시도
   return val;
 }
 
