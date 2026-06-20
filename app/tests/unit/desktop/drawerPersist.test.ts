@@ -22,14 +22,16 @@ describe('desktopSession — drawer persistence (v4)', () => {
 		desktopSession.openWindow(A);
 		desktopSession.toggleDrawer(0);
 		await desktopSession.stashToActiveDrawer(A);
-		desktopSession.setDrawerWidth(0, 640);
+		desktopSession.setDrawerWidth(0, 640); // right edge = 100 + 640 = 740
 		desktopSession.setDrawerHeight(0, 520);
+		desktopSession.setDrawerLeftKeepRight(0, 180); // left 180, width 740 - 180 = 560
 		await new Promise((r) => setTimeout(r, 400)); // let debounced persist fire
 
 		desktopSession._reset();
 		await desktopSession.load();
 		expect(desktopSession.drawerWindows(0).some((w) => w.guid === A)).toBe(true);
-		expect(desktopSession.getDrawerWidth(0)).toBe(640);
+		expect(desktopSession.getDrawerLeft(0)).toBe(180);
+		expect(desktopSession.getDrawerWidth(0)).toBe(560);
 		expect(desktopSession.getDrawerHeight(0)).toBe(520);
 		expect(desktopSession.activeDrawer).toBe(null);
 	});
@@ -52,6 +54,7 @@ describe('desktopSession — drawer persistence (v4)', () => {
 		expect(desktopSession.drawerWindows(0)).toEqual([]);
 		expect(desktopSession.getDrawerWidth(0)).toBe(760);
 		expect(desktopSession.getDrawerHeight(0)).toBe(380);
+		expect(desktopSession.getDrawerLeft(0)).toBe(100);
 	});
 
 	it('loads a v4 snapshot that predates drawerHeights (default height)', async () => {
@@ -72,5 +75,6 @@ describe('desktopSession — drawer persistence (v4)', () => {
 		expect(desktopSession.drawerWindows(0).some((w) => w.guid === A)).toBe(true);
 		expect(desktopSession.getDrawerWidth(0)).toBe(700);
 		expect(desktopSession.getDrawerHeight(0)).toBe(380);
+		expect(desktopSession.getDrawerLeft(0)).toBe(100);
 	});
 });
