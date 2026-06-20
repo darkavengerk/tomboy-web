@@ -19,6 +19,7 @@ import { handleClaudeChat } from './claude.js';
 import { handleAutomationRun } from './automation.js';
 import { handleRemarkableUpload } from './remarkableUpload.js';
 import { handleMusicExtract, handleMusicEnumerate, handleMusicChapters, handleSunoPlaylist } from './music.js';
+import { handleHueDiscover, handleHuePair, handleHueClip } from './hue.js';
 import { handleGpuStatus, handleGpuUnload } from './gpu.js';
 import { handleStatus } from './status.js';
 import { handleRemarkableWallpaper } from './remarkable.js';
@@ -237,6 +238,21 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 
 	if (url === '/remarkable/send-pdf' && req.method === 'POST') {
 		await handleRemarkableSendPdf(req, res, SECRET);
+		return;
+	}
+
+	if (url === '/hue/discover' && req.method === 'GET') {
+		await handleHueDiscover(req, res, SECRET);
+		return;
+	}
+
+	if (url === '/hue/pair' && req.method === 'POST') {
+		await handleHuePair(req, res, SECRET);
+		return;
+	}
+
+	if (url === '/hue/clip' && req.method === 'POST') {
+		await handleHueClip(req, res, SECRET);
 		return;
 	}
 
