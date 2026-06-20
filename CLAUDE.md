@@ -53,7 +53,7 @@ Most subsystems have dedicated skills — invoke via the `Skill` tool when worki
 | `tomboy-notebundle` | `[체크박스]탭:N`/`묶음:N` + 내부링크 리스트 → 인-에디터 파일철 두 종류(탭=활성중심 재귀 윈도우 / 묶음=5바 타이틀 윈도우) + 임베디드 TomboyEditor. 제목 `탭::`/`묶음::` → 본문 전체가 풀-노트 파일철(전용 노트). 데스크탑 노트 드래그 핸들 → 묶음 위 드롭 = 리스트에 항목 추가(묶음 전용) | `lib/editor/noteBundle/` |
 | `tomboy-tally` | `집계::` 익명 투표/퀴즈 전용 노트 — 본문 파싱(`|중복가능|정답:N`) + 클라 집계/채점 + top-level Firestore `polls/{guid}` + 호스트/게스트 분기 + `/poll/<제목>` 키오스크 공유링크 | `lib/tally/`, `lib/editor/tallyNote/`, `routes/poll/[title]/` |
 | `tomboy-bridgedash` | `브릿지::` 노트 ⟳ → 브릿지 `GET /status` 집계 → 시스템(디스크/메모리/온도)+서비스 도달성+파일+연결을 `---` 섹션·```csv 표로 본문 스냅샷 렌더 | `lib/bridgeStatus/`, `lib/editor/bridgeNote/`, `bridge/src/status.ts` |
-| `tomboy-hue` | `조명::` 노트 — Hue 허브 방(room)/전구/씬 제어(방 노트=체크박스 조명+라디오 씬, 진짜 Hue 씬 룸 스코프; 브릿지 직통 CLIP v2); 브릿지가 creds 보관(BRIDGE_HUE_FILE, 파일 우선) — 기기당 설정 0 | `lib/hue/` (roomOps.ts, roomDoc.ts), `lib/editor/hueNote/` (RoomControl.svelte), `bridge/src/hue.ts`, `bridge/src/hueCreds.ts` |
+| `tomboy-hue` | `조명::` 노트 — Hue 허브 방(room)/존(zone)/전구/씬 제어(방·존 노트=체크박스 조명+라디오 씬, 공유 GroupControl; 진짜 Hue 씬 그룹 스코프; 브릿지 직통 CLIP v2); 브릿지가 creds 보관(BRIDGE_HUE_FILE, 파일 우선) — 기기당 설정 0 | `lib/hue/` (roomOps.ts, roomDoc.ts), `lib/editor/hueNote/` (GroupControl.svelte), `bridge/src/hue.ts`, `bridge/src/hueCreds.ts` |
 | `tomboy-drawers` | 데스크탑 F2(상단)/F3(오른쪽) 전역 슬라이드-인 서랍 — 작업공간 무관 평행 surface(WorkspaceState[])에 노트 주차(터미널 keep-alive), SurfaceRef `*On` 뮤테이터, **가시성≠라이브니스 분리**(서랍 열면 캔버스 노트 active=false지만 안 숨음), MOVE 시맨틱, 영속 v4 | `lib/desktop/{session.svelte.ts,DrawerOverlay,DesktopWorkspace,NoteWindow}` |
 
 Two features have no dedicated skill yet and live inline below: **이미지 임시 저장소** (Vercel Blob) and **채팅 노트** (`llm://` + `claude://`).

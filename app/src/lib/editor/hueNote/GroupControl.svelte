@@ -2,14 +2,14 @@
   import { onMount, onDestroy } from 'svelte';
   import type { EditorView } from '@tiptap/pm/view';
   import { hueCall, HueError } from '$lib/hue/hueClient.js';
-  import type { HueLight, HueRoom, HueScene } from '$lib/hue/hueTypes.js';
-  import { lightsInRoom, groupedLightIdOf, buildSceneActions, isSceneActive } from '$lib/hue/roomOps.js';
+  import type { HueLight, HueRoom, HueZone, HueScene } from '$lib/hue/hueTypes.js';
+  import { lightsInRoom, lightsInZone, groupedLightIdOf, buildSceneActions, isSceneActive } from '$lib/hue/roomOps.js';
   import { buildLightList, buildSceneList, findListByAtom, lightContextAt, sceneContextAt, type LightItem, type SceneItem } from '$lib/hue/roomDoc.js';
   import { listNotesShared } from '$lib/core/noteManager.js';
   import { firstBodyLineOf } from '$lib/hue/noteBody.js';
   import { pushToast } from '$lib/stores/toast.js';
 
-  let { roomId, view }: { roomId: string; view: EditorView } = $props();
+  let { groupKind, groupId, view }: { groupKind: 'room' | 'zone'; groupId: string; view: EditorView } = $props();
 
   let status = $state('');
   let glId = $state<string | null>(null);
@@ -46,19 +46,21 @@
   async function load() {
     status = '불러오는 중…';
     try {
-      const rd = (await hueCall('GET', `room/${roomId}`)) as { data?: HueRoom[] };
-      const room = rd.data?.[0]; if (!room) { status = '룸을 찾을 수 없음'; return; }
-      glId = groupedLightIdOf(room);
+      const rd = (await hueCall('GET', `${groupKind}/${groupId}`)) as { data?: Array<HueRoom | HueZone> };
+      const group = rd.data?.[0]; if (!group) { status = groupKind === 'room' ? '룸을 찾을 수 없음' : '존을 찾을 수 없음'; return; }
+      glId = groupedLightIdOf(group);
       if (glId) {
         const g = ((await hueCall('GET', `grouped_light/${glId}`)) as { data?: Array<{ on: { on: boolean }; dimming?: { brightness: number } }> }).data?.[0];
         groupedOn = g?.on.on ?? false; brightness = g?.dimming?.brightness ?? 100;
       }
       const allLights = ((await hueCall('GET', 'light')) as { data?: HueLight[] }).data ?? [];
-      const roomLights = lightsInRoom(room, allLights);
+      const groupLights = groupKind === 'room'
+        ? lightsInRoom(group as HueRoom, allLights)
+        : lightsInZone(group as HueZone, allLights);
       const u2t = await uuidToTitleMap();
       titleToId = new Map();
       const lightItems: LightItem[] = []; let missing = 0;
-      for (const l of roomLights) {
+      for (const l of groupLights) {
         const title = u2t.get(l.id);
         if (!title) { missing++; continue; }
         titleToId.set(title, l.id);
@@ -66,9 +68,7 @@
       }
       if (missing) pushToast(`노트 없는 전구 ${missing}개 — 마스터에서 가져오기`);
 
-      const scenes = (((await hueCall('GET', 'scene')) as { data?: HueScene[] }).data ?? []).filter((s) => s.group?.rid === roomId);
-      // 씬 이름은 trim 일관성 유지 — sceneContextAt 가 listItem 텍스트를 trim 해 매핑하므로
-      // 맵 키와 표시 이름도 동일하게 trim 하지 않으면 앞뒤 공백 있는 씬은 recall 매핑이 조용히 실패한다.
+      const scenes = (((await hueCall('GET', 'scene')) as { data?: HueScene[] }).data ?? []).filter((s) => s.group?.rid === groupId);
       sceneNameToId = new Map(scenes.map((s) => [s.metadata.name.trim(), s.id]));
       const sceneItems: SceneItem[] = scenes.map((s) => ({ name: s.metadata.name.trim(), active: isSceneActive(s) }));
 
@@ -121,11 +121,12 @@
   async function saveScene() {
     const name = newSceneName.trim(); if (!name) { pushToast('씬 이름을 입력하세요'); return; }
     try {
-      const rd = (await hueCall('GET', `room/${roomId}`)) as { data?: HueRoom[] };
-      const room = rd.data?.[0]; if (!room) { pushToast('룸 없음'); return; }
+      const rd = (await hueCall('GET', `${groupKind}/${groupId}`)) as { data?: Array<HueRoom | HueZone> };
+      const group = rd.data?.[0]; if (!group) { pushToast('그룹 없음'); return; }
       const allLights = ((await hueCall('GET', 'light')) as { data?: HueLight[] }).data ?? [];
-      const acts = buildSceneActions(lightsInRoom(room, allLights));
-      await hueCall('POST', 'scene', { type: 'scene', metadata: { name }, group: { rid: roomId, rtype: 'room' }, actions: acts });
+      const members = groupKind === 'room' ? lightsInRoom(group as HueRoom, allLights) : lightsInZone(group as HueZone, allLights);
+      const acts = buildSceneActions(members);
+      await hueCall('POST', 'scene', { type: 'scene', metadata: { name }, group: { rid: groupId, rtype: groupKind }, actions: acts });
       newSceneName = ''; pushToast('씬 저장됨'); await load();
     } catch (e) { pushToast(errMsg(e, '씬 저장 실패')); }
   }

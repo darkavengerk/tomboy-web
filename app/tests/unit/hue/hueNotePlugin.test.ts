@@ -19,4 +19,9 @@ describe('buildHueDecorations', () => {
   it('no widget for a non-hue note', () => {
     expect(buildHueDecorations(docOf(['그냥 노트', 'hello'])).find().length).toBe(0);
   });
+  it('one widget for a zone note with key hue:zone:<uuid>', () => {
+    const set = buildHueDecorations(docOf(['조명::거실존', `zone:${UUID}`]));
+    expect(set.find().length).toBe(1);
+    expect(set.find()[0].spec.key).toBe(`hue:zone:${UUID}`);
+  });
 });

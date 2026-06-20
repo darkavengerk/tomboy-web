@@ -1,4 +1,4 @@
-import type { HueLight, HueRoom } from './hueTypes.js';
+import type { HueLight, HueRoom, HueZone } from './hueTypes.js';
 import { HUE_PREFIX } from './hueNoteParse.js';
 
 export interface ImportPlanItem { title: string; bodyFirstLine: string; }
@@ -21,6 +21,17 @@ export function planRoomImports(rooms: HueRoom[], existingRoomIds: Set<string>):
     if (existingRoomIds.has(r.id)) continue;
     const name = r.metadata?.name?.trim() || `방 ${r.id}`;
     out.push({ title: `${HUE_PREFIX}${name}`, bodyFirstLine: `room:${r.id}` });
+  }
+  return out;
+}
+
+/** 새로 노트를 만들어야 할 zone 만. existingZoneIds 의 id 는 skip. */
+export function planZoneImports(zones: HueZone[], existingZoneIds: Set<string>): ImportPlanItem[] {
+  const out: ImportPlanItem[] = [];
+  for (const z of zones) {
+    if (existingZoneIds.has(z.id)) continue;
+    const name = z.metadata?.name?.trim() || `존 ${z.id}`;
+    out.push({ title: `${HUE_PREFIX}${name}`, bodyFirstLine: `zone:${z.id}` });
   }
   return out;
 }

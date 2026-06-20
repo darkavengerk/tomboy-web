@@ -5,7 +5,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { mount, unmount } from 'svelte';
 import { parseHueNote, type HueNoteInfo } from '$lib/hue/hueNoteParse.js';
 import BulbControl from './BulbControl.svelte';
-import RoomControl from './RoomControl.svelte';
+import GroupControl from './GroupControl.svelte';
 import MasterDashboard from './MasterDashboard.svelte';
 
 export const hueNotePluginKey = new PluginKey<DecorationSet>('tomboyHueNote');
@@ -22,7 +22,7 @@ export function buildHueDecorations(doc: PMNode, opts?: HuePluginOpts): Decorati
   const info = parseHueNote(title, bodyFirstLine);
   if (!info) return DecorationSet.empty;
   const afterTitle = first.nodeSize;
-  const key = `hue:${info.kind}:${info.lightId ?? info.roomId ?? 'master'}`;
+  const key = `hue:${info.kind}:${info.lightId ?? info.roomId ?? info.zoneId ?? 'master'}`;
   const widget = Decoration.widget(afterTitle, (view) => renderWidget(view, info, opts), {
     side: 1,
     key,
@@ -35,10 +35,12 @@ function renderWidget(view: EditorView, info: HueNoteInfo, opts?: HuePluginOpts)
   const host = document.createElement('div');
   host.className = 'hue-widget';
   host.contentEditable = 'false';
-  const Comp = info.kind === 'bulb' ? BulbControl : info.kind === 'room' ? RoomControl : MasterDashboard;
+  const Comp = info.kind === 'bulb' ? BulbControl
+    : info.kind === 'room' || info.kind === 'zone' ? GroupControl
+    : MasterDashboard;
   const props: Record<string, unknown> =
     info.kind === 'bulb' ? { lightId: info.lightId }
-    : info.kind === 'room' ? { roomId: info.roomId, view }
+    : info.kind === 'room' || info.kind === 'zone' ? { groupKind: info.kind, groupId: info.roomId ?? info.zoneId, view }
     : { view, oninternallink: opts?.oninternallink };
   const inst = mount(Comp as never, { target: host, props });
   (host as unknown as { _hueDestroy?: () => void })._hueDestroy = () => { void unmount(inst); };

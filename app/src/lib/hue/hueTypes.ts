@@ -23,6 +23,13 @@ export interface HueRoom {
   children: HueResourceRef[];        // device refs
   services: HueResourceRef[];        // grouped_light etc
 }
+export interface HueZone {
+  id: string;
+  type: 'zone';
+  metadata?: { name?: string };
+  children: HueResourceRef[]; // light refs (rtype 'light') — room 과 달리 device-hop 없음
+  services: HueResourceRef[]; // grouped_light 등
+}
 export interface HueScene {
   id: string;
   type: 'scene';

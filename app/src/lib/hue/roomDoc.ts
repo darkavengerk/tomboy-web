@@ -2,7 +2,7 @@
  * roomDoc.ts — 룸 노트 본문의 조명(체크박스)/씬(라디오) 리스트 빌더·탐색기.
  *
  * 순수 ProseMirror 함수만 포함. Svelte / 네트워크 / $state 없음.
- * RoomControl 위젯(Task 5)이 여기서 export한 함수를 호출해 doc을 조작한다.
+ * GroupControl 위젯(Task 5)이 여기서 export한 함수를 호출해 doc을 조작한다.
  */
 import type { Node as PMNode, Schema } from '@tiptap/pm/model';
 

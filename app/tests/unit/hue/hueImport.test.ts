@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { planLightImports, planRoomImports } from '$lib/hue/hueImport.js';
-import type { HueLight, HueRoom } from '$lib/hue/hueTypes.js';
+import { planLightImports, planRoomImports, planZoneImports } from '$lib/hue/hueImport.js';
+import type { HueLight, HueRoom, HueZone } from '$lib/hue/hueTypes.js';
 
 const light = (id: string, name: string): HueLight => ({ id, type: 'light', metadata: { name }, on: { on: true } });
 
@@ -34,5 +34,22 @@ describe('planRoomImports', () => {
   });
   it('멱등 — 전부 기존이면 빈 배열', () => {
     expect(planRoomImports([room('r1', '거실')], new Set(['r1']))).toEqual([]);
+  });
+});
+
+describe('planZoneImports', () => {
+  const zones = [
+    { id: 'Z1', type: 'zone', metadata: { name: '거실존' }, children: [], services: [] },
+    { id: 'Z2', type: 'zone', metadata: {}, children: [], services: [] }
+  ] as HueZone[];
+  it('기존 zone skip, title+zone:<id>, 이름 폴백', () => {
+    expect(planZoneImports(zones, new Set(['Z1']))).toEqual([
+      { title: '조명::존 Z2', bodyFirstLine: 'zone:Z2' }
+    ]);
+  });
+  it('이름 있으면 사용', () => {
+    expect(planZoneImports([zones[0]], new Set())).toEqual([
+      { title: '조명::거실존', bodyFirstLine: 'zone:Z1' }
+    ]);
   });
 });
