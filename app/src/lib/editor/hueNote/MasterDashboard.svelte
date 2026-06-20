@@ -4,8 +4,8 @@
   import type { Node as PMNode, Schema } from '@tiptap/pm/model';
   import { Fragment } from '@tiptap/pm/model';
   import { hueCall, getHueContext, HueError } from '$lib/hue/hueClient.js';
-  import type { HueLight, HueRoom } from '$lib/hue/hueTypes.js';
-  import { planLightImports, planRoomImports } from '$lib/hue/hueImport.js';
+  import type { HueLight, HueRoom, HueZone } from '$lib/hue/hueTypes.js';
+  import { planLightImports, planRoomImports, planZoneImports } from '$lib/hue/hueImport.js';
   import { firstBodyLineOf } from '$lib/hue/noteBody.js';
   import { createNote, ensureUniqueTitle, listNotesShared } from '$lib/core/noteManager.js';
   import { pushToast } from '$lib/stores/toast.js';
@@ -32,15 +32,17 @@
     try {
       const lights = ((await hueCall('GET', 'light')) as { data?: HueLight[] }).data ?? [];
       const rooms = ((await hueCall('GET', 'room')) as { data?: HueRoom[] }).data ?? [];
+      const zones = ((await hueCall('GET', 'zone')) as { data?: HueZone[] }).data ?? [];
       const lightPlan = planLightImports(lights, await existingIds(/^light:([0-9a-fA-F-]{36})$/));
       const roomPlan = planRoomImports(rooms, await existingIds(/^room:([0-9a-fA-F-]{36})$/));
-      for (const it of [...lightPlan, ...roomPlan]) {
+      const zonePlan = planZoneImports(zones, await existingIds(/^zone:([0-9a-fA-F-]{36})$/));
+      for (const it of [...lightPlan, ...roomPlan, ...zonePlan]) {
         const title = await ensureUniqueTitle(it.title);
         await createNote({ title, bodyFirstLine: it.bodyFirstLine });
       }
       if (view) await writeBundles();
-      const created = lightPlan.length + roomPlan.length;
-      pushToast(created ? `전구 ${lightPlan.length} · 방 ${roomPlan.length}개 생성` : '새 항목 없음 — 목록 갱신');
+      const created = lightPlan.length + roomPlan.length + zonePlan.length;
+      pushToast(created ? `전구 ${lightPlan.length} · 방 ${roomPlan.length} · 존 ${zonePlan.length}개 생성` : '새 항목 없음 — 목록 갱신');
     } catch (e) {
       pushToast(e instanceof HueError && e.kind === 'no_bridge' ? '설정에서 Hue를 먼저 연결' : '조명 브릿지에 연결 안 됨');
     } finally { busy = false; }
@@ -87,11 +89,15 @@
     const roomTitles = notes
       .filter((n) => /^room:/.test(firstBodyLineOf(n.xmlContent).trim()))
       .map((n) => n.title);
+    const zoneTitles = notes
+      .filter((n) => /^zone:/.test(firstBodyLineOf(n.xmlContent).trim()))
+      .map((n) => n.title);
 
     const schema = view!.state.schema;
     const blocks = [
       ...bundleBlock(schema, '전구: ', lightTitles),
-      ...bundleBlock(schema, '방: ', roomTitles)
+      ...bundleBlock(schema, '방: ', roomTitles),
+      ...bundleBlock(schema, '존: ', zoneTitles)
     ];
 
     const doc = view!.state.doc;

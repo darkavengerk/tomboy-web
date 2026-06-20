@@ -80,6 +80,10 @@ describe('bundleBlock — BUNDLE_RE 호환성', () => {
     const prefix = '방: ';
     expect(prefix.trim().endsWith(':')).toBe(true);
   });
+
+  it('"존: " prefix 도 ":" 로 끝남', () => {
+    expect('존: '.trim().endsWith(':')).toBe(true);
+  });
 });
 
 describe('bundleBlock — parseNoteBundles 통합 인식', () => {
@@ -132,6 +136,26 @@ describe('bundleBlock — parseNoteBundles 통합 인식', () => {
     expect(bundles[0].entries.map((e) => e.title)).toEqual(['조명::거실등']);
     expect(bundles[1].kind).toBe('bundle');
     expect(bundles[1].entries.map((e) => e.title)).toEqual(['조명::거실']);
+  });
+
+  it('전구+방+존 3블록 연속 삽입 시 세 번들 모두 인식됨', () => {
+    const ed = makeEditor({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: '조명::전체' }] }]
+    });
+    const schema = ed.schema;
+    const allBlocks = [
+      ...bundleBlock(schema, '전구: ', ['조명::거실등']),
+      ...bundleBlock(schema, '방: ', ['조명::거실']),
+      ...bundleBlock(schema, '존: ', ['조명::거실존'])
+    ];
+    const { tr } = ed.state;
+    const from = ed.state.doc.firstChild!.nodeSize;
+    ed.view.dispatch(tr.replaceWith(from, ed.state.doc.content.size, allBlocks));
+
+    const bundles = parseNoteBundles(ed.state.doc);
+    expect(bundles).toHaveLength(3);
+    expect(bundles[2].entries.map((e) => e.title)).toEqual(['조명::거실존']);
   });
 
   it('titles 빈 배열이어도 번들로 인식됨(빈 리스트 허용)', () => {
