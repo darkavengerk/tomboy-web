@@ -70,7 +70,7 @@
 		bridgeToHttpBase,
 		getTerminalBridgeToken
 	} from '$lib/editor/terminal/bridgeSettings.js';
-	import { hueDiscover, huePair } from '$lib/hue/hueClient.js';
+	import { hueDiscover, huePair, hueConfigured, hueClearBridgeCreds, invalidateHueHealthCache, type HueSource } from '$lib/hue/hueClient.js';
 	import {
 		getHueBridgeIp,
 		getHueAppKey,
@@ -162,10 +162,15 @@
 	let hueCandidates = $state<Array<{ ip: string; id: string }>>([]);
 	let hueConnected = $state(false);
 	let hueMsg = $state('');
+	let hueSource = $state<HueSource>('none');
+	let hueStatusIp = $state('');
 
 	async function loadHueState(): Promise<void> {
 		hueIp = await getHueBridgeIp();
-		hueConnected = !!(await getHueAppKey());
+		const conf = await hueConfigured();
+		hueSource = conf.source;
+		hueStatusIp = conf.ip ?? hueIp;
+		hueConnected = conf.ok;
 	}
 
 	async function hueBridgeCtx(): Promise<{ base: string; token: string } | null> {
@@ -201,15 +206,28 @@
 			hueMsg = r.error === 'link_button' ? '허브 링크 버튼을 누르고 다시 [연결]' : 'Hue 연결 실패';
 			return;
 		}
+		// 로컬에도 저장(폴백) + 브릿지 health 캐시 무효화
 		await setHueCredentials(hueIp.trim(), r.appkey, r.clientkey);
-		hueConnected = true;
-		hueMsg = '연결됨';
+		invalidateHueHealthCache();
+		hueMsg = r.persisted
+			? '브릿지에 저장됨 — 모든 기기에서 사용 가능'
+			: `이 기기에만 저장됨(브릿지 저장 실패: ${r.persistError ?? '알 수 없음'})`;
+		await loadHueState();
 	}
 
 	async function disconnectHue(): Promise<void> {
 		await clearHueCredentials();
-		hueConnected = false;
-		hueMsg = '연결 해제됨';
+		invalidateHueHealthCache();
+		hueMsg = '이 기기 로컬 연결 해제됨';
+		await loadHueState();
+	}
+
+	async function disconnectHueBridge(): Promise<void> {
+		if (!confirm('브릿지에서 Hue 연결을 해제하면 모든 기기에서 조명 제어가 중단됩니다. 계속할까요?')) return;
+		const ok = await hueClearBridgeCreds();
+		await clearHueCredentials();
+		hueMsg = ok ? '브릿지에서 해제됨' : '브릿지 해제 실패 — 토큰/연결 확인';
+		await loadHueState();
 	}
 
 	// ── 이미지 서버 토큰 ──────────────────────────────────────────────
@@ -1433,14 +1451,19 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 			<section class="section">
 				<h2>Hue 조명</h2>
 				<p class="info-text">
-					Philips Hue 허브를 위 브릿지를 통해 연결합니다. 같은 터미널 브릿지 URL과
-					토큰을 그대로 재사용하므로, 먼저 위에서 브릿지에 로그인되어 있어야 합니다.
-					허브를 연결하면 <code>조명::</code> 노트로 조명을 제어할 수 있습니다.
+					Philips Hue 허브를 위 브릿지를 통해 연결합니다. 한 기기에서 한 번만 연결하면
+					브릿지가 키를 보관하여 같은 브릿지 URL·토큰을 쓰는 모든 기기에서 별도 설정 없이
+					<code>조명::</code> 노트로 조명을 제어할 수 있습니다.
 				</p>
 
 				{#if hueConnected}
-					<p class="info-text small">상태: <code>연결됨</code> — {hueIp}</p>
-					<button class="btn btn-secondary" onclick={disconnectHue}>연결 해제</button>
+					{#if hueSource === 'bridge'}
+						<p class="info-text small">상태: <code>브릿지에 구성됨</code> — {hueStatusIp}</p>
+						<button class="btn btn-secondary" onclick={disconnectHueBridge}>브릿지에서 해제</button>
+					{:else}
+						<p class="info-text small">상태: <code>이 기기에 저장됨</code> — {hueStatusIp}</p>
+						<button class="btn btn-secondary" onclick={disconnectHue}>이 기기 연결 해제</button>
+					{/if}
 				{:else}
 					<div class="profile-row">
 						<button class="btn btn-secondary profile-btn" onclick={findHueBridges}>
