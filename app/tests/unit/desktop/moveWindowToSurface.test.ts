@@ -63,6 +63,31 @@ describe('desktopSession — moveWindowToSurface', () => {
 		expect(desktopSession.windows.some((w) => w.guid === A)).toBe(true);
 	});
 
+	it('ejectFromDrawer pops a drawer note back into the current workspace', async () => {
+		await putNote(createEmptyNote(A));
+		desktopSession._reset();
+		desktopSession.openWindow(A);
+		desktopSession.toggleDrawer(0);
+		await desktopSession.stashToActiveDrawer(A);
+		expect(desktopSession.drawerWindows(0).some((w) => w.guid === A)).toBe(true);
+
+		await desktopSession.ejectFromDrawer(0, A);
+		expect(desktopSession.drawerWindows(0).some((w) => w.guid === A)).toBe(false);
+		expect(desktopSession.windows.some((w) => w.guid === A)).toBe(true);
+		// Drawer stays open after an eject (symmetric to stash, which keeps it open).
+		expect(desktopSession.activeDrawer).toBe(0);
+	});
+
+	it('ejectFromDrawer is a no-op for an out-of-range drawer index', async () => {
+		await putNote(createEmptyNote(A));
+		desktopSession._reset();
+		desktopSession.openWindow(A);
+		desktopSession.toggleDrawer(0);
+		await desktopSession.stashToActiveDrawer(A);
+		await desktopSession.ejectFromDrawer(9, A);
+		expect(desktopSession.drawerWindows(0).some((w) => w.guid === A)).toBe(true);
+	});
+
 	it('moving a missing guid is a silent no-op', async () => {
 		desktopSession._reset();
 		await expect(
