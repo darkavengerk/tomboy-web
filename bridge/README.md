@@ -81,6 +81,16 @@ Server messages:
 
 Generate `BRIDGE_SECRET` with: `openssl rand -hex 32`.
 
+### Hue creds 보관 (선택)
+
+`BRIDGE_HUE_FILE` 환경변수에 쓰기 가능한 JSON 경로를 지정하면, 앱에서 1회 페어링한
+Hue 키(`{ip, appkey, clientkey}`)를 브릿지가 보관한다(0600). 이후 같은 브릿지 토큰을
+쓰는 모든 기기가 별도 Hue 설정 없이 조명을 제어한다. 미설정 시 각 기기가 매 요청에
+creds 를 동봉하는 기존 동작 유지.
+
+- 권장 경로: 컨테이너 영속 볼륨 내부, 예 `BRIDGE_HUE_FILE=/data/hue.json`.
+- rootless Podman/Quadlet: 해당 경로가 포함된 볼륨이 마운트되어 있는지 확인.
+
 ---
 
 ## Running on Bazzite (immutable Fedora)

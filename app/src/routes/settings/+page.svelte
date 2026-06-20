@@ -3004,6 +3004,21 @@ Complete:</pre>
 						<li><button type="button" class="link-btn" onclick={() => (activeTab = 'config')}>동기화 설정 탭</button>에서 토글.</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>Hue 조명 — 한 번만 연결하면 모든 기기에서</summary>
+					<p class="info-text">
+						브릿지가 Hue 키를 보관하므로, 어느 기기든 <strong>한 번</strong> 설정 → Hue 에서
+						허브를 연결하면 같은 브릿지를 쓰는 다른 기기는 별도 설정 없이
+						<code>조명::</code> 노트로 조명을 제어합니다.
+					</p>
+					<ul class="guide-list">
+						<li>연결: 설정 → Hue → 브릿지 찾기/IP 입력 → 허브 링크버튼 → [연결].</li>
+						<li>"브릿지에 저장됨" 이 뜨면 모든 기기 공유. "이 기기에만 저장됨" 이면 브릿지 저장이 실패한 것(메시지의 사유 확인).</li>
+						<li>해제: "브릿지에서 해제" 는 모든 기기에 영향. "이 기기 연결 해제" 는 로컬만.</li>
+						<li>오류 toast 에 HTTP 상태가 함께 표시됩니다(어디서 막혔는지 진단용).</li>
+					</ul>
+				</details>
 			</section>
 			{/if}
 

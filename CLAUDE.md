@@ -52,7 +52,7 @@ Most subsystems have dedicated skills — invoke via the `Skill` tool when worki
 | `tomboy-remarkable-send` | 노트 → PDF 번들(forward + backward 트리 + 이미지/차트) → 브릿지 SSH → reMarkable xochitl | `lib/remarkable/`, `bridge/src/remarkableSendPdf.ts` |
 | `tomboy-notebundle` | `[체크박스]탭:N`/`묶음:N` + 내부링크 리스트 → 인-에디터 파일철 두 종류(탭=활성중심 재귀 윈도우 / 묶음=5바 타이틀 윈도우) + 임베디드 TomboyEditor. 제목 `탭::`/`묶음::` → 본문 전체가 풀-노트 파일철(전용 노트) | `lib/editor/noteBundle/` |
 | `tomboy-tally` | `집계::` 익명 투표/퀴즈 전용 노트 — 본문 파싱(`|중복가능|정답:N`) + 클라 집계/채점 + top-level Firestore `polls/{guid}` + 호스트/게스트 분기 + `/poll/<제목>` 키오스크 공유링크 | `lib/tally/`, `lib/editor/tallyNote/`, `routes/poll/[title]/` |
-| `tomboy-hue` | `조명::` 노트 — Hue 허브 방(room)/전구/씬 제어(방 노트=체크박스 조명+라디오 씬, 진짜 Hue 씬 룸 스코프; 브릿지 직통 CLIP v2) | `lib/hue/` (roomOps.ts, roomDoc.ts), `lib/editor/hueNote/` (RoomControl.svelte), `bridge/src/hue.ts` |
+| `tomboy-hue` | `조명::` 노트 — Hue 허브 방(room)/전구/씬 제어(방 노트=체크박스 조명+라디오 씬, 진짜 Hue 씬 룸 스코프; 브릿지 직통 CLIP v2); 브릿지가 creds 보관(BRIDGE_HUE_FILE, 파일 우선) — 기기당 설정 0 | `lib/hue/` (roomOps.ts, roomDoc.ts), `lib/editor/hueNote/` (RoomControl.svelte), `bridge/src/hue.ts`, `bridge/src/hueCreds.ts` |
 
 Two features have no dedicated skill yet and live inline below: **이미지 임시 저장소** (Vercel Blob) and **채팅 노트** (`llm://` + `claude://`).
 
@@ -228,6 +228,7 @@ These touch multiple skills. Single-skill invariants live inside their skill.
 - **Schedule updates do NOT propagate via Dropbox sync.** Multi-device push coverage requires notifications enabled on every device.
 - **Image storage = two channels.** New paste → Vercel Blob (temp). User-explicit "Dropbox로 저장" promotes to Dropbox. Existing Dropbox images untouched (no migration). Diary pipeline / terminal note paste / OCR note keep their own paths.
 - **`IMAGE_STORAGE_TOKEN` env (Vercel) ≡ `appSettings.imageStorageToken` (client)** byte-identical. Same pattern as `BRIDGE_SECRET` (Pi) ≡ `BRIDGE_SHARED_TOKEN` (ocr-service) and the terminal bridge Bearer token.
+- **`BRIDGE_HUE_FILE` (Pi bridge env)** points at a JSON file holding Hue `{ip,appkey,clientkey}` as the single source. `/hue/clip` uses it with **file-wins** priority (client-sent creds are only a fallback when the file is absent). `/hue/health` reports `{configured,ip}` (never the secrets); `DELETE /hue/creds` clears it. Unset → each device sends creds per request (legacy behavior). One pairing on any device covers all devices sharing the bridge token.
 - **Cache key for image fetch is the exact post-`toDirectImageUrl` URL** (`?raw=1` byte-identical). Don't normalize downstream — query param reorder silently breaks cache. See `tomboy-imagecache`.
 - **`www.dropbox.com` blocks `fetch()` (no CORS) but works as `<img src>`.** Use the `ImageFetcher` registry (`dropboxFetcher` routes via SDK `sharingGetSharedLinkFile`). Plain `fetch()` only as fallback. See `tomboy-imagecache`.
 
