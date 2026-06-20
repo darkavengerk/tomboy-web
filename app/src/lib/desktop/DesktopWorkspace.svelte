@@ -17,6 +17,7 @@
 	import { installModKeyListeners } from './modKeys.svelte.js';
 	import { extractNoteGuidFromText, openNoteByGuid } from './openByClipboard.js';
 	import SpreadOverlay from './spreadView/SpreadOverlay.svelte';
+	import DrawerOverlay from './DrawerOverlay.svelte';
 	import { spreadView } from './spreadView/spreadView.svelte.js';
 	import { createNote } from '$lib/core/noteManager.js';
 	import {
@@ -189,6 +190,18 @@
 			if (spreadView.isOpen || hasNoteWindows) spreadView.toggle();
 			return;
 		}
+		// F2 / F3 — toggle the left / right drawer (ddterm-style). No modifiers.
+		if (
+			(e.key === 'F2' || e.key === 'F3') &&
+			!e.ctrlKey &&
+			!e.altKey &&
+			!e.metaKey &&
+			!e.shiftKey
+		) {
+			e.preventDefault();
+			desktopSession.toggleDrawer(e.key === 'F2' ? 0 : 1);
+			return;
+		}
 		// Ctrl+L (or Cmd+L on macOS) without other modifiers — new note from selection.
 		if (
 			e.key.toLowerCase() === 'l' &&
@@ -340,7 +353,7 @@
 			     visible workspace is "live". -->
 			{#each desktopSession.allWorkspaceWindows as item (item.workspaceIndex + ':' + item.window.guid)}
 				{@const win = item.window}
-				{@const active = item.workspaceIndex === desktopSession.currentWorkspace}
+				{@const active = item.workspaceIndex === desktopSession.currentWorkspace && desktopSession.activeDrawer === null}
 				{#if win.kind === 'settings'}
 					<SettingsWindow
 						x={win.x}
@@ -423,6 +436,8 @@
 	{#if spreadView.isOpen}
 		<SpreadOverlay />
 	{/if}
+	<DrawerOverlay index={0} side="left" />
+	<DrawerOverlay index={1} side="right" />
 </div>
 
 <style>

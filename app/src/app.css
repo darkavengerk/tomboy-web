@@ -22,6 +22,10 @@
 	--z-nav: 200;     /* 1차 내비 크롬 — 모바일 TopNav, 데스크탑 SidePanel 레일 */
 	--z-miniplayer: 250; /* 전역 음악 미니 플레이어(알약) — nav 위, 시트 아래 */
 	--z-sheet: 300;   /* 바텀시트·드롭다운 (노트북/즐겨찾기/정렬/모바일 노트액션) */
+	/* Desktop drawers (F2/F3 slide-in overlays). Above the rail/sheets so the
+	   panel covers in-canvas chrome; below context menus (which portal to body
+	   at --z-menu) and modals/spread (F4) so those still cover the drawer. */
+	--z-drawer: 350;
 	--z-menu: 400;    /* 컨텍스트 메뉴·hover 팝오버 (노트액션·우클릭·각주미리보기·히스토리) */
 	--z-banner: 500;  /* 앱 상태 배너 (오프라인 / 설치 안내) */
 	--z-toast: 600;   /* 일시 토스트 — 배너 위 */

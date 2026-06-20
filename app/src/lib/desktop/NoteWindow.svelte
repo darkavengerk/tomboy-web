@@ -78,7 +78,8 @@
 		clearNoteBg,
 		loadNoteOpacity,
 		setNoteOpacity,
-		type WallpaperMode
+		type WallpaperMode,
+		type SurfaceRef
 	} from './session.svelte.js';
 	import { resolveImageBlob } from '$lib/editor/imageActions/copyImage.js';
 	import { getBlob } from '$lib/imageCache/imageCache.js';
@@ -116,6 +117,10 @@
 		 *  terminal / Firebase / spread-snapshot survive. Restored from the
 		 *  SidePanel 최소화됨 list or an F4-spread card click. */
 		minimized?: boolean;
+		/** When set, this window lives on a drawer surface; resize/pin/send-to-back
+		 *  route through the surface-aware session ops instead of the current
+		 *  workspace. Unset (canvas) keeps the legacy current-workspace calls. */
+		surface?: SurfaceRef;
 		onfocus: (guid: string) => void;
 		onclose: (guid: string) => void;
 		/** Minimize handler. Omitted by embedders without a taskbar (e.g. the
@@ -136,6 +141,7 @@
 		pinned = false,
 		active = true,
 		minimized = false,
+		surface = undefined,
 		onfocus,
 		onclose,
 		onminimize = undefined,
@@ -143,6 +149,19 @@
 		onresize,
 		onopenlink
 	}: Props = $props();
+
+	function applyGeometry(g: { x: number; y: number; width: number; height: number }) {
+		if (surface) desktopSession.updateGeometryOn(surface, guid, g);
+		else desktopSession.updateGeometry(guid, g);
+	}
+	function pinToggleOnSurface() {
+		if (surface) desktopSession.togglePinOn(surface, guid);
+		else desktopSession.togglePin(guid);
+	}
+	function sendBackOnSurface() {
+		if (surface) desktopSession.sendToBackOn(surface, guid);
+		else desktopSession.sendToBack(guid);
+	}
 
 	// `$state.raw` instead of `$state` for the big content holders. Svelte's
 	// default deep proxy makes every property read go through a trap, and
@@ -568,7 +587,7 @@
 			DESKTOP_WINDOW_MIN_WIDTH,
 			Math.round(width * ratio)
 		);
-		desktopSession.updateGeometry(guid, { x, y, width: newWidth, height });
+		applyGeometry({ x, y, width: newWidth, height });
 	}
 
 	function flushSave(): Promise<void> {
@@ -884,13 +903,13 @@
 
 	function handlePinToggle(e: MouseEvent) {
 		e.stopPropagation();
-		desktopSession.togglePin(guid);
+		pinToggleOnSurface();
 	}
 
 	function handleTitleBarAuxClick(e: MouseEvent) {
 		if (e.button === 1) {
 			e.preventDefault();
-			desktopSession.sendToBack(guid);
+			sendBackOnSurface();
 		}
 	}
 
@@ -1351,7 +1370,7 @@
 	<ResizeHandles
 		base={() => ({ x, y, width, height })}
 		min={{ width: DESKTOP_WINDOW_MIN_WIDTH, height: DESKTOP_WINDOW_MIN_HEIGHT }}
-		onresize={(g) => desktopSession.updateGeometry(guid, g)}
+		onresize={(g) => applyGeometry(g)}
 	/>
 </div>
 
