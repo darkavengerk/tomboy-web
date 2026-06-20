@@ -1245,6 +1245,7 @@
 						onclose={handleClose}
 						onwindowdrag={handleBundleTitleDrag}
 						oninsertentry={handleBundleInsertEntry}
+						onminimize={onminimize ? () => onminimize?.(guid) : undefined}
 					/>
 				{:else}
 					<NoteBundleStack
@@ -1257,6 +1258,7 @@
 						onraw={() => (showRawBundle = true)}
 						onclose={handleClose}
 						onwindowdrag={handleBundleTitleDrag}
+						onminimize={onminimize ? () => onminimize?.(guid) : undefined}
 					/>
 				{/if}
 			{/key}

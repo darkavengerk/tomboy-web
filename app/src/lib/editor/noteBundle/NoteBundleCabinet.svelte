@@ -112,6 +112,9 @@
 		 *  삽입+저장. boundary=null=끝. in-body(view 있음)는 이 콜백 대신 플러그인
 		 *  으로 직접 삽입하므로 미사용. */
 		oninsertentry?: (boundary: number | null, title: string) => void;
+		/** dedicated 데스크탑 창 — 창 최소화. 전용 노트는 창 타이틀바(=최소화 버튼)를
+		 *  숨기므로 번들 크롬이 대신 노출한다. 없으면(모바일/그래프) 버튼 숨김. */
+		onminimize?: () => void;
 	}
 	let {
 		spec,
@@ -123,7 +126,8 @@
 		onclose,
 		onraw,
 		onwindowdrag,
-		oninsertentry
+		oninsertentry,
+		onminimize
 	}: Props = $props();
 	const dedicated = $derived(variant === 'dedicated');
 
@@ -647,6 +651,11 @@
 		e.preventDefault();
 		e.stopPropagation();
 		onclose?.();
+	}
+	function handleMinimize(e: Event) {
+		e.preventDefault();
+		e.stopPropagation();
+		onminimize?.();
 	}
 
 	// --- 훑어보기 / 편집 모드 ---------------------------------------------------
@@ -1190,6 +1199,15 @@
 						title="편집 (일반 노트로 보기)"
 						use:direct={{ click: handleRawEdit, pointerdown: stopEvt, mousedown: stopEvt }}
 					>✎ 편집</button>
+				{/if}
+				{#if onminimize}
+					<button
+						type="button"
+						class="dchrome-btn"
+						title="최소화"
+						aria-label="최소화"
+						use:direct={{ click: handleMinimize, pointerdown: stopEvt, mousedown: stopEvt }}
+					>&#x1F5D5;</button>
 				{/if}
 				{#if onclose}
 					<button
