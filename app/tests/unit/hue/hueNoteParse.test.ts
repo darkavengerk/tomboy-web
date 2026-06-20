@@ -10,4 +10,11 @@ describe('parseHueNote', () => {
   it('no prefix', () => expect(parseHueNote('거실 등', `light:${UUID}`)).toBeNull());
   it('unknown signature', () => expect(parseHueNote('조명::뭐', 'hello')).toBeNull());
   it('룸', () => expect(parseHueNote('조명::거실', `room:${ROOM_UUID}`)).toEqual({ kind: 'room', roomId: ROOM_UUID }));
+  it('zone:<uuid> → kind zone', () => {
+    expect(parseHueNote('조명::거실존', 'zone:11111111-2222-3333-4444-555555555555'))
+      .toEqual({ kind: 'zone', zoneId: '11111111-2222-3333-4444-555555555555' });
+  });
+  it('잘못된 zone sig → null', () => {
+    expect(parseHueNote('조명::x', 'zone:not-a-uuid')).toBeNull();
+  });
 });

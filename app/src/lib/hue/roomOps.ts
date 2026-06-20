@@ -1,9 +1,15 @@
-import type { HueRoom, HueResourceRef, HueLight, HueScene } from './hueTypes.js';
+import type { HueRoom, HueResourceRef, HueLight, HueScene, HueZone } from './hueTypes.js';
 
 /** 룸 device children 에 owner 가 든 light 만(순서 보존). */
 export function lightsInRoom(room: HueRoom, allLights: HueLight[]): HueLight[] {
   const devRids = new Set(room.children.filter((c) => c.rtype === 'device').map((c) => c.rid));
   return allLights.filter((l) => l.owner && devRids.has(l.owner.rid));
+}
+
+/** zone children 의 light 만(직접 참조, device-hop 없음; 순서 보존). */
+export function lightsInZone(zone: HueZone, allLights: HueLight[]): HueLight[] {
+  const lightRids = new Set(zone.children.filter((c) => c.rtype === 'light').map((c) => c.rid));
+  return allLights.filter((l) => lightRids.has(l.id));
 }
 
 /** services 에서 grouped_light rid. */
