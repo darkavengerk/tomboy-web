@@ -133,3 +133,45 @@ test('미인증 401 — health / creds delete', async () => {
   const r2 = makeRes(); await handleHueCredsDelete(makeReq('DELETE', 'bad.token'), r2, SECRET, f.store);
   assert.equal(r2.statusCode, 401);
 });
+
+test('clip: 비화이트리스트 리소스 → 400 forbidden_path, 릴레이 미호출', async () => {
+  const f = fakeStore({ ip: '1.2.3.4', appkey: 'K', clientkey: '' });
+  let called = false;
+  const relay: HueRequestFn = async () => { called = true; return { status: 200, body: '{}' }; };
+  const res = makeRes();
+  await handleHueClip(makeReq('POST', TOKEN, { method: 'GET', path: 'config' }), res, SECRET, relay, f.store);
+  assert.equal(res.statusCode, 400);
+  assert.equal(JSON.parse(res.body).error, 'forbidden_path');
+  assert.equal(called, false);
+});
+
+test('clip: dotdot 경로 traversal 거부(화이트리스트 첫 세그먼트라도), 릴레이 미호출', async () => {
+  const f = fakeStore({ ip: '1.2.3.4', appkey: 'K', clientkey: '' });
+  let called = false;
+  const relay: HueRequestFn = async () => { called = true; return { status: 200, body: '{}' }; };
+  const res = makeRes();
+  await handleHueClip(makeReq('POST', TOKEN, { method: 'GET', path: 'light/../../config' }), res, SECRET, relay, f.store);
+  assert.equal(res.statusCode, 400);
+  assert.equal(JSON.parse(res.body).error, 'forbidden_path');
+  assert.equal(called, false);
+});
+
+test('clip: 미허용 메서드 → 400 bad_method', async () => {
+  const f = fakeStore({ ip: '1.2.3.4', appkey: 'K', clientkey: '' });
+  const relay: HueRequestFn = async () => ({ status: 200, body: '{}' });
+  const res = makeRes();
+  await handleHueClip(makeReq('POST', TOKEN, { method: 'FAKE', path: 'light' }), res, SECRET, relay, f.store);
+  assert.equal(res.statusCode, 400);
+  assert.equal(JSON.parse(res.body).error, 'bad_method');
+});
+
+test('clip / pair: 미인증 401', async () => {
+  const f = fakeStore({ ip: '1.2.3.4', appkey: 'K', clientkey: '' });
+  const relay: HueRequestFn = async () => ({ status: 200, body: '{}' });
+  const r1 = makeRes();
+  await handleHueClip(makeReq('POST', undefined, { method: 'GET', path: 'light' }), r1, SECRET, relay, f.store);
+  assert.equal(r1.statusCode, 401);
+  const r2 = makeRes();
+  await handleHuePair(makeReq('POST', 'bad.token', { ip: '1.2.3.4' }), r2, SECRET, okPair, f.store);
+  assert.equal(r2.statusCode, 401);
+});
