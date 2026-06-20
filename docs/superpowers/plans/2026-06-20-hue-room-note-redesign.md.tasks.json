@@ -51,10 +51,10 @@
       "id": 24,
       "planTask": 7,
       "subject": "Task 7: 가이드 + registry help + 스킬 문서",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [22, 23],
       "description": "**Goal:** 가이드 카드·registry help·CLAUDE.md·SKILL.md를 룸 기반으로 갱신.\n\n**Files:** settings/+page.svelte, registry.ts(line 92), CLAUDE.md, .claude/skills/tomboy-hue/SKILL.md\n\n**Acceptance Criteria:** registry help 존→룸; 가이드 카드 룸 사용법(체크박스/라디오/가져오기/자동⟳); CLAUDE.md+SKILL.md 룸 구조 + paths; npm run check.\n\n**Verify:** cd app && npm run check (+ 수동 가이드 카드 확인)\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\", \"app/src/lib/noteTypes/registry.ts\", \"CLAUDE.md\", \".claude/skills/tomboy-hue/SKILL.md\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"registry help 존→룸\", \"가이드 카드 룸\", \"CLAUDE.md+SKILL.md 룸 구조\", \"npm run check\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-06-20T11:45:00+09:00"
+  "lastUpdated": "2026-06-20T12:40:00+09:00"
 }
