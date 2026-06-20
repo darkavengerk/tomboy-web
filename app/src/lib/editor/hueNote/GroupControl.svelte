@@ -80,10 +80,11 @@
   }
 
   // 항목 단위 listBox 위젯(.tomboy-checkbox-box / .tomboy-radio-box) 클릭.
-  // 전역 TomboyListBox 플러그인의 클릭 핸들러가 먼저(타겟 단계) attr 을
-  // 동기 토글하고, 우리는 캡처 단계에서 li DOM 만 잡아둔 뒤 마이크로태스크로
-  // 그 뒤의 *새* attr 상태를 읽는다 — 타겟 핸들러는 stopPropagation 하지만
-  // 캡처는 이미 통과했으므로 안전. 마운트 race 없이 토글 방향이 안정적.
+  // 캡처 단계(view.dom)에서 토글 *전* 의 li 상태를 읽는다. 위젯의 자체 click
+  // 핸들러(타겟 단계)가 곧 attr 을 뒤집으므로(toggleCheckboxAt/toggleRadioAt
+  // 는 클릭한 항목을 항상 반전) 클릭 후 상태 = !현재. 마이크로태스크는
+  // 리스너 사이(스택 빔)에서 돌아 토글 전 값을 읽으므로 쓰지 않는다 — 캡처에서
+  // 현재값을 읽고 반전해 전송하면 race·stale-DOM 없이 방향이 안정적.
   function onListBoxClick(ev: MouseEvent) {
     const t = ev.target as HTMLElement | null;
     const isRadio = !!t?.closest?.('.tomboy-radio-box');
@@ -91,26 +92,26 @@
     if (!box) return;
     const liDom = box.closest('li');
     if (!liDom) return;
-    queueMicrotask(() => {
-      try {
-        const found = listItemAt(view.state.doc, view.posAtDOM(liDom, 0));
-        if (!found) return;
-        isRadio ? onRadio(found.node) : onCheckbox(found.node);
-      } catch (e) { console.warn('[hue] listBox 클릭 처리 실패', e); }
-    });
+    let found: { node: PMNode; pos: number } | null = null;
+    try { found = listItemAt(view.state.doc, view.posAtDOM(liDom, 0)); }
+    catch (e) { console.warn('[hue] listBox pos 해석 실패', e); return; }
+    if (!found) return;
+    isRadio ? onRadio(found.node) : onCheckbox(found.node);
   }
 
   async function onCheckbox(li: PMNode) {
+    // li 는 토글 *전* 상태. 클릭하면 곧 반전되므로 목표 = !현재.
     const ctx = lightContextOf(li); if (!ctx) return;
     const id = titleToId.get(ctx.title); if (!id) { pushToast('전구 노트 매핑 없음 — ⟳'); return; }
-    try { await hueCall('PUT', `light/${id}`, { on: { on: ctx.checked } }); }
+    const desired = !ctx.checked;
+    try { await hueCall('PUT', `light/${id}`, { on: { on: desired } }); }
     catch (e) { pushToast(errMsg(e, '조명 토글 실패')); }
   }
 
   async function onRadio(li: PMNode) {
-    // 상호 배타·재클릭 해제는 전역 toggleRadioAt 가 doc 에서 처리한다.
-    // 새로 선택된 항목만 recall; 해제(선택 false)면 아무 것도 안 함.
-    const ctx = sceneContextOf(li); if (!ctx || !ctx.selected) return;
+    // li 는 토글 *전* 상태. 미선택이면 곧 선택됨 → recall. 이미 선택돼
+    // 있으면 곧 해제됨 → 아무 것도 안 함. 상호 배타·해제는 전역 toggleRadioAt.
+    const ctx = sceneContextOf(li); if (!ctx || ctx.selected) return;
     const id = sceneNameToId.get(ctx.name); if (!id) { pushToast('씬 매핑 없음 — ⟳'); return; }
     try { await hueCall('PUT', `scene/${id}`, { recall: { action: 'active' } }); }
     catch (e) { pushToast(errMsg(e, '씬 적용 실패')); }
