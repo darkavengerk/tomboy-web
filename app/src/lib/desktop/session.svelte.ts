@@ -83,6 +83,11 @@ export interface DesktopWindowState {
 	minimized?: boolean;
 }
 
+/** Names a window-bearing surface: a 2×2 workspace or a global drawer. */
+export type SurfaceRef =
+	| { kind: 'workspace'; index: number }
+	| { kind: 'drawer'; index: number };
+
 interface GeometrySnapshot {
 	x: number;
 	y: number;
@@ -336,6 +341,26 @@ async function persistNow(): Promise<void> {
 
 function current(): WorkspaceState {
 	return workspaces[currentWorkspaceIndex];
+}
+
+function surfaceState(ref: SurfaceRef): WorkspaceState | null {
+	if (ref.kind === 'workspace') return workspaces[ref.index] ?? null;
+	return drawers[ref.index] ?? null;
+}
+
+/** Mutate a window's geometry on an explicit surface, then cache + persist. */
+function mutateGeomOn(
+	ref: SurfaceRef,
+	guid: string,
+	fn: (w: DesktopWindowState) => void
+): void {
+	const ws = surfaceState(ref);
+	if (!ws) return;
+	const win = ws.windows.find((w) => w.guid === guid);
+	if (!win) return;
+	fn(win);
+	cacheGeometry(ws, win);
+	schedulePersist();
 }
 
 function cacheGeometry(ws: WorkspaceState, win: DesktopWindowState): void {
@@ -1097,6 +1122,178 @@ export const desktopSession = {
 		win.height = Math.max(MIN_HEIGHT, Math.round(g.height));
 		cacheGeometry(ws, win);
 		schedulePersist();
+	},
+
+	moveWindowOn(ref: SurfaceRef, guid: string, x: number, y: number): void {
+		mutateGeomOn(ref, guid, (w) => {
+			w.x = Math.max(0, Math.round(x));
+			w.y = Math.max(0, Math.round(y));
+		});
+	},
+
+	updateGeometryOn(
+		ref: SurfaceRef,
+		guid: string,
+		g: { x: number; y: number; width: number; height: number }
+	): void {
+		mutateGeomOn(ref, guid, (w) => {
+			w.x = Math.max(0, Math.round(g.x));
+			w.y = Math.max(0, Math.round(g.y));
+			w.width = Math.max(MIN_WIDTH, Math.round(g.width));
+			w.height = Math.max(MIN_HEIGHT, Math.round(g.height));
+		});
+	},
+
+	focusWindowOn(ref: SurfaceRef, guid: string): void {
+		const ws = surfaceState(ref);
+		if (!ws) return;
+		const win = ws.windows.find((w) => w.guid === guid);
+		if (!win) return;
+		if (win.kind === 'note') recentOpens.record(guid);
+		const topZ = ws.windows.reduce((m, w) => Math.max(m, w.z), 0);
+		if (win.z === topZ && win.z !== 0) return;
+		bumpZ(ws, win);
+		schedulePersist();
+	},
+
+	async closeWindowOn(ref: SurfaceRef, guid: string): Promise<void> {
+		await runFlushHook(guid);
+		const ws = surfaceState(ref);
+		if (!ws) return;
+		const idx = ws.windows.findIndex((w) => w.guid === guid);
+		if (idx < 0) return;
+		cacheGeometry(ws, ws.windows[idx]);
+		const closedKind = ws.windows[idx].kind;
+		ws.windows.splice(idx, 1);
+		// Close any ephemeral history window bound to this note — it would
+		// otherwise float with no source.
+		if (closedKind === 'note') {
+			const histGuid = `${HISTORY_GUID_PREFIX}${guid}`;
+			const hidx = ws.windows.findIndex((w) => w.guid === histGuid);
+			if (hidx >= 0) ws.windows.splice(hidx, 1);
+		}
+		// Remember note closes so Alt+Esc can reopen the last one. Settings /
+		// admin are singletons reopened from the rail, so they're skipped.
+		// De-dupe to keep the most recent position when a guid is closed twice.
+		if (closedKind === 'note') {
+			const dup = closedStack.indexOf(guid);
+			if (dup >= 0) closedStack.splice(dup, 1);
+			closedStack.push(guid);
+			if (closedStack.length > CLOSED_STACK_LIMIT) closedStack.shift();
+		}
+		// Chain focus to the most-recently-focused remaining visible note on this
+		// surface so Esc cascades within the drawer.
+		let next: DesktopWindowState | null = null;
+		for (const w of ws.windows) {
+			if (w.kind !== 'note' || w.minimized) continue;
+			if (!next || w.z > next.z) next = w;
+		}
+		if (next) focusRequest = { guid: next.guid, token: ++focusRequestCounter };
+		schedulePersist();
+	},
+
+	togglePinOn(ref: SurfaceRef, guid: string): void {
+		const ws = surfaceState(ref);
+		if (!ws) return;
+		const win = ws.windows.find((w) => w.guid === guid);
+		if (!win) return;
+		win.pinned = !win.pinned;
+		schedulePersist();
+	},
+
+	sendToBackOn(ref: SurfaceRef, guid: string): void {
+		const ws = surfaceState(ref);
+		if (!ws) return;
+		const win = ws.windows.find((w) => w.guid === guid);
+		if (!win) return;
+		const others = ws.windows.filter((w) => w.guid !== guid);
+		if (others.length === 0) return;
+		const minZ = others.reduce((m, w) => Math.min(m, w.z), Infinity);
+		win.z = minZ - 1;
+		schedulePersist();
+	},
+
+	/**
+	 * Move a note window between surfaces (workspace↔drawer). MOVE semantics: the
+	 * window leaves the source. Each surface keeps its OWN geometryByGuid, so the
+	 * note's drawer pose is independent of its canvas pose. On first entry the
+	 * window uses the target's remembered pose, else `drop` (clamped), else a
+	 * default slot; re-entry restores the target's remembered pose.
+	 */
+	async moveWindowToSurface(
+		from: SurfaceRef,
+		to: SurfaceRef,
+		guid: string,
+		drop?: { x: number; y: number }
+	): Promise<void> {
+		const src = surfaceState(from);
+		const dst = surfaceState(to);
+		if (!src || !dst) return;
+		if (from.kind === to.kind && from.index === to.index) return;
+		const idx = src.windows.findIndex((w) => w.guid === guid);
+		if (idx < 0) return;
+		const win = src.windows[idx];
+		if (win.kind !== 'note') return;
+
+		// Persist unsaved edits before the source instance unmounts.
+		await runFlushHook(guid);
+
+		// Cache the source pose (so reopening on the source restores it), remove it.
+		cacheGeometry(src, win);
+		src.windows.splice(idx, 1);
+
+		const existing = dst.windows.find((w) => w.guid === guid);
+		if (existing) {
+			existing.minimized = false;
+			bumpZ(dst, existing);
+		} else {
+			const cached = dst.geometryByGuid[guid];
+			let geom: GeometrySnapshot;
+			if (cached) {
+				geom = cached;
+			} else if (drop) {
+				geom = {
+					x: Math.max(0, Math.round(drop.x)),
+					y: Math.max(0, Math.round(drop.y)),
+					width: win.width,
+					height: win.height
+				};
+			} else {
+				geom = { x: 24, y: 24, width: win.width, height: win.height };
+			}
+			const moved: DesktopWindowState = {
+				guid,
+				kind: 'note',
+				x: geom.x,
+				y: geom.y,
+				width: geom.width,
+				height: geom.height,
+				z: ++dst.nextZ,
+				pinned: win.pinned ?? false
+			};
+			dst.windows.push(moved);
+			cacheGeometry(dst, moved);
+		}
+
+		// Focus + flash only if the target surface is the live one.
+		const targetIsLive =
+			(to.kind === 'drawer' && activeDrawer === to.index) ||
+			(to.kind === 'workspace' &&
+				activeDrawer === null &&
+				to.index === currentWorkspaceIndex);
+		if (targetIsLive) focusRequest = { guid, token: ++focusRequestCounter };
+		recentOpens.record(guid);
+		schedulePersist();
+	},
+
+	/** Stash a current-workspace note into the open drawer (no-op if none open). */
+	async stashToActiveDrawer(guid: string): Promise<void> {
+		if (activeDrawer === null) return;
+		await this.moveWindowToSurface(
+			{ kind: 'workspace', index: currentWorkspaceIndex },
+			{ kind: 'drawer', index: activeDrawer },
+			guid
+		);
 	},
 
 	isPinned(guid: string): boolean {
