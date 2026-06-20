@@ -121,6 +121,12 @@
 		 *  route through the surface-aware session ops instead of the current
 		 *  workspace. Unset (canvas) keeps the legacy current-workspace calls. */
 		surface?: SurfaceRef;
+		/** When a drawer is open AND this is a canvas window, the close button
+		 *  becomes a stash arrow pointing at the drawer: 'left' → ←, 'right' → →.
+		 *  null → normal close (✕). */
+		stashArrow?: 'left' | 'right' | null;
+		/** Invoked when the stash arrow is clicked (move this note into the drawer). */
+		onstash?: (guid: string) => void;
 		onfocus: (guid: string) => void;
 		onclose: (guid: string) => void;
 		/** Minimize handler. Omitted by embedders without a taskbar (e.g. the
@@ -142,6 +148,8 @@
 		active = true,
 		minimized = false,
 		surface = undefined,
+		stashArrow = null,
+		onstash = undefined,
 		onfocus,
 		onclose,
 		onminimize = undefined,
@@ -1167,13 +1175,24 @@
 				data-no-drag
 			>&#x1F5D5;</button>
 		{/if}
-		<button
-			type="button"
-			class="close-btn"
-			onclick={handleClose}
-			aria-label="창 닫기"
-			data-no-drag
-		>✕</button>
+		{#if stashArrow && onstash}
+			<button
+				type="button"
+				class="close-btn stash-btn"
+				onclick={() => onstash?.(guid)}
+				aria-label="서랍으로 넣기"
+				title="서랍으로 넣기"
+				data-no-drag
+			>{stashArrow === 'left' ? '←' : '→'}</button>
+		{:else}
+			<button
+				type="button"
+				class="close-btn"
+				onclick={handleClose}
+				aria-label="창 닫기"
+				data-no-drag
+			>✕</button>
+		{/if}
 	</div>
 	{/if}
 
@@ -1563,6 +1582,10 @@
 	.close-btn:hover {
 		background: #c0392b;
 		color: #fff;
+	}
+
+	.stash-btn {
+		font-weight: 700;
 	}
 
 	.toolbar-slot {

@@ -105,6 +105,19 @@
 		desktopSession.restoreWindow(guid);
 	}
 
+	function handleStash(guid: string) {
+		void desktopSession.stashToActiveDrawer(guid);
+	}
+
+	// 'left' when drawer 0 (F2) open, 'right' when drawer 1 (F3) open, else null.
+	const stashArrowDir: 'left' | 'right' | null = $derived(
+		desktopSession.activeDrawer === 0
+			? 'left'
+			: desktopSession.activeDrawer === 1
+				? 'right'
+				: null
+	);
+
 	function handleMove(guid: string, x: number, y: number) {
 		desktopSession.moveWindow(guid, x, y);
 	}
@@ -414,6 +427,8 @@
 						onmove={handleMove}
 						onresize={handleResize}
 						onopenlink={handleOpenLink}
+						stashArrow={active ? null : stashArrowDir}
+						onstash={handleStash}
 					/>
 				{/if}
 			{/each}
