@@ -188,6 +188,10 @@
 				: (selectedNotebooks[0] ?? null)
 	);
 
+	// 전체가 선택된 상태(=노트북 미선택, 슬립노트 ws 제외). 호버 래치와 무관하게
+	// "실제 선택"만 본다 — 다른 칩을 호버해도 선택이 안 바뀌면 전체는 녹색 유지.
+	const allSelected = $derived(!alwaysOpen && selectedNotebooks.length === 0);
+
 	// 무한 스크롤: 초기 50개, 바닥 근처에서 50개씩 증가.
 	const PAGE = 50;
 	let visibleCount = $state(PAGE);
@@ -343,6 +347,7 @@
 				type="button"
 				role="tab"
 				class="rail-chip"
+				class:active={allSelected}
 				class:viewing={displayedNotebook === null}
 				aria-selected={displayedNotebook === null}
 				title="전체"
