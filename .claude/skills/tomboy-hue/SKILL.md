@@ -19,10 +19,10 @@ description: Use when working on the 조명:: Hue light-control note family — 
 ## 핵심 불변식
 
 - 바인딩은 항상 light/room/zone **UUID**(이름/타이틀 아님). 본문 첫 줄 시그니처: `light:<uuid>` / `room:<uuid>` / `zone:<uuid>`. 마스터 = `조명::전체`.
-- **방·존 노트 ⟳ / 노트 열기**: 허브에서 그 그룹의 전구 목록·씬 목록을 읽어 본문을 재빌드. 전구 = 체크박스 리스트(체크=on), 씬 = 라디오 리스트(선택=recall). 본문 교체는 `roomDoc.buildRoomDoc` → `roomDoc.applyRoomDoc` (PM 직접 교체, 멱등).
+- **방·존 노트 ⟳ / 노트 열기**: 허브에서 그 그룹의 전구 목록·씬 목록을 읽어 본문을 재빌드. 전구 = 체크박스 리스트(체크=on), 씬 = 라디오 리스트(선택=recall). 본문 교체는 `roomDoc` 의 `buildLightList`/`buildSceneList` + GroupControl 의 `replaceList` (PM 직접 교체, 멱등).
 - **씬은 그룹 스코프 진짜 Hue 씬(방=룸, 존=존 스코프).** Hue 앱에서 만든 씬도 라디오 목록에 나타남. "현재 상태 저장"은 그 그룹의 새 Hue 씬을 생성(CLIP v2 `POST /clip/v2/resource/scene`).
 - **체크박스/라디오는 실제 PM 인라인 원자.** GroupControl 위젯의 `view.dom` `mousedown` 핸들러가 타입별 상호 배타(라디오는 같은 `listItem` 묶음 내 단 하나)를 강제하고 즉시 PUT/recall 전송.
-- **room→device→light 역방향 조회.** 허브의 `grouped_light` → `room` → 멤버 `device` → 멤버 `light` 체인으로 실제 전구 uuid를 얻음. `roomOps.fetchRoomLights` 참조.
+- **room→device→light 역방향 조회.** 허브의 `room` → 멤버 `device` → 멤버 `light`(`light.owner`) 체인으로 실제 전구 uuid를 얻음. `roomOps.lightsInRoom` 참조(존은 `lightsInZone` 으로 `zone.children` 의 light 직접 — device-hop 없음).
 - 상태 읽기 = 노트 마운트 1회 자동 새로고침 + ⟳ 수동. 주기 폴링·SSE 없음. 쓰기 = 즉시 PUT + 옵티미스틱/롤백.
 - 브릿지가 같은 LAN Hue 를 자체서명(`rejectUnauthorized:false`)으로 직접 호출. `/hue/clip` 은 resource-path 화이트리스트(`room/zone/scene/grouped_light/light/device`) + `..` 거부.
 - 앱은 전역 터미널-브릿지 URL+토큰 재사용(별도 브릿지 설정 없음). Hue 크레덴셜(ip/appkey/clientkey)은 로컬 appSettings 에 저장하지만 **브릿지 파일이 단일 소스**(로컬은 브릿지 저장 실패 시 폴백).
