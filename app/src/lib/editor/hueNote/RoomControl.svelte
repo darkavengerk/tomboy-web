@@ -20,7 +20,7 @@
   let titleToId = new Map<string, string>();
   let sceneNameToId = new Map<string, string>();
 
-  const REFRESH_META = 'hueRefresh';
+  // 프로그램적 본문 재작성(목록 동기화·씬 배타 해제)은 undo 히스토리에 넣지 않는다.
   const errMsg = (e: unknown, base: string) =>
     e instanceof HueError ? (e.kind === 'no_bridge' ? '설정에서 Hue를 먼저 연결' : e.kind === 'unreachable' ? '조명 브릿지에 연결 안 됨' : `${base} (HTTP ${e.status})`) : base;
 
@@ -36,10 +36,10 @@
     if (cur) {
       const existing = view.state.doc.slice(cur.from, cur.to).content.firstChild;
       if (existing && existing.eq(node)) return;
-      view.dispatch(view.state.tr.replaceWith(cur.from, cur.to, node).setMeta(REFRESH_META, true));
+      view.dispatch(view.state.tr.replaceWith(cur.from, cur.to, node).setMeta('addToHistory', false));
     } else {
       const end = view.state.doc.content.size;
-      view.dispatch(view.state.tr.insert(end, node).setMeta(REFRESH_META, true));
+      view.dispatch(view.state.tr.insert(end, node).setMeta('addToHistory', false));
     }
   }
 
@@ -102,7 +102,7 @@
     if (ctx.siblings.length) {
       let tr = view.state.tr;
       for (const sp of ctx.siblings) tr = tr.setNodeAttribute(sp, 'selected', false);
-      view.dispatch(tr.setMeta(REFRESH_META, true));
+      view.dispatch(tr.setMeta('addToHistory', false));
     }
     const id = sceneNameToId.get(ctx.name); if (!id) { pushToast('씬 매핑 없음 — ⟳'); return; }
     try { await hueCall('PUT', `scene/${id}`, { recall: { action: 'active' } }); }

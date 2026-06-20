@@ -102,7 +102,7 @@
     view!.dispatch(
       view!.state.tr
         .replaceWith(from, doc.content.size, blocks)
-        .setMeta('hueRefresh', true)
+        .setMeta('addToHistory', false)
     );
   }
 
