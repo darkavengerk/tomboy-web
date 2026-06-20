@@ -44,7 +44,7 @@
     {
       "id": 7,
       "subject": "Task 7: 전체 회귀 + 문서 동기화",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [3, 4, 6],
       "description": "**Goal:** 파이프라인+앱 전체 회귀, tomboy-diary 스킬 한 단락 반영. Full steps in plan doc Task 7.\n\n```json:metadata\n{\"files\": [\".claude/skills/tomboy-diary/SKILL.md\"], \"verifyCommand\": \"cd pipeline && .venv/bin/python -m pytest tests/ -q && cd ../app && npm run check\", \"acceptanceCriteria\": [\"pipeline full suite pass\", \"app check 0 errors\", \"tomboy-diary skill paragraph added\"]}\n```"
     }
