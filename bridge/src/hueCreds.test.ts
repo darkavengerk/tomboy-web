@@ -55,6 +55,7 @@ test('fileHueCredsStore 위임', () => {
   const p = withFile('hue.json'); setEnv(p);
   fileHueCredsStore.write({ ip: '10.0.0.1', appkey: 'K', clientkey: '' });
   assert.equal(fileHueCredsStore.read()?.ip, '10.0.0.1');
+  assert.equal(fileHueCredsStore.read()?.clientkey, ''); // 빈 clientkey 는 null 아님(허용)
   fileHueCredsStore.clear();
   assert.equal(fileHueCredsStore.read(), null);
 });

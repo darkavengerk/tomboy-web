@@ -13,7 +13,12 @@ export function readHueCreds(): HueCreds | null {
   const p = credsPath();
   if (!p) return null;
   let raw: string;
-  try { raw = readFileSync(p, 'utf8'); } catch { return null; } // ENOENT 포함
+  try { raw = readFileSync(p, 'utf8'); }
+  catch (err) {
+    // ENOENT = 미구성(정상). 그 외(권한/디스크)는 조용히 삼키면 디버깅이 어려우므로 경고.
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') console.warn(`[term-bridge] hueCreds read failed ${p}:`, err);
+    return null;
+  }
   let parsed: unknown;
   try { parsed = JSON.parse(raw); } catch { return null; }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
