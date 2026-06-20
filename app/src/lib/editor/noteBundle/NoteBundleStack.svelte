@@ -14,9 +14,10 @@
 	 * 카테고리가 활성이면 본문 상단에 자기 탭 스트립이 재귀로 생긴다.
 	 * 카테고리가 자기 링크를 가지면 그 링크가 첫 하위 탭(자신을 첫 탭에 로드).
 	 *
-	 * 탭 폭은 내용(타이틀)에 맞춰 커지되 최소 1/4, 넘치면 말줄임. 4개 이하는
-	 * 전부 고정 표시(활성 하이라이트만 이동); 5개 이상은 3개 윈도우 + 좌우 +N
-	 * 작은 탭(숨은 수). 활성은 가운데(2번째), 처음/끝 탭만 예외.
+	 * 탭 폭은 내용(타이틀)에 맞춰 커지되 최소 너비는 윈도우 폭에 반비례, 넘치면
+	 * 말줄임. 한 번에 보일 탭 수는 `탭:N:M` 의 M(기본 3). win+1 개 이하는 전부
+	 * 고정 표시(활성 하이라이트만 이동); 그 이상은 win 개 윈도우 + 좌우 +N 작은
+	 * 탭(숨은 수). 활성은 가운데 슬롯(floor(win/2)), 처음/끝 탭만 예외.
 	 *
 	 * 활성 경로(activePath)는 영속하지 않는 컴포넌트 로컬 상태 — 재오픈/리마운트
 	 * 시 첫 노트로. 파서/플러그인은 리스트 내용을 수정하지 않는다.
@@ -118,9 +119,15 @@
 	}: Props = $props();
 	const dedicated = $derived(variant === 'dedicated');
 	// 크기 100(fit) — 고정 높이 대신 활성 탭 본문을 콘텐츠 끝까지 펼친다. 전용
-	// 노트는 이미 컨테이너를 flex:1 로 꽉 채우므로 제외. 탭엔 타이틀만/개수
-	// 옵션이 없어 heightPct 만 본다.
+	// 노트는 이미 컨테이너를 flex:1 로 꽉 채우므로 제외. 탭은 타이틀만 옵션이
+	// 없어 heightPct 만 본다(개수 M 은 윈도우 폭으로 따로 사용).
 	const fit = $derived(!dedicated && spec.heightPct >= 100);
+	// 한 번에 보일 탭 수 — `탭:N:M` 의 M(생략 시 파서가 기본 3). stackMath
+	// 윈도우 폭으로 전달, 활성 탭은 가운데 슬롯 유지(floor(win/2)).
+	const tabWin = $derived(Math.max(1, spec.maxCount));
+	// 탭 최소 너비 — 윈도우가 넓을수록 좁혀 win 개 + 배지가 한 줄에 들어가게.
+	// 기본 3 → 100/4=25%(기존값과 동일). CSS 변수로 .tab min-width 에 주입.
+	const tabMinPct = $derived(100 / (tabWin + 1));
 
 	// --- 트리 해석 ----------------------------------------------------------
 	let titleEpoch = $state(0);
@@ -218,7 +225,7 @@
 		const nodes = nodesAtDepth(tree, newPath, d);
 		if (!nodes) return false;
 		const n = nodes.length;
-		return tabView(n, oldPath[d] ?? 0).start !== tabView(n, newPath[d] ?? 0).start;
+		return tabView(n, oldPath[d] ?? 0, tabWin).start !== tabView(n, newPath[d] ?? 0, tabWin).start;
 	}
 
 	/** activePath 교체 + 윈도우 이동 여부로 본문 슬라이드 on/off. */
@@ -794,6 +801,7 @@
 	class:fit
 	bind:this={rootEl}
 	style:height={dedicated ? null : `${stackH}px`}
+	style:--tab-min={`${tabMinPct}%`}
 >
 	{#if tree.length === 0}
 		<div class="bundle-empty">묶을 노트 없음</div>
@@ -974,7 +982,7 @@
 	     새어들어와 범위를 넘겨도 undefined 노드를 만들지 않는다. -->
 	{@const activeIdx = clampIndex(nodes.length, onPath ? (activePath[depth] ?? 0) : 0)}
 	<div class="tab-level">
-		{@render strip(visibleTabs(nodes, activeIdx), depth, activeIdx)}
+		{@render strip(visibleTabs(nodes, activeIdx, tabWin), depth, activeIdx)}
 		<div class="level-body">
 			{#each nodes as node, i (node.key)}
 				<div class="node-body" class:active={i === activeIdx} class:before={i < activeIdx}>
@@ -1103,9 +1111,11 @@
 		overflow: hidden;
 	}
 	.tab {
-		/* 내용(타이틀) 폭에 맞춰 커지되 넘치면 shrink+말줄임, 최소 1/4. */
+		/* 내용(타이틀) 폭에 맞춰 커지되 넘치면 shrink+말줄임. 최소 너비는 윈도우
+		   폭에 반비례(--tab-min, 기본 25%=윈도우 3) — 표시 탭이 많을수록 좁혀
+		   한 줄에 다 들어가게 한다. */
 		flex: 0 1 auto;
-		min-width: 25%;
+		min-width: var(--tab-min, 25%);
 		max-width: 100%;
 		display: flex;
 		align-items: center;

@@ -15,9 +15,11 @@ export interface NavNode {
 	children: NavNode[];
 }
 
-/** 4개 이하 → 전부 고정 표시. 5개 이상 → 3개 윈도우(활성 가운데) + 좌우 +N 배지. */
-export const TAB_FIT_MAX = 4;
+/** 기본 윈도우 폭 — 한 번에 보이는 탭 수. `탭:N:M` 의 M 으로 덮어쓴다(생략 시 3).
+ *  win+1 개 이하면 전부 고정 표시(한 개만 가려질 상황엔 배지가 무의미). */
 export const TAB_WINDOW = 3;
+/** 기본 윈도우(3)에서 전부 고정 표시되는 최대 탭 수(= TAB_WINDOW + 1). 참고용 상수. */
+export const TAB_FIT_MAX = 4;
 
 export interface TabView {
 	/** 첫 보이는 인덱스 */
@@ -31,22 +33,25 @@ export interface TabView {
 }
 
 /**
- * 활성 탭 중심 윈도우.
- * - total ≤ 4 : 전부 표시(고정). 스크롤해도 탭 불변, 활성 하이라이트만 이동.
- * - total ≥ 5 : 3개만. 활성을 가운데(2번째)에 두려 start=clamp(active-1, 0, total-3).
- *   처음/끝 탭이면 가운데 불가 → 활성이 좌/우 끝. 숨은 수는 좌우 +N 배지.
+ * 활성 탭 중심 윈도우. `win` = 한 번에 보일 탭 수(기본 TAB_WINDOW=3, `탭:N:M` 의 M).
+ * - total ≤ win+1 : 전부 표시(고정). 스크롤해도 탭 불변, 활성 하이라이트만 이동.
+ * - total ≥ win+2 : win 개만. 활성을 가운데 슬롯(floor(win/2))에 두려
+ *   start=clamp(active-floor(win/2), 0, total-win). 처음/끝 탭이면 가운데 불가 →
+ *   활성이 좌/우 끝. 숨은 수는 좌우 +N 배지. (묶음 cabinetMath 와 같은 가운데 원칙.)
  */
-export function tabView(total: number, active: number): TabView {
+export function tabView(total: number, active: number, win: number = TAB_WINDOW): TabView {
+	const w = Math.max(1, Math.round(win));
 	if (total <= 0) return { start: 0, count: 0, leftPlus: 0, rightPlus: 0 };
-	if (total <= TAB_FIT_MAX) return { start: 0, count: total, leftPlus: 0, rightPlus: 0 };
+	if (total <= w + 1) return { start: 0, count: total, leftPlus: 0, rightPlus: 0 };
 	const a = clampIndex(total, active);
-	// start ∈ [0, total-WINDOW] — clampIndex(len, idx) 는 [0, len-1] 클램프.
-	const start = clampIndex(total - TAB_WINDOW + 1, a - 1);
+	const slot = Math.floor(w / 2); // 활성 슬롯 — 가운데 유지
+	// start ∈ [0, total-w] — clampIndex(len, idx) 는 [0, len-1] 클램프.
+	const start = clampIndex(total - w + 1, a - slot);
 	return {
 		start,
-		count: TAB_WINDOW,
+		count: w,
 		leftPlus: start,
-		rightPlus: total - (start + TAB_WINDOW)
+		rightPlus: total - (start + w)
 	};
 }
 
@@ -147,12 +152,13 @@ export interface VisibleTabs<T> {
 	rightPlus: number;
 }
 
-/** 활성 중심 윈도우의 보이는 탭들 + 좌우 숨김 수. activeIdx 가 범위 밖이어도
- *  절대 undefined 노드를 만들지 않는다(재귀 비활성 형제 보호 — tabView 가 clamp). */
-export function visibleTabs<T>(nodes: T[], activeIdx: number): VisibleTabs<T> {
+/** 활성 중심 윈도우의 보이는 탭들 + 좌우 숨김 수. `win` = 윈도우 폭(기본 3,
+ *  `탭:N:M` 의 M). activeIdx 가 범위 밖이어도 절대 undefined 노드를 만들지
+ *  않는다(재귀 비활성 형제 보호 — tabView 가 clamp). */
+export function visibleTabs<T>(nodes: T[], activeIdx: number, win: number = TAB_WINDOW): VisibleTabs<T> {
 	const n = nodes.length;
 	if (n === 0) return { items: [], leftPlus: 0, rightPlus: 0 };
-	const v = tabView(n, activeIdx);
+	const v = tabView(n, activeIdx, win);
 	const items: Array<{ node: T; idx: number }> = [];
 	for (let i = v.start; i < v.start + v.count; i++) items.push({ node: nodes[i], idx: i });
 	return { items, leftPlus: v.leftPlus, rightPlus: v.rightPlus };
