@@ -7,9 +7,9 @@
  * 박스는 **항목 단위 listBox**(listItem attrs boxKind/checked, [[ ]]/(( ))
  * 마커) 로 만든다 — 인라인 atom([ ]/( )) 이 아니다. 토글은 전역
  * TomboyListBox 플러그인이 클릭에서 attr 을 뒤집고(onToggleCheck/Radio →
- * toggleCheckboxAt/toggleRadioAt), GroupControl 은 그 뒤(마이크로태스크)에
- * 새 attr 상태를 읽어 Hue 로 전송한다. 마운트 시점 race 가 없어 토글
- * 방향이 안정적이다.
+ * toggleCheckboxAt/toggleRadioAt), GroupControl 은 캡처 단계에서 토글 *전*
+ * 의 li 상태를 읽고 반전해(클릭은 항상 반전되므로) Hue 로 전송한다.
+ * 마이크로태스크는 리스너 사이에서 돌아 토글 전 값을 읽으므로 쓰지 않는다.
  */
 import type { Node as PMNode, Schema } from '@tiptap/pm/model';
 
