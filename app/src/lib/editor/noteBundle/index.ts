@@ -4,6 +4,7 @@ export {
 	clampMaxCount,
 	DEFAULT_HEIGHT_PCT,
 	DEFAULT_MAX_COUNT,
+	DEFAULT_TAB_COUNT,
 	dedicatedBundleKind,
 	parseDedicatedBundle,
 	buildSyntheticBundleSpec

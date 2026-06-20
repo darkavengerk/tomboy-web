@@ -51,7 +51,8 @@ export interface BundleSpec {
 	checked: boolean;
 	/** 0=타이틀만(묶음 전용), 100=노트 끝까지 확장(fit), 그 외 20–90. 생략 시 50 */
 	heightPct: number;
-	/** 묶음 표시 바 개수(윈도우 폭). 1–100, 100=전부+타이틀만. 생략 시 5. 탭은 무시 */
+	/** 표시 개수(윈도우 폭). 1–100. 묶음=바 개수(100=전부+타이틀만, 생략 시 5),
+	 *  탭=한 번에 보이는 탭 수(생략 시 3, stackMath 윈도우 폭으로 사용). */
 	maxCount: number;
 	/** 첫 `:` 뒤 높이 숫자 텍스트 범위 — 높이 쓰기백 대상(개수 숫자는 건드리지 않음). 숫자 없으면 from===to */
 	digitsFrom: number;
@@ -74,7 +75,16 @@ export interface BundleSpec {
 }
 
 export const DEFAULT_HEIGHT_PCT = 50;
+/** 묶음 윈도우 바 기본 개수. */
 export const DEFAULT_MAX_COUNT = 5;
+/** 탭 윈도우 기본 표시 탭 수 — `탭:N:M` 의 M 생략 시. stackMath TAB_WINDOW 와 같은
+ *  값(모듈 독립 유지를 위해 별도 선언, 묶음 DEFAULT_MAX_COUNT↔cabinetMath 와 동일 패턴). */
+export const DEFAULT_TAB_COUNT = 3;
+
+/** kind 별 표시 개수 기본값 — 탭 3, 묶음 5. */
+function defaultMaxCount(kind: BundleKind): number {
+	return kind === 'tab' ? DEFAULT_TAB_COUNT : DEFAULT_MAX_COUNT;
+}
 
 export function clampHeightPct(n: number): number {
 	if (!Number.isFinite(n)) return DEFAULT_HEIGHT_PCT;
@@ -90,8 +100,8 @@ export function clampMaxCount(n: number): number {
 	return Math.min(100, Math.max(1, Math.round(n)));
 }
 
-// `탭:N[:M]` / `묶음:N[:M]` (옛 `노트 ` 접두 허용). N=높이%, M=표시 개수(묶음 전용).
-// `묶음::100`(N 생략 + M=100)도 매칭 — 빈 높이 + 개수 100.
+// `탭:N[:M]` / `묶음:N[:M]` (옛 `노트 ` 접두 허용). N=높이%, M=표시 개수
+// (묶음=바 수, 탭=보이는 탭 수). `묶음::100`(N 생략 + M=100)도 매칭 — 빈 높이 + 개수 100.
 const TAB_RE = /^\s*(?:노트\s*)?탭:(\d+)?(?::(\d+))?\s*$/;
 const BUNDLE_RE = /^\s*(?:노트\s*)?묶음:(\d+)?(?::(\d+))?\s*$/;
 
@@ -142,7 +152,7 @@ function keywordAfterCheckbox(
 		checkboxPos,
 		checked: cb.attrs.checked === true,
 		heightPct: m[1] ? clampHeightPct(parseInt(m[1], 10)) : DEFAULT_HEIGHT_PCT,
-		maxCount: m[2] ? clampMaxCount(parseInt(m[2], 10)) : DEFAULT_MAX_COUNT,
+		maxCount: m[2] ? clampMaxCount(parseInt(m[2], 10)) : defaultMaxCount(kind),
 		digitsFrom: textBase + colonIdx + 1,
 		digitsTo: textBase + colonIdx + 1 + digitsLen,
 		keywordPos: paraPos,
@@ -445,19 +455,19 @@ interface DedicatedOpts {
 	bodyStart: number;
 }
 
-function parseDedicatedOptions(root: JSONNode): DedicatedOpts {
+function parseDedicatedOptions(root: JSONNode, kind: BundleKind): DedicatedOpts {
 	const opt = (root.content ?? [])[1];
 	if (opt && isTextblockJson(opt)) {
 		const m = DEDICATED_OPTS_RE.exec(paragraphTextJson(opt));
 		if (m && (m[1] || m[2])) {
 			return {
 				heightPct: m[1] ? clampHeightPct(parseInt(m[1], 10)) : 100,
-				maxCount: m[2] ? clampMaxCount(parseInt(m[2], 10)) : DEFAULT_MAX_COUNT,
+				maxCount: m[2] ? clampMaxCount(parseInt(m[2], 10)) : defaultMaxCount(kind),
 				bodyStart: 2
 			};
 		}
 	}
-	return { heightPct: 100, maxCount: DEFAULT_MAX_COUNT, bodyStart: 1 };
+	return { heightPct: 100, maxCount: defaultMaxCount(kind), bodyStart: 1 };
 }
 
 function parseDedicatedTree(doc: JSONNode, start = 1): BundleNode[] {
@@ -506,11 +516,11 @@ function parseDedicatedEntries(doc: JSONNode, start = 1): BundleEntry[] {
 /** 전용 노트 본문(JSONContent)을 합성 BundleSpec 으로. 인-에디터 쓰기백
  *  필드(checkboxPos/digits/keyword/list pos)는 의미 없어 -1/null, checked=true.
  *  heightPct/maxCount 는 본문 2번째 줄 옵션 라인(`:높이:개수`)에서 — 없으면
- *  heightPct=100(컨테이너를 꽉 채움)·maxCount=5(윈도우 폭). 옵션 라인은 링크
- *  목록에서 제외된다(bodyStart). */
+ *  heightPct=100(컨테이너를 꽉 채움)·maxCount 는 kind 기본(탭 3 / 묶음 5). 옵션
+ *  라인은 링크 목록에서 제외된다(bodyStart). */
 export function parseDedicatedBundle(doc: JSONContent, kind: BundleKind): BundleSpec {
 	const root = doc as JSONNode;
-	const opts = parseDedicatedOptions(root);
+	const opts = parseDedicatedOptions(root, kind);
 	return {
 		ordinal: 0,
 		kind,
@@ -543,7 +553,7 @@ export function buildSyntheticBundleSpec(titles: string[], kind: BundleKind): Bu
 		checkboxPos: -1,
 		checked: true,
 		heightPct: 100,
-		maxCount: DEFAULT_MAX_COUNT,
+		maxCount: defaultMaxCount(kind), // 탭 3 / 묶음 5 — 인라인과 같은 폭
 		digitsFrom: -1,
 		digitsTo: -1,
 		keywordPos: -1,

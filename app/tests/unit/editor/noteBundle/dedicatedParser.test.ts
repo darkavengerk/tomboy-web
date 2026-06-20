@@ -183,6 +183,12 @@ describe('parseDedicatedBundle — 옵션 라인(본문 2번째 줄 `:높이:개
 		expect(spec.maxCount).toBe(10);
 		expect(spec.tree).toEqual([{ label: 'A', link: 'A', children: [] }]);
 	});
+	it('tab 옵션 없으면 기본 개수 3(묶음 5 와 다름)', () => {
+		const d = doc(title('탭::x'), para(link('A')));
+		expect(parseDedicatedBundle(d, 'tab').maxCount).toBe(3);
+		const d2 = doc(title('묶음::x'), para(link('A')));
+		expect(parseDedicatedBundle(d2, 'bundle').maxCount).toBe(5);
+	});
 });
 
 describe('parseDedicatedBundle — 합성 spec 메타', () => {

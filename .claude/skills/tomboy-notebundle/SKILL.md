@@ -80,8 +80,11 @@ Two regexes matched against the paragraph text **after** the checkbox atom (the
 `BUNDLE_RE = /^\s*(?:노트\s*)?묶음:(\d+)?(?::(\d+))?\s*$/` → `kind:'bundle'`.
 `keywordAfterCheckbox` tries TAB first; the matched kind is stamped on the spec.
 The form is `탭/묶음:N[:M]` — **N = height%** (group 1), **M = display count**
-(group 2, 묶음-only; the tab ignores M). `묶음::100` (empty N + M) is valid:
-N omitted (default), M=100.
+(group 2). **Both kinds honor M** — 묶음 = visible bar count (default 5),
+탭 = visible tab count = `tabView` window width (default 3). The default is
+**kind-aware** (`defaultMaxCount(kind)`: tab `DEFAULT_TAB_COUNT=3` / bundle
+`DEFAULT_MAX_COUNT=5`), so a bare `탭:50` stays 3 tabs while `묶음:50` stays 5
+bars. `묶음::100` (empty N + M) is valid: N omitted (default), M=100.
 
 - **Keyword paragraph** (`parseKeywordParagraph`): first `inlineCheckbox` whose
   preceding text (`prefix`) is empty or, after trim, ends with `:` (so
@@ -110,7 +113,8 @@ N omitted (default), M=100.
   fill-to-note-end title index; if the titles exceed the box the **window clamps to
   `capacity`** (bars that fit) + `+N` badges + swipe-browse — NOT a scrollbar, NOT
   page growth (see Capacity clamp). The only `height:auto` case is `'grow'`
-  (title-only + heightPct<100). Tab stores M but ignores it.
+  (title-only + heightPct<100). **Tab also uses M** — it's the `tabView` window
+  width (how many tabs show at once, default 3); see Tree navigation.
 - **Adjacency is strict.** A pending keyword only binds to a bulletList that is
   the **immediately next block**; any intervening block (even an empty paragraph)
   flushes it empty. Double-Enter between keyword and list = empty stack.
@@ -221,18 +225,24 @@ descends into their first navigable leaf).
   instead of dead-ending — the "scroll toss-to-parent" the user expects). Only the
   root edge clamps.
 - `pickPath(tree, path, depth, idx)` — select tab `idx` at `depth` (+drill).
-- `clampIndex(len, idx)` / `visibleTabs(nodes, activeIdx)` — the (single, top) strip
-  builder. **Clamp `activeIdx` into range** so an out-of-range index never yields an
-  `undefined` node (see the recursion crash note below). Returns
-  `{items:[{node,idx}…], leftPlus, rightPlus}` — the windowed tabs plus hidden-count
-  badges on each side.
+- `clampIndex(len, idx)` / `visibleTabs(nodes, activeIdx, win=TAB_WINDOW)` — the
+  (single, top) strip builder. **Clamp `activeIdx` into range** so an out-of-range
+  index never yields an `undefined` node (see the recursion crash note below).
+  Returns `{items:[{node,idx}…], leftPlus, rightPlus}` — the windowed tabs plus
+  hidden-count badges on each side.
 - `nodesAtDepth(tree, path, depth)` — the sibling list at a depth.
-- `tabView(total, active)` — **active-centred window**. `total ≤ TAB_FIT_MAX(=4)` →
-  all shown, fixed (no badges; scrolling only moves the highlight). `total ≥ 5` →
-  `TAB_WINDOW(=3)` visible with the active in the **middle (2nd) slot**
-  (`start = clamp(active-1, 0, total-3)`); first/last tabs are the only exceptions
-  (active at the left/right end). `leftPlus = start`, `rightPlus = total-(start+3)`
-  feed the `[+N]` edge badges. Min tab width is ¼ → at most 4 ever fit.
+- `tabView(total, active, win=TAB_WINDOW)` — **active-centred window**. `win` =
+  visible tab count, from `spec.maxCount` (the `탭:N:M` M; default `TAB_WINDOW=3`).
+  `total ≤ win+1` → all shown, fixed (no badges; scrolling only moves the
+  highlight). `total ≥ win+2` → `win` visible with the active in the **centre slot
+  `floor(win/2)`** (`start = clamp(active-floor(win/2), 0, total-win)`); first/last
+  tabs are the only exceptions (active at the left/right end). `leftPlus = start`,
+  `rightPlus = total-(start+win)` feed the `[+N]` edge badges. Same centre-keeping
+  principle as 묶음's `cabinetMath.centeredWindow`. `TAB_FIT_MAX(=4)` is now just a
+  reference const for the default window (win+1); the gate is computed `win+1`. The
+  component derives `tabWin = spec.maxCount` and passes it to every `visibleTabs`/
+  `tabView` call; tab `min-width` scales as `--tab-min = 100/(win+1)%` (default 3 →
+  25%, unchanged) so the wider window still fits on one row.
 
 `activePath` (and the per-level windowing) is **component-local, never persisted**.
 

@@ -10,6 +10,7 @@ import {
 	clampMaxCount,
 	DEFAULT_HEIGHT_PCT,
 	DEFAULT_MAX_COUNT,
+	DEFAULT_TAB_COUNT,
 	type BundleNode,
 	type BundleEntry
 } from '$lib/editor/noteBundle/parser.js';
@@ -428,10 +429,26 @@ describe('parseNoteBundles — 묶음 크기/개수 옵션', () => {
 		expect(b.maxCount).toBe(100);
 		expect(b.digitsFrom).toBe(b.digitsTo); // 높이 숫자 없음
 	});
-	it('탭:100:10 = 탭도 두 번째 인자 허용(개수는 무시, 높이만)', () => {
+	it('탭 기본 maxCount = 3(생략 시), 높이 기본 50', () => {
+		const ed = makeEditor(doc(titleLine('호스트'), kw('탭:', true), list(li('A'))));
+		const b = parseNoteBundles(ed.state.doc)[0];
+		expect(b.kind).toBe('tab');
+		expect(b.maxCount).toBe(DEFAULT_TAB_COUNT);
+		expect(b.heightPct).toBe(DEFAULT_HEIGHT_PCT);
+	});
+	it('탭:50:5 = 높이 50 + 표시 탭 5(M 을 윈도우 폭으로), digits 는 높이만', () => {
+		const ed = makeEditor(doc(titleLine('호스트'), kw('탭:50:5', true), list(li('A'))));
+		const b = parseNoteBundles(ed.state.doc)[0];
+		expect(b.kind).toBe('tab');
+		expect(b.heightPct).toBe(50);
+		expect(b.maxCount).toBe(5);
+		expect(ed.state.doc.textBetween(b.digitsFrom, b.digitsTo)).toBe('50');
+	});
+	it('탭:100:10 = 두 번째 인자 = 표시 탭 수(10), 높이 100', () => {
 		const ed = makeEditor(doc(titleLine('호스트'), kw('탭:100:10', true), list(li('A'))));
 		const b = parseNoteBundles(ed.state.doc)[0];
 		expect(b.kind).toBe('tab');
 		expect(b.heightPct).toBe(100);
+		expect(b.maxCount).toBe(10);
 	});
 });

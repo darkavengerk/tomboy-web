@@ -48,6 +48,27 @@ describe('tabView — 활성 중심 윈도우', () => {
 	});
 });
 
+describe('tabView — 가변 윈도우 폭(win = 탭:N:M 의 M)', () => {
+	it('win=5: 6개 이하 전부, 7개 이상 5개 윈도우 + 활성 가운데(slot 2)', () => {
+		expect(tabView(6, 4, 5)).toEqual({ start: 0, count: 6, leftPlus: 0, rightPlus: 0 }); // win+1
+		// 7개: 활성 가운데 슬롯 = floor(5/2)=2
+		expect(tabView(7, 0, 5)).toEqual({ start: 0, count: 5, leftPlus: 0, rightPlus: 2 }); // 처음
+		expect(tabView(7, 3, 5)).toEqual({ start: 1, count: 5, leftPlus: 1, rightPlus: 1 }); // 가운데
+		expect(tabView(7, 6, 5)).toEqual({ start: 2, count: 5, leftPlus: 2, rightPlus: 0 }); // 끝
+	});
+	it('win=1: 활성 1개만(slot 0), 좌우 배지로 나머지', () => {
+		expect(tabView(5, 2, 1)).toEqual({ start: 2, count: 1, leftPlus: 2, rightPlus: 2 });
+		expect(tabView(2, 0, 1)).toEqual({ start: 0, count: 2, leftPlus: 0, rightPlus: 0 }); // win+1=2 → 전부
+	});
+	it('win 생략 = 기본 3(기존 동작 불변)', () => {
+		expect(tabView(5, 2)).toEqual(tabView(5, 2, 3));
+	});
+	it('win 비정상값은 보정(≥1, 반올림)', () => {
+		expect(tabView(5, 2, 0)).toEqual(tabView(5, 2, 1));
+		expect(tabView(7, 3, 4.6)).toEqual(tabView(7, 3, 5));
+	});
+});
+
 describe('firstNavPath', () => {
 	it('첫 navigable 잎 경로, broken 스킵', () => {
 		expect(firstNavPath([lf(), lf()])).toEqual([0]);
@@ -210,6 +231,20 @@ describe('clampIndex / visibleTabs — 범위 밖 인덱스도 undefined 노드 
 	it('빈 노드', () => {
 		expect(visibleTabs([], 0)).toEqual({ items: [], leftPlus: 0, rightPlus: 0 });
 		expect(visibleTabs([], 3)).toEqual({ items: [], leftPlus: 0, rightPlus: 0 });
+	});
+	it('win=5 → 5개 윈도우 활성 가운데', () => {
+		const ns = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+		expect(visibleTabs(ns, 3, 5)).toEqual({
+			items: [
+				{ node: 'b', idx: 1 },
+				{ node: 'c', idx: 2 },
+				{ node: 'd', idx: 3 },
+				{ node: 'e', idx: 4 },
+				{ node: 'f', idx: 5 }
+			],
+			leftPlus: 1,
+			rightPlus: 1
+		});
 	});
 });
 
