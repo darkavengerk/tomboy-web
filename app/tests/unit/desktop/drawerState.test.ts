@@ -46,6 +46,26 @@ describe('desktopSession — drawers: toggle + width', () => {
 		expect(desktopSession.getDrawerWidth(1)).toBe(480);
 	});
 
+	it('default widths: top drawer (0) wider than the right drawer (1)', () => {
+		expect(desktopSession.getDrawerWidth(0)).toBe(760);
+		expect(desktopSession.getDrawerWidth(1)).toBe(480);
+	});
+
+	it('setDrawerHeight clamps; getDrawerHeight reads it (top drawer)', () => {
+		expect(desktopSession.getDrawerHeight(0)).toBe(380);
+		desktopSession.setDrawerHeight(0, 99999);
+		expect(desktopSession.getDrawerHeight(0)).toBe(1100);
+		desktopSession.setDrawerHeight(0, 10);
+		expect(desktopSession.getDrawerHeight(0)).toBe(160);
+		desktopSession.setDrawerHeight(0, 420);
+		expect(desktopSession.getDrawerHeight(0)).toBe(420);
+	});
+
+	it('out-of-range setDrawerHeight is a no-op', () => {
+		desktopSession.setDrawerHeight(9, 500);
+		expect(desktopSession.getDrawerHeight(0)).toBe(380);
+	});
+
 	it('drawerWindows is empty for a fresh / out-of-range drawer', () => {
 		expect(desktopSession.drawerWindows(0)).toEqual([]);
 		expect(desktopSession.drawerWindows(9)).toEqual([]);

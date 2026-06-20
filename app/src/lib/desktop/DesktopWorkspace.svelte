@@ -116,7 +116,7 @@
 		const i = desktopSession.activeDrawer;
 		if (i === null) return;
 		const panel = document.querySelector<HTMLElement>(
-			`.drawer[data-side='${i === 0 ? 'left' : 'right'}'].open`
+			`.drawer[data-side='${i === 0 ? 'top' : 'right'}'].open`
 		);
 		if (!panel) return;
 		const rect = panel.getBoundingClientRect();
@@ -136,10 +136,10 @@
 		);
 	}
 
-	// 'left' when drawer 0 (F2) open, 'right' when drawer 1 (F3) open, else null.
-	const stashArrowDir: 'left' | 'right' | null = $derived(
+	// 'up' when drawer 0 (F2, top) open, 'right' when drawer 1 (F3) open, else null.
+	const stashArrowDir: 'up' | 'right' | null = $derived(
 		desktopSession.activeDrawer === 0
-			? 'left'
+			? 'up'
 			: desktopSession.activeDrawer === 1
 				? 'right'
 				: null
@@ -419,7 +419,8 @@
 			     visible workspace is "live". -->
 			{#each desktopSession.allWorkspaceWindows as item (item.workspaceIndex + ':' + item.window.guid)}
 				{@const win = item.window}
-				{@const active = item.workspaceIndex === desktopSession.currentWorkspace && desktopSession.activeDrawer === null}
+				{@const visible = item.workspaceIndex === desktopSession.currentWorkspace}
+				{@const live = visible && desktopSession.activeDrawer === null}
 				{#if win.kind === 'settings'}
 					<SettingsWindow
 						x={win.x}
@@ -428,7 +429,7 @@
 						height={win.height}
 						z={(win.pinned ? DESKTOP_PINNED_Z : 0) + win.z}
 						pinned={win.pinned}
-						active={active}
+						active={visible}
 						onfocus={handleFocus}
 						onclose={handleClose}
 						onmove={handleMove}
@@ -442,7 +443,7 @@
 						height={win.height}
 						z={(win.pinned ? DESKTOP_PINNED_Z : 0) + win.z}
 						pinned={win.pinned}
-						active={active}
+						active={visible}
 						onfocus={handleFocus}
 						onclose={handleClose}
 						onmove={handleMove}
@@ -457,7 +458,7 @@
 						height={win.height}
 						z={(win.pinned ? DESKTOP_PINNED_Z : 0) + win.z}
 						pinned={win.pinned}
-						active={active}
+						active={visible}
 						onfocus={handleFocus}
 						onclose={handleClose}
 						onmove={handleMove}
@@ -472,7 +473,8 @@
 						height={win.height}
 						z={(win.pinned ? DESKTOP_PINNED_Z : 0) + win.z}
 						pinned={win.pinned}
-						active={active}
+						active={live}
+						hidden={!visible}
 						minimized={win.minimized}
 						onfocus={handleFocus}
 						onclose={handleClose}
@@ -480,7 +482,7 @@
 						onmove={handleMove}
 						onresize={handleResize}
 						onopenlink={handleOpenLink}
-						stashArrow={active ? null : stashArrowDir}
+						stashArrow={visible ? stashArrowDir : null}
 						onstash={handleStash}
 						ondragend={handleCanvasDragEnd}
 					/>
@@ -505,7 +507,7 @@
 	{#if spreadView.isOpen}
 		<SpreadOverlay />
 	{/if}
-	<DrawerOverlay index={0} side="left" />
+	<DrawerOverlay index={0} side="top" />
 	<DrawerOverlay index={1} side="right" />
 </div>
 

@@ -12,10 +12,21 @@ const WALLPAPER_KEY = 'desktop:wallpaper';
 const WALLPAPER_MODE_KEY = 'desktop:wallpaper-mode';
 const VERSION = 4;
 const WORKSPACE_COUNT = 4;
-const DRAWER_COUNT = 2; // 0 = F2 (left), 1 = F3 (right)
-const DEFAULT_DRAWER_WIDTH = 480;
+const DRAWER_COUNT = 2; // 0 = F2 (top, drops down), 1 = F3 (right)
+const DEFAULT_DRAWER_WIDTH = 480; // right drawer default
+const DEFAULT_TOP_DRAWER_WIDTH = 760; // top drawer is wider (drops from the top edge)
 const DRAWER_MIN_WIDTH = 280;
 const DRAWER_MAX_WIDTH = 1200;
+// Height only matters for the top drawer (index 0); the right drawer spans the
+// full canvas height. Stored per-drawer for symmetry / future sides.
+const DEFAULT_DRAWER_HEIGHT = 380;
+const DRAWER_MIN_HEIGHT = 160;
+const DRAWER_MAX_HEIGHT = 1100;
+
+/** Default panel width per drawer index (top drawer is wider than the side one). */
+function defaultDrawerWidth(i: number): number {
+	return i === 0 ? DEFAULT_TOP_DRAWER_WIDTH : DEFAULT_DRAWER_WIDTH;
+}
 
 /**
  * How a workspace wallpaper image fills the canvas. Mirrors the common
@@ -134,6 +145,8 @@ interface PersistedV4 {
 	// Drawers reuse the same per-surface persisted shape as workspaces.
 	drawers: PersistedV3['workspaces'];
 	drawerWidths: number[];
+	// Optional (additive — older v4 blobs predate the top drawer's height).
+	drawerHeights?: number[];
 }
 
 interface PersistedV2 {
@@ -187,7 +200,11 @@ let drawers = $state<WorkspaceState[]>(
 );
 let activeDrawer = $state<number | null>(null);
 let drawerWidths = $state<number[]>(
-	Array.from({ length: DRAWER_COUNT }, () => DEFAULT_DRAWER_WIDTH)
+	Array.from({ length: DRAWER_COUNT }, (_, i) => defaultDrawerWidth(i))
+);
+// Top drawer (index 0) height; the right drawer ignores this (full height).
+let drawerHeights = $state<number[]>(
+	Array.from({ length: DRAWER_COUNT }, () => DEFAULT_DRAWER_HEIGHT)
 );
 // Bumped whenever any workspace's wallpaper is set/cleared. DesktopWorkspace's
 // $effect reads `desktopSession.wallpaperEpoch` so re-setting the SAME
@@ -347,7 +364,8 @@ async function persistNow(): Promise<void> {
 		currentWorkspace: currentWorkspaceIndex,
 		workspaces: workspaces.map(sanitizeWindows),
 		drawers: drawers.map(sanitizeWindows),
-		drawerWidths
+		drawerWidths,
+		drawerHeights
 	}) as PersistedV4;
 	try {
 		await setSetting(STORAGE_KEY, snapshot);
@@ -422,6 +440,11 @@ function bumpZ(ws: WorkspaceState, win: DesktopWindowState): void {
 function clampDrawerWidth(px: number): number {
 	if (!Number.isFinite(px)) return DEFAULT_DRAWER_WIDTH;
 	return Math.max(DRAWER_MIN_WIDTH, Math.min(DRAWER_MAX_WIDTH, Math.round(px)));
+}
+
+function clampDrawerHeight(px: number): number {
+	if (!Number.isFinite(px)) return DEFAULT_DRAWER_HEIGHT;
+	return Math.max(DRAWER_MIN_HEIGHT, Math.min(DRAWER_MAX_HEIGHT, Math.round(px)));
 }
 
 // --- Workspace direction mapping ----------------------------------------
@@ -571,7 +594,13 @@ async function loadPersisted(): Promise<void> {
 		drawers = restoredDrawers;
 		if (Array.isArray(p4.drawerWidths)) {
 			drawerWidths = Array.from({ length: DRAWER_COUNT }, (_, i) =>
-				clampDrawerWidth(p4.drawerWidths[i] ?? DEFAULT_DRAWER_WIDTH)
+				clampDrawerWidth(p4.drawerWidths[i] ?? defaultDrawerWidth(i))
+			);
+		}
+		if (Array.isArray(p4.drawerHeights)) {
+			const heights = p4.drawerHeights;
+			drawerHeights = Array.from({ length: DRAWER_COUNT }, (_, i) =>
+				clampDrawerHeight(heights[i] ?? DEFAULT_DRAWER_HEIGHT)
 			);
 		}
 	}
@@ -624,7 +653,7 @@ export const desktopSession = {
 	},
 
 	getDrawerWidth(index: number): number {
-		return drawerWidths[index] ?? DEFAULT_DRAWER_WIDTH;
+		return drawerWidths[index] ?? defaultDrawerWidth(index);
 	},
 
 	setDrawerWidth(index: number, px: number): void {
@@ -632,6 +661,18 @@ export const desktopSession = {
 		const next = clampDrawerWidth(px);
 		if (next === drawerWidths[index]) return;
 		drawerWidths[index] = next;
+		schedulePersist();
+	},
+
+	getDrawerHeight(index: number): number {
+		return drawerHeights[index] ?? DEFAULT_DRAWER_HEIGHT;
+	},
+
+	setDrawerHeight(index: number, px: number): void {
+		if (index < 0 || index >= DRAWER_COUNT) return;
+		const next = clampDrawerHeight(px);
+		if (next === drawerHeights[index]) return;
+		drawerHeights[index] = next;
 		schedulePersist();
 	},
 
@@ -1507,7 +1548,8 @@ export const desktopSession = {
 		currentWorkspaceIndex = 0;
 		drawers = Array.from({ length: DRAWER_COUNT }, () => emptyWorkspace());
 		activeDrawer = null;
-		drawerWidths = Array.from({ length: DRAWER_COUNT }, () => DEFAULT_DRAWER_WIDTH);
+		drawerWidths = Array.from({ length: DRAWER_COUNT }, (_, i) => defaultDrawerWidth(i));
+		drawerHeights = Array.from({ length: DRAWER_COUNT }, () => DEFAULT_DRAWER_HEIGHT);
 		focusRequest = null;
 		focusRequestCounter = 0;
 		closedStack.length = 0;
