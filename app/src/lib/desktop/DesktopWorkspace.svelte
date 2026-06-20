@@ -109,6 +109,31 @@
 		void desktopSession.stashToActiveDrawer(guid);
 	}
 
+	// If a canvas window is dropped over the open drawer panel, move it in.
+	function handleCanvasDragEnd(guid: string, pointer: { x: number; y: number }) {
+		const i = desktopSession.activeDrawer;
+		if (i === null) return;
+		const panel = document.querySelector<HTMLElement>(
+			`.drawer[data-side='${i === 0 ? 'left' : 'right'}'].open`
+		);
+		if (!panel) return;
+		const rect = panel.getBoundingClientRect();
+		if (
+			pointer.x < rect.left ||
+			pointer.x > rect.right ||
+			pointer.y < rect.top ||
+			pointer.y > rect.bottom
+		) {
+			return; // released outside the drawer → normal canvas move already applied
+		}
+		void desktopSession.moveWindowToSurface(
+			{ kind: 'workspace', index: desktopSession.currentWorkspace },
+			{ kind: 'drawer', index: i },
+			guid,
+			{ x: pointer.x - rect.left, y: pointer.y - rect.top }
+		);
+	}
+
 	// 'left' when drawer 0 (F2) open, 'right' when drawer 1 (F3) open, else null.
 	const stashArrowDir: 'left' | 'right' | null = $derived(
 		desktopSession.activeDrawer === 0
@@ -429,6 +454,7 @@
 						onopenlink={handleOpenLink}
 						stashArrow={active ? null : stashArrowDir}
 						onstash={handleStash}
+						ondragend={handleCanvasDragEnd}
 					/>
 				{/if}
 			{/each}

@@ -127,6 +127,9 @@
 		stashArrow?: 'left' | 'right' | null;
 		/** Invoked when the stash arrow is clicked (move this note into the drawer). */
 		onstash?: (guid: string) => void;
+		/** Canvas-only: fired at title-bar drag-end with the viewport pointer so
+		 *  the host can move the window into an open drawer if released over it. */
+		ondragend?: (guid: string, pointer: { x: number; y: number }) => void;
 		onfocus: (guid: string) => void;
 		onclose: (guid: string) => void;
 		/** Minimize handler. Omitted by embedders without a taskbar (e.g. the
@@ -150,6 +153,7 @@
 		surface = undefined,
 		stashArrow = null,
 		onstash = undefined,
+		ondragend = undefined,
 		onfocus,
 		onclose,
 		onminimize = undefined,
@@ -883,7 +887,8 @@
 		startPointerDrag(e, {
 			onMove: (dx, dy) => {
 				onmove(guid, origX + dx, origY + dy);
-			}
+			},
+			onEnd: (pointer) => ondragend?.(guid, pointer)
 		});
 	}
 
