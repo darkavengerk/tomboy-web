@@ -2,8 +2,8 @@
   import { onMount } from 'svelte';
   import type { EditorView } from '@tiptap/pm/view';
   import { hueCall, HueError } from '$lib/hue/hueClient.js';
-  import type { HueZone, HueScene } from '$lib/hue/hueTypes.js';
-  import { groupedLightIdOf, resolveMembershipIds, toChildrenRefs } from '$lib/hue/zoneOps.js';
+  import type { HueZone, HueScene, HueLight } from '$lib/hue/hueTypes.js';
+  import { groupedLightIdOf, resolveMembershipIds, toChildrenRefs, resolveChildTitles, buildSceneActions } from '$lib/hue/zoneOps.js';
   import { extractMembershipTitles } from '$lib/hue/hueNoteParse.js';
   import { listNotesShared } from '$lib/core/noteManager.js';
   import { pushToast } from '$lib/stores/toast.js';
@@ -17,6 +17,7 @@
   let scenes = $state<HueScene[]>([]);
   let status = $state('');
   let glId = $state<string | null>(null);
+  let newSceneName = $state('');
 
   async function load() {
     if (!zoneId) { status = 'Hue에 아직 미생성 — [Hue에 반영]'; return; }
@@ -90,6 +91,57 @@
     try { await hueCall('PUT', `scene/${id}`, { recall: { action: 'active' } }); pushToast('씬 적용'); }
     catch { pushToast('씬 적용 실패'); }
   }
+
+  /** uuid → 전체 노트 타이틀(조명:: 포함) 역맵. */
+  async function buildUuidToTitle(): Promise<Map<string, string>> {
+    const notes = await listNotesShared();
+    const map = new Map<string, string>();
+    for (const n of notes) {
+      const m = /^light:([0-9a-fA-F-]{36})$/.exec(firstBodyLineOf(n.xmlContent).trim());
+      if (m) map.set(m[1], n.title);
+    }
+    return map;
+  }
+
+  /** Hue zone.children → 본문 멤버십 링크 리스트 재작성(전체 교체). */
+  async function pullMembership() {
+    if (!zone) { pushToast('먼저 ⟳ 로 존을 불러오세요'); return; }
+    const uuidToTitle = await buildUuidToTitle();
+    const { titles, missing } = resolveChildTitles(zone.children.map((c) => c.rid), uuidToTitle);
+    if (missing.length) pushToast(`노트 없는 전구 ${missing.length}개 — 먼저 마스터에서 가져오기`);
+    rewriteMembershipList(titles);
+    pushToast('Hue 멤버십을 노트에 반영');
+  }
+
+  /** 시그니처 줄 다음(본문 child(2)~끝)을 전구 노트 내부링크 bulletList 로 교체. */
+  function rewriteMembershipList(titles: string[]) {
+    const { state } = view; const { schema, doc } = state;
+    const linkMark = schema.marks.tomboyInternalLink;
+    const liType = schema.nodes.listItem; const blType = schema.nodes.bulletList; const pType = schema.nodes.paragraph;
+    if (!linkMark || !liType || !blType || !pType) { pushToast('에디터 스키마 불일치'); return; }
+    const first = doc.firstChild; if (!first) return;
+    const second = doc.childCount > 1 ? doc.child(1) : null; if (!second) return;
+    const from = first.nodeSize + second.nodeSize;
+    const to = doc.content.size;
+    const items = titles.map((t) => liType.create(null, pType.create(null, schema.text(t, [linkMark.create({ target: t })]))));
+    const replacement = items.length ? blType.create(null, items) : pType.create();
+    view.dispatch(state.tr.replaceWith(from, to, replacement));
+  }
+
+  /** 멤버 light 들의 현재 상태를 캡처해 새 씬으로 저장. */
+  async function saveScene() {
+    if (!zoneId || !zone) { pushToast('존을 먼저 Hue에 반영하세요'); return; }
+    const name = newSceneName.trim(); if (!name) { pushToast('씬 이름을 입력하세요'); return; }
+    try {
+      const lights: HueLight[] = [];
+      for (const c of zone.children) {
+        const d = (await hueCall('GET', `light/${c.rid}`)) as { data?: HueLight[] };
+        const l = d.data?.[0]; if (l) lights.push(l);
+      }
+      await hueCall('POST', 'scene', { type: 'scene', metadata: { name }, group: { rid: zoneId, rtype: 'zone' }, actions: buildSceneActions(lights) });
+      newSceneName = ''; pushToast('씬 저장됨'); await load();
+    } catch { pushToast('씬 저장 실패'); }
+  }
 </script>
 
 <div class="zone-control">
@@ -105,18 +157,24 @@
   {#if status}<span class="hue-status">{status}</span>{/if}
   <div class="zone-membership">
     <button type="button" onclick={pushMembership}>Hue에 반영</button>
+    <button type="button" onclick={pullMembership}>Hue에서 가져오기</button>
   </div>
   {#if scenes.length}
     <div class="zone-scenes">
       {#each scenes as s (s.id)}<button type="button" onclick={() => recallScene(s.id)}>{s.metadata.name}</button>{/each}
     </div>
   {/if}
+  <div class="zone-scene-save">
+    <input type="text" placeholder="새 씬 이름" bind:value={newSceneName} />
+    <button type="button" onclick={saveScene}>현재 상태 저장</button>
+  </div>
 </div>
 
 <style>
   .zone-control { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.6rem; border: 1px solid var(--border, #ddd); border-radius: 8px; margin: 0.3rem 0; }
   .zone-row { display: flex; align-items: center; gap: 0.5rem; }
   .zone-scenes { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+  .zone-scene-save { display: flex; gap: 0.3rem; }
   .zone-scenes button { padding: 0.2rem 0.6rem; border-radius: 999px; border: 1px solid var(--border, #ccc); }
   .bulb-toggle { padding: 0.3rem 0.8rem; border-radius: 999px; border: 1px solid var(--border, #ccc); }
   .bulb-toggle.on { background: #ffd766; }
