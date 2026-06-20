@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import https from 'node:https';
 import { extractBearer, verifyToken } from './auth.js';
+import { fileHueCredsStore, type HueCredsStore } from './hueCreds.js';
 
 export interface HueRequestResult { status: number; body: string; }
 export interface HueRequestOpts { ip: string; path: string; method: string; appkey?: string; body?: unknown; }
@@ -51,7 +52,7 @@ export async function handleHueDiscover(req: IncomingMessage, res: ServerRespons
 }
 
 /** POST /hue/pair {ip} → 링크버튼 키 발급. */
-export async function handleHuePair(req: IncomingMessage, res: ServerResponse, secret: string, hueRequest: HueRequestFn = realHueRequest): Promise<void> {
+export async function handleHuePair(req: IncomingMessage, res: ServerResponse, secret: string, hueRequest: HueRequestFn = realHueRequest, store: HueCredsStore = fileHueCredsStore): Promise<void> {
   if (!verifyToken(secret, extractBearer(req.headers.authorization))) return unauthorized(res);
   let body: Record<string, unknown>;
   try { body = await readJson(req); } catch { res.writeHead(400, json()).end(JSON.stringify({ error: 'bad_json' })); return; }
@@ -65,17 +66,28 @@ export async function handleHuePair(req: IncomingMessage, res: ServerResponse, s
   try { parsed = JSON.parse(result.body); } catch { res.writeHead(502, json()).end(JSON.stringify({ error: 'bad_upstream' })); return; }
   const first = Array.isArray(parsed) ? parsed[0] : parsed;
   if (first?.error?.type === 101) { res.writeHead(409, json()).end(JSON.stringify({ error: 'link_button' })); return; }
-  if (first?.success?.username) { res.writeHead(200, json()).end(JSON.stringify({ appkey: first.success.username, clientkey: first.success.clientkey ?? '' })); return; }
+  if (first?.success?.username) {
+    const appkey = String(first.success.username);
+    const clientkey = String(first.success.clientkey ?? '');
+    let persisted = false; let persistError: string | undefined;
+    try { store.write({ ip, appkey, clientkey }); persisted = true; }
+    catch (e) { persistError = e instanceof Error ? e.message : 'write_failed'; }
+    const out: Record<string, unknown> = { appkey, clientkey, persisted };
+    if (persistError) out.persistError = persistError;
+    res.writeHead(200, json()).end(JSON.stringify(out));
+    return;
+  }
   res.writeHead(502, json()).end(JSON.stringify({ error: 'pair_failed' }));
 }
 
 /** POST /hue/clip {ip, appkey, method, path, body} → CLIP v2 릴레이. */
-export async function handleHueClip(req: IncomingMessage, res: ServerResponse, secret: string, hueRequest: HueRequestFn = realHueRequest): Promise<void> {
+export async function handleHueClip(req: IncomingMessage, res: ServerResponse, secret: string, hueRequest: HueRequestFn = realHueRequest, store: HueCredsStore = fileHueCredsStore): Promise<void> {
   if (!verifyToken(secret, extractBearer(req.headers.authorization))) return unauthorized(res);
   let body: Record<string, unknown>;
   try { body = await readJson(req); } catch { res.writeHead(400, json()).end(JSON.stringify({ error: 'bad_json' })); return; }
-  const ip = typeof body.ip === 'string' ? body.ip.trim() : '';
-  const appkey = typeof body.appkey === 'string' ? body.appkey : '';
+  const file = store.read();
+  const ip = file?.ip ?? (typeof body.ip === 'string' ? body.ip.trim() : '');
+  const appkey = file?.appkey ?? (typeof body.appkey === 'string' ? body.appkey : '');
   const method = typeof body.method === 'string' ? body.method.toUpperCase() : 'GET';
   const path = typeof body.path === 'string' ? body.path.replace(/^\/+/, '') : '';
   if (!ip || !appkey || !path) { res.writeHead(400, json()).end(JSON.stringify({ error: 'bad_request' })); return; }
@@ -89,4 +101,23 @@ export async function handleHueClip(req: IncomingMessage, res: ServerResponse, s
     result = await hueRequest({ ip, appkey, method, path: `clip/v2/resource/${path}`, body: 'body' in body ? body.body : undefined });
   } catch { res.writeHead(503, json()).end(JSON.stringify({ error: 'bridge_unreachable' })); return; }
   res.writeHead(result.status, json()).end(result.body);
+}
+
+/** GET /hue/health → 브릿지가 creds 를 보관 중인지. appkey/clientkey 절대 미반환. */
+export async function handleHueHealth(
+  req: IncomingMessage, res: ServerResponse, secret: string, store: HueCredsStore = fileHueCredsStore
+): Promise<void> {
+  if (!verifyToken(secret, extractBearer(req.headers.authorization))) return unauthorized(res);
+  const c = store.read();
+  const out = c ? { configured: true, ip: c.ip } : { configured: false };
+  res.writeHead(200, json()).end(JSON.stringify(out));
+}
+
+/** DELETE /hue/creds → 브릿지 보관 creds 삭제(해제). */
+export async function handleHueCredsDelete(
+  req: IncomingMessage, res: ServerResponse, secret: string, store: HueCredsStore = fileHueCredsStore
+): Promise<void> {
+  if (!verifyToken(secret, extractBearer(req.headers.authorization))) return unauthorized(res);
+  store.clear();
+  res.writeHead(200, json()).end(JSON.stringify({ cleared: true }));
 }
