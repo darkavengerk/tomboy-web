@@ -26,7 +26,7 @@ description: Use when working on the 조명:: Hue light-control note family — 
 - 브릿지가 같은 LAN Hue 를 자체서명(`rejectUnauthorized:false`)으로 직접 호출. `/hue/clip` 은 resource-path 화이트리스트(`room/scene/grouped_light/light/device`) + `..` 거부.
 - 앱은 전역 터미널-브릿지 URL+토큰 재사용(별도 브릿지 설정 없음). Hue 크레덴셜(ip/appkey/clientkey)은 로컬 appSettings 에 저장하지만 **브릿지 파일이 단일 소스**(로컬은 브릿지 저장 실패 시 폴백).
 - **브릿지가 creds 를 보관한다(단일 소스).** `bridge/src/hueCreds.ts` 가 `BRIDGE_HUE_FILE` JSON(`{ip,appkey,clientkey}`, 0600)을 read/write/clear. `/hue/pair` 성공 시 파일에 persist(`persisted` 플래그 반환), `/hue/clip` 은 `파일 ?? 클라` 순서로 creds 해석(**파일 우선**). 기기당 Hue 설정 0 — 한 기기에서 1회 페어링하면 같은 브릿지 토큰을 쓰는 모든 기기가 자동 동작.
-- **`GET /hue/health`** `{configured, ip}` (appkey/clientkey 미반환) — 앱 `hueClient.hueHealth`(15초 TTL 캐시, 실패는 캐시 안 함)가 호출해 로컬 creds 없는 기기의 구성 여부 판단. **`DELETE /hue/creds`** 로 브릿지 보관 creds 해제. 둘 다 `verifyToken` 게이트.
+- **`GET /hue/health`** `{configured, ip?}` (미구성이면 ip 없음; appkey/clientkey 미반환) — 앱 `hueClient.hueHealth`(15초 TTL 캐시, 실패는 캐시 안 함)가 호출해 로컬 creds 없는 기기의 구성 여부 판단. **`DELETE /hue/creds`** 로 브릿지 보관 creds 해제. 둘 다 `verifyToken` 게이트.
 - 앱 `getHueContext`: 로컬 creds 있으면 동봉, 없으면 health 로 브릿지 구성 확인 후 creds 생략 호출. 사용 불가면 null. 설정에서 페어링 성공 시 로컬 creds 를 지워 `source:'bridge'` 로 인식(브릿지에서 해제 가능); 브릿지 저장 실패 시에만 로컬 폴백 보관.
 - **마스터 가져오기** = `hueImport.planLightImports` (전구) + `hueImport.planRoomImports` (방) → 멱등 노트 생성 → 본문에 묶음 두 개(전구 노트 목록 묶음 + 방 노트 목록 묶음) 작성.
 - **존(zone) 포맷은 제거됨.** 기존 `zone:<uuid>` 시그니처, `zoneOps.ts`, `ZoneControl.svelte`는 Tasks 1-6에서 삭제됨.
