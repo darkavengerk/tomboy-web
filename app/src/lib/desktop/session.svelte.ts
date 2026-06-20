@@ -14,17 +14,25 @@ const WORKSPACE_COUNT = 4;
 const DRAWER_COUNT = 2; // 0 = F2 (top, drops down), 1 = F3 (right)
 const DEFAULT_DRAWER_WIDTH = 480; // right drawer default
 const DEFAULT_TOP_DRAWER_WIDTH = 760; // top drawer is wider (drops from the top edge)
-const DRAWER_MIN_WIDTH = 280;
-const DRAWER_MAX_WIDTH = 1200;
-// Height only matters for the top drawer (index 0); the right drawer spans the
-// full canvas height. Stored per-drawer for symmetry / future sides.
+// No upper cap — drawers may grow as large as the user wants. Floors only keep a
+// panel from collapsing to an ungrabbable sliver (never 0).
+const DRAWER_MIN_WIDTH = 100;
 const DEFAULT_DRAWER_HEIGHT = 380;
-const DRAWER_MIN_HEIGHT = 160;
-const DRAWER_MAX_HEIGHT = 1100;
+const DRAWER_MIN_HEIGHT = 100;
+// Top drawer left offset = gap between the side-rail's right edge (and its
+// resize handle) and the drawer's left edge. Default 100 so the drawer never
+// sits on the rail handle; floored above 0 so its own left grip stays grabbable.
+const DEFAULT_TOP_DRAWER_LEFT = 100;
+const DRAWER_MIN_LEFT = 16;
 
 /** Default panel width per drawer index (top drawer is wider than the side one). */
 function defaultDrawerWidth(i: number): number {
 	return i === 0 ? DEFAULT_TOP_DRAWER_WIDTH : DEFAULT_DRAWER_WIDTH;
+}
+
+/** Default left offset per drawer index (only the top drawer uses it). */
+function defaultDrawerLeft(i: number): number {
+	return i === 0 ? DEFAULT_TOP_DRAWER_LEFT : 0;
 }
 
 /**
@@ -137,8 +145,9 @@ interface PersistedV4 {
 	// Drawers reuse the same per-surface persisted shape as workspaces.
 	drawers: PersistedV3['workspaces'];
 	drawerWidths: number[];
-	// Optional (additive — older v4 blobs predate the top drawer's height).
+	// Optional (additive — older v4 blobs predate the top drawer's height/left).
 	drawerHeights?: number[];
+	drawerLefts?: number[];
 }
 
 interface PersistedV2 {
@@ -197,6 +206,10 @@ let drawerWidths = $state<number[]>(
 // Top drawer (index 0) height; the right drawer ignores this (full height).
 let drawerHeights = $state<number[]>(
 	Array.from({ length: DRAWER_COUNT }, () => DEFAULT_DRAWER_HEIGHT)
+);
+// Top drawer (index 0) left offset from the rail; the right drawer ignores it.
+let drawerLefts = $state<number[]>(
+	Array.from({ length: DRAWER_COUNT }, (_, i) => defaultDrawerLeft(i))
 );
 // Bumped whenever any workspace's wallpaper is set/cleared. DesktopWorkspace's
 // $effect reads `desktopSession.wallpaperEpoch` so re-setting the SAME
@@ -357,7 +370,8 @@ async function persistNow(): Promise<void> {
 		workspaces: workspaces.map(sanitizeWindows),
 		drawers: drawers.map(sanitizeWindows),
 		drawerWidths,
-		drawerHeights
+		drawerHeights,
+		drawerLefts
 	}) as PersistedV4;
 	try {
 		await setSetting(STORAGE_KEY, snapshot);
@@ -431,12 +445,17 @@ function bumpZ(ws: WorkspaceState, win: DesktopWindowState): void {
 
 function clampDrawerWidth(px: number): number {
 	if (!Number.isFinite(px)) return DEFAULT_DRAWER_WIDTH;
-	return Math.max(DRAWER_MIN_WIDTH, Math.min(DRAWER_MAX_WIDTH, Math.round(px)));
+	return Math.max(DRAWER_MIN_WIDTH, Math.round(px));
 }
 
 function clampDrawerHeight(px: number): number {
 	if (!Number.isFinite(px)) return DEFAULT_DRAWER_HEIGHT;
-	return Math.max(DRAWER_MIN_HEIGHT, Math.min(DRAWER_MAX_HEIGHT, Math.round(px)));
+	return Math.max(DRAWER_MIN_HEIGHT, Math.round(px));
+}
+
+function clampDrawerLeft(px: number): number {
+	if (!Number.isFinite(px)) return DEFAULT_TOP_DRAWER_LEFT;
+	return Math.max(DRAWER_MIN_LEFT, Math.round(px));
 }
 
 // --- Workspace direction mapping ----------------------------------------
@@ -595,6 +614,12 @@ async function loadPersisted(): Promise<void> {
 				clampDrawerHeight(heights[i] ?? DEFAULT_DRAWER_HEIGHT)
 			);
 		}
+		if (Array.isArray(p4.drawerLefts)) {
+			const lefts = p4.drawerLefts;
+			drawerLefts = Array.from({ length: DRAWER_COUNT }, (_, i) =>
+				i === 0 ? clampDrawerLeft(lefts[i] ?? defaultDrawerLeft(i)) : defaultDrawerLeft(i)
+			);
+		}
 	}
 }
 
@@ -665,6 +690,29 @@ export const desktopSession = {
 		const next = clampDrawerHeight(px);
 		if (next === drawerHeights[index]) return;
 		drawerHeights[index] = next;
+		schedulePersist();
+	},
+
+	getDrawerLeft(index: number): number {
+		return drawerLefts[index] ?? defaultDrawerLeft(index);
+	},
+
+	/**
+	 * Move the top drawer's LEFT edge to `px` (offset from the rail) while
+	 * pinning the RIGHT edge — i.e. resize-from-left. The left offset is floored
+	 * above 0 (so it never lands on the rail handle) and capped so the width
+	 * stays ≥ the floor. Both left + width update atomically.
+	 */
+	setDrawerLeftKeepRight(index: number, px: number): void {
+		if (index < 0 || index >= DRAWER_COUNT) return;
+		const curLeft = drawerLefts[index] ?? defaultDrawerLeft(index);
+		const curWidth = drawerWidths[index] ?? defaultDrawerWidth(index);
+		const right = curLeft + curWidth; // invariant across the drag
+		const nextLeft = Math.min(clampDrawerLeft(px), right - DRAWER_MIN_WIDTH);
+		const nextWidth = right - nextLeft;
+		if (nextLeft === curLeft && nextWidth === curWidth) return;
+		drawerLefts[index] = nextLeft;
+		drawerWidths[index] = nextWidth;
 		schedulePersist();
 	},
 
@@ -1537,6 +1585,7 @@ export const desktopSession = {
 		activeDrawer = null;
 		drawerWidths = Array.from({ length: DRAWER_COUNT }, (_, i) => defaultDrawerWidth(i));
 		drawerHeights = Array.from({ length: DRAWER_COUNT }, () => DEFAULT_DRAWER_HEIGHT);
+		drawerLefts = Array.from({ length: DRAWER_COUNT }, (_, i) => defaultDrawerLeft(i));
 		focusRequest = null;
 		focusRequestCounter = 0;
 		closedStack.length = 0;

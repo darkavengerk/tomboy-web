@@ -36,11 +36,11 @@ describe('desktopSession — drawers: toggle + width', () => {
 		expect(desktopSession.activeDrawer).toBe(null);
 	});
 
-	it('setDrawerWidth clamps; getDrawerWidth reads it', () => {
+	it('setDrawerWidth floors at 100, no upper cap', () => {
 		desktopSession.setDrawerWidth(0, 99999);
-		expect(desktopSession.getDrawerWidth(0)).toBe(1200);
+		expect(desktopSession.getDrawerWidth(0)).toBe(99999); // no max
 		desktopSession.setDrawerWidth(0, 10);
-		expect(desktopSession.getDrawerWidth(0)).toBe(280);
+		expect(desktopSession.getDrawerWidth(0)).toBe(100); // floor, never 0
 		desktopSession.setDrawerWidth(0, 500);
 		expect(desktopSession.getDrawerWidth(0)).toBe(500);
 		expect(desktopSession.getDrawerWidth(1)).toBe(480);
@@ -51,12 +51,12 @@ describe('desktopSession — drawers: toggle + width', () => {
 		expect(desktopSession.getDrawerWidth(1)).toBe(480);
 	});
 
-	it('setDrawerHeight clamps; getDrawerHeight reads it (top drawer)', () => {
+	it('setDrawerHeight floors at 100, no upper cap (top drawer)', () => {
 		expect(desktopSession.getDrawerHeight(0)).toBe(380);
 		desktopSession.setDrawerHeight(0, 99999);
-		expect(desktopSession.getDrawerHeight(0)).toBe(1100);
+		expect(desktopSession.getDrawerHeight(0)).toBe(99999); // no max
 		desktopSession.setDrawerHeight(0, 10);
-		expect(desktopSession.getDrawerHeight(0)).toBe(160);
+		expect(desktopSession.getDrawerHeight(0)).toBe(100); // floor, never 0
 		desktopSession.setDrawerHeight(0, 420);
 		expect(desktopSession.getDrawerHeight(0)).toBe(420);
 	});
@@ -64,6 +64,29 @@ describe('desktopSession — drawers: toggle + width', () => {
 	it('out-of-range setDrawerHeight is a no-op', () => {
 		desktopSession.setDrawerHeight(9, 500);
 		expect(desktopSession.getDrawerHeight(0)).toBe(380);
+	});
+
+	it('default left offset: top drawer (0) = 100, right drawer (1) = 0', () => {
+		expect(desktopSession.getDrawerLeft(0)).toBe(100);
+		expect(desktopSession.getDrawerLeft(1)).toBe(0);
+	});
+
+	it('setDrawerLeftKeepRight moves the left edge, pins the right, never 0', () => {
+		// top default: left 100, width 760 → right 860
+		desktopSession.setDrawerLeftKeepRight(0, 200);
+		expect(desktopSession.getDrawerLeft(0)).toBe(200);
+		expect(desktopSession.getDrawerWidth(0)).toBe(660); // 860 - 200, right pinned
+
+		// dragging past 0 floors above 0 (clears the rail handle)
+		desktopSession.setDrawerLeftKeepRight(0, -50);
+		expect(desktopSession.getDrawerLeft(0)).toBeGreaterThan(0);
+		// right edge still pinned at 860
+		expect(desktopSession.getDrawerLeft(0) + desktopSession.getDrawerWidth(0)).toBe(860);
+	});
+
+	it('out-of-range setDrawerLeftKeepRight is a no-op', () => {
+		desktopSession.setDrawerLeftKeepRight(9, 300);
+		expect(desktopSession.getDrawerLeft(0)).toBe(100);
 	});
 
 	it('drawerWindows is empty for a fresh / out-of-range drawer', () => {

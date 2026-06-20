@@ -14,6 +14,7 @@
 	const open = $derived(desktopSession.isDrawerOpen(index));
 	const width = $derived(desktopSession.getDrawerWidth(index));
 	const height = $derived(desktopSession.getDrawerHeight(index));
+	const left = $derived(desktopSession.getDrawerLeft(index));
 	const windows = $derived(desktopSession.drawerWindows(index));
 	const surface = $derived({ kind: 'drawer' as const, index });
 
@@ -36,6 +37,15 @@
 			onMove: (_dx, dy) => desktopSession.setDrawerHeight(index, base + dy)
 		});
 	}
+
+	function startLeftDrag(e: PointerEvent) {
+		// Top drawer's left-edge grip: resize-from-left (right edge pinned). The
+		// offset is floored above 0 by the session so it clears the rail handle.
+		const base = left;
+		startPointerDrag(e, {
+			onMove: (dx) => desktopSession.setDrawerLeftKeepRight(index, base + dx)
+		});
+	}
 </script>
 
 <!-- Always mounted so drawer notes (terminal WS, editors) stay alive when the
@@ -45,7 +55,7 @@
 	class="drawer"
 	class:open
 	data-side={side}
-	style="--drawer-width: {width}px; --drawer-height: {height}px;"
+	style="--drawer-width: {width}px; --drawer-height: {height}px; --drawer-left: {left}px;"
 	aria-hidden={!open}
 >
 	<div class="drawer-windows">
@@ -75,6 +85,8 @@
 	<div class="width-grip" data-side={side} onpointerdown={startWidthDrag} title="서랍 폭 조절"></div>
 	{#if side === 'top'}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="left-grip" onpointerdown={startLeftDrag} title="서랍 왼쪽 가장자리 조절"></div>
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div class="height-grip" onpointerdown={startHeightDrag} title="서랍 높이 조절"></div>
 	{/if}
 </div>
@@ -91,7 +103,7 @@
 	/* Top drawer (F2) — anchored to the top-left of the canvas (right of the
 	   rail). Both width and height are user-set; it drops down when open. */
 	.drawer[data-side='top'] {
-		left: var(--rail-width, 80px);
+		left: calc(var(--rail-width, 80px) + var(--drawer-left, 100px));
 		top: 0;
 		width: var(--drawer-width, 760px);
 		height: var(--drawer-height, 380px);
@@ -116,11 +128,13 @@
 	   DESKTOP_PINNED_Z + nextZ) so they stay grabbable. Contained within the
 	   drawer's own stacking context, so this large value never leaks out. */
 	.width-grip,
+	.left-grip,
 	.height-grip {
 		position: absolute;
 		z-index: 2000001;
 	}
-	.width-grip {
+	.width-grip,
+	.left-grip {
 		top: 0;
 		bottom: 0;
 		width: 6px;
@@ -129,9 +143,12 @@
 	.width-grip[data-side='right'] {
 		left: 0;
 	}
-	/* Top drawer's width grip lives on its right edge. */
+	/* Top drawer's width grip lives on its right edge, left grip on its left. */
 	.width-grip[data-side='top'] {
 		right: 0;
+	}
+	.left-grip {
+		left: 0;
 	}
 	.height-grip {
 		left: 0;
