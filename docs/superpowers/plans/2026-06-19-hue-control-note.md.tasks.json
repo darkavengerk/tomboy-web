@@ -79,7 +79,15 @@
       "status": "completed",
       "blockedBy": [14, 15],
       "description": "설정→가이드 조명 카드 + CLAUDE.md tomboy-hue 행 + tomboy-hue SKILL.md 스텁. npm run check + 수동.\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\", \"CLAUDE.md\", \".claude/skills/tomboy-hue/SKILL.md\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"guide card notes subtab\", \"CLAUDE.md row\", \"skill stub invariants\", \"npm run check\"]}\n```"
+    },
+    {
+      "id": 17,
+      "planTask": 10,
+      "subject": "Task 10: 씬 저장 + Hue→노트 풀 멤버십",
+      "status": "completed",
+      "blockedBy": [13],
+      "description": "스펙 §9 씬 저장 + §5.2 양방향 풀(플랜 Task6 누락분). zoneOps buildSceneActions+resolveChildTitles, ZoneControl saveScene/pullMembership, 가이드 복원.\n\n```json:metadata\n{\"files\": [\"app/src/lib/hue/zoneOps.ts\", \"app/src/lib/editor/hueNote/ZoneControl.svelte\", \"app/tests/unit/hue/zoneOps.test.ts\", \"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/hue && npm run check\", \"acceptanceCriteria\": [\"buildSceneActions CT vs color\", \"resolveChildTitles\", \"saveScene POST scene\", \"pullMembership rewrites link list\", \"guide restored\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-06-19T18:25:00+09:00"
+  "lastUpdated": "2026-06-20T00:00:00+09:00"
 }
