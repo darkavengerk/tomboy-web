@@ -39,7 +39,7 @@ function renderWidget(view: EditorView, info: HueNoteInfo, opts?: HuePluginOpts)
   const props: Record<string, unknown> =
     info.kind === 'bulb' ? { lightId: info.lightId }
     : info.kind === 'room' ? { roomId: info.roomId, view }
-    : { oninternallink: opts?.oninternallink };
+    : { view, oninternallink: opts?.oninternallink };
   const inst = mount(Comp as never, { target: host, props });
   (host as unknown as { _hueDestroy?: () => void })._hueDestroy = () => { void unmount(inst); };
   return host;
