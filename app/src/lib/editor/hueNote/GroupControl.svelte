@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import type { EditorView } from '@tiptap/pm/view';
+  import type { Node as PMNode } from '@tiptap/pm/model';
   import { hueCall, HueError } from '$lib/hue/hueClient.js';
   import type { HueLight, HueRoom, HueZone, HueScene } from '$lib/hue/hueTypes.js';
   import { lightsInRoom, lightsInZone, groupedLightIdOf, buildSceneActions, isSceneActive } from '$lib/hue/roomOps.js';
-  import { buildLightList, buildSceneList, findListByAtom, lightContextAt, sceneContextAt, type LightItem, type SceneItem } from '$lib/hue/roomDoc.js';
+  import { buildLightList, buildSceneList, findBoxList, listItemAt, lightContextOf, sceneContextOf, type LightItem, type SceneItem } from '$lib/hue/roomDoc.js';
   import { listNotesShared } from '$lib/core/noteManager.js';
   import { firstBodyLineOf } from '$lib/hue/noteBody.js';
   import { pushToast } from '$lib/stores/toast.js';
@@ -31,8 +32,8 @@
     return m;
   }
 
-  function replaceList(atomName: 'inlineCheckbox' | 'inlineRadio', node: import('@tiptap/pm/model').Node) {
-    const cur = findListByAtom(view.state.doc, atomName);
+  function replaceList(kind: 'checkbox' | 'radio', node: PMNode) {
+    const cur = findBoxList(view.state.doc, kind);
     if (cur) {
       const existing = view.state.doc.slice(cur.from, cur.to).content.firstChild;
       if (existing && existing.eq(node)) return;
@@ -72,38 +73,44 @@
       sceneNameToId = new Map(scenes.map((s) => [s.metadata.name.trim(), s.id]));
       const sceneItems: SceneItem[] = scenes.map((s) => ({ name: s.metadata.name.trim(), active: isSceneActive(s) }));
 
-      replaceList('inlineCheckbox', buildLightList(view.state.schema, lightItems));
-      replaceList('inlineRadio', buildSceneList(view.state.schema, sceneItems));
+      replaceList('checkbox', buildLightList(view.state.schema, lightItems));
+      replaceList('radio', buildSceneList(view.state.schema, sceneItems));
       status = '';
     } catch (e) { status = errMsg(e, '불러오기 실패'); }
   }
 
-  function onMousedown(ev: MouseEvent) {
-    const el = (ev.target as HTMLElement)?.closest?.('.tomboy-inline-checkbox, .tomboy-inline-radio') as HTMLElement | null;
-    if (!el) return;
-    const isRadio = el.classList.contains('tomboy-inline-radio');
-    // 타이밍 계약(load-bearing): atom NodeView 가 mousedown 에서 동기 dispatch 로 checked/selected 를 토글한다.
-    // queueMicrotask 로 그 뒤에 읽어야 토글된 새 상태를 본다. 제거하거나 동기 호출로 바꾸면 토글 방향이 뒤집힌다.
+  // 항목 단위 listBox 위젯(.tomboy-checkbox-box / .tomboy-radio-box) 클릭.
+  // 전역 TomboyListBox 플러그인의 클릭 핸들러가 먼저(타겟 단계) attr 을
+  // 동기 토글하고, 우리는 캡처 단계에서 li DOM 만 잡아둔 뒤 마이크로태스크로
+  // 그 뒤의 *새* attr 상태를 읽는다 — 타겟 핸들러는 stopPropagation 하지만
+  // 캡처는 이미 통과했으므로 안전. 마운트 race 없이 토글 방향이 안정적.
+  function onListBoxClick(ev: MouseEvent) {
+    const t = ev.target as HTMLElement | null;
+    const isRadio = !!t?.closest?.('.tomboy-radio-box');
+    const box = isRadio ? t?.closest?.('.tomboy-radio-box') : t?.closest?.('.tomboy-checkbox-box');
+    if (!box) return;
+    const liDom = box.closest('li');
+    if (!liDom) return;
     queueMicrotask(() => {
-      try { const pos = view.posAtDOM(el, 0); isRadio ? onRadio(pos) : onCheckbox(pos); }
-      catch (e) { console.warn('[hue] posAtDOM 실패', e); }
+      try {
+        const found = listItemAt(view.state.doc, view.posAtDOM(liDom, 0));
+        if (!found) return;
+        isRadio ? onRadio(found.node) : onCheckbox(found.node);
+      } catch (e) { console.warn('[hue] listBox 클릭 처리 실패', e); }
     });
   }
 
-  async function onCheckbox(pos: number) {
-    const ctx = lightContextAt(view.state.doc, pos); if (!ctx) return;
+  async function onCheckbox(li: PMNode) {
+    const ctx = lightContextOf(li); if (!ctx) return;
     const id = titleToId.get(ctx.title); if (!id) { pushToast('전구 노트 매핑 없음 — ⟳'); return; }
     try { await hueCall('PUT', `light/${id}`, { on: { on: ctx.checked } }); }
     catch (e) { pushToast(errMsg(e, '조명 토글 실패')); }
   }
 
-  async function onRadio(pos: number) {
-    const ctx = sceneContextAt(view.state.doc, pos); if (!ctx || !ctx.selected) return;
-    if (ctx.siblings.length) {
-      let tr = view.state.tr;
-      for (const sp of ctx.siblings) tr = tr.setNodeAttribute(sp, 'selected', false);
-      view.dispatch(tr.setMeta('addToHistory', false));
-    }
+  async function onRadio(li: PMNode) {
+    // 상호 배타·재클릭 해제는 전역 toggleRadioAt 가 doc 에서 처리한다.
+    // 새로 선택된 항목만 recall; 해제(선택 false)면 아무 것도 안 함.
+    const ctx = sceneContextOf(li); if (!ctx || !ctx.selected) return;
     const id = sceneNameToId.get(ctx.name); if (!id) { pushToast('씬 매핑 없음 — ⟳'); return; }
     try { await hueCall('PUT', `scene/${id}`, { recall: { action: 'active' } }); }
     catch (e) { pushToast(errMsg(e, '씬 적용 실패')); }
@@ -131,8 +138,8 @@
     } catch (e) { pushToast(errMsg(e, '씬 저장 실패')); }
   }
 
-  onMount(() => { view.dom.addEventListener('mousedown', onMousedown, true); load(); });
-  onDestroy(() => view.dom.removeEventListener('mousedown', onMousedown, true));
+  onMount(() => { view.dom.addEventListener('click', onListBoxClick, true); load(); });
+  onDestroy(() => view.dom.removeEventListener('click', onListBoxClick, true));
 </script>
 
 <div class="room-control">
