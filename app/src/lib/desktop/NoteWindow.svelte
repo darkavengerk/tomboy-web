@@ -78,7 +78,8 @@
 		clearNoteBg,
 		loadNoteOpacity,
 		setNoteOpacity,
-		type WallpaperMode
+		type WallpaperMode,
+		type SurfaceRef
 	} from './session.svelte.js';
 	import { resolveImageBlob } from '$lib/editor/imageActions/copyImage.js';
 	import { getBlob } from '$lib/imageCache/imageCache.js';
@@ -116,6 +117,19 @@
 		 *  terminal / Firebase / spread-snapshot survive. Restored from the
 		 *  SidePanel 최소화됨 list or an F4-spread card click. */
 		minimized?: boolean;
+		/** When set, this window lives on a drawer surface; resize/pin/send-to-back
+		 *  route through the surface-aware session ops instead of the current
+		 *  workspace. Unset (canvas) keeps the legacy current-workspace calls. */
+		surface?: SurfaceRef;
+		/** When a drawer is open AND this is a canvas window, the close button
+		 *  becomes a stash arrow pointing at the drawer: 'left' → ←, 'right' → →.
+		 *  null → normal close (✕). */
+		stashArrow?: 'left' | 'right' | null;
+		/** Invoked when the stash arrow is clicked (move this note into the drawer). */
+		onstash?: (guid: string) => void;
+		/** Canvas-only: fired at title-bar drag-end with the viewport pointer so
+		 *  the host can move the window into an open drawer if released over it. */
+		ondragend?: (guid: string, pointer: { x: number; y: number }) => void;
 		onfocus: (guid: string) => void;
 		onclose: (guid: string) => void;
 		/** Minimize handler. Omitted by embedders without a taskbar (e.g. the
@@ -136,6 +150,10 @@
 		pinned = false,
 		active = true,
 		minimized = false,
+		surface = undefined,
+		stashArrow = null,
+		onstash = undefined,
+		ondragend = undefined,
 		onfocus,
 		onclose,
 		onminimize = undefined,
@@ -143,6 +161,19 @@
 		onresize,
 		onopenlink
 	}: Props = $props();
+
+	function applyGeometry(g: { x: number; y: number; width: number; height: number }) {
+		if (surface) desktopSession.updateGeometryOn(surface, guid, g);
+		else desktopSession.updateGeometry(guid, g);
+	}
+	function pinToggleOnSurface() {
+		if (surface) desktopSession.togglePinOn(surface, guid);
+		else desktopSession.togglePin(guid);
+	}
+	function sendBackOnSurface() {
+		if (surface) desktopSession.sendToBackOn(surface, guid);
+		else desktopSession.sendToBack(guid);
+	}
 
 	// `$state.raw` instead of `$state` for the big content holders. Svelte's
 	// default deep proxy makes every property read go through a trap, and
@@ -568,7 +599,7 @@
 			DESKTOP_WINDOW_MIN_WIDTH,
 			Math.round(width * ratio)
 		);
-		desktopSession.updateGeometry(guid, { x, y, width: newWidth, height });
+		applyGeometry({ x, y, width: newWidth, height });
 	}
 
 	function flushSave(): Promise<void> {
@@ -856,7 +887,8 @@
 		startPointerDrag(e, {
 			onMove: (dx, dy) => {
 				onmove(guid, origX + dx, origY + dy);
-			}
+			},
+			onEnd: (pointer) => ondragend?.(guid, pointer)
 		});
 	}
 
@@ -928,13 +960,13 @@
 
 	function handlePinToggle(e: MouseEvent) {
 		e.stopPropagation();
-		desktopSession.togglePin(guid);
+		pinToggleOnSurface();
 	}
 
 	function handleTitleBarAuxClick(e: MouseEvent) {
 		if (e.button === 1) {
 			e.preventDefault();
-			desktopSession.sendToBack(guid);
+			sendBackOnSurface();
 		}
 	}
 
@@ -1192,13 +1224,24 @@
 				data-no-drag
 			>&#x1F5D5;</button>
 		{/if}
-		<button
-			type="button"
-			class="close-btn"
-			onclick={handleClose}
-			aria-label="창 닫기"
-			data-no-drag
-		>✕</button>
+		{#if stashArrow && onstash}
+			<button
+				type="button"
+				class="close-btn stash-btn"
+				onclick={() => onstash?.(guid)}
+				aria-label="서랍으로 넣기"
+				title="서랍으로 넣기"
+				data-no-drag
+			>{stashArrow === 'left' ? '←' : '→'}</button>
+		{:else}
+			<button
+				type="button"
+				class="close-btn"
+				onclick={handleClose}
+				aria-label="창 닫기"
+				data-no-drag
+			>✕</button>
+		{/if}
 	</div>
 	{/if}
 
@@ -1398,7 +1441,7 @@
 	<ResizeHandles
 		base={() => ({ x, y, width, height })}
 		min={{ width: DESKTOP_WINDOW_MIN_WIDTH, height: DESKTOP_WINDOW_MIN_HEIGHT }}
-		onresize={(g) => desktopSession.updateGeometry(guid, g)}
+		onresize={(g) => applyGeometry(g)}
 	/>
 </div>
 
@@ -1591,6 +1634,10 @@
 	.close-btn:hover {
 		background: #c0392b;
 		color: #fff;
+	}
+
+	.stash-btn {
+		font-weight: 700;
 	}
 
 	.toolbar-slot {

@@ -59,7 +59,7 @@ export function applyResize(
 
 export interface DragCallbacks {
 	onMove: (dx: number, dy: number) => void;
-	onEnd?: () => void;
+	onEnd?: (pointer: { x: number; y: number }) => void;
 }
 
 /**
@@ -97,7 +97,7 @@ export function startPointerDrag(e: PointerEvent, { onMove, onEnd }: DragCallbac
 		target.removeEventListener('pointermove', handleMove);
 		target.removeEventListener('pointerup', handleUp);
 		target.removeEventListener('pointercancel', handleUp);
-		onEnd?.();
+		onEnd?.({ x: ev.clientX, y: ev.clientY });
 	};
 
 	target.addEventListener('pointermove', handleMove);

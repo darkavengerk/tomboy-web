@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Editor } from '@tiptap/core';
 	import { pushToast } from '$lib/stores/toast.js';
+	import { portal } from '$lib/utils/portal.js';
 	import { insertTodayDate } from './insertDate.js';
 	import { sinkListItemOnly, liftListItemOnly } from './listItemDepth.js';
 	import { moveListItemUp, moveListItemDown } from './listItemReorder.js';
@@ -229,11 +230,12 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="ctx-backdrop" onclick={close}></div>
+<div class="ctx-backdrop" use:portal onclick={close}></div>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
 	class="ctx-menu"
+	use:portal
 	style="left:{x}px; top:{y}px;"
 	role="menu"
 >

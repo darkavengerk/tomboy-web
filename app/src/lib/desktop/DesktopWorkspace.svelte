@@ -19,6 +19,7 @@
 	import { installModKeyListeners } from './modKeys.svelte.js';
 	import { extractNoteGuidFromText, openNoteByGuid } from './openByClipboard.js';
 	import SpreadOverlay from './spreadView/SpreadOverlay.svelte';
+	import DrawerOverlay from './DrawerOverlay.svelte';
 	import { spreadView } from './spreadView/spreadView.svelte.js';
 	import { createNote } from '$lib/core/noteManager.js';
 	import {
@@ -106,6 +107,44 @@
 		desktopSession.restoreWindow(guid);
 	}
 
+	function handleStash(guid: string) {
+		void desktopSession.stashToActiveDrawer(guid);
+	}
+
+	// If a canvas window is dropped over the open drawer panel, move it in.
+	function handleCanvasDragEnd(guid: string, pointer: { x: number; y: number }) {
+		const i = desktopSession.activeDrawer;
+		if (i === null) return;
+		const panel = document.querySelector<HTMLElement>(
+			`.drawer[data-side='${i === 0 ? 'left' : 'right'}'].open`
+		);
+		if (!panel) return;
+		const rect = panel.getBoundingClientRect();
+		if (
+			pointer.x < rect.left ||
+			pointer.x > rect.right ||
+			pointer.y < rect.top ||
+			pointer.y > rect.bottom
+		) {
+			return; // released outside the drawer → normal canvas move already applied
+		}
+		void desktopSession.moveWindowToSurface(
+			{ kind: 'workspace', index: desktopSession.currentWorkspace },
+			{ kind: 'drawer', index: i },
+			guid,
+			{ x: pointer.x - rect.left, y: pointer.y - rect.top }
+		);
+	}
+
+	// 'left' when drawer 0 (F2) open, 'right' when drawer 1 (F3) open, else null.
+	const stashArrowDir: 'left' | 'right' | null = $derived(
+		desktopSession.activeDrawer === 0
+			? 'left'
+			: desktopSession.activeDrawer === 1
+				? 'right'
+				: null
+	);
+
 	function handleMove(guid: string, x: number, y: number) {
 		desktopSession.moveWindow(guid, x, y);
 	}
@@ -189,6 +228,18 @@
 		) {
 			e.preventDefault();
 			if (spreadView.isOpen || hasNoteWindows) spreadView.toggle();
+			return;
+		}
+		// F2 / F3 — toggle the left / right drawer (ddterm-style). No modifiers.
+		if (
+			(e.key === 'F2' || e.key === 'F3') &&
+			!e.ctrlKey &&
+			!e.altKey &&
+			!e.metaKey &&
+			!e.shiftKey
+		) {
+			e.preventDefault();
+			desktopSession.toggleDrawer(e.key === 'F2' ? 0 : 1);
 			return;
 		}
 		// Ctrl+L (or Cmd+L on macOS) without other modifiers — new note from selection.
@@ -368,7 +419,7 @@
 			     visible workspace is "live". -->
 			{#each desktopSession.allWorkspaceWindows as item (item.workspaceIndex + ':' + item.window.guid)}
 				{@const win = item.window}
-				{@const active = item.workspaceIndex === desktopSession.currentWorkspace}
+				{@const active = item.workspaceIndex === desktopSession.currentWorkspace && desktopSession.activeDrawer === null}
 				{#if win.kind === 'settings'}
 					<SettingsWindow
 						x={win.x}
@@ -429,6 +480,9 @@
 						onmove={handleMove}
 						onresize={handleResize}
 						onopenlink={handleOpenLink}
+						stashArrow={active ? null : stashArrowDir}
+						onstash={handleStash}
+						ondragend={handleCanvasDragEnd}
 					/>
 				{/if}
 			{/each}
@@ -451,6 +505,8 @@
 	{#if spreadView.isOpen}
 		<SpreadOverlay />
 	{/if}
+	<DrawerOverlay index={0} side="left" />
+	<DrawerOverlay index={1} side="right" />
 </div>
 
 <style>
