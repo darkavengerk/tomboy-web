@@ -23,14 +23,6 @@ export interface HueRoom {
   children: HueResourceRef[];        // device refs
   services: HueResourceRef[];        // grouped_light etc
 }
-// NOTE: HueZone는 zoneOps.ts/ZoneControl.svelte와 함께 Task 5에서 제거된다(현재는 그 둘이 의존하므로 유지).
-export interface HueZone {
-  id: string;
-  type: 'zone';
-  metadata?: { name?: string };
-  children: HueResourceRef[];
-  services: HueResourceRef[];
-}
 export interface HueScene {
   id: string;
   type: 'scene';

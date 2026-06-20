@@ -11,6 +11,11 @@ describe('buildHueDecorations', () => {
     const set = buildHueDecorations(docOf(['조명::거실', `light:${UUID}`]));
     expect(set.find().length).toBe(1);
   });
+  it('one widget for a room note with key hue:room:<uuid>', () => {
+    const set = buildHueDecorations(docOf(['조명::거실', `room:${UUID}`]));
+    expect(set.find().length).toBe(1);
+    expect(set.find()[0].spec.key).toBe(`hue:room:${UUID}`);
+  });
   it('no widget for a non-hue note', () => {
     expect(buildHueDecorations(docOf(['그냥 노트', 'hello'])).find().length).toBe(0);
   });
