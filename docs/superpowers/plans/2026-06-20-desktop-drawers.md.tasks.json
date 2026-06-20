@@ -4,48 +4,48 @@
     {
       "id": 1,
       "subject": "Task 1: Drawer state — toggle, width, focused-surface",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** Add drawer module state plus toggle/width/active-surface API; focusedNoteGuid aware of the open drawer.\n\n**Files:** Modify app/src/lib/desktop/session.svelte.ts; Test app/tests/unit/desktop/drawerState.test.ts\n\n**Verify:** cd app && npx vitest run tests/unit/desktop/drawerState.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/session.svelte.ts\", \"app/tests/unit/desktop/drawerState.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/desktop/drawerState.test.ts\", \"acceptanceCriteria\": [\"toggleDrawer open/close/switch one-at-a-time\", \"activeDrawer/isDrawerOpen/closeDrawer\", \"setDrawerWidth/getDrawerWidth clamp [280,1200]\", \"drawerWindows empty out-of-range\", \"focusedNoteGuid follows active surface\", \"out-of-range no-op\"]}\n```"
     },
     {
       "id": 2,
       "subject": "Task 2: Surface-aware window ops + move between surfaces",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "**Goal:** SurfaceRef + surface-targeted window mutators + moveWindowToSurface (MOVE) + stashToActiveDrawer.\n\n**Files:** Modify app/src/lib/desktop/session.svelte.ts; Test app/tests/unit/desktop/moveWindowToSurface.test.ts\n\n**Verify:** cd app && npx vitest run tests/unit/desktop/moveWindowToSurface.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/session.svelte.ts\", \"app/tests/unit/desktop/moveWindowToSurface.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/desktop/moveWindowToSurface.test.ts\", \"acceptanceCriteria\": [\"SurfaceRef exported\", \"moveWindowToSurface MOVE + source pose cached\", \"per-surface geometry isolation\", \"*On(ref) ops target named surface\", \"stashToActiveDrawer + no-op when none open\", \"missing/non-note guid no-op\"]}\n```"
     },
     {
       "id": 3,
       "subject": "Task 3: Persistence v4 — drawers + widths, v3 back-compat",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1, 2],
       "description": "**Goal:** Persist drawers + widths; VERSION 3→4; v3/v2 back-compat (empty drawers).\n\n**Files:** Modify app/src/lib/desktop/session.svelte.ts; Test app/tests/unit/desktop/drawerPersist.test.ts\n\n**Verify:** cd app && npx vitest run tests/unit/desktop/drawerPersist.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/session.svelte.ts\", \"app/tests/unit/desktop/drawerPersist.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/desktop/drawerPersist.test.ts\", \"acceptanceCriteria\": [\"reload restores drawer note + width\", \"activeDrawer not persisted\", \"v3 snapshot loads → empty drawers + default width\", \"deleted drawer guids dropped on load\"]}\n```"
     },
     {
       "id": 4,
       "subject": "Task 4: DrawerOverlay component + render integration + F2/F3",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1, 2],
       "description": "**Goal:** Render two slide-in drawer overlays (keep-alive), surface-aware active, NoteWindow surface prop, F2/F3 keys, --z-drawer token.\n\n**Files:** Create app/src/lib/desktop/DrawerOverlay.svelte; Modify NoteWindow.svelte, DesktopWorkspace.svelte, app/src/app.css\n\n**Verify:** cd app && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/DrawerOverlay.svelte\", \"app/src/lib/desktop/NoteWindow.svelte\", \"app/src/lib/desktop/DesktopWorkspace.svelte\", \"app/src/app.css\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"--z-drawer token (350) below --z-modal\", \"NoteWindow surface prop routes resize/pin/sendToBack\", \"F2/F3 toggle left/right\", \"drawer note renders + draggable + keep-alive on toggle\", \"canvas active=false when drawer open but mounted\"]}\n```"
     },
     {
       "id": 5,
       "subject": "Task 5: Close button → directional stash arrow",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [2, 4],
       "description": "**Goal:** Drawer open → canvas note close button becomes ←/→ arrow; click MOVES note into open drawer.\n\n**Files:** Modify app/src/lib/desktop/NoteWindow.svelte, DesktopWorkspace.svelte\n\n**Verify:** cd app && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/NoteWindow.svelte\", \"app/src/lib/desktop/DesktopWorkspace.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"no drawer → ✕ close unchanged\", \"drawer open → canvas windows show ←/→, click stashes\", \"drawer windows keep ✕\", \"arrow suppressed on drawer's own windows\"]}\n```"
     },
     {
       "id": 6,
       "subject": "Task 6: Drag a canvas window into the open drawer",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [2, 4],
       "description": "**Goal:** Drag a canvas window over the open drawer panel → move it in at drop point.\n\n**Files:** Modify app/src/lib/desktop/dragResize.ts, NoteWindow.svelte, DesktopWorkspace.svelte\n\n**Verify:** cd app && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/desktop/dragResize.ts\", \"app/src/lib/desktop/NoteWindow.svelte\", \"app/src/lib/desktop/DesktopWorkspace.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"onEnd receives final pointer\", \"drop inside open drawer moves note at drop point\", \"release outside → normal canvas move\", \"no drawer open → no effect\"]}\n```"
     },
     {
       "id": 7,
       "subject": "Task 7: Guide card + full verification",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [3, 4, 5, 6],
       "description": "**Goal:** Add 설정 → 가이드 (env) card for F2/F3 drawers; run full check + test.\n\n**Files:** Modify app/src/routes/settings/+page.svelte\n\n**Verify:** cd app && npm run check && npm run test\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check && npm run test\", \"acceptanceCriteria\": [\"drawer guide-card in env sub-tab matching pattern\", \"npm run check 0 errors\", \"npm run test all pass\"]}\n```"
     }
