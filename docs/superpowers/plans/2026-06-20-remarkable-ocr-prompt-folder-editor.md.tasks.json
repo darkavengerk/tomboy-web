@@ -1,0 +1,53 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-20-remarkable-ocr-prompt-folder-editor.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: folders.yaml 오버레이 + 폴더별 프롬프트 (config.py)",
+      "status": "pending",
+      "description": "**Goal:** FolderRoute.prompt / TomboyConfig.default_prompt 필드 추가, load_config가 folders.yaml 오버레이, TomboyConfig.prompt_for(source_folder) 헬퍼. Full code in plan doc Task 1.\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/lib/config.py\", \"pipeline/tests/lib/test_config.py\", \".gitignore\", \"pipeline/.gitignore\"], \"verifyCommand\": \"cd pipeline && .venv/bin/python -m pytest tests/lib/test_config.py -q\", \"acceptanceCriteria\": [\"FolderRoute.prompt + TomboyConfig.default_prompt\", \"folders.yaml overlay precedence\", \"absent file = current behavior\", \"prompt_for precedence folder>default>None\", \"gitignore folders.yaml\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: OCR 백엔드 per-call system_prompt 오버라이드",
+      "status": "pending",
+      "description": "**Goal:** OCRBackend.ocr에 system_prompt=None 추가; claude/local_vlm override + prompt_hash 재계산. 미지정 시 생성자 기본값(하위호환). Full code in plan doc Task 2.\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/ocr_backends/base.py\", \"pipeline/desktop/ocr_backends/claude.py\", \"pipeline/desktop/ocr_backends/local_vlm.py\", \"pipeline/tests/ocr_backends/test_claude.py\", \"pipeline/tests/ocr_backends/test_local_vlm.py\"], \"verifyCommand\": \"cd pipeline && .venv/bin/python -m pytest tests/ocr_backends/ -q\", \"acceptanceCriteria\": [\"ocr(system_prompt=None) backward-compatible\", \"override applied to both backends\", \"prompt_hash reflects override\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: s3가 폴더별 프롬프트 해석·전달",
+      "status": "pending",
+      "blockedBy": [1, 2],
+      "description": "**Goal:** s3_ocr.run_ocr이 source_folder로 프롬프트 골라 backend.ocr(png, system_prompt=...) 전달; main()이 cfg.tomboy.prompt_for 주입. Full code in plan doc Task 3.\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/stages/s3_ocr.py\", \"pipeline/tests/stages/test_s3_ocr.py\"], \"verifyCommand\": \"cd pipeline && .venv/bin/python -m pytest tests/stages/test_s3_ocr.py -q\", \"acceptanceCriteria\": [\"run_ocr prompt_for param\", \"per-page source_folder resolution\", \"None default = current behavior\", \"main wires cfg.tomboy.prompt_for\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: trigger 서버 GET/PUT /config",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "**Goal:** trigger_server.py ConfigStore(read=effective, write=folders.yaml 원자적) + Bearer GET/PUT /config; pipeline.yaml 불변; title_format 플레이스홀더 검증. Full code in plan doc Task 4.\n\n```json:metadata\n{\"files\": [\"pipeline/desktop/trigger_server.py\", \"pipeline/tests/test_trigger_server_config.py\"], \"verifyCommand\": \"cd pipeline && .venv/bin/python -m pytest tests/test_trigger_server_config.py -q\", \"acceptanceCriteria\": [\"read_effective shape + prompt-file fallback\", \"validate placeholders+types\", \"write atomic, pipeline.yaml untouched\", \"GET/PUT /config auth + status codes + CORS PUT\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: 앱 trigger 클라이언트 — fetch/save config",
+      "status": "pending",
+      "blockedBy": [4],
+      "description": "**Goal:** remarkablePipeline.ts에 fetchPipelineConfig/savePipelineConfig + 타입; normalizeBaseUrl+Bearer 재사용; 네버-스로우. Full code in plan doc Task 5.\n\n```json:metadata\n{\"files\": [\"app/src/lib/admin/remarkablePipeline.ts\", \"app/tests/unit/lib/admin/remarkablePipelineConfig.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/lib/admin/remarkablePipelineConfig.test.ts\", \"acceptanceCriteria\": [\"PipelineConfig/PipelineFolderConfig types\", \"fetchPipelineConfig parse+errors\", \"savePipelineConfig PUT+400 message\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: 설정 UI — DiaryOcrSettings + 리마커블 탭 + 가이드",
+      "status": "pending",
+      "blockedBy": [5],
+      "description": "**Goal:** 설정 리마커블 탭에 일기 OCR 파이프라인 설정 섹션(기본 프롬프트+폴더 카드+추가+저장) + 가이드 카드. Full code in plan doc Task 6.\n\n```json:metadata\n{\"files\": [\"app/src/lib/remarkable/DiaryOcrSettings.svelte\", \"app/src/routes/settings/+page.svelte\", \"app/tests/unit/lib/remarkable/diaryOcrSettings.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/lib/remarkable/diaryOcrSettings.test.ts && npm run check\", \"acceptanceCriteria\": [\"load trigger url/token + fetch config\", \"default prompt + per-folder cards\", \"add-folder + tablet warning\", \"save->toast\", \"remarkable tab render + guide card\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: 전체 회귀 + 문서 동기화",
+      "status": "pending",
+      "blockedBy": [3, 4, 6],
+      "description": "**Goal:** 파이프라인+앱 전체 회귀, tomboy-diary 스킬 한 단락 반영. Full steps in plan doc Task 7.\n\n```json:metadata\n{\"files\": [\".claude/skills/tomboy-diary/SKILL.md\"], \"verifyCommand\": \"cd pipeline && .venv/bin/python -m pytest tests/ -q && cd ../app && npm run check\", \"acceptanceCriteria\": [\"pipeline full suite pass\", \"app check 0 errors\", \"tomboy-diary skill paragraph added\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-20"
+}
