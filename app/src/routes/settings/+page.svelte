@@ -206,12 +206,16 @@
 			hueMsg = r.error === 'link_button' ? '허브 링크 버튼을 누르고 다시 [연결]' : 'Hue 연결 실패';
 			return;
 		}
-		// 로컬에도 저장(폴백) + 브릿지 health 캐시 무효화
-		await setHueCredentials(hueIp.trim(), r.appkey, r.clientkey);
+		if (r.persisted) {
+			// 브릿지가 단일 소스 — 이 기기 로컬 그림자 제거(source:'bridge' 로 인식돼 '브릿지에서 해제' 가능)
+			await clearHueCredentials();
+			hueMsg = '브릿지에 저장됨 — 모든 기기에서 사용 가능';
+		} else {
+			// 브릿지 저장 실패 → 이 기기 로컬 폴백 보관
+			await setHueCredentials(hueIp.trim(), r.appkey, r.clientkey);
+			hueMsg = `이 기기에만 저장됨(브릿지 저장 실패: ${r.persistError ?? '알 수 없음'})`;
+		}
 		invalidateHueHealthCache();
-		hueMsg = r.persisted
-			? '브릿지에 저장됨 — 모든 기기에서 사용 가능'
-			: `이 기기에만 저장됨(브릿지 저장 실패: ${r.persistError ?? '알 수 없음'})`;
 		await loadHueState();
 	}
 
@@ -226,6 +230,7 @@
 		if (!confirm('브릿지에서 Hue 연결을 해제하면 모든 기기에서 조명 제어가 중단됩니다. 계속할까요?')) return;
 		const ok = await hueClearBridgeCreds();
 		await clearHueCredentials();
+		invalidateHueHealthCache();
 		hueMsg = ok ? '브릿지에서 해제됨' : '브릿지 해제 실패 — 토큰/연결 확인';
 		await loadHueState();
 	}
