@@ -212,3 +212,26 @@ def test_sse_error_frame(tmp_path):
     with patch.object(httpx.Client, 'stream', fake_stream):
         with pytest.raises(RuntimeError, match='model overloaded'):
             backend.ocr(img)
+
+
+def test_claude_ocr_uses_override_system_prompt(tmp_path, monkeypatch):
+    from desktop.ocr_backends.claude import ClaudeBackend
+    img = tmp_path / "p.png"
+    img.write_bytes(b"\x89PNG\r\n\x1a\n")
+    prompt_file = tmp_path / "sys.txt"
+    prompt_file.write_text("DEFAULT SYS", encoding="utf-8")
+    b = ClaudeBackend(
+        service_url="http://x", service_token="t", model="", effort="high",
+        system_prompt_path=str(prompt_file),
+    )
+    captured = {}
+    def fake_post(body):
+        captured["system"] = body["system"]
+        return "텍스트"
+    monkeypatch.setattr(b, "_post_with_retry", fake_post)
+
+    r_default = b.ocr(img)
+    assert captured["system"] == "DEFAULT SYS"
+    r_override = b.ocr(img, system_prompt="폴더 전용 SYS")
+    assert captured["system"] == "폴더 전용 SYS"
+    assert r_override.prompt_hash != r_default.prompt_hash

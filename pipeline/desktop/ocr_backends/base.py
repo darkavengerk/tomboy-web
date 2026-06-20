@@ -22,9 +22,10 @@ class OCRResult:
 
 class OCRBackend(ABC):
     @abstractmethod
-    def ocr(self, image_path: Path) -> OCRResult:
-        """Run OCR on a single image. Implementations may be slow (loads ML
-        models on first call) — callers should batch and reuse instances."""
+    def ocr(self, image_path: Path, system_prompt: str | None = None) -> OCRResult:
+        """Run OCR on a single image. ``system_prompt`` overrides the
+        backend's constructor default for this call only (per-folder prompt).
+        Implementations may be slow (loads ML models on first call)."""
 
 
 _REGISTRY: dict[str, type[OCRBackend]] = {}
