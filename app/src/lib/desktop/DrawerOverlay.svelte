@@ -74,6 +74,7 @@
 				{surface}
 				onfocus={(g) => desktopSession.focusWindowOn(surface, g)}
 				onclose={(g) => void desktopSession.closeWindowOn(surface, g)}
+				oneject={(g) => void desktopSession.ejectFromDrawer(index, g)}
 				onmove={(g, x, y) => desktopSession.moveWindowOn(surface, g, x, y)}
 				onresize={(g, w, h) =>
 					desktopSession.updateGeometryOn(surface, g, { x: win.x, y: win.y, width: w, height: h })}

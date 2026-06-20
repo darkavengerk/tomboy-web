@@ -1438,6 +1438,23 @@ export const desktopSession = {
 		);
 	},
 
+	/**
+	 * Pop (꺼내기) a note OUT of drawer `drawerIndex` and back into the current
+	 * workspace — mirror of stashToActiveDrawer. MOVE semantics: the note leaves
+	 * the drawer (its drawer pose is cached for re-entry) and reappears on the
+	 * canvas at its remembered workspace pose. The drawer stays open, symmetric to
+	 * stash (which keeps it open) — the canvas note paints underneath until the
+	 * user closes the drawer. No-op for an out-of-range index.
+	 */
+	async ejectFromDrawer(drawerIndex: number, guid: string): Promise<void> {
+		if (drawerIndex < 0 || drawerIndex >= DRAWER_COUNT) return;
+		await this.moveWindowToSurface(
+			{ kind: 'drawer', index: drawerIndex },
+			{ kind: 'workspace', index: currentWorkspaceIndex },
+			guid
+		);
+	},
+
 	isPinned(guid: string): boolean {
 		const ws = current();
 		const win = ws.windows.find((w) => w.guid === guid);

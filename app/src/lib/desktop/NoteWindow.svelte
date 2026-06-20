@@ -134,6 +134,10 @@
 		stashArrow?: 'up' | 'left' | 'right' | null;
 		/** Invoked when the stash arrow is clicked (move this note into the drawer). */
 		onstash?: (guid: string) => void;
+		/** Drawer-only: when set, render a 꺼내기 (eject) button next to ✕ that
+		 *  moves this note out of the drawer and back into the current workspace.
+		 *  Unset on the canvas (a canvas note has nowhere to be ejected from). */
+		oneject?: (guid: string) => void;
 		/** Canvas-only: fired at title-bar drag-end with the viewport pointer so
 		 *  the host can move the window into an open drawer if released over it. */
 		ondragend?: (guid: string, pointer: { x: number; y: number }) => void;
@@ -161,6 +165,7 @@
 		surface = undefined,
 		stashArrow = null,
 		onstash = undefined,
+		oneject = undefined,
 		ondragend = undefined,
 		onfocus,
 		onclose,
@@ -1232,6 +1237,16 @@
 				data-no-drag
 			>&#x1F5D5;</button>
 		{/if}
+		{#if oneject}
+			<button
+				type="button"
+				class="close-btn eject-btn"
+				onclick={() => oneject?.(guid)}
+				aria-label="현재 작업공간으로 꺼내기"
+				title="현재 작업공간으로 꺼내기"
+				data-no-drag
+			>&#x23CF;</button>
+		{/if}
 		{#if stashArrow && onstash}
 			<button
 				type="button"
@@ -1646,6 +1661,16 @@
 
 	.stash-btn {
 		font-weight: 700;
+	}
+
+	/* Eject is non-destructive (note moves to the canvas), so it gets a neutral
+	   hover instead of the close button's red. */
+	.eject-btn {
+		font-weight: 700;
+	}
+	.eject-btn:hover {
+		background: #2d6cdf;
+		color: #fff;
 	}
 
 	.toolbar-slot {
