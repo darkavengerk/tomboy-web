@@ -6,14 +6,14 @@
       "id": 25,
       "planTask": 1,
       "subject": "Task 1: 브릿지 hueCreds.ts — 파일 creds 스토어",
-      "status": "pending",
+      "status": "completed",
       "description": "**Goal:** BRIDGE_HUE_FILE JSON 에서 Hue creds read/write/clear 순수 모듈 TDD.\n\n**Files:** bridge/src/hueCreds.ts(신규), bridge/src/hueCreds.test.ts(신규)\n\n**Acceptance:** env 미설정 read null/write throw/clear no-op; write→read 라운드트립 0600; 원자적 temp→rename; 손상JSON·필드누락 null; clear 후 read null; fileHueCredsStore 노출.\n\n**Verify:** cd /var/home/umayloveme/workspace/tomboy-web/.worktrees/po/bridge && node --import tsx --test src/hueCreds.test.ts\n\n```json:metadata\n{\"files\": [\"bridge/src/hueCreds.ts\", \"bridge/src/hueCreds.test.ts\"], \"verifyCommand\": \"cd /var/home/umayloveme/workspace/tomboy-web/.worktrees/po/bridge && node --import tsx --test src/hueCreds.test.ts\", \"acceptanceCriteria\": [\"env 미설정 read null/write throw/clear no-op\", \"write→read + 0600\", \"원자적 temp→rename\", \"손상JSON·필드누락 null\", \"clear 후 read null\", \"fileHueCredsStore\"]}\n```"
     },
     {
       "id": 26,
       "planTask": 2,
       "subject": "Task 2: 브릿지 hue.ts — pair persist + clip 폴백 + health + creds delete",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [25],
       "description": "**Goal:** pair 가 creds 파일 저장, clip 파일 우선, GET /hue/health + DELETE /hue/creds 추가, server.ts 배선.\n\n**Files:** bridge/src/hue.ts(수정), bridge/src/hue.test.ts(신규), bridge/src/server.ts(수정)\n\n**Acceptance:** pair persist+persisted 플래그(throw→false+persistError, 409 미저장); clip file??body 파일우선·생략허용·400; health {configured,ip} 비밀미노출; creds delete clear; verifyToken 401; server 라우트; npm test 그린 + tsc 0.\n\n**Verify:** cd /var/home/umayloveme/workspace/tomboy-web/.worktrees/po/bridge && node --import tsx --test src/hue.test.ts && npx tsc -p . --noEmit\n\n```json:metadata\n{\"files\": [\"bridge/src/hue.ts\", \"bridge/src/hue.test.ts\", \"bridge/src/server.ts\"], \"verifyCommand\": \"cd /var/home/umayloveme/workspace/tomboy-web/.worktrees/po/bridge && node --import tsx --test src/hue.test.ts && npx tsc -p . --noEmit\", \"acceptanceCriteria\": [\"pair persist + persisted\", \"clip 파일우선·생략·400\", \"health 비밀미노출\", \"creds delete\", \"verifyToken 401\", \"server 라우트\", \"npm test + tsc 0\"]}\n```"
     },
@@ -21,7 +21,7 @@
       "id": 27,
       "planTask": 3,
       "subject": "Task 3: 앱 hueClient.ts — health/configured/context 재작성 + 옵셔널 creds",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [26],
       "description": "**Goal:** 로컬 creds 없이도 브릿지 보관 creds 동작 — hueHealth(TTL캐시)·hueConfigured·getHueContext 재작성, hueClip 옵셔널, huePair persisted, hueClearBridgeCreds.\n\n**Files:** app/src/lib/hue/hueClient.ts(수정), app/tests/unit/hue/hueClient.test.ts(신규)\n\n**Acceptance:** hueHealth null/configured/15s TTL; invalidateHueHealthCache; hueConfigured local/bridge/none; getHueContext 3분기+null; hueClip 빈 creds 생략; huePair persisted; hueClearBridgeCreds; check 0.\n\n**Verify:** cd /var/home/umayloveme/workspace/tomboy-web/.worktrees/po/app && npx vitest run tests/unit/hue/hueClient.test.ts && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/hue/hueClient.ts\", \"app/tests/unit/hue/hueClient.test.ts\"], \"verifyCommand\": \"cd /var/home/umayloveme/workspace/tomboy-web/.worktrees/po/app && npx vitest run tests/unit/hue/hueClient.test.ts && npm run check\", \"acceptanceCriteria\": [\"hueHealth null/configured/TTL\", \"invalidateHueHealthCache\", \"hueConfigured 3분기\", \"getHueContext 3분기+null\", \"hueClip 빈 creds 생략\", \"huePair persisted\", \"hueClearBridgeCreds\", \"check 0\"]}\n```"
     },
@@ -29,7 +29,7 @@
       "id": 28,
       "planTask": 4,
       "subject": "Task 4: 설정 Hue 섹션 — persisted 메시지 + 구성 소스 + 브릿지 해제",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [27],
       "description": "**Goal:** 설정 Hue 탭 — 페어링 브릿지 저장 표시(실패 폴백), 구성 소스(bridge/local) 표시, 브릿지 해제 버튼.\n\n**Files:** app/src/routes/settings/+page.svelte(수정)\n\n**Acceptance:** connectHue persisted 분기 메시지+캐시무효화; 상태줄 소스 표시; 브릿지에서 해제 confirm+clear+로컬정리; check 0.\n\n**Verify:** cd /var/home/umayloveme/workspace/tomboy-web/.worktrees/po/app && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd /var/home/umayloveme/workspace/tomboy-web/.worktrees/po/app && npm run check\", \"acceptanceCriteria\": [\"connectHue persisted 메시지+캐시무효화\", \"상태줄 소스(bridge/local)\", \"브릿지 해제 confirm+clear\", \"check 0\"]}\n```"
     },
@@ -37,10 +37,10 @@
       "id": 29,
       "planTask": 5,
       "subject": "Task 5: 문서 — SKILL.md, CLAUDE.md, 가이드 카드, 배포 README",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [26, 28],
       "description": "**Goal:** 브릿지-보관 creds 불변식 + 1회 페어링 흐름을 SKILL/CLAUDE/가이드/배포 문서 반영.\n\n**Files:** .claude/skills/tomboy-hue/SKILL.md, CLAUDE.md, app/src/routes/settings/+page.svelte, bridge/deploy/README.md\n\n**Acceptance:** SKILL 브릿지 creds 불변식; CLAUDE 행+env 패턴; 가이드 env 조명 카드; 배포 README BRIDGE_HUE_FILE; check 0.\n\n**Verify:** cd /var/home/umayloveme/workspace/tomboy-web/.worktrees/po/app && npm run check\n\n```json:metadata\n{\"files\": [\".claude/skills/tomboy-hue/SKILL.md\", \"CLAUDE.md\", \"app/src/routes/settings/+page.svelte\", \"bridge/deploy/README.md\"], \"verifyCommand\": \"cd /var/home/umayloveme/workspace/tomboy-web/.worktrees/po/app && npm run check\", \"acceptanceCriteria\": [\"SKILL 브릿지 creds 불변식\", \"CLAUDE 행+env 패턴\", \"가이드 env 조명 카드\", \"배포 README BRIDGE_HUE_FILE\", \"check 0\"]}\n```"
     }
   ],
-  "lastUpdated": "2026-06-20T00:00:00+09:00"
+  "lastUpdated": "2026-06-20T15:00:00+09:00"
 }
