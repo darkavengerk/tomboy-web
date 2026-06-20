@@ -108,11 +108,18 @@
 		height: number;
 		z: number;
 		pinned?: boolean;
-		/** True when this window's workspace is the currently visible one.
-		 *  Hidden (`active=false`) windows still hold their TipTap / terminal
-		 *  state in memory, but skip Firebase attach and global editor
-		 *  registration so they aren't mistaken for the user's focus target. */
+		/** Liveness, NOT visibility. `active=false` windows still hold their
+		 *  TipTap / terminal state AND stay painted (unless `hidden`); they just
+		 *  skip Firebase attach + global editor registration so a same-guid copy
+		 *  on another surface (e.g. an open drawer) owns the user's focus target.
+		 *  Opening a drawer flips canvas windows to active=false while leaving them
+		 *  VISIBLE underneath — that's why visibility is a separate prop. */
 		active?: boolean;
+		/** Visibility. When omitted, falls back to `!active` (legacy callers that
+		 *  conflated the two). The desktop canvas passes this explicitly so a note
+		 *  hidden by a workspace switch is `display:none`, while a note merely
+		 *  shadowed by an open drawer stays painted. */
+		hidden?: boolean;
 		/** Minimized: render hidden (display:none) but stay mounted so editor /
 		 *  terminal / Firebase / spread-snapshot survive. Restored from the
 		 *  SidePanel 최소화됨 list or an F4-spread card click. */
@@ -122,9 +129,9 @@
 		 *  workspace. Unset (canvas) keeps the legacy current-workspace calls. */
 		surface?: SurfaceRef;
 		/** When a drawer is open AND this is a canvas window, the close button
-		 *  becomes a stash arrow pointing at the drawer: 'left' → ←, 'right' → →.
-		 *  null → normal close (✕). */
-		stashArrow?: 'left' | 'right' | null;
+		 *  becomes a stash arrow pointing at the drawer: 'up' → ↑ (F2/top),
+		 *  'right' → → (F3). null → normal close (✕). */
+		stashArrow?: 'up' | 'left' | 'right' | null;
 		/** Invoked when the stash arrow is clicked (move this note into the drawer). */
 		onstash?: (guid: string) => void;
 		/** Canvas-only: fired at title-bar drag-end with the viewport pointer so
@@ -149,6 +156,7 @@
 		z,
 		pinned = false,
 		active = true,
+		hidden = undefined,
 		minimized = false,
 		surface = undefined,
 		stashArrow = null,
@@ -1135,7 +1143,7 @@
 <div
 	bind:this={windowEl}
 	class="note-window"
-	class:hidden={!active}
+	class:hidden={hidden ?? !active}
 	class:minimized
 	data-has-bg={noteBgUrl ? 'true' : 'false'}
 	style="left:{x}px; top:{y}px; width:{width}px; height:{height}px; z-index:{z};"
@@ -1188,7 +1196,7 @@
 				aria-label="서랍으로 넣기"
 				title="서랍으로 넣기"
 				data-no-drag
-			>{stashArrow === 'left' ? '←' : '→'}</button>
+			>{stashArrow === 'up' ? '↑' : stashArrow === 'left' ? '←' : '→'}</button>
 		{:else}
 			<button
 				type="button"

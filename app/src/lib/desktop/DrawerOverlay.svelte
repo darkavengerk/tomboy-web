@@ -5,24 +5,35 @@
 
 	interface Props {
 		index: number;
-		side: 'left' | 'right';
+		/** 'top' = F2 (drops down from the top edge, width + height resizable);
+		 *  'right' = F3 (slides in from the right edge, width only). */
+		side: 'top' | 'right';
 	}
 	let { index, side }: Props = $props();
 
 	const open = $derived(desktopSession.isDrawerOpen(index));
 	const width = $derived(desktopSession.getDrawerWidth(index));
+	const height = $derived(desktopSession.getDrawerHeight(index));
 	const windows = $derived(desktopSession.drawerWindows(index));
 	const surface = $derived({ kind: 'drawer' as const, index });
 
 	function startWidthDrag(e: PointerEvent) {
 		const base = width;
-		// Left drawer grows when its right-edge grip moves right (+dx); right
-		// drawer grows when its left-edge grip moves left (−dx).
+		// Top drawer's right-edge grip grows it (+dx); right drawer's left-edge
+		// grip grows it as the pointer moves left (−dx).
 		startPointerDrag(e, {
 			onMove: (dx) => {
-				const next = side === 'left' ? base + dx : base - dx;
+				const next = side === 'right' ? base - dx : base + dx;
 				desktopSession.setDrawerWidth(index, next);
 			}
+		});
+	}
+
+	function startHeightDrag(e: PointerEvent) {
+		const base = height;
+		// Top drawer's bottom-edge grip grows its height (+dy).
+		startPointerDrag(e, {
+			onMove: (_dx, dy) => desktopSession.setDrawerHeight(index, base + dy)
 		});
 	}
 </script>
@@ -30,7 +41,13 @@
 <!-- Always mounted so drawer notes (terminal WS, editors) stay alive when the
      panel is tucked off-screen. Hidden via transform (NOT display:none) so the
      layout/size persists — terminals keep their geometry. -->
-<div class="drawer" class:open data-side={side} style="--drawer-width: {width}px;" aria-hidden={!open}>
+<div
+	class="drawer"
+	class:open
+	data-side={side}
+	style="--drawer-width: {width}px; --drawer-height: {height}px;"
+	aria-hidden={!open}
+>
 	<div class="drawer-windows">
 		{#each windows as win (win.guid)}
 			<NoteWindow
@@ -42,6 +59,7 @@
 				z={(win.pinned ? DESKTOP_PINNED_Z : 0) + win.z}
 				pinned={win.pinned}
 				active={open}
+				hidden={false}
 				minimized={win.minimized}
 				{surface}
 				onfocus={(g) => desktopSession.focusWindowOn(surface, g)}
@@ -55,47 +73,71 @@
 	</div>
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="width-grip" data-side={side} onpointerdown={startWidthDrag} title="서랍 폭 조절"></div>
+	{#if side === 'top'}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="height-grip" onpointerdown={startHeightDrag} title="서랍 높이 조절"></div>
+	{/if}
 </div>
 
 <style>
 	.drawer {
 		position: fixed;
-		top: 0;
-		bottom: 0;
-		width: var(--drawer-width, 480px);
 		background: rgba(18, 18, 18, 0.96);
 		box-shadow: 0 0 24px rgba(0, 0, 0, 0.5);
 		z-index: var(--z-drawer);
 		transition: transform 0.18s ease;
 		overflow: hidden;
 	}
-	.drawer[data-side='left'] {
+	/* Top drawer (F2) — anchored to the top-left of the canvas (right of the
+	   rail). Both width and height are user-set; it drops down when open. */
+	.drawer[data-side='top'] {
 		left: var(--rail-width, 80px);
-		transform: translateX(-110%);
+		top: 0;
+		width: var(--drawer-width, 760px);
+		height: var(--drawer-height, 380px);
+		transform: translateY(-110%);
 	}
+	/* Right drawer (F3) — full height, width-resizable, slides in from the right. */
 	.drawer[data-side='right'] {
 		right: 0;
+		top: 0;
+		bottom: 0;
+		width: var(--drawer-width, 480px);
 		transform: translateX(110%);
 	}
 	.drawer.open {
-		transform: translateX(0);
+		transform: translate(0, 0);
 	}
 	.drawer-windows {
 		position: absolute;
 		inset: 0;
 	}
-	.width-grip {
+	/* Grips sit above every in-drawer window (even pinned ones, z up to
+	   DESKTOP_PINNED_Z + nextZ) so they stay grabbable. Contained within the
+	   drawer's own stacking context, so this large value never leaks out. */
+	.width-grip,
+	.height-grip {
 		position: absolute;
+		z-index: 2000001;
+	}
+	.width-grip {
 		top: 0;
 		bottom: 0;
 		width: 6px;
 		cursor: ew-resize;
-		z-index: 2;
-	}
-	.width-grip[data-side='left'] {
-		right: 0;
 	}
 	.width-grip[data-side='right'] {
 		left: 0;
+	}
+	/* Top drawer's width grip lives on its right edge. */
+	.width-grip[data-side='top'] {
+		right: 0;
+	}
+	.height-grip {
+		left: 0;
+		right: 0;
+		bottom: 0;
+		height: 6px;
+		cursor: ns-resize;
 	}
 </style>
