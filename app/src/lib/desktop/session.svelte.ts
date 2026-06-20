@@ -9,7 +9,7 @@ import { sidePanelLayout } from './sidePanelLayout.svelte.js';
 const STORAGE_KEY = 'desktop:session';
 const WALLPAPER_KEY = 'desktop:wallpaper';
 const WALLPAPER_MODE_KEY = 'desktop:wallpaper-mode';
-const VERSION = 3;
+const VERSION = 4;
 const WORKSPACE_COUNT = 4;
 const DRAWER_COUNT = 2; // 0 = F2 (left), 1 = F3 (right)
 const DEFAULT_DRAWER_WIDTH = 480;
@@ -119,6 +119,15 @@ interface PersistedV3 {
 	}>;
 }
 
+interface PersistedV4 {
+	version: 4;
+	currentWorkspace: number;
+	workspaces: PersistedV3['workspaces'];
+	// Drawers reuse the same per-surface persisted shape as workspaces.
+	drawers: PersistedV3['workspaces'];
+	drawerWidths: number[];
+}
+
 interface PersistedV2 {
 	version: number;
 	windows: Array<
@@ -128,7 +137,7 @@ interface PersistedV2 {
 	geometryByGuid?: Record<string, GeometrySnapshot>;
 }
 
-type Persisted = PersistedV3 | PersistedV2;
+type Persisted = PersistedV4 | PersistedV3 | PersistedV2;
 
 // --- Defaults ------------------------------------------------------------
 
@@ -321,15 +330,17 @@ async function persistNow(): Promise<void> {
 	// deeper objects — e.g. the geometry values inside `geometryByGuid` —
 	// still wrapped. `$state.snapshot` returns a plain deep copy, which is
 	// safe to persist.
-	const sanitizedWorkspaces = workspaces.map((ws) => ({
+	const sanitizeWindows = (ws: WorkspaceState) => ({
 		...ws,
 		windows: ws.windows.filter((w) => w.kind !== 'history')
-	}));
-	const snapshot: PersistedV3 = $state.snapshot({
+	});
+	const snapshot: PersistedV4 = $state.snapshot({
 		version: VERSION,
 		currentWorkspace: currentWorkspaceIndex,
-		workspaces: sanitizedWorkspaces
-	}) as PersistedV3;
+		workspaces: workspaces.map(sanitizeWindows),
+		drawers: drawers.map(sanitizeWindows),
+		drawerWidths
+	}) as PersistedV4;
 	try {
 		await setSetting(STORAGE_KEY, snapshot);
 	} catch {
@@ -472,6 +483,11 @@ async function collectExistingGuids(persisted: Persisted): Promise<Set<string>> 
 	} else if ('windows' in persisted && Array.isArray(persisted.windows)) {
 		allRaws.push(...persisted.windows);
 	}
+	if ('drawers' in persisted && Array.isArray((persisted as PersistedV4).drawers)) {
+		for (const ws of (persisted as PersistedV4).drawers) {
+			if (Array.isArray(ws?.windows)) allRaws.push(...ws.windows);
+		}
+	}
 	const seen = new Set<string>();
 	await Promise.all(
 		allRaws.map(async (w) => {
@@ -526,6 +542,30 @@ async function loadPersisted(): Promise<void> {
 		);
 		workspaces = migrated;
 		currentWorkspaceIndex = 0;
+	}
+
+	if ('drawers' in persisted && Array.isArray((persisted as PersistedV4).drawers)) {
+		const p4 = persisted as PersistedV4;
+		const restoredDrawers: WorkspaceState[] = [];
+		for (let i = 0; i < DRAWER_COUNT; i++) {
+			const raw = p4.drawers[i];
+			if (raw && Array.isArray(raw.windows)) {
+				restoredDrawers.push(
+					restoreWorkspaceFromPersisted(
+						{ windows: raw.windows, geometryByGuid: raw.geometryByGuid, nextZ: raw.nextZ },
+						keepGuids
+					)
+				);
+			} else {
+				restoredDrawers.push(emptyWorkspace());
+			}
+		}
+		drawers = restoredDrawers;
+		if (Array.isArray(p4.drawerWidths)) {
+			drawerWidths = Array.from({ length: DRAWER_COUNT }, (_, i) =>
+				clampDrawerWidth(p4.drawerWidths[i] ?? DEFAULT_DRAWER_WIDTH)
+			);
+		}
 	}
 }
 
