@@ -1773,7 +1773,10 @@ import { TomboyBridgeNote } from "./bridgeNote/index.js";
 
 	/* blur 상태에서도 caret / selection 위치를 시각적으로 유지. 모바일
 	   에서 키보드 dismiss 후 "어디를 편집/선택 중이었는지" 잃지 않도록.
-	   native caret blink 주기 (~1.06s) 모방. */
+	   blink 안 함: /desktop 다중 창에서 비활성 창마다 무한 opacity
+	   애니메이션이 돌면 firefox 가 inline 요소를 compositor layer 로
+	   승격 못 해 에디터 영역을 매 프레임 main-thread repaint → idle CPU
+	   폭증. 정적 표시로 충분(위치만 알려주면 됨). */
 	.tomboy-editor :global(.unfocused-caret) {
 		display: inline-block;
 		width: 1px;
@@ -1783,18 +1786,12 @@ import { TomboyBridgeNote } from "./bridgeNote/index.js";
 		margin-bottom: -0.05em;
 		pointer-events: none;
 		opacity: 0.7;
-		animation: tomboy-caret-blink 1.06s steps(2, jump-none) infinite;
 	}
 
 	/* 가짜 selection — iOS Safari 의 native selection 색에 가까운 옅은
 	   파랑. blink 없이 안정적으로 표시. */
 	.tomboy-editor :global(.unfocused-selection) {
 		background-color: rgba(100, 150, 255, 0.35);
-	}
-
-	@keyframes tomboy-caret-blink {
-		0%, 49% { opacity: 0.7; }
-		50%, 100% { opacity: 0; }
 	}
 
 	.tomboy-editor :global(.tiptap) {
