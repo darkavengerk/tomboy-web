@@ -87,6 +87,11 @@ export const NOTE_TYPES: NoteTypeSpec[] = [
 		help: '본문에 N월 헤더 + 한글 날짜 리스트로 적으면 일정 노트가 됩니다(설정 → 알림에서 지정).'
 	},
 	{
+		id: 'hue-master', label: '조명 (Hue)', trigger: 'title-prefix',
+		titlePrefix: '조명::',
+		help: '타이틀 조명::전체 = 마스터(전구·방 가져오기). 조명::<이름> = 전구 노트(light:) 또는 방 노트(room:). 방 노트는 체크박스로 조명 on/off, 라디오로 씬을 고릅니다. 설정 → Hue 에서 허브 먼저 연결.'
+	},
+	{
 		id: 'slip', label: 'Slip-Box', trigger: 'title-prefix',
 		titlePrefix: 'Slip-Box::',
 		help: '[0] Slip-Box 노트북의 링크드리스트 노드. 이전:/다음: 으로 연결합니다.'

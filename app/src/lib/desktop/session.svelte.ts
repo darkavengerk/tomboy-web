@@ -10,8 +10,31 @@ import { activeNotebooks } from './activeNotebooks.svelte.js';
 const STORAGE_KEY = 'desktop:session';
 const WALLPAPER_KEY = 'desktop:wallpaper';
 const WALLPAPER_MODE_KEY = 'desktop:wallpaper-mode';
-const VERSION = 3;
+const VERSION = 4;
 const WORKSPACE_COUNT = 4;
+const DRAWER_COUNT = 2; // 0 = F2 (top, drops down), 1 = F3 (right)
+const DEFAULT_DRAWER_WIDTH = 480; // right drawer default
+const DEFAULT_TOP_DRAWER_WIDTH = 760; // top drawer is wider (drops from the top edge)
+// No upper cap — drawers may grow as large as the user wants. Floors only keep a
+// panel from collapsing to an ungrabbable sliver (never 0).
+const DRAWER_MIN_WIDTH = 100;
+const DEFAULT_DRAWER_HEIGHT = 380;
+const DRAWER_MIN_HEIGHT = 100;
+// Top drawer left offset = gap between the side-rail's right edge (and its
+// resize handle) and the drawer's left edge. Default 100 so the drawer never
+// sits on the rail handle; floored above 0 so its own left grip stays grabbable.
+const DEFAULT_TOP_DRAWER_LEFT = 100;
+const DRAWER_MIN_LEFT = 16;
+
+/** Default panel width per drawer index (top drawer is wider than the side one). */
+function defaultDrawerWidth(i: number): number {
+	return i === 0 ? DEFAULT_TOP_DRAWER_WIDTH : DEFAULT_DRAWER_WIDTH;
+}
+
+/** Default left offset per drawer index (only the top drawer uses it). */
+function defaultDrawerLeft(i: number): number {
+	return i === 0 ? DEFAULT_TOP_DRAWER_LEFT : 0;
+}
 
 /**
  * How a workspace wallpaper image fills the canvas. Mirrors the common
@@ -87,6 +110,11 @@ export interface DesktopWindowState {
 	minimized?: boolean;
 }
 
+/** Names a window-bearing surface: a 2×2 workspace or a global drawer. */
+export type SurfaceRef =
+	| { kind: 'workspace'; index: number }
+	| { kind: 'drawer'; index: number };
+
 interface GeometrySnapshot {
 	x: number;
 	y: number;
@@ -118,6 +146,18 @@ interface PersistedV3 {
 	}>;
 }
 
+interface PersistedV4 {
+	version: 4;
+	currentWorkspace: number;
+	workspaces: PersistedV3['workspaces'];
+	// Drawers reuse the same per-surface persisted shape as workspaces.
+	drawers: PersistedV3['workspaces'];
+	drawerWidths: number[];
+	// Optional (additive — older v4 blobs predate the top drawer's height/left).
+	drawerHeights?: number[];
+	drawerLefts?: number[];
+}
+
 interface PersistedV2 {
 	version: number;
 	windows: Array<
@@ -127,7 +167,7 @@ interface PersistedV2 {
 	geometryByGuid?: Record<string, GeometrySnapshot>;
 }
 
-type Persisted = PersistedV3 | PersistedV2;
+type Persisted = PersistedV4 | PersistedV3 | PersistedV2;
 
 // --- Defaults ------------------------------------------------------------
 
@@ -160,6 +200,25 @@ let workspaces = $state<WorkspaceState[]>(
 	Array.from({ length: WORKSPACE_COUNT }, () => emptyWorkspace())
 );
 let currentWorkspaceIndex = $state(0);
+// Drawers are GLOBAL slide-in surfaces (F2 left, F3 right), independent of
+// the 2×2 workspaces. Each is structurally a WorkspaceState (own windows[],
+// geometryByGuid, nextZ). activeDrawer = which one is open + live (null =
+// canvas live). drawerWidths = per-drawer panel extent (px). Persisted in v4.
+let drawers = $state<WorkspaceState[]>(
+	Array.from({ length: DRAWER_COUNT }, () => emptyWorkspace())
+);
+let activeDrawer = $state<number | null>(null);
+let drawerWidths = $state<number[]>(
+	Array.from({ length: DRAWER_COUNT }, (_, i) => defaultDrawerWidth(i))
+);
+// Top drawer (index 0) height; the right drawer ignores this (full height).
+let drawerHeights = $state<number[]>(
+	Array.from({ length: DRAWER_COUNT }, () => DEFAULT_DRAWER_HEIGHT)
+);
+// Top drawer (index 0) left offset from the rail; the right drawer ignores it.
+let drawerLefts = $state<number[]>(
+	Array.from({ length: DRAWER_COUNT }, (_, i) => defaultDrawerLeft(i))
+);
 // Bumped whenever any workspace's wallpaper is set/cleared. DesktopWorkspace's
 // $effect reads `desktopSession.wallpaperEpoch` so re-setting the SAME
 // workspace's wallpaper (same currentWorkspace) still triggers a reload.
@@ -309,15 +368,19 @@ async function persistNow(): Promise<void> {
 	// deeper objects — e.g. the geometry values inside `geometryByGuid` —
 	// still wrapped. `$state.snapshot` returns a plain deep copy, which is
 	// safe to persist.
-	const sanitizedWorkspaces = workspaces.map((ws) => ({
+	const sanitizeWindows = (ws: WorkspaceState) => ({
 		...ws,
 		windows: ws.windows.filter((w) => w.kind !== 'history')
-	}));
-	const snapshot: PersistedV3 = $state.snapshot({
+	});
+	const snapshot: PersistedV4 = $state.snapshot({
 		version: VERSION,
 		currentWorkspace: currentWorkspaceIndex,
-		workspaces: sanitizedWorkspaces
-	}) as PersistedV3;
+		workspaces: workspaces.map(sanitizeWindows),
+		drawers: drawers.map(sanitizeWindows),
+		drawerWidths,
+		drawerHeights,
+		drawerLefts
+	}) as PersistedV4;
 	try {
 		await setSetting(STORAGE_KEY, snapshot);
 	} catch {
@@ -329,6 +392,26 @@ async function persistNow(): Promise<void> {
 
 function current(): WorkspaceState {
 	return workspaces[currentWorkspaceIndex];
+}
+
+function surfaceState(ref: SurfaceRef): WorkspaceState | null {
+	if (ref.kind === 'workspace') return workspaces[ref.index] ?? null;
+	return drawers[ref.index] ?? null;
+}
+
+/** Mutate a window's geometry on an explicit surface, then cache + persist. */
+function mutateGeomOn(
+	ref: SurfaceRef,
+	guid: string,
+	fn: (w: DesktopWindowState) => void
+): void {
+	const ws = surfaceState(ref);
+	if (!ws) return;
+	const win = ws.windows.find((w) => w.guid === guid);
+	if (!win) return;
+	fn(win);
+	cacheGeometry(ws, win);
+	schedulePersist();
 }
 
 function cacheGeometry(ws: WorkspaceState, win: DesktopWindowState): void {
@@ -366,6 +449,21 @@ function centeredFor(width: number, height: number): GeometrySnapshot {
 
 function bumpZ(ws: WorkspaceState, win: DesktopWindowState): void {
 	win.z = ++ws.nextZ;
+}
+
+function clampDrawerWidth(px: number): number {
+	if (!Number.isFinite(px)) return DEFAULT_DRAWER_WIDTH;
+	return Math.max(DRAWER_MIN_WIDTH, Math.round(px));
+}
+
+function clampDrawerHeight(px: number): number {
+	if (!Number.isFinite(px)) return DEFAULT_DRAWER_HEIGHT;
+	return Math.max(DRAWER_MIN_HEIGHT, Math.round(px));
+}
+
+function clampDrawerLeft(px: number): number {
+	if (!Number.isFinite(px)) return DEFAULT_TOP_DRAWER_LEFT;
+	return Math.max(DRAWER_MIN_LEFT, Math.round(px));
 }
 
 // --- Workspace direction mapping ----------------------------------------
@@ -435,6 +533,11 @@ async function collectExistingGuids(persisted: Persisted): Promise<Set<string>> 
 	} else if ('windows' in persisted && Array.isArray(persisted.windows)) {
 		allRaws.push(...persisted.windows);
 	}
+	if ('drawers' in persisted && Array.isArray((persisted as PersistedV4).drawers)) {
+		for (const ws of (persisted as PersistedV4).drawers) {
+			if (Array.isArray(ws?.windows)) allRaws.push(...ws.windows);
+		}
+	}
 	const seen = new Set<string>();
 	await Promise.all(
 		allRaws.map(async (w) => {
@@ -490,6 +593,42 @@ async function loadPersisted(): Promise<void> {
 		workspaces = migrated;
 		currentWorkspaceIndex = 0;
 	}
+
+	if ('drawers' in persisted && Array.isArray((persisted as PersistedV4).drawers)) {
+		const p4 = persisted as PersistedV4;
+		const restoredDrawers: WorkspaceState[] = [];
+		for (let i = 0; i < DRAWER_COUNT; i++) {
+			const raw = p4.drawers[i];
+			if (raw && Array.isArray(raw.windows)) {
+				restoredDrawers.push(
+					restoreWorkspaceFromPersisted(
+						{ windows: raw.windows, geometryByGuid: raw.geometryByGuid, nextZ: raw.nextZ },
+						keepGuids
+					)
+				);
+			} else {
+				restoredDrawers.push(emptyWorkspace());
+			}
+		}
+		drawers = restoredDrawers;
+		if (Array.isArray(p4.drawerWidths)) {
+			drawerWidths = Array.from({ length: DRAWER_COUNT }, (_, i) =>
+				clampDrawerWidth(p4.drawerWidths[i] ?? defaultDrawerWidth(i))
+			);
+		}
+		if (Array.isArray(p4.drawerHeights)) {
+			const heights = p4.drawerHeights;
+			drawerHeights = Array.from({ length: DRAWER_COUNT }, (_, i) =>
+				clampDrawerHeight(heights[i] ?? DEFAULT_DRAWER_HEIGHT)
+			);
+		}
+		if (Array.isArray(p4.drawerLefts)) {
+			const lefts = p4.drawerLefts;
+			drawerLefts = Array.from({ length: DRAWER_COUNT }, (_, i) =>
+				i === 0 ? clampDrawerLeft(lefts[i] ?? defaultDrawerLeft(i)) : defaultDrawerLeft(i)
+			);
+		}
+	}
 }
 
 // --- Public API ----------------------------------------------------------
@@ -519,6 +658,84 @@ export const desktopSession = {
 
 	get currentWorkspace(): number {
 		return currentWorkspaceIndex;
+	},
+
+	get activeDrawer(): number | null {
+		return activeDrawer;
+	},
+
+	get drawerCount(): number {
+		return DRAWER_COUNT;
+	},
+
+	isDrawerOpen(index: number): boolean {
+		return activeDrawer === index;
+	},
+
+	/** Windows in drawer `index` (empty for an out-of-range index). */
+	drawerWindows(index: number): DesktopWindowState[] {
+		return drawers[index]?.windows ?? [];
+	},
+
+	getDrawerWidth(index: number): number {
+		return drawerWidths[index] ?? defaultDrawerWidth(index);
+	},
+
+	setDrawerWidth(index: number, px: number): void {
+		if (index < 0 || index >= DRAWER_COUNT) return;
+		const next = clampDrawerWidth(px);
+		if (next === drawerWidths[index]) return;
+		drawerWidths[index] = next;
+		schedulePersist();
+	},
+
+	getDrawerHeight(index: number): number {
+		return drawerHeights[index] ?? DEFAULT_DRAWER_HEIGHT;
+	},
+
+	setDrawerHeight(index: number, px: number): void {
+		if (index < 0 || index >= DRAWER_COUNT) return;
+		const next = clampDrawerHeight(px);
+		if (next === drawerHeights[index]) return;
+		drawerHeights[index] = next;
+		schedulePersist();
+	},
+
+	getDrawerLeft(index: number): number {
+		return drawerLefts[index] ?? defaultDrawerLeft(index);
+	},
+
+	/**
+	 * Move the top drawer's LEFT edge to `px` (offset from the rail) while
+	 * pinning the RIGHT edge — i.e. resize-from-left. The left offset is floored
+	 * above 0 (so it never lands on the rail handle) and capped so the width
+	 * stays ≥ the floor. Both left + width update atomically.
+	 */
+	setDrawerLeftKeepRight(index: number, px: number): void {
+		if (index < 0 || index >= DRAWER_COUNT) return;
+		const curLeft = drawerLefts[index] ?? defaultDrawerLeft(index);
+		const curWidth = drawerWidths[index] ?? defaultDrawerWidth(index);
+		const right = curLeft + curWidth; // invariant across the drag
+		const nextLeft = Math.min(clampDrawerLeft(px), right - DRAWER_MIN_WIDTH);
+		const nextWidth = right - nextLeft;
+		if (nextLeft === curLeft && nextWidth === curWidth) return;
+		drawerLefts[index] = nextLeft;
+		drawerWidths[index] = nextWidth;
+		schedulePersist();
+	},
+
+	/**
+	 * Open drawer `index` if closed, close it if it's the open one, or switch to
+	 * it if the OTHER drawer is open. Only one drawer is visible at a time.
+	 * Opening makes it the live surface (canvas goes inactive but stays mounted).
+	 */
+	toggleDrawer(index: number): void {
+		if (index < 0 || index >= DRAWER_COUNT) return;
+		activeDrawer = activeDrawer === index ? null : index;
+	},
+
+	closeDrawer(): void {
+		activeDrawer = null;
 	},
 
 	get wallpaperEpoch(): number {
@@ -554,13 +771,14 @@ export const desktopSession = {
 	},
 
 	/**
-	 * Guid of the topmost note window in the current workspace (highest raw
-	 * z among kind==='note'), or null if no notes are open. Used by
-	 * NoteWindow to show its toolbar only on the focused note — unfocused
-	 * notes reclaim the toolbar row for editor content.
+	 * Guid of the topmost note window on the ACTIVE surface (highest raw z
+	 * among kind==='note', non-minimized). When a drawer is open it is the
+	 * live surface; otherwise the current workspace canvas. Used by NoteWindow
+	 * to show its toolbar only on the focused note — unfocused notes reclaim
+	 * the toolbar row for editor content.
 	 */
 	get focusedNoteGuid(): string | null {
-		const ws = current();
+		const ws = activeDrawer !== null ? drawers[activeDrawer] : current();
 		let top: DesktopWindowState | null = null;
 		for (const w of ws.windows) {
 			if (w.kind !== 'note') continue;
@@ -1048,6 +1266,178 @@ export const desktopSession = {
 		schedulePersist();
 	},
 
+	moveWindowOn(ref: SurfaceRef, guid: string, x: number, y: number): void {
+		mutateGeomOn(ref, guid, (w) => {
+			w.x = Math.max(0, Math.round(x));
+			w.y = Math.max(0, Math.round(y));
+		});
+	},
+
+	updateGeometryOn(
+		ref: SurfaceRef,
+		guid: string,
+		g: { x: number; y: number; width: number; height: number }
+	): void {
+		mutateGeomOn(ref, guid, (w) => {
+			w.x = Math.max(0, Math.round(g.x));
+			w.y = Math.max(0, Math.round(g.y));
+			w.width = Math.max(MIN_WIDTH, Math.round(g.width));
+			w.height = Math.max(MIN_HEIGHT, Math.round(g.height));
+		});
+	},
+
+	focusWindowOn(ref: SurfaceRef, guid: string): void {
+		const ws = surfaceState(ref);
+		if (!ws) return;
+		const win = ws.windows.find((w) => w.guid === guid);
+		if (!win) return;
+		if (win.kind === 'note') recentOpens.record(guid);
+		const topZ = ws.windows.reduce((m, w) => Math.max(m, w.z), 0);
+		if (win.z === topZ && win.z !== 0) return;
+		bumpZ(ws, win);
+		schedulePersist();
+	},
+
+	async closeWindowOn(ref: SurfaceRef, guid: string): Promise<void> {
+		await runFlushHook(guid);
+		const ws = surfaceState(ref);
+		if (!ws) return;
+		const idx = ws.windows.findIndex((w) => w.guid === guid);
+		if (idx < 0) return;
+		cacheGeometry(ws, ws.windows[idx]);
+		const closedKind = ws.windows[idx].kind;
+		ws.windows.splice(idx, 1);
+		// Close any ephemeral history window bound to this note — it would
+		// otherwise float with no source.
+		if (closedKind === 'note') {
+			const histGuid = `${HISTORY_GUID_PREFIX}${guid}`;
+			const hidx = ws.windows.findIndex((w) => w.guid === histGuid);
+			if (hidx >= 0) ws.windows.splice(hidx, 1);
+		}
+		// Remember note closes so Alt+Esc can reopen the last one. Settings /
+		// admin are singletons reopened from the rail, so they're skipped.
+		// De-dupe to keep the most recent position when a guid is closed twice.
+		if (closedKind === 'note') {
+			const dup = closedStack.indexOf(guid);
+			if (dup >= 0) closedStack.splice(dup, 1);
+			closedStack.push(guid);
+			if (closedStack.length > CLOSED_STACK_LIMIT) closedStack.shift();
+		}
+		// Chain focus to the most-recently-focused remaining visible note on this
+		// surface so Esc cascades within the drawer.
+		let next: DesktopWindowState | null = null;
+		for (const w of ws.windows) {
+			if (w.kind !== 'note' || w.minimized) continue;
+			if (!next || w.z > next.z) next = w;
+		}
+		if (next) focusRequest = { guid: next.guid, token: ++focusRequestCounter };
+		schedulePersist();
+	},
+
+	togglePinOn(ref: SurfaceRef, guid: string): void {
+		const ws = surfaceState(ref);
+		if (!ws) return;
+		const win = ws.windows.find((w) => w.guid === guid);
+		if (!win) return;
+		win.pinned = !win.pinned;
+		schedulePersist();
+	},
+
+	sendToBackOn(ref: SurfaceRef, guid: string): void {
+		const ws = surfaceState(ref);
+		if (!ws) return;
+		const win = ws.windows.find((w) => w.guid === guid);
+		if (!win) return;
+		const others = ws.windows.filter((w) => w.guid !== guid);
+		if (others.length === 0) return;
+		const minZ = others.reduce((m, w) => Math.min(m, w.z), Infinity);
+		win.z = minZ - 1;
+		schedulePersist();
+	},
+
+	/**
+	 * Move a note window between surfaces (workspace↔drawer). MOVE semantics: the
+	 * window leaves the source. Each surface keeps its OWN geometryByGuid, so the
+	 * note's drawer pose is independent of its canvas pose. On first entry the
+	 * window uses the target's remembered pose, else `drop` (clamped), else a
+	 * default slot; re-entry restores the target's remembered pose.
+	 */
+	async moveWindowToSurface(
+		from: SurfaceRef,
+		to: SurfaceRef,
+		guid: string,
+		drop?: { x: number; y: number }
+	): Promise<void> {
+		const src = surfaceState(from);
+		const dst = surfaceState(to);
+		if (!src || !dst) return;
+		if (from.kind === to.kind && from.index === to.index) return;
+		const idx = src.windows.findIndex((w) => w.guid === guid);
+		if (idx < 0) return;
+		const win = src.windows[idx];
+		if (win.kind !== 'note') return;
+
+		// Persist unsaved edits before the source instance unmounts.
+		await runFlushHook(guid);
+
+		// Cache the source pose (so reopening on the source restores it), remove it.
+		cacheGeometry(src, win);
+		src.windows.splice(idx, 1);
+
+		const existing = dst.windows.find((w) => w.guid === guid);
+		if (existing) {
+			existing.minimized = false;
+			bumpZ(dst, existing);
+		} else {
+			const cached = dst.geometryByGuid[guid];
+			let geom: GeometrySnapshot;
+			if (cached) {
+				geom = cached;
+			} else if (drop) {
+				geom = {
+					x: Math.max(0, Math.round(drop.x)),
+					y: Math.max(0, Math.round(drop.y)),
+					width: win.width,
+					height: win.height
+				};
+			} else {
+				geom = { x: 24, y: 24, width: win.width, height: win.height };
+			}
+			const moved: DesktopWindowState = {
+				guid,
+				kind: 'note',
+				x: geom.x,
+				y: geom.y,
+				width: geom.width,
+				height: geom.height,
+				z: ++dst.nextZ,
+				pinned: win.pinned ?? false
+			};
+			dst.windows.push(moved);
+			cacheGeometry(dst, moved);
+		}
+
+		// Focus + flash only if the target surface is the live one.
+		const targetIsLive =
+			(to.kind === 'drawer' && activeDrawer === to.index) ||
+			(to.kind === 'workspace' &&
+				activeDrawer === null &&
+				to.index === currentWorkspaceIndex);
+		if (targetIsLive) focusRequest = { guid, token: ++focusRequestCounter };
+		recentOpens.record(guid);
+		schedulePersist();
+	},
+
+	/** Stash a current-workspace note into the open drawer (no-op if none open). */
+	async stashToActiveDrawer(guid: string): Promise<void> {
+		if (activeDrawer === null) return;
+		await this.moveWindowToSurface(
+			{ kind: 'workspace', index: currentWorkspaceIndex },
+			{ kind: 'drawer', index: activeDrawer },
+			guid
+		);
+	},
+
 	isPinned(guid: string): boolean {
 		const ws = current();
 		const win = ws.windows.find((w) => w.guid === guid);
@@ -1204,6 +1594,11 @@ export const desktopSession = {
 	_reset(): void {
 		workspaces = Array.from({ length: WORKSPACE_COUNT }, () => emptyWorkspace());
 		currentWorkspaceIndex = 0;
+		drawers = Array.from({ length: DRAWER_COUNT }, () => emptyWorkspace());
+		activeDrawer = null;
+		drawerWidths = Array.from({ length: DRAWER_COUNT }, (_, i) => defaultDrawerWidth(i));
+		drawerHeights = Array.from({ length: DRAWER_COUNT }, () => DEFAULT_DRAWER_HEIGHT);
+		drawerLefts = Array.from({ length: DRAWER_COUNT }, (_, i) => defaultDrawerLeft(i));
 		focusRequest = null;
 		focusRequestCounter = 0;
 		closedStack.length = 0;

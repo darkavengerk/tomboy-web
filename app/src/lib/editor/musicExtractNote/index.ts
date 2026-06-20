@@ -1,10 +1,20 @@
 import { Extension } from '@tiptap/core';
-import { createMusicExtractNotePlugin } from './musicExtractNotePlugin.js';
+import {
+	createMusicExtractNotePlugin,
+	type MusicExtractPluginOptions
+} from './musicExtractNotePlugin.js';
 
-export const TomboyMusicExtractNote = Extension.create({
+export const TomboyMusicExtractNote = Extension.create<MusicExtractPluginOptions>({
 	name: 'tomboyMusicExtractNote',
+	addOptions() {
+		return { oninternallink: undefined };
+	},
 	addProseMirrorPlugins() {
-		return [createMusicExtractNotePlugin()];
+		return [createMusicExtractNotePlugin({ oninternallink: this.options.oninternallink })];
 	}
 });
-export { createMusicExtractNotePlugin, musicExtractNotePluginKey } from './musicExtractNotePlugin.js';
+export {
+	createMusicExtractNotePlugin,
+	musicExtractNotePluginKey,
+	type MusicExtractPluginOptions
+} from './musicExtractNotePlugin.js';

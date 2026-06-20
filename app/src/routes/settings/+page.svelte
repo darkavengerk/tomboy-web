@@ -66,8 +66,17 @@
 		setDefaultTerminalBridge,
 		loginBridge,
 		logoutBridge,
-		checkBridgeAuth
+		checkBridgeAuth,
+		bridgeToHttpBase,
+		getTerminalBridgeToken
 	} from '$lib/editor/terminal/bridgeSettings.js';
+	import { hueDiscover, huePair, hueConfigured, hueClearBridgeCreds, invalidateHueHealthCache, type HueSource } from '$lib/hue/hueClient.js';
+	import {
+		getHueBridgeIp,
+		getHueAppKey,
+		setHueCredentials,
+		clearHueCredentials
+	} from '$lib/storage/hueSettings.js';
 	import {
 		getTerminalHistoryPanelOpenDesktop,
 		setTerminalHistoryPanelOpenDesktop,
@@ -148,6 +157,84 @@
 	let terminalBridgeAuthed = $state<boolean | null>(null); // null = unknown
 	let terminalBridgeBusy = $state(false);
 	let terminalBridgeMessage = $state('');
+
+	// ── Hue 조명 (전역 터미널 브릿지 URL+토큰 재사용) ────────────────────
+	let hueIp = $state('');
+	let hueCandidates = $state<Array<{ ip: string; id: string }>>([]);
+	let hueConnected = $state(false);
+	let hueMsg = $state('');
+	let hueSource = $state<HueSource>('none');
+	let hueStatusIp = $state('');
+
+	async function loadHueState(): Promise<void> {
+		hueIp = await getHueBridgeIp();
+		const conf = await hueConfigured();
+		hueSource = conf.source;
+		hueStatusIp = conf.ip ?? hueIp;
+		hueConnected = conf.ok;
+	}
+
+	async function hueBridgeCtx(): Promise<{ base: string; token: string } | null> {
+		const b = await getDefaultTerminalBridge();
+		const t = await getTerminalBridgeToken();
+		if (!b || !t) return null;
+		return { base: bridgeToHttpBase(b), token: t };
+	}
+
+	async function findHueBridges(): Promise<void> {
+		const ctx = await hueBridgeCtx();
+		if (!ctx) {
+			hueMsg = '먼저 터미널 브릿지를 연결하세요.';
+			return;
+		}
+		hueCandidates = await hueDiscover(ctx.base, ctx.token);
+		hueMsg = hueCandidates.length ? '' : '자동 발견 실패 — IP를 직접 입력하세요.';
+	}
+
+	async function connectHue(): Promise<void> {
+		const ctx = await hueBridgeCtx();
+		if (!ctx) {
+			hueMsg = '먼저 터미널 브릿지를 연결하세요.';
+			return;
+		}
+		if (!hueIp.trim()) {
+			hueMsg = 'IP를 입력하세요.';
+			return;
+		}
+		hueMsg = '허브의 링크 버튼을 누른 뒤 잠시 기다리세요…';
+		const r = await huePair(ctx.base, ctx.token, hueIp.trim());
+		if ('error' in r) {
+			hueMsg = r.error === 'link_button' ? '허브 링크 버튼을 누르고 다시 [연결]' : 'Hue 연결 실패';
+			return;
+		}
+		if (r.persisted) {
+			// 브릿지가 단일 소스 — 이 기기 로컬 그림자 제거(source:'bridge' 로 인식돼 '브릿지에서 해제' 가능)
+			await clearHueCredentials();
+			hueMsg = '브릿지에 저장됨 — 모든 기기에서 사용 가능';
+		} else {
+			// 브릿지 저장 실패 → 이 기기 로컬 폴백 보관
+			await setHueCredentials(hueIp.trim(), r.appkey, r.clientkey);
+			hueMsg = `이 기기에만 저장됨(브릿지 저장 실패: ${r.persistError ?? '알 수 없음'})`;
+		}
+		invalidateHueHealthCache();
+		await loadHueState();
+	}
+
+	async function disconnectHue(): Promise<void> {
+		await clearHueCredentials();
+		invalidateHueHealthCache();
+		hueMsg = '이 기기 로컬 연결 해제됨';
+		await loadHueState();
+	}
+
+	async function disconnectHueBridge(): Promise<void> {
+		if (!confirm('브릿지에서 Hue 연결을 해제하면 모든 기기에서 조명 제어가 중단됩니다. 계속할까요?')) return;
+		const ok = await hueClearBridgeCreds();
+		await clearHueCredentials();
+		invalidateHueHealthCache();
+		hueMsg = ok ? '브릿지에서 해제됨' : '브릿지 해제 실패 — 토큰/연결 확인';
+		await loadHueState();
+	}
 
 	// ── 이미지 서버 토큰 ──────────────────────────────────────────────
 	let imageStorageToken = $state('');
@@ -679,6 +766,7 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 		imagesPath = getImagesPath();
 		void loadTerminalBridgeState();
 		void loadTerminalHistorySettings();
+		void loadHueState();
 		void getImageStorageToken().then((v) => (imageStorageToken = v));
 		void getClaudeDefaultSystem().then((v) => (claudeDefSystem = v));
 		void getClaudeDefaultModel().then((v) => (claudeDefModel = v));
@@ -1367,6 +1455,60 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 			</section>
 
 			<section class="section">
+				<h2>Hue 조명</h2>
+				<p class="info-text">
+					Philips Hue 허브를 위 브릿지를 통해 연결합니다. 한 기기에서 한 번만 연결하면
+					브릿지가 키를 보관하여 같은 브릿지 URL·토큰을 쓰는 모든 기기에서 별도 설정 없이
+					<code>조명::</code> 노트로 조명을 제어할 수 있습니다.
+				</p>
+
+				{#if hueConnected}
+					{#if hueSource === 'bridge'}
+						<p class="info-text small">상태: <code>브릿지에 구성됨</code> — {hueStatusIp}</p>
+						<button class="btn btn-secondary" onclick={disconnectHueBridge}>브릿지에서 해제</button>
+					{:else}
+						<p class="info-text small">상태: <code>이 기기에 저장됨</code> — {hueStatusIp}</p>
+						<button class="btn btn-secondary" onclick={disconnectHue}>이 기기 연결 해제</button>
+					{/if}
+				{:else}
+					<div class="profile-row">
+						<button class="btn btn-secondary profile-btn" onclick={findHueBridges}>
+							브릿지 찾기
+						</button>
+					</div>
+
+					{#if hueCandidates.length}
+						<div class="profile-row" style="flex-wrap: wrap; gap: 0.5rem;">
+							{#each hueCandidates as c (c.ip)}
+								<button
+									type="button"
+									class="btn btn-secondary"
+									onclick={() => (hueIp = c.ip)}
+								>
+									{c.ip}
+								</button>
+							{/each}
+						</div>
+					{/if}
+
+					<div class="path-row">
+						<input
+							class="path-input"
+							type="text"
+							placeholder="허브 IP (예: 192.168.0.50)"
+							bind:value={hueIp}
+							onkeydown={(e) => e.key === 'Enter' && connectHue()}
+						/>
+						<button class="btn btn-primary" onclick={connectHue}>연결</button>
+					</div>
+				{/if}
+
+				{#if hueMsg}
+					<p class="info-text small">{hueMsg}</p>
+				{/if}
+			</section>
+
+			<section class="section">
 				<h2>명령어 히스토리</h2>
 				<p class="info-text">
 					터미널 노트 우측 패널에 표시되는 최근 명령어 목록입니다. 노트 본문에
@@ -1989,7 +2131,8 @@ SUNO:https://suno.com/playlist/&lt;id&gt;  (가져오기 → 플레이리스트 
 
 - https://www.youtube.com/watch?v=…      (단일 곡: 불릿)
 - Artist - Title                         (검색어도 가능)
-https://www.youtube.com/playlist?list=…  (재생목록: 일반 줄)</pre>
+https://www.youtube.com/playlist?list=…  (재생목록: 일반 줄)
+챕터:https://www.youtube.com/watch?v=…   (챕터 분할: '챕터:' 줄)</pre>
 					<ul class="guide-list">
 						<li>⟳ 는 <b>결과가 아직 없는 항목만</b> 처리해요. 소스를 더 추가하고 다시 눌러도
 							이미 받은 곡은 건너뜁니다.</li>
@@ -1997,7 +2140,16 @@ https://www.youtube.com/playlist?list=…  (재생목록: 일반 줄)</pre>
 						<li><b>재생목록/믹스</b>는 <b>불릿이 아닌 일반 텍스트 줄</b>에 URL을 적으세요. ⟳ 를 누르면
 							전체 곡을 추출해 그 줄 <b>바로 아래</b>에 <code>[ ]플레이리스트: …</code> 블록(헤더+곡 목록)을
 							만들어 줍니다. 그 블록을 통째로 복사해 <code>음악::</code> 노트에 붙이고 체크박스를 켜면 재생돼요.</li>
-						<li>재생목록은 한 번에 <b>최대 50곡</b>까지 받고, 초과하면 앞 50곡만 받은 뒤 안내해요.</li>
+						<li>추출이 끝난 <b>재생목록·챕터</b> 결과 헤더 옆에는 <b>🎵 노트 만들기</b> 버튼이 떠요. 누르면
+							그 곡들이 담긴 <code>음악::&lt;이름&gt;</code> 노트가 자동으로 만들어지고(체크 상태라 바로 재생),
+							그 노트로 이동합니다. 같은 이름 노트가 이미 있으면 새로 만들지 않고 그 노트를 열어요.
+							복사·붙여넣기 없이 한 번에 재생용 노트를 얻는 지름길이에요.</li>
+						<li><b>긴 영상을 챕터별로 쪼개기</b>: 단일 곡은 <b>120MB</b> 상한이라 1~2시간짜리는 받다 끊겨요.
+							이때 영상에 <b>챕터(타임스탬프 구간)</b>가 있으면 <code>챕터:&lt;영상 URL&gt;</code> 형식의
+							<b>일반 텍스트 줄</b>로 적으세요. ⟳ 를 누르면 풀 영상을 받아 챕터마다 별도 곡으로 잘라
+							재생목록과 <b>똑같은</b> <code>[ ]플레이리스트: …</code> 블록을 바로 아래에 만들어 줍니다.
+							챕터가 없는 영상이면 통곡 한 개로 받아요.</li>
+						<li>재생목록/챕터는 한 번에 <b>최대 50곡(챕터)</b>까지 받고, 초과하면 앞 50개만 받은 뒤 안내해요.</li>
 						<li>유튜브 자동 <b>믹스(<code>RD…</code>)</b>는 접속할 때마다 곡이 조금씩 바뀌고 개수도 제한적이에요.
 							한 가수 곡을 확실히 모으려면 정규 재생목록(<code>list=PL…</code> 또는 앨범
 							<code>OLAK5uy…</code>)이 안정적입니다.</li>
@@ -2006,6 +2158,45 @@ https://www.youtube.com/playlist?list=…  (재생목록: 일반 줄)</pre>
 							"음악 추출 서비스에 연결할 수 없습니다" 안내가 떠요.</li>
 						<li>개인·자기 호스팅 도구입니다. <b>본인이 권리를 가진 콘텐츠</b>(내 업로드/CC/퍼블릭
 							도메인)에만 사용하세요.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
+					<summary>브릿지:: — 브릿지 현황 대시보드</summary>
+					<p class="info-text">
+						제목이 <code>브릿지::</code> 로 시작하는 노트는 <b>⟳ 갱신</b> 버튼을 띄웁니다. 누르면
+						브릿지(라즈베리파이)의 전반적인 현황을 한 번에 받아 제목 아래 본문을 통째로 다시 그려요.
+						디스크·메모리·CPU 온도 같은 <b>시스템 정보</b>와, 데스크탑 서비스(OCR·음악·자동화 등)의
+						<b>연결 상태</b>를 표로 보여줍니다.
+					</p>
+					<pre class="snippet">브릿지::내 파이
+
+⟳ 갱신
+
+🖥 시스템
+가동 12일 5시간 · 부하 0.4 / 0.3 / 0.2 · 코어 4 · 온도 48°C
+메모리 1.2GB / 4GB (30%)
+```csv
+마운트,용량,사용,여유,사용률
+/files,28GB,6GB,22GB,22%
+```
+---
+🔌 서비스
+```csv
+서비스,상태,응답
+ocr,✅,42ms
+music,✅,55ms
+automation,➖ 미설정,
+```</pre>
+					<ul class="guide-list">
+						<li>섹션은 <code>---</code> 한 줄(가로 구분선)로 나뉘고, 표는 <code>```csv</code> 블록으로
+							렌더돼요. 매 ⟳ 마다 <b>본문 전체가 최신 현황으로 교체</b>됩니다(스냅샷).</li>
+						<li>서비스 상태: <b>✅ 정상</b> · <b>❌ 끊김</b> · <b>➖ 미설정</b>(브릿지 env 에 URL 이
+							없는 서비스).</li>
+						<li>디스크는 브릿지가 도는 <b>컨테이너 관점</b>이에요. <code>/files</code> 는 업로드 누적분(중요),
+							<code>/(루트)</code> 는 컨테이너 파일시스템입니다. 호스트 전체 디스크와는 다를 수 있어요.</li>
+						<li>선행: 브릿지 설정(주소+로그인)이 필요해요. 미설정이면 "브릿지 설정이 필요합니다",
+							못 닿으면 "브릿지에 연결할 수 없습니다" 안내가 떠요.</li>
 					</ul>
 				</details>
 
@@ -2066,6 +2257,24 @@ https://www.youtube.com/playlist?list=…  (재생목록: 일반 줄)</pre>
 						<li>다른 사람이 투표하려면 이 노트를 <b>공유 노트북</b>에 넣고 공유 모드 규칙을 적용해야 합니다(설정 → 공유).</li>
 						<li>투표 화면 상단의 <b>공유 링크</b>(<code>/poll/제목</code>)를 복사해 보내면, 받은 사람은 <b>로그인·닉네임 없이</b> 그 투표 화면만 바로 보고 투표합니다(앱의 다른 화면은 안 보임).</li>
 						<li>주의: 퀴즈 정답은 노트 본문에 평문으로 들어가 기술에 밝은 참여자는 미리 알 수 있어요(가벼운 퀴즈용). 또 <b>투표 시작 후엔 문제를 바꾸지 마세요</b> — 표가 문제 순서로 묶여 어긋납니다.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
+					<summary>조명 노트 (Hue)</summary>
+					<p class="info-text">같은 네트워크의 Philips Hue 허브를 노트로 제어합니다. 전구 노트·방 노트·존 노트·마스터 노트 네 종류이며, 모두 제목이 <code>조명::</code>으로 시작합니다.</p>
+					<pre class="snippet">조명::전체        ← 마스터(전구·방 가져오기 + 전체 on/off)
+조명::거실 등     본문 첫 줄: light:&lt;uuid&gt;  (전구 노트)
+조명::침실        본문 첫 줄: room:&lt;uuid&gt;   (방 노트)
+조명::거실존      본문 첫 줄: zone:&lt;uuid&gt;   (존 노트)</pre>
+					<ul class="guide-list">
+						<li>마스터(<code>조명::전체</code>)의 <b>가져오기</b>를 누르면 Hue 허브의 전구·방·존을 스캔해 전구·방·존 노트가 자동 생성되고, 본문에 세 개의 <b>묶음</b>(파일철) 목록이 생깁니다.</li>
+						<li>존(zone) 노트(<code>zone:&lt;uuid&gt;</code>)는 방 노트와 동일하게 동작합니다. 한 조명이 여러 존에 속할 수 있어 각 존 노트 목록에 나타납니다.</li>
+						<li>방·존 노트 열기: 체크박스 목록으로 그 그룹의 조명을 <b>켜거나 끄고</b>, 라디오 목록으로 <b>씬을 골라 즉시 적용</b>합니다.</li>
+						<li><b>현재 상태 저장</b> 버튼을 누르면 지금 조명 상태가 그 그룹(방·존)의 새 Hue 씬으로 등록됩니다.</li>
+						<li>씬은 <b>그룹 스코프</b>라 Hue 앱에서 만든 씬도 라디오 목록에 나타납니다.</li>
+						<li>노트를 열면 한 번 자동 새로고침합니다. 이후 변경은 <b>⟳</b>로 수동 새로고침 — 자동 폴링은 없습니다.</li>
+						<li>사용 전: 설정 → 터미널 탭의 <b>Hue 조명</b> 섹션에서 허브를 먼저 연결하세요.</li>
 					</ul>
 				</details>
 			</section>
@@ -2665,6 +2874,21 @@ Complete:</pre>
 						<li>가리키는 쪽지가 없으면 "이 쪽지로 연결된 쪽지가 없습니다"라고 표시됩니다.</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>묶음에 노트 끌어다 넣기</summary>
+					<p class="info-text">
+						데스크탑 멀티윈도우에서 노트 창 왼쪽 위 아이콘을 다른 노트의
+						묶음(<code>묶음:</code> 또는 제목 <code>묶음::</code> 전용 노트) 위로
+						끌어다 놓으면, 놓은 자리에 맞춰 묶음 리스트에 그 노트가 추가됩니다.
+					</p>
+					<ul class="guide-list">
+						<li>데스크탑 전용 — 드래그 아이콘은 노트 창에만 있습니다.</li>
+						<li>묶음 전용 — 탭(<code>탭:</code>)은 대상이 아닙니다.</li>
+						<li>바(접힌 제목) 위에 놓으세요. 펼친 본문 위에 놓으면 그 노트 본문에 들어갑니다.</li>
+						<li>이미 있는 노트나 자기 자신은 자동으로 무시됩니다.</li>
+					</ul>
+				</details>
 			</section>
 
 			{:else if guideSubTab === 'env'}
@@ -2775,6 +2999,26 @@ Complete:</pre>
 					</ul>
 				</details>
 
+				<details class="guide-card">
+					<summary>데스크탑 서랍 (F2 / F3)</summary>
+					<p class="info-text">
+						데스크탑 화면에서 <strong>F2</strong>(위에서 내려옴) / <strong>F3</strong>(오른쪽)을 누르면
+						서랍이 슬라이드로 열립니다. 작업공간(2×2)과 무관한 별도의 공간으로, 자주 쓰는
+						노트 — 특히 터미널 접속 노트 — 를 넣어두면 서랍이 닫혀 있어도 연결이 유지됩니다.
+						서랍을 열어도 뒤의 캔버스 노트는 그대로 보입니다(가려질 뿐 사라지지 않음).
+					</p>
+					<ul class="guide-list">
+						<li>서랍이 열린 상태에서 캔버스 노트의 <strong>✕ 버튼이 방향 화살표</strong>(F2는 ↑, F3은 →)로
+							바뀌며, 누르면 그 노트가 서랍으로 들어갑니다. 창을 서랍 패널로 끌어다 놓아도 됩니다.</li>
+						<li>서랍 안 노트는 자유롭게 위치/크기를 조절할 수 있고, 그 배치는 서랍이
+							<strong>독자적으로</strong> 기억합니다(다른 곳에서 연 같은 노트에 영향 없음).</li>
+						<li>서랍 패널 가장자리를 끌어 크기를 조절합니다 — F2(위)는 <strong>왼쪽·오른쪽·아래</strong>
+							가장자리(왼쪽 여백·폭·높이), F3(오른쪽)은 <strong>왼쪽</strong> 가장자리(폭). 크기 상한은 없습니다.</li>
+						<li>F2와 F3은 서로 다른 공간이며, 같은 노트를 양쪽에 둘 수 있습니다(각각 별도 인스턴스).</li>
+						<li>한 번에 한 서랍만 열립니다. 닫아도 노트는 계속 살아 있습니다(백그라운드 유지).</li>
+					</ul>
+				</details>
+
 				<details class="guide-card" open>
 					<summary>Firefox — 세로 칼럼 분할 활성화</summary>
 					<p class="info-text">
@@ -2842,6 +3086,21 @@ Complete:</pre>
 						<li>다른 기기에서 일정 노트를 갱신해도 이게 켜져 있어야 같은 기기에서 푸시 스케줄이
 							재계산됩니다.</li>
 						<li><button type="button" class="link-btn" onclick={() => (activeTab = 'config')}>동기화 설정 탭</button>에서 토글.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
+					<summary>Hue 조명 — 한 번만 연결하면 모든 기기에서</summary>
+					<p class="info-text">
+						브릿지가 Hue 키를 보관하므로, 어느 기기든 <strong>한 번</strong> 설정 → Hue 에서
+						허브를 연결하면 같은 브릿지를 쓰는 다른 기기는 별도 설정 없이
+						<code>조명::</code> 노트로 조명을 제어합니다.
+					</p>
+					<ul class="guide-list">
+						<li>연결: 설정 → Hue → 브릿지 찾기/IP 입력 → 허브 링크버튼 → [연결].</li>
+						<li>"브릿지에 저장됨" 이 뜨면 모든 기기 공유. "이 기기에만 저장됨" 이면 브릿지 저장이 실패한 것(메시지의 사유 확인).</li>
+						<li>해제: "브릿지에서 해제" 는 모든 기기에 영향. "이 기기 연결 해제" 는 로컬만.</li>
+						<li><code>조명::</code> 방(룸) 노트에서 제어가 실패하면 오류 toast 에 HTTP 상태가 함께 표시됩니다(어디서 막혔는지 진단용). 이 설정 화면의 연결 결과는 버튼 아래 메시지로 나옵니다.</li>
 					</ul>
 				</details>
 

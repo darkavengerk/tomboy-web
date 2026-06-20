@@ -1,0 +1,93 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-19-hue-control-note.md",
+  "specPath": "docs/superpowers/specs/2026-06-19-hue-control-note-design.md",
+  "tasks": [
+    {
+      "id": 7,
+      "planTask": 0,
+      "subject": "Task 0: color.ts — 색 변환",
+      "status": "completed",
+      "description": "RGB↔CIE xy + per-light gamut 삼각형 클램프 + mirek↔kelvin 순수 변환. TDD.\n\n```json:metadata\n{\"files\": [\"app/src/lib/hue/color.ts\", \"app/tests/unit/hue/color.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/hue/color.test.ts\", \"acceptanceCriteria\": [\"rgbToXy red region\", \"clampToGamut pulls in + null passthrough\", \"mirek<->kelvin clamp 153..500\", \"xyToRgb 3 int channels\"]}\n```"
+    },
+    {
+      "id": 8,
+      "planTask": 1,
+      "subject": "Task 1: hueTypes + hueNoteParse",
+      "status": "completed",
+      "blockedBy": [7],
+      "description": "CLIP v2 타입 + 조명:: 노트 파싱(kind/uuid) + PMNode tomboyInternalLink 멤버십 추출. hueTypes imports color XY/Gamut. TDD.\n\n```json:metadata\n{\"files\": [\"app/src/lib/hue/hueTypes.ts\", \"app/src/lib/hue/hueNoteParse.ts\", \"app/tests/unit/hue/hueNoteParse.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/hue/hueNoteParse.test.ts\", \"acceptanceCriteria\": [\"parseHueNote bulb/zone/zone-null/master/none/unknown\", \"extractMembershipTitles reads marks in order deduped\"]}\n```"
+    },
+    {
+      "id": 9,
+      "planTask": 2,
+      "subject": "Task 2: bridge hue.ts — discover/pair/clip",
+      "status": "completed",
+      "description": "브릿지 /hue/{discover,pair,clip} CLIP v2 릴레이(node:https insecure agent), path 화이트리스트, 주입 hueRequest. server.ts 등록. TDD node:test.\n\n```json:metadata\n{\"files\": [\"bridge/src/hue.ts\", \"bridge/src/hue.test.ts\", \"bridge/src/server.ts\"], \"verifyCommand\": \"cd bridge && node --import tsx --test src/hue.test.ts\", \"acceptanceCriteria\": [\"401 no token\", \"clip non-whitelisted path 400\", \"pair 101->409 + success appkey/clientkey\", \"clip pipes status+body\"]}\n```"
+    },
+    {
+      "id": 10,
+      "planTask": 3,
+      "subject": "Task 3: hueSettings + hueClient",
+      "status": "completed",
+      "blockedBy": [9],
+      "description": "appSettings ip/appkey/clientkey + 앱→브릿지 /hue/* 클라(전역 터미널 브릿지 재사용) + getHueContext/hueCall. TDD fetch mock.\n\n```json:metadata\n{\"files\": [\"app/src/lib/storage/hueSettings.ts\", \"app/src/lib/hue/hueClient.ts\", \"app/tests/unit/hue/hueClient.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/hue/hueClient.test.ts\", \"acceptanceCriteria\": [\"hueClip bearer+body status+data\", \"huePair 409->link_button\", \"hueDiscover bridges\", \"getHueContext null when unset\"]}\n```"
+    },
+    {
+      "id": 11,
+      "planTask": 4,
+      "subject": "Task 4: noteTypes 등재 + hueImport",
+      "status": "completed",
+      "blockedBy": [8],
+      "description": "registry 조명:: (hue-master) + planLightImports 멱등 플래너. TDD.\n\n```json:metadata\n{\"files\": [\"app/src/lib/noteTypes/registry.ts\", \"app/src/lib/hue/hueImport.ts\", \"app/tests/unit/hue/hueImport.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/hue/hueImport.test.ts && npx vitest run tests/unit/noteTypes\", \"acceptanceCriteria\": [\"composeTitle 조명::전체\", \"planLightImports skips existing\", \"idempotent\", \"name fallback 전구 <id>\"]}\n```"
+    },
+    {
+      "id": 12,
+      "planTask": 5,
+      "subject": "Task 5: hueNotePlugin + BulbControl",
+      "status": "completed",
+      "blockedBy": [8, 10],
+      "description": "조명:: 게이트 에디터 플러그인(위젯 데코 + Svelte mount/unmount) + BulbControl(마운트 fetch+⟳, 옵티미스틱 쓰기) + Zone/Master 스텁 + TomboyEditor 등록. buildHueDecorations 유닛 + npm run check.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/hueNote/hueNotePlugin.ts\", \"app/src/lib/editor/hueNote/BulbControl.svelte\", \"app/src/lib/editor/hueNote/ZoneControl.svelte\", \"app/src/lib/editor/hueNote/MasterDashboard.svelte\", \"app/src/lib/editor/TomboyEditor.svelte\", \"app/tests/unit/hue/hueNotePlugin.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/hue/hueNotePlugin.test.ts && npm run check\", \"acceptanceCriteria\": [\"one widget bulb / none non-hue\", \"decoration key changes on sig change\", \"capability-gated controls\", \"npm run check\"]}\n```"
+    },
+    {
+      "id": 13,
+      "planTask": 6,
+      "subject": "Task 6: ZoneControl + zoneOps",
+      "status": "completed",
+      "blockedBy": [12],
+      "description": "존 위젯 — grouped_light 바 + 양방향 멤버십(POST/PUT zone + write-back) + 씬 recall. zoneOps + noteBody. TDD + npm run check.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/hueNote/ZoneControl.svelte\", \"app/src/lib/hue/zoneOps.ts\", \"app/src/lib/hue/noteBody.ts\", \"app/tests/unit/hue/zoneOps.test.ts\", \"app/tests/unit/hue/noteBody.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/hue/zoneOps.test.ts tests/unit/hue/noteBody.test.ts && npm run check\", \"acceptanceCriteria\": [\"resolveMembershipIds resolve+unresolved\", \"groupedLightIdOf rid/null\", \"firstBodyLineOf second line\", \"manual group/push/scene\"]}\n```"
+    },
+    {
+      "id": 14,
+      "planTask": 7,
+      "subject": "Task 7: MasterDashboard",
+      "status": "completed",
+      "blockedBy": [11, 13],
+      "description": "마스터 위젯 — 전구 가져오기(멱등 createNote) + 전역 on/off + 미페어링 안내. noteBody(Task6) + hueImport(Task4) 의존. npm run check + 수동.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/hueNote/MasterDashboard.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"import only missing, idempotent\", \"all on/off iterates\", \"unpaired guidance+disabled\"]}\n```"
+    },
+    {
+      "id": 15,
+      "planTask": 8,
+      "subject": "Task 8: 설정 Hue 페어링 탭",
+      "status": "completed",
+      "blockedBy": [10],
+      "description": "설정 Hue 섹션 — 발견/수동 IP → 링크버튼 → 연결(키 발급·저장) → 해제. 터미널 브릿지 자격 재사용. npm run check + 수동.\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"discover or manual IP\", \"connect mints+stores, 409 message\", \"disconnect clears\"]}\n```"
+    },
+    {
+      "id": 16,
+      "planTask": 9,
+      "subject": "Task 9: 가이드 카드 + CLAUDE.md + 스킬 스텁",
+      "status": "completed",
+      "blockedBy": [14, 15],
+      "description": "설정→가이드 조명 카드 + CLAUDE.md tomboy-hue 행 + tomboy-hue SKILL.md 스텁. npm run check + 수동.\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\", \"CLAUDE.md\", \".claude/skills/tomboy-hue/SKILL.md\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"guide card notes subtab\", \"CLAUDE.md row\", \"skill stub invariants\", \"npm run check\"]}\n```"
+    },
+    {
+      "id": 17,
+      "planTask": 10,
+      "subject": "Task 10: 씬 저장 + Hue→노트 풀 멤버십",
+      "status": "completed",
+      "blockedBy": [13],
+      "description": "스펙 §9 씬 저장 + §5.2 양방향 풀(플랜 Task6 누락분). zoneOps buildSceneActions+resolveChildTitles, ZoneControl saveScene/pullMembership, 가이드 복원.\n\n```json:metadata\n{\"files\": [\"app/src/lib/hue/zoneOps.ts\", \"app/src/lib/editor/hueNote/ZoneControl.svelte\", \"app/tests/unit/hue/zoneOps.test.ts\", \"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/hue && npm run check\", \"acceptanceCriteria\": [\"buildSceneActions CT vs color\", \"resolveChildTitles\", \"saveScene POST scene\", \"pullMembership rewrites link list\", \"guide restored\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-20T00:00:00+09:00"
+}

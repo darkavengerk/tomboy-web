@@ -1,0 +1,38 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-20-hue-zone-note-readd.md",
+  "specPath": "docs/superpowers/specs/2026-06-20-hue-zone-note-readd-design.md",
+  "tasks": [
+    {
+      "id": 30,
+      "planTask": 1,
+      "subject": "Task 1: 순수 zone 데이터 레이어 (타입+멤버십+파싱+가져오기)",
+      "status": "completed",
+      "description": "**Goal:** zone 순수 로직(HueZone, lightsInZone, zone 파싱, planZoneImports) TDD additive.\n\n**Files:** hueTypes.ts, roomOps.ts, hueNoteParse.ts, hueImport.ts + {roomOps,hueNoteParse,hueImport}.test.ts\n\n**Acceptance:** HueZone; lightsInZone(children light 직접·순서보존·device-hop 없음); parse zone:<uuid>→zoneId; planZoneImports(skip/title+zone:<id>/폴백); hue 그린+check 0.\n\n**Verify:** cd /var/home/umayloveme/workspace/tomboy-web/.worktrees/po/app && npx vitest run tests/unit/hue/roomOps.test.ts tests/unit/hue/hueNoteParse.test.ts tests/unit/hue/hueImport.test.ts && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/hue/hueTypes.ts\", \"app/src/lib/hue/roomOps.ts\", \"app/src/lib/hue/hueNoteParse.ts\", \"app/src/lib/hue/hueImport.ts\", \"app/tests/unit/hue/roomOps.test.ts\", \"app/tests/unit/hue/hueNoteParse.test.ts\", \"app/tests/unit/hue/hueImport.test.ts\"], \"verifyCommand\": \"cd /var/home/umayloveme/workspace/tomboy-web/.worktrees/po/app && npx vitest run tests/unit/hue/roomOps.test.ts tests/unit/hue/hueNoteParse.test.ts tests/unit/hue/hueImport.test.ts && npm run check\", \"acceptanceCriteria\": [\"HueZone\", \"lightsInZone\", \"zone 파싱+zoneId\", \"planZoneImports\", \"hue 그린+check 0\"]}\n```"
+    },
+    {
+      "id": 31,
+      "planTask": 2,
+      "subject": "Task 2: RoomControl→GroupControl 일반화 + 플러그인 zone 배선",
+      "status": "completed",
+      "blockedBy": [30],
+      "description": "**Goal:** RoomControl→GroupControl 일반화(groupKind prop, 멤버십 분기); 플러그인 room·zone 둘 다 GroupControl.\n\n**Files:** RoomControl.svelte→GroupControl.svelte, hueNotePlugin.ts, roomDoc.ts(주석), hueNotePlugin.test.ts\n\n**Acceptance:** GroupControl props{groupKind,groupId,view}; load GET ${groupKind}/${groupId}+멤버십 분기+scene rid===groupId; saveScene rtype=groupKind; 플러그인 room|zone→GroupControl+key zoneId; zone 위젯 테스트+room 유지; check 0+hue 그린.\n\n**Verify:** cd /var/home/umayloveme/workspace/tomboy-web/.worktrees/po/app && npx vitest run tests/unit/hue/hueNotePlugin.test.ts && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/hueNote/GroupControl.svelte\", \"app/src/lib/editor/hueNote/hueNotePlugin.ts\", \"app/src/lib/hue/roomDoc.ts\", \"app/tests/unit/hue/hueNotePlugin.test.ts\"], \"verifyCommand\": \"cd /var/home/umayloveme/workspace/tomboy-web/.worktrees/po/app && npx vitest run tests/unit/hue/hueNotePlugin.test.ts && npm run check\", \"acceptanceCriteria\": [\"GroupControl groupKind\", \"load 멤버십 분기+scene 필터\", \"saveScene rtype=groupKind\", \"플러그인 room|zone+key zoneId\", \"zone 위젯+room 유지\", \"check 0+hue 그린\"]}\n```"
+    },
+    {
+      "id": 32,
+      "planTask": 3,
+      "subject": "Task 3: MasterDashboard — 존 가져오기 + 존 묶음 블록",
+      "status": "completed",
+      "blockedBy": [30],
+      "description": "**Goal:** 마스터 가져오기 존 노트 멱등 생성 + 본문 전구/방/존 3블록.\n\n**Files:** MasterDashboard.svelte, masterBundle.test.ts\n\n**Acceptance:** importAll zone GET+planZoneImports+toast 존개수; writeBundles 3블록(존: zoneTitles)+멱등; masterBundle 3 번들 테스트; check 0.\n\n**Verify:** cd /var/home/umayloveme/workspace/tomboy-web/.worktrees/po/app && npx vitest run tests/unit/hue/masterBundle.test.ts && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/hueNote/MasterDashboard.svelte\", \"app/tests/unit/hue/masterBundle.test.ts\"], \"verifyCommand\": \"cd /var/home/umayloveme/workspace/tomboy-web/.worktrees/po/app && npx vitest run tests/unit/hue/masterBundle.test.ts && npm run check\", \"acceptanceCriteria\": [\"importAll zone+toast\", \"writeBundles 3블록 멱등\", \"masterBundle 3 번들\", \"check 0\"]}\n```"
+    },
+    {
+      "id": 33,
+      "planTask": 4,
+      "subject": "Task 4: 문서 — SKILL.md, CLAUDE.md, 가이드 카드",
+      "status": "completed",
+      "blockedBy": [31, 32],
+      "description": "**Goal:** 존 재도입+GroupControl 일반화 문서 반영.\n\n**Files:** .claude/skills/tomboy-hue/SKILL.md, CLAUDE.md, app/src/routes/settings/+page.svelte\n\n**Acceptance:** SKILL 존 행+GroupControl 불변식+파일목록; CLAUDE 행 존+GroupControl 경로; 가이드 카드 존 한 줄; check 0.\n\n**Verify:** cd /var/home/umayloveme/workspace/tomboy-web/.worktrees/po/app && npm run check\n\n```json:metadata\n{\"files\": [\".claude/skills/tomboy-hue/SKILL.md\", \"CLAUDE.md\", \"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd /var/home/umayloveme/workspace/tomboy-web/.worktrees/po/app && npm run check\", \"acceptanceCriteria\": [\"SKILL 존 행+불변식\", \"CLAUDE 행 존\", \"가이드 카드 존\", \"check 0\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-20T16:00:00+09:00"
+}

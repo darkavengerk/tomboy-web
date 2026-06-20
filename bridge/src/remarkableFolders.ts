@@ -48,6 +48,11 @@ export function _resetRemarkableFoldersCache(): void {
 	cache.clear();
 }
 
+/** 대시보드(`/status`)용 — 현재 캐시된 별칭(폴더 트리) 수. */
+export function remarkableFoldersCacheSize(): number {
+	return cache.size;
+}
+
 export interface FoldersRequestInput {
 	token: string | undefined;
 	secret: string;

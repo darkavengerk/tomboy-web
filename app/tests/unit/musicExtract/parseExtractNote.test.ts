@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { parseExtractNote, pendingItems, isExtractNoteDoc } from '$lib/musicExtract/parseExtractNote.js';
-import type { PlaylistItem, SingleItem } from '$lib/musicExtract/parseExtractNote.js';
+import type { PlaylistItem, SingleItem, ChapterItem } from '$lib/musicExtract/parseExtractNote.js';
 
 const UUID = 'ab12cd34-5678-49ab-8cde-0123456789ab';
 
@@ -128,5 +128,47 @@ describe('parseExtractNote — 재생목록(혼합)', () => {
 		const pl = note.items.filter((i) => i.kind === 'playlist');
 		expect(pl).toHaveLength(2);
 		expect(pl.every((i) => i.kind === 'playlist' && i.done === false)).toBe(true);
+	});
+});
+
+describe('parseExtractNote — 챕터', () => {
+	it('챕터:<URL> 일반 줄은 chapter 항목(done=false)', () => {
+		const note = parseExtractNote(docFrom('<p>음악추출::x</p><p>챕터:https://www.youtube.com/watch?v=ch1</p>'));
+		const ch = note.items.filter((i) => i.kind === 'chapter');
+		expect(ch).toHaveLength(1);
+		expect(ch[0]).toMatchObject({ kind: 'chapter', source: 'https://www.youtube.com/watch?v=ch1', done: false });
+	});
+
+	it('다음 블록이 플레이리스트 결과 헤더면 done=true', () => {
+		const note = parseExtractNote(docFrom(
+			`<p>음악추출::x</p>` +
+			`<p>챕터:https://www.youtube.com/watch?v=ch1</p>` +
+			`<p>플레이리스트: 영상</p><ul><li><p>https://b.ex/files/${UUID}/A.mp3</p></li></ul>`
+		));
+		const ch = note.items.filter((i) => i.kind === 'chapter');
+		expect(ch).toHaveLength(1);
+		expect(ch[0].kind === 'chapter' && (ch[0] as ChapterItem).done).toBe(true);
+	});
+
+	it('list= 가 있어도 챕터 마커가 재생목록보다 우선', () => {
+		const note = parseExtractNote(docFrom('<p>음악추출::x</p><p>챕터:https://www.youtube.com/watch?v=ch1&list=PLaaa</p>'));
+		expect(note.items).toHaveLength(1);
+		expect(note.items[0].kind).toBe('chapter');
+	});
+
+	it('pendingItems: 미완료 챕터 포함, done 챕터 제외', () => {
+		const note = parseExtractNote(docFrom(
+			`<p>음악추출::x</p>` +
+			`<p>챕터:https://www.youtube.com/watch?v=done</p><p>플레이리스트: V</p><ul><li><p>https://b.ex/files/${UUID}/A.mp3</p></li></ul>` +
+			`<p>챕터:https://www.youtube.com/watch?v=pend</p>`
+		));
+		const pend = pendingItems(note);
+		expect(pend).toHaveLength(1);
+		expect(pend[0]).toMatchObject({ kind: 'chapter', source: 'https://www.youtube.com/watch?v=pend' });
+	});
+
+	it('URL 없는 챕터: 줄은 무시', () => {
+		const note = parseExtractNote(docFrom('<p>음악추출::x</p><p>챕터:로파이 믹스</p>'));
+		expect(note.items).toEqual([]);
 	});
 });

@@ -1,6 +1,6 @@
 import type { EditorView } from '@tiptap/pm/view';
 import { parseExtractNote, pendingItems } from '$lib/musicExtract/parseExtractNote.js';
-import { extractOne, enumeratePlaylist, ExtractError, type ExtractErrorKind } from '$lib/musicExtract/extractClient.js';
+import { extractOne, enumeratePlaylist, extractChapters, ExtractError, type ExtractErrorKind } from '$lib/musicExtract/extractClient.js';
 import { writeExtractResult } from '$lib/musicExtract/writeExtractResult.js';
 import { writePlaylistBlock } from '$lib/musicExtract/writePlaylistBlock.js';
 import { pushToast } from '$lib/stores/toast.js';
@@ -32,6 +32,8 @@ interface Tally {
 	singleFail: number;
 	playlistDone: number;
 	playlistTracks: number;
+	chapterDone: number;
+	chapterTracks: number;
 	truncated: number;
 }
 
@@ -93,25 +95,55 @@ async function processPlaylist(view: EditorView, source: string, t: Tally): Prom
 	return 'ok';
 }
 
+/** 챕터 분할: 데스크탑이 한 번에 다운+분할+업로드 → 트랙 URL 을 같은 플레이리스트 블록에 기록. */
+async function processChapters(view: EditorView, source: string, t: Tally): Promise<ProcessOutcome> {
+	let result;
+	try {
+		result = await extractChapters({ source });
+	} catch (err) {
+		const kind = kindOf(err);
+		if (SYSTEMIC.has(kind)) {
+			if (!view.isDestroyed) pushToast(KIND_MESSAGES[kind] ?? '음악 추출 실패', { kind: 'error' });
+			return 'stop';
+		}
+		if (!view.isDestroyed) pushToast(`챕터 추출 실패: ${KIND_MESSAGES[kind] ?? ''}`, { kind: 'error' });
+		return 'ok'; // 항목별 오류 — 다음 항목으로
+	}
+	if (view.isDestroyed) return 'stop';
+	const urls = result.tracks.map((tr) => tr.url);
+	if (urls.length > 0 && writePlaylistBlock(view, { source, label: result.label, urls })) {
+		t.chapterDone++;
+		t.chapterTracks += urls.length;
+		if (result.truncated) t.truncated++;
+	}
+	return 'ok';
+}
+
 export async function runExtractButtonClick(view: EditorView): Promise<void> {
 	const pending = pendingItems(parseExtractNote(view.state.doc));
 	if (pending.length === 0) {
 		pushToast('추출할 항목이 없습니다', { kind: 'info' });
 		return;
 	}
-	const t: Tally = { singleOk: 0, singleFail: 0, playlistDone: 0, playlistTracks: 0, truncated: 0 };
+	const t: Tally = { singleOk: 0, singleFail: 0, playlistDone: 0, playlistTracks: 0, chapterDone: 0, chapterTracks: 0, truncated: 0 };
 	for (const item of pending) {
 		if (view.isDestroyed) break;
-		const outcome = item.kind === 'single' ? await processSingle(view, item.source, t) : await processPlaylist(view, item.source, t);
+		const outcome =
+			item.kind === 'single'
+				? await processSingle(view, item.source, t)
+				: item.kind === 'chapter'
+					? await processChapters(view, item.source, t)
+					: await processPlaylist(view, item.source, t);
 		if (outcome === 'stop') return;
 	}
 	if (view.isDestroyed) return;
 	const parts: string[] = [];
 	if (t.playlistDone) parts.push(`재생목록 ${t.playlistDone}개(${t.playlistTracks}곡)`);
+	if (t.chapterDone) parts.push(`챕터 ${t.chapterDone}개(${t.chapterTracks}곡)`);
 	if (t.singleOk) parts.push(`${t.singleOk}곡 추출`);
 	if (t.singleFail) parts.push(`${t.singleFail}곡 실패`);
 	if (t.truncated) parts.push(`상한 초과 ${t.truncated}개 일부만`);
 	const summary = parts.join(', ') || '변경 없음';
-	const isError = t.singleFail > 0 && t.singleOk === 0 && t.playlistDone === 0;
+	const isError = t.singleFail > 0 && t.singleOk === 0 && t.playlistDone === 0 && t.chapterDone === 0;
 	pushToast(summary, { kind: isError ? 'error' : 'info' });
 }

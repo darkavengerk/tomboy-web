@@ -195,3 +195,43 @@ export function setBundleChecked(view: EditorView, ordinal: number, checked: boo
 	if (!node || node.type.name !== 'inlineCheckbox') return;
 	view.dispatch(view.state.tr.setNodeAttribute(bundle.checkboxPos, 'checked', checked));
 }
+
+/** 묶음 링크 리스트에 새 내부링크 항목 삽입(드래그-드롭). ordinal 로 신선한
+ *  번들 재조회 → 최상위 bulletList 의 boundary 위치(number=그 인덱스 항목 앞,
+ *  null=끝)에 `listItem>paragraph>[[title]]` 삽입. 명시적 tomboyInternalLink
+ *  마크라 재파싱 즉시 바가 뜬다(autolink 대기 없음). 리스트/번들 없으면 no-op
+ *  (false). 묶음 유일의 의도적 리스트 변형 — 추가만, 재정렬/삭제 없음. */
+export function insertBundleListItemLink(
+	view: EditorView,
+	ordinal: number,
+	boundary: number | null,
+	title: string
+): boolean {
+	const bundle = noteBundlePluginKey
+		.getState(view.state)
+		?.bundles.find((b) => b.ordinal === ordinal);
+	if (!bundle || bundle.listPos === null || bundle.listEnd === null) return false;
+	const t = title.trim();
+	if (!t) return false;
+	const { schema } = view.state;
+	const linkMark = schema.marks.tomboyInternalLink;
+	const listItemType = schema.nodes.listItem;
+	const paragraphType = schema.nodes.paragraph;
+	if (!linkMark || !listItemType || !paragraphType) return false;
+	const listNode = view.state.doc.nodeAt(bundle.listPos);
+	if (!listNode) return false;
+	const textNode = schema.text(t, [linkMark.create({ target: t })]);
+	const li = listItemType.create(null, paragraphType.create(null, textNode));
+	let pos = bundle.listEnd - 1; // append: 닫기 토큰 바로 안쪽
+	if (boundary !== null) {
+		let found = false;
+		listNode.forEach((child, offset, index) => {
+			if (!found && index === boundary) {
+				pos = bundle.listPos! + 1 + offset;
+				found = true;
+			}
+		});
+	}
+	view.dispatch(view.state.tr.insert(pos, li).scrollIntoView());
+	return true;
+}

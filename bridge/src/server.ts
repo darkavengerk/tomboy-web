@@ -18,8 +18,10 @@ import { handleOcrProxy } from './ocr.js';
 import { handleClaudeChat } from './claude.js';
 import { handleAutomationRun } from './automation.js';
 import { handleRemarkableUpload } from './remarkableUpload.js';
-import { handleMusicExtract, handleMusicEnumerate, handleSunoPlaylist } from './music.js';
+import { handleMusicExtract, handleMusicEnumerate, handleMusicChapters, handleSunoPlaylist } from './music.js';
+import { handleHueDiscover, handleHuePair, handleHueClip, handleHueHealth, handleHueCredsDelete } from './hue.js';
 import { handleGpuStatus, handleGpuUnload } from './gpu.js';
+import { handleStatus } from './status.js';
 import { handleRemarkableWallpaper } from './remarkable.js';
 import { handleRemarkableFolders } from './remarkableFolders.js';
 import { handleRemarkableSendPdf } from './remarkableSendPdf.js';
@@ -60,6 +62,8 @@ const SUNO_MAX_PLAYLIST = Number(process.env.SUNO_MAX_PLAYLIST) || 100;
 // remote-LAN Ollama) can override it. `llm.ts` reads the same env var
 // independently — keep them in sync.
 const OLLAMA_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+// `/status` 대시보드 프로브용 — rag.ts 가 읽는 기본값과 동일하게 맞춘다.
+const RAG_SEARCH_URL = process.env.RAG_SEARCH_URL || 'http://localhost:8743/search';
 const HOSTS_FILE = process.env.BRIDGE_HOSTS_FILE;
 const REMARKABLE_HOSTS_FILE = process.env.BRIDGE_REMARKABLE_HOSTS_FILE;
 const SSH_HOSTS_FILE = process.env.BRIDGE_SSH_HOSTS_FILE;
@@ -184,6 +188,11 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 		return;
 	}
 
+	if (url === '/music/chapters' && req.method === 'POST') {
+		await handleMusicChapters(req, res, SECRET, MUSIC_SERVICE_URL);
+		return;
+	}
+
 	if (url === '/music/suno' && req.method === 'POST') {
 		await handleSunoPlaylist(req, res, SECRET, SUNO_MAX_PLAYLIST);
 		return;
@@ -199,6 +208,24 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 		return;
 	}
 
+	if (url === '/status' && req.method === 'GET') {
+		await handleStatus(req, res, {
+			secret: SECRET,
+			filesDir: BRIDGE_FILES_DIR,
+			publicBaseUrl: BRIDGE_PUBLIC_BASE_URL,
+			port: PORT,
+			services: [
+				{ name: 'ocr', url: OCR_SERVICE_URL, path: '/status', auth: true },
+				{ name: 'ollama', url: OLLAMA_URL, path: '/api/version' },
+				{ name: 'music', url: MUSIC_SERVICE_URL },
+				{ name: 'automation', url: AUTOMATION_SERVICE_URL },
+				{ name: 'claude', url: CLAUDE_SERVICE_URL },
+				{ name: 'rag', url: RAG_SEARCH_URL }
+			]
+		});
+		return;
+	}
+
 	if (url === '/remarkable/wallpaper' && req.method === 'POST') {
 		await handleRemarkableWallpaper(req, res, SECRET);
 		return;
@@ -211,6 +238,31 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 
 	if (url === '/remarkable/send-pdf' && req.method === 'POST') {
 		await handleRemarkableSendPdf(req, res, SECRET);
+		return;
+	}
+
+	if (url === '/hue/discover' && req.method === 'GET') {
+		await handleHueDiscover(req, res, SECRET);
+		return;
+	}
+
+	if (url === '/hue/pair' && req.method === 'POST') {
+		await handleHuePair(req, res, SECRET);
+		return;
+	}
+
+	if (url === '/hue/clip' && req.method === 'POST') {
+		await handleHueClip(req, res, SECRET);
+		return;
+	}
+
+	if (url === '/hue/health' && req.method === 'GET') {
+		await handleHueHealth(req, res, SECRET);
+		return;
+	}
+
+	if (url === '/hue/creds' && req.method === 'DELETE') {
+		await handleHueCredsDelete(req, res, SECRET);
 		return;
 	}
 

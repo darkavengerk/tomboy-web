@@ -47,11 +47,14 @@ Most subsystems have dedicated skills — invoke via the `Skill` tool when worki
 | `tomboy-ocr-note` | `ocr://` notes (GOT-OCR + translate) + `/admin/gpu` | `lib/ocrNote/`, `ocr-service/` |
 | `tomboy-imagecache` | IDB image cache + LRU + fetcher chain | `lib/imageCache/` |
 | `tomboy-dataautomation` | `자동화::` note ⟳ button → bridge → desktop runner → refresh `DATA::` chart-note CSV | `lib/automation/`, `lib/editor/automationNote/`, `bridge/src/automation.ts`, `automation-service/` |
-| `tomboy-musicextract` | `음악추출::` 노트 ⟳ → 데스크탑 yt-dlp → mp3 → 브릿지 `/files` 저장·재생 | `lib/musicExtract/`, `lib/editor/musicExtractNote/`, `bridge/src/music.ts`, `music-service/` |
+| `tomboy-musicextract` | `음악추출::` 노트 ⟳ → 데스크탑 yt-dlp → mp3(단일/재생목록/`챕터:` 분할) → 브릿지 `/files` 저장·재생 | `lib/musicExtract/`, `lib/editor/musicExtractNote/`, `bridge/src/music.ts`, `music-service/` |
 | `tomboy-musicplayer` | `음악::` 노트 재생 — 전역 단일 오디오 엔진 + 싱글톤 큐, 노트별 이어듣기, 세션 복원, 모바일 알약/데스크탑 레일, iOS 자동재생 함정 | `lib/music/`, `lib/editor/musicNote/` |
 | `tomboy-remarkable-send` | 노트 → PDF 번들(forward + backward 트리 + 이미지/차트) → 브릿지 SSH → reMarkable xochitl | `lib/remarkable/`, `bridge/src/remarkableSendPdf.ts` |
-| `tomboy-notebundle` | `[체크박스]탭:N`/`묶음:N` + 내부링크 리스트 → 인-에디터 파일철 두 종류(탭=활성중심 재귀 윈도우 / 묶음=5바 타이틀 윈도우) + 임베디드 TomboyEditor. 제목 `탭::`/`묶음::` → 본문 전체가 풀-노트 파일철(전용 노트) | `lib/editor/noteBundle/` |
+| `tomboy-notebundle` | `[체크박스]탭:N`/`묶음:N` + 내부링크 리스트 → 인-에디터 파일철 두 종류(탭=활성중심 재귀 윈도우 / 묶음=5바 타이틀 윈도우) + 임베디드 TomboyEditor. 제목 `탭::`/`묶음::` → 본문 전체가 풀-노트 파일철(전용 노트). 데스크탑 노트 드래그 핸들 → 묶음 위 드롭 = 리스트에 항목 추가(묶음 전용) | `lib/editor/noteBundle/` |
 | `tomboy-tally` | `집계::` 익명 투표/퀴즈 전용 노트 — 본문 파싱(`|중복가능|정답:N`) + 클라 집계/채점 + top-level Firestore `polls/{guid}` + 호스트/게스트 분기 + `/poll/<제목>` 키오스크 공유링크 | `lib/tally/`, `lib/editor/tallyNote/`, `routes/poll/[title]/` |
+| `tomboy-bridgedash` | `브릿지::` 노트 ⟳ → 브릿지 `GET /status` 집계 → 시스템(디스크/메모리/온도)+서비스 도달성+파일+연결을 `---` 섹션·```csv 표로 본문 스냅샷 렌더 | `lib/bridgeStatus/`, `lib/editor/bridgeNote/`, `bridge/src/status.ts` |
+| `tomboy-hue` | `조명::` 노트 — Hue 허브 방(room)/존(zone)/전구/씬 제어(방·존 노트=체크박스 조명+라디오 씬, 공유 GroupControl; 진짜 Hue 씬 그룹 스코프; 브릿지 직통 CLIP v2); 브릿지가 creds 보관(BRIDGE_HUE_FILE, 파일 우선) — 기기당 설정 0 | `lib/hue/` (roomOps.ts, roomDoc.ts), `lib/editor/hueNote/` (GroupControl.svelte), `bridge/src/hue.ts`, `bridge/src/hueCreds.ts` |
+| `tomboy-drawers` | 데스크탑 F2(상단)/F3(오른쪽) 전역 슬라이드-인 서랍 — 작업공간 무관 평행 surface(WorkspaceState[])에 노트 주차(터미널 keep-alive), SurfaceRef `*On` 뮤테이터, **가시성≠라이브니스 분리**(서랍 열면 캔버스 노트 active=false지만 안 숨음), MOVE 시맨틱, 영속 v4 | `lib/desktop/{session.svelte.ts,DrawerOverlay,DesktopWorkspace,NoteWindow}` |
 
 Two features have no dedicated skill yet and live inline below: **이미지 임시 저장소** (Vercel Blob) and **채팅 노트** (`llm://` + `claude://`).
 
@@ -227,6 +230,7 @@ These touch multiple skills. Single-skill invariants live inside their skill.
 - **Schedule updates do NOT propagate via Dropbox sync.** Multi-device push coverage requires notifications enabled on every device.
 - **Image storage = two channels.** New paste → Vercel Blob (temp). User-explicit "Dropbox로 저장" promotes to Dropbox. Existing Dropbox images untouched (no migration). Diary pipeline / terminal note paste / OCR note keep their own paths.
 - **`IMAGE_STORAGE_TOKEN` env (Vercel) ≡ `appSettings.imageStorageToken` (client)** byte-identical. Same pattern as `BRIDGE_SECRET` (Pi) ≡ `BRIDGE_SHARED_TOKEN` (ocr-service) and the terminal bridge Bearer token.
+- **`BRIDGE_HUE_FILE` (Pi bridge env)** points at a JSON file holding Hue `{ip,appkey,clientkey}` as the single source. `/hue/clip` uses it with **file-wins** priority (client-sent creds are only a fallback when the file is absent). `/hue/health` reports `{configured,ip}` (never the secrets); `DELETE /hue/creds` clears it. Unset → each device sends creds per request (legacy behavior). One pairing on any device covers all devices sharing the bridge token.
 - **Cache key for image fetch is the exact post-`toDirectImageUrl` URL** (`?raw=1` byte-identical). Don't normalize downstream — query param reorder silently breaks cache. See `tomboy-imagecache`.
 - **`www.dropbox.com` blocks `fetch()` (no CORS) but works as `<img src>`.** Use the `ImageFetcher` registry (`dropboxFetcher` routes via SDK `sharingGetSharedLinkFile`). Plain `fetch()` only as fallback. See `tomboy-imagecache`.
 

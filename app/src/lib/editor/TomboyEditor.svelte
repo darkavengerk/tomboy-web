@@ -47,11 +47,13 @@
 import { createTitleIsolationPlugin } from "./titleIsolation/titleIsolationPlugin.js";
 import { createChartBlockPlugin } from "./chartBlock/chartBlockPlugin.js";
 import { createAutomationNotePlugin } from "./automationNote/automationNotePlugin.js";
+import { createHueNotePlugin } from "./hueNote/hueNotePlugin.js";
 import { createRemarkableNotePlugin } from "./remarkableNote/remarkableNotePlugin.js";
 import { createNoteTitleDropPlugin } from "./noteTitleDrop/noteTitleDropPlugin.js";
 import { TomboyMusicNote } from "./musicNote/index.js";
 import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 import { TomboySunoImport } from "./sunoNote/index.js";
+import { TomboyBridgeNote } from "./bridgeNote/index.js";
 	import {
 		createSendListItemPlugin,
 		sendListItemPluginKey,
@@ -615,6 +617,17 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 					},
 				}),
 				Extension.create({
+					name: "tomboyHueNote",
+					addProseMirrorPlugins() {
+						return [
+							createHueNotePlugin({
+								getGuid: () => currentGuid ?? "",
+								oninternallink: (t) => oninternallink?.(t),
+							}),
+						];
+					},
+				}),
+				Extension.create({
 					name: "tomboyRemarkableNote",
 					addProseMirrorPlugins() {
 						return [createRemarkableNotePlugin()];
@@ -627,8 +640,11 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 					},
 				}),
 				TomboyMusicNote.configure({ getGuid: () => currentGuid ?? "" }),
-				TomboyMusicExtractNote,
+				TomboyMusicExtractNote.configure({
+					oninternallink: (t: string) => oninternallink?.(t),
+				}),
 				TomboySunoImport,
+				TomboyBridgeNote,
 				Extension.create({
 					name: "tomboySendListItem",
 					addProseMirrorPlugins() {
@@ -2492,7 +2508,8 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		cursor: default;
 	}
 
-	.tomboy-editor :global(.tomboy-music-extract-run) {
+	.tomboy-editor :global(.tomboy-music-extract-run),
+	.tomboy-editor :global(.tomboy-bridge-run) {
 		display: inline-flex;
 		align-items: center;
 		gap: 0.3em;
@@ -2505,7 +2522,27 @@ import { TomboySunoImport } from "./sunoNote/index.js";
 		color: var(--accent, #a05);
 		cursor: pointer;
 	}
-	.tomboy-editor :global(.tomboy-music-extract-run:disabled) {
+	.tomboy-editor :global(.tomboy-music-extract-run:disabled),
+	.tomboy-editor :global(.tomboy-bridge-run:disabled) {
+		opacity: 0.6;
+		cursor: default;
+	}
+	.tomboy-editor :global(.tomboy-music-extract-makenote) {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.3em;
+		margin-left: 0.5em;
+		padding: 0.1rem 0.55rem;
+		font-size: 0.8rem;
+		border: 1px solid var(--border, #ddd);
+		border-radius: 6px;
+		background: var(--surface, #fff);
+		color: var(--accent, #a05);
+		cursor: pointer;
+		vertical-align: middle;
+		user-select: none;
+	}
+	.tomboy-editor :global(.tomboy-music-extract-makenote:disabled) {
 		opacity: 0.6;
 		cursor: default;
 	}

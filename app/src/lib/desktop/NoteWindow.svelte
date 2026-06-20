@@ -78,7 +78,8 @@
 		clearNoteBg,
 		loadNoteOpacity,
 		setNoteOpacity,
-		type WallpaperMode
+		type WallpaperMode,
+		type SurfaceRef
 	} from './session.svelte.js';
 	import { resolveImageBlob } from '$lib/editor/imageActions/copyImage.js';
 	import { getBlob } from '$lib/imageCache/imageCache.js';
@@ -107,15 +108,35 @@
 		height: number;
 		z: number;
 		pinned?: boolean;
-		/** True when this window's workspace is the currently visible one.
-		 *  Hidden (`active=false`) windows still hold their TipTap / terminal
-		 *  state in memory, but skip Firebase attach and global editor
-		 *  registration so they aren't mistaken for the user's focus target. */
+		/** Liveness, NOT visibility. `active=false` windows still hold their
+		 *  TipTap / terminal state AND stay painted (unless `hidden`); they just
+		 *  skip Firebase attach + global editor registration so a same-guid copy
+		 *  on another surface (e.g. an open drawer) owns the user's focus target.
+		 *  Opening a drawer flips canvas windows to active=false while leaving them
+		 *  VISIBLE underneath — that's why visibility is a separate prop. */
 		active?: boolean;
+		/** Visibility. When omitted, falls back to `!active` (legacy callers that
+		 *  conflated the two). The desktop canvas passes this explicitly so a note
+		 *  hidden by a workspace switch is `display:none`, while a note merely
+		 *  shadowed by an open drawer stays painted. */
+		hidden?: boolean;
 		/** Minimized: render hidden (display:none) but stay mounted so editor /
 		 *  terminal / Firebase / spread-snapshot survive. Restored from the
 		 *  SidePanel 최소화됨 list or an F4-spread card click. */
 		minimized?: boolean;
+		/** When set, this window lives on a drawer surface; resize/pin/send-to-back
+		 *  route through the surface-aware session ops instead of the current
+		 *  workspace. Unset (canvas) keeps the legacy current-workspace calls. */
+		surface?: SurfaceRef;
+		/** When a drawer is open AND this is a canvas window, the close button
+		 *  becomes a stash arrow pointing at the drawer: 'up' → ↑ (F2/top),
+		 *  'right' → → (F3). null → normal close (✕). */
+		stashArrow?: 'up' | 'left' | 'right' | null;
+		/** Invoked when the stash arrow is clicked (move this note into the drawer). */
+		onstash?: (guid: string) => void;
+		/** Canvas-only: fired at title-bar drag-end with the viewport pointer so
+		 *  the host can move the window into an open drawer if released over it. */
+		ondragend?: (guid: string, pointer: { x: number; y: number }) => void;
 		onfocus: (guid: string) => void;
 		onclose: (guid: string) => void;
 		/** Minimize handler. Omitted by embedders without a taskbar (e.g. the
@@ -135,7 +156,12 @@
 		z,
 		pinned = false,
 		active = true,
+		hidden = undefined,
 		minimized = false,
+		surface = undefined,
+		stashArrow = null,
+		onstash = undefined,
+		ondragend = undefined,
 		onfocus,
 		onclose,
 		onminimize = undefined,
@@ -143,6 +169,19 @@
 		onresize,
 		onopenlink
 	}: Props = $props();
+
+	function applyGeometry(g: { x: number; y: number; width: number; height: number }) {
+		if (surface) desktopSession.updateGeometryOn(surface, guid, g);
+		else desktopSession.updateGeometry(guid, g);
+	}
+	function pinToggleOnSurface() {
+		if (surface) desktopSession.togglePinOn(surface, guid);
+		else desktopSession.togglePin(guid);
+	}
+	function sendBackOnSurface() {
+		if (surface) desktopSession.sendToBackOn(surface, guid);
+		else desktopSession.sendToBack(guid);
+	}
 
 	// `$state.raw` instead of `$state` for the big content holders. Svelte's
 	// default deep proxy makes every property read go through a trap, and
@@ -568,7 +607,7 @@
 			DESKTOP_WINDOW_MIN_WIDTH,
 			Math.round(width * ratio)
 		);
-		desktopSession.updateGeometry(guid, { x, y, width: newWidth, height });
+		applyGeometry({ x, y, width: newWidth, height });
 	}
 
 	function flushSave(): Promise<void> {
@@ -856,7 +895,8 @@
 		startPointerDrag(e, {
 			onMove: (dx, dy) => {
 				onmove(guid, origX + dx, origY + dy);
-			}
+			},
+			onEnd: (pointer) => ondragend?.(guid, pointer)
 		});
 	}
 
@@ -882,15 +922,59 @@
 		});
 	}
 
+	// 전용 묶음 노트 — 드롭된 노트를 본문 JSON 에 새 내부링크 항목으로 삽입+저장.
+	// boundary = doc.content 블록 인덱스(그 앞에 삽입), null = 끝. 인접 bulletList
+	// 있으면 합쳐 단일-항목 리스트 난립을 막는다.
+	function handleBundleInsertEntry(boundary: number | null, title: string) {
+		if (!editorContent || !note) return;
+		const t = title.trim();
+		if (!t) return;
+		const newItem = {
+			type: 'listItem',
+			content: [
+				{
+					type: 'paragraph',
+					content: [{ type: 'text', text: t, marks: [{ type: 'tomboyInternalLink', attrs: { target: t } }] }]
+				}
+			]
+		};
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const content: any[] = [...((editorContent.content as any[]) ?? [])];
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const mergeInto = (block: any, atStart: boolean) => ({
+			...block,
+			content: atStart ? [newItem, ...(block.content ?? [])] : [...(block.content ?? []), newItem]
+		});
+		if (boundary === null) {
+			const last = content[content.length - 1];
+			if (last && last.type === 'bulletList') content[content.length - 1] = mergeInto(last, false);
+			else content.push({ type: 'bulletList', content: [newItem] });
+		} else {
+			const at = content[boundary];
+			const prev = content[boundary - 1];
+			if (at && at.type === 'bulletList') content[boundary] = mergeInto(at, true);
+			else if (prev && prev.type === 'bulletList') content[boundary - 1] = mergeInto(prev, false);
+			else content.splice(boundary, 0, { type: 'bulletList', content: [newItem] });
+		}
+		const newDoc = { ...editorContent, content };
+		editorContent = newDoc; // 즉시 재파싱 → 새 바
+		// 영속 — 전용 묶음 뷰엔 라이브 에디터가 없어 pendingDoc/flushSave 경로가
+		// 없다(직접 저장). 실패하면 화면엔 항목이 남으니 토스트로 알린다.
+		void updateNoteFromEditor(note.guid, newDoc).catch((e) => {
+			console.error('[handleBundleInsertEntry]', e);
+			pushToast('노트를 묶음에 추가하지 못했습니다.', { kind: 'error' });
+		});
+	}
+
 	function handlePinToggle(e: MouseEvent) {
 		e.stopPropagation();
-		desktopSession.togglePin(guid);
+		pinToggleOnSurface();
 	}
 
 	function handleTitleBarAuxClick(e: MouseEvent) {
 		if (e.button === 1) {
 			e.preventDefault();
-			desktopSession.sendToBack(guid);
+			sendBackOnSurface();
 		}
 	}
 
@@ -1103,11 +1187,13 @@
 <div
 	bind:this={windowEl}
 	class="note-window"
-	class:hidden={!active}
+	class:hidden={hidden ?? !active}
 	class:minimized
 	data-has-bg={noteBgUrl ? 'true' : 'false'}
 	style="left:{x}px; top:{y}px; width:{width}px; height:{height}px; z-index:{z};"
-	style:background-color="rgba(255, 255, 255, {noteOpacity})"
+	style:background-color={isFocused || noteBgUrl
+		? `rgba(255, 255, 255, ${noteOpacity})`
+		: `rgba(232, 245, 233, ${noteOpacity})`}
 	onpointerdowncapture={handleWindowPointerDown}
 	onkeydown={handleKeyDown}
 >
@@ -1146,13 +1232,24 @@
 				data-no-drag
 			>&#x1F5D5;</button>
 		{/if}
-		<button
-			type="button"
-			class="close-btn"
-			onclick={handleClose}
-			aria-label="창 닫기"
-			data-no-drag
-		>✕</button>
+		{#if stashArrow && onstash}
+			<button
+				type="button"
+				class="close-btn stash-btn"
+				onclick={() => onstash?.(guid)}
+				aria-label="서랍으로 넣기"
+				title="서랍으로 넣기"
+				data-no-drag
+			>{stashArrow === 'up' ? '↑' : stashArrow === 'left' ? '←' : '→'}</button>
+		{:else}
+			<button
+				type="button"
+				class="close-btn"
+				onclick={handleClose}
+				aria-label="창 닫기"
+				data-no-drag
+			>✕</button>
+		{/if}
 	</div>
 	{/if}
 
@@ -1198,6 +1295,7 @@
 						onraw={() => (showRawBundle = true)}
 						onclose={handleClose}
 						onwindowdrag={handleBundleTitleDrag}
+						oninsertentry={handleBundleInsertEntry}
 						onminimize={onminimize ? () => onminimize?.(guid) : undefined}
 					/>
 				{:else}
@@ -1351,7 +1449,7 @@
 	<ResizeHandles
 		base={() => ({ x, y, width, height })}
 		min={{ width: DESKTOP_WINDOW_MIN_WIDTH, height: DESKTOP_WINDOW_MIN_HEIGHT }}
-		onresize={(g) => desktopSession.updateGeometry(guid, g)}
+		onresize={(g) => applyGeometry(g)}
 	/>
 </div>
 
@@ -1544,6 +1642,10 @@
 	.close-btn:hover {
 		background: #c0392b;
 		color: #fff;
+	}
+
+	.stash-btn {
+		font-weight: 700;
 	}
 
 	.toolbar-slot {

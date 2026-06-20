@@ -1,7 +1,7 @@
 import type { EditorView } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { urlChild } from '$lib/musicExtract/writeExtractResult.js';
-import { playlistSourceOf, isPlaylistHeaderText } from '$lib/musicExtract/parseExtractNote.js';
+import { playlistSourceOf, chapterSourceOf, isPlaylistHeaderText } from '$lib/musicExtract/parseExtractNote.js';
 
 const PLAYLIST_HEADER_PREFIX = '플레이리스트:';
 
@@ -11,6 +11,11 @@ export interface PlaylistBlockInput {
 	urls: string[];
 }
 
+/** 재생목록·챕터 소스 줄을 같은 방식으로 매칭 — 결과 블록은 양쪽 동형(플레이리스트: 헤더). */
+function sourceLineMatches(node: PMNode, source: string): boolean {
+	return playlistSourceOf(node) === source || chapterSourceOf(node) === source;
+}
+
 /** source 문단(미완료=다음 블록이 결과 헤더 아님) 뒤 삽입 위치를 라이브 재탐색. */
 function findInsertPos(doc: PMNode, source: string): number | null {
 	const blocks: { node: PMNode; offset: number }[] = [];
@@ -18,7 +23,7 @@ function findInsertPos(doc: PMNode, source: string): number | null {
 	for (let i = 1; i < blocks.length; i++) {
 		const { node, offset } = blocks[i];
 		if (node.type.name !== 'paragraph') continue;
-		if (playlistSourceOf(node) !== source) continue;
+		if (!sourceLineMatches(node, source)) continue;
 		const next = blocks[i + 1]?.node;
 		if (next && next.type.name === 'paragraph' && isPlaylistHeaderText(next.textContent)) continue; // 이미 결과 있음
 		return offset + node.nodeSize;

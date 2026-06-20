@@ -66,3 +66,8 @@ function normalizeEntry(host: string, value: unknown): WolEntry | null {
 export function lookupWolTarget(host: string): WolEntry | null {
 	return table.get(host.toLowerCase()) ?? null;
 }
+
+/** 대시보드(`/status`)용 — 등록된 WOL 호스트 수. */
+export function wolHostCount(): number {
+	return table.size;
+}

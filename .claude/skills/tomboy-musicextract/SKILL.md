@@ -1,29 +1,60 @@
 ---
 name: tomboy-musicextract
-description: 음악추출:: 노트 — YouTube 영상/재생목록을 데스크탑 yt-dlp로 mp3 추출, 브릿지 /files 저장, 멱등 채움
+description: 음악추출:: 노트 — YouTube 영상/재생목록/챕터를 데스크탑 yt-dlp로 mp3 추출, 브릿지 /files 저장, 멱등 채움
 ---
 
 # tomboy-musicextract
 
 `음악추출::` 작업대 노트. 영상 URL/검색어 리스트 → ⟳ → 데스크탑 yt-dlp → mp3 → 브릿지 `/files` →
 결과 URL을 항목 자식에 기록. 재생목록 URL은 일반 텍스트 줄로 쓰면 플레이리스트 블록으로 펼쳐진다.
-재생은 `음악::` 노트로 수동 구성.
+재생은 `음악::` 노트로 수동 구성(또는 완료 재생목록의 **🎵 노트 만들기** 버튼으로 자동 생성).
 
 ## 경로
-- 앱: `app/src/lib/musicExtract/{parseExtractNote,extractClient,writeExtractResult,writePlaylistBlock}.ts`,
-  `app/src/lib/editor/musicExtractNote/{musicExtractNotePlugin,runExtractButtonClick,index}.ts`
+- 앱: `app/src/lib/musicExtract/{parseExtractNote,extractClient,writeExtractResult,writePlaylistBlock,buildMusicNote}.ts`,
+  `app/src/lib/editor/musicExtractNote/{musicExtractNotePlugin,runExtractButtonClick,createMusicNoteFromPlaylist,index}.ts`
   (`playlistSourceOf` 헬퍼는 `parseExtractNote.ts` 내부)
-- 브릿지: `bridge/src/music.ts` (`/music/extract` relay, `/music/enumerate` 재생목록 열거)
-- 데스크탑: `music-service/` (yt-dlp + Fastify `/extract`, `/enumerate`)
+- 브릿지: `bridge/src/music.ts` (`/music/extract` relay, `/music/enumerate` 재생목록 열거, `/music/chapters` 챕터 분할)
+- 데스크탑: `music-service/` (yt-dlp + Fastify `/extract`, `/enumerate`, `/chapters`)
 
-## 단일 곡 vs 재생목록 구분
+## 단일 곡 vs 재생목록 vs 챕터 구분
 
 | 노트 내 표현 | 감지 방법 | 처리 경로 |
 |---|---|---|
 | 불릿 항목 (`- URL`) | 기존 bullet 파싱 | `extractOne` → `/music/extract` → `runner.extract` |
 | 일반 텍스트 줄 (`URL`) | `playlistSourceOf` — `list=` 또는 `/playlist?` 포함 | `enumeratePlaylist` → `/music/enumerate` → 곡별 `extractOne` |
+| `챕터:<URL>` 텍스트 줄 | `chapterSourceOf` — 텍스트가 `챕터:`로 시작 + http URL | `extractChapters` → `/music/chapters` → `runner.extractChapters`(한 번에 다운+분할+업로드) |
 
-**재생목록 = 일반 텍스트 줄, 단일 곡 = 불릿.** `runExtractButtonClick`이 각 소스를 분기한다.
+**재생목록 = 일반 텍스트 줄, 단일 곡 = 불릿, 챕터 = `챕터:` 텍스트 줄.** `runExtractButtonClick`이 각
+소스를 분기한다. 파서는 `챕터:`를 재생목록보다 **먼저** 검사 — `list=`가 있어도 `챕터:` 줄이면 챕터.
+
+## 챕터 분할 흐름
+
+긴 영상(단일 120MB 상한 초과)을 챕터별 별도 곡으로. yt-dlp `--split-chapters` 네이티브.
+
+```
+runExtractButtonClick → processChapters
+ └─ extractChapters({source})                 (app extractClient.ts)
+     └─ POST /music/chapters                   (bridge handleMusicChapters, 600s 백스톱)
+         └─ POST /chapters                      (music-service)
+             └─ runner.extractChapters
+                 └─ yt-dlp -x mp3 --split-chapters
+                     --max-filesize <maxChapterDownload: 기본 1G>   (풀 다운로드, 넉넉히)
+                     -P <dir> -P chapter:<chapDir>
+                     -o '%(title)s.%(ext)s'
+                     -o 'chapter:%(section_number)03d %(section_title)s.%(ext)s'
+                 → chapDir 의 챕터 mp3 들을 각각 브릿지 업로드
+                 → { label, tracks:[{url,title}], total, truncated }
+```
+
+- **풀 다운로드 상한은 단일(120M)보다 크다(`MUSIC_MAX_CHAPTER_DOWNLOAD`, 기본 1G).** 챕터 분할은
+  postprocessor라 풀 오디오를 통째로 받은 뒤 잘라야 함 — 단일 120M을 그대로 쓰면 긴 영상이
+  분할 전에 abort되어 기능 무의미. 잘린 챕터들은 자연히 작아 출력 사이즈 별도 체크 불필요.
+- **챕터/풀 파일 분리**: `-P chapter:<chapDir>`로 챕터 mp3는 `dir/chapters/`에, 풀 mp3는 `dir/`에.
+  `chapDir` 비었으면(=챕터 없는 영상) 풀 곡 한 개로 폴백. `label` = 풀 파일 제목.
+- **상한 `maxChapters`**(= `MUSIC_MAX_PLAYLIST`, 기본 50) 초과 시 앞 50챕터만 + `truncated`.
+- 성공 트랙들은 `writePlaylistBlock`이 **재생목록과 동일한** `[ ]플레이리스트: <label>` 블록으로
+  소스 줄 아래 기록(음악:: 재생 호환). `findInsertPos`의 `sourceLineMatches`가 재생목록·챕터 소스를
+  같이 매칭한다.
 
 ## 재생목록 열거 흐름
 
@@ -55,6 +86,32 @@ runExtractButtonClick
   (`tomboyUrlLink href-from-textContent` 고차 참고). 사용자가 블록 전체를
   `음악::` 노트에 붙여넣고 체크박스를 토글하면 재생.
 
+## 🎵 노트 만들기 (완료 재생목록/챕터 → 음악:: 노트 자동 생성)
+
+복사·붙여넣기 없이 재생용 `음악::` 노트를 한 번에 얻는 지름길. **완료 소스**(소스 줄 바로
+다음이 `플레이리스트:` 결과 헤더)에만 헤더 끝에 위젯 버튼이 뜬다. 재생목록·챕터 둘 다 동일한
+결과 블록을 남기므로 `eachDonePlaylist`가 `playlistSourceOf` **또는** `chapterSourceOf`로 소스를
+잡는다 — 챕터 분할 결과도 똑같이 노트로 만들 수 있다.
+
+```
+donePlaylistAnchors(doc)                       (buildMusicNote.ts) → source별 헤더끝 pos
+ └─ 플러그인 widget(side:1, key=makenote:<source>)  '🎵 노트 만들기'
+     └─ click → createMusicNoteFromPlaylist(view, source, oninternallink)
+         ├─ readPlaylistResult(doc, source) → {label, urls}   (미완료/0곡 → 토스트, no-op)
+         ├─ findNoteByTitle('음악::'+label) 있으면 → 그 노트로 이동(중복 생성 X)
+         └─ createNote + updateNoteFromEditor(buildMusicNoteDoc) → oninternallink(title)
+```
+
+- **buildMusicNoteDoc** = 제목 문단 + **체크된**(`checked:true`) `inlineCheckbox` 헤더 + mp3 불릿
+  (`tomboyUrlLink` text===href). `writePlaylistBlock` 과 동일 구조지만 **체크 상태**라 열자마자 큐 활성.
+  `serializeContent`→`deserializeContent`→`parseMusicNote` 라운드트립이 트랙 복원을 보장(테스트로 박제).
+- **find-or-create**(applyChartNote 패턴): 같은 제목 있으면 새로 안 만들고 연다 — 제목 전역 유일 불변식
+  + 사용자 편집 보존. createNote 명시 제목은 `ensureUniqueTitle` 우회하므로 `findNoteByTitle` 선검사 필수.
+- **oninternallink 스레딩**: `index.ts` `addOptions` → `TomboyEditor.configure({oninternallink})`
+  (noteBundle 패턴). 호스트(`note/[id]`/`NoteWindow`)가 title→guid 해석해 이동 — 모바일 goto / 데스크탑 창.
+- **위젯 key 에 source** 포함 → 소스(재생목록/챕터)별 고정·재사용. `mousedown` preventDefault 로
+  contenteditable 캐럿/키보드 차단.
+
 ## 불변식
 - **멱등 판정 = `/files/<uuid>/` URL 결과 자식의 유무.** 있으면 done(skip), 없으면(신규/실패)
   ⟳ 때 재시도. 실패는 `❌ …` 텍스트 자식이라 URL이 없어 자동 재시도된다.
@@ -84,6 +141,9 @@ runExtractButtonClick
 - 브릿지 `MUSIC_SERVICE_URL`, 서비스 `BRIDGE_FILES_URL`/`BRIDGE_SHARED_TOKEN` 정렬 필수.
 - **재생목록 지원은 신규 라우트 필요** — 브릿지(`/music/enumerate`)·music-service(`/enumerate`)
   양쪽 재배포 후 활성화됨. 기존 단일 곡 경로는 재배포 없이 동작.
+- **챕터 지원도 신규 라우트 필요** — 브릿지(`/music/chapters`)·music-service(`/chapters`) 양쪽 재배포.
+  단일 상한 기본값이 `40M`→`120M`으로 올랐고, 챕터 풀 다운로드 상한은 새 env `MUSIC_MAX_CHAPTER_DOWNLOAD`
+  (기본 1G). `MUSIC_MAX_FILESIZE`(단일)와 별개. 챕터 타임아웃 `MUSIC_CHAPTERS_TIMEOUT_MS`(기본 300s).
 
 스펙: `docs/superpowers/specs/2026-06-05-music-extract-design.md`
 플랜: `docs/superpowers/plans/2026-06-05-music-extract.md`

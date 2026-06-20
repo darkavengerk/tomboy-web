@@ -10,6 +10,8 @@ const RESULT_URL_RE = new RegExp(`/files/${UUID}/`, 'i');
 const HTTP_URL_RE = /https?:\/\/[^\s<>"]+/;
 // 재생목록 URL: youtube list= 또는 /playlist? 포함.
 const PLAYLIST_URL_RE = /[?&]list=|\/playlist\?/i;
+// 챕터 분할 마커: 일반 텍스트 줄 '챕터:<URL>'. URL 은 마크/본문 어느 쪽이든.
+const CHAPTER_MARKER_RE = /^챕터\s*:/;
 // 생성된 결과 헤더 '플레이리스트:'. inlineCheckbox atom 은 textContent 에 안 나오므로
 // 보통 '플레이리스트:'로 시작하지만, atom 미등록(테스트)·수기 입력 대비 선두 [ ]/[x] 허용.
 const PLAYLIST_HEADER_RE = /^(?:\[[ xX]\]\s*)?플레이리스트:/;
@@ -36,7 +38,13 @@ export interface PlaylistItem {
 	done: boolean; // 바로 다음 블록이 '플레이리스트:' 결과 헤더이면 true
 	paraPos: number; // 소스 문단 시작 pos
 }
-export type ExtractItem = SingleItem | PlaylistItem;
+export interface ChapterItem {
+	kind: 'chapter';
+	source: string; // 챕터:<URL> 의 영상 URL
+	done: boolean; // 바로 다음 블록이 '플레이리스트:' 결과 헤더이면 true(재생목록과 동일 결과 블록)
+	paraPos: number; // 소스 문단 시작 pos
+}
+export type ExtractItem = SingleItem | PlaylistItem | ChapterItem;
 
 export interface ExtractNote {
 	isExtract: boolean;
@@ -61,7 +69,7 @@ function nestedListOf(li: PMNode): PMNode | null {
 }
 
 /** node 안 첫 http URL — tomboyUrlLink/link 마크 href 우선, 없으면 본문 정규식. 링크 텍스트 동반. */
-function firstUrlAndText(node: PMNode): { url: string; text: string } | null {
+export function firstUrlAndText(node: PMNode): { url: string; text: string } | null {
 	let out: { url: string; text: string } | null = null;
 	node.descendants((n) => {
 		if (out) return false;
@@ -107,6 +115,15 @@ export function playlistSourceOf(block: PMNode): string | null {
 	return u.url;
 }
 
+/** 최상위 문단이 챕터 분할 마커('챕터:<URL>')인지 — 텍스트가 '챕터:'로 시작 + http URL 포함, 결과 아님. */
+export function chapterSourceOf(block: PMNode): string | null {
+	if (!CHAPTER_MARKER_RE.test(block.textContent.trim())) return null;
+	const u = firstUrlAndText(block);
+	if (!u) return null;
+	if (RESULT_URL_RE.test(u.url)) return null;
+	return u.url;
+}
+
 /** 텍스트가 생성된 '플레이리스트:' 결과 헤더인지(선두 [ ]/[x] 허용). */
 export function isPlaylistHeaderText(text: string): boolean {
 	return PLAYLIST_HEADER_RE.test(text.trim());
@@ -147,7 +164,8 @@ export function parseExtractNote(doc: PMNode): ExtractNote {
 	if (!isExtract) return { isExtract, items: [] };
 	const items: ExtractItem[] = [];
 	let idx = 0;
-	let prevPlaylist: PlaylistItem | null = null; // 직전에 본 미완료 재생목록 소스
+	// 직전에 본 미완료 소스(재생목록 또는 챕터) — 둘 다 '플레이리스트:' 결과 헤더로 완료 판정.
+	let prevAwaiting: PlaylistItem | ChapterItem | null = null;
 	let skipNextList = false; // 직전 블록이 결과 헤더 → 다음 리스트는 결과(스킵)
 	doc.forEach((block, offset) => {
 		const i = idx++;
@@ -157,18 +175,27 @@ export function parseExtractNote(doc: PMNode): ExtractNote {
 		if (type === 'paragraph') {
 			const t = block.textContent.trim();
 			if (isPlaylistHeaderText(t)) {
-				if (prevPlaylist) prevPlaylist.done = true; // 소스의 결과 블록 존재 = 완료
-				prevPlaylist = null;
+				if (prevAwaiting) prevAwaiting.done = true; // 소스의 결과 블록 존재 = 완료
+				prevAwaiting = null;
 				skipNextList = true;
+				return;
+			}
+			// 챕터 마커를 재생목록보다 먼저 — '챕터:' 줄은 list= 여부와 무관히 챕터로.
+			const chapUrl = chapterSourceOf(block);
+			if (chapUrl) {
+				const item: ChapterItem = { kind: 'chapter', source: chapUrl, done: false, paraPos: offset };
+				items.push(item);
+				prevAwaiting = item;
+				skipNextList = false;
 				return;
 			}
 			const url = playlistSourceOf(block);
 			if (url) {
 				const item: PlaylistItem = { kind: 'playlist', source: url, done: false, paraPos: offset };
 				items.push(item);
-				prevPlaylist = item;
+				prevAwaiting = item;
 			} else {
-				prevPlaylist = null;
+				prevAwaiting = null;
 			}
 			skipNextList = false;
 			return;
@@ -176,7 +203,7 @@ export function parseExtractNote(doc: PMNode): ExtractNote {
 		if (isListNode(block)) {
 			if (skipNextList) {
 				skipNextList = false;
-				prevPlaylist = null;
+				prevAwaiting = null;
 				return; // 생성된 결과 리스트
 			}
 			block.forEach((li, liOffset) => {
@@ -185,10 +212,10 @@ export function parseExtractNote(doc: PMNode): ExtractNote {
 				if (!source || RESULT_URL_RE.test(source)) return; // 결과 mp3 줄은 소스 아님
 				items.push({ kind: 'single', source, result: resultOf(li), liPos: offset + 1 + liOffset });
 			});
-			prevPlaylist = null;
+			prevAwaiting = null;
 			return;
 		}
-		prevPlaylist = null;
+		prevAwaiting = null;
 		skipNextList = false;
 	});
 	return { isExtract, items };

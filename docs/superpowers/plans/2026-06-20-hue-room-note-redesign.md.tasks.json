@@ -1,0 +1,60 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-20-hue-room-note-redesign.md",
+  "specPath": "docs/superpowers/specs/2026-06-20-hue-room-note-redesign-design.md",
+  "tasks": [
+    {
+      "id": 18,
+      "planTask": 1,
+      "subject": "Task 1: hueTypes + roomOps (순수 로직)",
+      "status": "completed",
+      "description": "**Goal:** (additive) Hue 타입에 룸/owner/씬-status 추가 + 룸 순수 로직 TDD. 존 제거는 Task 5로 이관.\n\n**Files:** hueTypes.ts(수정, HueZone 유지), roomOps.ts(신규), roomOps.test.ts(신규)\n\n**Acceptance Criteria:** HueRoom/owner/scene.status; lightsInRoom owner 필터; groupedLightIdOf; buildSceneActions CT vs color + off + mirek=null 폴백; isSceneActive; 전체 hue 그린.\n\n**Verify:** cd app && npx vitest run tests/unit/hue/roomOps.test.ts\n\n**완료:** commit 5bca142b. 코드품질 리뷰 지적 반영(zoneOps 삭제로 트리 깨짐 → additive로 수정, 제거는 Task 5).\n\n```json:metadata\n{\"files\": [\"app/src/lib/hue/hueTypes.ts\", \"app/src/lib/hue/roomOps.ts\", \"app/tests/unit/hue/roomOps.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/hue/roomOps.test.ts\", \"acceptanceCriteria\": [\"HueRoom/owner/scene.status(HueZone 유지)\", \"lightsInRoom owner 필터\", \"groupedLightIdOf\", \"buildSceneActions CT vs color + mirek=null 폴백\", \"isSceneActive\", \"전체 hue 그린\"]}\n```"
+    },
+    {
+      "id": 19,
+      "planTask": 2,
+      "subject": "Task 2: hueNoteParse — bulb|room|master",
+      "status": "completed",
+      "description": "**Goal:** (additive) room:<uuid> 시그 인식 추가. zone/zoneId/extractMembershipTitles 유지(Task 5 제거).\n\n**Files:** hueNoteParse.ts(수정, room 추가/zone 유지), hueNoteParse.test.ts(room 케이스 추가)\n\n**Acceptance Criteria:** master/room/bulb/null 판별; room:<uuid> 추가; zone+extractMembershipTitles 유지; 전체 hue + check 그린.\n\n**Verify:** cd app && npx vitest run tests/unit/hue/hueNoteParse.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/hue/hueNoteParse.ts\", \"app/tests/unit/hue/hueNoteParse.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/hue/hueNoteParse.test.ts\", \"acceptanceCriteria\": [\"master/room/bulb/null 판별\", \"room:<uuid> 시그 추가\", \"zone+extractMembershipTitles 유지\", \"전체 hue + check 그린\"]}\n```"
+    },
+    {
+      "id": 20,
+      "planTask": 3,
+      "subject": "Task 3: hueImport — planRoomImports",
+      "status": "completed",
+      "blockedBy": [18],
+      "description": "**Goal:** planRoomImports — 룸 노트 멱등 가져오기.\n\n**Files:** hueImport.ts(수정), hueImport.test.ts(수정)\n\n**Acceptance Criteria:** 기존 룸 skip; title 조명::<룸명> + room:<id>; 이름 폴백 방 <id>.\n\n**Verify:** cd app && npx vitest run tests/unit/hue/hueImport.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/hue/hueImport.ts\", \"app/tests/unit/hue/hueImport.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/hue/hueImport.test.ts\", \"acceptanceCriteria\": [\"planRoomImports 기존 룸 skip\", \"title+room:<id>\", \"이름 폴백\"]}\n```"
+    },
+    {
+      "id": 21,
+      "planTask": 4,
+      "subject": "Task 4: roomDoc — 룸 본문 PM 빌더/탐색기(순수)",
+      "status": "completed",
+      "description": "**Goal:** 조명·씬 리스트 찾기/빌드/클릭 컨텍스트 해석 순수 함수 TDD(PM Editor만).\n\n**Files:** roomDoc.ts(신규), roomDoc.test.ts(신규)\n\n**Acceptance Criteria:** findListByAtom; buildLightList checkbox+link; buildSceneList radio+name; lightContextAt(atomAt 보정); sceneContextAt name+selected+siblings; afterEach editor.destroy().\n\n**Verify:** cd app && npx vitest run tests/unit/hue/roomDoc.test.ts\n\n```json:metadata\n{\"files\": [\"app/src/lib/hue/roomDoc.ts\", \"app/tests/unit/hue/roomDoc.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/hue/roomDoc.test.ts\", \"acceptanceCriteria\": [\"findListByAtom\", \"buildLightList\", \"buildSceneList\", \"lightContextAt(atomAt 보정)\", \"sceneContextAt siblings\", \"editor destroy teardown\"]}\n```"
+    },
+    {
+      "id": 22,
+      "planTask": 5,
+      "subject": "Task 5: RoomControl 위젯 + 플러그인 배선",
+      "status": "completed",
+      "blockedBy": [18, 19, 21],
+      "description": "**Goal:** 룸 위젯 — 멱등 onMount/⟳ 리스트 재생성, 그룹 제어, 씬 저장, view.dom mousedown으로 체크박스→PUT light·라디오→배타+recall. hueNotePlugin room 분기. **zone 잔재 일괄 제거(ZoneControl + zoneOps + zoneOps.test + HueZone).**\n\n**Files:** RoomControl.svelte(신규), hueNotePlugin.ts(수정), hueTypes.ts(HueZone 제거), hueNoteParse.ts(zone 제거), ZoneControl.svelte+zoneOps.ts+zoneOps.test.ts(삭제), hueNotePlugin.test.ts(수정). (roomDoc.ts는 Task 4에서 atomAt 포함—import만)\n\n**Acceptance Criteria:** room 위젯 1개 key hue:room:<id>; 멱등 재생성; 체크박스→PUT light; 라디오→배타+recall; 그룹 제어+씬 저장; toast HTTP status; **zone 잔재 전부 제거(ZoneControl/zoneOps/HueZone)**; npm run check.\n\n**Verify:** cd app && npx vitest run tests/unit/hue/hueNotePlugin.test.ts && npm run check\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/hueNote/RoomControl.svelte\", \"app/src/lib/editor/hueNote/hueNotePlugin.ts\", \"app/src/lib/hue/hueTypes.ts\", \"app/src/lib/hue/hueNoteParse.ts\", \"app/src/lib/hue/zoneOps.ts\", \"app/src/lib/editor/hueNote/ZoneControl.svelte\", \"app/tests/unit/hue/hueNotePlugin.test.ts\", \"app/tests/unit/hue/zoneOps.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/hue/hueNotePlugin.test.ts && npm run check\", \"acceptanceCriteria\": [\"room 위젯 key hue:room:<id>\", \"멱등 onMount/⟳\", \"체크박스→PUT light\", \"라디오→배타+recall\", \"그룹+씬저장\", \"toast HTTP status\", \"zone 잔재 전부 제거\", \"npm run check\"]}\n```"
+    },
+    {
+      "id": 23,
+      "planTask": 6,
+      "subject": "Task 6: MasterDashboard — 룸 가져오기 + 묶음 본문",
+      "status": "completed",
+      "blockedBy": [20, 22],
+      "description": "**Goal:** 마스터 가져오기 = 조명+룸 노트 멱등 생성 + 본문에 전구/방 묶음 2블록 기록.\n\n**Files:** MasterDashboard.svelte(수정), hueNotePlugin.ts(master view prop)\n\n**Acceptance Criteria:** 조명+룸 멱등 생성; 본문 전구/방 묶음(parser.ts BUNDLE_RE 형식); 전체 on/off 유지; npm run check.\n\n**Verify:** cd app && npm run check (+ 수동 묶음 윈도우 확인)\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/hueNote/MasterDashboard.svelte\", \"app/src/lib/editor/hueNote/hueNotePlugin.ts\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"조명+룸 멱등 생성\", \"전구/방 묶음 2블록 parser.ts 형식\", \"전체 on/off 유지\", \"npm run check\"]}\n```"
+    },
+    {
+      "id": 24,
+      "planTask": 7,
+      "subject": "Task 7: 가이드 + registry help + 스킬 문서",
+      "status": "completed",
+      "blockedBy": [22, 23],
+      "description": "**Goal:** 가이드 카드·registry help·CLAUDE.md·SKILL.md를 룸 기반으로 갱신.\n\n**Files:** settings/+page.svelte, registry.ts(line 92), CLAUDE.md, .claude/skills/tomboy-hue/SKILL.md\n\n**Acceptance Criteria:** registry help 존→룸; 가이드 카드 룸 사용법(체크박스/라디오/가져오기/자동⟳); CLAUDE.md+SKILL.md 룸 구조 + paths; npm run check.\n\n**Verify:** cd app && npm run check (+ 수동 가이드 카드 확인)\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\", \"app/src/lib/noteTypes/registry.ts\", \"CLAUDE.md\", \".claude/skills/tomboy-hue/SKILL.md\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"registry help 존→룸\", \"가이드 카드 룸\", \"CLAUDE.md+SKILL.md 룸 구조\", \"npm run check\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-20T12:40:00+09:00"
+}

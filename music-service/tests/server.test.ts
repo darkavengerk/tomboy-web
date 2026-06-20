@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { buildServer } from '../src/server.js';
 import { mintToken } from '../src/auth.js';
-import type { EnumerateOk } from '../src/runner.js';
+import type { EnumerateOk, ChaptersOk } from '../src/runner.js';
 
 function app(extractFn: (s: string) => Promise<{ url: string; title: string }>) {
 	return buildServer({ sharedToken: 'tok', bridgeFilesUrl: 'http://b', extractFn });
@@ -64,5 +64,35 @@ describe('POST /enumerate', () => {
 		expect((await mk('bad_source:empty_playlist')).statusCode).toBe(400);
 		expect((await mk('타임아웃')).statusCode).toBe(504);
 		expect((await mk('boom')).statusCode).toBe(502);
+	});
+});
+
+function appChapters(chaptersFn: (s: string) => Promise<ChaptersOk>) {
+	return buildServer({ sharedToken: 'tok', bridgeFilesUrl: 'http://b', chaptersFn });
+}
+const okCh: ChaptersOk = { label: '영상', tracks: [{ url: 'https://b/files/x/1.mp3', title: '001 A' }], total: 1, truncated: false };
+
+describe('POST /chapters', () => {
+	it('401 without bearer', async () => {
+		const res = await appChapters(async () => okCh).inject({ method: 'POST', url: '/chapters', payload: { source: 'x' } });
+		expect(res.statusCode).toBe(401);
+	});
+	it('400 on missing source', async () => {
+		const res = await appChapters(async () => okCh).inject({ method: 'POST', url: '/chapters', headers: auth, payload: {} });
+		expect(res.statusCode).toBe(400);
+	});
+	it('200 with chapters result', async () => {
+		const fn = vi.fn(async () => okCh);
+		const res = await appChapters(fn).inject({ method: 'POST', url: '/chapters', headers: auth, payload: { source: 'https://yt/a' } });
+		expect(res.statusCode).toBe(200);
+		expect(res.json()).toEqual(okCh);
+		expect(fn).toHaveBeenCalledWith('https://yt/a');
+	});
+	it('400 bad_source, 413 too_large, 504 타임아웃, 502 otherwise', async () => {
+		const mk = (msg: string) => appChapters(async () => { throw new Error(msg); }).inject({ method: 'POST', url: '/chapters', headers: auth, payload: { source: 'x' } });
+		expect((await mk('bad_source:not_a_url')).statusCode).toBe(400);
+		expect((await mk('too_large')).statusCode).toBe(413);
+		expect((await mk('타임아웃')).statusCode).toBe(504);
+		expect((await mk('no_output')).statusCode).toBe(502);
 	});
 });
