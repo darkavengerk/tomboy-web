@@ -72,16 +72,17 @@
 		const filtered = filterByNotebook(allNotes, displayedNotebook);
 		const q = query.trim();
 		const base = q ? searchNotes(filtered, q, 200).map((r) => r.note) : filtered;
-		// Sort key depends on the workspace:
-		// - Slipnote workspace: "recents" by when the user last opened a
-		//   note in desktop mode (recentOpens, local-only). Notes without
-		//   an open record fall back to changeDate.
-		// - All other workspaces: changeDate directly, so the sidebar
-		//   mirrors the 전체 page's "최근 수정순" default.
-		// Returns the full sorted list; DOM size is bounded by visibleNotes
-		// (infinite scroll grows visibleCount on scroll-to-bottom).
+		// 정렬 규칙 (반환은 전체 정렬 목록; DOM 크기는 visibleNotes 무한스크롤로 제한):
+		// - 슬립노트 작업공간: 최근 연 순(recentOpens, 데스크탑 로컬). 기록 없으면
+		//   changeDate 폴백.
+		// - 전체(null)·미분류(''): changeDate 최근순(전체 페이지 "최근 수정순" 기본과 동일).
+		// - 일반 노트북: 제목 가나다(이름)순.
 		const recents = recentOpens.map;
 		const useRecents = currentWorkspace === SLIPNOTE_WORKSPACE_INDEX;
+		// 일반 노트북 선택 시 이름순. 전체/미분류와 슬립노트 ws는 최근순 분기로.
+		if (!useRecents && displayedNotebook !== null && displayedNotebook !== '') {
+			return [...base].sort((a, b) => a.title.localeCompare(b.title, 'ko'));
+		}
 		const keyed = base.map((n) => {
 			let key = 0;
 			if (useRecents) {
