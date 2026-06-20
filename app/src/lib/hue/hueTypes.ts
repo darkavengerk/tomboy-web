@@ -9,18 +9,19 @@ export interface HueLight {
   id: string;
   type: 'light';
   metadata?: { name?: string };
+  owner?: HueResourceRef;            // usually { rid: <deviceId>, rtype: 'device' }
   on: HueOn;
   dimming?: HueDimming;
   color?: HueColor;
   color_temperature?: HueColorTemp;
 }
 export interface HueResourceRef { rid: string; rtype: string; }
-export interface HueZone {
+export interface HueRoom {
   id: string;
-  type: 'zone';
+  type: 'room';
   metadata?: { name?: string };
-  children: HueResourceRef[];
-  services: HueResourceRef[];
+  children: HueResourceRef[];        // device refs
+  services: HueResourceRef[];        // grouped_light etc
 }
 export interface HueScene {
   id: string;
@@ -28,6 +29,7 @@ export interface HueScene {
   metadata: { name: string };
   group: HueResourceRef;
   actions: Array<{ target: HueResourceRef; action: Record<string, unknown> }>;
+  status?: { active: 'inactive' | 'static' | 'dynamic_palette' };
 }
 
 /** light 의 capability — 키 존재 여부로 판별. */

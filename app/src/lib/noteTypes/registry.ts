@@ -89,7 +89,7 @@ export const NOTE_TYPES: NoteTypeSpec[] = [
 	{
 		id: 'hue-master', label: '조명 (Hue)', trigger: 'title-prefix',
 		titlePrefix: '조명::',
-		help: '타이틀 조명::전체 = 마스터(전구 가져오기). 조명::<이름> = 전구/존 노트. 설정 → Hue 에서 허브 먼저 연결.'
+		help: '타이틀 조명::전체 = 마스터(전구·방 가져오기). 조명::<이름> = 전구 노트(light:) 또는 방 노트(room:). 방 노트는 체크박스로 조명 on/off, 라디오로 씬을 고릅니다. 설정 → Hue 에서 허브 먼저 연결.'
 	},
 	{
 		id: 'slip', label: 'Slip-Box', trigger: 'title-prefix',
