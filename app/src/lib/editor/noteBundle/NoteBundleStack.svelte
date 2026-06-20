@@ -40,10 +40,12 @@
 	 * 터미널/음악/하단최신은 잎 본문에 그대로. TerminalView·MusicPlayerBar 는
 	 * 격벽이 Svelte 위임 이벤트를 죽이므로 본문에 독립 mount().
 	 *
-	 * ── 전용 노트 창 이동 ───────────────────────────────────────────────
+	 * ── 전용 노트 창 이동 + 크롬 ────────────────────────────────────────
 	 * 전용 노트(`탭::`)는 호스트(NoteWindow)가 창 타이틀바를 숨기므로 드래그
-	 * 이동 수단이 없다. onwindowdrag 가 있으면(데스크탑 전용) 활성 탭 pointerdown
-	 * 을 그대로 호스트에 넘겨 일반 타이틀바처럼 창을 옮긴다(handleTabPointerDown).
+	 * 이동·최소화 수단이 없다. onwindowdrag 가 있으면(데스크탑 전용) **탭 줄 전체**
+	 * 가 드래그 핸들 — 탭(handleTabPointerDown) + 탭 사이/오른쪽 빈 영역·+N 배지
+	 * (handleStripPointerDown)까지 pointerdown 을 호스트에 넘겨 일반 타이틀바처럼
+	 * 창을 옮긴다. onminimize 가 있으면 우상단 크롬에 🗕 최소화 버튼 노출(✕ 닫기 왼쪽).
 	 */
 	import { onMount, onDestroy, untrack, mount as mountComponent, unmount as unmountComponent } from 'svelte';
 	import { flip } from 'svelte/animate';
@@ -105,6 +107,9 @@
 		/** dedicated 데스크탑 창 — 활성 탭(타이틀) pointerdown 을 넘기면 호스트가
 		 *  창을 이동시킨다(전용 노트는 창 타이틀바가 없어 드래그 수단이 없음). */
 		onwindowdrag?: (e: PointerEvent) => void;
+		/** dedicated 데스크탑 창 — 창 최소화. 전용 노트는 창 타이틀바(=최소화 버튼)를
+		 *  숨기므로 번들 크롬이 대신 노출한다. 없으면(모바일/그래프) 버튼 숨김. */
+		onminimize?: () => void;
 	}
 	let {
 		spec,
@@ -115,7 +120,8 @@
 		variant = 'inline',
 		onclose,
 		onraw,
-		onwindowdrag
+		onwindowdrag,
+		onminimize
 	}: Props = $props();
 	const dedicated = $derived(variant === 'dedicated');
 	// 크기 100(fit) — 고정 높이 대신 활성 탭 본문을 콘텐츠 끝까지 펼친다. 전용
@@ -610,6 +616,11 @@
 		e.stopPropagation();
 		onclose?.();
 	}
+	function handleMinimize(e: Event) {
+		e.preventDefault();
+		e.stopPropagation();
+		onminimize?.();
+	}
 
 	// ↗ 탭별 꺼내기 — 해당 잎 노트를 단독으로 열기(탭 스트립 전용). 카테고리
 	// 탭엔 안 붙는다(단독 열 노트가 없음). 탭 더블클릭 경로도 그대로 유지.
@@ -735,6 +746,16 @@
 		onwindowdrag(e);
 	}
 
+	// 탭 줄(스트립) 빈 영역 pointerdown = 창 이동(전용 데스크탑). 탭이 줄을 다
+	// 채우지 않을 때의 여백·+N 배지까지 "제목 영역 전체"가 드래그 핸들이 되게.
+	// 실제 탭 버튼(button.tab) 위 pointerdown 은 탭 자신의 handleTabPointerDown
+	// 이 처리하므로(같은 이벤트가 버블해 둘 다 불리면 중복 드래그) 여기선 건너뛴다.
+	function handleStripPointerDown(e: PointerEvent) {
+		if (!onwindowdrag) return;
+		if ((e.target as HTMLElement | null)?.closest?.('button.tab')) return;
+		handleTabPointerDown(e);
+	}
+
 	// 탭 줄 위 휠 = 탭 네비게이션. 본문 휠은 그대로 네이티브 스크롤(여기 안 걸림).
 	// 휠 델타는 브라우저/입력장치마다 단위(px/줄/페이지)가 달라 deltaMode 로
 	// 정규화한 뒤 누적, 한 칸 분량(WHEEL_STEP)을 넘으면 그 깊이의 다음 탭으로.
@@ -822,6 +843,15 @@
 					use:direct={{ click: handleRawEdit, pointerdown: stopEvt, mousedown: stopEvt }}
 				>✎ 편집</button>
 			{/if}
+			{#if onminimize}
+				<button
+					type="button"
+					class="dchrome-btn"
+					title="최소화"
+					aria-label="최소화"
+					use:direct={{ click: handleMinimize, pointerdown: stopEvt, mousedown: stopEvt }}
+				>&#x1F5D5;</button>
+			{/if}
 			{#if onclose}
 				<button
 					type="button"
@@ -859,7 +889,11 @@
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			class="tab-strip"
-			use:direct={{ wheel: (e: Event) => handleStripWheel(depth, e as WheelEvent) }}
+			class:draggable={!!onwindowdrag}
+			use:direct={{
+				wheel: (e: Event) => handleStripWheel(depth, e as WheelEvent),
+				pointerdown: (e: Event) => handleStripPointerDown(e as PointerEvent)
+			}}
 		>
 			{#if vis.leftPlus > 0}
 				<span class="tab tab-plus">+{vis.leftPlus}</span>
@@ -1109,6 +1143,13 @@
 		padding: 0 2px 0;
 		background: #1a1a1a;
 		overflow: hidden;
+	}
+	/* 전용 데스크탑 — 탭 줄 빈 영역도 창 드래그 핸들(타이틀바 대용). 잡는 손 커서. */
+	.tab-strip.draggable {
+		cursor: grab;
+	}
+	.tab-strip.draggable:active {
+		cursor: grabbing;
 	}
 	.tab {
 		/* 내용(타이틀) 폭에 맞춰 커지되 넘치면 shrink+말줄임. 최소 너비는 윈도우

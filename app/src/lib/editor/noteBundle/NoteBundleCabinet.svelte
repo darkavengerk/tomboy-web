@@ -106,6 +106,9 @@
 		/** dedicated 데스크탑 창 — 활성 노트 타이틀(활성 바 / 편집 헤더) pointerdown 을
 		 *  넘기면 호스트가 창을 이동시킨다(전용 노트는 창 타이틀바가 없음). */
 		onwindowdrag?: (e: PointerEvent) => void;
+		/** dedicated 데스크탑 창 — 창 최소화. 전용 노트는 창 타이틀바(=최소화 버튼)를
+		 *  숨기므로 번들 크롬이 대신 노출한다. 없으면(모바일/그래프) 버튼 숨김. */
+		onminimize?: () => void;
 	}
 	let {
 		spec,
@@ -116,7 +119,8 @@
 		variant = 'inline',
 		onclose,
 		onraw,
-		onwindowdrag
+		onwindowdrag,
+		onminimize
 	}: Props = $props();
 	const dedicated = $derived(variant === 'dedicated');
 
@@ -638,6 +642,11 @@
 		e.stopPropagation();
 		onclose?.();
 	}
+	function handleMinimize(e: Event) {
+		e.preventDefault();
+		e.stopPropagation();
+		onminimize?.();
+	}
 
 	// --- 훑어보기 / 편집 모드 ---------------------------------------------------
 	// browse(기본): 묶음 전체가 휠/스와이프를 받아 노트를 브라우징. 본문 클릭=
@@ -1092,6 +1101,15 @@
 						title="편집 (일반 노트로 보기)"
 						use:direct={{ click: handleRawEdit, pointerdown: stopEvt, mousedown: stopEvt }}
 					>✎ 편집</button>
+				{/if}
+				{#if onminimize}
+					<button
+						type="button"
+						class="dchrome-btn"
+						title="최소화"
+						aria-label="최소화"
+						use:direct={{ click: handleMinimize, pointerdown: stopEvt, mousedown: stopEvt }}
+					>&#x1F5D5;</button>
 				{/if}
 				{#if onclose}
 					<button

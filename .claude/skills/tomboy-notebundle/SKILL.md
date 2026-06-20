@@ -651,12 +651,16 @@ PMNode helpers.
 - `dedicated` → root `flex:1` (fills `.editor-area`/`.body`), no inline height,
   the `onMount` height-basis block + resize handle are skipped, `view` is null
   so `writeBundleHeightPct`/`setBundleChecked` are guarded out.
-- Top-right **dedicated chrome**: `[✎ 편집 (Ctrl)] [↗ 꺼내기] [✕ 닫기]`. **닫기
-  only when `onclose` is provided** (NoteWindow → `handleClose`; the mobile route
-  omits it → no 닫기). **Tab (`탭::`): always shown** (the tab is always-edit, no
+- Top-right **dedicated chrome**: `[✎ 편집 (Ctrl)] [🗕 최소화] [✕ 닫기]`. **닫기
+  only when `onclose` is provided** and **최소화 only when `onminimize` is
+  provided** (NoteWindow passes both; `onminimize = onminimize ? () =>
+  onminimize?.(guid) : undefined` — undefined on the mobile route / graph view so
+  the button hides, mirroring the window title-bar's own `onminimize` gate). The
+  dedicated note hides the window title-bar (where the normal 🗕 lives), so the
+  chrome re-exposes it. **Tab (`탭::`): always shown** (the tab is always-edit, no
   mode gate). **Cabinet (`묶음::`): browse-only** — in its edit mode the existing
-  `.edit-header` (← 돌아가기 / ↗ 꺼내기) takes over (so 닫기 never shows in cabinet
-  edit mode). 꺼내기 = `oninternallink(active title)` standalone-open.
+  `.edit-header` (← 돌아가기 / ↗ 꺼내기) takes over (so 닫기/최소화 never show in
+  cabinet edit mode). 꺼내기 = `oninternallink(active title)` standalone-open.
 - Ctrl→`✎ 편집` calls `onraw()`. The **host** (route/window) owns a
   `showRawBundle` toggle: true → render the plain `TomboyEditor` on the host note
   (edit the link list) with a Ctrl-gated `↩ 묶음` back button (`exitRawBundle`,
@@ -699,7 +703,13 @@ disambiguation):
   the pointer moved >4px, stamps `windowDragMovedAt`; `handleTabClick` then
   ignores any `click` within 400ms (so a drag doesn't switch tabs). Taps (<4px)
   fall through to `selectTab`. `↗`/접속 self-`stopEvt` so they don't drag.
-  `.tab.draggable` cursor on all tabs.
+  `.tab.draggable` cursor on all tabs. **The whole tab-strip is a drag handle**,
+  not just the tabs: `handleStripPointerDown` (on the `.tab-strip` `direct`
+  pointerdown, alongside the wheel-nav handler) forwards to `handleTabPointerDown`
+  for any pointerdown **not** on a `button.tab` — so the empty gap when tabs don't
+  fill the row, and the `+N` badges, also move the window. (Skips `button.tab` to
+  avoid the bubbled event starting a second drag; `.tab-strip.draggable` grab
+  cursor.)
 - **Cabinet (`묶음::`)** — `handleListPointerDown`: `onwindowdrag` present → call it
   for **any bar**. Active bar (`barIdx === k`) = drag-only (no tap tracking,
   `swipeY` stays null). Non-active bar → set `barWindowDrag=true` + tap tracking
