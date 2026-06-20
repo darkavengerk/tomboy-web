@@ -26,6 +26,20 @@ describe('activeNotebooks', () => {
 		expect(activeNotebooks.top(0)).toBeUndefined();
 	});
 
+	it('select keeps only the last picked key (single-select)', () => {
+		activeNotebooks.select(0, 'A');
+		expect(activeNotebooks.list(0)).toEqual(['A']);
+		activeNotebooks.select(0, 'B');
+		expect(activeNotebooks.list(0)).toEqual(['B']); // A replaced, not appended
+		expect(activeNotebooks.isActive(0, 'A')).toBe(false);
+	});
+
+	it('select on the sole active key clears it (→ 전체 fallback)', () => {
+		activeNotebooks.select(0, 'A');
+		activeNotebooks.select(0, 'A');
+		expect(activeNotebooks.list(0)).toEqual([]);
+	});
+
 	it('isActive reflects membership; sets are per-workspace', () => {
 		activeNotebooks.toggle(0, 'A');
 		expect(activeNotebooks.isActive(0, 'A')).toBe(true);

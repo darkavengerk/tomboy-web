@@ -168,23 +168,24 @@
 	// 클릭할 수 있다. null=전체, ''=미분류, string=노트북. "없음"은 undefined.
 	let latched = $state<string | null | undefined>(undefined);
 
-	// 고정 스트립에 그릴 활성 노트북(삭제/이름변경된 키는 제외).
-	const pinnedNotebooks = $derived(
+	// 선택된 노트북(단일 선택, 0~1개; 삭제/이름변경된 키는 제외). displayedNotebook의
+	// 기본값 소스 — 비면 전체(null)로 폴백한다.
+	const selectedNotebooks = $derived(
 		activeNotebooks
 			.list(currentWorkspace)
 			.filter((k) => k === '' || notebooks.includes(k))
 	);
 
 	// .main에 표시할 노트북. 래치가 있으면 그것, 없으면 작업공간 기본값
-	// (슬립노트 ws=슬립박스, 그 외=최상단 활성 노트북, 없으면 전체=null).
-	// 기본값은 raw top()이 아니라 pinnedNotebooks[0]에서 가져온다 — 삭제/이름변경된
-	// 노트북 키가 top에 남아 있으면 칩 없이 빈 목록에 갇히기 때문.
+	// (슬립노트 ws=슬립박스, 그 외=선택된 노트북, 없으면 전체=null).
+	// 기본값은 raw top()이 아니라 selectedNotebooks[0]에서 가져온다 — 삭제/이름변경된
+	// 노트북 키가 남아 있으면 칩 없이 빈 목록에 갇히기 때문.
 	const displayedNotebook = $derived(
 		latched !== undefined
 			? latched
 			: alwaysOpen
 				? SLIPBOX_NOTEBOOK
-				: (pinnedNotebooks[0] ?? null)
+				: (selectedNotebooks[0] ?? null)
 	);
 
 	// 무한 스크롤: 초기 50개, 바닥 근처에서 50개씩 증가.
@@ -337,21 +338,6 @@
 
 		<RailMusicControls />
 
-		{#if pinnedNotebooks.length > 0}
-			<div class="rail-pinned" role="group" aria-label="고정한 노트북">
-				{#each pinnedNotebooks as key (key)}
-					<button
-						type="button"
-						class="rail-chip active"
-						class:viewing={displayedNotebook === key}
-						title={key === '' ? '미분류' : key}
-						onpointerenter={() => (latched = key)}
-						onclick={() => activeNotebooks.toggle(currentWorkspace, key)}
-					>{key === '' ? '미분류' : key}</button>
-				{/each}
-			</div>
-		{/if}
-
 		<div class="rail-chips" role="tablist" aria-label="노트북 필터">
 			<button
 				type="button"
@@ -372,7 +358,7 @@
 				aria-selected={displayedNotebook === ''}
 				title="미분류"
 				onpointerenter={() => (latched = '')}
-				onclick={() => activeNotebooks.toggle(currentWorkspace, '')}
+				onclick={() => activeNotebooks.select(currentWorkspace, '')}
 			>미분류</button>
 			{#each notebooks as nb (nb)}
 				<button
@@ -384,7 +370,7 @@
 					aria-selected={displayedNotebook === nb}
 					title={nb}
 					onpointerenter={() => (latched = nb)}
-					onclick={() => activeNotebooks.toggle(currentWorkspace, nb)}
+					onclick={() => activeNotebooks.select(currentWorkspace, nb)}
 				>{nb}</button>
 			{/each}
 		</div>
@@ -681,18 +667,7 @@
 		border-color: #3a7a50;
 	}
 
-	/* 고정 스트립: 음악 컨트롤 밑, 노트북 칩 위. 같은 칩 스타일 재사용. */
-	.rail-pinned {
-		display: flex;
-		flex-direction: column;
-		align-items: stretch;
-		gap: 4px;
-		width: 100%;
-		padding: 0 6px;
-		flex-shrink: 0;
-	}
-
-	/* 현재 .main에 표시 중인 노트북 칩 강조(고정=녹색 배경과 구분되는 청록 테두리). */
+	/* 현재 .main에 표시 중인 노트북 칩 강조(선택=녹색 배경과 구분되는 청록 테두리). */
 	.rail-chip.viewing {
 		border-color: #5a9;
 		box-shadow: inset 0 0 0 1px #5a9;

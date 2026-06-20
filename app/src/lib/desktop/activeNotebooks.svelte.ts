@@ -67,6 +67,16 @@ export const activeNotebooks = {
 		schedulePersist();
 	},
 
+	// 단일 선택: 활성 노트북은 항상 0~1개. key를 유일 선택으로 만들고,
+	// 이미 유일 선택이면 비워서 전체(fallback)로 돌아간다. SidePanel 칩의
+	// 기본 클릭 경로(toggle은 테스트/하위호환용으로만 남김).
+	select(ws: number, key: string): void {
+		const cur = sets[ws] ?? [];
+		const next = cur.length === 1 && cur[0] === key ? [] : [key];
+		sets = { ...sets, [ws]: next };
+		schedulePersist();
+	},
+
 	clear(ws: number): void {
 		if (!sets[ws]?.length) return;
 		sets = { ...sets, [ws]: [] };
