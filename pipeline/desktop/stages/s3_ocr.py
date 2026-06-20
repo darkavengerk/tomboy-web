@@ -6,7 +6,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 from desktop.lib.config import Config, load_config
 from desktop.lib.log import StageLogger
@@ -24,6 +24,7 @@ def run_ocr(
     backend: OCRBackend,
     force: Iterable[str] | None = None,
     only_uuids: Iterable[str] | None = None,
+    prompt_for: Callable[[str | None], str | None] | None = None,
 ) -> list[str]:
     force = set(force or [])
     only = set(only_uuids) if only_uuids else None
@@ -43,7 +44,10 @@ def run_ocr(
             log.error("png_missing", uuid=uuid, png_path=str(png_path))
             continue
         try:
-            result = backend.ocr(png_path)
+            system_prompt = (
+                prompt_for(prep_info.get("source_folder")) if prompt_for else None
+            )
+            result = backend.ocr(png_path, system_prompt=system_prompt)
             (ocr_root / f"{uuid}.json").write_text(
                 json.dumps(
                     {
@@ -144,6 +148,7 @@ def main(argv: list[str] | None = None) -> int:
         backend=backend,
         force=set(args.force) | set(rerun_uuids),
         only_uuids=args.uuid or None,
+        prompt_for=cfg.tomboy.prompt_for,
     )
     print(f"s3_ocr: {len(processed)} pages OCR'd")
     return 0
