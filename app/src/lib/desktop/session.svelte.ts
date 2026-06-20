@@ -11,6 +11,10 @@ const WALLPAPER_KEY = 'desktop:wallpaper';
 const WALLPAPER_MODE_KEY = 'desktop:wallpaper-mode';
 const VERSION = 3;
 const WORKSPACE_COUNT = 4;
+const DRAWER_COUNT = 2; // 0 = F2 (left), 1 = F3 (right)
+const DEFAULT_DRAWER_WIDTH = 480;
+const DRAWER_MIN_WIDTH = 280;
+const DRAWER_MAX_WIDTH = 1200;
 
 /**
  * How a workspace wallpaper image fills the canvas. Mirrors the common
@@ -152,6 +156,17 @@ let workspaces = $state<WorkspaceState[]>(
 	Array.from({ length: WORKSPACE_COUNT }, () => emptyWorkspace())
 );
 let currentWorkspaceIndex = $state(0);
+// Drawers are GLOBAL slide-in surfaces (F2 left, F3 right), independent of
+// the 2×2 workspaces. Each is structurally a WorkspaceState (own windows[],
+// geometryByGuid, nextZ). activeDrawer = which one is open + live (null =
+// canvas live). drawerWidths = per-drawer panel extent (px). Persisted in v4.
+let drawers = $state<WorkspaceState[]>(
+	Array.from({ length: DRAWER_COUNT }, () => emptyWorkspace())
+);
+let activeDrawer = $state<number | null>(null);
+let drawerWidths = $state<number[]>(
+	Array.from({ length: DRAWER_COUNT }, () => DEFAULT_DRAWER_WIDTH)
+);
 // Bumped whenever any workspace's wallpaper is set/cleared. DesktopWorkspace's
 // $effect reads `desktopSession.wallpaperEpoch` so re-setting the SAME
 // workspace's wallpaper (same currentWorkspace) still triggers a reload.
@@ -360,6 +375,11 @@ function bumpZ(ws: WorkspaceState, win: DesktopWindowState): void {
 	win.z = ++ws.nextZ;
 }
 
+function clampDrawerWidth(px: number): number {
+	if (!Number.isFinite(px)) return DEFAULT_DRAWER_WIDTH;
+	return Math.max(DRAWER_MIN_WIDTH, Math.min(DRAWER_MAX_WIDTH, Math.round(px)));
+}
+
 // --- Workspace direction mapping ----------------------------------------
 
 type Dir = 'left' | 'right' | 'up' | 'down';
@@ -513,6 +533,49 @@ export const desktopSession = {
 		return currentWorkspaceIndex;
 	},
 
+	get activeDrawer(): number | null {
+		return activeDrawer;
+	},
+
+	get drawerCount(): number {
+		return DRAWER_COUNT;
+	},
+
+	isDrawerOpen(index: number): boolean {
+		return activeDrawer === index;
+	},
+
+	/** Windows in drawer `index` (empty for an out-of-range index). */
+	drawerWindows(index: number): DesktopWindowState[] {
+		return drawers[index]?.windows ?? [];
+	},
+
+	getDrawerWidth(index: number): number {
+		return drawerWidths[index] ?? DEFAULT_DRAWER_WIDTH;
+	},
+
+	setDrawerWidth(index: number, px: number): void {
+		if (index < 0 || index >= DRAWER_COUNT) return;
+		const next = clampDrawerWidth(px);
+		if (next === drawerWidths[index]) return;
+		drawerWidths[index] = next;
+		schedulePersist();
+	},
+
+	/**
+	 * Open drawer `index` if closed, close it if it's the open one, or switch to
+	 * it if the OTHER drawer is open. Only one drawer is visible at a time.
+	 * Opening makes it the live surface (canvas goes inactive but stays mounted).
+	 */
+	toggleDrawer(index: number): void {
+		if (index < 0 || index >= DRAWER_COUNT) return;
+		activeDrawer = activeDrawer === index ? null : index;
+	},
+
+	closeDrawer(): void {
+		activeDrawer = null;
+	},
+
 	get wallpaperEpoch(): number {
 		return wallpaperEpoch;
 	},
@@ -546,13 +609,14 @@ export const desktopSession = {
 	},
 
 	/**
-	 * Guid of the topmost note window in the current workspace (highest raw
-	 * z among kind==='note'), or null if no notes are open. Used by
-	 * NoteWindow to show its toolbar only on the focused note — unfocused
-	 * notes reclaim the toolbar row for editor content.
+	 * Guid of the topmost note window on the ACTIVE surface (highest raw z
+	 * among kind==='note', non-minimized). When a drawer is open it is the
+	 * live surface; otherwise the current workspace canvas. Used by NoteWindow
+	 * to show its toolbar only on the focused note — unfocused notes reclaim
+	 * the toolbar row for editor content.
 	 */
 	get focusedNoteGuid(): string | null {
-		const ws = current();
+		const ws = activeDrawer !== null ? drawers[activeDrawer] : current();
 		let top: DesktopWindowState | null = null;
 		for (const w of ws.windows) {
 			if (w.kind !== 'note') continue;
@@ -1191,6 +1255,9 @@ export const desktopSession = {
 	_reset(): void {
 		workspaces = Array.from({ length: WORKSPACE_COUNT }, () => emptyWorkspace());
 		currentWorkspaceIndex = 0;
+		drawers = Array.from({ length: DRAWER_COUNT }, () => emptyWorkspace());
+		activeDrawer = null;
+		drawerWidths = Array.from({ length: DRAWER_COUNT }, () => DEFAULT_DRAWER_WIDTH);
 		focusRequest = null;
 		focusRequestCounter = 0;
 		closedStack.length = 0;
