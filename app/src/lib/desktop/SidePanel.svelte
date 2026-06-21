@@ -482,7 +482,7 @@
 			<button type="button" class="new-btn" onclick={handleNew} title="새 노트">＋ 새 노트</button>
 		</div>
 
-		<RailNowPlaying />
+		<RailNowPlaying {onopen} />
 
 		<div class="list" bind:this={listEl} onscroll={onListScroll}>
 			{#if loading}

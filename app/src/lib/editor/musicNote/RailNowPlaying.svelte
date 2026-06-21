@@ -1,6 +1,11 @@
 <script lang="ts">
 	import { musicPlayer } from '$lib/music/musicPlayer.svelte.js';
 
+	// onopen: 레일 곡 제목 클릭 시 "재생을 시작한 노트"(묶음이면 묶음, 일반 노트면
+	// 그 노트)를 데스크탑 작업공간에 연다. SidePanel 이 host(DesktopWorkspace)로 위임.
+	type Props = { onopen?: (guid: string) => void };
+	let { onopen }: Props = $props();
+
 	const IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 
 	const track = $derived(musicPlayer.currentTrack);
@@ -46,11 +51,26 @@
 		timedOut = false;
 		clearTimer();
 	}
+
+	// 재생을 시작한 노트가 있으면 곡 제목을 누를 수 있게 한다.
+	const originGuid = $derived(musicPlayer.originNoteGuid);
+	function openOrigin() {
+		if (originGuid) onopen?.(originGuid);
+	}
 </script>
 
 {#if visible && track}
 	<div class="rail-now">
-		<div class="title" title={track.display}>{track.display}</div>
+		{#if originGuid && onopen}
+			<button
+				type="button"
+				class="title title-link"
+				title="재생을 시작한 노트 열기"
+				onclick={openOrigin}>{track.display}</button
+			>
+		{:else}
+			<div class="title" title={track.display}>{track.display}</div>
+		{/if}
 		<div class="name">{musicPlayer.activeNoteName}</div>
 		<div class="seek">
 			<span class="t">{fmt(musicPlayer.currentTime)}</span>
@@ -85,6 +105,22 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+	/* 클릭 가능한 제목 — 버튼 기본 스타일 제거하고 좌측 정렬 텍스트로. */
+	button.title-link {
+		display: block;
+		width: 100%;
+		text-align: left;
+		border: none;
+		background: none;
+		padding: 0;
+		margin: 0;
+		font-family: inherit;
+		cursor: pointer;
+	}
+	button.title-link:hover {
+		color: #fff;
+		text-decoration: underline;
 	}
 	.name {
 		font-size: 0.72rem;

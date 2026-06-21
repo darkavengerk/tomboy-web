@@ -10,8 +10,10 @@
 	// <audio> 로 담당한다(동시 1개 재생). 이 컴포넌트는 musicPlayer(싱글톤)를 읽어
 	// 표시/조작만 한다. 단, 이 노트가 활성(현재 재생) 노트면 라이브 상태를, 아니면 이
 	// 노트의 기억된 위치(이어듣기)를 보여준다 — 노트마다 자기 상태를 본다.
-	type Props = { editor: Editor; guid: string };
-	let { editor, guid }: Props = $props();
+	// originGuid: 재생을 시작한 노트(묶음 호스트). 없으면 guid(이 음악 노트)가 곧 origin.
+	// 레일 곡 제목 클릭 시 이 노트를 연다.
+	type Props = { editor: Editor; guid: string; originGuid?: string | null };
+	let { editor, guid, originGuid = null }: Props = $props();
 
 	let version = $state(0);
 	let refreshN = 0;
@@ -100,7 +102,7 @@
 		} else {
 			const note = parsedNote;
 			if (note.flatQueue.length === 0) return;
-			musicPlayer.playNote(guid, note.flatQueue, note.name);
+			musicPlayer.playNote(guid, note.flatQueue, note.name, originGuid ?? undefined);
 		}
 		// 모바일 재생 잠금 해제: 제스처(이 onclick) 안에서 동기로 play().
 		if (musicPlayer.isPlaying) resumePlaybackFromGesture();
