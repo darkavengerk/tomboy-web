@@ -94,3 +94,63 @@ export async function fetchBridgeStatus(opts?: { signal?: AbortSignal }): Promis
 	if (!data || typeof data !== 'object') throw new BridgeStatusError('upstream_error', 'bad_shape');
 	return data as BridgeStatus;
 }
+
+export interface DiaryFolderInfo {
+	folder: string;
+	count: number;
+	newest_mtime: string | null;
+}
+
+export interface DiaryInbox {
+	count: number;
+	newest_mtime: string | null;
+	stale_minutes: number | null;
+	per_folder: DiaryFolderInfo[];
+	error?: string;
+}
+
+export interface DiaryOcr {
+	status: 'ok' | 'unconfigured' | 'unreachable';
+	running?: boolean;
+	last_run_at?: string | null;
+	exit_code?: number | null;
+	result?: 'success' | 'failed' | 'running' | 'unknown';
+	summary?: string | null;
+	log_tail?: string;
+}
+
+export interface DiaryDetail {
+	fetched_at: string;
+	inbox: DiaryInbox;
+	ocr: DiaryOcr;
+}
+
+/** GET /status/<key> — 서비스 상세. Phase 1 은 'diary' 만. */
+export async function fetchBridgeDetail(
+	key: 'diary',
+	opts?: { signal?: AbortSignal }
+): Promise<DiaryDetail> {
+	const bridge = await getDefaultTerminalBridge();
+	const token = await getTerminalBridgeToken();
+	if (!bridge || !token) throw new BridgeStatusError('not_configured', '브릿지 설정이 필요합니다');
+	const url = `${bridgeToHttpBase(bridge)}/status/${key}`;
+
+	let res: Response;
+	try {
+		res = await fetch(url, { headers: { Authorization: `Bearer ${token}` }, signal: opts?.signal });
+	} catch (err) {
+		throw new BridgeStatusError('network', (err as Error).message);
+	}
+	if (!res.ok) {
+		const kind = STATUS_TO_KIND[res.status] ?? (res.status >= 500 ? 'upstream_error' : 'bad_request');
+		throw new BridgeStatusError(kind);
+	}
+	let data: unknown;
+	try {
+		data = await res.json();
+	} catch (err) {
+		throw new BridgeStatusError('upstream_error', (err as Error).message);
+	}
+	if (!data || typeof data !== 'object') throw new BridgeStatusError('upstream_error', 'bad_shape');
+	return data as DiaryDetail;
+}

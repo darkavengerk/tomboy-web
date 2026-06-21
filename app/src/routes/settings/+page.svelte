@@ -2208,6 +2208,19 @@ automation,➖ 미설정,
 				</details>
 
 				<details class="guide-card">
+					<summary>브릿지 노트 — 서비스 상세 보기</summary>
+					<p class="info-text">
+						<code>브릿지::</code> 노트 제목 아래 <strong>📓 일기</strong> 버튼을 누르면 일기
+						파이프라인의 최근 처리 상태가 읽기전용으로 뜹니다.
+					</p>
+					<ul class="guide-list">
+						<li><strong>Push 신선도</strong> — reMarkable→Pi 로 마지막 페이지가 도착한 시각. 지연/정체를 색으로 표시.</li>
+						<li><strong>폴더별 backlog</strong> — Diary/Notes/Slip-Notes 별 대기 페이지 수(막대).</li>
+						<li><strong>마지막 OCR 실행</strong> — 데스크탑 OCR 의 최근 실행 결과·시각·로그 꼬리(설정된 경우).</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
 					<summary>결과 패널 · 전체 문서에 제목 반영</summary>
 					<p class="info-text">새 노트를 만들거나 <b>제목 변경 다이얼로그로 제목을 바꾸면</b> 진행 팝업이 자동으로 닫히지 않고 각 단계 소요 시간을 보여줍니다. 원하면 이 제목을 기존 모든 노트에 링크로 반영할 수 있습니다.</p>
 					<ul class="guide-list">
