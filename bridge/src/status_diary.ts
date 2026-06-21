@@ -111,6 +111,10 @@ async function defaultFetchTrigger(url: string, token: string): Promise<unknown>
 		headers: { Authorization: `Bearer ${token}` },
 		signal: AbortSignal.timeout(PROBE_TIMEOUT_MS)
 	});
+	// 비-2xx(토큰 오류=401, 서버 오류=5xx 등)는 본문이 JSON 이 아닐 수 있으니 res.json()
+	// 시도 전에 던진다. phase 1 은 인증 실패와 도달 불가를 의도적으로 같은 'unreachable'
+	// 로 합친다(세분화는 후속 — DiaryOcr.status 유니온이 앱 타입까지 번지므로).
+	if (!res.ok) throw new Error(`trigger /status ${res.status}`);
 	return res.json();
 }
 
