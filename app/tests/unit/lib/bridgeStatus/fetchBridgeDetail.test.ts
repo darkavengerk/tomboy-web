@@ -22,7 +22,9 @@ beforeEach(() => {
 
 describe('fetchBridgeDetail', () => {
 	it('GETs /status/diary with Bearer and returns parsed detail', async () => {
-		const fetchMock = vi.fn(async () => new Response(JSON.stringify(sample), { status: 200 }));
+		const fetchMock = vi.fn(
+			async (_url: string, _init?: RequestInit) => new Response(JSON.stringify(sample), { status: 200 })
+		);
 		vi.stubGlobal('fetch', fetchMock);
 		const r = await fetchBridgeDetail('diary');
 		expect(r.inbox.count).toBe(2);
