@@ -53,6 +53,15 @@ runBridgeButtonClick(view)
 - **시스템 오류 토스트만.** not_configured/unauthorized/service_unavailable/network 는 토스트 띄우고
   본문 미변경(기존 대시보드 유지).
 
+## 서비스 드릴다운 (Phase 1: 일기)
+- 제목 뒤 위젯에 상세 버튼(`DETAIL_BUTTONS`) — 클릭 시 `openBridgeDetail(key)` →
+  `BridgeDetailOverlay`(body 온디맨드 마운트, `--z-modal`) → `fetchBridgeDetail(key)` →
+  `DETAIL_REGISTRY[key].component`.
+- 브릿지 `GET /status/diary`(`status_diary.ts`): 마운트된 inbox glob(push 신선도/폴더별
+  backlog) + desktop `trigger_server /status` 프록시(OCR). inbox 마운트는
+  `term-bridge.container`(`/var/lib/diary-inbox:ro`), trigger 는 `DIARY_TRIGGER_URL/TOKEN`.
+- 후속 서비스 = `registry.ts` 엔트리 + 브릿지 `/status/<key>` 분기 추가.
+
 ## 배포 함정
 - **신규 라우트 = 브릿지 재배포 필요** — `GET /status` 는 `bridge/` 빌드+Pi 재배포 후 활성.
   music-service 같은 데스크탑 서비스 변경은 없음(status.ts 는 그 서비스들을 프로브만 함).
