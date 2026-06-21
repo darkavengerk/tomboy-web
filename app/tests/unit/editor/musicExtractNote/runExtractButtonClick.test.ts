@@ -10,12 +10,18 @@ vi.mock('$lib/musicExtract/extractClient.js', async () => {
 	const actual = await vi.importActual<typeof import('$lib/musicExtract/extractClient.js')>('$lib/musicExtract/extractClient.js');
 	return { ...actual, extractOne: (...a: unknown[]) => extractSpy(...a), enumeratePlaylist: (...a: unknown[]) => enumSpy(...a) };
 });
+const chimeSpy = vi.fn();
+const unlockSpy = vi.fn();
+vi.mock('$lib/musicExtract/extractChime.js', () => ({
+	playExtractChime: (...a: unknown[]) => chimeSpy(...a),
+	unlockExtractAudio: (...a: unknown[]) => unlockSpy(...a)
+}));
 import { runExtractButtonClick } from '$lib/editor/musicExtractNote/runExtractButtonClick.js';
 import { parseExtractNote, type SingleItem } from '$lib/musicExtract/parseExtractNote.js';
 import { ExtractError } from '$lib/musicExtract/extractClient.js';
 
 const UUID = 'ab12cd34-5678-49ab-8cde-0123456789ab';
-afterEach(() => { toastSpy.mockReset(); extractSpy.mockReset(); enumSpy.mockReset(); });
+afterEach(() => { toastSpy.mockReset(); extractSpy.mockReset(); enumSpy.mockReset(); chimeSpy.mockReset(); unlockSpy.mockReset(); });
 
 describe('runExtractButtonClick', () => {
 	it('대기 항목만 순차 추출하고 결과를 기록한다', async () => {
@@ -142,5 +148,39 @@ describe('runExtractButtonClick', () => {
 		expect(extractSpy).toHaveBeenCalledTimes(2);
 		expect(toastSpy).toHaveBeenCalledWith(expect.stringMatching(/재생목록 1개\(1곡\).*1곡 추출|1곡 추출.*재생목록 1개\(1곡\)/), expect.anything());
 		ed.destroy();
+	});
+
+	describe('완료 알림음', () => {
+		it('성공하면 success 차임', async () => {
+			const ed = new Editor({ extensions: [StarterKit], content: `<p>음악추출::x</p><ul><li><p>https://yt/ok</p></li></ul>` });
+			extractSpy.mockResolvedValue({ url: `https://b.ex/files/${UUID}/Ok.mp3`, title: 'Ok' });
+			await runExtractButtonClick(ed.view);
+			expect(chimeSpy).toHaveBeenCalledWith('success');
+			ed.destroy();
+		});
+
+		it('전부 실패하면 error 차임', async () => {
+			const ed = new Editor({ extensions: [StarterKit], content: `<p>음악추출::x</p><ul><li><p>https://yt/a</p></li></ul>` });
+			extractSpy.mockRejectedValue(new ExtractError('upstream_error', 'x'));
+			await runExtractButtonClick(ed.view);
+			expect(chimeSpy).toHaveBeenCalledWith('error');
+			ed.destroy();
+		});
+
+		it('시스템 오류 중단도 error 차임', async () => {
+			const ed = new Editor({ extensions: [StarterKit], content: `<p>음악추출::x</p><ul><li><p>https://yt/a</p></li></ul>` });
+			extractSpy.mockRejectedValue(new ExtractError('not_configured', 'x'));
+			await runExtractButtonClick(ed.view);
+			expect(chimeSpy).toHaveBeenCalledWith('error');
+			ed.destroy();
+		});
+
+		it('대기 0건이면 차임 없음(오디오만 unlock)', async () => {
+			const ed = new Editor({ extensions: [StarterKit], content: `<p>음악추출::x</p><ul><li><p>https://yt/d</p><ul><li><p>https://b.ex/files/${UUID}/D.mp3</p></li></ul></li></ul>` });
+			await runExtractButtonClick(ed.view);
+			expect(chimeSpy).not.toHaveBeenCalled();
+			expect(unlockSpy).toHaveBeenCalled();
+			ed.destroy();
+		});
 	});
 });

@@ -3,6 +3,7 @@ import { parseExtractNote, pendingItems } from '$lib/musicExtract/parseExtractNo
 import { extractOne, enumeratePlaylist, extractChapters, ExtractError, type ExtractErrorKind } from '$lib/musicExtract/extractClient.js';
 import { writeExtractResult } from '$lib/musicExtract/writeExtractResult.js';
 import { writePlaylistBlock } from '$lib/musicExtract/writePlaylistBlock.js';
+import { playExtractChime, unlockExtractAudio } from '$lib/musicExtract/extractChime.js';
 import { pushToast } from '$lib/stores/toast.js';
 
 const KIND_MESSAGES: Record<ExtractErrorKind, string> = {
@@ -120,6 +121,8 @@ async function processChapters(view: EditorView, source: string, t: Tally): Prom
 }
 
 export async function runExtractButtonClick(view: EditorView): Promise<void> {
+	// 사용자 제스처(⟳ 클릭)가 살아있는 지금 오디오를 깨워, 수 분 뒤 완료음이 막히지 않게 한다.
+	unlockExtractAudio();
 	const pending = pendingItems(parseExtractNote(view.state.doc));
 	if (pending.length === 0) {
 		pushToast('추출할 항목이 없습니다', { kind: 'info' });
@@ -134,7 +137,10 @@ export async function runExtractButtonClick(view: EditorView): Promise<void> {
 				: item.kind === 'chapter'
 					? await processChapters(view, item.source, t)
 					: await processPlaylist(view, item.source, t);
-		if (outcome === 'stop') return;
+		if (outcome === 'stop') {
+			playExtractChime('error'); // 시스템 오류로 중단 — 끝났음을 실패음으로 알림
+			return;
+		}
 	}
 	if (view.isDestroyed) return;
 	const parts: string[] = [];
@@ -145,5 +151,7 @@ export async function runExtractButtonClick(view: EditorView): Promise<void> {
 	if (t.truncated) parts.push(`상한 초과 ${t.truncated}개 일부만`);
 	const summary = parts.join(', ') || '변경 없음';
 	const isError = t.singleFail > 0 && t.singleOk === 0 && t.playlistDone === 0 && t.chapterDone === 0;
+	const anySuccess = t.singleOk > 0 || t.playlistDone > 0 || t.chapterDone > 0;
+	playExtractChime(anySuccess ? 'success' : 'error'); // 완료 알림 — 성공/실패 음 구분
 	pushToast(summary, { kind: isError ? 'error' : 'info' });
 }
