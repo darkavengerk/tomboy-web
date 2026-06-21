@@ -22,6 +22,7 @@ import { handleMusicExtract, handleMusicEnumerate, handleMusicChapters, handleSu
 import { handleHueDiscover, handleHuePair, handleHueClip, handleHueHealth, handleHueCredsDelete } from './hue.js';
 import { handleGpuStatus, handleGpuUnload } from './gpu.js';
 import { handleStatus } from './status.js';
+import { handleDiaryStatus } from './status_diary.js';
 import { handleRemarkableWallpaper } from './remarkable.js';
 import { handleRemarkableFolders } from './remarkableFolders.js';
 import { handleRemarkableSendPdf } from './remarkableSendPdf.js';
@@ -64,6 +65,9 @@ const SUNO_MAX_PLAYLIST = Number(process.env.SUNO_MAX_PLAYLIST) || 100;
 const OLLAMA_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
 // `/status` 대시보드 프로브용 — rag.ts 가 읽는 기본값과 동일하게 맞춘다.
 const RAG_SEARCH_URL = process.env.RAG_SEARCH_URL || 'http://localhost:8743/search';
+const DIARY_INBOX_DIR = process.env.DIARY_INBOX_DIR || '/var/lib/diary-inbox';
+const DIARY_TRIGGER_URL = process.env.DIARY_TRIGGER_URL || '';
+const DIARY_TRIGGER_TOKEN = process.env.DIARY_TRIGGER_TOKEN || '';
 const HOSTS_FILE = process.env.BRIDGE_HOSTS_FILE;
 const REMARKABLE_HOSTS_FILE = process.env.BRIDGE_REMARKABLE_HOSTS_FILE;
 const SSH_HOSTS_FILE = process.env.BRIDGE_SSH_HOSTS_FILE;
@@ -222,6 +226,16 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 				{ name: 'claude', url: CLAUDE_SERVICE_URL },
 				{ name: 'rag', url: RAG_SEARCH_URL }
 			]
+		});
+		return;
+	}
+
+	if (url === '/status/diary' && req.method === 'GET') {
+		await handleDiaryStatus(req, res, {
+			secret: SECRET,
+			inboxDir: DIARY_INBOX_DIR,
+			triggerUrl: DIARY_TRIGGER_URL,
+			triggerToken: DIARY_TRIGGER_TOKEN
 		});
 		return;
 	}
