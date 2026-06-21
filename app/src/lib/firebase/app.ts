@@ -77,7 +77,7 @@ export async function getFirebaseMessaging(): Promise<Messaging | null> {
 }
 
 export function getVapidKey(): string {
-	return env.PUBLIC_FIREBASE_VAPID_KEY;
+	return env.PUBLIC_FIREBASE_VAPID_KEY ?? '';
 }
 
 export class DropboxNotConnectedError extends Error {
