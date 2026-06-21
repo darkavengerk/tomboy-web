@@ -13,6 +13,8 @@ export interface MusicSessionSnapshot {
 	activeNoteName: string;
 	queue: MusicTrack[];
 	currentIndex: number;
+	/** 재생을 시작한 노트(레일 곡 제목 클릭 대상). 없으면 활성 노트로 폴백. */
+	originNoteGuid?: string;
 }
 
 function safeStorage(): Storage | null {
@@ -44,7 +46,8 @@ export function loadSession(): MusicSessionSnapshot | null {
 			activeNoteGuid: guid,
 			activeNoteName: typeof p.activeNoteName === 'string' ? p.activeNoteName : '',
 			queue: queue as MusicTrack[],
-			currentIndex: typeof p.currentIndex === 'number' ? p.currentIndex : 0
+			currentIndex: typeof p.currentIndex === 'number' ? p.currentIndex : 0,
+			originNoteGuid: typeof p.originNoteGuid === 'string' ? p.originNoteGuid : undefined
 		};
 	} catch {
 		return null;
@@ -84,9 +87,16 @@ export function installMusicSession(): () => void {
 			const name = musicPlayer.activeNoteName;
 			const q = musicPlayer.queue;
 			const idx = musicPlayer.currentIndex;
+			const origin = musicPlayer.originNoteGuid;
 			const snapshot: MusicSessionSnapshot | null =
 				guid && q.length > 0
-					? { activeNoteGuid: guid, activeNoteName: name, queue: q, currentIndex: idx }
+					? {
+							activeNoteGuid: guid,
+							activeNoteName: name,
+							queue: q,
+							currentIndex: idx,
+							originNoteGuid: origin ?? undefined
+						}
 					: null;
 			if (timer) clearTimeout(timer);
 			timer = setTimeout(() => saveSession(snapshot), 400);

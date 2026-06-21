@@ -273,6 +273,10 @@ import { TomboyBridgeNote } from "./bridgeNote/index.js";
 		onnoteready?: (guid: string | null) => void;
 		/** 읽기 전용 렌더(히스토리 창). editable=false + autolink 스캔 skip. 기본 false. */
 		readOnly?: boolean;
+		/** 음악 노트 재생 origin 노트 guid — 묶음 임베디드 에디터가 자신의 호스트
+		 *  guid 를 넘긴다. 레일 곡 제목 클릭 시 이 노트를 연다("재생을 누른 화면"으로
+		 *  복귀). 일반 노트는 null 이라 origin 이 노트 자신으로 폴백. */
+		musicOriginGuid?: string | null;
 	}
 
 	let {
@@ -309,6 +313,7 @@ import { TomboyBridgeNote } from "./bridgeNote/index.js";
 		hideTitleLine = false,
 		onnoteready = () => {},
 		readOnly = false,
+		musicOriginGuid = null,
 	}: Props = $props();
 
 	let ctxMenu = $state<{ x: number; y: number } | null>(null);
@@ -639,7 +644,10 @@ import { TomboyBridgeNote } from "./bridgeNote/index.js";
 						return [createNoteTitleDropPlugin()];
 					},
 				}),
-				TomboyMusicNote.configure({ getGuid: () => currentGuid ?? "" }),
+				TomboyMusicNote.configure({
+					getGuid: () => currentGuid ?? "",
+					getOrigin: () => musicOriginGuid ?? null,
+				}),
 				TomboyMusicExtractNote.configure({
 					oninternallink: (t: string) => oninternallink?.(t),
 				}),

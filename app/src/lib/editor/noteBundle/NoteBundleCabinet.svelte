@@ -735,7 +735,11 @@
 		const tryMount = () => {
 			const ed = editorRefs[params.guid]?.getEditor?.();
 			if (ed) {
-				app = mountComponent(MusicPlayerBar, { target: node, props: { editor: ed, guid: params.guid } });
+				// origin = 묶음 호스트 노트 — 레일 곡 제목 클릭 시 이 묶음으로 복귀.
+				app = mountComponent(MusicPlayerBar, {
+					target: node,
+					props: { editor: ed, guid: params.guid, originGuid: hostGuid }
+				});
 			} else {
 				raf = requestAnimationFrame(tryMount);
 			}
@@ -1160,6 +1164,7 @@
 								bind:this={editorRefs[e.guid!]}
 								content={session.content}
 								currentGuid={session.guid}
+								musicOriginGuid={hostGuid}
 								onchange={(doc: JSONContent) => handleEmbeddedChange(session.guid, doc)}
 								onblur={() => { void flushSession(session.guid); }}
 								oninternallink={(t: string) => oninternallink?.(t)}

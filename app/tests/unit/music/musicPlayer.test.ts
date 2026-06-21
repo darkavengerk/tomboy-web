@@ -338,3 +338,66 @@ describe('musicPlayer.restoreSession', () => {
 		expect(musicPlayer.activeNoteGuid).toBeNull();
 	});
 });
+
+describe('musicPlayer.originNoteGuid (재생을 시작한 노트)', () => {
+	it('origin 없이 재생하면 활성 노트가 곧 origin', () => {
+		musicPlayer.setQueue('music1', [t('a')]);
+		expect(musicPlayer.originNoteGuid).toBe('music1');
+	});
+
+	it('명시적 origin(묶음 호스트)이 활성 노트보다 우선', () => {
+		// 묶음 안 임베디드 음악 노트 트랙 탭: 활성=음악노트, origin=묶음.
+		musicPlayer.setQueue('music1', [t('a'), t('b')], '음악::재즈', 'bundle1');
+		expect(musicPlayer.activeNoteGuid).toBe('music1');
+		expect(musicPlayer.originNoteGuid).toBe('bundle1');
+	});
+
+	it('같은 노트 재동기화(MusicPlayerBar edit)는 origin 을 덮어쓰지 않는다', () => {
+		musicPlayer.setQueue('music1', [t('a')], '음악::재즈', 'bundle1');
+		expect(musicPlayer.originNoteGuid).toBe('bundle1');
+		// 편집 → 재동기화는 origin 인자 없이 호출됨
+		musicPlayer.setQueue('music1', [t('a'), t('b')], '음악::재즈');
+		expect(musicPlayer.originNoteGuid).toBe('bundle1');
+	});
+
+	it('다른 음악 노트로 전환하면 새 origin 으로 갱신', () => {
+		musicPlayer.setQueue('music1', [t('a')], '', 'bundle1');
+		musicPlayer.setQueue('music2', [t('c')], '', 'bundle1');
+		expect(musicPlayer.originNoteGuid).toBe('bundle1');
+		// origin 없이 일반 노트로 전환하면 그 노트가 origin
+		musicPlayer.setQueue('plainmusic', [t('d')]);
+		expect(musicPlayer.originNoteGuid).toBe('plainmusic');
+	});
+
+	it('playNote 도 origin 인자를 받는다', () => {
+		musicPlayer.playNote('music1', [t('a')], '음악::재즈', 'bundle1');
+		expect(musicPlayer.originNoteGuid).toBe('bundle1');
+		expect(musicPlayer.isPlaying).toBe(true);
+	});
+
+	it('stop 은 origin 을 비운다', () => {
+		musicPlayer.setQueue('music1', [t('a')], '', 'bundle1');
+		musicPlayer.stop();
+		expect(musicPlayer.originNoteGuid).toBeNull();
+	});
+
+	it('restoreSession 이 origin 을 복원(없으면 활성 노트로 폴백)', () => {
+		musicPlayer.restoreSession({
+			activeNoteGuid: 'music1',
+			activeNoteName: '음악::재즈',
+			queue: [t('a')],
+			currentIndex: 0,
+			originNoteGuid: 'bundle1'
+		});
+		expect(musicPlayer.originNoteGuid).toBe('bundle1');
+
+		__resetMusicPlayer();
+		musicPlayer.restoreSession({
+			activeNoteGuid: 'music1',
+			activeNoteName: '음악::재즈',
+			queue: [t('a')],
+			currentIndex: 0
+		});
+		expect(musicPlayer.originNoteGuid).toBe('music1');
+	});
+});

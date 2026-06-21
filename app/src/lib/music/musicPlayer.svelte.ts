@@ -10,6 +10,10 @@ let currentTime = $state(0);
 let duration = $state(0);
 let activeNoteGuid = $state<string | null>(null);
 let activeNoteName = $state('');
+// 재생을 *시작한* 노트(레일 곡 제목 클릭 시 열 노트). 보통 활성 노트와 같지만,
+// 묶음(노트 번들) 안에서 임베디드 음악 노트를 재생하면 활성 노트는 음악 노트,
+// origin 은 묶음 호스트 노트가 된다 — 사용자는 "재생을 누른 화면(묶음)"으로 돌아가길 원함.
+let originNoteGuid = $state<string | null>(null);
 let seekToken = $state(0);
 let pendingSeekTime = $state(0);
 let repeat = $state<RepeatMode>('off');
@@ -84,6 +88,7 @@ export function __resetMusicPlayer(): void {
 	duration = 0;
 	activeNoteGuid = null;
 	activeNoteName = '';
+	originNoteGuid = null;
 	seekToken = 0;
 	pendingSeekTime = 0;
 	repeat = 'off';
@@ -126,6 +131,11 @@ export const musicPlayer = {
 	get activeNoteName(): string {
 		return activeNoteName;
 	},
+	/** 재생을 시작한 노트 guid — 레일 곡 제목 클릭 시 열 대상. 묶음 안에서 재생하면
+	 *  활성(음악) 노트가 아니라 묶음 호스트 노트를 가리킨다. */
+	get originNoteGuid(): string | null {
+		return originNoteGuid;
+	},
 	/** 반복 모드: off → 끝나면 정지, all → 큐 끝에서 처음으로, one → 한 곡 무한. */
 	get repeat(): RepeatMode {
 		return repeat;
@@ -141,8 +151,12 @@ export const musicPlayer = {
 
 	/** doc 재파싱/노트 활성화 반영. 같은 노트면 재생 중 url 로 index 보존; 다른 노트로
 	 *  전환하면 나가는 노트 위치를 저장하고 들어오는 노트의 저장 위치를 복원한다(이어듣기). */
-	setQueue(noteGuid: string, tracks: MusicTrack[], noteName = ''): void {
+	setQueue(noteGuid: string, tracks: MusicTrack[], noteName = '', originGuid?: string): void {
 		const sameNote = noteGuid === activeNoteGuid;
+		// origin: 명시값이 있으면 항상 우선(묶음 호스트). 없을 땐 노트가 *바뀔 때만*
+		// 그 노트로 갱신 — 같은 노트 재동기화(편집)는 기존 origin 을 보존한다.
+		if (originGuid) originNoteGuid = originGuid;
+		else if (!sameNote) originNoteGuid = noteGuid;
 		// 전환이면 나가는 노트의 현재 위치를 저장.
 		if (!sameNote && activeNoteGuid && queue[currentIndex]) {
 			saveProgress(activeNoteGuid, queue[currentIndex].url, currentTime);
@@ -186,9 +200,10 @@ export const musicPlayer = {
 		pendingRestore = 0;
 	},
 
-	/** 노트를 활성화하고 저장된 위치에서 이어 재생(다른 노트는 정지). 메인 ▶ 진입점. */
-	playNote(noteGuid: string, tracks: MusicTrack[], noteName = ''): void {
-		this.setQueue(noteGuid, tracks, noteName);
+	/** 노트를 활성화하고 저장된 위치에서 이어 재생(다른 노트는 정지). 메인 ▶ 진입점.
+	 *  originGuid: 재생을 시작한 노트(묶음 호스트). 없으면 noteGuid 가 곧 origin. */
+	playNote(noteGuid: string, tracks: MusicTrack[], noteName = '', originGuid?: string): void {
+		this.setQueue(noteGuid, tracks, noteName, originGuid);
 		this.resume();
 	},
 
@@ -213,6 +228,7 @@ export const musicPlayer = {
 		duration = 0;
 		activeNoteGuid = null;
 		activeNoteName = '';
+		originNoteGuid = null;
 		pendingRestore = 0;
 		resumeAt = 0;
 	},
@@ -319,11 +335,13 @@ export const musicPlayer = {
 		activeNoteName: string;
 		queue: MusicTrack[];
 		currentIndex: number;
+		originNoteGuid?: string;
 	}): void {
 		if (!snap || !Array.isArray(snap.queue) || snap.queue.length === 0) return;
 		queue = snap.queue;
 		activeNoteGuid = snap.activeNoteGuid;
 		activeNoteName = snap.activeNoteName ?? '';
+		originNoteGuid = snap.originNoteGuid ?? snap.activeNoteGuid;
 		currentIndex = clampIndex(snap.currentIndex);
 		isPlaying = false;
 		currentTime = 0;

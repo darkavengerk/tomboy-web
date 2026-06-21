@@ -98,7 +98,8 @@
 		musicPlayer.requestSeek(Number((e.currentTarget as HTMLInputElement).value));
 	}
 	function onOpenNote() {
-		const g = musicPlayer.activeNoteGuid;
+		// 재생을 시작한 노트(묶음이면 묶음)를 연다 — 그 노래가 든 음악 노트가 아니라.
+		const g = musicPlayer.originNoteGuid ?? musicPlayer.activeNoteGuid;
 		if (g) void goto('/note/' + g);
 		expanded = false;
 	}

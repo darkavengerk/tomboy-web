@@ -320,7 +320,12 @@ export function buildMusicDecorations(doc: PMNode, opts: BuildOpts): DecorationS
 	return DecorationSet.create(doc, decos);
 }
 
-export function createMusicNotePlugin(getGuid: () => string = () => ''): Plugin {
+/** getOrigin: 재생을 시작한 노트 guid(묶음 호스트). 묶음 안 임베디드 에디터만 채운다 —
+ *  일반 노트에선 null 이라 origin 이 노트 자신(getGuid)으로 폴백한다. */
+export function createMusicNotePlugin(
+	getGuid: () => string = () => '',
+	getOrigin: () => string | null = () => null
+): Plugin {
 	return new Plugin({
 		key: musicNotePluginKey,
 		// Ctrl(Mac ⌘)을 누르는 동안 곡별 편집 도구를 노출. 글로벌 keydown/keyup 으로
@@ -354,7 +359,7 @@ export function createMusicNotePlugin(getGuid: () => string = () => ''): Plugin 
 					// 트랙/플레이리스트 재생 = 이 노트를 활성 큐로 만들고 재생. 노트를 여는 것만으론
 					// 큐가 바뀌지 않으므로(글로벌 now-playing 보존) 여기서 명시적으로 setQueue.
 					onPlay: (index) => {
-						musicPlayer.setQueue(getGuid(), parsed.flatQueue, parsed.name);
+						musicPlayer.setQueue(getGuid(), parsed.flatQueue, parsed.name, getOrigin() ?? undefined);
 						musicPlayer.play(index);
 					}
 				});
