@@ -250,22 +250,23 @@ descends into their first navigable leaf).
 
 Scoped to "a leaf editor is focused" by piggy-backing on the barrier's `rootEl`
 `keydown` handler (`handleTabNavKey` called inside `stopKeydown` — only keys that
-bubbled up from *inside* the stack reach it). Two binding sets, because the browser
-reserves `Ctrl+Tab`/`Ctrl+PgUp`/`Ctrl+PgDn` (non-cancelable in a regular tab — they
-never reach the page):
+bubbled up from *inside* the stack reach it). The mechanism is confirmed working
+(`Ctrl+`` ` `` switches live); the only constraint is which keys the **browser**
+reserves. Chrome eats `Ctrl+Tab` / `Ctrl+PgUp` / `Ctrl+PgDn` **and** `Ctrl+]` /
+`Ctrl+[` before the page sees them (non-cancelable), so:
 
-- **Browser-tab-safe (primary):** `Ctrl+]` / `Ctrl+[` adjacent, `` Ctrl+` `` MRU
-  (`Ctrl+Shift+`` ` `` = forward). Matched on `e.code` (`BracketRight`/`BracketLeft`/
-  `Backquote`) so Shift's char remap (`~`) and keyboard layout don't matter; gated
-  on `ctrlKey && !metaKey` (Mac `Cmd+[` = browser back). These are unreserved → the
-  page gets them and `preventDefault` sticks.
-- **PWA bonus:** `Ctrl+PgDn` / `Ctrl+PgUp` adjacent, `Ctrl+Tab` MRU
-  (`Ctrl+Shift+Tab` = forward). Only fire in installed-PWA standalone (no browser
-  tabs to steal them); a regular browser tab intercepts first.
+- **Adjacent tab: `Alt+PgDn` (next) / `Alt+PgUp` (prev).** `Alt` is not a
+  browser-tab-switch modifier, so the page gets it and `preventDefault` sticks.
+  Gated on `altKey && !ctrlKey && !metaKey`. Works in a regular browser tab.
+- **MRU cycle: `` Ctrl+` `` everywhere** (`` Ctrl+Shift+` `` = forward; matched on
+  `e.code === 'Backquote'` so the Shift char remap `~` / layout don't matter, gated
+  `ctrlKey && !metaKey`) **+ `Ctrl+Tab` as a PWA-standalone bonus** (`Ctrl+Shift+Tab`
+  = forward) — the latter only fires when there are no browser tabs to steal it.
 
 Adjacent uses `stepPath(tree, activePath, ±1)` (the parent-bubble variant — stepping
 off a category's last child tosses to the parent's next sibling), routed through
-`navigate()`.
+`navigate()`. (History: tried `Ctrl+PgUp/Dn` then `Ctrl+]`/`[` — both turned out
+browser-reserved; `Alt+PgUp/Dn` is the working adjacent binding.)
 
 - **MRU cycle** — a local `mru: number[][]` (front = most-recent visited leaf path, deduped
   by `pathKey = join(',')`, capped 50) is fed by an `$effect` on `activePath` (records every
