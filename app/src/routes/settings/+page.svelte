@@ -2930,6 +2930,22 @@ Complete:</pre>
 						<li>이미 있는 노트나 자기 자신은 자동으로 무시됩니다.</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>음악제어:: 노트 — 기기간 재생 이어듣기</summary>
+					<p class="info-text">
+						제목이 <code>음악제어::</code> 로 시작하는 전용 노트 하나가 모든 기기의
+						재생 상태를 공유합니다. 한 기기에서 음악을 멈추고 다른 기기에서 ▶ 를
+						누르면 가장 최근에 재생하던 곡을 그 위치에서 이어 재생합니다.
+					</p>
+					<ul class="guide-list">
+						<li>노트는 <strong>하나만</strong> 존재하며 첫 재생 시 자동으로 생깁니다.</li>
+						<li>재생·일시정지·정지 같은 <strong>명시적 조작</strong>일 때만 기록됩니다(동기화 비용 절약).</li>
+						<li>기기간 공유는 <strong>설정 → 동기화 설정 → 실시간 동기화</strong>가 켜져 있어야 동작합니다.</li>
+						<li>기기 이름은 <strong>설정 → 동기화 설정 → 기기 이름</strong>에서 지정합니다.</li>
+						<li>재생 상태 데이터는 노트에서 보이지 않게 숨겨져 있습니다 — 원본은 메뉴의 <strong>원본 보기</strong>로만 확인하세요.</li>
+					</ul>
+				</details>
 			</section>
 
 			{:else if guideSubTab === 'env'}
