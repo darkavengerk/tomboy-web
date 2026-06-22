@@ -2222,7 +2222,10 @@ import { TomboyBridgeNote } from "./bridgeNote/index.js";
 		border-top: 1px solid #b0b0b0;
 		border-top-left-radius: 7px;
 		border-top-right-radius: 7px;
-		margin-top: 0;
+		/* Outer top margin (the box's own top edge — not between boxed blocks,
+		   so it doesn't break side-border continuity). Clears the lifted label
+		   that pokes above the top border so it doesn't touch the line above. */
+		margin-top: 1em;
 		padding-top: 0;
 		padding-bottom: 0;
 		min-height: 0;
