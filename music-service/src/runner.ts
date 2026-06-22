@@ -1,5 +1,6 @@
 import { spawn as nodeSpawn, type SpawnOptions } from 'node:child_process';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resolveSource } from './validate.js';
@@ -92,9 +93,12 @@ export async function extractChapters(source: string, deps: ChaptersDeps): Promi
 		}
 
 		const upload = deps.uploadFn ?? ((b, fn) => uploadToBridge(b, fn, deps.bridgeFilesUrl, deps.sharedToken));
+		const isChapter = chapterFiles.length > 0;
 		const tracks: ChapterTrack[] = [];
 		for (const p of picks) {
-			const buf = await readFile(p.path);
+			// 챕터 세그먼트만 Xing 헤더 재먹싱(풀 폴백은 libmp3lame 가 이미 Xing 보유).
+			const readPath = isChapter ? await addXingHeader(p.path, deps) : p.path;
+			const buf = await readFile(readPath);
 			const url = await upload(buf, `${p.title}.mp3`);
 			tracks.push({ url, title: p.title });
 		}
@@ -103,6 +107,55 @@ export async function extractChapters(source: string, deps: ChaptersDeps): Promi
 	} finally {
 		await rm(dir, { recursive: true, force: true });
 	}
+}
+
+/** ffmpeg 바이너리 경로. deps.ffmpegPath 는 yt-dlp --ffmpeg-location 과 같은 값으로,
+ *  디렉토리이거나 바이너리일 수 있다(둘 다 허용). */
+function ffmpegBin(loc?: string): string {
+	if (!loc) return 'ffmpeg';
+	return /ffmpeg(\.exe)?$/i.test(loc) ? loc : join(loc, 'ffmpeg');
+}
+
+/**
+ * 챕터 세그먼트에 Xing/Info VBR 헤더(프레임 수 + seek 테이블)를 무손실로 부여한다.
+ * yt-dlp `--split-chapters` 는 ffmpeg `-c copy` 로 잘라 세그먼트에 Xing 헤더가 없어,
+ * 브라우저가 `audio.duration = Infinity`(앱에서 0:00)로 보고하고 재생 전 추가 버퍼링을
+ * 한다. `-c copy` 재먹싱은 재인코딩 없이 헤더만 다시 써(품질 무손실) 세그먼트 길이를
+ * 정확히 만든다. 실패(코드≠0/예외/출력 없음) 시 원본 경로를 그대로 반환 — 추출이
+ * 깨지지 않게 한다(헤더는 부가 기능, 재생 자체는 원본으로도 됨).
+ */
+async function addXingHeader(
+	path: string,
+	deps: { spawn?: typeof nodeSpawn; ffmpegPath?: string; timeoutMs?: number }
+): Promise<string> {
+	const spawn = deps.spawn ?? nodeSpawn;
+	const bin = ffmpegBin(deps.ffmpegPath);
+	const out = `${path.replace(/\.mp3$/i, '')}.xing.mp3`;
+	const args = [
+		'-hide_banner', '-loglevel', 'error', '-nostdin', '-y',
+		'-i', path, '-c', 'copy', '-map_metadata', '0', '-write_xing', '1', out
+	];
+	const ok = await new Promise<boolean>((resolve) => {
+		let settled = false;
+		const done = (v: boolean) => {
+			if (settled) return;
+			settled = true;
+			resolve(v);
+		};
+		let child: ReturnType<typeof spawn>;
+		try {
+			child = spawn(bin, args, { stdio: ['ignore', 'ignore', 'ignore'] });
+		} catch {
+			return done(false);
+		}
+		const timer = setTimeout(() => {
+			try { child.kill('SIGTERM'); } catch { /* gone */ }
+			done(false);
+		}, deps.timeoutMs ?? 60_000);
+		child.on('error', () => { clearTimeout(timer); done(false); });
+		child.on('close', (code: number | null) => { clearTimeout(timer); done(code === 0); });
+	});
+	return ok && existsSync(out) ? out : path;
 }
 
 function runYtdlp(arg: string, dir: string, deps: RunnerDeps): Promise<void> {
