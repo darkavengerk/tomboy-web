@@ -3,6 +3,7 @@ import {
 	parseRecordsFromDoc,
 	upsertRecordInDoc,
 	pickGlobalLatest,
+	serializeRecords,
 	MUSIC_CONTROL_MARKER,
 	type MusicControlRecord
 } from '$lib/music/musicControlNote.js';
@@ -43,6 +44,43 @@ describe('musicControlNote', () => {
 		const texts = (doc.content ?? []).map((n) => n.content?.[0]?.text ?? '');
 		expect(texts).toContain('내 메모');
 		const markers = (doc.content ?? []).filter((n) =>
+			(n.content?.[0]?.text ?? '').startsWith(MUSIC_CONTROL_MARKER)
+		);
+		expect(markers).toHaveLength(1);
+	});
+
+	it('parseRecordsFromDoc returns [] for docs with no content key', () => {
+		expect(parseRecordsFromDoc({ type: 'doc' } as any)).toEqual([]);
+		expect(parseRecordsFromDoc({} as any)).toEqual([]);
+	});
+
+	it('upsertRecordInDoc replaces marker in-place without displacing user paragraphs', () => {
+		const markerText = serializeRecords([rec({ deviceId: 'x' })]);
+		const markerPara: JSONContent = {
+			type: 'paragraph',
+			content: [{ type: 'text', text: markerText }]
+		};
+		const userPara: JSONContent = {
+			type: 'paragraph',
+			content: [{ type: 'text', text: '사용자 메모' }]
+		};
+		// doc: [titlePara, markerPara, userPara]  (marker is NOT the last block)
+		const doc: JSONContent = {
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: '음악제어::공유' }] },
+				markerPara,
+				userPara
+			]
+		};
+		const updated = upsertRecordInDoc(doc, rec({ deviceId: 'x', position: 42 }));
+		const content = updated.content ?? [];
+		// marker paragraph must still be at index 1
+		expect((content[1].content?.[0]?.text ?? '').startsWith(MUSIC_CONTROL_MARKER)).toBe(true);
+		// user paragraph must still be at index 2
+		expect(content[2].content?.[0]?.text).toBe('사용자 메모');
+		// exactly one marker paragraph in the whole doc
+		const markers = content.filter((n) =>
 			(n.content?.[0]?.text ?? '').startsWith(MUSIC_CONTROL_MARKER)
 		);
 		expect(markers).toHaveLength(1);

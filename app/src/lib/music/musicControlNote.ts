@@ -40,6 +40,7 @@ function isRecord(v: unknown): v is MusicControlRecord {
 		typeof e.deviceId === 'string' &&
 		typeof e.trackUrl === 'string' &&
 		typeof e.position === 'number' &&
+		typeof e.state === 'string' &&
 		typeof e.updatedAt === 'string'
 	);
 }
