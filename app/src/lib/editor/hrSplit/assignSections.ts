@@ -76,3 +76,71 @@ export function assignSections({
 
 	return { roles, hrCount: section + 1 };
 }
+
+/**
+ * The "section box" — a 1×N table frame drawn around the run of
+ * content-bearing `---` sections. The box spans the first non-empty
+ * section's HR marker (top edge) down to the last section block; each `---`
+ * inside is a row divider. Bare `---` (an HR whose own section is empty)
+ * never opens a box on its own.
+ *
+ * This is a *visual* frame independent of fold state — it renders whenever
+ * a content `---` section exists. The only fold-dependent part is `bottom`:
+ * a folded section hides its 'rest' blocks (`display:none`), so the bottom
+ * border must land on the last *visible* block, which is a folded last
+ * section's clamped 'first' block rather than its hidden tail.
+ */
+export interface BoxRegion {
+	/** Top-level index of the first non-empty section's HR marker — the box
+	 *  top edge. -1 when there is no content `---` section (no box). */
+	top: number;
+	/** Top-level index of the last section content block (logical end; may be
+	 *  hidden when its section is folded). -1 when there is no box. */
+	end: number;
+	/** Top-level index that carries the bottom border = the last *visible*
+	 *  block in `[top, end]` for the given folded set. Always a content block
+	 *  ('first' stays visible/clamped even when folded). -1 when no box. */
+	bottom: number;
+}
+
+export function computeBoxRegion(
+	roles: SectionRole[],
+	folded: ReadonlySet<number> = new Set()
+): BoxRegion {
+	// top = first HR whose own section is non-empty. A leading bare/empty
+	// `---` (or anything 'outside') stays outside the box.
+	let top = -1;
+	for (let i = 0; i < roles.length; i++) {
+		const r = roles[i];
+		if (r.role === 'hr' && !r.sectionEmpty) {
+			top = i;
+			break;
+		}
+	}
+	if (top < 0) return { top: -1, end: -1, bottom: -1 };
+
+	// end = last content block at or after top. A trailing bare `---` past
+	// the last section is excluded so the box closes under real content.
+	let end = -1;
+	for (let i = roles.length - 1; i > top; i--) {
+		const r = roles[i];
+		if (r.role === 'first' || r.role === 'rest') {
+			end = i;
+			break;
+		}
+	}
+
+	// bottom = last index in [top, end] that is visible. A 'rest' block of a
+	// folded section is hidden; its 'first' block is only clamped (visible).
+	let bottom = -1;
+	for (let i = end; i > top; i--) {
+		const r = roles[i];
+		const hidden = r.role === 'rest' && folded.has(r.section);
+		if (!hidden) {
+			bottom = i;
+			break;
+		}
+	}
+
+	return { top, end, bottom };
+}

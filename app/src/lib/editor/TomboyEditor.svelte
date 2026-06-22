@@ -2124,6 +2124,54 @@ import { TomboyBridgeNote } from "./bridgeNote/index.js";
 		display: none;
 	}
 
+	/* Section box — a 1×N table frame around content-bearing `---` sections.
+	   Always on (independent of fold state); auto-suppressed in the 나란히
+	   보기 split layout because the fold plugin emits no decorations while
+	   columns are active. The rectangle is drawn with per-block side borders
+	   (PM forbids wrapping its children — see the tomboy-hrsplit skill), so
+	   each boxed block collapses its vertical margins to keep the left/right
+	   borders continuous. Each interior `---` keeps its ::before line as the
+	   row divider; the first `---` becomes the top edge, the last visible
+	   block the bottom edge. */
+	.tomboy-editor :global(.tomboy-hr-box) {
+		border-left: 1px solid #b0b0b0;
+		border-right: 1px solid #b0b0b0;
+		margin-top: 0;
+		margin-bottom: 0;
+		padding-left: 14px;
+		padding-right: 14px;
+		background: #fcfcfc;
+	}
+	/* Content rows get a little vertical breathing room; the `---` divider
+	   rows keep their own intrinsic height. */
+	.tomboy-editor :global(.tomboy-hr-box):not(.tomboy-hr-marker) {
+		padding-top: 0.35em;
+		padding-bottom: 0.35em;
+	}
+	/* A boxed `---` divider's horizontal line must span the full inner width
+	   (touch both side borders), so it drops the box's side padding — the
+	   ::before (inset:0) then reaches edge to edge. */
+	.tomboy-editor :global(.tomboy-hr-marker.tomboy-hr-box) {
+		padding-left: 0;
+		padding-right: 0;
+	}
+	/* Top edge = the first content `---`. Swap its centered ::before line for
+	   a real top border so the rectangle closes with rounded corners. */
+	.tomboy-editor :global(.tomboy-hr-box-top) {
+		border-top: 1px solid #b0b0b0;
+		border-top-left-radius: 7px;
+		border-top-right-radius: 7px;
+	}
+	.tomboy-editor :global(.tomboy-hr-box-top::before) {
+		display: none;
+	}
+	/* Bottom edge = the last visible section block. */
+	.tomboy-editor :global(.tomboy-hr-box-bottom) {
+		border-bottom: 1px solid #b0b0b0;
+		border-bottom-left-radius: 7px;
+		border-bottom-right-radius: 7px;
+	}
+
 	/* Labeled-divider list accordion — `+/−` 버튼으로 그룹당 한 리스트만
 	   펼침. 버튼은 라벨 디바이더(position:relative + isolation:isolate)
 	   안에 절대배치; 숨김은 소유 리스트 블록에 display:none. */
