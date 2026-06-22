@@ -2777,7 +2777,7 @@ Complete:</pre>
 						<li>탭은 제목 길이에 맞춰 커지되 최소 너비는 표시 개수에 반비례(많을수록 좁아짐, 긴 제목은 …로 축약). 표시 개수+1개 이하는 전부 고정 표시(활성만 하이라이트가 이동), 그보다 많으면 M개 윈도우 + 좌우 +N 배지</li>
 						<li>훑어보기 모드는 없음 — <strong>활성 노트는 항상 편집 상태</strong>, 탭 줄(다른 모든 제목)도 항상 보임. 탭을 클릭하면 그 노트로 전환됨</li>
 						<li><strong>탭 줄 위에서 마우스 휠/스크롤</strong>하면 탭이 넘어감(아래로 = 다음 탭). <strong>본문 위 휠/스크롤</strong>은 활성 노트 내용을 그대로 스크롤. (옛 훑어보기·본문 어디서나 휠/스와이프 탭넘기기·탭 줄을 숨겨 노트 하나처럼 보이던 단일 노트 뷰는 없어짐)</li>
-						<li><strong>키보드 단축키</strong>(탭 안 노트에 커서가 있을 때만) — <kbd>Ctrl</kbd>+<kbd>PgDn</kbd>/<kbd>PgUp</kbd> = 다음/이전 탭(카테고리 끝에선 상위로 넘어감), <kbd>Ctrl</kbd>+<kbd>Tab</kbd> = <strong>직전에 보던 탭</strong>으로(=<strong>선택 기록</strong> 역순). <kbd>Ctrl</kbd>을 누른 채 <kbd>Tab</kbd>을 반복하면 점점 더 과거 탭으로, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Tab</kbd>은 반대 방향, <kbd>Ctrl</kbd>을 떼면 그 탭으로 확정. <em>이 키들은 브라우저 탭 전환에도 쓰여, 설치형 PWA(독립 창)에서 가장 잘 동작하고 일반 브라우저 탭에서는 브라우저가 먼저 가로챌 수 있음</em></li>
+						<li><strong>키보드 단축키</strong>(탭 안 노트에 커서가 있을 때만) — <kbd>Ctrl</kbd>+<kbd>]</kbd>/<kbd>[</kbd> = 다음/이전 탭(카테고리 끝에선 상위로 넘어감), <kbd>Ctrl</kbd>+<kbd>`</kbd> = <strong>직전에 보던 탭</strong>으로(=<strong>선택 기록</strong> 역순). <kbd>Ctrl</kbd>을 누른 채 <kbd>`</kbd>를 반복하면 점점 더 과거 탭으로, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>`</kbd>는 반대 방향, <kbd>Ctrl</kbd>을 떼면 그 탭으로 확정. 이 키들은 일반 브라우저 탭에서도 동작합니다. <em>설치형 PWA(독립 창)에서는 브라우저 단축키 그대로 <kbd>Ctrl</kbd>+<kbd>PgDn</kbd>/<kbd>PgUp</kbd>(다음/이전)·<kbd>Ctrl</kbd>+<kbd>Tab</kbd>(직전 탭)도 함께 쓸 수 있음</em></li>
 						<li>모바일: 탭을 눌러 다른 노트로 전환, 본문을 누르면 바로 그 노트 편집(키보드)</li>
 						<li>본문에서는 <strong>제목(첫 줄)이 숨겨짐</strong> — 제목은 이미 탭에 표시되므로 본문은 내용부터 시작 (단독 노트 화면과 동일)</li>
 						<li>한 번 연 노트는 탭 전환해도 계속 살아 있음 — 재전환 즉시, 커서·실행취소가 노트별로 보존</li>

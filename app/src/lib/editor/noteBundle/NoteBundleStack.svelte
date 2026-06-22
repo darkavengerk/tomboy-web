@@ -38,11 +38,13 @@
 	 *
 	 * ── 키보드 내비게이션 ───────────────────────────────────────────────
 	 * 잎 에디터에 포커스가 있을 때만(rootEl 격벽 keydown 으로 자동 스코핑):
-	 * Ctrl+PgDn/PgUp = 인접 탭(stepPath, 레벨 끝→부모 버블), Ctrl+Tab =
-	 * MRU(선택 기록) 역순 순회 — Ctrl 유지+Tab 반복으로 과거 탭, Shift 면 반대,
-	 * Ctrl 떼면 확정(modKeys.ctrl $effect 로 커밋). mru/cycling 은 로컬 비-영속.
-	 * 순환 중엔 cycleOrder 고정(navigate 안 거치는 setActive). preventDefault 로
-	 * 브라우저 탭 전환 차단(설치형 PWA 에선 애초에 브라우저 탭 없음).
+	 * - 인접 탭(stepPath, 레벨 끝→부모 버블): Ctrl+] / Ctrl+[ (브라우저 탭에서도
+	 *   동작) + Ctrl+PgDn / Ctrl+PgUp (PWA 독립 창 전용 — 일반 탭에선 브라우저가
+	 *   먼저 가로챔).
+	 * - MRU(선택 기록) 역순 순회: Ctrl+` (브라우저 탭에서도) + Ctrl+Tab(PWA 전용).
+	 *   Ctrl 유지+반복으로 과거 탭, Shift 면 반대, Ctrl 떼면 확정(modKeys.ctrl
+	 *   $effect 로 커밋). mru/cycling 은 로컬 비-영속, 순환 중엔 cycleOrder 고정
+	 *   (navigate 안 거치는 setActive). 미예약 키는 preventDefault 로 흡수.
 	 *
 	 * ── 호스트 셸 배선 ──────────────────────────────────────────────────
 	 * 터미널/음악/하단최신은 잎 본문에 그대로. TerminalView·MusicPlayerBar 는
@@ -251,12 +253,12 @@
 	}
 
 	// --- 탭 키보드 내비게이션 (포커스가 잎 에디터/스택 안에 있을 때만) -----------
-	// Ctrl+PgDn / Ctrl+PgUp = 인접 탭(다음/이전, stepPath — 레벨 끝에선 부모로
-	//   버블). Ctrl+Tab = MRU(최근 선택) 히스토리 역순 순회: Ctrl 누른 채 Tab 반복
-	//   → 점점 과거 탭. Ctrl+Shift+Tab = 반대(최근) 방향. Ctrl 떼면 멈춘 탭으로 확정.
+	// 인접 탭(stepPath — 레벨 끝에선 부모로 버블): Ctrl+] 다음 / Ctrl+[ 이전. MRU
+	//   (최근 선택) 히스토리 역순 순회: Ctrl 누른 채 Ctrl+` 반복 → 점점 과거 탭,
+	//   Ctrl+Shift+` = 반대, Ctrl 떼면 멈춘 탭 확정. (PWA 독립 창에선 Ctrl+PgDn/Up·
+	//   Ctrl+Tab 도 같은 동작 — 일반 브라우저 탭에선 브라우저가 먼저 가로채 안 옴.)
 	// 키 핸들러는 rootEl 격벽 안에서 버블해 올라온 키만 받으므로 자동으로 "탭에
-	// 포커스 있을 때만" 동작. 브라우저 기본 탭 전환을 막으려 preventDefault — 설치형
-	// PWA(standalone)엔 애초에 브라우저 탭이 없어 우리 탭으로 그대로 전달된다.
+	// 포커스 있을 때만" 동작. 미예약 키는 preventDefault 로 브라우저 기본 동작 차단.
 	//
 	// 방문한 잎 경로의 MRU(앞=최근). 영속 안 함 — activePath 와 같은 로컬 상태.
 	let mru: number[][] = [];
@@ -301,23 +303,49 @@
 		cycleIdx = (cycleIdx + dir + len) % len;
 		setActive(cycleOrder[cycleIdx]); // 순환 중엔 기록 안 함
 	}
-	/** rootEl keydown 격벽에서 호출 — 탭 키를 처리했으면 true. */
+	function adjacent(dir: 1 | -1) {
+		navigate(stepPath(tree, activePath, dir));
+	}
+	/** rootEl keydown 격벽에서 호출 — 탭 키를 처리했으면 true.
+	 *  두 묶음의 바인딩:
+	 *  - PWA(독립 창) 전용: Ctrl+PgDn/Up(인접) · Ctrl+Tab(MRU). 일반 브라우저
+	 *    탭에선 브라우저가 먼저 가로채(취소 불가) 여기까지 안 옴.
+	 *  - 브라우저 탭에서도 동작(미예약): Ctrl+] / Ctrl+[(인접) · Ctrl+`(MRU).
+	 *    e.code(물리 키)로 봐서 Shift 가 글자를 바꿔도(~) 무관. Cmd 은 Mac 에서
+	 *    예약(Cmd+[ = 뒤로)이라 ctrlKey 전용. */
 	function handleTabNavKey(e: KeyboardEvent): boolean {
 		if (!(e.ctrlKey || e.metaKey)) return false;
 		if (e.key === 'PageDown') {
 			e.preventDefault();
-			navigate(stepPath(tree, activePath, 1));
+			adjacent(1);
 			return true;
 		}
 		if (e.key === 'PageUp') {
 			e.preventDefault();
-			navigate(stepPath(tree, activePath, -1));
+			adjacent(-1);
 			return true;
 		}
 		if (e.key === 'Tab') {
 			e.preventDefault();
 			cycleTab(e.shiftKey ? -1 : 1);
 			return true;
+		}
+		if (e.ctrlKey && !e.metaKey) {
+			if (e.code === 'BracketRight') {
+				e.preventDefault();
+				adjacent(1);
+				return true;
+			}
+			if (e.code === 'BracketLeft') {
+				e.preventDefault();
+				adjacent(-1);
+				return true;
+			}
+			if (e.code === 'Backquote') {
+				e.preventDefault();
+				cycleTab(e.shiftKey ? -1 : 1);
+				return true;
+			}
 		}
 		return false;
 	}
