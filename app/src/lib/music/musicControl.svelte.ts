@@ -4,15 +4,19 @@ import {
 	MUSIC_CONTROL_TITLE,
 	type MusicControlRecord,
 	type TransportState,
-	upsertRecordInDoc
+	upsertRecordInDoc,
+	parseRecordsFromDoc,
+	pickGlobalLatest
 } from './musicControlNote.js';
 import * as noteStore from '$lib/storage/noteStore.js';
 import { createEmptyNote, escapeXml, NOTE_CONTENT_VERSION } from '$lib/core/note.js';
 import { deserializeContent } from '$lib/core/noteContentArchiver.js';
 import { updateNoteFromEditor } from '$lib/core/noteManager.js';
-import { emitNoteFlush } from '$lib/core/noteReloadBus.js';
+import { emitNoteFlush, subscribeNoteReload } from '$lib/core/noteReloadBus.js';
 import { getSetting, getDeviceName } from '$lib/storage/appSettings.js';
 import { getOrCreateInstallId } from '$lib/schedule/installId.js';
+import { saveProgress } from './musicProgress.js';
+import type { MusicTrack } from './parseMusicNote.js';
 
 const FIREBASE_NOTES_ENABLED_KEY = 'firebaseNotesEnabled';
 
@@ -82,7 +86,68 @@ export async function recordTransport(kind: TransportKind): Promise<void> {
 	await updateNoteFromEditor(MUSIC_CONTROL_GUID, newDoc);
 }
 
+let globalLatest = $state<MusicControlRecord | null>(null);
+
+function syntheticTrack(r: MusicControlRecord): MusicTrack {
+	return {
+		url: r.trackUrl,
+		title: r.trackTitle || null,
+		display: r.trackTitle || r.trackUrl,
+		liPos: -1
+	};
+}
+
+/** Re-read the control note, recompute the global-latest pointer, and (when
+ *  safe) restore it as a ready paused queue so the existing ▶ resumes it
+ *  synchronously inside the user gesture. */
+export async function refreshFromNote(): Promise<void> {
+	const note = await noteStore.getNote(MUSIC_CONTROL_GUID);
+	if (!note) {
+		globalLatest = null;
+		return;
+	}
+	const latest = pickGlobalLatest(parseRecordsFromDoc(deserializeContent(note.xmlContent)));
+	globalLatest = latest;
+	if (!latest) return;
+	if (musicPlayer.isPlaying) return; // never yank an active playback
+	const { id } = await deviceIdentity();
+	if (latest.deviceId === id) return; // own device → keep richer local session
+
+	// Seed musicProgress so restoreSession's loadProgress matches our synthetic
+	// track's url and promotes `position` into pendingRestore.
+	saveProgress(latest.noteGuid, latest.trackUrl, latest.position);
+	musicPlayer.restoreSession({
+		activeNoteGuid: latest.noteGuid,
+		activeNoteName: latest.noteTitle,
+		queue: [syntheticTrack(latest)],
+		currentIndex: 0,
+		originNoteGuid: latest.noteGuid
+	});
+}
+
+export function getGlobalLatestForTest(): MusicControlRecord | null {
+	return globalLatest;
+}
+
+/** Boot read + subscribe to control-note changes + listen for transport events.
+ *  Install once from +layout. Returns uninstall. */
+export function installMusicControl(): () => void {
+	if (typeof window === 'undefined') return () => {};
+	void refreshFromNote();
+	const unsubReload = subscribeNoteReload(MUSIC_CONTROL_GUID, () => {
+		void refreshFromNote();
+	});
+	const unsubTransport = musicPlayer.onTransport((kind) => {
+		void recordTransport(kind);
+	});
+	return () => {
+		unsubReload();
+		unsubTransport();
+	};
+}
+
 /** Test-only reset. */
 export function __resetMusicControlForTest(): void {
 	myDeviceId = null;
+	globalLatest = null;
 }
