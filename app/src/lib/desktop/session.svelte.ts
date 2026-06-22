@@ -233,11 +233,6 @@ let noteChromeEpoch = $state(0);
 // means two consecutive requests for the same window still re-trigger.
 let focusRequest = $state<{ guid: string; token: number } | null>(null);
 let focusRequestCounter = 0;
-/** Guid of the note the user has explicitly engaged — clicked into so the
- *  editor caret is blinking there. Distinct from focusedNoteGuid (topmost by
- *  z): an opened-but-unclicked note is focused (green) yet NOT engaged. Drives
- *  the red title-bar / bundle-bar accent. Cleared on focusout / close. */
-let engagedNoteGuid = $state<string | null>(null);
 // Session-only stack of guids closed via closeWindow, most-recent last.
 // Alt+Esc pops this to undo an accidental Esc close. Not persisted (a
 // "recently" stack only makes sense within the live session) and not a
@@ -776,27 +771,6 @@ export const desktopSession = {
 	},
 
 	/**
-	 * Guid of the note the user has explicitly clicked into (editor caret
-	 * active). NULL when focus sits on the canvas, the rail, or another app.
-	 * Unlike focusedNoteGuid (purely topmost by z), this only flips on a real
-	 * pointer interaction — the programmatic open/raise focus does NOT engage,
-	 * so a freshly-opened note stays the green (focused) note, not red.
-	 */
-	get engagedNoteGuid(): string | null {
-		return engagedNoteGuid;
-	},
-	/** Mark a note engaged — a real pointer click landed inside its window. */
-	engageNote(guid: string): void {
-		engagedNoteGuid = guid;
-	},
-	/** Clear engagement when focus leaves the window (focusout to outside, or
-	 *  close). Guid-guarded so a trailing focusout from the old window can't
-	 *  stomp a fresh engageNote on the window the user just clicked into. */
-	disengageNote(guid: string): void {
-		if (engagedNoteGuid === guid) engagedNoteGuid = null;
-	},
-
-	/**
 	 * Guid of the topmost note window on the ACTIVE surface (highest raw z
 	 * among kind==='note', non-minimized). When a drawer is open it is the
 	 * live surface; otherwise the current workspace canvas. Used by NoteWindow
@@ -1213,7 +1187,6 @@ export const desktopSession = {
 		cacheGeometry(ws, ws.windows[idx]);
 		const closedKind = ws.windows[idx].kind;
 		ws.windows.splice(idx, 1);
-		if (engagedNoteGuid === guid) engagedNoteGuid = null;
 		// Close any ephemeral history window bound to this note — it would
 		// otherwise float with no source.
 		if (closedKind === 'note') {
@@ -1334,7 +1307,6 @@ export const desktopSession = {
 		cacheGeometry(ws, ws.windows[idx]);
 		const closedKind = ws.windows[idx].kind;
 		ws.windows.splice(idx, 1);
-		if (engagedNoteGuid === guid) engagedNoteGuid = null;
 		// Close any ephemeral history window bound to this note — it would
 		// otherwise float with no source.
 		if (closedKind === 'note') {
@@ -1527,7 +1499,6 @@ export const desktopSession = {
 		const win = ws.windows.find((w) => w.guid === guid);
 		if (!win || win.kind !== 'note' || win.minimized) return;
 		win.minimized = true;
-		if (engagedNoteGuid === guid) engagedNoteGuid = null;
 		// Chain focus to the most-recently-focused remaining visible note.
 		let next: DesktopWindowState | null = null;
 		for (const w of ws.windows) {
@@ -1647,7 +1618,6 @@ export const desktopSession = {
 		drawerLefts = Array.from({ length: DRAWER_COUNT }, (_, i) => defaultDrawerLeft(i));
 		focusRequest = null;
 		focusRequestCounter = 0;
-		engagedNoteGuid = null;
 		closedStack.length = 0;
 		loaded = false;
 		flushHooks.clear();

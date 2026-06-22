@@ -872,8 +872,6 @@
 	function handleWindowPointerDown(e: PointerEvent) {
 		// Always raise-to-top on any pointer inside the window.
 		onfocus(guid);
-		// 명시적 클릭 → engaged(빨강). focusout 으로 해제될 때까지 유지.
-		markEngaged();
 		if (!e.altKey) return;
 		const targetEl = e.target as HTMLElement | null;
 		// Let the close button / resize grip do their thing.
@@ -1189,29 +1187,33 @@
 	const titleDisplay = $derived(note?.title?.trim() || '제목 없음');
 	// 활성(제일 위 = 최상위 z). 종전대로 타이틀바 녹색.
 	const isFocused = $derived(desktopSession.focusedNoteGuid === guid);
-	// 명시적으로 클릭해 캐럿이 깜빡이는 노트 — 타이틀바 붉은색. 활성(녹색)과 별개:
-	// 새로 열려 최상위가 됐을 뿐이면(프로그램 포커스) engaged 아님 → 녹색 유지.
-	const isEngaged = $derived(desktopSession.engagedNoteGuid === guid);
+	// 캐럿이 깜빡이는 노트 — 타이틀바 붉은색. 유일한 트리거는 "이 창 안의 편집 가능
+	// 요소가 DOM 포커스를 쥐고 있는가"(= 키보드 입력이 이 노트로 들어가는 상태).
+	// 클릭·최상위 여부와 무관하게 오직 캐럿 위치만 본다.
+	let hasCaret = $state(false);
 	// 전용 탭::/묶음:: 번들에 넘길 3-상태(빨강>녹색>회색). 창 타이틀바가 없는
 	// 전용 노트는 번들 "활성 타이틀 바"가 이 색을 대신 입는다.
 	const barFocus = $derived<'engaged' | 'active' | 'idle'>(
-		isEngaged ? 'engaged' : isFocused ? 'active' : 'idle'
+		hasCaret ? 'engaged' : isFocused ? 'active' : 'idle'
 	);
 
-	// 창 안에서 진짜 포인터가 눌리면 engaged 로 표시(빨강). pointerdowncapture 라
-	// 타이틀바/본문/리사이즈 어디든 클릭하면 잡힌다 — 프로그램 포커스(focusRequest)
-	// 는 이 경로를 안 타므로 열기만으로는 빨개지지 않는다.
-	function markEngaged() {
-		desktopSession.engageNote(guid);
+	// 캐럿(키보드 입력 대상) = 창 안의 편집 가능 요소가 활성. ProseMirror 본문
+	// (contentEditable), 입력칸, 터미널 helper textarea 등. 타이틀바/버튼 같은 비편집
+	// 요소가 포커스를 쥐면(또는 포커스가 창 밖이면) false → 캐럿 없음.
+	function caretInWindow(): boolean {
+		const ae = document.activeElement as HTMLElement | null;
+		if (!ae || !windowEl || !windowEl.contains(ae)) return false;
+		return ae.isContentEditable || ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA';
 	}
-	// 포커스가 이 창 밖으로 나가면 engaged 해제 → 빨강 사라지고 (최상위면) 녹색 복귀.
-	// 캔버스/레일/다른 앱으로 가면 relatedTarget 이 창 밖(or null) → 해제. 다른 창을
-	// 클릭하면 그 창의 markEngaged 가 먼저 새 guid 로 덮으므로, 뒤따르는 이 focusout
-	// 은 guid-가드(disengageNote)에 막혀 새 선택을 깨지 않는다.
-	function handleWindowFocusOut(e: FocusEvent) {
-		const next = e.relatedTarget as Node | null;
-		if (next && windowEl?.contains(next)) return;
-		desktopSession.disengageNote(guid);
+	function handleFocusIn() {
+		hasCaret = caretInWindow();
+	}
+	function handleFocusOut() {
+		// focusout 시점엔 activeElement 가 아직 이전 요소이거나 body 로 바뀌는 중 —
+		// 마이크로태스크로 미뤄 새 포커스가 확정된 뒤 계산(다른 창/캔버스로의 이동 포함).
+		queueMicrotask(() => {
+			hasCaret = caretInWindow();
+		});
 	}
 </script>
 
@@ -1225,7 +1227,8 @@
 	style="left:{x}px; top:{y}px; width:{width}px; height:{height}px; z-index:{z};"
 	style:background-color={`rgba(255, 255, 255, ${noteOpacity})`}
 	onpointerdowncapture={handleWindowPointerDown}
-	onfocusout={handleWindowFocusOut}
+	onfocusin={handleFocusIn}
+	onfocusout={handleFocusOut}
 	onkeydown={handleKeyDown}
 >
 	<!-- 전용 파일철 뷰는 창 타이틀바 숨김(제목은 바에 노출, 닫기는 dchrome ✕).
@@ -1235,7 +1238,7 @@
 	<div
 		class="title-bar"
 		class:focused={isFocused}
-		class:engaged={isEngaged}
+		class:engaged={hasCaret}
 		onpointerdown={startDrag}
 		onauxclick={handleTitleBarAuxClick}
 		ondblclick={(e) => { if ((e.target as HTMLElement)?.closest('[data-no-drag]')) return; openTitleDialog(); }}
@@ -1605,9 +1608,10 @@
 		background: #2d5a3d;
 	}
 
-	/* Engaged note — the one the user explicitly clicked into (caret blinking).
-	   Red, and wins over the green when both apply (engaged ⟹ topmost). Later
-	   in source order than .focused so equal-specificity it paints on top. */
+	/* The note whose editor holds the caret (keyboard types here). Red, and
+	   wins over the green when a window is both topmost and caret-holding —
+	   later in source order than .focused so at equal specificity it paints
+	   on top. Driven purely by DOM focus, not by click or z-order. */
 	.title-bar.engaged {
 		background: #a13535;
 	}
