@@ -250,17 +250,27 @@ descends into their first navigable leaf).
 
 Scoped to "a leaf editor is focused" by piggy-backing on the barrier's `rootEl`
 `keydown` handler (`handleTabNavKey` called inside `stopKeydown` — only keys that
-bubbled up from *inside* the stack reach it). All `preventDefault` to block the
-browser's own tab-switch (works in installed PWA standalone where there are no
-browser tabs; a regular browser tab may intercept first).
+bubbled up from *inside* the stack reach it). Two binding sets, because the browser
+reserves `Ctrl+Tab`/`Ctrl+PgUp`/`Ctrl+PgDn` (non-cancelable in a regular tab — they
+never reach the page):
 
-- **Ctrl+PgDn / Ctrl+PgUp** → adjacent tab via `stepPath(tree, activePath, ±1)`
-  (the parent-bubble variant — stepping off a category's last child tosses to the
-  parent's next sibling). Routed through `navigate()` so it records MRU.
-- **Ctrl+Tab** → MRU (selection-history) reverse cycle; **Ctrl+Shift+Tab** =
-  forward. A local `mru: number[][]` (front = most-recent visited leaf path, deduped
-  by `pathKey = join(',')`, capped 50) is fed by `navigate()` on every click / wheel /
-  PgUp-Dn landing. `cycleTab(dir)` snapshots `mru` (filtered through the now-exported
+- **Browser-tab-safe (primary):** `Ctrl+]` / `Ctrl+[` adjacent, `` Ctrl+` `` MRU
+  (`Ctrl+Shift+`` ` `` = forward). Matched on `e.code` (`BracketRight`/`BracketLeft`/
+  `Backquote`) so Shift's char remap (`~`) and keyboard layout don't matter; gated
+  on `ctrlKey && !metaKey` (Mac `Cmd+[` = browser back). These are unreserved → the
+  page gets them and `preventDefault` sticks.
+- **PWA bonus:** `Ctrl+PgDn` / `Ctrl+PgUp` adjacent, `Ctrl+Tab` MRU
+  (`Ctrl+Shift+Tab` = forward). Only fire in installed-PWA standalone (no browser
+  tabs to steal them); a regular browser tab intercepts first.
+
+Adjacent uses `stepPath(tree, activePath, ±1)` (the parent-bubble variant — stepping
+off a category's last child tosses to the parent's next sibling), routed through
+`navigate()`.
+
+- **MRU cycle** — a local `mru: number[][]` (front = most-recent visited leaf path, deduped
+  by `pathKey = join(',')`, capped 50) is fed by an `$effect` on `activePath` (records every
+  *settled* landing — initial repair / click / wheel / adjacent-key — but skips while
+  `cycling` so the frozen order holds). `cycleTab(dir)` snapshots `mru` (filtered through the now-exported
   `pathEndsAtLeaf` to drop stale paths) into a **frozen `cycleOrder`** at cycle start,
   then walks `cycleIdx` with wrap-around, calling `setActive` **directly** (NOT
   `navigate`, so the order doesn't shift mid-cycle). An `$effect` on `modKeys.ctrl`
