@@ -1,0 +1,79 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-22-music-control-note.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: Pure control-note block module",
+      "status": "pending",
+      "description": "Pure parse/upsert/serialize of the hidden JSON records block + constants + record type. Files: app/src/lib/music/musicControlNote.ts (+ test). Exports MUSIC_CONTROL_GUID/TITLE/MARKER, MusicControlRecord, parseRecordsFromDoc, serializeRecords, upsertRecordInDoc (upsert by deviceId), pickGlobalLatest.\n\n```json:metadata\n{\"files\": [\"app/src/lib/music/musicControlNote.ts\", \"app/tests/unit/music/musicControlNote.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/music/musicControlNote.test.ts\", \"acceptanceCriteria\": [\"parse empty/present\", \"upsert by deviceId + preserve content\", \"pickGlobalLatest greatest updatedAt\", \"round-trip\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: musicPlayer transport-event emitter",
+      "status": "pending",
+      "description": "Add onTransport/notifyExplicitPlay + emit in pause()/stop() (stop emits before clearing). Files: app/src/lib/music/musicPlayer.svelte.ts (+ test).\n\n```json:metadata\n{\"files\": [\"app/src/lib/music/musicPlayer.svelte.ts\", \"app/tests/unit/music/musicPlayerTransport.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/music/musicPlayerTransport.test.ts\", \"acceptanceCriteria\": [\"onTransport register/unsub\", \"emit play/pause/stop\", \"stop before clear\", \"reset clears listeners\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Emit explicit-play from gesture funnel",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "resumePlaybackFromGesture calls musicPlayer.notifyExplicitPlay() after play(). Files: app/src/lib/music/musicAudio.svelte.ts.\n\n```json:metadata\n{\"files\": [\"app/src/lib/music/musicAudio.svelte.ts\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"notifyExplicitPlay after play()\", \"type check passes\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: appSettings device name",
+      "status": "pending",
+      "description": "getDeviceName/setDeviceName (deviceName key). Files: app/src/lib/storage/appSettings.ts (+ test).\n\n```json:metadata\n{\"files\": [\"app/src/lib/storage/appSettings.ts\", \"app/tests/unit/storage/deviceName.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/storage/deviceName.test.ts\", \"acceptanceCriteria\": [\"default empty\", \"round-trips trimmed\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: musicControl — write path (record transport)",
+      "status": "pending",
+      "blockedBy": [1, 2, 4],
+      "description": "recordTransport upserts this device's record into fixed-GUID control note (get-or-create), gated on firebaseNotesEnabled. Sync snapshot capture. Files: app/src/lib/music/musicControl.svelte.ts (+ test).\n\n```json:metadata\n{\"files\": [\"app/src/lib/music/musicControl.svelte.ts\", \"app/tests/unit/music/musicControlWrite.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/music/musicControlWrite.test.ts\", \"acceptanceCriteria\": [\"no-op toggle off\", \"creates note + record\", \"same-device upsert\", \"sync snapshot survives stop clear\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: musicControl — read path, global pointer + install",
+      "status": "pending",
+      "blockedBy": [5],
+      "description": "refreshFromNote sets global-latest; restores ready paused single-track queue when not playing AND latest from another device; installMusicControl (boot read + reload sub + transport listener). Files: app/src/lib/music/musicControl.svelte.ts (+ test).\n\n```json:metadata\n{\"files\": [\"app/src/lib/music/musicControl.svelte.ts\", \"app/tests/unit/music/musicControlRead.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/music/musicControlRead.test.ts\", \"acceptanceCriteria\": [\"sets global-latest\", \"restores remote latest ready\", \"no restore own device\", \"no yank while playing\", \"install/uninstall\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: Install musicControl in the layout",
+      "status": "pending",
+      "blockedBy": [6],
+      "description": "Wire installMusicControl()/uninstall into +layout.svelte next to installMusicAudio/Session. Files: app/src/routes/+layout.svelte.\n\n```json:metadata\n{\"files\": [\"app/src/routes/+layout.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"installed once + uninstalled\", \"check passes + boots clean\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: Hide-block editor plugin",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "ProseMirror plugin hides the 음악제어데이터:: marker paragraph (display:none + caret guard), gated on currentGuid===MUSIC_CONTROL_GUID. Files: app/src/lib/editor/musicControlNote/musicControlHidePlugin.ts, TomboyEditor.svelte (register+CSS), test.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/musicControlNote/musicControlHidePlugin.ts\", \"app/src/lib/editor/TomboyEditor.svelte\", \"app/tests/unit/music/musicControlHidePlugin.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/music/musicControlHidePlugin.test.ts\", \"acceptanceCriteria\": [\"hide when enabled, none when disabled\", \"caret clamp\", \"editor gated + CSS\", \"mount test, destroy afterEach\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: Settings — device name field",
+      "status": "pending",
+      "blockedBy": [4],
+      "description": "기기 이름 text input in config tab after the firebase toggle section (imageStorageToken pattern). Files: app/src/routes/settings/+page.svelte.\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"input in config tab\", \"load+save trimmed\", \"placeholder fallback\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 10: Settings — guide card",
+      "status": "pending",
+      "description": "Guide card for 음악제어:: under 가이드 → 노트 sub-tab. Files: app/src/routes/settings/+page.svelte.\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check\", \"acceptanceCriteria\": [\"card under notes sub-tab\", \"covers singleton/resume/timing/toggle/device-name/hidden\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 11: Full suite + type check",
+      "status": "pending",
+      "blockedBy": [3, 6, 7, 8, 9, 10],
+      "description": "npm run check + npm run test green; documented manual cross-device smoke. Files: none.\n\n```json:metadata\n{\"files\": [], \"verifyCommand\": \"cd app && npm run check && npm run test\", \"acceptanceCriteria\": [\"check 0 new errors\", \"test green no regressions\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-22"
+}
