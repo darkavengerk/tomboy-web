@@ -49,6 +49,9 @@ export function resumePlaybackFromGesture(): void {
 	if (!url) return;
 	if ((audio.getAttribute('src') ?? '') !== url) audio.src = url;
 	void audio.play().catch(() => {});
+	// Record this explicit play to the control note (fire-and-forget; async IDB
+	// write must NOT block the synchronous gesture-time play() above).
+	musicPlayer.notifyExplicitPlay();
 }
 
 /**
