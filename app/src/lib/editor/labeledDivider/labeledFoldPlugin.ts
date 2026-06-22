@@ -4,6 +4,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 import {
 	assignAccordion,
+	computeAccordionBoxes,
 	type AccordionBlockKind,
 	type AccordionMember
 } from './assignAccordion.js';
@@ -152,7 +153,30 @@ function buildDecorations(
 		kinds,
 		headerCount: HEADER_COUNT
 	});
+	const boxes = computeAccordionBoxes(members, memberCountByGroup, focused);
+
 	const decos: Decoration[] = [];
+
+	// Accumulate node-decoration classes per top-level index so the box
+	// frame and the fold-hidden class can coexist on the same node.
+	const nodeClasses = new Map<number, string[]>();
+	const addClass = (i: number, cls: string) => {
+		const arr = nodeClasses.get(i);
+		if (arr) arr.push(cls);
+		else nodeClasses.set(i, [cls]);
+	};
+
+	// Box frame: per-block side borders (no DOM wrapping — PM-safe), the
+	// first member divider as the top edge, the last visible block as the
+	// bottom edge. Each interior labeled divider stays a row separator.
+	for (const b of boxes) {
+		for (let i = b.top; i <= b.end; i++) {
+			addClass(i, 'tomboy-labeled-box');
+			if (i === b.top) addClass(i, 'tomboy-labeled-box-top');
+			if (i === b.bottom) addClass(i, 'tomboy-labeled-box-bottom');
+		}
+	}
+
 	for (const m of members) {
 		if (!m.isListBearing) continue;
 		if ((memberCountByGroup.get(m.group) ?? 0) < 2) continue;
@@ -195,17 +219,19 @@ function buildDecorations(
 			)
 		);
 		if (!isOpen) {
-			for (const li of m.listIndices) {
-				const from = positions[li];
-				const node = doc.child(li);
-				decos.push(
-					Decoration.node(from, from + node.nodeSize, {
-						class: 'tomboy-labeled-fold-hidden'
-					})
-				);
-			}
+			for (const li of m.listIndices) addClass(li, 'tomboy-labeled-fold-hidden');
 		}
 	}
+
+	// Flush one node decoration per classed index (box ∪ hidden).
+	for (const [i, classes] of nodeClasses) {
+		const from = positions[i];
+		const node = doc.child(i);
+		decos.push(
+			Decoration.node(from, from + node.nodeSize, { class: classes.join(' ') })
+		);
+	}
+
 	return DecorationSet.create(doc, decos);
 }
 
@@ -220,6 +246,12 @@ function buildDecorations(
  *
  * Toggle is via the `+/−` widget button only (no line-click / handleClick)
  * so the divider's editable label text stays clickable.
+ *
+ * Each active accordion group (≥2 list-bearing members) is also framed in a
+ * 1×N table box (`tomboy-labeled-box` + `-top`/`-bottom`), spanning the
+ * member+list run; the labeled dividers inside are the row separators. The
+ * box is drawn with per-block borders (no wrappers) and its bottom edge
+ * tracks the last *visible* block as lists fold/unfold.
  *
  * Inert while hrSplit is active (the split's grid placement assumes every
  * block is visible). Decoration-only — never restructures the DOM.

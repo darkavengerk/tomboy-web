@@ -81,6 +81,21 @@ function hiddenDecos(editor: Editor): DecoWithType[] {
 	);
 }
 
+function classDecos(editor: Editor, cls: string): DecoWithType[] {
+	return foldDecos(editor).filter(d =>
+		(d.type.attrs?.class ?? '').includes(cls)
+	);
+}
+
+/** Doc position of the top-level child at `index` (start of node). */
+function topLevelPos(editor: Editor, index: number): number {
+	let pos = -1;
+	editor.state.doc.forEach((_node, offset, idx) => {
+		if (idx === index) pos = offset;
+	});
+	return pos;
+}
+
 function toggle(editor: Editor, ord: number): void {
 	editor.view.dispatch(
 		editor.state.tr.setMeta(labeledFoldPluginKey, { toggle: ord })
@@ -166,5 +181,67 @@ describe('labeledFoldPlugin', () => {
 		ed.view.dispatch(appended);
 		// Still [99] — the appended transaction must NOT prune it.
 		expect(focusedArr(ed)).toEqual([99]);
+	});
+});
+
+describe('labeledFoldPlugin — accordion box frame', () => {
+	// DOC: grp0 = idx 3(섹션1 div)·4(ul)·5(섹션2 div)·6(ul) — 2 members → boxed.
+	//      grp1 = idx 8(섹션3 div)·9(ul) — 1 member → no box.
+	it('boxes only the ≥2-member group: idx 3..6 → 4 blocks', () => {
+		const ed = makeEditor();
+		expect(classDecos(ed, 'tomboy-labeled-box')).toHaveLength(4);
+	});
+
+	it('top edge on the first member divider, bottom on the last list', () => {
+		const ed = makeEditor();
+		const tops = classDecos(ed, 'tomboy-labeled-box-top');
+		const bottoms = classDecos(ed, 'tomboy-labeled-box-bottom');
+		expect(tops).toHaveLength(1);
+		expect(tops[0].from).toBe(topLevelPos(ed, 3));
+		expect(bottoms).toHaveLength(1);
+		expect(bottoms[0].from).toBe(topLevelPos(ed, 6));
+	});
+
+	it('the single-member group (grp1) and intro are not boxed', () => {
+		const ed = makeEditor();
+		const froms = classDecos(ed, 'tomboy-labeled-box').map(d => d.from);
+		expect(froms).not.toContain(topLevelPos(ed, 2)); // intro
+		expect(froms).not.toContain(topLevelPos(ed, 8)); // 섹션3 divider
+		expect(froms).not.toContain(topLevelPos(ed, 9)); // its list
+	});
+
+	it('the top divider node carries both box and box-top classes', () => {
+		const ed = makeEditor();
+		const topDeco = foldDecos(ed).find(
+			d => d.from === topLevelPos(ed, 3) && typeof d.type.toDOM !== 'function'
+		);
+		const cls = topDeco?.type.attrs?.class ?? '';
+		expect(cls).toContain('tomboy-labeled-box');
+		expect(cls).toContain('tomboy-labeled-box-top');
+	});
+
+	it('focusing the first member moves the bottom edge up to the next divider', () => {
+		const ed = makeEditor();
+		toggle(ed, 0); // ord1 list (idx 6) hidden
+		const bottoms = classDecos(ed, 'tomboy-labeled-box-bottom');
+		expect(bottoms).toHaveLength(1);
+		expect(bottoms[0].from).toBe(topLevelPos(ed, 5)); // 섹션2 divider
+		// The box still covers all 4 blocks (idx 6 is box + hidden).
+		expect(classDecos(ed, 'tomboy-labeled-box')).toHaveLength(4);
+	});
+
+	it('focusing the last member keeps the bottom on its list', () => {
+		const ed = makeEditor();
+		toggle(ed, 1); // ord0 list (idx 4) hidden; idx 6 visible
+		expect(classDecos(ed, 'tomboy-labeled-box-bottom')[0].from).toBe(
+			topLevelPos(ed, 6)
+		);
+	});
+
+	it('inert while hrSplit is active → no box decorations', () => {
+		const ed = makeEditor();
+		expect(classDecos(ed, 'tomboy-labeled-box').length).toBeGreaterThan(0);
+		ed.view.dispatch(ed.state.tr.setMeta(hrSplitPluginKey, { toggle: 0 }));
+		expect(classDecos(ed, 'tomboy-labeled-box')).toHaveLength(0);
 	});
 });

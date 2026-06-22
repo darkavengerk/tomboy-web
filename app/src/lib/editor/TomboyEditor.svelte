@@ -2218,6 +2218,50 @@ import { TomboyBridgeNote } from "./bridgeNote/index.js";
 		font-size: 0.85em;
 	}
 
+	/* Labeled-divider accordion box — frames a group's member+list run (a
+	   group with ≥2 list-bearing members = the exclusive accordion) in a
+	   1×N table rectangle. Drawn with per-block borders because PM forbids
+	   wrapping its children (see the tomboy-hrsplit skill); each boxed block
+	   collapses its vertical margins so the left/right borders stay
+	   continuous. The labeled dividers inside keep their ::before line +
+	   label as the row separators; the first member divider is the top edge,
+	   the last visible block the bottom edge. Auto-suppressed in the 나란히
+	   보기 split layout (the fold plugin emits nothing there). */
+	.tomboy-editor :global(.tomboy-labeled-box) {
+		border-left: 1px solid #b0b0b0;
+		border-right: 1px solid #b0b0b0;
+		margin-top: 0;
+		margin-bottom: 0;
+		background: #fcfcfc;
+	}
+	/* Side padding on the row bodies (lists / interleaved text); dividers
+	   keep their own padding so their full-width ::before line still meets
+	   both side borders. */
+	.tomboy-editor :global(.tomboy-labeled-box):not(.tomboy-labeled-divider) {
+		padding-left: 14px;
+		padding-right: 14px;
+		padding-top: 0.2em;
+		padding-bottom: 0.2em;
+	}
+	/* Top edge = first member divider. Swap its centered ::before line for a
+	   real top border so the rectangle closes with rounded corners; the
+	   label then sits in the top strip with the fold button. */
+	.tomboy-editor :global(.tomboy-labeled-box-top) {
+		border-top: 1px solid #b0b0b0;
+		border-top-left-radius: 7px;
+		border-top-right-radius: 7px;
+	}
+	.tomboy-editor :global(.tomboy-labeled-box-top::before) {
+		display: none;
+	}
+	/* Bottom edge = last visible block (a list when its member is open, else
+	   the trailing divider). */
+	.tomboy-editor :global(.tomboy-labeled-box-bottom) {
+		border-bottom: 1px solid #b0b0b0;
+		border-bottom-left-radius: 7px;
+		border-bottom-right-radius: 7px;
+	}
+
 	.tomboy-editor :global(.tiptap.tomboy-hr-split-active) {
 		display: grid;
 		/* grid-template-columns is set via inline `style` emitted by the
