@@ -113,6 +113,8 @@ export async function refreshFromNote(): Promise<void> {
 	const { id } = await deviceIdentity();
 	if (latest.deviceId === id) return; // own device → keep richer local session
 
+	// re-check after the await — a play() may have started in the gap
+	if (musicPlayer.isPlaying) return;
 	// Seed musicProgress so restoreSession's loadProgress matches our synthetic
 	// track's url and promotes `position` into pendingRestore.
 	saveProgress(latest.noteGuid, latest.trackUrl, latest.position);
