@@ -1194,11 +1194,12 @@
 	class="note-window"
 	class:hidden={hidden ?? !active}
 	class:minimized
+	class:unfocused-green={!isFocused && !noteBgUrl}
 	data-has-bg={noteBgUrl ? 'true' : 'false'}
 	style="left:{x}px; top:{y}px; width:{width}px; height:{height}px; z-index:{z};"
 	style:background-color={isFocused || noteBgUrl
 		? `rgba(255, 255, 255, ${noteOpacity})`
-		: `rgba(232, 245, 233, ${noteOpacity})`}
+		: `rgba(165, 214, 167, ${noteOpacity})`}
 	onpointerdowncapture={handleWindowPointerDown}
 	onkeydown={handleKeyDown}
 >
@@ -1788,6 +1789,18 @@
 	   specificity 로 덮으므로 명시적으로 같이 투명화해 배경이 비치게 한다.
 	   (탭/Stack 에는 이 규칙이 없어 위 두 줄로 충분했다.) */
 	.note-window[data-has-bg='true'] :global(.bundle-stack.browse .bundle-body.open) {
+		background: transparent;
+	}
+
+	/* 비활성(포커스 안 됨, 배경 이미지 없음) 창의 녹색 틴트를 임베디드 번들에도
+	   적용. 번들은 자체 불투명 카드(.bundle-stack #1e1e1e) + 본문(.bundle-body
+	   #fff/회색)으로 창 녹색을 완전히 덮으므로, 배경 이미지(data-has-bg)와 똑같이
+	   두 surface 를 투명화해 뒤의 녹색이 비치게 한다. 특히 전용 탭::/묶음:: 노트는
+	   타이틀바조차 없어(1207행) 이 틴트가 유일한 비활성 표시다. 탭 스트립/타이틀바
+	   는 자체 chrome 색을 유지하므로 가독성 그대로. */
+	.note-window.unfocused-green :global(.bundle-stack),
+	.note-window.unfocused-green :global(.bundle-body),
+	.note-window.unfocused-green :global(.bundle-stack.browse .bundle-body.open) {
 		background: transparent;
 	}
 

@@ -4,48 +4,48 @@
     {
       "id": 1,
       "subject": "Task 1: 브릿지 GET /status/diary 엔드포인트",
-      "status": "pending",
+      "status": "completed",
       "description": "inbox glob 집계 + OCR trigger 프록시로 DiaryDetail 반환하는 인증 엔드포인트.\n\n```json:metadata\n{\"files\": [\"bridge/src/status_diary.ts\", \"bridge/src/status_diary.test.ts\", \"bridge/src/server.ts\"], \"verifyCommand\": \"cd bridge && npm test\", \"acceptanceCriteria\": [\"gatherDiaryInbox buckets+stale+error-fallback\", \"gatherDiaryOcr unconfigured/unreachable/ok-parse\", \"handleDiaryStatus 401/200\", \"route registered\"]}\n```"
     },
     {
       "id": 2,
       "subject": "Task 2: 브릿지 배포 — inbox 마운트 + 일기 env",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "term-bridge.container 에 diary inbox 읽기전용 마운트 + trigger env.\n\n```json:metadata\n{\"files\": [\"bridge/deploy/term-bridge.container\", \"bridge/README.md\"], \"verifyCommand\": \"grep -n 'diary-inbox\\\\|DIARY_' bridge/deploy/term-bridge.container\", \"acceptanceCriteria\": [\"ro mount no z relabel\", \"DIARY_INBOX_DIR env\", \"README rows\"]}\n```"
     },
     {
       "id": 3,
       "subject": "Task 3: 앱 fetchBridgeDetail + DiaryDetail 타입",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "브릿지 GET /status/diary 클라이언트 + 타입(브릿지 shape 미러).\n\n```json:metadata\n{\"files\": [\"app/src/lib/bridgeStatus/statusClient.ts\", \"app/tests/unit/lib/bridgeStatus/fetchBridgeDetail.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/lib/bridgeStatus/fetchBridgeDetail.test.ts\", \"acceptanceCriteria\": [\"DiaryDetail types exported\", \"fetchBridgeDetail url+bearer+error-classify\"]}\n```"
     },
     {
       "id": 4,
       "subject": "Task 4: 앱 DiaryDetailView.svelte",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [3],
       "description": "DiaryDetail → push 신선도 배지 + 폴더별 backlog 막대 + 마지막 OCR 표.\n\n```json:metadata\n{\"files\": [\"app/src/lib/bridgeStatus/detail/DiaryDetailView.svelte\", \"app/tests/unit/lib/bridgeStatus/DiaryDetailView.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/lib/bridgeStatus/DiaryDetailView.test.ts\", \"acceptanceCriteria\": [\"stale badge thresholds\", \"per_folder bars\", \"ocr unconfigured/ok branches\"]}\n```"
     },
     {
       "id": 5,
       "subject": "Task 5: 앱 오버레이 셸 + 레지스트리 + 마운트",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [3, 4],
       "description": "서비스키로 상세 fetch→모달 오버레이 + 키→뷰 레지스트리 + body 온디맨드 마운트.\n\n```json:metadata\n{\"files\": [\"app/src/lib/bridgeStatus/detail/registry.ts\", \"app/src/lib/bridgeStatus/detail/BridgeDetailOverlay.svelte\", \"app/src/lib/bridgeStatus/detail/openBridgeDetail.ts\", \"app/tests/unit/lib/bridgeStatus/BridgeDetailOverlay.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/lib/bridgeStatus/BridgeDetailOverlay.test.ts\", \"acceptanceCriteria\": [\"registry diary entry\", \"overlay fetch/loading/error transitions\", \"z-modal backdrop+esc\", \"openBridgeDetail single mount+cleanup\"]}\n```"
     },
     {
       "id": 6,
       "subject": "Task 6: 대시보드 일기 버튼(클릭→오버레이)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [5],
       "description": "브릿지:: 노트 제목 뒤 위젯에 상세 버튼(📓 일기) → 클릭 시 openBridgeDetail.\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/bridgeNote/bridgeNotePlugin.ts\", \"app/tests/unit/lib/editor/bridgeNote/bridgeDetailButtons.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/lib/editor/bridgeNote/bridgeDetailButtons.test.ts\", \"acceptanceCriteria\": [\"detail button on bridge note\", \"click calls openBridgeDetail('diary')\", \"no widget on non-bridge note\"]}\n```"
     },
     {
       "id": 7,
       "subject": "Task 7: 가이드 카드 + 스킬 노트",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [6],
       "description": "설정→가이드 일기 드릴다운 카드 + tomboy-bridgedash 스킬 갱신.\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\", \".claude/skills/tomboy-bridgedash/SKILL.md\"], \"verifyCommand\": \"cd app && npm run check && npm run build\", \"acceptanceCriteria\": [\"guide-card matches pattern\", \"skill drilldown paragraph\"]}\n```"
     }
