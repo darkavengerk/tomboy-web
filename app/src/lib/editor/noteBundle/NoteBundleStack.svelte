@@ -952,6 +952,7 @@
 	class:dedicated
 	class:fit
 	bind:this={rootEl}
+	data-tab-cabinet="true"
 	style:height={dedicated ? null : `${stackH}px`}
 	style:--tab-min={`${tabMinPct}%`}
 >

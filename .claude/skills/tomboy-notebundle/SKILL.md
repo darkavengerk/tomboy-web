@@ -265,8 +265,21 @@ reserves. Chrome eats `Ctrl+Tab` / `Ctrl+PgUp` / `Ctrl+PgDn` **and** `Ctrl+]` /
 
 Adjacent uses `stepPath(tree, activePath, ±1)` (the parent-bubble variant — stepping
 off a category's last child tosses to the parent's next sibling), routed through
-`navigate()`. (History: tried `Ctrl+PgUp/Dn` then `Ctrl+]`/`[` — both turned out
-browser-reserved; `Alt+PgUp/Dn` is the working adjacent binding.)
+`navigate()`. (History: tried `Ctrl+PgUp/Dn` then `Ctrl+]`/`[` — turned out **not**
+browser-reserved but grabbed by `DesktopWorkspace.onKey`'s capture-phase handler
+(`Ctrl+]`/`[` = slip/date-note chain step with `stopImmediatePropagation`; `Ctrl+PgUp/Dn`
+is browser-level); `Alt+PgUp/Dn` is free on both layers.)
+
+**Desktop Ctrl+`` ` `` conflict.** `DesktopWorkspace.onKey` (capture-phase window listener)
+also binds `Ctrl+`` ` `` → `reopenLastClosed` (reopen the last Esc-closed note). Capture
+runs *before* the bundle's `rootEl` bubble handler and only `preventDefault`s (no
+`stopPropagation`), so without a guard **both** fire inside a tab. Fix: `NoteBundleStack`'s
+root carries `data-tab-cabinet="true"`, and `onKey`'s `Ctrl+`` ` `` branch bails
+(`document.activeElement?.closest('[data-tab-cabinet]')` → `return` without
+`preventDefault`) so the event falls through to the bundle's MRU handler. Outside a tab
+(the 묶음 cabinet — which lacks the marker — / plain notes / canvas) `reopenLastClosed`
+still works. The marker is **tab-only**; the cabinet root shares the `.bundle-stack`
+class but not the attribute.
 
 - **MRU cycle** — a local `mru: number[][]` (front = most-recent visited leaf path, deduped
   by `pathKey = join(',')`, capped 50) is fed by an `$effect` on `activePath` (records every
