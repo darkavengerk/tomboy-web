@@ -96,7 +96,12 @@ export function installMusicAudio(): () => void {
 			readyState: audio.readyState,
 			src
 		});
-		pushToast(`재생 실패 ⟨${name}⟩ ${tail}`, { kind: 'error', timeoutMs: 9000 });
+		// 실제 재생 시도(isPlaying) 또는 이미 재생 중(unlocked)일 때만 토스트. 기기간
+			// 이어듣기는 유휴 수신 기기에 src 만 STAGE(isPlaying=false·미잠금)하므로, 거기서의
+			// 로드 실패가 안 쓰는 기기에 유령 토스트를 띄우면 안 된다.
+			if (musicPlayer.isPlaying || unlocked) {
+				pushToast(`재생 실패 ⟨${name}⟩ ${tail}`, { kind: 'error', timeoutMs: 9000 });
+			}
 		// 큐 연쇄 붕괴 방지: 엘리먼트가 아직 잠겨 있으면(제스처 재생 성공 전) 자동
 		// 스킵하지 않는다. iOS 에서 첫 곡이 에러나면 next() → 다음 곡 play() 도 제스처
 		// 밖이라 막히고, 그게 또 에러로 보여 줄줄이 스킵되며 큐 전체가 무너진다(첫 곡

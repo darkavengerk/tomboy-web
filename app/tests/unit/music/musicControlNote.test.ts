@@ -1,12 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import {
 	parseRecordsFromDoc,
+	parseRecordsFromXml,
 	upsertRecordInDoc,
+	upsertRecords,
+	setMarkerRecordsInDoc,
 	pickGlobalLatest,
 	serializeRecords,
 	MUSIC_CONTROL_MARKER,
 	type MusicControlRecord
 } from '$lib/music/musicControlNote.js';
+import { serializeContent, deserializeContent } from '$lib/core/noteContentArchiver.js';
 import type { JSONContent } from '@tiptap/core';
 
 const rec = (o: Partial<MusicControlRecord> = {}): MusicControlRecord => ({
@@ -93,5 +97,61 @@ describe('musicControlNote', () => {
 		]);
 		expect(latest!.deviceId).toBe('b');
 		expect(pickGlobalLatest([])).toBeNull();
+	});
+});
+
+describe('musicControlNote — lossless url round-trip (no-sound regression)', () => {
+	// A url whose path embeds an inline-marker token. deserializeContent atomizes
+	// `[x]`/`( )`/`[^N]` and paragraphText drops the glyphs → corrupted url →
+	// MEDIA_ERR_SRC_NOT_SUPPORTED. parseRecordsFromXml must survive it.
+	const trickyUrl = "https://bridge.duck/files/abc-123/001 [x] (o) girl & friends.mp3";
+
+	function xmlFromRecords(records: MusicControlRecord[]): string {
+		const base: JSONContent = {
+			type: 'doc',
+			content: [{ type: 'paragraph', content: [{ type: 'text', text: '음악제어::공유' }] }]
+		};
+		return serializeContent(setMarkerRecordsInDoc(base, records));
+	}
+
+	it('parseRecordsFromXml preserves a url with [x]/(o)/& through the real serialize path', () => {
+		const xml = xmlFromRecords([rec({ trackUrl: trickyUrl })]);
+		const parsed = parseRecordsFromXml(xml);
+		expect(parsed).toHaveLength(1);
+		expect(parsed[0].trackUrl).toBe(trickyUrl);
+	});
+
+	it('the OLD deserialize-based read corrupts that url (locks the root cause)', () => {
+		const xml = xmlFromRecords([rec({ trackUrl: trickyUrl })]);
+		const viaDoc = parseRecordsFromDoc(deserializeContent(xml));
+		// either the record drops out or the url is mangled — never byte-identical
+		const got = viaDoc[0]?.trackUrl;
+		expect(got).not.toBe(trickyUrl);
+	});
+
+	it('carries the full queue + index across the round-trip', () => {
+		const queue = [
+			{ url: trickyUrl, display: '001', title: '001', playlistLabel: '로제' },
+			{ url: 'https://bridge.duck/files/abc-123/002.mp3', display: '002', title: '002', playlistLabel: '로제' }
+		];
+		const xml = xmlFromRecords([rec({ queue, index: 1 })]);
+		const parsed = parseRecordsFromXml(xml);
+		expect(parsed[0].queue).toHaveLength(2);
+		expect(parsed[0].queue![0].url).toBe(trickyUrl);
+		expect(parsed[0].index).toBe(1);
+	});
+
+	it('upsertRecords replaces by deviceId and keeps others', () => {
+		const a1 = rec({ deviceId: 'a', position: 1 });
+		const b = rec({ deviceId: 'b', position: 2 });
+		const a2 = rec({ deviceId: 'a', position: 9 });
+		const out = upsertRecords(upsertRecords([a1], b), a2);
+		expect(out).toHaveLength(2);
+		expect(out.find((r) => r.deviceId === 'a')!.position).toBe(9);
+	});
+
+	it('parseRecordsFromXml returns [] when no marker / empty content', () => {
+		expect(parseRecordsFromXml('<note-content version="0.1">음악제어::공유\n</note-content>')).toEqual([]);
+		expect(parseRecordsFromXml('')).toEqual([]);
 	});
 });
