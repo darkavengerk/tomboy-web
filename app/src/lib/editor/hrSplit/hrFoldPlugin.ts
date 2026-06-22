@@ -2,7 +2,7 @@ import { Plugin } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
-import { assignSections, computeBoxRegion } from './assignSections.js';
+import { assignSections } from './assignSections.js';
 import {
 	describeTopLevel,
 	topLevelIndexAtPos,
@@ -87,40 +87,15 @@ function buildFoldDecorations(
 ): DecorationSet {
 	const { kinds, topLevelPositions } = describeTopLevel(doc);
 	const { roles } = assignSections({ kinds, headerCount: HEADER_COUNT });
-	// Section box frame — a 1×N table rectangle around the content `---`
-	// sections, drawn with per-block borders (no DOM wrapping; PM-safe).
-	// Independent of fold state except for `bottom` (last visible block).
-	const box = computeBoxRegion(roles, folded);
 
 	const decos: Decoration[] = [];
 	for (let i = 0; i < roles.length; i++) {
 		const r = roles[i];
 		const from = topLevelPositions[i];
 		const node = doc.child(i);
-		const to = from + node.nodeSize;
-
-		// Box classes for every block inside the region. `tomboy-hr-box`
-		// carries the side borders + collapsed margins; the first HR is the
-		// top edge, the last visible block the bottom edge.
-		const boxClasses: string[] = [];
-		if (box.top >= 0 && i >= box.top && i <= box.end) {
-			boxClasses.push('tomboy-hr-box');
-			if (i === box.top) boxClasses.push('tomboy-hr-box-top');
-			if (i === box.bottom) boxClasses.push('tomboy-hr-box-bottom');
-		}
 
 		if (r.role === 'hr') {
-			if (r.sectionEmpty) {
-				// An empty `---` sitting between two non-empty sections is still
-				// inside the box (it just renders as an extra divider line); it
-				// gets the side borders but no fold affordance.
-				if (boxClasses.length) {
-					decos.push(
-						Decoration.node(from, to, { class: boxClasses.join(' ') })
-					);
-				}
-				continue;
-			}
+			if (r.sectionEmpty) continue;
 			const isFolded = folded.has(r.ord);
 			const ord = r.ord;
 			// Clickable-line affordance: the whole HR line toggles the fold
@@ -128,12 +103,10 @@ function buildFoldDecorations(
 			// carries cursor/hover styling — PM merges it with the
 			// `tomboy-hr-marker` class the split plugin puts on the same node.
 			decos.push(
-				Decoration.node(from, to, {
-					class: [
+				Decoration.node(from, from + node.nodeSize, {
+					class:
 						'tomboy-hr-fold-line' +
-							(isFolded ? ' tomboy-hr-fold-line-folded' : ''),
-						...boxClasses
-					].join(' ')
+						(isFolded ? ' tomboy-hr-fold-line-folded' : '')
 				})
 			);
 			// Widget button inside the HR marker paragraph (pos + 1 = just
@@ -181,15 +154,17 @@ function buildFoldDecorations(
 			continue;
 		}
 
-		const contentClasses = [...boxClasses];
 		if (r.role === 'first' && folded.has(r.section)) {
-			contentClasses.push('tomboy-hr-fold-clamped');
-		} else if (r.role === 'rest' && folded.has(r.section)) {
-			contentClasses.push('tomboy-hr-fold-hidden');
-		}
-		if (contentClasses.length) {
 			decos.push(
-				Decoration.node(from, to, { class: contentClasses.join(' ') })
+				Decoration.node(from, from + node.nodeSize, {
+					class: 'tomboy-hr-fold-clamped'
+				})
+			);
+		} else if (r.role === 'rest' && folded.has(r.section)) {
+			decos.push(
+				Decoration.node(from, from + node.nodeSize, {
+					class: 'tomboy-hr-fold-hidden'
+				})
 			);
 		}
 	}

@@ -2141,87 +2141,9 @@ import { MUSIC_CONTROL_GUID } from "$lib/music/musicControlNote.js";
 		display: none;
 	}
 
-	/* Section box — a 1×N table frame around content-bearing `---` sections.
-	   Always on (independent of fold state); auto-suppressed in the 나란히
-	   보기 split layout because the fold plugin emits no decorations while
-	   columns are active. The rectangle is drawn with per-block side borders
-	   (PM forbids wrapping its children — see the tomboy-hrsplit skill), so
-	   each boxed block collapses its vertical margins to keep the left/right
-	   borders continuous. Each interior `---` keeps its ::before line as the
-	   row divider; the first `---` becomes the top edge, the last visible
-	   block the bottom edge. */
-	.tomboy-editor :global(.tomboy-hr-box) {
-		border-left: 1px solid #b0b0b0;
-		border-right: 1px solid #b0b0b0;
-		margin-top: 0;
-		margin-bottom: 0;
-		padding-left: 14px;
-		padding-right: 14px;
-		background: #fcfcfc;
-	}
-	/* Content rows get a little vertical breathing room; the `---` divider
-	   rows keep their own intrinsic height. */
-	.tomboy-editor :global(.tomboy-hr-box):not(.tomboy-hr-marker) {
-		padding-top: 0.35em;
-		padding-bottom: 0.35em;
-	}
-	/* A boxed `---` divider's horizontal line must span the full inner width
-	   (touch both side borders), so it drops the box's side padding — the
-	   ::before (inset:0) then reaches edge to edge. */
-	.tomboy-editor :global(.tomboy-hr-marker.tomboy-hr-box) {
-		padding-left: 0;
-		padding-right: 0;
-	}
-	/* Top edge = the first content `---`. Swap its centered ::before line for
-	   a real top border so the rectangle closes with rounded corners. */
-	.tomboy-editor :global(.tomboy-hr-box-top) {
-		border-top: 1px solid #b0b0b0;
-		border-top-left-radius: 7px;
-		border-top-right-radius: 7px;
-	}
-	.tomboy-editor :global(.tomboy-hr-box-top::before) {
-		display: none;
-	}
-	/* Bottom edge = the last visible section block. */
-	.tomboy-editor :global(.tomboy-hr-box-bottom) {
-		border-bottom: 1px solid #b0b0b0;
-		border-bottom-left-radius: 7px;
-		border-bottom-right-radius: 7px;
-	}
-
-	/* Labeled-divider list accordion — `+/−` 버튼으로 그룹당 한 리스트만
-	   펼침. 버튼은 라벨 디바이더(position:relative + isolation:isolate)
-	   안에 절대배치; 숨김은 소유 리스트 블록에 display:none. */
-	.tomboy-editor :global(.tomboy-labeled-fold-btn) {
-		position: absolute;
-		right: 0;
-		top: 50%;
-		transform: translateY(-50%);
-		width: 22px;
-		height: 22px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		padding: 0;
-		border: 1.5px solid #777;
-		border-radius: 4px;
-		background: #fff;
-		color: #333;
-		font-size: 15px;
-		font-weight: 700;
-		line-height: 1;
-		cursor: pointer;
-		user-select: none;
-		opacity: 0.9;
-		/* Above the label (z-index:1) and the ::before line (z-index:0). */
-		z-index: 2;
-	}
-	.tomboy-editor :global(.tomboy-labeled-fold-btn:hover) {
-		opacity: 1;
-		color: #000;
-		border-color: #444;
-		background: #f2f2f2;
-	}
+	/* Labeled-divider list accordion — 그룹당 한 리스트만 펼침. 토글은 라벨
+	   디바이더(타이틀) 자체를 클릭(.tomboy-labeled-foldable, handleClick).
+	   숨김은 소유 리스트 블록에 display:none. */
 	.tomboy-editor :global(.tomboy-labeled-fold-hidden) {
 		display: none;
 	}
@@ -2301,23 +2223,49 @@ import { MUSIC_CONTROL_GUID } from "$lib/music/musicControlNote.js";
 	}
 	/* Side padding on the row bodies (lists / interleaved text); dividers
 	   keep their own padding so their full-width ::before line still meets
-	   both side borders. */
+	   both side borders. Generous left inset so list bullets don't crowd the
+	   border. */
 	.tomboy-editor :global(.tomboy-labeled-box):not(.tomboy-labeled-divider) {
-		padding-left: 14px;
-		padding-right: 14px;
-		padding-top: 0.2em;
-		padding-bottom: 0.2em;
+		padding-left: 1.6em;
+		padding-right: 1em;
+		padding-top: 0.35em;
+		padding-bottom: 0.35em;
 	}
-	/* Top edge = first member divider. Swap its centered ::before line for a
-	   real top border so the rectangle closes with rounded corners; the
-	   label then sits in the top strip with the fold button. */
+	/* Top edge = first member divider. The border passes THROUGH the label
+	   (same look as the interior dividers) rather than floating above it: the
+	   paragraph collapses to just the top border line and the label is lifted
+	   to straddle it, its background punching a clean gap. */
 	.tomboy-editor :global(.tomboy-labeled-box-top) {
 		border-top: 1px solid #b0b0b0;
 		border-top-left-radius: 7px;
 		border-top-right-radius: 7px;
+		margin-top: 0;
+		padding-top: 0;
+		padding-bottom: 0;
+		min-height: 0;
+		line-height: 0;
 	}
 	.tomboy-editor :global(.tomboy-labeled-box-top::before) {
 		display: none;
+	}
+	.tomboy-editor
+		:global(.tomboy-labeled-box-top .tomboy-labeled-divider-label) {
+		display: inline-block;
+		line-height: 1.3;
+		position: relative;
+		top: -0.62em;
+		/* match the box surface so the label cuts the top border cleanly */
+		background: #fcfcfc;
+	}
+	/* Foldable member divider — the label line is the accordion toggle (no
+	   +/− button). Pointer + hover underline signal it's clickable. */
+	.tomboy-editor :global(.tomboy-labeled-foldable) {
+		cursor: pointer;
+	}
+	.tomboy-editor
+		:global(.tomboy-labeled-foldable:hover .tomboy-labeled-divider-label) {
+		color: #000;
+		text-decoration: underline;
 	}
 	/* Bottom edge = last visible block (a list when its member is open, else
 	   the trailing divider). */

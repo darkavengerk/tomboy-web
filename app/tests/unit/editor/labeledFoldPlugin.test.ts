@@ -71,8 +71,15 @@ function foldDecos(editor: Editor): DecoWithType[] {
 	return set ? (set.find() as DecoWithType[]) : [];
 }
 
-function buttons(editor: Editor): DecoWithType[] {
+/** Widget decorations (there should be none — toggle is the label click). */
+function widgets(editor: Editor): DecoWithType[] {
 	return foldDecos(editor).filter(d => typeof d.type.toDOM === 'function');
+}
+
+function foldableDecos(editor: Editor): DecoWithType[] {
+	return foldDecos(editor).filter(d =>
+		(d.type.attrs?.class ?? '').includes('tomboy-labeled-foldable')
+	);
 }
 
 function hiddenDecos(editor: Editor): DecoWithType[] {
@@ -107,9 +114,12 @@ function focusedArr(editor: Editor): number[] {
 }
 
 describe('labeledFoldPlugin', () => {
-	it('default: buttons only on ≥2-member groups, nothing hidden', () => {
+	it('default: foldable affordance on ≥2-member group dividers, no buttons', () => {
 		const ed = makeEditor();
-		expect(buttons(ed)).toHaveLength(2);
+		// No widget buttons — the divider label is the toggle.
+		expect(widgets(ed)).toHaveLength(0);
+		// Two list-bearing members in grp0 → 2 foldable dividers.
+		expect(foldableDecos(ed)).toHaveLength(2);
 		expect(hiddenDecos(ed)).toHaveLength(0);
 	});
 
@@ -243,5 +253,71 @@ describe('labeledFoldPlugin — accordion box frame', () => {
 		expect(classDecos(ed, 'tomboy-labeled-box').length).toBeGreaterThan(0);
 		ed.view.dispatch(ed.state.tr.setMeta(hrSplitPluginKey, { toggle: 0 }));
 		expect(classDecos(ed, 'tomboy-labeled-box')).toHaveLength(0);
+	});
+});
+
+describe('labeledFoldPlugin — click the divider label to toggle', () => {
+	type ClickHandler = (
+		this: unknown,
+		view: unknown,
+		pos: number,
+		event: MouseEvent
+	) => boolean;
+
+	function clicker(ed: Editor): { plugin: unknown; handleClick: ClickHandler } {
+		const plugin = labeledFoldPluginKey.get(ed.state);
+		return {
+			plugin,
+			handleClick: plugin?.spec.props?.handleClick as ClickHandler
+		};
+	}
+
+	function clickDivider(ed: Editor, topIndex: number, opts?: MouseEventInit) {
+		const { plugin, handleClick } = clicker(ed);
+		const pos = topLevelPos(ed, topIndex) + 1;
+		return handleClick.call(plugin, ed.view, pos, new MouseEvent('click', opts));
+	}
+
+	it('clicking a member divider focuses it (jumps)', () => {
+		const ed = makeEditor();
+		// idx 5 = 섹션2 divider (ord1), currently all-open → jump focus to it.
+		const handled = clickDivider(ed, 5);
+		expect(handled).toBe(true);
+		expect(focusedArr(ed)).toEqual([1]);
+	});
+
+	it('clicking the open member cycles to the next (wrap)', () => {
+		const ed = makeEditor();
+		clickDivider(ed, 3); // focus ord0
+		expect(focusedArr(ed)).toEqual([0]);
+		clickDivider(ed, 3); // open member clicked again → advance to ord1
+		expect(focusedArr(ed)).toEqual([1]);
+	});
+
+	it('Ctrl/Cmd+click is not claimed (reserved for split)', () => {
+		const ed = makeEditor();
+		expect(clickDivider(ed, 3, { ctrlKey: true })).toBe(false);
+		expect(clickDivider(ed, 3, { metaKey: true })).toBe(false);
+		expect(focusedArr(ed)).toEqual([]);
+	});
+
+	it('clicking a non-divider block does nothing', () => {
+		const ed = makeEditor();
+		expect(clickDivider(ed, 2)).toBe(false); // intro paragraph
+		expect(focusedArr(ed)).toEqual([]);
+	});
+
+	it('clicking a single-member group divider does nothing', () => {
+		const ed = makeEditor();
+		// idx 8 = 섹션3 divider, grp1 has only 1 member.
+		expect(clickDivider(ed, 8)).toBe(false);
+		expect(focusedArr(ed)).toEqual([]);
+	});
+
+	it('inert while hrSplit is active', () => {
+		const ed = makeEditor();
+		ed.view.dispatch(ed.state.tr.setMeta(hrSplitPluginKey, { toggle: 0 }));
+		expect(clickDivider(ed, 3)).toBe(false);
+		expect(focusedArr(ed)).toEqual([]);
 	});
 });
