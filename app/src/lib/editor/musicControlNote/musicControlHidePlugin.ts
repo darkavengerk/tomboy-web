@@ -38,6 +38,9 @@ export function createMusicControlHidePlugin(opts: { enabled: () => boolean }): 
 			const sel = newState.selection;
 			const inside = (p: number) => p > range.from && p < range.to;
 			if (inside(sel.anchor) || inside(sel.head)) {
+				// range.from - 1 = end of the block before the marker. The control note always
+				// has its title paragraph first, so the marker is never block 0 → this is always
+				// a valid inline position; Math.max(0, …) is a defensive belt-and-suspenders.
 				const target = Math.max(0, range.from - 1);
 				return newState.tr.setSelection(TextSelection.create(newState.doc, target));
 			}
