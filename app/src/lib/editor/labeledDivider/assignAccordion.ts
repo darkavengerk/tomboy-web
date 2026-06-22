@@ -82,3 +82,87 @@ export function assignAccordion({
 
 	return { members, memberCountByGroup };
 }
+
+/**
+ * The "accordion box" — a 1×N table frame drawn around a group's
+ * member+list run. The box exists only for a group whose accordion is
+ * active (≥2 list-bearing members — the exact threshold that shows the
+ * fold buttons), and spans from the first list-bearing member's divider
+ * (top edge) to the last list-bearing member's last list block. Each
+ * labeled divider inside is a row separator; any non-member content that
+ * happens to sit between two members is inside the box, while content
+ * before the first member / after the last member's list stays outside.
+ *
+ * The box is a *visual* frame, but its `bottom` edge is focus-dependent: a
+ * folded member's list is hidden (`display:none`), so the bottom border
+ * must land on the last *visible* block (dividers always stay visible).
+ * This mirrors labeledFoldPlugin's own visibility logic so the two agree.
+ */
+export interface AccordionBox {
+	/** Group index. */
+	group: number;
+	/** First list-bearing member's divider index — the box top edge. */
+	top: number;
+	/** Last list block index of the last list-bearing member — the logical
+	 *  box end (may be hidden when that member's list is folded away). */
+	end: number;
+	/** Last *visible* index in `[top, end]` for the given focus — carries
+	 *  the bottom border. */
+	bottom: number;
+}
+
+export function computeAccordionBoxes(
+	members: AccordionMember[],
+	memberCountByGroup: Map<number, number>,
+	focused: ReadonlySet<number> = new Set()
+): AccordionBox[] {
+	// list-bearing members per group, in doc order (members[] is doc order).
+	const byGroup = new Map<number, AccordionMember[]>();
+	for (const m of members) {
+		if (!m.isListBearing) continue;
+		const arr = byGroup.get(m.group);
+		if (arr) arr.push(m);
+		else byGroup.set(m.group, [m]);
+	}
+
+	const boxes: AccordionBox[] = [];
+	for (const [group, gms] of byGroup) {
+		// Only ≥2-member groups have an active accordion (and a box).
+		if ((memberCountByGroup.get(group) ?? 0) < 2) continue;
+
+		const top = gms[0].index;
+		let end = top;
+		for (const m of gms) {
+			for (const li of m.listIndices) if (li > end) end = li;
+		}
+
+		// At most one focused member per group; default (no focus) = all open.
+		let focusedOrd: number | null = null;
+		for (const m of gms) {
+			if (focused.has(m.ord)) {
+				focusedOrd = m.ord;
+				break;
+			}
+		}
+		// Hidden = the list runs of every non-open member (only when a focus
+		// is set). Dividers and other blocks are never hidden.
+		const hidden = new Set<number>();
+		if (focusedOrd !== null) {
+			for (const m of gms) {
+				if (m.ord === focusedOrd) continue;
+				for (const li of m.listIndices) hidden.add(li);
+			}
+		}
+
+		let bottom = top;
+		for (let i = end; i >= top; i--) {
+			if (!hidden.has(i)) {
+				bottom = i;
+				break;
+			}
+		}
+
+		boxes.push({ group, top, end, bottom });
+	}
+	return boxes;
+}
