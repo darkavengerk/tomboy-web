@@ -1185,7 +1185,36 @@
 	}
 
 	const titleDisplay = $derived(note?.title?.trim() || '제목 없음');
+	// 활성(제일 위 = 최상위 z). 종전대로 타이틀바 녹색.
 	const isFocused = $derived(desktopSession.focusedNoteGuid === guid);
+	// 캐럿이 깜빡이는 노트 — 타이틀바 붉은색. 유일한 트리거는 "이 창 안의 편집 가능
+	// 요소가 DOM 포커스를 쥐고 있는가"(= 키보드 입력이 이 노트로 들어가는 상태).
+	// 클릭·최상위 여부와 무관하게 오직 캐럿 위치만 본다.
+	let hasCaret = $state(false);
+	// 전용 탭::/묶음:: 번들에 넘길 3-상태(빨강>녹색>회색). 창 타이틀바가 없는
+	// 전용 노트는 번들 "활성 타이틀 바"가 이 색을 대신 입는다.
+	const barFocus = $derived<'engaged' | 'active' | 'idle'>(
+		hasCaret ? 'engaged' : isFocused ? 'active' : 'idle'
+	);
+
+	// 캐럿(키보드 입력 대상) = 창 안의 편집 가능 요소가 활성. ProseMirror 본문
+	// (contentEditable), 입력칸, 터미널 helper textarea 등. 타이틀바/버튼 같은 비편집
+	// 요소가 포커스를 쥐면(또는 포커스가 창 밖이면) false → 캐럿 없음.
+	function caretInWindow(): boolean {
+		const ae = document.activeElement as HTMLElement | null;
+		if (!ae || !windowEl || !windowEl.contains(ae)) return false;
+		return ae.isContentEditable || ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA';
+	}
+	function handleFocusIn() {
+		hasCaret = caretInWindow();
+	}
+	function handleFocusOut() {
+		// focusout 시점엔 activeElement 가 아직 이전 요소이거나 body 로 바뀌는 중 —
+		// 마이크로태스크로 미뤄 새 포커스가 확정된 뒤 계산(다른 창/캔버스로의 이동 포함).
+		queueMicrotask(() => {
+			hasCaret = caretInWindow();
+		});
+	}
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1196,10 +1225,10 @@
 	class:minimized
 	data-has-bg={noteBgUrl ? 'true' : 'false'}
 	style="left:{x}px; top:{y}px; width:{width}px; height:{height}px; z-index:{z};"
-	style:background-color={isFocused || noteBgUrl
-		? `rgba(255, 255, 255, ${noteOpacity})`
-		: `rgba(232, 245, 233, ${noteOpacity})`}
+	style:background-color={`rgba(255, 255, 255, ${noteOpacity})`}
 	onpointerdowncapture={handleWindowPointerDown}
+	onfocusin={handleFocusIn}
+	onfocusout={handleFocusOut}
 	onkeydown={handleKeyDown}
 >
 	<!-- 전용 파일철 뷰는 창 타이틀바 숨김(제목은 바에 노출, 닫기는 dchrome ✕).
@@ -1209,6 +1238,7 @@
 	<div
 		class="title-bar"
 		class:focused={isFocused}
+		class:engaged={hasCaret}
 		onpointerdown={startDrag}
 		onauxclick={handleTitleBarAuxClick}
 		ondblclick={(e) => { if ((e.target as HTMLElement)?.closest('[data-no-drag]')) return; openTitleDialog(); }}
@@ -1305,6 +1335,7 @@
 						view={null}
 						hostGuid={guid}
 						variant="dedicated"
+						windowFocus={barFocus}
 						EditorComponent={TomboyEditor}
 						oninternallink={handleInternalLink}
 						onraw={() => (showRawBundle = true)}
@@ -1319,6 +1350,7 @@
 						view={null}
 						hostGuid={guid}
 						variant="dedicated"
+						windowFocus={barFocus}
 						EditorComponent={TomboyEditor}
 						oninternallink={handleInternalLink}
 						onraw={() => (showRawBundle = true)}
@@ -1571,9 +1603,17 @@
 	}
 
 	/* Active (topmost) note gets the SidePanel's green accent so the user can
-	   tell at a glance which note has focus. */
+	   tell at a glance which note is in front. */
 	.title-bar.focused {
 		background: #2d5a3d;
+	}
+
+	/* The note whose editor holds the caret (keyboard types here). Red, and
+	   wins over the green when a window is both topmost and caret-holding —
+	   later in source order than .focused so at equal specificity it paints
+	   on top. Driven purely by DOM focus, not by click or z-order. */
+	.title-bar.engaged {
+		background: #a13535;
 	}
 
 	.title-bar:active {

@@ -266,6 +266,13 @@
 		// the page ever sees it, so it can't be preventDefault'd. Ctrl+` has no
 		// OS / browser / TipTap binding, so it reaches us cleanly.
 		if (e.key === '`' && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
+			// 탭 파일철(NoteBundleStack) 안에 포커스가 있으면 Ctrl+` 는 그 안의
+			// '직전 탭(MRU)' 전용 — 여기선 양보(reopenLastClosed 안 함, preventDefault
+			// 도 안 해 이벤트가 그대로 버블해 번들 자체 핸들러가 처리). 탭 밖(묶음
+			// 서류함·일반 노트·캔버스)에선 기존대로 마지막 닫은 노트 다시 열기.
+			if ((document.activeElement as HTMLElement | null)?.closest?.('[data-tab-cabinet]')) {
+				return;
+			}
 			e.preventDefault();
 			void desktopSession.reopenLastClosed();
 			return;
@@ -375,15 +382,31 @@
 	// 드래그해 캔버스에서 놓으면 click이 공통조상=.canvas로 떠서 target===
 	// currentTarget이 됨), 이동량이 작을 때만 토글한다.
 	let canvasDownAt: { x: number; y: number } | null = null;
+	// pointerdown 시점에 노트 에디터가 캐럿(DOM 포커스)을 쥐고 있었는지 — 즉 빨간색
+	// 타이틀의 활성 노트가 있었는지. 캔버스 클릭이 포커스를 떼어내는 게 기본 동작이라
+	// (blur 는 클릭의 default action = 리스너 이후) click 시점엔 이미 늦으므로 down 에서 캡처.
+	let noteFocusedAtDown = false;
+	function aNoteHasCaret(): boolean {
+		const ae = document.activeElement as HTMLElement | null;
+		if (!ae || !ae.closest('.note-window')) return false;
+		return ae.isContentEditable || ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA';
+	}
 	function onCanvasPointerDown(e: PointerEvent) {
-		canvasDownAt = e.target === e.currentTarget ? { x: e.clientX, y: e.clientY } : null;
+		const onBare = e.target === e.currentTarget;
+		canvasDownAt = onBare ? { x: e.clientX, y: e.clientY } : null;
+		noteFocusedAtDown = onBare && aNoteHasCaret();
 	}
 	function onCanvasClick(e: MouseEvent) {
 		if (e.target !== e.currentTarget) return;
 		const down = canvasDownAt;
+		const wasEditing = noteFocusedAtDown;
 		canvasDownAt = null;
+		noteFocusedAtDown = false;
 		if (!down) return; // 드래그가 캔버스 밖(창 등)에서 시작
 		if (Math.abs(e.clientX - down.x) > 4 || Math.abs(e.clientY - down.y) > 4) return; // 드래그였음
+		// 활성(캐럿/빨간 타이틀) 노트가 있었으면 이 배경 클릭은 노트 포커스 해제 의도 —
+		// 패널을 열어봐야 도움이 안 되니 토글하지 않는다(현재 상태 유지).
+		if (wasEditing) return;
 		// 슬립노트 작업공간은 .main이 항상 열림(always-open)이라 잠금 토글이
 		// 화면엔 안 보이면서 lockedOpen만 켜져 다른 작업공간으로 새어나간다. 무시.
 		if (desktopSession.currentWorkspace === SLIPNOTE_WORKSPACE_INDEX) return;

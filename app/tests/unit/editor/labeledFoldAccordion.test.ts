@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
 	assignAccordion,
+	computeAccordionBoxes,
 	type AccordionBlockKind
 } from '$lib/editor/labeledDivider/assignAccordion.js';
 
@@ -9,6 +10,15 @@ const H = 2; // headerCount
 /** Build a kinds array: 2 header 'other' + the given post-header kinds. */
 function withHeaders(...post: AccordionBlockKind[]): AccordionBlockKind[] {
 	return ['other', 'other', ...post];
+}
+
+/** assignAccordion → computeAccordionBoxes in one call. */
+function boxes(
+	kinds: AccordionBlockKind[],
+	focused: number[] = []
+) {
+	const { members, memberCountByGroup } = assignAccordion({ kinds, headerCount: H });
+	return computeAccordionBoxes(members, memberCountByGroup, new Set(focused));
 }
 
 describe('assignAccordion', () => {
@@ -122,5 +132,67 @@ describe('assignAccordion', () => {
 		const { members, memberCountByGroup } = assignAccordion({ kinds: [] });
 		expect(members).toEqual([]);
 		expect(memberCountByGroup.size).toBe(0);
+	});
+});
+
+describe('computeAccordionBoxes — 1×N accordion frame', () => {
+	it('a 1-member group gets no box (accordion not active)', () => {
+		expect(boxes(withHeaders('divider', 'list'))).toEqual([]);
+	});
+
+	it('no dividers → no box', () => {
+		expect(boxes(withHeaders('other', 'list'))).toEqual([]);
+	});
+
+	it('a 2-member group → box spans first divider to last list, no focus', () => {
+		// idx 2 div(ord0), 3 list, 4 div(ord1), 5 list.
+		expect(boxes(withHeaders('divider', 'list', 'divider', 'list'))).toEqual([
+			{ group: 0, top: 2, end: 5, bottom: 5 }
+		]);
+	});
+
+	it('focusing the first member hides the last list → bottom on its divider', () => {
+		// ord1 list (idx 5) hidden; last visible in [2,5] is the ord1 divider (4).
+		expect(
+			boxes(withHeaders('divider', 'list', 'divider', 'list'), [0])
+		).toEqual([{ group: 0, top: 2, end: 5, bottom: 4 }]);
+	});
+
+	it('focusing the last member keeps bottom on its (visible) list', () => {
+		expect(
+			boxes(withHeaders('divider', 'list', 'divider', 'list'), [1])
+		).toEqual([{ group: 0, top: 2, end: 5, bottom: 5 }]);
+	});
+
+	it('non-member content between two members stays inside the box', () => {
+		// idx 2 div(ord0,list@3), 4 div(ord1,no list), 5 other, 6 div(ord2,list@7).
+		// Group has 2 list-bearing members (ord0, ord2) → box [2,7].
+		expect(
+			boxes(withHeaders('divider', 'list', 'divider', 'other', 'divider', 'list'))
+		).toEqual([{ group: 0, top: 2, end: 7, bottom: 7 }]);
+	});
+
+	it('a plain --- splits groups → only the ≥2-member group is boxed', () => {
+		// grp0: 2 members (boxed); grp1 after the hr: 1 member (no box).
+		expect(
+			boxes(
+				withHeaders('divider', 'list', 'divider', 'list', 'hr', 'divider', 'list')
+			)
+		).toEqual([{ group: 0, top: 2, end: 5, bottom: 5 }]);
+	});
+
+	it('two ≥2-member groups → two boxes', () => {
+		expect(
+			boxes(
+				withHeaders(
+					'divider', 'list', 'divider', 'list',
+					'hr',
+					'divider', 'list', 'divider', 'list'
+				)
+			)
+		).toEqual([
+			{ group: 0, top: 2, end: 5, bottom: 5 },
+			{ group: 1, top: 7, end: 10, bottom: 10 }
+		]);
 	});
 });

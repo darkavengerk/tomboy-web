@@ -36,6 +36,16 @@
 	 * 훑어보기/편집 2모드 — 본문 어디서나 휠·스와이프 탭전환, 회색조, 탭 스트립을
 	 * 숨겨 노트 하나처럼 보이던 단일 노트 뷰 — 는 모두 제거.)
 	 *
+	 * ── 키보드 내비게이션 ───────────────────────────────────────────────
+	 * 잎 에디터에 포커스가 있을 때만(rootEl 격벽 keydown 으로 자동 스코핑):
+	 * - 인접 탭(stepPath, 레벨 끝→부모 버블): Alt+PgDn / Alt+PgUp. (Ctrl+PgUp/Dn·
+	 *   Ctrl+]/[ 은 브라우저가 이미 예약 — 일반 탭에선 안 와서 Alt 로.)
+	 * - MRU(선택 기록) 역순 순회: Ctrl+` (어디서나) + Ctrl+Tab (PWA 독립 창 전용,
+	 *   일반 탭에선 브라우저가 가로챔). Ctrl 유지+반복으로 과거 탭, Shift 면 반대,
+	 *   Ctrl 떼면 확정(modKeys.ctrl $effect 로 커밋). mru/cycling 은 로컬 비-영속,
+	 *   순환 중엔 cycleOrder 고정(navigate 안 거치는 setActive). 미예약 키는
+	 *   preventDefault 로 흡수.
+	 *
 	 * ── 호스트 셸 배선 ──────────────────────────────────────────────────
 	 * 터미널/음악/하단최신은 잎 본문에 그대로. TerminalView·MusicPlayerBar 는
 	 * 격벽이 Svelte 위임 이벤트를 죽이므로 본문에 독립 mount().
@@ -59,7 +69,9 @@
 	import {
 		repairPath,
 		pickPath,
+		stepPath,
 		stepPathAtDepth,
+		pathEndsAtLeaf,
 		visibleTabs,
 		clampIndex,
 		tabView,
@@ -110,6 +122,10 @@
 		/** dedicated 데스크탑 창 — 창 최소화. 전용 노트는 창 타이틀바(=최소화 버튼)를
 		 *  숨기므로 번들 크롬이 대신 노출한다. 없으면(모바일/그래프) 버튼 숨김. */
 		onminimize?: () => void;
+		/** dedicated 데스크탑 창 — 호스트 창의 포커스 상태. 전용 노트는 창 타이틀바가
+		 *  없어 활성 탭(=타이틀)이 그 색을 대신 입는다: 'engaged'=클릭됨(빨강),
+		 *  'active'=최상위(녹색, 기본), 'idle'=비활성(회색). inline(플러그인)은 미사용. */
+		windowFocus?: 'engaged' | 'active' | 'idle';
 	}
 	let {
 		spec,
@@ -121,7 +137,8 @@
 		onclose,
 		onraw,
 		onwindowdrag,
-		onminimize
+		onminimize,
+		windowFocus = 'active'
 	}: Props = $props();
 	const dedicated = $derived(variant === 'dedicated');
 	// 크기 100(fit) — 고정 높이 대신 활성 탭 본문을 콘텐츠 끝까지 펼친다. 전용
@@ -239,6 +256,115 @@
 		suppressAnim = !windowMoved(activePath, next);
 		activePath = next;
 	}
+
+	// --- 탭 키보드 내비게이션 (포커스가 잎 에디터/스택 안에 있을 때만) -----------
+	// 인접 탭(stepPath — 레벨 끝에선 부모로 버블): Alt+PgDn 다음 / Alt+PgUp 이전.
+	//   MRU(최근 선택) 히스토리 역순 순회: Ctrl 누른 채 Ctrl+` 반복 → 점점 과거 탭,
+	//   Ctrl+Shift+` = 반대, Ctrl 떼면 멈춘 탭 확정. (PWA 독립 창에선 Ctrl+Tab 도
+	//   MRU — 일반 브라우저 탭에선 브라우저가 먼저 가로채 안 옴.) Ctrl+PgUp/Dn·
+	//   Ctrl+]/[ 은 브라우저 예약이라 안 씀.
+	// 키 핸들러는 rootEl 격벽 안에서 버블해 올라온 키만 받으므로 자동으로 "탭에
+	// 포커스 있을 때만" 동작. 미예약 키는 preventDefault 로 브라우저 기본 동작 차단.
+	//
+	// 방문한 잎 경로의 MRU(앞=최근). 영속 안 함 — activePath 와 같은 로컬 상태.
+	let mru: number[][] = [];
+	let cycling = false;
+	let cycleOrder: number[][] = [];
+	let cycleIdx = 0;
+
+	function pathKey(p: number[]): string {
+		return p.join(',');
+	}
+	function recordMru(path: number[]) {
+		if (path.length === 0) return;
+		const key = pathKey(path);
+		mru = [path, ...mru.filter((p) => pathKey(p) !== key)];
+		if (mru.length > 50) mru = mru.slice(0, 50);
+	}
+	/** Ctrl+Tab 순환 종료 — 멈춘 탭을 MRU 앞으로(다음 순환의 기준). */
+	function endCycle() {
+		if (!cycling) return;
+		cycling = false;
+		cycleOrder = [];
+		recordMru(activePath);
+	}
+	/** 일반 내비게이션(클릭/휠/PgUp·Dn) — 진행 중 순환 종료 후 이동.
+	 *  MRU 기록은 아래 activePath $effect 가 담당(정착한 탭만, 순환 중 제외) —
+	 *  최초 표시 탭(repair 가 세팅)과 휠 중간 경유 탭 처리를 한 곳에 모은다. */
+	function navigate(next: number[]) {
+		endCycle();
+		if (pathKey(next) === pathKey(activePath)) return;
+		setActive(next);
+	}
+	/** Ctrl+Tab 한 스텝 — dir +1=과거(기본), -1=최근. 순환 중엔 MRU/순서 고정. */
+	function cycleTab(dir: 1 | -1) {
+		if (!cycling) {
+			recordMru(activePath); // 현재를 앞에 둔 스냅샷
+			cycleOrder = mru.filter((p) => pathEndsAtLeaf(tree, p)); // stale 경로 제거
+			cycleIdx = 0;
+		}
+		const len = cycleOrder.length;
+		if (len < 2) return; // 갈 다른 탭 없음
+		cycling = true;
+		cycleIdx = (cycleIdx + dir + len) % len;
+		setActive(cycleOrder[cycleIdx]); // 순환 중엔 기록 안 함
+	}
+	function adjacent(dir: 1 | -1) {
+		navigate(stepPath(tree, activePath, dir));
+	}
+	/** rootEl keydown 격벽에서 호출 — 탭 키를 처리했으면 true.
+	 *  - 인접 탭: Alt+PgDn(다음)/Alt+PgUp(이전). Alt 는 브라우저 탭 전환 미예약 →
+	 *    일반 브라우저 탭에서도 동작. (Ctrl+PgUp/Dn·Ctrl+]/[ 은 브라우저가 이미
+	 *    써서 못 씀 — 그래서 Alt 로.)
+	 *  - MRU 순환: Ctrl+`(미예약 → 브라우저 탭에서도) + Ctrl+Tab(PWA 독립 창 전용,
+	 *    일반 탭에선 브라우저가 가로챔). Shift = 반대 방향. `e.code==='Backquote'`
+	 *    로 봐 Shift 글자 변형(~)·레이아웃 무관. Cmd 은 Mac 예약이라 ctrlKey 전용. */
+	function handleTabNavKey(e: KeyboardEvent): boolean {
+		// 인접 — Alt 단독(Ctrl/Cmd 동반 아님).
+		if (e.altKey && !e.ctrlKey && !e.metaKey) {
+			if (e.key === 'PageDown') {
+				e.preventDefault();
+				adjacent(1);
+				return true;
+			}
+			if (e.key === 'PageUp') {
+				e.preventDefault();
+				adjacent(-1);
+				return true;
+			}
+			return false;
+		}
+		// MRU — Ctrl(또는 Mac Cmd)+Tab(PWA) / Ctrl+`(어디서나).
+		if (e.ctrlKey || e.metaKey) {
+			if (e.key === 'Tab') {
+				e.preventDefault();
+				cycleTab(e.shiftKey ? -1 : 1);
+				return true;
+			}
+			if (e.ctrlKey && !e.metaKey && e.code === 'Backquote') {
+				e.preventDefault();
+				cycleTab(e.shiftKey ? -1 : 1);
+				return true;
+			}
+		}
+		return false;
+	}
+	// 정착한 활성 탭을 MRU 에 기록 — 순환 중(setActive 직접 호출)엔 제외해야
+	// cycleOrder 가 흔들리지 않는다. 최초 repair 세팅·클릭·휠 정착·PgUp/Dn 모두
+	// 이 한 곳에서 잡힌다(휠 한 이벤트의 중간 경유 탭은 최종 정착만 기록).
+	$effect(() => {
+		const p = activePath;
+		untrack(() => {
+			if (!cycling) recordMru(p);
+		});
+	});
+	// Ctrl 을 떼면 진행 중 순환을 확정(멈춘 탭을 MRU 앞으로 — activePath 는 안
+	// 바뀌어 위 effect 가 안 잡으므로 endCycle 이 직접 기록). modKeys 는 window
+	// capture 라 포커스가 어디 있든(잎 에디터/숨은 탭/창 밖) 해제를 잡는다.
+	$effect(() => {
+		const held = modKeys.ctrl;
+		if (!held) untrack(() => endCycle());
+	});
 
 	// tree 변화 시 경로 보정: 여전히 navigable 잎을 가리키면 유지, 아니면 첫 잎.
 	// activePath 를 읽고 쓰므로 untrack — tree 변화에만 반응.
@@ -385,6 +511,11 @@
 		};
 		const stopKeydown = (e: Event) => {
 			const ke = e as KeyboardEvent;
+			// 탭 키보드 내비게이션(Alt+PgUp/Dn, Ctrl+`, Ctrl+Tab) — 처리했으면 여기서 끝.
+			if (handleTabNavKey(ke)) {
+				ke.stopPropagation();
+				return;
+			}
 			if ((ke.ctrlKey || ke.metaKey) && (ke.key === 'Home' || ke.key === 'End')) {
 				ke.preventDefault();
 			}
@@ -699,7 +830,7 @@
 		lastTabKey = id;
 		lastTabTime = now;
 		if (!node.navigable) return;
-		setActive(pickPath(tree, activePath, depth, idx));
+		navigate(pickPath(tree, activePath, depth, idx));
 	}
 
 	// 모바일: 탭 탭(touch) → 합성 마우스 캐스케이드(mousedown/click)가 flip 레이아웃
@@ -793,7 +924,7 @@
 		for (let i = 0; i < steps; i++) {
 			const next = stepPathAtDepth(tree, activePath, depth, dir);
 			if (next === activePath) break; // 그 레벨 끝 — 멈춤
-			setActive(next);
+			navigate(next);
 		}
 	}
 
@@ -825,7 +956,9 @@
 	class:no-anim={suppressAnim}
 	class:dedicated
 	class:fit
+	data-wfocus={dedicated ? windowFocus : null}
 	bind:this={rootEl}
+	data-tab-cabinet="true"
 	style:height={dedicated ? null : `${stackH}px`}
 	style:--tab-min={`${tabMinPct}%`}
 >
@@ -1214,6 +1347,15 @@
 		position: relative;
 		z-index: 1;
 		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+	}
+	/* 전용 노트 — 활성 탭이 창 타이틀 역할이라 호스트 창 포커스색을 입는다.
+	   engaged=클릭됨(빨강), idle=비활성(회색). active(최상위)는 기본 녹색 유지.
+	   .tab.active(2클래스)보다 specificity 높아 위 규칙을 덮는다. */
+	.bundle-stack.dedicated[data-wfocus='engaged'] .tab.active {
+		background: #a13535;
+	}
+	.bundle-stack.dedicated[data-wfocus='idle'] .tab.active {
+		background: #3a3a3a;
 	}
 	.tab.broken {
 		color: #777;

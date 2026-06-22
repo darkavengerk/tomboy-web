@@ -78,6 +78,9 @@ Server messages:
 | `BRIDGE_FILES_DIR`        | Persistent dir for `/files` uploads. Provided by the Quadlet unit's `Environment=` line (not `term-bridge.env`). Missing → boot refused. **Pre-create on host.** |
 | `BRIDGE_PUBLIC_BASE_URL`  | HTTPS URL Caddy fronts the bridge at; embedded in upload responses. Missing → refused. |
 | `BRIDGE_PORT`             | Optional. Defaults to 3000.                                                            |
+| `DIARY_INBOX_DIR`         | Optional. Mounted diary-sync inbox path that `GET /status/diary` globs for push freshness + per-folder backlog. Quadlet sets `/var/lib/diary-inbox`. Missing/unmounted → diary inbox section reports an error, endpoint still 200. |
+| `DIARY_TRIGGER_URL`       | Optional. Desktop `trigger_server` base URL. Empty → diary OCR section is `unconfigured` (inbox section still works). |
+| `DIARY_TRIGGER_TOKEN`     | Optional. Bearer token for `DIARY_TRIGGER_URL`. Keep in `term-bridge.env` (secret).    |
 
 Generate `BRIDGE_SECRET` with: `openssl rand -hex 32`.
 

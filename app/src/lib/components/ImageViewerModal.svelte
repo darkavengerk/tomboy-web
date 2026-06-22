@@ -11,6 +11,11 @@
 
 	let frame = $state<Geometry | null>(null);
 	let natural = $state<{ w: number; h: number } | null>(null);
+	let rotation = $state(0);
+
+	// Ctrl+drag rotation sensitivity. Horizontal pointer travel drives the
+	// angle so a comfortable drag spins the image a useful amount.
+	const ROTATE_DEG_PER_PX = 0.5;
 
 	const INITIAL_MARGIN = 16;
 	const MIN_SIZE = 64;
@@ -68,6 +73,7 @@
 		const s = src;
 		frame = null;
 		natural = null;
+		rotation = 0;
 		if (s === null) return;
 		const img = new Image();
 		let cancelled = false;
@@ -187,12 +193,29 @@
 	// fight the pinch's scaleAround.
 	let panCancelled = $state(false);
 
+	// --- Ctrl+drag to rotate ---
+	// Holding Ctrl turns the pan gesture into a rotation. Rightward motion
+	// spins clockwise, leftward counter-clockwise (per horizontal delta).
+	function startRotate(e: PointerEvent) {
+		const baseRotation = rotation;
+		startPointerDrag(e, {
+			onMove: (dx) => {
+				rotation = baseRotation + dx * ROTATE_DEG_PER_PX;
+			}
+		});
+	}
+
 	function startPan(e: PointerEvent) {
 		if (!frame) return;
 		if (e.pointerType === 'touch' && pinch) return;
 		// Non-primary mouse buttons shouldn't pan.
 		if (e.pointerType === 'mouse' && e.button !== 0) return;
 		e.stopPropagation();
+		// Ctrl held → rotate instead of pan.
+		if (e.ctrlKey) {
+			startRotate(e);
+			return;
+		}
 		panCancelled = false;
 		const baseFrame = { ...frame };
 		startPointerDrag(e, {
@@ -257,7 +280,13 @@
 				onpointerdown={startPan}
 				oncontextmenu={onFrameContextMenu}
 			>
-				<img class="viewer-image" {src} alt="" draggable="false" />
+				<img
+					class="viewer-image"
+					{src}
+					alt=""
+					draggable="false"
+					style:transform="rotate({rotation}deg)"
+				/>
 				<ResizeHandles
 					base={() => frame!}
 					min={{ width: MIN_SIZE, height: MIN_SIZE }}

@@ -10,6 +10,7 @@
 	import { page, updated } from '$app/state';
 	import { version as buildVersion } from '$app/environment';
 	import { evaluateReload, type ReloadBudget } from '$lib/nav/reloadGuard.js';
+	import { playUpdateChime } from '$lib/nav/updateChime.js';
 	import { createHistoryTracker } from '$lib/nav/history.js';
 	import { appMode, modeFromUrl } from '$lib/stores/appMode.svelte.js';
 	import { mode } from '$lib/stores/guestMode.svelte.js';
@@ -331,6 +332,7 @@
 				kind: 'info',
 				timeoutMs: 8000
 			});
+			playUpdateChime();
 		}
 	});
 

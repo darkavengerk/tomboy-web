@@ -102,6 +102,14 @@ Environment=BRIDGE_SSH_HOSTS_FILE=/etc/term-bridge/ssh-hosts.json
 # path otherwise, silently breaking the bind mount.
 Volume=%h/.local/share/term-bridge/files:/var/lib/term-bridge/files:rw,z
 Environment=BRIDGE_FILES_DIR=/var/lib/term-bridge/files
+# 일기 파이프라인 드릴다운(GET /status/diary)용 — diary-sync inbox 읽기전용.
+# 공유 디렉터리이므로 z/Z 리라벨 금지(diary-sync 접근 보존). 호스트 유저가 inbox 를
+# 읽을 수 있어야 함(ACL traverse + inbox drwxr-xr-x — 2026-06-21 확인).
+Volume=/home/diary-sync/diary/inbox:/var/lib/diary-inbox:ro
+Environment=DIARY_INBOX_DIR=/var/lib/diary-inbox
+# desktop trigger_server 가 도달 가능하면 OCR 섹션 활성(없으면 unconfigured 로 생략).
+# Environment=DIARY_TRIGGER_URL=http://<desktop-host>:8765
+# DIARY_TRIGGER_TOKEN 은 시크릿이므로 ~/.config/term-bridge.env 에 둔다.
 # 리마커블 inbox 볼륨/SSH 환경변수는 더 이상 필요 없다.
 # `리마커블::` 노트의 /remarkable/upload 는 단순히 automation-service의
 # `pipeline-run` 을 깨우는 트리거이고, 리마커블→Pi inbox rsync 는 리마커블

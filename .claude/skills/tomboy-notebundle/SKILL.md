@@ -246,6 +246,53 @@ descends into their first navigable leaf).
 
 `activePath` (and the per-level windowing) is **component-local, never persisted**.
 
+### Keyboard tab navigation (tab cabinet only)
+
+Scoped to "a leaf editor is focused" by piggy-backing on the barrier's `rootEl`
+`keydown` handler (`handleTabNavKey` called inside `stopKeydown` — only keys that
+bubbled up from *inside* the stack reach it). The mechanism is confirmed working
+(`Ctrl+`` ` `` switches live); the only constraint is which keys the **browser**
+reserves. Chrome eats `Ctrl+Tab` / `Ctrl+PgUp` / `Ctrl+PgDn` **and** `Ctrl+]` /
+`Ctrl+[` before the page sees them (non-cancelable), so:
+
+- **Adjacent tab: `Alt+PgDn` (next) / `Alt+PgUp` (prev).** `Alt` is not a
+  browser-tab-switch modifier, so the page gets it and `preventDefault` sticks.
+  Gated on `altKey && !ctrlKey && !metaKey`. Works in a regular browser tab.
+- **MRU cycle: `` Ctrl+` `` everywhere** (`` Ctrl+Shift+` `` = forward; matched on
+  `e.code === 'Backquote'` so the Shift char remap `~` / layout don't matter, gated
+  `ctrlKey && !metaKey`) **+ `Ctrl+Tab` as a PWA-standalone bonus** (`Ctrl+Shift+Tab`
+  = forward) — the latter only fires when there are no browser tabs to steal it.
+
+Adjacent uses `stepPath(tree, activePath, ±1)` (the parent-bubble variant — stepping
+off a category's last child tosses to the parent's next sibling), routed through
+`navigate()`. (History: tried `Ctrl+PgUp/Dn` then `Ctrl+]`/`[` — turned out **not**
+browser-reserved but grabbed by `DesktopWorkspace.onKey`'s capture-phase handler
+(`Ctrl+]`/`[` = slip/date-note chain step with `stopImmediatePropagation`; `Ctrl+PgUp/Dn`
+is browser-level); `Alt+PgUp/Dn` is free on both layers.)
+
+**Desktop Ctrl+`` ` `` conflict.** `DesktopWorkspace.onKey` (capture-phase window listener)
+also binds `Ctrl+`` ` `` → `reopenLastClosed` (reopen the last Esc-closed note). Capture
+runs *before* the bundle's `rootEl` bubble handler and only `preventDefault`s (no
+`stopPropagation`), so without a guard **both** fire inside a tab. Fix: `NoteBundleStack`'s
+root carries `data-tab-cabinet="true"`, and `onKey`'s `Ctrl+`` ` `` branch bails
+(`document.activeElement?.closest('[data-tab-cabinet]')` → `return` without
+`preventDefault`) so the event falls through to the bundle's MRU handler. Outside a tab
+(the 묶음 cabinet — which lacks the marker — / plain notes / canvas) `reopenLastClosed`
+still works. The marker is **tab-only**; the cabinet root shares the `.bundle-stack`
+class but not the attribute.
+
+- **MRU cycle** — a local `mru: number[][]` (front = most-recent visited leaf path, deduped
+  by `pathKey = join(',')`, capped 50) is fed by an `$effect` on `activePath` (records every
+  *settled* landing — initial repair / click / wheel / adjacent-key — but skips while
+  `cycling` so the frozen order holds). `cycleTab(dir)` snapshots `mru` (filtered through the now-exported
+  `pathEndsAtLeaf` to drop stale paths) into a **frozen `cycleOrder`** at cycle start,
+  then walks `cycleIdx` with wrap-around, calling `setActive` **directly** (NOT
+  `navigate`, so the order doesn't shift mid-cycle). An `$effect` on `modKeys.ctrl`
+  (window-capture → focus-independent) calls `endCycle()` on Ctrl release, committing
+  the landed tab to the MRU front; any normal `navigate()` also ends an in-flight
+  cycle first. The cabinet (묶음) has none of this — tab-only. `pathEndsAtLeaf` is now
+  exported from `stackMath.ts`.
+
 ## `NoteBundleStack.svelte`
 
 Mounted inside the plugin widget (a `contenteditable=false` island). The header
