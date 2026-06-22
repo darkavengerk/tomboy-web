@@ -88,7 +88,9 @@
 		getTerminalBellEnabled,
 		setTerminalBellEnabled,
 		getImageStorageToken,
-		setImageStorageToken
+		setImageStorageToken,
+		getDeviceName,
+		setDeviceName
 	} from '$lib/storage/appSettings.js';
 	import { listNotebooks, getNotebook } from '$lib/core/notebooks.js';
 	import { getAllNotes } from '$lib/storage/noteStore.js';
@@ -239,6 +241,10 @@
 	// ── 이미지 서버 토큰 ──────────────────────────────────────────────
 	let imageStorageToken = $state('');
 	let imageStorageTokenSaved = $state(false);
+
+	// ── 기기 이름 ──────────────────────────────────────────────────────
+	let deviceName = $state('');
+	let deviceNameSaved = $state(false);
 
 	// ── Claude 기본값 ─────────────────────────────────────────────────
 	let claudeDefSystem = $state('');
@@ -434,6 +440,13 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 		await setImageStorageToken(imageStorageToken.trim());
 		imageStorageTokenSaved = true;
 		setTimeout(() => (imageStorageTokenSaved = false), 1500);
+	}
+
+	async function saveDeviceName(): Promise<void> {
+		await setDeviceName(deviceName.trim());
+		deviceName = deviceName.trim();
+		deviceNameSaved = true;
+		setTimeout(() => (deviceNameSaved = false), 1500);
 	}
 
 	async function saveClaudeDefaults(): Promise<void> {
@@ -768,6 +781,7 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 		void loadTerminalHistorySettings();
 		void loadHueState();
 		void getImageStorageToken().then((v) => (imageStorageToken = v));
+		void getDeviceName().then((v) => (deviceName = v));
 		void getClaudeDefaultSystem().then((v) => (claudeDefSystem = v));
 		void getClaudeDefaultModel().then((v) => (claudeDefModel = v));
 		void getClaudeDefaultEffort().then((v) => (claudeDefEffort = v));
@@ -1187,6 +1201,26 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 					/>
 					<span class="form-label">실시간 동기화 사용</span>
 				</label>
+			</section>
+
+			<section class="section">
+				<h2>기기 이름</h2>
+				<p class="info-text">
+					음악제어 노트가 기기별 재생 상태를 구분할 때 쓰는 이름입니다. 비워 두면
+					자동 이름(<code>기기-xxxx</code>)이 쓰입니다.
+				</p>
+				<div class="path-row">
+					<input
+						class="path-input"
+						type="text"
+						bind:value={deviceName}
+						placeholder="예: 노트북, 아이폰"
+						onkeydown={(e) => e.key === 'Enter' && saveDeviceName()}
+					/>
+					<button class="btn-save" onclick={saveDeviceName}>
+						{deviceNameSaved ? '저장됨' : '저장'}
+					</button>
+				</div>
 			</section>
 
 			<section class="section">
