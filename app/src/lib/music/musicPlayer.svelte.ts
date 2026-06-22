@@ -25,6 +25,18 @@ let pendingRestore = $state(0);
 // 엔진(musicAudio)이 새 src 로드 후 이 위치로 seek 한다(이어듣기). 적용 후 0.
 let resumeAt = $state(0);
 
+export type TransportKind = 'play' | 'pause' | 'stop';
+const transportListeners = new Set<(k: TransportKind) => void>();
+function emitTransport(k: TransportKind): void {
+	for (const fn of Array.from(transportListeners)) {
+		try {
+			fn(k);
+		} catch {
+			/* a broken transport listener must not break playback */
+		}
+	}
+}
+
 function clampIndex(i: number): number {
 	if (queue.length === 0) return -1;
 	return Math.max(0, Math.min(i, queue.length - 1));
@@ -96,6 +108,7 @@ export function __resetMusicPlayer(): void {
 	shuffleOrder = [];
 	pendingRestore = 0;
 	resumeAt = 0;
+	transportListeners.clear();
 }
 
 export const musicPlayer = {
@@ -221,6 +234,7 @@ export const musicPlayer = {
 			saveProgress(activeNoteGuid, queue[currentIndex].url, currentTime);
 			flushProgress();
 		}
+		emitTransport('stop'); // BEFORE clearing — listener still sees currentTrack/activeNoteGuid
 		isPlaying = false;
 		queue = [];
 		currentIndex = -1;
@@ -262,6 +276,7 @@ export const musicPlayer = {
 			saveProgress(activeNoteGuid, queue[currentIndex].url, currentTime);
 			flushProgress();
 		}
+		emitTransport('pause');
 	},
 
 	toggle(): void {
@@ -270,6 +285,10 @@ export const musicPlayer = {
 			return;
 		}
 		isPlaying = !isPlaying;
+		// Pause via the main play/pause button goes through toggle(), not pause();
+		// emit so the control note records the pause. Play is recorded separately
+		// via notifyExplicitPlay() in the gesture funnel, so don't emit it here.
+		if (!isPlaying) emitTransport('pause');
 	},
 
 	next(): void {
@@ -374,5 +393,18 @@ export const musicPlayer = {
 		} else {
 			this.resume();
 		}
+	},
+
+	/** Subscribe to explicit transport events (play/pause/stop). Returns unsubscribe.
+	 *  No import cycle: consumers register here; musicPlayer never imports them. */
+	onTransport(fn: (k: TransportKind) => void): () => void {
+		transportListeners.add(fn);
+		return () => transportListeners.delete(fn);
+	},
+
+	/** Emit an explicit 'play' — called by resumePlaybackFromGesture (the sole
+	 *  user-gesture play funnel). Auto-advance (reportEnded/next) does NOT call this. */
+	notifyExplicitPlay(): void {
+		emitTransport('play');
 	}
 };

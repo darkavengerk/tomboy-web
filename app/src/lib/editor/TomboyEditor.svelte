@@ -54,6 +54,8 @@ import { TomboyMusicNote } from "./musicNote/index.js";
 import { TomboyMusicExtractNote } from "./musicExtractNote/index.js";
 import { TomboySunoImport } from "./sunoNote/index.js";
 import { TomboyBridgeNote } from "./bridgeNote/index.js";
+import { createMusicControlHidePlugin } from "./musicControlNote/musicControlHidePlugin.js";
+import { MUSIC_CONTROL_GUID } from "$lib/music/musicControlNote.js";
 	import {
 		createSendListItemPlugin,
 		sendListItemPluginKey,
@@ -679,6 +681,16 @@ import { TomboyBridgeNote } from "./bridgeNote/index.js";
 							createAutoWeekdayPlugin({
 								now: () => new Date(),
 								enabled: () => autoWeekdayEnabled,
+							}),
+						];
+					},
+				}),
+				Extension.create({
+					name: "tomboyMusicControlHide",
+					addProseMirrorPlugins() {
+						return [
+							createMusicControlHidePlugin({
+								enabled: () => currentGuid === MUSIC_CONTROL_GUID,
 							}),
 						];
 					},
@@ -1939,6 +1951,11 @@ import { TomboyBridgeNote } from "./bridgeNote/index.js";
 	}
 	.tomboy-editor :global(.tomboy-note-bundle) {
 		display: block;
+	}
+
+	/* 음악제어 데이터 블록: 제어 노트에서만 마커 단락 숨김. */
+	.tomboy-editor :global(.tomboy-music-control-hidden) {
+		display: none;
 	}
 
 	/* Highlight */

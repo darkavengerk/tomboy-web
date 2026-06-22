@@ -88,7 +88,9 @@
 		getTerminalBellEnabled,
 		setTerminalBellEnabled,
 		getImageStorageToken,
-		setImageStorageToken
+		setImageStorageToken,
+		getDeviceName,
+		setDeviceName
 	} from '$lib/storage/appSettings.js';
 	import { listNotebooks, getNotebook } from '$lib/core/notebooks.js';
 	import { getAllNotes } from '$lib/storage/noteStore.js';
@@ -239,6 +241,10 @@
 	// ── 이미지 서버 토큰 ──────────────────────────────────────────────
 	let imageStorageToken = $state('');
 	let imageStorageTokenSaved = $state(false);
+
+	// ── 기기 이름 ──────────────────────────────────────────────────────
+	let deviceName = $state('');
+	let deviceNameSaved = $state(false);
 
 	// ── Claude 기본값 ─────────────────────────────────────────────────
 	let claudeDefSystem = $state('');
@@ -434,6 +440,13 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 		await setImageStorageToken(imageStorageToken.trim());
 		imageStorageTokenSaved = true;
 		setTimeout(() => (imageStorageTokenSaved = false), 1500);
+	}
+
+	async function saveDeviceName(): Promise<void> {
+		await setDeviceName(deviceName.trim());
+		deviceName = deviceName.trim();
+		deviceNameSaved = true;
+		setTimeout(() => (deviceNameSaved = false), 1500);
 	}
 
 	async function saveClaudeDefaults(): Promise<void> {
@@ -768,6 +781,7 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 		void loadTerminalHistorySettings();
 		void loadHueState();
 		void getImageStorageToken().then((v) => (imageStorageToken = v));
+		void getDeviceName().then((v) => (deviceName = v));
 		void getClaudeDefaultSystem().then((v) => (claudeDefSystem = v));
 		void getClaudeDefaultModel().then((v) => (claudeDefModel = v));
 		void getClaudeDefaultEffort().then((v) => (claudeDefEffort = v));
@@ -1187,6 +1201,26 @@ set-hook -g client-attached 'run-shell "printf \\"\\\\ePtmux;\\\\e\\\\e]133;W;#{
 					/>
 					<span class="form-label">실시간 동기화 사용</span>
 				</label>
+			</section>
+
+			<section class="section">
+				<h2>기기 이름</h2>
+				<p class="info-text">
+					음악제어 노트가 기기별 재생 상태를 구분할 때 쓰는 이름입니다. 비워 두면
+					자동 이름(<code>기기-xxxx</code>)이 쓰입니다.
+				</p>
+				<div class="path-row">
+					<input
+						class="path-input"
+						type="text"
+						bind:value={deviceName}
+						placeholder="예: 노트북, 아이폰"
+						onkeydown={(e) => e.key === 'Enter' && saveDeviceName()}
+					/>
+					<button class="btn-save" onclick={saveDeviceName}>
+						{deviceNameSaved ? '저장됨' : '저장'}
+					</button>
+				</div>
 			</section>
 
 			<section class="section">
@@ -2918,6 +2952,22 @@ Complete:</pre>
 						<li>묶음 전용 — 탭(<code>탭:</code>)은 대상이 아닙니다.</li>
 						<li>바(접힌 제목) 위에 놓으세요. 펼친 본문 위에 놓으면 그 노트 본문에 들어갑니다.</li>
 						<li>이미 있는 노트나 자기 자신은 자동으로 무시됩니다.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
+					<summary>음악제어:: 노트 — 기기간 재생 이어듣기</summary>
+					<p class="info-text">
+						제목이 <code>음악제어::</code> 로 시작하는 전용 노트 하나가 모든 기기의
+						재생 상태를 공유합니다. 한 기기에서 음악을 멈추고 다른 기기에서 ▶ 를
+						누르면 가장 최근에 재생하던 곡을 그 위치에서 이어 재생합니다.
+					</p>
+					<ul class="guide-list">
+						<li>노트는 <strong>하나만</strong> 존재하며 첫 재생 시 자동으로 생깁니다.</li>
+						<li>재생·일시정지·정지 같은 <strong>명시적 조작</strong>일 때만 기록됩니다(동기화 비용 절약).</li>
+						<li>기기간 공유는 <strong>설정 → 동기화 설정 → 실시간 동기화</strong>가 켜져 있어야 동작합니다.</li>
+						<li>기기 이름은 <strong>설정 → 동기화 설정 → 기기 이름</strong>에서 지정합니다.</li>
+						<li>재생 상태 데이터는 노트에서 보이지 않게 숨겨져 있습니다 — 원본은 메뉴의 <strong>원본 보기</strong>로만 확인하세요.</li>
 					</ul>
 				</details>
 			</section>

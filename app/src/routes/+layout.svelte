@@ -26,6 +26,7 @@
 	import { installImageFetchers } from '$lib/imageCache/fetchers/install.js';
 	import { installMusicAudio } from '$lib/music/musicAudio.svelte.js';
 	import { installMusicSession } from '$lib/music/musicSession.svelte.js';
+	import { installMusicControl } from '$lib/music/musicControl.svelte.js';
 	import GlobalMiniPlayer from '$lib/editor/musicNote/GlobalMiniPlayer.svelte';
 	import { pushToast } from '$lib/stores/toast.js';
 	import { getAllNotes } from '$lib/storage/noteStore.js';
@@ -253,6 +254,7 @@
 		// 패널은 순수 뷰라 여러 창이 떠도 소리는 하나. idempotent 싱글톤.
 		const uninstallMusicAudio = installMusicAudio();
 		const uninstallMusicSession = installMusicSession();
+		const uninstallMusicControl = installMusicControl();
 
 		// 일정 알림: 온라인 복귀 시 미발신 diff 자동 flush + 시작 시 한 번 시도.
 		installOnlineFlushListener();
@@ -304,6 +306,7 @@
 			unsubFcm?.();
 			uninstallMusicAudio();
 			uninstallMusicSession();
+			uninstallMusicControl();
 		};
 	});
 
