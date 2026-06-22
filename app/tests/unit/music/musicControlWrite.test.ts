@@ -7,6 +7,7 @@ import * as noteStore from '$lib/storage/noteStore.js';
 import { setSetting } from '$lib/storage/appSettings.js';
 import { deserializeContent } from '$lib/core/noteContentArchiver.js';
 import { parseRecordsFromDoc, MUSIC_CONTROL_GUID } from '$lib/music/musicControlNote.js';
+import { _resetForTest as resetNoteReloadBus } from '$lib/core/noteReloadBus.js';
 
 const tracks = [{ url: 'https://x/a.mp3', title: 'A', display: 'A', liPos: 0 }];
 
@@ -19,6 +20,7 @@ beforeEach(async () => {
 	__resetMusicPlayer();
 	__resetMusicProgress();
 	__resetMusicControlForTest();
+	resetNoteReloadBus();
 	const existing = await noteStore.getNote(MUSIC_CONTROL_GUID);
 	if (existing) await noteStore.deleteNote(MUSIC_CONTROL_GUID);
 	await setSetting('firebaseNotesEnabled', false);

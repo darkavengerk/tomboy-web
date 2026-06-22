@@ -10,8 +10,6 @@ import * as noteStore from '$lib/storage/noteStore.js';
 import { createEmptyNote, escapeXml, NOTE_CONTENT_VERSION } from '$lib/core/note.js';
 import { deserializeContent } from '$lib/core/noteContentArchiver.js';
 import { updateNoteFromEditor } from '$lib/core/noteManager.js';
-import { notifyNoteSaved } from '$lib/sync/firebase/orchestrator.js';
-import { noteMutated } from '$lib/stores/noteListCache.js';
 import { emitNoteFlush } from '$lib/core/noteReloadBus.js';
 import { getSetting, getDeviceName } from '$lib/storage/appSettings.js';
 import { getOrCreateInstallId } from '$lib/schedule/installId.js';
@@ -46,8 +44,6 @@ async function ensureControlNote() {
 			MUSIC_CONTROL_TITLE
 		)}\n\n</note-content>`;
 		await noteStore.putNote(note);
-		notifyNoteSaved(MUSIC_CONTROL_GUID);
-		noteMutated(note);
 	}
 	return note;
 }
@@ -78,6 +74,7 @@ export async function recordTransport(kind: TransportKind): Promise<void> {
 	};
 
 	await ensureControlNote();
+	// No-op for the control note (no editor holds it open); kept for structural symmetry with the rename-sweep flush-before-read pattern.
 	await emitNoteFlush([MUSIC_CONTROL_GUID]);
 	const fresh = await noteStore.getNote(MUSIC_CONTROL_GUID);
 	if (!fresh) return;
