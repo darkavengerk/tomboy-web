@@ -122,6 +122,10 @@
 		/** dedicated 데스크탑 창 — 창 최소화. 전용 노트는 창 타이틀바(=최소화 버튼)를
 		 *  숨기므로 번들 크롬이 대신 노출한다. 없으면(모바일/그래프) 버튼 숨김. */
 		onminimize?: () => void;
+		/** dedicated 데스크탑 창 — 호스트 창의 포커스 상태. 전용 노트는 창 타이틀바가
+		 *  없어 활성 탭(=타이틀)이 그 색을 대신 입는다: 'engaged'=클릭됨(빨강),
+		 *  'active'=최상위(녹색, 기본), 'idle'=비활성(회색). inline(플러그인)은 미사용. */
+		windowFocus?: 'engaged' | 'active' | 'idle';
 	}
 	let {
 		spec,
@@ -133,7 +137,8 @@
 		onclose,
 		onraw,
 		onwindowdrag,
-		onminimize
+		onminimize,
+		windowFocus = 'active'
 	}: Props = $props();
 	const dedicated = $derived(variant === 'dedicated');
 	// 크기 100(fit) — 고정 높이 대신 활성 탭 본문을 콘텐츠 끝까지 펼친다. 전용
@@ -956,6 +961,7 @@
 	class:no-anim={suppressAnim}
 	class:dedicated
 	class:fit
+	data-wfocus={dedicated ? windowFocus : null}
 	bind:this={rootEl}
 	style:height={dedicated ? null : `${stackH}px`}
 	style:--tab-min={`${tabMinPct}%`}
@@ -1345,6 +1351,15 @@
 		position: relative;
 		z-index: 1;
 		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+	}
+	/* 전용 노트 — 활성 탭이 창 타이틀 역할이라 호스트 창 포커스색을 입는다.
+	   engaged=클릭됨(빨강), idle=비활성(회색). active(최상위)는 기본 녹색 유지.
+	   .tab.active(2클래스)보다 specificity 높아 위 규칙을 덮는다. */
+	.bundle-stack.dedicated[data-wfocus='engaged'] .tab.active {
+		background: #a13535;
+	}
+	.bundle-stack.dedicated[data-wfocus='idle'] .tab.active {
+		background: #3a3a3a;
 	}
 	.tab.broken {
 		color: #777;
