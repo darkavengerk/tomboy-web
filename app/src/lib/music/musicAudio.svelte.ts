@@ -185,7 +185,7 @@ export function installMusicAudio(): () => void {
 	// 잠금화면 컨트롤 핸들러(1회). 호출 시점에 스토어를 읽으므로 재설치 불필요.
 	const uninstallMs = isMediaSessionSupported()
 		? installMediaSession({
-				play: () => musicPlayer.play(musicPlayer.currentIndex < 0 ? 0 : musicPlayer.currentIndex),
+				play: () => { musicPlayer.play(musicPlayer.currentIndex < 0 ? 0 : musicPlayer.currentIndex); musicPlayer.notifyExplicitPlay(); },
 				pause: () => musicPlayer.pause(),
 				next: () => musicPlayer.next(),
 				prev: () => musicPlayer.prev(),

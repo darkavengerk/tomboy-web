@@ -34,4 +34,14 @@ describe('musicPlayer transport emitter', () => {
 		musicPlayer.notifyExplicitPlay();
 		expect(n).toBe(0);
 	});
+
+	it('toggle emits pause on the pause transition only (play recorded elsewhere)', () => {
+		const seen: string[] = [];
+		const off = musicPlayer.onTransport((k) => seen.push(k));
+		musicPlayer.playNote('g1', tracks, '음악::x'); // isPlaying = true, no emit
+		musicPlayer.toggle(); // → paused → emit 'pause'
+		musicPlayer.toggle(); // → playing → no emit (play recorded via notifyExplicitPlay at gesture layer)
+		off();
+		expect(seen).toEqual(['pause']);
+	});
 });

@@ -285,6 +285,10 @@ export const musicPlayer = {
 			return;
 		}
 		isPlaying = !isPlaying;
+		// Pause via the main play/pause button goes through toggle(), not pause();
+		// emit so the control note records the pause. Play is recorded separately
+		// via notifyExplicitPlay() in the gesture funnel, so don't emit it here.
+		if (!isPlaying) emitTransport('pause');
 	},
 
 	next(): void {
