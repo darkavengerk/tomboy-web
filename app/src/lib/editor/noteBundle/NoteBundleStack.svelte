@@ -36,6 +36,14 @@
 	 * 훑어보기/편집 2모드 — 본문 어디서나 휠·스와이프 탭전환, 회색조, 탭 스트립을
 	 * 숨겨 노트 하나처럼 보이던 단일 노트 뷰 — 는 모두 제거.)
 	 *
+	 * ── 키보드 내비게이션 ───────────────────────────────────────────────
+	 * 잎 에디터에 포커스가 있을 때만(rootEl 격벽 keydown 으로 자동 스코핑):
+	 * Ctrl+PgDn/PgUp = 인접 탭(stepPath, 레벨 끝→부모 버블), Ctrl+Tab =
+	 * MRU(선택 기록) 역순 순회 — Ctrl 유지+Tab 반복으로 과거 탭, Shift 면 반대,
+	 * Ctrl 떼면 확정(modKeys.ctrl $effect 로 커밋). mru/cycling 은 로컬 비-영속.
+	 * 순환 중엔 cycleOrder 고정(navigate 안 거치는 setActive). preventDefault 로
+	 * 브라우저 탭 전환 차단(설치형 PWA 에선 애초에 브라우저 탭 없음).
+	 *
 	 * ── 호스트 셸 배선 ──────────────────────────────────────────────────
 	 * 터미널/음악/하단최신은 잎 본문에 그대로. TerminalView·MusicPlayerBar 는
 	 * 격벽이 Svelte 위임 이벤트를 죽이므로 본문에 독립 mount().
@@ -59,7 +67,9 @@
 	import {
 		repairPath,
 		pickPath,
+		stepPath,
 		stepPathAtDepth,
+		pathEndsAtLeaf,
 		visibleTabs,
 		clampIndex,
 		tabView,
@@ -240,6 +250,94 @@
 		activePath = next;
 	}
 
+	// --- 탭 키보드 내비게이션 (포커스가 잎 에디터/스택 안에 있을 때만) -----------
+	// Ctrl+PgDn / Ctrl+PgUp = 인접 탭(다음/이전, stepPath — 레벨 끝에선 부모로
+	//   버블). Ctrl+Tab = MRU(최근 선택) 히스토리 역순 순회: Ctrl 누른 채 Tab 반복
+	//   → 점점 과거 탭. Ctrl+Shift+Tab = 반대(최근) 방향. Ctrl 떼면 멈춘 탭으로 확정.
+	// 키 핸들러는 rootEl 격벽 안에서 버블해 올라온 키만 받으므로 자동으로 "탭에
+	// 포커스 있을 때만" 동작. 브라우저 기본 탭 전환을 막으려 preventDefault — 설치형
+	// PWA(standalone)엔 애초에 브라우저 탭이 없어 우리 탭으로 그대로 전달된다.
+	//
+	// 방문한 잎 경로의 MRU(앞=최근). 영속 안 함 — activePath 와 같은 로컬 상태.
+	let mru: number[][] = [];
+	let cycling = false;
+	let cycleOrder: number[][] = [];
+	let cycleIdx = 0;
+
+	function pathKey(p: number[]): string {
+		return p.join(',');
+	}
+	function recordMru(path: number[]) {
+		if (path.length === 0) return;
+		const key = pathKey(path);
+		mru = [path, ...mru.filter((p) => pathKey(p) !== key)];
+		if (mru.length > 50) mru = mru.slice(0, 50);
+	}
+	/** Ctrl+Tab 순환 종료 — 멈춘 탭을 MRU 앞으로(다음 순환의 기준). */
+	function endCycle() {
+		if (!cycling) return;
+		cycling = false;
+		cycleOrder = [];
+		recordMru(activePath);
+	}
+	/** 일반 내비게이션(클릭/휠/PgUp·Dn) — 진행 중 순환 종료 후 이동.
+	 *  MRU 기록은 아래 activePath $effect 가 담당(정착한 탭만, 순환 중 제외) —
+	 *  최초 표시 탭(repair 가 세팅)과 휠 중간 경유 탭 처리를 한 곳에 모은다. */
+	function navigate(next: number[]) {
+		endCycle();
+		if (pathKey(next) === pathKey(activePath)) return;
+		setActive(next);
+	}
+	/** Ctrl+Tab 한 스텝 — dir +1=과거(기본), -1=최근. 순환 중엔 MRU/순서 고정. */
+	function cycleTab(dir: 1 | -1) {
+		if (!cycling) {
+			recordMru(activePath); // 현재를 앞에 둔 스냅샷
+			cycleOrder = mru.filter((p) => pathEndsAtLeaf(tree, p)); // stale 경로 제거
+			cycleIdx = 0;
+		}
+		const len = cycleOrder.length;
+		if (len < 2) return; // 갈 다른 탭 없음
+		cycling = true;
+		cycleIdx = (cycleIdx + dir + len) % len;
+		setActive(cycleOrder[cycleIdx]); // 순환 중엔 기록 안 함
+	}
+	/** rootEl keydown 격벽에서 호출 — 탭 키를 처리했으면 true. */
+	function handleTabNavKey(e: KeyboardEvent): boolean {
+		if (!(e.ctrlKey || e.metaKey)) return false;
+		if (e.key === 'PageDown') {
+			e.preventDefault();
+			navigate(stepPath(tree, activePath, 1));
+			return true;
+		}
+		if (e.key === 'PageUp') {
+			e.preventDefault();
+			navigate(stepPath(tree, activePath, -1));
+			return true;
+		}
+		if (e.key === 'Tab') {
+			e.preventDefault();
+			cycleTab(e.shiftKey ? -1 : 1);
+			return true;
+		}
+		return false;
+	}
+	// 정착한 활성 탭을 MRU 에 기록 — 순환 중(setActive 직접 호출)엔 제외해야
+	// cycleOrder 가 흔들리지 않는다. 최초 repair 세팅·클릭·휠 정착·PgUp/Dn 모두
+	// 이 한 곳에서 잡힌다(휠 한 이벤트의 중간 경유 탭은 최종 정착만 기록).
+	$effect(() => {
+		const p = activePath;
+		untrack(() => {
+			if (!cycling) recordMru(p);
+		});
+	});
+	// Ctrl 을 떼면 진행 중 순환을 확정(멈춘 탭을 MRU 앞으로 — activePath 는 안
+	// 바뀌어 위 effect 가 안 잡으므로 endCycle 이 직접 기록). modKeys 는 window
+	// capture 라 포커스가 어디 있든(잎 에디터/숨은 탭/창 밖) 해제를 잡는다.
+	$effect(() => {
+		const held = modKeys.ctrl;
+		if (!held) untrack(() => endCycle());
+	});
+
 	// tree 변화 시 경로 보정: 여전히 navigable 잎을 가리키면 유지, 아니면 첫 잎.
 	// activePath 를 읽고 쓰므로 untrack — tree 변화에만 반응.
 	$effect(() => {
@@ -385,6 +483,11 @@
 		};
 		const stopKeydown = (e: Event) => {
 			const ke = e as KeyboardEvent;
+			// 탭 키보드 내비게이션(Ctrl+PgUp/Dn, Ctrl+Tab) — 처리했으면 여기서 끝.
+			if (handleTabNavKey(ke)) {
+				ke.stopPropagation();
+				return;
+			}
 			if ((ke.ctrlKey || ke.metaKey) && (ke.key === 'Home' || ke.key === 'End')) {
 				ke.preventDefault();
 			}
@@ -699,7 +802,7 @@
 		lastTabKey = id;
 		lastTabTime = now;
 		if (!node.navigable) return;
-		setActive(pickPath(tree, activePath, depth, idx));
+		navigate(pickPath(tree, activePath, depth, idx));
 	}
 
 	// 모바일: 탭 탭(touch) → 합성 마우스 캐스케이드(mousedown/click)가 flip 레이아웃
@@ -793,7 +896,7 @@
 		for (let i = 0; i < steps; i++) {
 			const next = stepPathAtDepth(tree, activePath, depth, dir);
 			if (next === activePath) break; // 그 레벨 끝 — 멈춤
-			setActive(next);
+			navigate(next);
 		}
 	}
 

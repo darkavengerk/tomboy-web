@@ -246,6 +246,29 @@ descends into their first navigable leaf).
 
 `activePath` (and the per-level windowing) is **component-local, never persisted**.
 
+### Keyboard tab navigation (tab cabinet only)
+
+Scoped to "a leaf editor is focused" by piggy-backing on the barrier's `rootEl`
+`keydown` handler (`handleTabNavKey` called inside `stopKeydown` — only keys that
+bubbled up from *inside* the stack reach it). All `preventDefault` to block the
+browser's own tab-switch (works in installed PWA standalone where there are no
+browser tabs; a regular browser tab may intercept first).
+
+- **Ctrl+PgDn / Ctrl+PgUp** → adjacent tab via `stepPath(tree, activePath, ±1)`
+  (the parent-bubble variant — stepping off a category's last child tosses to the
+  parent's next sibling). Routed through `navigate()` so it records MRU.
+- **Ctrl+Tab** → MRU (selection-history) reverse cycle; **Ctrl+Shift+Tab** =
+  forward. A local `mru: number[][]` (front = most-recent visited leaf path, deduped
+  by `pathKey = join(',')`, capped 50) is fed by `navigate()` on every click / wheel /
+  PgUp-Dn landing. `cycleTab(dir)` snapshots `mru` (filtered through the now-exported
+  `pathEndsAtLeaf` to drop stale paths) into a **frozen `cycleOrder`** at cycle start,
+  then walks `cycleIdx` with wrap-around, calling `setActive` **directly** (NOT
+  `navigate`, so the order doesn't shift mid-cycle). An `$effect` on `modKeys.ctrl`
+  (window-capture → focus-independent) calls `endCycle()` on Ctrl release, committing
+  the landed tab to the MRU front; any normal `navigate()` also ends an in-flight
+  cycle first. The cabinet (묶음) has none of this — tab-only. `pathEndsAtLeaf` is now
+  exported from `stackMath.ts`.
+
 ## `NoteBundleStack.svelte`
 
 Mounted inside the plugin widget (a `contenteditable=false` island). The header

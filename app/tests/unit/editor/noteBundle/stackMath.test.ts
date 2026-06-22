@@ -8,6 +8,7 @@ import {
 	firstNavPath,
 	drillFrom,
 	repairPath,
+	pathEndsAtLeaf,
 	stepPath,
 	stepPathAtDepth,
 	pickPath,
@@ -111,6 +112,23 @@ describe('repairPath', () => {
 	it('범위 밖이면 첫 잎으로', () => {
 		expect(repairPath(t, [9])).toEqual([0]);
 		expect(repairPath(t, [])).toEqual([0]);
+	});
+});
+
+describe('pathEndsAtLeaf — stale MRU 경로 검증', () => {
+	const t = [lf(), cat([lf(), lf()]), lf(false)];
+	it('navigable 잎에서 끝나면 true', () => {
+		expect(pathEndsAtLeaf(t, [0])).toBe(true);
+		expect(pathEndsAtLeaf(t, [1, 1])).toBe(true);
+	});
+	it('카테고리에서 끝나면 false(잎 아님)', () => {
+		expect(pathEndsAtLeaf(t, [1])).toBe(false);
+	});
+	it('broken 잎 / 범위 밖 / 빈 경로는 false', () => {
+		expect(pathEndsAtLeaf(t, [2])).toBe(false); // broken
+		expect(pathEndsAtLeaf(t, [9])).toBe(false); // 범위 밖
+		expect(pathEndsAtLeaf(t, [1, 9])).toBe(false);
+		expect(pathEndsAtLeaf(t, [])).toBe(false);
 	});
 });
 
