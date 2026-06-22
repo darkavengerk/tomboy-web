@@ -872,6 +872,8 @@
 	function handleWindowPointerDown(e: PointerEvent) {
 		// Always raise-to-top on any pointer inside the window.
 		onfocus(guid);
+		// 명시적 클릭 → engaged(빨강). focusout 으로 해제될 때까지 유지.
+		markEngaged();
 		if (!e.altKey) return;
 		const targetEl = e.target as HTMLElement | null;
 		// Let the close button / resize grip do their thing.
@@ -1185,7 +1187,32 @@
 	}
 
 	const titleDisplay = $derived(note?.title?.trim() || '제목 없음');
+	// 활성(제일 위 = 최상위 z). 종전대로 타이틀바 녹색.
 	const isFocused = $derived(desktopSession.focusedNoteGuid === guid);
+	// 명시적으로 클릭해 캐럿이 깜빡이는 노트 — 타이틀바 붉은색. 활성(녹색)과 별개:
+	// 새로 열려 최상위가 됐을 뿐이면(프로그램 포커스) engaged 아님 → 녹색 유지.
+	const isEngaged = $derived(desktopSession.engagedNoteGuid === guid);
+	// 전용 탭::/묶음:: 번들에 넘길 3-상태(빨강>녹색>회색). 창 타이틀바가 없는
+	// 전용 노트는 번들 "활성 타이틀 바"가 이 색을 대신 입는다.
+	const barFocus = $derived<'engaged' | 'active' | 'idle'>(
+		isEngaged ? 'engaged' : isFocused ? 'active' : 'idle'
+	);
+
+	// 창 안에서 진짜 포인터가 눌리면 engaged 로 표시(빨강). pointerdowncapture 라
+	// 타이틀바/본문/리사이즈 어디든 클릭하면 잡힌다 — 프로그램 포커스(focusRequest)
+	// 는 이 경로를 안 타므로 열기만으로는 빨개지지 않는다.
+	function markEngaged() {
+		desktopSession.engageNote(guid);
+	}
+	// 포커스가 이 창 밖으로 나가면 engaged 해제 → 빨강 사라지고 (최상위면) 녹색 복귀.
+	// 캔버스/레일/다른 앱으로 가면 relatedTarget 이 창 밖(or null) → 해제. 다른 창을
+	// 클릭하면 그 창의 markEngaged 가 먼저 새 guid 로 덮으므로, 뒤따르는 이 focusout
+	// 은 guid-가드(disengageNote)에 막혀 새 선택을 깨지 않는다.
+	function handleWindowFocusOut(e: FocusEvent) {
+		const next = e.relatedTarget as Node | null;
+		if (next && windowEl?.contains(next)) return;
+		desktopSession.disengageNote(guid);
+	}
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -1194,13 +1221,11 @@
 	class="note-window"
 	class:hidden={hidden ?? !active}
 	class:minimized
-	class:unfocused-green={!isFocused && !noteBgUrl}
 	data-has-bg={noteBgUrl ? 'true' : 'false'}
 	style="left:{x}px; top:{y}px; width:{width}px; height:{height}px; z-index:{z};"
-	style:background-color={isFocused || noteBgUrl
-		? `rgba(255, 255, 255, ${noteOpacity})`
-		: `rgba(199, 230, 200, ${noteOpacity})`}
+	style:background-color={`rgba(255, 255, 255, ${noteOpacity})`}
 	onpointerdowncapture={handleWindowPointerDown}
+	onfocusout={handleWindowFocusOut}
 	onkeydown={handleKeyDown}
 >
 	<!-- 전용 파일철 뷰는 창 타이틀바 숨김(제목은 바에 노출, 닫기는 dchrome ✕).
@@ -1210,6 +1235,7 @@
 	<div
 		class="title-bar"
 		class:focused={isFocused}
+		class:engaged={isEngaged}
 		onpointerdown={startDrag}
 		onauxclick={handleTitleBarAuxClick}
 		ondblclick={(e) => { if ((e.target as HTMLElement)?.closest('[data-no-drag]')) return; openTitleDialog(); }}
@@ -1306,6 +1332,7 @@
 						view={null}
 						hostGuid={guid}
 						variant="dedicated"
+						windowFocus={barFocus}
 						EditorComponent={TomboyEditor}
 						oninternallink={handleInternalLink}
 						onraw={() => (showRawBundle = true)}
@@ -1320,6 +1347,7 @@
 						view={null}
 						hostGuid={guid}
 						variant="dedicated"
+						windowFocus={barFocus}
 						EditorComponent={TomboyEditor}
 						oninternallink={handleInternalLink}
 						onraw={() => (showRawBundle = true)}
@@ -1572,9 +1600,16 @@
 	}
 
 	/* Active (topmost) note gets the SidePanel's green accent so the user can
-	   tell at a glance which note has focus. */
+	   tell at a glance which note is in front. */
 	.title-bar.focused {
 		background: #2d5a3d;
+	}
+
+	/* Engaged note — the one the user explicitly clicked into (caret blinking).
+	   Red, and wins over the green when both apply (engaged ⟹ topmost). Later
+	   in source order than .focused so equal-specificity it paints on top. */
+	.title-bar.engaged {
+		background: #a13535;
 	}
 
 	.title-bar:active {
@@ -1789,18 +1824,6 @@
 	   specificity 로 덮으므로 명시적으로 같이 투명화해 배경이 비치게 한다.
 	   (탭/Stack 에는 이 규칙이 없어 위 두 줄로 충분했다.) */
 	.note-window[data-has-bg='true'] :global(.bundle-stack.browse .bundle-body.open) {
-		background: transparent;
-	}
-
-	/* 비활성(포커스 안 됨, 배경 이미지 없음) 창의 녹색 틴트를 임베디드 번들에도
-	   적용. 번들은 자체 불투명 카드(.bundle-stack #1e1e1e) + 본문(.bundle-body
-	   #fff/회색)으로 창 녹색을 완전히 덮으므로, 배경 이미지(data-has-bg)와 똑같이
-	   두 surface 를 투명화해 뒤의 녹색이 비치게 한다. 특히 전용 탭::/묶음:: 노트는
-	   타이틀바조차 없어(1207행) 이 틴트가 유일한 비활성 표시다. 탭 스트립/타이틀바
-	   는 자체 chrome 색을 유지하므로 가독성 그대로. */
-	.note-window.unfocused-green :global(.bundle-stack),
-	.note-window.unfocused-green :global(.bundle-body),
-	.note-window.unfocused-green :global(.bundle-stack.browse .bundle-body.open) {
 		background: transparent;
 	}
 

@@ -115,6 +115,11 @@
 		/** dedicated 데스크탑 창 — 창 최소화. 전용 노트는 창 타이틀바(=최소화 버튼)를
 		 *  숨기므로 번들 크롬이 대신 노출한다. 없으면(모바일/그래프) 버튼 숨김. */
 		onminimize?: () => void;
+		/** dedicated 데스크탑 창 — 호스트 창의 포커스 상태. 전용 노트는 창 타이틀바가
+		 *  없어 활성 바(브라우즈)/편집 헤더(편집)가 그 색을 대신 입는다:
+		 *  'engaged'=클릭됨(빨강), 'active'=최상위(녹색, 기본), 'idle'=비활성(회색).
+		 *  inline(플러그인)은 미사용. */
+		windowFocus?: 'engaged' | 'active' | 'idle';
 	}
 	let {
 		spec,
@@ -127,7 +132,8 @@
 		onraw,
 		onwindowdrag,
 		oninsertentry,
-		onminimize
+		onminimize,
+		windowFocus = 'active'
 	}: Props = $props();
 	const dedicated = $derived(variant === 'dedicated');
 
@@ -1046,6 +1052,7 @@
 	class:title-only={titleOnly}
 	class:fit
 	class:free-scroll={!wheelBrowse}
+	data-wfocus={dedicated ? windowFocus : null}
 	bind:this={rootEl}
 	style:height={dedicated || grow ? null : `${stackH}px`}
 >
@@ -1429,6 +1436,17 @@
 	/* 편집 모드 — 활성 바를 한 단계 밝게 */
 	.bundle-stack:not(.browse) .bundle-bar.expanded-bar {
 		background: #3f8657;
+	}
+	/* 전용 노트 — 활성 바(브라우즈)/편집 헤더(편집)가 창 타이틀 역할이라 호스트
+	   창 포커스색을 입는다. engaged=클릭됨(빨강), idle=비활성(회색). active(최상위)
+	   는 기본 녹색 유지. .bundle-stack.dedicated[attr] 접두로 위 규칙들보다 우선. */
+	.bundle-stack.dedicated[data-wfocus='engaged'] .bundle-bar.expanded-bar,
+	.bundle-stack.dedicated[data-wfocus='engaged'] .edit-header {
+		background: #a13535;
+	}
+	.bundle-stack.dedicated[data-wfocus='idle'] .bundle-bar.expanded-bar,
+	.bundle-stack.dedicated[data-wfocus='idle'] .edit-header {
+		background: #3a3a3a;
 	}
 	/* 전용 데스크탑 — 모든 바가 창 드래그 핸들(타이틀 영역 전체). */
 	.bundle-bar.draggable {
