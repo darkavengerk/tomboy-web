@@ -4,8 +4,9 @@ import {
 	MUSIC_CONTROL_TITLE,
 	type MusicControlRecord,
 	type TransportState,
-	upsertRecordInDoc,
-	parseRecordsFromDoc,
+	parseRecordsFromXml,
+	upsertRecords,
+	setMarkerRecordsInDoc,
 	pickGlobalLatest
 } from './musicControlNote.js';
 import * as noteStore from '$lib/storage/noteStore.js';
@@ -61,6 +62,10 @@ export async function recordTransport(kind: TransportKind): Promise<void> {
 	const noteGuid = musicPlayer.activeNoteGuid;
 	const noteTitle = musicPlayer.activeNoteName;
 	const position = musicPlayer.currentTime;
+	// Snapshot the FULL queue (the source device parsed it live). The receiver
+	// restores it verbatim so ⏭/⏮ work and uses the source's playable urls.
+	const fullQueue = musicPlayer.queue;
+	const index = musicPlayer.currentIndex;
 	if (!track || !noteGuid) return;
 
 	if (!(await isSharingEnabled())) return;
@@ -74,7 +79,14 @@ export async function recordTransport(kind: TransportKind): Promise<void> {
 		noteTitle,
 		position: Math.max(0, position),
 		state: STATE_BY_KIND[kind],
-		updatedAt: new Date().toISOString()
+		updatedAt: new Date().toISOString(),
+		queue: fullQueue.map((t) => ({
+			url: t.url,
+			display: t.display,
+			title: t.title ?? null,
+			playlistLabel: t.playlistLabel ?? ''
+		})),
+		index: Math.max(0, index)
 	};
 
 	await ensureControlNote();
@@ -82,11 +94,18 @@ export async function recordTransport(kind: TransportKind): Promise<void> {
 	await emitNoteFlush([MUSIC_CONTROL_GUID]);
 	const fresh = await noteStore.getNote(MUSIC_CONTROL_GUID);
 	if (!fresh) return;
-	const newDoc = upsertRecordInDoc(deserializeContent(fresh.xmlContent), record);
+	// Read existing records LOSSLESSLY from raw xml — deserializeContent atomizes
+	// inline-marker tokens and drops the glyphs, corrupting other devices' urls
+	// on re-upsert. Upsert this device, then write a clean marker paragraph.
+	const records = upsertRecords(parseRecordsFromXml(fresh.xmlContent), record);
+	const newDoc = setMarkerRecordsInDoc(deserializeContent(fresh.xmlContent), records);
 	await updateNoteFromEditor(MUSIC_CONTROL_GUID, newDoc);
 }
 
 let globalLatest = $state<MusicControlRecord | null>(null);
+// Last record actually applied via restoreSession — dedupes the repeated
+// deliveries of this hot-synced control note (see refreshFromNote).
+let lastAppliedSig: string | null = null;
 
 function syntheticTrack(r: MusicControlRecord): MusicTrack {
 	return {
@@ -95,6 +114,24 @@ function syntheticTrack(r: MusicControlRecord): MusicTrack {
 		display: r.trackTitle || r.trackUrl,
 		liPos: -1
 	};
+}
+
+/** Build the restore queue from a record: the full source queue when present
+ *  (so ⏭/⏮ work + urls are the source's playable ones), else a v1 single-track. */
+function tracksFromRecord(r: MusicControlRecord): MusicTrack[] {
+	if (r.queue && r.queue.length) {
+		return r.queue.map((t) => {
+			const track: MusicTrack = {
+				url: t.url,
+				title: t.title ?? null,
+				display: t.display || t.url,
+				liPos: -1
+			};
+			if (t.playlistLabel) track.playlistLabel = t.playlistLabel;
+			return track;
+		});
+	}
+	return [syntheticTrack(r)];
 }
 
 /** Re-read the control note, recompute the global-latest pointer, and (when
@@ -106,23 +143,36 @@ export async function refreshFromNote(): Promise<void> {
 		globalLatest = null;
 		return;
 	}
-	const latest = pickGlobalLatest(parseRecordsFromDoc(deserializeContent(note.xmlContent)));
+	// Lossless raw-xml read (deserializeContent would atomize+drop url chars).
+	const latest = pickGlobalLatest(parseRecordsFromXml(note.xmlContent));
 	globalLatest = latest;
 	if (!latest) return;
 	if (musicPlayer.isPlaying) return; // never yank an active playback
+	// A 'stop' = user explicitly ended playback; don't resurrect it as resumable.
+	if (latest.state === 'stopped') return;
 	const { id } = await deviceIdentity();
 	if (latest.deviceId === id) return; // own device → keep richer local session
 
 	// re-check after the await — a play() may have started in the gap
 	if (musicPlayer.isPlaying) return;
-	// Seed musicProgress so restoreSession's loadProgress matches our synthetic
-	// track's url and promotes `position` into pendingRestore.
-	saveProgress(latest.noteGuid, latest.trackUrl, latest.position);
+	// Dedupe: this control note is re-delivered on every Firestore pull; without
+	// this each delivery re-runs restoreSession (zeroing duration/currentTime/
+	// isPlaying) and yanks the user mid-handoff.
+	const sig = `${latest.deviceId}|${latest.updatedAt}|${latest.trackUrl}`;
+	if (sig === lastAppliedSig) return;
+	lastAppliedSig = sig;
+
+	const tracks = tracksFromRecord(latest);
+	if (tracks.length === 0) return;
+	const index = Math.min(Math.max(0, latest.index ?? 0), tracks.length - 1);
+	// Seed musicProgress so restoreSession's loadProgress matches our restored
+	// current track's url and promotes `position` into pendingRestore.
+	saveProgress(latest.noteGuid, tracks[index].url, latest.position);
 	musicPlayer.restoreSession({
 		activeNoteGuid: latest.noteGuid,
 		activeNoteName: latest.noteTitle,
-		queue: [syntheticTrack(latest)],
-		currentIndex: 0,
+		queue: tracks,
+		currentIndex: index,
 		originNoteGuid: latest.noteGuid
 	});
 }
@@ -152,4 +202,5 @@ export function installMusicControl(): () => void {
 export function __resetMusicControlForTest(): void {
 	myDeviceId = null;
 	globalLatest = null;
+	lastAppliedSig = null;
 }

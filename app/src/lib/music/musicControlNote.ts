@@ -10,6 +10,15 @@ export const MUSIC_CONTROL_MARKER = '음악제어데이터::';
 
 export type TransportState = 'playing' | 'paused' | 'stopped';
 
+/** A single queue entry as carried cross-device. Mirrors the playable fields of
+ *  MusicTrack (engine-only — liPos is editor-local and intentionally omitted). */
+export interface MusicControlTrack {
+	url: string;
+	display: string;
+	title?: string | null;
+	playlistLabel?: string;
+}
+
 export interface MusicControlRecord {
 	deviceId: string;
 	deviceName: string;
@@ -22,6 +31,12 @@ export interface MusicControlRecord {
 	state: TransportState;
 	/** ISO-8601 — sorts lexically, like Tomboy changeDate. */
 	updatedAt: string;
+	/** Full queue snapshot from the SOURCE device (parsed live there). The receiver
+	 *  restores this verbatim so ⏭/⏮ work and the urls are the source's freshly
+	 *  parsed (playable) ones. Optional for back-compat with v1 single-track records. */
+	queue?: MusicControlTrack[];
+	/** currentIndex within `queue`. */
+	index?: number;
 }
 
 export function isMusicControlNoteTitle(title: string): boolean {
@@ -67,6 +82,55 @@ export function serializeRecords(records: MusicControlRecord[]): string {
 	return MUSIC_CONTROL_MARKER + JSON.stringify(records);
 }
 
+const MARKER_LINE_RE = new RegExp(MUSIC_CONTROL_MARKER + '([^\\n]*)');
+
+/** Undo the content-side XML escaping (`escapeXmlContent` does only & < >; the
+ *  title path may add &apos;/&quot;). `&amp;` MUST be undone last. */
+function xmlUnescape(s: string): string {
+	return s
+		.replace(/&lt;/g, '<')
+		.replace(/&gt;/g, '>')
+		.replace(/&quot;/g, '"')
+		.replace(/&apos;/g, "'")
+		.replace(/&#39;/g, "'")
+		.replace(/&amp;/g, '&');
+}
+
+/** Read the records straight from the raw `<note-content>` XML — NOT via
+ *  `deserializeContent`. The editor archiver atomizes inline markers
+ *  (`[x]` `[ ]` `(o)` `[^N]`) on deserialize and `paragraphText` then drops the
+ *  atom glyphs, silently corrupting any url/title that embeds those tokens
+ *  (e.g. a bridge filename). The marker JSON is a single compact line, so a raw
+ *  regex read is lossless and keeps the JSON readable in 원본 보기. */
+export function parseRecordsFromXml(xmlContent: string): MusicControlRecord[] {
+	if (!xmlContent) return [];
+	const m = MARKER_LINE_RE.exec(xmlContent);
+	if (!m) return [];
+	let json = m[1];
+	// Content `<` is escaped (&lt;), so a *literal* `<` on this line can only be
+	// the `</note-content>` close tag — cut there.
+	const lt = json.indexOf('<');
+	if (lt >= 0) json = json.slice(0, lt);
+	json = xmlUnescape(json).trim();
+	if (!json) return [];
+	try {
+		const parsed = JSON.parse(json);
+		return Array.isArray(parsed) ? parsed.filter(isRecord) : [];
+	} catch {
+		return [];
+	}
+}
+
+/** Pure upsert by deviceId into a records array (replaces this device's entry). */
+export function upsertRecords(
+	records: MusicControlRecord[],
+	record: MusicControlRecord
+): MusicControlRecord[] {
+	const next = records.filter((r) => r.deviceId !== record.deviceId);
+	next.push(record);
+	return next;
+}
+
 /** New doc with `record` upserted by deviceId into the marker paragraph.
  *  Marker absent → appended as the last block. Other blocks untouched. */
 export function upsertRecordInDoc(doc: JSONContent, record: MusicControlRecord): JSONContent {
@@ -76,6 +140,22 @@ export function upsertRecordInDoc(doc: JSONContent, record: MusicControlRecord):
 	const markerPara: JSONContent = {
 		type: 'paragraph',
 		content: [{ type: 'text', text: serializeRecords(next) }]
+	};
+	const idx = markerIndex(content);
+	if (idx === -1) content.push(markerPara);
+	else content[idx] = markerPara;
+	return { ...doc, content };
+}
+
+/** Write `records` into the doc's single marker paragraph (replace if present,
+ *  else append as the last block). Other blocks untouched. The marker paragraph
+ *  is rebuilt clean from `records`, so any pre-existing atomization of the old
+ *  marker block in `doc` is discarded. */
+export function setMarkerRecordsInDoc(doc: JSONContent, records: MusicControlRecord[]): JSONContent {
+	const content = [...(doc?.content ?? [])];
+	const markerPara: JSONContent = {
+		type: 'paragraph',
+		content: [{ type: 'text', text: serializeRecords(records) }]
 	};
 	const idx = markerIndex(content);
 	if (idx === -1) content.push(markerPara);
