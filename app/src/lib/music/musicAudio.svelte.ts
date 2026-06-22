@@ -112,8 +112,9 @@ export function installMusicAudio(): () => void {
 	audio.addEventListener('playing', onPlaying);
 	audio.addEventListener('timeupdate', onTime);
 	audio.addEventListener('loadedmetadata', onMeta);
-	// durationchange: 챕터-분할 mp3(Xing 헤더 없음)는 처음 duration=Infinity(0:00)로
-	// 보고했다가 버퍼링 후에야 이 이벤트로 진짜 길이를 해석한다. 없으면 막대가 0:00 고정.
+	// durationchange 도 듣는다(방어적). 헤더에 길이가 없는 스트림은 브라우저가 처음
+	// duration=Infinity(앱에서 0:00)로 보고했다가 버퍼링 후 진짜 길이를 해석하며, 그건
+	// loadedmetadata 가 아니라 durationchange 로 온다. 정상 mp3엔 영향 없음.
 	audio.addEventListener('durationchange', onMeta);
 	audio.addEventListener('ended', onEnded);
 	audio.addEventListener('error', onError);
