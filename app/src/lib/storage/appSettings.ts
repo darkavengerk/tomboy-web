@@ -276,3 +276,18 @@ export async function getAllRemarkableSendDefaults(): Promise<
 	}
 	return out;
 }
+
+// ── Device name (기기 이름) ───────────────────────────────────────────
+// User-set label for THIS device/browser. Used by the 음악제어:: control note
+// to label per-device playback records. Generic on purpose (future reuse).
+
+const DEVICE_NAME = 'deviceName';
+
+export async function getDeviceName(): Promise<string> {
+	const v = await getSetting<string>(DEVICE_NAME);
+	return typeof v === 'string' ? v : '';
+}
+
+export async function setDeviceName(value: string): Promise<void> {
+	await setSetting(DEVICE_NAME, value.trim());
+}
