@@ -9,7 +9,11 @@ import {
 	type AccordionMember
 } from './assignAccordion.js';
 import { parseLabeledDivider } from './parseLabeledDivider.js';
-import { isDashParagraph, HEADER_COUNT } from '../hrSplit/hrSplitPlugin.js';
+import {
+	isDashParagraph,
+	topLevelIndexAtPos,
+	HEADER_COUNT
+} from '../hrSplit/hrSplitPlugin.js';
 import { hrSplitPluginKey } from '../hrSplit/pluginKeys.js';
 
 export interface LabeledFoldPluginState {
@@ -182,41 +186,13 @@ function buildDecorations(
 		if ((memberCountByGroup.get(m.group) ?? 0) < 2) continue;
 		const f = focusedInGroup(focused, members, m.group);
 		const isOpen = f === null || f === m.ord;
-		const dividerFrom = positions[m.index];
-		const ord = m.ord;
-		decos.push(
-			Decoration.widget(
-				dividerFrom + 1,
-				view => {
-					const btn = document.createElement('button');
-					btn.type = 'button';
-					btn.className =
-						'tomboy-labeled-fold-btn' +
-						(isOpen ? '' : ' tomboy-labeled-fold-btn-folded');
-					btn.textContent = isOpen ? '−' : '+';
-					btn.title = isOpen ? '다음 리스트 보기' : '이 리스트 펼치기';
-					btn.setAttribute('aria-label', btn.title);
-					btn.setAttribute('contenteditable', 'false');
-					btn.addEventListener('mousedown', e => {
-						e.preventDefault();
-						e.stopPropagation();
-					});
-					btn.addEventListener('click', e => {
-						e.preventDefault();
-						e.stopPropagation();
-						if (view.isDestroyed) return;
-						view.dispatch(
-							view.state.tr.setMeta(labeledFoldPluginKey, { toggle: ord })
-						);
-					});
-					return btn;
-				},
-				{
-					side: -1,
-					ignoreSelection: true,
-					key: `tomboy-labeled-fold-btn-${ord}-${isOpen ? 'open' : 'folded'}`
-				}
-			)
+		// No widget button — the divider label itself is the toggle (handled
+		// in handleClick). The class carries the cursor/hover affordance and
+		// marks which dividers fold (open vs. its list hidden).
+		addClass(
+			m.index,
+			'tomboy-labeled-foldable' +
+				(isOpen ? '' : ' tomboy-labeled-foldable-folded')
 		);
 		if (!isOpen) {
 			for (const li of m.listIndices) addClass(li, 'tomboy-labeled-fold-hidden');
@@ -244,8 +220,11 @@ function buildDecorations(
  * member cycles to the next (wrapping); toggling a closed member jumps.
  * Default (no focus) shows all lists.
  *
- * Toggle is via the `+/−` widget button only (no line-click / handleClick)
- * so the divider's editable label text stays clickable.
+ * Toggle is a plain click on the member divider itself (its label line) via
+ * handleClick — there is no +/− button. Clicking the open member cycles to
+ * the next; clicking a closed one jumps to it. Ctrl/Cmd+click is left for
+ * the split toggle. (Trade-off: a click no longer places the caret in a
+ * foldable divider's label, so renaming it goes through keyboard nav.)
  *
  * Each active accordion group (≥2 list-bearing members) is also framed in a
  * 1×N table box (`tomboy-labeled-box` + `-top`/`-bottom`), spanning the
@@ -330,6 +309,34 @@ export function createLabeledFoldPlugin(
 				const split = hrSplitPluginKey.getState(state);
 				if (split && split.activeOrdinals.size > 0) return null;
 				return buildDecorations(state.doc, s.focused);
+			},
+			handleClick(view, pos, event) {
+				// A plain click on a foldable member divider (the label line) is
+				// the accordion toggle — replaces the old +/− button. Only fires
+				// for list-bearing members in a ≥2-member group (the same
+				// dividers that get the `tomboy-labeled-foldable` affordance).
+				// Ctrl/Cmd is reserved for the split toggle; never claimed here.
+				if (event.ctrlKey || event.metaKey) return false;
+				const s = labeledFoldPluginKey.getState(view.state);
+				if (!s) return false;
+				const split = hrSplitPluginKey.getState(view.state);
+				if (split && split.activeOrdinals.size > 0) return false;
+				const doc = view.state.doc;
+				const topIdx = topLevelIndexAtPos(doc, pos);
+				if (topIdx < 0) return false;
+				const { kinds } = describeAccordion(doc);
+				const { members, memberCountByGroup } = assignAccordion({
+					kinds,
+					headerCount: HEADER_COUNT
+				});
+				const m = members.find(x => x.index === topIdx && x.isListBearing);
+				if (!m) return false;
+				if ((memberCountByGroup.get(m.group) ?? 0) < 2) return false;
+				event.preventDefault();
+				view.dispatch(
+					view.state.tr.setMeta(labeledFoldPluginKey, { toggle: m.ord })
+				);
+				return true;
 			}
 		}
 	});
