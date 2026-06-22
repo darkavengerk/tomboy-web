@@ -1199,7 +1199,7 @@
 	style="left:{x}px; top:{y}px; width:{width}px; height:{height}px; z-index:{z};"
 	style:background-color={isFocused || noteBgUrl
 		? `rgba(255, 255, 255, ${noteOpacity})`
-		: `rgba(165, 214, 167, ${noteOpacity})`}
+		: `rgba(199, 230, 200, ${noteOpacity})`}
 	onpointerdowncapture={handleWindowPointerDown}
 	onkeydown={handleKeyDown}
 >
