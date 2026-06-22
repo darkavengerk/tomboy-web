@@ -87,7 +87,8 @@ export function drillFrom(nodes: NavNode[], idx: number): number[] | null {
 	return sub ? [idx, ...sub] : null;
 }
 
-function pathEndsAtLeaf(tree: NavNode[], path: number[]): boolean {
+/** path 가 navigable 잎에서 끝나면 true(구조 변화 후 stale 경로 검증용). */
+export function pathEndsAtLeaf(tree: NavNode[], path: number[]): boolean {
 	if (path.length === 0) return false;
 	let nodes = tree;
 	for (let d = 0; d < path.length; d++) {
