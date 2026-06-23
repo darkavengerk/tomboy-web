@@ -2,7 +2,10 @@
 #
 # Podman Quadlet unit for tomboy-web claude-service.
 #
-# Install (on the DESKTOP — never on the Pi):
+# Install (DESKTOP — Ollama/ocr-service host). For the Pi(bridge) variant
+# see claude-service/deploy/README.md "Pi(브릿지) 배포": same unit but the
+# Volume mounts DROP `:Z` (Debian, no SELinux) and creds are scp'd from the
+# desktop instead of a local `claude login`.
 #   1. Build the image:
 #        cd claude-service && podman build -t localhost/claude-service:latest .
 #   2. One-time: log into Claude on the host so OAuth credentials exist:
@@ -43,6 +46,9 @@ EnvironmentFile=%h/.config/claude-service.env
 # the directory, so it requires its own mount; mounting only the
 # directory leaves the container regenerating an empty .claude.json on
 # every start, which the CLI rejects.
+# `:Z` is the SELinux relabel for this desktop (Bazzite). On the Pi
+# (Debian, no SELinux) DROP `:Z`. Keep these RW (no `:ro`) on the Pi so
+# the service can persist refreshed OAuth tokens.
 Volume=%h/.claude:/data/.claude:Z
 Volume=%h/.claude.json:/data/.claude.json:Z
 
