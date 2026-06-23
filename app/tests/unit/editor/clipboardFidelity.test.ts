@@ -228,12 +228,62 @@ describe('plain 붙여넣기 빈 줄 보존 (clipboardTextParser)', () => {
 	});
 });
 
-describe('plain 붙여넣기 마크다운 불릿 인식 (clipboardTextParser)', () => {
+describe('붙여넣기 마크다운 불릿 인식 (transformPasted, text·html 양쪽)', () => {
 	/** 첫 bulletList 블록을 찾아 각 항목의 첫 줄 텍스트를 뽑는다. */
 	function bulletTexts(json: JSONContent): string[] {
 		const list = (json.content ?? []).find((b) => b.type === 'bulletList');
 		return (list?.content ?? []).map((li) => textOf(li.content?.[0]?.content?.[0]) ?? '');
 	}
+
+	it('html 경로(`<p>- a</p>`)에서도 불릿이 인식되고 마커가 사라진다 (실제 클립보드)', () => {
+		// 실제 클립보드는 보통 text/html 도 실어 DOM 파서 경로를 탄다.
+		// 회귀 가드: clipboardTextParser 만 고치면 이 경로에서 `- ` 가 남는다.
+		const b = makeEditor(docJson(p()));
+		b.commands.selectAll();
+		b.view.pasteHTML('<p>- 사과</p><p>- 바나나</p><p>- 포도</p>', pasteEvent());
+		const blocks = b.getJSON().content ?? [];
+		expect(blocks.filter((n) => n.type === 'bulletList')).toHaveLength(1);
+		expect(bulletTexts(b.getJSON())).toEqual(['사과', '바나나', '포도']);
+	});
+
+	it('한 블록 안 `<br>` 로 나뉜 불릿(contenteditable 류)도 항목별로 쪼개진다', () => {
+		const b = makeEditor(docJson(p()));
+		b.commands.selectAll();
+		b.view.pasteHTML('<div>- 사과<br>- 바나나<br>- 포도</div>', pasteEvent());
+		const list = (b.getJSON().content ?? []).find((n) => n.type === 'bulletList');
+		expect(list?.content).toHaveLength(3);
+		expect(bulletTexts(b.getJSON())).toEqual(['사과', '바나나', '포도']);
+	});
+
+	it('`<br>` 블록에서 머리말 줄은 문단으로, 이후 불릿은 리스트로 분리된다', () => {
+		const b = makeEditor(docJson(p()));
+		b.commands.selectAll();
+		b.view.pasteHTML('<div>머리말<br>- 사과<br>- 바나나</div>', pasteEvent());
+		const blocks = b.getJSON().content ?? [];
+		// 머리말 문단 → 불릿 리스트 순서 (뒤 빈 문단은 붙여넣기 자연 산물이라 무시).
+		expect(blocks[0].type).toBe('paragraph');
+		expect(textOf(blocks[0].content?.[0])).toBe('머리말');
+		expect(blocks[1].type).toBe('bulletList');
+		expect(blocks.filter((n) => n.type === 'bulletList')).toHaveLength(1);
+		expect(bulletTexts(b.getJSON())).toEqual(['사과', '바나나']);
+	});
+
+	it('진짜 `<ul><li>- x</li>` 리스트로 들어와도 항목 안 마커가 사라진다 (보고된 증상)', () => {
+		// 출처가 마크다운을 리스트로 렌더하면서 `- ` 를 텍스트로 남기는 경우.
+		const b = makeEditor(docJson(p()));
+		b.commands.selectAll();
+		b.view.pasteHTML('<ul><li>- 사과</li><li>- 바나나</li></ul>', pasteEvent());
+		const list = (b.getJSON().content ?? []).find((n) => n.type === 'bulletList');
+		expect(list?.content).toHaveLength(2);
+		expect(bulletTexts(b.getJSON())).toEqual(['사과', '바나나']);
+	});
+
+	it('진짜 리스트 항목에 마커가 없으면 건드리지 않는다', () => {
+		const b = makeEditor(docJson(p()));
+		b.commands.selectAll();
+		b.view.pasteHTML('<ul><li>사과</li><li>바나나</li></ul>', pasteEvent());
+		expect(bulletTexts(b.getJSON())).toEqual(['사과', '바나나']);
+	});
 
 	it('연속한 `- ` 줄이 bulletList 한 개로 묶인다', () => {
 		const b = makeEditor(docJson(p()));
