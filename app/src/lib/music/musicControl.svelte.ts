@@ -95,13 +95,17 @@ export async function recordTransport(kind: TransportKind): Promise<void> {
 }
 
 let globalLatest = $state<MusicControlRecord | null>(null);
-// Last record actually applied via restoreSession — dedupes the repeated
-// deliveries of this hot-synced control note (see refreshFromNote).
-let lastAppliedSig: string | null = null;
 // ISO timestamp of the last transport event recorded by THIS device.
-// Used to guard against auto-pausing ourselves when our own record arrives
+// Used to guard against auto-pausing ourselves when our own record echoes back
 // slightly after a competing remote record (race window).
 let lastOwnActionAt: string | null = null;
+// Set true around the REACTIVE auto-pause in refreshFromNote so its
+// musicPlayer.pause() does NOT emit a recorded transport event. Recording it
+// would write a paused-own record with a now-timestamp that hijacks the
+// global-latest leader (and the picker's "remote") onto this device's OWN
+// track — the exact bug that broke cross-device handoff + the picker. An
+// auto-pause is a reaction to another device, not a user action; stays silent.
+let suppressTransportRecord = false;
 
 function syntheticTrack(r: MusicControlRecord): MusicTrack {
 	return {
@@ -125,9 +129,19 @@ async function tracksFromRecord(r: MusicControlRecord): Promise<MusicTrack[]> {
 	return [syntheticTrack(r)];
 }
 
-/** Re-read the control note, recompute the global-latest pointer, and (when
- *  safe) restore it as a ready paused queue so the existing ▶ resumes it
- *  synchronously inside the user gesture. */
+/** Re-read the control note and recompute the cross-device pointers:
+ *  - `globalLatest` = most-recent OTHER-device, non-stopped record. This is the
+ *    picker's "remote" + the FAB/rail remote pointer (spec #3). NEVER this
+ *    device (own session is the picker's "local"), NEVER a 'stopped' record
+ *    (the other device explicitly ended — nothing to resume).
+ *  - #1 single-playback: if another device holds a `playing` record newer than
+ *    our last own action AND we're playing, silently pause (queue preserved).
+ *
+ *  Deliberately does NOT stage the remote queue here. Passive staging would
+ *  overwrite musicPlayer's queue with the remote song, erasing the LOCAL
+ *  session so the continuity picker would have nothing to choose against (and
+ *  would silently play the remote). The actual remote queue restore happens at
+ *  press time in resumeGlobalLatest, only when the user picks 'remote'. */
 export async function refreshFromNote(): Promise<void> {
 	const note = await noteStore.getNote(MUSIC_CONTROL_GUID);
 	if (!note) {
@@ -135,68 +149,40 @@ export async function refreshFromNote(): Promise<void> {
 		return;
 	}
 	// Lossless raw-xml read (deserializeContent would atomize+drop url chars).
-	const latest = pickGlobalLatest(parseRecordsFromXml(note.xmlContent));
-	globalLatest = latest;
-	if (!latest) return;
-
+	const records = parseRecordsFromXml(note.xmlContent);
 	const { id } = await deviceIdentity();
-	if (latest.deviceId === id) return; // own device → keep richer local session
+	const latestOther = pickGlobalLatest(records.filter((r) => r.deviceId !== id));
+	// Remote pointer: only a resumable (non-stopped) other-device session.
+	globalLatest = latestOther && latestOther.state !== 'stopped' ? latestOther : null;
+	if (!latestOther) return;
 
 	// #1 single-playback: another device started playing more recently than our
-	// last own action → pause our audio (queue preserved so user can resume).
+	// last own action → pause our audio (queue preserved so the user can still
+	// pick it as 'local' in the picker). SILENT — see suppressTransportRecord.
 	if (
-		latest.state === 'playing' &&
+		latestOther.state === 'playing' &&
 		musicPlayer.isPlaying &&
-		(!lastOwnActionAt || latest.updatedAt > lastOwnActionAt)
+		(!lastOwnActionAt || latestOther.updatedAt > lastOwnActionAt)
 	) {
-		musicPlayer.pause();
-		return;
+		suppressTransportRecord = true;
+		try {
+			musicPlayer.pause();
+		} finally {
+			suppressTransportRecord = false;
+		}
 	}
-
-	if (musicPlayer.isPlaying) return; // never yank an active playback
-	// A 'stop' = user explicitly ended playback; don't resurrect it as resumable.
-	if (latest.state === 'stopped') return;
-
-	// Dedupe: this control note is re-delivered on every Firestore pull; without
-	// this each delivery re-runs restoreSession (zeroing duration/currentTime/
-	// isPlaying) and yanks the user mid-handoff.
-	const sig = `${latest.deviceId}|${latest.updatedAt}|${latest.trackUrl}`;
-	if (sig === lastAppliedSig) return;
-	lastAppliedSig = sig;
-
-	const tracks = await tracksFromRecord(latest);
-	if (tracks.length === 0) return;
-	const found = tracks.findIndex((t) => t.url === latest.trackUrl);
-	const index = found >= 0 ? found : 0;
-
-	// Channel B position (one-shot) — only when it belongs to this track.
-	const ds = await deviceStateSync.readDeviceState(latest.deviceId);
-	const position = ds && ds.trackUrl === tracks[index].url ? ds.position : 0;
-
-	// Re-check after the awaits — a play() may have started in the gap; restoreSession
-	// unconditionally overwrites the queue, so bail rather than yank an active playback.
-	if (musicPlayer.isPlaying) return;
-
-	// Seed musicProgress so restoreSession's loadProgress matches our restored
-	// current track's url and promotes `position` into pendingRestore.
-	saveProgress(latest.noteGuid, tracks[index].url, position);
-	musicPlayer.restoreSession({
-		activeNoteGuid: latest.noteGuid,
-		activeNoteName: latest.noteTitle,
-		queue: tracks,
-		currentIndex: index,
-		originNoteGuid: latest.noteGuid
-	});
 }
 
 export function getGlobalLatest(): MusicControlRecord | null {
 	return globalLatest;
 }
 
-/** Explicitly adopt the current global-latest remote record and play it. Returns
- *  false if there is no remote record. Call inside a user gesture, then call
- *  resumePlaybackFromGesture() so iOS unlocks the element. Sets lastAppliedSig so a
- *  subsequent passive refreshFromNote won't re-restore the same record. */
+/** Explicitly adopt the current global-latest remote record and play it (the
+ *  picker's 'remote' choice / a play press with only a remote session). Returns
+ *  false if there is no remote record. Rebuilds the queue by re-parsing the
+ *  source note (synthetic single-track fallback) and seeds the Channel-B
+ *  position. Call inside a user gesture, then resumePlaybackFromGesture() so iOS
+ *  unlocks the element. */
 export async function resumeGlobalLatest(): Promise<boolean> {
 	const latest = globalLatest;
 	if (!latest) return false;
@@ -207,7 +193,6 @@ export async function resumeGlobalLatest(): Promise<boolean> {
 	const ds = await deviceStateSync.readDeviceState(latest.deviceId);
 	const position = ds && ds.trackUrl === tracks[index].url ? ds.position : 0;
 	saveProgress(latest.noteGuid, tracks[index].url, position);
-	lastAppliedSig = `${latest.deviceId}|${latest.updatedAt}|${latest.trackUrl}`;
 	musicPlayer.restoreSession({
 		activeNoteGuid: latest.noteGuid,
 		activeNoteName: latest.noteTitle,
@@ -228,6 +213,9 @@ export function installMusicControl(): () => void {
 		void refreshFromNote();
 	});
 	const unsubTransport = musicPlayer.onTransport((kind) => {
+		// A reactive auto-pause (refreshFromNote) is suppressed: recording it would
+		// hijack the global-latest leader onto this device's own paused track.
+		if (suppressTransportRecord) return;
 		const t = musicPlayer.currentTrack;
 		if (t) flushPlaybackPosition(musicPlayer.currentTime, t.url);
 		void recordTransport(kind);
@@ -242,8 +230,8 @@ export function installMusicControl(): () => void {
 export function __resetMusicControlForTest(): void {
 	myDeviceId = null;
 	globalLatest = null;
-	lastAppliedSig = null;
 	lastOwnActionAt = null;
+	suppressTransportRecord = false;
 }
 
 /** Test-only: stamp this device's last own-action time so the auto-pause
