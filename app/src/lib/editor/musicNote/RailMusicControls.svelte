@@ -115,16 +115,36 @@
 		opacity: 0.35;
 		cursor: default;
 	}
+	/* Flyout to the RIGHT of the narrow rail (popping up would clip against the
+	   viewport top). Vertically centred on the transport controls. The shared
+	   MusicContinuityPicker reads var(--color-*) — re-point those to the rail's
+	   dark palette here so the card matches the dark rail instead of inheriting
+	   the app's light theme (mobile sheet keeps the light theme, untouched). */
 	.rail-menu {
 		position: absolute;
-		bottom: 100%;
-		left: 0;
-		right: 0;
+		left: 100%;
+		top: 50%;
+		transform: translateY(-50%);
+		margin-left: 10px;
+		width: 230px;
 		z-index: var(--z-menu);
-		background: var(--color-bg, #111);
-		border: 1px solid var(--color-border, #333);
+		background: #1f1f1f;
+		border: 1px solid #333;
 		border-radius: 10px;
-		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-		margin-bottom: 6px;
+		box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+		--color-bg: #2a2a2a;
+		--color-text: #eee;
+		--color-text-secondary: #aaa;
+		--color-border: #3a3a3a;
+	}
+	/* Left-pointing caret bridging the rail and the flyout. */
+	.rail-menu::before {
+		content: '';
+		position: absolute;
+		right: 100%;
+		top: 50%;
+		transform: translateY(-50%);
+		border: 6px solid transparent;
+		border-right-color: #1f1f1f;
 	}
 </style>

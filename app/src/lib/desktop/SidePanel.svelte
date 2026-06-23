@@ -597,7 +597,8 @@
 
 	/* Wrapper that provides position:relative for the absolute .rail-menu
 	   inside RailMusicControls. Must be overflow:visible so the menu (which
-	   uses position:absolute + bottom:100%) can escape the rail column. */
+	   flies out to the right via position:absolute + left:100%) can escape the
+	   rail column. */
 	.rail-music-wrap {
 		position: relative;
 		width: calc(100% - 12px);
