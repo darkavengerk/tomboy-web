@@ -72,6 +72,13 @@ export function barCapacity(boxPx: number, barPx: number, reservePx: number): nu
 	return Math.max(1, Math.floor((boxPx - Math.max(0, reservePx)) / barPx));
 }
 
+/** 코드포인트 기준 길이 max 로 자르고, 넘치면 말줄임(…). 한글 음절은 단일
+ *  코드포인트라 글자 수 그대로 — Array.from 으로 서로게이트도 안전. */
+export function truncateChars(s: string, max: number): string {
+	const a = Array.from(s);
+	return a.length > max ? a.slice(0, max).join('') + '…' : s;
+}
+
 /** 두 문자열의 공통 접두 길이(코드포인트 수). 한글 음절은 단일 코드포인트라
  *  글자 수 그대로 — Array.from 으로 서로게이트도 안전. */
 export function commonPrefixLen(a: string, b: string): number {

@@ -69,7 +69,8 @@
 		nextValidIndex,
 		bundleBox,
 		barCapacity,
-		collapseAgainst
+		collapseAgainst,
+		truncateChars
 	} from './cabinetMath.js';
 	import { lookupGuidByTitle, ensureTitleIndexReady } from '../autoLink/titleProvider.js';
 	import {
@@ -254,11 +255,17 @@
 
 	// --- 경계 바: 자기 타이틀 + 숨은 이웃 타이틀 한 줄로 ------------------------
 	// 윈도우 첫/마지막 바는 자기 타이틀(anchor)에 이어 숨은(위/아래) 노트 타이틀을
-	// 쉼표로 잇는다 — "음악::손미, 청하, 블랙핑크, …". 이웃은 anchor 와 공통 접두만
-	// 제거(축약 없음). 폭이 모자라면 fitMergedTitle 액션이 들어가는 만큼만 두고
-	// 나머지는 +N. anchor 는 그 바의 실제 타이틀이라 항상 보인다.
+	// 쉼표로 잇는다 — "음악::힙한…, 블랙핑…, 로제…". anchor 는 ANCHOR_MAX(10)자,
+	// 이웃은 anchor 와 공통 접두를 제거한 뒤 NEIGHBOR_MAX(5)자로 줄인다(넘치면 …).
+	// 그래도 폭이 모자라면 fitMergedTitle 이 들어가는 만큼만 두고 나머지는 +N.
+	// anchor 는 그 바의 실제 타이틀이라(짧게 잘려도) 항상 보인다.
+	const ANCHOR_MAX = 10;
+	const NEIGHBOR_MAX = 5;
 	const isBoundary = (idx: number): boolean =>
 		(idx === winStart && hiddenAbove > 0) || (idx === lastVisibleIdx && hiddenBelow > 0);
+	function anchorLabel(idx: number): string {
+		return truncateChars(resolved[idx]?.title ?? '', ANCHOR_MAX);
+	}
 	function hiddenSegsFor(idx: number): string[] {
 		const anchor = resolved[idx]?.title ?? '';
 		const out: string[] = [];
@@ -273,7 +280,7 @@
 				...collapseAgainst(anchor, resolved.slice(lastVisibleIdx + 1).map((r) => r.title))
 			);
 		}
-		return out;
+		return out.map((s) => truncateChars(s, NEIGHBOR_MAX));
 	}
 
 	// 휠/스와이프로 활성을 넘길지(=묶음 브라우징). W < n 이면(요청/capacity 로 윈도우가
@@ -1193,7 +1200,7 @@
 					{#if isBoundary(idx)}
 						<!-- 경계 바 — 자기 타이틀 + 숨은 이웃 타이틀 한 줄(fitMergedTitle
 						     이 폭에 맞춰 채우고 나머지는 +N). textContent 는 액션이 채움. -->
-						<span class="bar-title" use:fitMergedTitle={{ anchor: e.title, hidden: hiddenSegsFor(idx) }}></span>
+						<span class="bar-title" use:fitMergedTitle={{ anchor: anchorLabel(idx), hidden: hiddenSegsFor(idx) }}></span>
 					{:else}
 						<span class="bar-title">{e.title}</span>
 					{/if}
