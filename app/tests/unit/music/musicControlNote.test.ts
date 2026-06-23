@@ -8,6 +8,7 @@ import {
 	pickGlobalLatest,
 	serializeRecords,
 	MUSIC_CONTROL_MARKER,
+	MUSIC_CONTROL_TITLE,
 	type MusicControlRecord
 } from '$lib/music/musicControlNote.js';
 import { serializeContent, deserializeContent } from '$lib/core/noteContentArchiver.js';
@@ -20,7 +21,6 @@ const rec = (o: Partial<MusicControlRecord> = {}): MusicControlRecord => ({
 	trackTitle: '곡',
 	noteGuid: 'g1',
 	noteTitle: '음악::플리',
-	position: 12,
 	state: 'paused',
 	updatedAt: '2026-06-22T00:00:00.000Z',
 	...o
@@ -39,12 +39,12 @@ describe('musicControlNote', () => {
 	it('upserts by deviceId without duplicating and preserves user content', () => {
 		const userPara: JSONContent = { type: 'paragraph', content: [{ type: 'text', text: '내 메모' }] };
 		let doc = docWith(userPara);
-		doc = upsertRecordInDoc(doc, rec({ deviceId: 'dev-a', position: 1 }));
-		doc = upsertRecordInDoc(doc, rec({ deviceId: 'dev-b', position: 2 }));
-		doc = upsertRecordInDoc(doc, rec({ deviceId: 'dev-a', position: 9 })); // update a
+		doc = upsertRecordInDoc(doc, rec({ deviceId: 'dev-a', updatedAt: '2026-06-22T01:00:00.000Z' }));
+		doc = upsertRecordInDoc(doc, rec({ deviceId: 'dev-b', updatedAt: '2026-06-22T02:00:00.000Z' }));
+		doc = upsertRecordInDoc(doc, rec({ deviceId: 'dev-a', updatedAt: '2026-06-22T09:00:00.000Z' })); // update a
 		const recs = parseRecordsFromDoc(doc);
 		expect(recs).toHaveLength(2);
-		expect(recs.find((r) => r.deviceId === 'dev-a')!.position).toBe(9);
+		expect(recs.find((r) => r.deviceId === 'dev-a')!.updatedAt).toBe('2026-06-22T09:00:00.000Z');
 		const texts = (doc.content ?? []).map((n) => n.content?.[0]?.text ?? '');
 		expect(texts).toContain('내 메모');
 		const markers = (doc.content ?? []).filter((n) =>
@@ -77,7 +77,7 @@ describe('musicControlNote', () => {
 				userPara
 			]
 		};
-		const updated = upsertRecordInDoc(doc, rec({ deviceId: 'x', position: 42 }));
+		const updated = upsertRecordInDoc(doc, rec({ deviceId: 'x', updatedAt: '2026-06-22T04:00:00.000Z' }));
 		const content = updated.content ?? [];
 		// marker paragraph must still be at index 1
 		expect((content[1].content?.[0]?.text ?? '').startsWith(MUSIC_CONTROL_MARKER)).toBe(true);
@@ -129,29 +129,100 @@ describe('musicControlNote — lossless url round-trip (no-sound regression)', (
 		expect(got).not.toBe(trickyUrl);
 	});
 
-	it('carries the full queue + index across the round-trip', () => {
+	it('carries extra (legacy) fields across the round-trip losslessly', () => {
+		// Extra JSON keys not in the current interface pass through serialize→parse unchanged.
+		// This is the "legacy tolerance" invariant: old records with queue/index/position
+		// are not dropped by isRecord and their extra keys survive in the raw JSON.
 		const queue = [
 			{ url: trickyUrl, display: '001', title: '001', playlistLabel: '로제' },
 			{ url: 'https://bridge.duck/files/abc-123/002.mp3', display: '002', title: '002', playlistLabel: '로제' }
 		];
-		const xml = xmlFromRecords([rec({ queue, index: 1 })]);
+		const legacyRec = { ...rec({ trackUrl: trickyUrl }), queue, index: 1 } as MusicControlRecord;
+		const xml = xmlFromRecords([legacyRec]);
 		const parsed = parseRecordsFromXml(xml);
-		expect(parsed[0].queue).toHaveLength(2);
-		expect(parsed[0].queue![0].url).toBe(trickyUrl);
-		expect(parsed[0].index).toBe(1);
+		expect(parsed).toHaveLength(1);
+		expect((parsed[0] as unknown as Record<string, unknown>).queue).toHaveLength(2); // extra key survived
+		expect(((parsed[0] as unknown as Record<string, unknown>).queue as typeof queue)[0].url).toBe(trickyUrl);
+		expect((parsed[0] as unknown as Record<string, unknown>).index).toBe(1);
 	});
 
 	it('upsertRecords replaces by deviceId and keeps others', () => {
-		const a1 = rec({ deviceId: 'a', position: 1 });
-		const b = rec({ deviceId: 'b', position: 2 });
-		const a2 = rec({ deviceId: 'a', position: 9 });
+		const a1 = rec({ deviceId: 'a', updatedAt: '2026-06-22T01:00:00.000Z' });
+		const b = rec({ deviceId: 'b', updatedAt: '2026-06-22T02:00:00.000Z' });
+		const a2 = rec({ deviceId: 'a', updatedAt: '2026-06-22T09:00:00.000Z' });
 		const out = upsertRecords(upsertRecords([a1], b), a2);
 		expect(out).toHaveLength(2);
-		expect(out.find((r) => r.deviceId === 'a')!.position).toBe(9);
+		expect(out.find((r) => r.deviceId === 'a')!.updatedAt).toBe('2026-06-22T09:00:00.000Z');
 	});
 
 	it('parseRecordsFromXml returns [] when no marker / empty content', () => {
 		expect(parseRecordsFromXml('<note-content version="0.1">음악제어::공유\n</note-content>')).toEqual([]);
 		expect(parseRecordsFromXml('')).toEqual([]);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Slim MusicControlRecord — Task 1 (Channel A schema slim)
+// ---------------------------------------------------------------------------
+
+const slim = (): MusicControlRecord => ({
+	deviceId: 'd1',
+	deviceName: '아이폰',
+	noteGuid: 'g1',
+	trackUrl: 'https://x/a.mp3',
+	trackTitle: 'A',
+	noteTitle: '음악::로제',
+	state: 'playing',
+	updatedAt: '2026-06-23T10:00:00.000Z'
+});
+
+describe('slim MusicControlRecord', () => {
+	it('serializes without queue/index/position keys', () => {
+		const json = serializeRecords([slim()]);
+		expect(json).not.toMatch(/"queue"/);
+		expect(json).not.toMatch(/"index"/);
+		expect(json).not.toMatch(/"position"/);
+	});
+
+	it('parses a slim record from xml (no position field required)', () => {
+		const doc: JSONContent = {
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: MUSIC_CONTROL_TITLE }] },
+				{ type: 'paragraph', content: [{ type: 'text', text: serializeRecords([slim()]) }] }
+			]
+		};
+		const xml = serializeContent(doc);
+		const recs = parseRecordsFromXml(xml);
+		expect(recs).toHaveLength(1);
+		expect(recs[0].trackUrl).toBe('https://x/a.mp3');
+		expect((recs[0] as unknown as Record<string, unknown>).position).toBeUndefined();
+	});
+
+	it('tolerates a legacy record carrying queue/position (extra keys ignored)', () => {
+		const legacy = { ...slim(), position: 42, index: 1, queue: [{ url: 'u', display: 'd' }] };
+		const doc: JSONContent = {
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: MUSIC_CONTROL_TITLE }] },
+				{ type: 'paragraph', content: [{ type: 'text', text: serializeRecords([legacy as MusicControlRecord]) }] }
+			]
+		};
+		const xml = serializeContent(doc);
+		const recs = parseRecordsFromXml(xml);
+		expect(recs).toHaveLength(1);
+		expect(recs[0].trackUrl).toBe('https://x/a.mp3'); // core fields survive
+	});
+
+	it('rejects a record missing noteGuid (now load-bearing — the queue-rebuild key)', () => {
+		const { noteGuid: _drop, ...noGuid } = slim();
+		const doc: JSONContent = {
+			type: 'doc',
+			content: [
+				{ type: 'paragraph', content: [{ type: 'text', text: MUSIC_CONTROL_TITLE }] },
+				{ type: 'paragraph', content: [{ type: 'text', text: serializeRecords([noGuid as MusicControlRecord]) }] }
+			]
+		};
+		expect(parseRecordsFromXml(serializeContent(doc))).toHaveLength(0);
 	});
 });

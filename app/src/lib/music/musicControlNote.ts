@@ -10,33 +10,17 @@ export const MUSIC_CONTROL_MARKER = '음악제어데이터::';
 
 export type TransportState = 'playing' | 'paused' | 'stopped';
 
-/** A single queue entry as carried cross-device. Mirrors the playable fields of
- *  MusicTrack (engine-only — liPos is editor-local and intentionally omitted). */
-export interface MusicControlTrack {
-	url: string;
-	display: string;
-	title?: string | null;
-	playlistLabel?: string;
-}
-
 export interface MusicControlRecord {
 	deviceId: string;
 	deviceName: string;
+	/** The music note that holds the track (큐 재구성 키). */
+	noteGuid: string;
 	trackUrl: string;
 	trackTitle: string;
-	/** The music note that holds the track (activeNoteGuid). For future full-queue rebuild. */
-	noteGuid: string;
 	noteTitle: string;
-	position: number;
 	state: TransportState;
 	/** ISO-8601 — sorts lexically, like Tomboy changeDate. */
 	updatedAt: string;
-	/** Full queue snapshot from the SOURCE device (parsed live there). The receiver
-	 *  restores this verbatim so ⏭/⏮ work and the urls are the source's freshly
-	 *  parsed (playable) ones. Optional for back-compat with v1 single-track records. */
-	queue?: MusicControlTrack[];
-	/** currentIndex within `queue`. */
-	index?: number;
 }
 
 export function isMusicControlNoteTitle(title: string): boolean {
@@ -53,8 +37,8 @@ function isRecord(v: unknown): v is MusicControlRecord {
 	return (
 		!!e &&
 		typeof e.deviceId === 'string' &&
+		typeof e.noteGuid === 'string' &&
 		typeof e.trackUrl === 'string' &&
-		typeof e.position === 'number' &&
 		typeof e.state === 'string' &&
 		typeof e.updatedAt === 'string'
 	);
