@@ -263,7 +263,10 @@
 		const anchor = resolved[idx]?.title ?? '';
 		const out: string[] = [];
 		if (idx === winStart && hiddenAbove > 0) {
-			out.push(...collapseAgainst(anchor, resolved.slice(0, winStart).map((r) => r.title)));
+			// 위로 숨은 건 LIFO 순 — anchor 바로 옆 = 바로 위(winStart-1), 끝 = 맨 위
+			// (index 0). 인덱스 역순으로 이어야 자연스럽다(가장 처음 타이틀이 맨 끝).
+			const above = resolved.slice(0, winStart).map((r) => r.title).reverse();
+			out.push(...collapseAgainst(anchor, above));
 		}
 		if (idx === lastVisibleIdx && hiddenBelow > 0) {
 			out.push(
