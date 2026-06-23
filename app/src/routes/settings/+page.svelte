@@ -3245,8 +3245,8 @@ Complete:</pre>
 						<tr><td><kbd>Shift</kbd>+<kbd>Tab</kbd></td><td>표준 내어쓰기(서브트리 통째로 이동)</td></tr>
 						<tr><td><kbd>Alt</kbd>+<kbd>→</kbd></td><td>외과적 깊이 ↑ — 자식은 절대 깊이 유지(리스트 밖이면 리스트 시작)</td></tr>
 						<tr><td><kbd>Alt</kbd>+<kbd>←</kbd></td><td>외과적 깊이 ↓ — 자식은 절대 깊이 유지</td></tr>
-						<tr><td><kbd>Alt</kbd>+<kbd>↑</kbd></td><td>리스트 아이템 위로 이동</td></tr>
-						<tr><td><kbd>Alt</kbd>+<kbd>↓</kbd></td><td>리스트 아이템 아래로 이동</td></tr>
+						<tr><td><kbd>Alt</kbd>+<kbd>↑</kbd></td><td>위로 이동 — 리스트 안: 아이템 / 리스트 밖: 일반 문단(블록) 순서 바꾸기 (제목 줄은 안 넘어감)</td></tr>
+						<tr><td><kbd>Alt</kbd>+<kbd>↓</kbd></td><td>아래로 이동 — 리스트 안: 아이템 / 리스트 밖: 일반 문단(블록) 순서 바꾸기</td></tr>
 					</tbody>
 				</table>
 			</section>

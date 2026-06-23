@@ -132,6 +132,7 @@ import { MUSIC_CONTROL_GUID } from "$lib/music/musicControlNote.js";
 		isInList,
 	} from "./listItemDepth.js";
 	import { moveListItemUp, moveListItemDown } from "./listItemReorder.js";
+	import { moveBlockUp, moveBlockDown } from "./blockReorder.js";
 	import {
 		TomboyTodoRegion,
 		moveTodoItem,
@@ -1029,7 +1030,11 @@ import { MUSIC_CONTROL_GUID } from "$lib/music/musicControlNote.js";
 						if (event.key === "ArrowUp") {
 							event.preventDefault();
 							try {
-								moveListItemUp(ed);
+								const moved = moveListItemUp(ed);
+								// 리스트가 아니면 일반 블록(문장) 순서 바꾸기로 폴백.
+								if (!moved && !isInList(ed)) {
+									moveBlockUp(ed);
+								}
 							} catch (err) {
 								console.error(
 									"[listItemReorder] operation failed:",
@@ -1041,7 +1046,11 @@ import { MUSIC_CONTROL_GUID } from "$lib/music/musicControlNote.js";
 						if (event.key === "ArrowDown") {
 							event.preventDefault();
 							try {
-								moveListItemDown(ed);
+								const moved = moveListItemDown(ed);
+								// 리스트가 아니면 일반 블록(문장) 순서 바꾸기로 폴백.
+								if (!moved && !isInList(ed)) {
+									moveBlockDown(ed);
+								}
 							} catch (err) {
 								console.error(
 									"[listItemReorder] operation failed:",
