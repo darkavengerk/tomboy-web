@@ -1,0 +1,77 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-23-music-cross-device-v2.md",
+  "specPath": "docs/superpowers/specs/2026-06-23-music-cross-device-v2-design.md",
+  "tasks": [
+    {
+      "id": 12,
+      "subject": "Task 1: Slim the note record schema (Channel A)",
+      "status": "pending",
+      "blockedBy": [],
+      "description": "**Goal:** Remove queue/index/position/MusicControlTrack from MusicControlRecord; tolerate legacy records carrying them.\n\n**Files:** musicControlNote.ts; musicControlNote.test.ts (MERGE).\n\n**Acceptance Criteria:** record drops queue/index/position; isRecord accepts slim (no position); parseRecordsFromXml tolerates legacy; serializeRecords emits no queue/index/position.\n\n**Verify:** `cd app && npx vitest run tests/unit/music/musicControlNote.test.ts`\n\n```json:metadata\n{\"files\": [\"app/src/lib/music/musicControlNote.ts\", \"app/tests/unit/music/musicControlNote.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/music/musicControlNote.test.ts\", \"acceptanceCriteria\": [\"drop queue/index/position\", \"isRecord accepts slim\", \"tolerate legacy\", \"serialize emits no queue/position\"]}\n```"
+    },
+    {
+      "id": 13,
+      "subject": "Task 2: Headless JSONContent music-queue parser",
+      "status": "pending",
+      "blockedBy": [],
+      "description": "**Goal:** buildQueueFromXml rebuilds queue from raw XML by walking JSONContent, reusing parseMusicNote helpers.\n\n**Files:** parseMusicNote.ts (export URL_RE/trimTrailingPunct); headlessMusicParse.ts (new); headlessMusicParse.test.ts (new).\n\n**Acceptance Criteria:** matches parseMusicNote URLs for 3 patterns; inlineCheckbox header gate; non-music → []; mark href preferred, trailing punct trimmed.\n\n**Verify:** `cd app && npx vitest run tests/unit/music/headlessMusicParse.test.ts`\n\n```json:metadata\n{\"files\": [\"app/src/lib/music/parseMusicNote.ts\", \"app/src/lib/music/headlessMusicParse.ts\", \"app/tests/unit/music/headlessMusicParse.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/music/headlessMusicParse.test.ts\", \"acceptanceCriteria\": [\"matches 3 patterns\", \"checkbox gate\", \"non-music []\", \"mark href + trim\"]}\n```"
+    },
+    {
+      "id": 14,
+      "subject": "Task 3: deviceStateSync module + Firestore adapter (Channel B)",
+      "status": "pending",
+      "blockedBy": [],
+      "description": "**Goal:** DI'd throttled client writing position to users/{uid}/deviceState/{deviceId} (<=1/10s, flush on demand), one-shot read; gated like note-sync.\n\n**Files:** deviceStateSync.ts (new); deviceStateSync.firestore.ts (new); deviceStateSync.test.ts (new).\n\n**Acceptance Criteria:** writePosition throttled 1/interval per track, immediate on track change; flushPosition bypasses; disabled/signed-out no-op; readDeviceState returns doc or null.\n\n**Verify:** `cd app && npx vitest run tests/unit/music/deviceStateSync.test.ts`\n\n```json:metadata\n{\"files\": [\"app/src/lib/music/deviceStateSync.ts\", \"app/src/lib/music/deviceStateSync.firestore.ts\", \"app/tests/unit/music/deviceStateSync.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/music/deviceStateSync.test.ts\", \"acceptanceCriteria\": [\"throttle 1/interval\", \"flush bypass\", \"gate no-op\", \"read doc/null\"]}\n```"
+    },
+    {
+      "id": 15,
+      "subject": "Task 4: Feed Channel B from the audio engine",
+      "status": "pending",
+      "blockedBy": [14],
+      "description": "**Goal:** Engine reports position to deviceStateSync — throttled on timeupdate, flushed on seek + every transport (pre-clear).\n\n**Files:** deviceStatePlayback.ts (new seam); musicAudio.svelte.ts; musicControl.svelte.ts; deviceStatePlaybackWiring.test.ts (new).\n\n**Acceptance Criteria:** timeupdate→report; seek→flush; transport→flush with pre-clear track.\n\n**Verify:** `cd app && npx vitest run tests/unit/music/deviceStatePlaybackWiring.test.ts && npm run check`\n\n```json:metadata\n{\"files\": [\"app/src/lib/music/deviceStatePlayback.ts\", \"app/src/lib/music/musicAudio.svelte.ts\", \"app/src/lib/music/musicControl.svelte.ts\", \"app/tests/unit/music/deviceStatePlaybackWiring.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/music/deviceStatePlaybackWiring.test.ts && npm run check\", \"acceptanceCriteria\": [\"timeupdate report\", \"seek flush\", \"transport pre-clear flush\"]}\n```"
+    },
+    {
+      "id": 16,
+      "subject": "Task 5: Slim write path + track-change transport",
+      "status": "pending",
+      "blockedBy": [12],
+      "description": "**Goal:** recordTransport writes slim record; player gains 'track' kind on advance, emits 'pause' on exhaust so Channel A trackUrl stays current.\n\n**Files:** musicPlayer.svelte.ts; musicControl.svelte.ts; musicPlayerTransport.test.ts (new); musicControlWrite.test.ts (MERGE).\n\n**Acceptance Criteria:** TransportKind has 'track'→'playing'; next/prev/reportEnded emit track-on-advance, pause-on-exhaust; initial gesture play one 'play'; recordTransport slim, no queue/position.\n\n**Verify:** `cd app && npx vitest run tests/unit/music/musicPlayerTransport.test.ts tests/unit/music/musicControlWrite.test.ts`\n\n```json:metadata\n{\"files\": [\"app/src/lib/music/musicPlayer.svelte.ts\", \"app/src/lib/music/musicControl.svelte.ts\", \"app/tests/unit/music/musicPlayerTransport.test.ts\", \"app/tests/unit/music/musicControlWrite.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/music/musicPlayerTransport.test.ts tests/unit/music/musicControlWrite.test.ts\", \"acceptanceCriteria\": [\"track kind\", \"advance/exhaust emits\", \"one play\", \"slim write\"]}\n```"
+    },
+    {
+      "id": 17,
+      "subject": "Task 6: Rewrite read/restore — re-parse, Channel-B position, auto-pause",
+      "status": "pending",
+      "blockedBy": [12, 13, 14, 16],
+      "description": "**Goal:** refreshFromNote rebuilds queue via buildQueueFromXml(noteGuid), reads position one-shot from Channel B, pauses this device when another device's newer record is playing (single-playback #1).\n\n**Files:** musicControl.svelte.ts; musicControlRead.test.ts (MERGE; rewrite queue cases to seed real note).\n\n**Acceptance Criteria:** tracksFromRecord async re-parse + index@trackUrl + synthetic fallback; seed Channel-B position when trackUrl matches; newer remote playing → pause (queue kept); paused/stopped/not-newer → no pause; dedupe holds.\n\n**Verify:** `cd app && npx vitest run tests/unit/music/musicControlRead.test.ts && npm run check`\n\n```json:metadata\n{\"files\": [\"app/src/lib/music/musicControl.svelte.ts\", \"app/tests/unit/music/musicControlRead.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/music/musicControlRead.test.ts && npm run check\", \"acceptanceCriteria\": [\"re-parse + index + fallback\", \"Channel-B position\", \"newer remote pause keep-queue\", \"no false pause\", \"dedupe\"]}\n```"
+    },
+    {
+      "id": 18,
+      "subject": "Task 7: Continuity decision logic + remote-resume API",
+      "status": "pending",
+      "blockedBy": [17],
+      "description": "**Goal:** Pure continuityChoice predicate + resumeGlobalLatest (explicit remote adopt+play in gesture); rename getGlobalLatestForTest→getGlobalLatest.\n\n**Files:** continuity.ts (new); musicControl.svelte.ts; continuity.test.ts (new); musicControlRead.test.ts.\n\n**Acceptance Criteria:** continuityChoice none/local/remote/both per both+different→both, one→that, same→local, neither→none; resumeGlobalLatest restores+plays, returns bool; getGlobalLatest exported.\n\n**Verify:** `cd app && npx vitest run tests/unit/music/continuity.test.ts tests/unit/music/musicControlRead.test.ts`\n\n```json:metadata\n{\"files\": [\"app/src/lib/music/continuity.ts\", \"app/src/lib/music/musicControl.svelte.ts\", \"app/tests/unit/music/continuity.test.ts\", \"app/tests/unit/music/musicControlRead.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/music/continuity.test.ts tests/unit/music/musicControlRead.test.ts\", \"acceptanceCriteria\": [\"choice none/local/remote/both\", \"resumeGlobalLatest bool\", \"getGlobalLatest export\"]}\n```"
+    },
+    {
+      "id": 19,
+      "subject": "Task 8: Continuity picker UI (mobile sheet + rail menu)",
+      "status": "pending",
+      "blockedBy": [18],
+      "description": "**Goal:** MusicContinuityPicker component + rail expand menu wired to continuityChoice + resumeGlobalLatest.\n\n**Files:** MusicContinuityPicker.svelte (new); RailMusicControls.svelte; continuityPicker.test.ts (new).\n\n**Acceptance Criteria:** picker renders 2 labelled options, emits onpick; rail opens menu on 'both', routes local/remote+gesture; non-both unchanged; menu --z-menu, preserve styles + parent relative.\n\n**Verify:** `cd app && npx vitest run tests/unit/music/continuityPicker.test.ts && npm run check`\n\n```json:metadata\n{\"files\": [\"app/src/lib/editor/musicNote/MusicContinuityPicker.svelte\", \"app/src/lib/editor/musicNote/RailMusicControls.svelte\", \"app/tests/unit/music/continuityPicker.test.ts\"], \"verifyCommand\": \"cd app && npx vitest run tests/unit/music/continuityPicker.test.ts && npm run check\", \"acceptanceCriteria\": [\"picker 2 options onpick\", \"rail menu on both\", \"non-both unchanged\", \"--z-menu preserve styles\"]}\n```"
+    },
+    {
+      "id": 20,
+      "subject": "Task 9: Mobile home FAB + remove floating pill",
+      "status": "pending",
+      "blockedBy": [18],
+      "description": "**Goal:** Home-note play/pause FAB (only ?from=home, when something to play) wired to continuity flow; delete GlobalMiniPlayer + helpers.\n\n**Files:** note/[id]/+page.svelte; +layout.svelte; delete GlobalMiniPlayer.svelte/miniPlayerVisibility.ts/miniPlayerDrag.ts + orphan tests; index.ts.\n\n**Acceptance Criteria:** .fab-music at bottom calc(88px+56px*2) on ?from=home when queue>0 or remote; ⏸/▶ toggle via continuity flow + gesture; joins focus-within fade; GlobalMiniPlayer fully removed; check passes.\n\n**Verify:** `cd app && grep -rn 'GlobalMiniPlayer|miniPlayerVisibility|miniPlayerDrag' src tests; npm run check`\n\n```json:metadata\n{\"files\": [\"app/src/routes/note/[id]/+page.svelte\", \"app/src/routes/+layout.svelte\", \"app/src/lib/editor/musicNote/GlobalMiniPlayer.svelte\", \"app/src/lib/editor/musicNote/miniPlayerVisibility.ts\", \"app/src/lib/editor/musicNote/miniPlayerDrag.ts\", \"app/src/lib/editor/musicNote/index.ts\"], \"verifyCommand\": \"cd app && npm run check && npm run test\", \"acceptanceCriteria\": [\"fab-music gated + positioned\", \"toggle continuity+gesture\", \"focus fade\", \"pill removed\"]}\n```"
+    },
+    {
+      "id": 21,
+      "subject": "Task 10: Guide card + full verification",
+      "status": "pending",
+      "blockedBy": [20],
+      "description": "**Goal:** Document new behavior in 설정→가이드; whole suite + type-check green.\n\n**Files:** settings/+page.svelte (guide sub-tab notes); full suite.\n\n**Acceptance Criteria:** guide-card covers single-play/home-FAB/picker/pill-removal; npm run check 0 errors; npm run test all pass.\n\n**Verify:** `cd app && npm run check && npm run test`\n\n```json:metadata\n{\"files\": [\"app/src/routes/settings/+page.svelte\"], \"verifyCommand\": \"cd app && npm run check && npm run test\", \"acceptanceCriteria\": [\"guide-card 4 points\", \"check 0\", \"test green\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-06-23"
+}
