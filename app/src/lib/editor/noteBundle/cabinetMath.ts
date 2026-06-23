@@ -72,6 +72,42 @@ export function barCapacity(boxPx: number, barPx: number, reservePx: number): nu
 	return Math.max(1, Math.floor((boxPx - Math.max(0, reservePx)) / barPx));
 }
 
+/** 코드포인트 기준 길이 max 로 자르고, 넘치면 말줄임(…) 붙임. 한글 음절은
+ *  단일 코드포인트라 글자 수 그대로 — Array.from 으로 서로게이트도 안전. */
+export function truncateChars(s: string, max: number): string {
+	const a = Array.from(s);
+	return a.length > max ? a.slice(0, max).join('') + '…' : s;
+}
+
+/** 두 문자열의 공통 접두 길이(코드포인트 수). */
+export function commonPrefixLen(a: string, b: string): number {
+	const aa = Array.from(a);
+	const bb = Array.from(b);
+	let i = 0;
+	while (i < aa.length && i < bb.length && aa[i] === bb[i]) i++;
+	return i;
+}
+
+/**
+ * +N 배지 대신 보여줄 숨은 타이틀들을 짧은 표시 문자열로 — 순수.
+ * 첫 타이틀(anchor)은 그대로(firstMax 까지), 나머지는 첫 타이틀과 공통 접두를
+ * 최대한 제거한 뒤 나머지를 restMax 까지. 예) ['음악::블랙핑크','음악::아이브']
+ * → ['음악::블랙핑크','아이브'].
+ * 접두 제거 후 빈 문자열이 되면(타이틀이 anchor 의 접두부와 동일) 원본 사용.
+ * 공통 접두가 없으면 원본을 restMax 까지.
+ */
+export function collapseHiddenTitles(titles: string[], firstMax = 10, restMax = 5): string[] {
+	if (titles.length === 0) return [];
+	const anchor = titles[0];
+	return titles.map((t, i) => {
+		if (i === 0) return truncateChars(t, firstMax);
+		const tc = Array.from(t);
+		const n = commonPrefixLen(anchor, t);
+		const rest = n > 0 && n < tc.length ? tc.slice(n).join('') : t;
+		return truncateChars(rest, restMax);
+	});
+}
+
 export interface ResolvedEntryLike {
 	broken: boolean;
 }
