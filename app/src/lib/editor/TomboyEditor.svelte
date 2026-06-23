@@ -516,6 +516,16 @@ import { MUSIC_CONTROL_GUID } from "$lib/music/musicControlNote.js";
 					// renders `> `-prefixed paragraphs via decoration, which
 					// the input rule would preempt before it ever matched.
 					blockquote: false,
+					// Drop ordered lists entirely. Tomboy's <list> XML has no
+					// "ordered" variant — the archiver never deserializes an
+					// orderedList and its top-level serializer silently skips
+					// any orderedList node (data loss). So the only way one
+					// could appear is the `1. ` input rule, which ate the typed
+					// text and showed a stray marker. Removing the node kills
+					// that input rule (and its command); `1. ` now stays as
+					// plain text. Lingering `schema.nodes.orderedList` refs
+					// elsewhere are equality checks that just go false.
+					orderedList: false,
 				}),
 				TomboyParagraph,
 				TomboyListItem,
