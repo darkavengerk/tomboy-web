@@ -69,7 +69,7 @@
 		nextValidIndex,
 		bundleBox,
 		barCapacity,
-		collapseHiddenTitles
+		collapseAgainst
 	} from './cabinetMath.js';
 	import { lookupGuidByTitle, ensureTitleIndexReady } from '../autoLink/titleProvider.js';
 	import {
@@ -252,14 +252,26 @@
 	const hiddenBelow = $derived(Math.max(0, resolved.length - (winStart + W)));
 	const lastVisibleIdx = $derived(Math.min(winStart + W, resolved.length) - 1);
 
-	// --- +N 배지 대신 숨은 타이틀 표시 -----------------------------------------
-	// 윈도우 위/아래로 숨은 노트들의 짧은 타이틀(첫=anchor, 나머지=공통접두 제거).
-	// 실제로 몇 개가 들어가는지는 fitBadge 액션이 바 폭을 재서 결정 — 못 들어간
-	// 만큼은 +N 으로(기존 동작). 두 배지(상/하단)는 각자 자기 목록의 첫 항목을 anchor.
-	const aboveSegs = $derived(collapseHiddenTitles(resolved.slice(0, winStart).map((r) => r.title)));
-	const belowSegs = $derived(
-		collapseHiddenTitles(resolved.slice(lastVisibleIdx + 1).map((r) => r.title))
-	);
+	// --- 경계 바: 자기 타이틀 + 숨은 이웃 타이틀 한 줄로 ------------------------
+	// 윈도우 첫/마지막 바는 자기 타이틀(anchor)에 이어 숨은(위/아래) 노트 타이틀을
+	// 쉼표로 잇는다 — "음악::손미, 청하, 블랙핑크, …". 이웃은 anchor 와 공통 접두만
+	// 제거(축약 없음). 폭이 모자라면 fitMergedTitle 액션이 들어가는 만큼만 두고
+	// 나머지는 +N. anchor 는 그 바의 실제 타이틀이라 항상 보인다.
+	const isBoundary = (idx: number): boolean =>
+		(idx === winStart && hiddenAbove > 0) || (idx === lastVisibleIdx && hiddenBelow > 0);
+	function hiddenSegsFor(idx: number): string[] {
+		const anchor = resolved[idx]?.title ?? '';
+		const out: string[] = [];
+		if (idx === winStart && hiddenAbove > 0) {
+			out.push(...collapseAgainst(anchor, resolved.slice(0, winStart).map((r) => r.title)));
+		}
+		if (idx === lastVisibleIdx && hiddenBelow > 0) {
+			out.push(
+				...collapseAgainst(anchor, resolved.slice(lastVisibleIdx + 1).map((r) => r.title))
+			);
+		}
+		return out;
+	}
 
 	// 휠/스와이프로 활성을 넘길지(=묶음 브라우징). W < n 이면(요청/capacity 로 윈도우가
 	// 전체보다 작음 → +N 배지 존재) 가로채 윈도우를 넘긴다 — capacity 클램프 덕에
@@ -644,32 +656,26 @@
 		};
 	}
 
-	/** 배지가 차지할 수 있는 바 폭 비율 — 나머지는 그 바 자신의 타이틀 몫. */
-	const BADGE_FRACTION = 0.62;
-	/** 배지 최소 폭(px) — 최소한 `+N` 한 칸은 들어가게. */
-	const BADGE_MIN_PX = 56;
 	/**
-	 * +N 배지 자리에 숨은 타이틀들을 폭 한도껏 채워 넣는다(쉼표 구분). 한도를
-	 * 넘으면 들어가는 만큼만 보여주고 나머지 개수는 `+N` 으로(기존 동작). 폭은
-	 * 자신을 담은 바의 clientWidth × BADGE_FRACTION — 바가 리사이즈되면 ResizeObserver
-	 * 로 다시 맞춘다. textContent 를 직접 쓰므로 템플릿에선 빈 span 으로 둔다.
+	 * 경계 바의 타이틀 = anchor(그 바의 실제 타이틀, 항상 표시) + 숨은 이웃
+	 * 타이틀들(쉼표). 폭이 모자라면 들어가는 이웃만 두고 나머지 개수는 `+N`.
+	 * anchor 혼자도 안 들어가면 CSS 말줄임(text-overflow)이 처리. 타이틀 요소는
+	 * flex:1 이라 clientWidth = 할당 폭(내용 무관) → scrollWidth 비교로 넘침 판정.
+	 * textContent 를 직접 쓰므로 템플릿에선 빈 span 으로 둔다(Svelte 와 안 충돌).
+	 * 바/할당 폭이 바뀌면(리사이즈·접속 버튼 등장) ResizeObserver 로 다시 맞춘다.
 	 */
-	function fitBadge(node: HTMLElement, params: { segs: string[]; total: number }) {
+	function fitMergedTitle(node: HTMLElement, params: { anchor: string; hidden: string[] }) {
 		let p = params;
 		let ro: ResizeObserver | null = null;
 		const apply = () => {
-			const bar = node.closest<HTMLElement>('.bundle-bar');
-			if (!bar) return;
-			const budget = Math.max(BADGE_MIN_PX, bar.clientWidth * BADGE_FRACTION);
-			node.style.maxWidth = `${budget}px`;
-			const { segs, total } = p;
-			let shown = segs.length;
-			// shown 을 줄여가며 폭에 들어가는 첫 지점. shown<total 이면 나머지를 +N.
+			const { anchor, hidden } = p;
+			let shown = hidden.length;
 			for (;;) {
-				const remaining = total - shown;
-				const parts = segs.slice(0, shown);
-				let str = parts.join(', ');
-				if (remaining > 0) str = (parts.length ? `${str}, ` : '') + `+${remaining}`;
+				const remaining = hidden.length - shown;
+				let str = anchor;
+				const parts = hidden.slice(0, shown);
+				if (parts.length) str += `, ${parts.join(', ')}`;
+				if (remaining > 0) str += `, +${remaining}`;
 				node.textContent = str;
 				if (shown <= 0) break;
 				if (node.scrollWidth <= node.clientWidth) break;
@@ -677,13 +683,10 @@
 			}
 		};
 		apply();
-		const bar = node.closest<HTMLElement>('.bundle-bar');
-		if (bar) {
-			ro = new ResizeObserver(apply);
-			ro.observe(bar);
-		}
+		ro = new ResizeObserver(apply);
+		ro.observe(node);
 		return {
-			update(next: { segs: string[]; total: number }) {
+			update(next: { anchor: string; hidden: string[] }) {
 				p = next;
 				apply();
 			},
@@ -1184,7 +1187,13 @@
 						     우측 +N 배지와 엉키지 않게 좌측으로 옮김. -->
 						<span class="bar-category" title={e.category}>{e.category}</span>
 					{/if}
-					<span class="bar-title">{e.title}</span>
+					{#if isBoundary(idx)}
+						<!-- 경계 바 — 자기 타이틀 + 숨은 이웃 타이틀 한 줄(fitMergedTitle
+						     이 폭에 맞춰 채우고 나머지는 +N). textContent 는 액션이 채움. -->
+						<span class="bar-title" use:fitMergedTitle={{ anchor: e.title, hidden: hiddenSegsFor(idx) }}></span>
+					{:else}
+						<span class="bar-title">{e.title}</span>
+					{/if}
 					{#if idx === k && session?.termSpec && !session.termConnect}
 						<!-- 터미널 노트 — 호스트 셸의 "접속" FAB 대응. 격벽이 Svelte
 						     위임 click 을 죽이므로 direct 액션으로 직접 바인딩. -->
@@ -1200,13 +1209,6 @@
 								}
 							}}
 						>접속</span>
-					{/if}
-					{#if idx === winStart && hiddenAbove > 0}
-						<!-- 상단 배지 — 숨은(위) 노트 타이틀들. 폭 한도껏 채우고 나머지는 +N.
-						     textContent 는 fitBadge 가 채우므로 비워 둔다. -->
-						<span class="bar-badge" use:fitBadge={{ segs: aboveSegs, total: hiddenAbove }}></span>
-					{:else if idx === lastVisibleIdx && hiddenBelow > 0}
-						<span class="bar-badge" use:fitBadge={{ segs: belowSegs, total: hiddenBelow }}></span>
 					{/if}
 				</button>
 				{#if titleOnly}
@@ -1480,17 +1482,6 @@
 	}
 	.bar-eject:hover {
 		opacity: 1;
-	}
-	.bar-badge {
-		flex-shrink: 0;
-		/* max-width 는 fitBadge 가 바 폭에 맞춰 인라인으로 건다. overflow/ellipsis
-		   는 안전망 — 측정 오차로 살짝 넘쳐도 잘리게(보통 fitBadge 가 안 넘치게 맞춤). */
-		min-width: 0;
-		overflow: hidden;
-		white-space: nowrap;
-		text-overflow: ellipsis;
-		color: #999;
-		font-size: 0.75rem;
 	}
 	.bundle-bar.broken {
 		color: #777;
