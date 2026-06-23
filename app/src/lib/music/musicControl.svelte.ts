@@ -1,4 +1,5 @@
 import { musicPlayer, type TransportKind } from './musicPlayer.svelte.js';
+import { flushPlaybackPosition } from './deviceStatePlayback.js';
 import {
 	MUSIC_CONTROL_GUID,
 	MUSIC_CONTROL_TITLE,
@@ -190,6 +191,8 @@ export function installMusicControl(): () => void {
 		void refreshFromNote();
 	});
 	const unsubTransport = musicPlayer.onTransport((kind) => {
+		const t = musicPlayer.currentTrack;
+		if (t) flushPlaybackPosition(musicPlayer.currentTime, t.url);
 		void recordTransport(kind);
 	});
 	return () => {

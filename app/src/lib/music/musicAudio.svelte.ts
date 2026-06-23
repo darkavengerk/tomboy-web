@@ -8,6 +8,7 @@
 import { untrack } from 'svelte';
 import { musicPlayer } from './musicPlayer.svelte.js';
 import { pushToast } from '$lib/stores/toast.js';
+import { reportPlaybackPosition, flushPlaybackPosition } from './deviceStatePlayback.js';
 import {
 	isMediaSessionSupported,
 	buildMetadataInit,
@@ -77,7 +78,12 @@ export function installMusicAudio(): () => void {
 	const onPlaying = () => {
 		unlocked = true;
 	};
-	const onTime = () => musicPlayer.reportTime(audio.currentTime || 0);
+	const onTime = () => {
+		const t = audio.currentTime || 0;
+		musicPlayer.reportTime(t);
+		const url = musicPlayer.currentTrack?.url;
+		if (url) reportPlaybackPosition(t, url);
+	};
 	const onMeta = () => musicPlayer.reportDuration(audio.duration || 0);
 	const onEnded = () => musicPlayer.reportEnded();
 	const onError = () => {
@@ -163,6 +169,8 @@ export function installMusicAudio(): () => void {
 			musicPlayer.seekToken; // subscribe
 			const target = musicPlayer.pendingSeekTime;
 			if (Math.abs((audio.currentTime || 0) - target) > 0.25) audio.currentTime = target;
+			const url = musicPlayer.currentTrack?.url;
+			if (url) flushPlaybackPosition(target, url);
 		});
 		// 다음 곡 프리로드 — preload 는 절대 play 하지 않는다(HTTP 캐시 워밍 전용).
 		$effect(() => {
