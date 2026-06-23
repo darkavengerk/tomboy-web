@@ -25,7 +25,7 @@ let pendingRestore = $state(0);
 // 엔진(musicAudio)이 새 src 로드 후 이 위치로 seek 한다(이어듣기). 적용 후 0.
 let resumeAt = $state(0);
 
-export type TransportKind = 'play' | 'pause' | 'stop';
+export type TransportKind = 'play' | 'pause' | 'stop' | 'track';
 const transportListeners = new Set<(k: TransportKind) => void>();
 function emitTransport(k: TransportKind): void {
 	for (const fn of Array.from(transportListeners)) {
@@ -296,16 +296,28 @@ export const musicPlayer = {
 		const i = stepIndex(1, repeat === 'all');
 		if (i == null) {
 			isPlaying = false;
+			emitTransport('pause');
 			return;
 		}
+		const changed = i !== currentIndex;
 		this.play(i);
+		// 'track' keeps the cross-device note's trackUrl current for callers with NO
+		// gesture funnel (lockscreen MediaSession next/prev, auto-advance). Rail ⏭ DOES
+		// call resumePlaybackFromGesture()→notifyExplicitPlay() right after, so on that
+		// path 'track' then 'play' both write a 'playing' record for the same new track —
+		// redundant but idempotent (pickGlobalLatest takes the later by updatedAt).
+		if (changed) emitTransport('track');
 	},
 
 	prev(): void {
 		const ord = playOrder();
 		const pos = ord.indexOf(currentIndex);
-		if (pos > 0) this.play(ord[pos - 1]);
-		else this.requestSeek(0);
+		if (pos > 0) {
+			this.play(ord[pos - 1]);
+			emitTransport('track');
+		} else {
+			this.requestSeek(0);
+		}
 	},
 
 	requestSeek(t: number): void {
@@ -332,11 +344,12 @@ export const musicPlayer = {
 		if (repeat === 'one' && currentIndex >= 0) {
 			this.requestSeek(0);
 			isPlaying = true;
-			return;
+			return; // same track — no track-change record
 		}
 		const i = stepIndex(1, repeat === 'all');
 		if (i == null) {
 			isPlaying = false;
+			emitTransport('pause');
 			return;
 		}
 		// 한 곡짜리 반복-전체: 다음 인덱스가 현재와 같으면 play() 가 시간을 안 되감으니 직접.
@@ -346,6 +359,7 @@ export const musicPlayer = {
 			return;
 		}
 		this.play(i);
+		emitTransport('track');
 	},
 
 	/** localStorage 복원용 세션 스냅샷 적용(currentTime 제외 — musicProgress 담당). 자동재생 안 함. */

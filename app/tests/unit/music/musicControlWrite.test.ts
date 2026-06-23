@@ -36,7 +36,6 @@ describe('musicControl write path', () => {
 	it('creates the control note and upserts this device record when on', async () => {
 		await setSetting('firebaseNotesEnabled', true);
 		musicPlayer.playNote('g1', tracks, '음악::x');
-		musicPlayer.requestSeek(30);
 		await recordTransport('play');
 
 		const note = await noteStore.getNote(MUSIC_CONTROL_GUID);
@@ -46,13 +45,43 @@ describe('musicControl write path', () => {
 		expect(recs).toHaveLength(1);
 		expect(recs[0].trackUrl).toBe('https://x/a.mp3');
 		expect(recs[0].state).toBe('playing');
-		expect(recs[0].position).toBeCloseTo(30, 0);
 
-		musicPlayer.requestSeek(45);
 		await recordTransport('pause');
 		recs = await records();
 		expect(recs).toHaveLength(1);
 		expect(recs[0].state).toBe('paused');
-		expect(recs[0].position).toBeCloseTo(45, 0);
+	});
+
+	it('writes a slim record with no queue/index/position', async () => {
+		await setSetting('firebaseNotesEnabled', true);
+		musicPlayer.playNote('gx', [
+			{ url: 'https://x/a.mp3', title: 'A', display: 'A', liPos: 0 },
+			{ url: 'https://x/b.mp3', title: 'B', display: 'B', liPos: 0 }
+		], '음악::x');
+		await recordTransport('play');
+		const note = await noteStore.getNote(MUSIC_CONTROL_GUID);
+		expect(note!.xmlContent).not.toMatch(/"queue"/);
+		expect(note!.xmlContent).not.toMatch(/"position"/);
+		expect(note!.xmlContent).not.toMatch(/"index"/);
+		expect(note!.xmlContent).toMatch(/"trackUrl":"https:\/\/x\/a\.mp3"/);
+	});
+
+	it('record JSON is under 320 bytes for a 5-track playlist', async () => {
+		await setSetting('firebaseNotesEnabled', true);
+		const fiveTracks = [
+			{ url: 'https://x/a.mp3', title: 'A', display: 'A', liPos: 0 },
+			{ url: 'https://x/b.mp3', title: 'B', display: 'B', liPos: 0 },
+			{ url: 'https://x/c.mp3', title: 'C', display: 'C', liPos: 0 },
+			{ url: 'https://x/d.mp3', title: 'D', display: 'D', liPos: 0 },
+			{ url: 'https://x/e.mp3', title: 'E', display: 'E', liPos: 0 }
+		];
+		musicPlayer.playNote('gy', fiveTracks, '음악::y');
+		await recordTransport('play');
+		const note = await noteStore.getNote(MUSIC_CONTROL_GUID);
+		// Extract the JSON from the xml — it's the serialized records array
+		const m = note!.xmlContent.match(/\[(\{.*?\})\]/s);
+		expect(m).not.toBeNull();
+		const singleRecordJson = `[${m![1]}]`;
+		expect(singleRecordJson.length).toBeLessThan(320);
 	});
 });

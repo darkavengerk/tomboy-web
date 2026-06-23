@@ -8,7 +8,7 @@ const PLAYLIST_PREFIX = '플레이리스트:';
 // "…'Snapping'….mp3"). Excluding it truncated the URL mid-path, so the bare-URL
 // branch failed and the track fell back to showing the raw URL as its title.
 // trimTrailingPunct still strips a trailing quote.
-const URL_RE = /https?:\/\/[^\s<>"]+/;
+export const URL_RE = /https?:\/\/[^\s<>"]+/;
 
 export interface MusicTrack {
 	url: string;
@@ -37,7 +37,7 @@ function isListNode(node: PMNode): boolean {
 }
 
 /** prose 끝에 붙은 구두점 제거 — 마크 href 가 아닌 텍스트 매칭에만 적용. */
-function trimTrailingPunct(url: string): string {
+export function trimTrailingPunct(url: string): string {
 	return url.replace(/[.,;:!?)\]}'"]+$/, '');
 }
 

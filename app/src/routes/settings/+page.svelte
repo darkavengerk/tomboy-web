@@ -2088,6 +2088,19 @@ month,[0] Slip-Box,[1] 프로젝트A
 					</ul>
 				</details>
 				<details class="guide-card">
+					<summary>음악 — 기기 간 이어듣기</summary>
+					<p class="info-text">
+						음악은 한 곳에서만 재생됩니다. 다른 기기에서 재생을 누르면 지금 재생 중인 기기는 자동으로 멈춥니다.
+					</p>
+					<ul class="guide-list">
+						<li>홈 화면의 둥근 ▶ 버튼으로 어디서든 재생/정지. 곡 선택·스킵은 음악 노트를 직접 엽니다.</li>
+						<li>재생을 누를 때 이 기기와 다른 기기에서 듣던 곡이 다르면 어느 쪽을 이어들을지 고를 수 있습니다.</li>
+						<li>재생 위치는 약 10초마다 저장돼, 다른 기기에서 누르면 듣던 지점부터 이어집니다(없으면 처음부터).</li>
+						<li>예전의 떠다니던 미니 플레이어는 사라졌습니다 — 음악 조작은 홈 화면에서.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
 					<summary>음악 노트 — <code>음악::</code> 플레이리스트 재생</summary>
 					<p class="info-text">
 						제목을 <code>음악::제목</code> 으로 시작하면 음악 노트가 되고, <strong>노트 맨 위</strong>에

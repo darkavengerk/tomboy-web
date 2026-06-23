@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
-import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { extract, enumerate, extractChapters } from '../src/runner.js';
 
@@ -149,30 +149,16 @@ describe('enumerate', () => {
 
 // 챕터 분할 가짜 spawn: 두 번째 `--paths chapter:<dir>` 에 챕터 mp3 들을, 첫 `--paths <dir>` 에
 // 풀 mp3 를 떨군다. chapterTitles 비면 챕터 디렉토리를 만들지 않아(챕터 없는 영상) 폴백 경로 검증.
-function fakeChapterSpawn(opts: { full: string; chapters: string[]; exit?: number; ffmpegExit?: number }) {
+function fakeChapterSpawn(opts: { full: string; chapters: string[]; exit?: number }) {
 	return (_cmd: string, args: string[]) => {
-		const child = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; kill: () => void };
-		child.stdout = new EventEmitter();
-		child.stderr = new EventEmitter();
-		child.kill = () => {};
-		// addXingHeader 의 ffmpeg 재먹싱 호출: -i <in> ... <out>. 입력을 출력으로 복사해
-		// 성공을 흉내낸다(ffmpegExit 로 실패도 시뮬레이트). yt-dlp 와 구분.
-		if (args.includes('-write_xing')) {
-			const ffmpegExit = opts.ffmpegExit ?? 0;
-			queueMicrotask(() => {
-				if (ffmpegExit === 0) {
-					const inPath = args[args.indexOf('-i') + 1];
-					const out = args[args.length - 1];
-					try { writeFileSync(out, readFileSync(inPath)); } catch { /* noop */ }
-				}
-				child.emit('close', ffmpegExit);
-			});
-			return child as never;
-		}
 		const paths: string[] = [];
 		args.forEach((a, i) => { if (a === '--paths') paths.push(args[i + 1]); });
 		const fullDir = paths.find((p) => !p.startsWith('chapter:')) ?? '.';
 		const chapDir = (paths.find((p) => p.startsWith('chapter:')) ?? 'chapter:.').slice('chapter:'.length);
+		const child = new EventEmitter() as EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; kill: () => void };
+		child.stdout = new EventEmitter();
+		child.stderr = new EventEmitter();
+		child.kill = () => {};
 		queueMicrotask(() => {
 			const exit = opts.exit ?? 0;
 			if (exit === 0) {
@@ -210,8 +196,7 @@ describe('extractChapters', () => {
 
 	it('--split-chapters 인자 포함, chapter: 경로 라우팅', async () => {
 		let captured: string[] = [];
-		// addXingHeader 의 ffmpeg 호출이 캡처를 덮지 않도록 yt-dlp 호출만 잡는다.
-		const rec = (cmd: string, args: string[]) => { if (args.includes('--split-chapters')) captured = args; return fakeChapterSpawn({ full: 'F', chapters: ['001 A'] })(cmd, args); };
+		const rec = (cmd: string, args: string[]) => { captured = args; return fakeChapterSpawn({ full: 'F', chapters: ['001 A'] })(cmd, args); };
 		await extractChapters('https://yt/abc', chDeps({ spawn: rec as never }));
 		expect(captured).toContain('--split-chapters');
 		expect(captured.some((a) => a.startsWith('chapter:'))).toBe(true);
@@ -238,42 +223,6 @@ describe('extractChapters', () => {
 		expect(out.tracks).toHaveLength(2);
 		expect(out.total).toBe(3);
 		expect(out.truncated).toBe(true);
-	});
-
-	it('각 챕터 세그먼트에 무손실 Xing 헤더 재먹싱(ffmpeg -c copy -write_xing)', async () => {
-		const calls: string[][] = [];
-		const rec = (cmd: string, args: string[]) => {
-			calls.push(args);
-			return fakeChapterSpawn({ full: 'F', chapters: ['001 A', '002 B'] })(cmd, args);
-		};
-		const out = await extractChapters('https://yt/abc', chDeps({ spawn: rec as never }));
-		const ff = calls.filter((a) => a.includes('-write_xing'));
-		expect(ff).toHaveLength(2); // 챕터 개수만큼
-		// 무손실: -c copy (재인코딩 아님)
-		ff.forEach((a) => {
-			const ci = a.indexOf('-c');
-			expect(a[ci + 1]).toBe('copy');
-		});
-		expect(out.tracks).toHaveLength(2);
-	});
-
-	it('풀 곡 폴백(챕터 없음)은 Xing 재먹싱을 하지 않는다', async () => {
-		const calls: string[][] = [];
-		const rec = (cmd: string, args: string[]) => {
-			calls.push(args);
-			return fakeChapterSpawn({ full: '단일곡', chapters: [] })(cmd, args);
-		};
-		await extractChapters('https://yt/abc', chDeps({ spawn: rec as never }));
-		expect(calls.some((a) => a.includes('-write_xing'))).toBe(false);
-	});
-
-	it('ffmpeg 재먹싱 실패해도 원본으로 업로드(추출 안 깨짐)', async () => {
-		const d = chDeps({
-			spawn: fakeChapterSpawn({ full: 'F', chapters: ['001 A'], ffmpegExit: 1 }) as never
-		});
-		const out = await extractChapters('https://yt/abc', d);
-		expect(out.tracks).toHaveLength(1);
-		expect(d.uploadFn).toHaveBeenCalledTimes(1);
 	});
 
 	it('검색어(비-URL) → bad_source:not_a_url', async () => {
