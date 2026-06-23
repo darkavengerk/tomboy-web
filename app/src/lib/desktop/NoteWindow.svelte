@@ -824,26 +824,25 @@
 
 	// When `openWindow` / `openWindowAt` for this guid fires (via link
 	// click, Ctrl+L new-note, or programmatic), desktopSession raises a
-	// focusRequest. Match it, focus the editor so Esc closes the
-	// newly-opened / newly-raised note, and flash the border to show the
-	// user where focus just landed.
+	// focusRequest. Flash the border to show the user where the note just
+	// opened / re-raised. We deliberately do NOT move the caret into the
+	// editor: opening or raising a note makes it active (green title, via
+	// z-order) but must never engage the cursor (red title). Only a real
+	// click places the caret. Trade-off: a freshly opened note can't be
+	// Esc-closed until it is clicked into.
 	$effect(() => {
 		const req = desktopSession.focusRequest;
 		if (!req || req.guid !== guid) return;
-		// A hidden workspace window must never steal focus. Same guid open
-		// in two workspaces is rare but possible; only the active one
-		// should react to the focusRequest.
+		// A hidden workspace window must never flash. Same guid open in two
+		// workspaces is rare but possible; only the active one should react.
 		if (!active) return;
+		// Gate the flash to editor-bearing notes (unchanged from when this
+		// effect also grabbed editor focus); terminal/bundle windows skip it.
 		const ed = editorComponent?.getEditor();
 		if (!ed || ed.isDestroyed) return;
-		// Defer one frame so the newly-mounted window has a layout before
-		// we grab focus (avoids scroll jumps on tall canvases).
+		// Defer one frame so the newly-mounted window has a layout before we
+		// flash (avoids visual jumps on tall canvases).
 		requestAnimationFrame(() => {
-			try {
-				ed.commands.focus();
-			} catch {
-				/* editor torn down between frames */
-			}
 			flashBorder();
 		});
 	});
