@@ -68,7 +68,8 @@
 		firstValidIndex,
 		nextValidIndex,
 		bundleBox,
-		barCapacity
+		barCapacity,
+		collapseHiddenTitles
 	} from './cabinetMath.js';
 	import { lookupGuidByTitle, ensureTitleIndexReady } from '../autoLink/titleProvider.js';
 	import {
@@ -250,6 +251,15 @@
 	const hiddenAbove = $derived(winStart);
 	const hiddenBelow = $derived(Math.max(0, resolved.length - (winStart + W)));
 	const lastVisibleIdx = $derived(Math.min(winStart + W, resolved.length) - 1);
+
+	// --- +N 배지 대신 숨은 타이틀 표시 -----------------------------------------
+	// 윈도우 위/아래로 숨은 노트들의 짧은 타이틀(첫=anchor, 나머지=공통접두 제거).
+	// 실제로 몇 개가 들어가는지는 fitBadge 액션이 바 폭을 재서 결정 — 못 들어간
+	// 만큼은 +N 으로(기존 동작). 두 배지(상/하단)는 각자 자기 목록의 첫 항목을 anchor.
+	const aboveSegs = $derived(collapseHiddenTitles(resolved.slice(0, winStart).map((r) => r.title)));
+	const belowSegs = $derived(
+		collapseHiddenTitles(resolved.slice(lastVisibleIdx + 1).map((r) => r.title))
+	);
 
 	// 휠/스와이프로 활성을 넘길지(=묶음 브라우징). W < n 이면(요청/capacity 로 윈도우가
 	// 전체보다 작음 → +N 배지 존재) 가로채 윈도우를 넘긴다 — capacity 클램프 덕에
@@ -630,6 +640,55 @@
 		return {
 			destroy() {
 				for (const [t, h] of entries) node.removeEventListener(t, h);
+			}
+		};
+	}
+
+	/** 배지가 차지할 수 있는 바 폭 비율 — 나머지는 그 바 자신의 타이틀 몫. */
+	const BADGE_FRACTION = 0.62;
+	/** 배지 최소 폭(px) — 최소한 `+N` 한 칸은 들어가게. */
+	const BADGE_MIN_PX = 56;
+	/**
+	 * +N 배지 자리에 숨은 타이틀들을 폭 한도껏 채워 넣는다(쉼표 구분). 한도를
+	 * 넘으면 들어가는 만큼만 보여주고 나머지 개수는 `+N` 으로(기존 동작). 폭은
+	 * 자신을 담은 바의 clientWidth × BADGE_FRACTION — 바가 리사이즈되면 ResizeObserver
+	 * 로 다시 맞춘다. textContent 를 직접 쓰므로 템플릿에선 빈 span 으로 둔다.
+	 */
+	function fitBadge(node: HTMLElement, params: { segs: string[]; total: number }) {
+		let p = params;
+		let ro: ResizeObserver | null = null;
+		const apply = () => {
+			const bar = node.closest<HTMLElement>('.bundle-bar');
+			if (!bar) return;
+			const budget = Math.max(BADGE_MIN_PX, bar.clientWidth * BADGE_FRACTION);
+			node.style.maxWidth = `${budget}px`;
+			const { segs, total } = p;
+			let shown = segs.length;
+			// shown 을 줄여가며 폭에 들어가는 첫 지점. shown<total 이면 나머지를 +N.
+			for (;;) {
+				const remaining = total - shown;
+				const parts = segs.slice(0, shown);
+				let str = parts.join(', ');
+				if (remaining > 0) str = (parts.length ? `${str}, ` : '') + `+${remaining}`;
+				node.textContent = str;
+				if (shown <= 0) break;
+				if (node.scrollWidth <= node.clientWidth) break;
+				shown--;
+			}
+		};
+		apply();
+		const bar = node.closest<HTMLElement>('.bundle-bar');
+		if (bar) {
+			ro = new ResizeObserver(apply);
+			ro.observe(bar);
+		}
+		return {
+			update(next: { segs: string[]; total: number }) {
+				p = next;
+				apply();
+			},
+			destroy() {
+				ro?.disconnect();
 			}
 		};
 	}
@@ -1143,9 +1202,11 @@
 						>접속</span>
 					{/if}
 					{#if idx === winStart && hiddenAbove > 0}
-						<span class="bar-badge">+{hiddenAbove}</span>
+						<!-- 상단 배지 — 숨은(위) 노트 타이틀들. 폭 한도껏 채우고 나머지는 +N.
+						     textContent 는 fitBadge 가 채우므로 비워 둔다. -->
+						<span class="bar-badge" use:fitBadge={{ segs: aboveSegs, total: hiddenAbove }}></span>
 					{:else if idx === lastVisibleIdx && hiddenBelow > 0}
-						<span class="bar-badge">+{hiddenBelow}</span>
+						<span class="bar-badge" use:fitBadge={{ segs: belowSegs, total: hiddenBelow }}></span>
 					{/if}
 				</button>
 				{#if titleOnly}
@@ -1422,6 +1483,12 @@
 	}
 	.bar-badge {
 		flex-shrink: 0;
+		/* max-width 는 fitBadge 가 바 폭에 맞춰 인라인으로 건다. overflow/ellipsis
+		   는 안전망 — 측정 오차로 살짝 넘쳐도 잘리게(보통 fitBadge 가 안 넘치게 맞춤). */
+		min-width: 0;
+		overflow: hidden;
+		white-space: nowrap;
+		text-overflow: ellipsis;
 		color: #999;
 		font-size: 0.75rem;
 	}
