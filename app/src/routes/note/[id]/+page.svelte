@@ -35,7 +35,12 @@
 	import { isMusicNoteDoc } from '$lib/music/parseMusicNote.js';
 	import { musicPlayer } from '$lib/music/musicPlayer.svelte.js';
 	import { resumePlaybackFromGesture } from '$lib/music/musicAudio.svelte.js';
-	import { getGlobalLatest, resumeGlobalLatest } from '$lib/music/musicControl.svelte.js';
+	import { getGlobalLatest, getLocalLatest, resumeGlobalLatest } from '$lib/music/musicControl.svelte.js';
+	import {
+		MUSIC_CONTROL_GUID,
+		parseRecordsFromXml
+	} from '$lib/music/musicControlNote.js';
+	import MusicControlView from '$lib/editor/musicControlNote/MusicControlView.svelte';
 	import { continuityChoice } from '$lib/music/continuity.js';
 	import MusicContinuityPicker from '$lib/editor/musicNote/MusicContinuityPicker.svelte';
 	import NoteBundleStack from '$lib/editor/noteBundle/NoteBundleStack.svelte';
@@ -93,7 +98,7 @@
 	// — a 10k-node doc pays O(n) proxy allocations each time. These vars
 	// are only ever reassigned (never mutated in place), so raw state is
 	// both safe and significantly faster for big notes.
-	let note: NoteData | undefined = $state.raw(undefined);
+	let note = $state.raw<NoteData | undefined>(undefined);
 	let loading = $state(true);
 	let saving = $state(false);
 	// Sticky title-bar height — exposed as --note-title-bar-h so the music bar
@@ -242,12 +247,20 @@
 		}
 		const choice = continuityChoice({
 			localTrackUrl: musicPlayer.currentTrack?.url ?? null,
-			remoteTrackUrl: musicRemote?.trackUrl ?? null
+			remoteTrackUrl: musicRemote?.trackUrl ?? null,
+			localNoteGuid: musicPlayer.activeNoteGuid ?? null,
+			remoteNoteGuid: musicRemote?.noteGuid ?? null,
+			localUpdatedAt: getLocalLatest()?.updatedAt ?? null,
+			remoteUpdatedAt: musicRemote?.updatedAt ?? null
 		});
 		if (choice === 'both') { musicMenuOpen = true; return; }
 		if (choice === 'remote') { void pickRemoteMusic(); return; }
 		pickLocalMusic();
 	}
+	// 음악제어::공유 — 읽기 전용 기기별 재생 상태 요약(편집 불가).
+	const isMusicControlNote = $derived(note?.guid === MUSIC_CONTROL_GUID);
+	const musicControlRecords = $derived(note ? parseRecordsFromXml(note.xmlContent) : []);
+	const musicControlLocalDeviceId = $derived(getLocalLatest()?.deviceId ?? null);
 	const isFavoriteNote = $derived(note ? isFavorite(note) : false);
 	const isSlipNote = $derived(currentNotebook === SLIPBOX_NOTEBOOK);
 	const canPasteSlip = $derived(
@@ -996,6 +1009,14 @@
 					/>
 				{/if}
 			{/key}
+		{:else if isMusicControlNote}
+			<!-- 음악제어::공유 — 읽기 전용 요약. 편집기 미마운트 = 편집 불가. -->
+			{#key noteId}
+				<MusicControlView
+					records={musicControlRecords}
+					localDeviceId={musicControlLocalDeviceId}
+				/>
+			{/key}
 		{:else if tallySpec && !showRawTally}
 			<!-- 집계 전용 노트 — 본문 = 투표/퀴즈 뷰. Ctrl→편집(onraw)으로 raw 토글. -->
 			{#key noteId}
@@ -1072,8 +1093,8 @@
 		{/if}
 	</div>
 
-	{#if !showTerminal && !showKeys && !(dedicatedKind && !showRawBundle) && !(tallySpec && !showRawTally)}
-		<!-- 전용 파일철/집계 뷰엔 호스트 에디터가 없어 툴바가 무의미(getEditor()=null) +
+	{#if !showTerminal && !showKeys && !(dedicatedKind && !showRawBundle) && !(tallySpec && !showRawTally) && !isMusicControlNote}
+		<!-- 전용 파일철/집계/음악제어 뷰엔 호스트 에디터가 없어 툴바가 무의미(getEditor()=null) +
 		     본문을 덮음 — 숨김. raw 편집 모드에선 다시 표시. -->
 		<div class="toolbar-area" bind:this={toolbarAreaEl}>
 			<Toolbar
