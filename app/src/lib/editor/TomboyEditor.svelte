@@ -2408,12 +2408,23 @@ import { MUSIC_CONTROL_GUID } from "$lib/music/musicControlNote.js";
 	.tomboy-editor :global(.tomboy-send-active li:has(li:hover)) {
 		background-color: transparent;
 	}
+	/* 보내기/스킵 버튼은 Ctrl 누른 상태에서 마우스가 올라간 한 행에서만 보인다.
+	   데코는 모든 li 에 렌더되지만 기본은 숨김 — 가장 깊이 호버된 li 에만 표시.
+	   (li:hover 는 조상 li 에도 걸리므로, 자식이 호버되면 부모는 자기 버튼을 감춘다 —
+	   위 틴트 규칙과 같은 패턴.) padding-right 는 모든 행에 유지해 호버 시 텍스트가
+	   밀리지 않게 한다. */
 	.tomboy-editor :global(.tomboy-send-li-actions) {
 		position: absolute;
 		right: 0;
 		top: 0;
-		display: flex;
+		display: none;
 		gap: 4px;
+	}
+	.tomboy-editor :global(.tomboy-send-active li:hover > .tomboy-send-li-actions) {
+		display: flex;
+	}
+	.tomboy-editor :global(.tomboy-send-active li:has(li:hover) > .tomboy-send-li-actions) {
+		display: none;
 	}
 	.tomboy-editor :global(.tomboy-send-li-btn),
 	.tomboy-editor :global(.tomboy-skip-li-btn) {
