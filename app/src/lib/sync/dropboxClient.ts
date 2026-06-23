@@ -298,6 +298,39 @@ function extractRetryAfterMs(err: unknown): number | null {
 	return 0; // 429 but no explicit wait
 }
 
+/**
+ * Decide whether a failed Dropbox call is worth retrying.
+ *
+ *   - 429 (rate limit)            → retry (caller honors Retry-After).
+ *   - 5xx (server)                → retry.
+ *   - NO http status              → the fetch itself rejected *before* a
+ *                                   response arrived: a transport-layer /
+ *                                   CORS-preflight failure. `content.dropboxapi.com`
+ *                                   preflights (OPTIONS) intermittently return
+ *                                   400, which the browser surfaces to JS as a
+ *                                   status-less `TypeError` ("NetworkError when
+ *                                   attempting to fetch resource" in Firefox,
+ *                                   "Failed to fetch" in Chrome). These are
+ *                                   transient — a retry on a fresh connection
+ *                                   succeeds (the user manually re-clicking is
+ *                                   exactly this retry, done by hand).
+ *   - any other status (4xx, …)   → deterministic; retrying is wasted work
+ *                                   (e.g. 409 path_not_found is handled by the
+ *                                   caller, 401/403 won't fix themselves).
+ *   - non-fetch Error w/o status  → NOT retried. A plain `Error` (name !==
+ *                                   'TypeError') is an internal/programmer error,
+ *                                   not a transport failure; fast-fail it so the
+ *                                   commit-safety paths surface it immediately.
+ *
+ * Exported for unit testing.
+ */
+export function isTransient(err: unknown): boolean {
+	const e = err as { status?: number; name?: string } | null | undefined;
+	if (typeof e?.status === 'number') return e.status === 429 || e.status >= 500;
+	// Status-less: only a genuine fetch failure (TypeError) is transient.
+	return err instanceof TypeError || e?.name === 'TypeError';
+}
+
 export type RetryCallback = (attempt: number, waitMs: number) => void;
 
 async function withRetry<T>(fn: () => Promise<T>, onRetry?: RetryCallback): Promise<T> {
@@ -305,9 +338,11 @@ async function withRetry<T>(fn: () => Promise<T>, onRetry?: RetryCallback): Prom
 		try {
 			return await fn();
 		} catch (err) {
+			if (!isTransient(err) || attempt >= MAX_RETRIES) throw err;
+			// 429 may carry an explicit Retry-After; everything else (network /
+			// CORS / 5xx) uses capped exponential backoff.
 			const retryMs = extractRetryAfterMs(err);
-			if (retryMs === null || attempt >= MAX_RETRIES) throw err;
-			const waitMs = retryMs > 0 ? retryMs : Math.min(1000 * 2 ** attempt, 30_000);
+			const waitMs = retryMs && retryMs > 0 ? retryMs : Math.min(1000 * 2 ** attempt, 30_000);
 			onRetry?.(attempt + 1, waitMs);
 			await new Promise((r) => setTimeout(r, waitMs));
 		}
