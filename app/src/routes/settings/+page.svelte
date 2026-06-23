@@ -2788,6 +2788,13 @@ Complete:</pre>
 							리스트 형식 유지 / Markdown 을 강제할 수 있습니다.</li>
 						<li><strong>우클릭 → 붙여넣기</strong>도 <kbd>Ctrl</kbd>+<kbd>V</kbd> 와 동일하게
 							동작합니다 (브라우저의 클립보드 읽기 권한 필요).</li>
+						<li><strong>마크다운 불릿 붙여넣기</strong>: 외부에서 복사한 텍스트에서
+							<code>- </code>(또는 <code>* </code>·<code>+ </code>)로 시작하는 줄은 자동으로
+							<strong>불릿 리스트</strong>가 됩니다 — 직접 타이핑할 때와 동일. 줄 앞 들여쓰기는
+							<strong>중첩 리스트</strong>로 들어갑니다. (마커 뒤에 공백이 있어야 인식 — <code>-5도</code>는 그대로 텍스트)</li>
+						<li><strong>순서 리스트(<code>1.</code>)는 쓰지 않습니다</strong> — <code>1. </code>을 입력해도
+							리스트로 바뀌지 않고 그냥 텍스트로 남습니다(Tomboy 형식이 순서 리스트를 저장하지 못해
+							의도적으로 무시). 번호 매기기가 필요하면 일반 불릿이나 직접 입력한 번호를 쓰세요.</li>
 					</ul>
 				</details>
 

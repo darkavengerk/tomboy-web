@@ -227,3 +227,100 @@ describe('plain 붙여넣기 빈 줄 보존 (clipboardTextParser)', () => {
 		expect(firstChild?.marks.some((m) => m.type.name === 'bold')).toBe(true);
 	});
 });
+
+describe('plain 붙여넣기 마크다운 불릿 인식 (clipboardTextParser)', () => {
+	/** 첫 bulletList 블록을 찾아 각 항목의 첫 줄 텍스트를 뽑는다. */
+	function bulletTexts(json: JSONContent): string[] {
+		const list = (json.content ?? []).find((b) => b.type === 'bulletList');
+		return (list?.content ?? []).map((li) => textOf(li.content?.[0]?.content?.[0]) ?? '');
+	}
+
+	it('연속한 `- ` 줄이 bulletList 한 개로 묶인다', () => {
+		const b = makeEditor(docJson(p()));
+		b.commands.selectAll();
+		b.view.pasteText('- 사과\n- 바나나\n- 포도', pasteEvent());
+		const blocks = b.getJSON().content ?? [];
+		const lists = blocks.filter((n) => n.type === 'bulletList');
+		expect(lists).toHaveLength(1);
+		expect(lists[0].content).toHaveLength(3);
+		expect(bulletTexts(b.getJSON())).toEqual(['사과', '바나나', '포도']);
+	});
+
+	it('`* ` 와 `+ ` 마커도 불릿으로 인식한다 (타이핑 규칙과 동일)', () => {
+		const b = makeEditor(docJson(p()));
+		b.commands.selectAll();
+		b.view.pasteText('* 별\n+ 더하기', pasteEvent());
+		expect(bulletTexts(b.getJSON())).toEqual(['별', '더하기']);
+	});
+
+	it('들여쓰기가 중첩 bulletList 로 변환된다', () => {
+		const b = makeEditor(docJson(p()));
+		b.commands.selectAll();
+		b.view.pasteText('- 상위\n  - 하위\n- 둘째', pasteEvent());
+		const list = (b.getJSON().content ?? []).find((n) => n.type === 'bulletList');
+		expect(list?.content).toHaveLength(2); // 상위(중첩 보유) + 둘째
+		// 라이브 PM 문서로 중첩 구조 검증 (JSONContent 깊은 탐색 회피).
+		let bulletLists = 0;
+		const texts: string[] = [];
+		b.state.doc.descendants((node) => {
+			if (node.type.name === 'bulletList') bulletLists++;
+			if (node.isText && node.text) texts.push(node.text);
+		});
+		expect(bulletLists).toBe(2); // 바깥 + 중첩
+		expect(texts).toEqual(expect.arrayContaining(['상위', '하위', '둘째']));
+	});
+
+	it('불릿 아닌 줄은 그대로 paragraph 로 남는다 (혼합)', () => {
+		const b = makeEditor(docJson(p()));
+		b.commands.selectAll();
+		b.view.pasteText('머리말\n- 항목\n맺음말', pasteEvent());
+		const blocks = b.getJSON().content ?? [];
+		expect(blocks.map((n) => n.type)).toEqual(['paragraph', 'bulletList', 'paragraph']);
+		expect(textOf(blocks[0].content?.[0])).toBe('머리말');
+		expect(textOf(blocks[2].content?.[0])).toBe('맺음말');
+	});
+
+	it('마커 뒤 공백이 없으면 불릿이 아니다 (`-5도`)', () => {
+		const b = makeEditor(docJson(p()));
+		b.commands.selectAll();
+		b.view.pasteText('-5도', pasteEvent());
+		const blocks = b.getJSON().content ?? [];
+		expect(blocks.map((n) => n.type)).toEqual(['paragraph']);
+		expect(textOf(blocks[0].content?.[0])).toBe('-5도');
+	});
+
+	it('불릿 항목 안 [x] 마커는 체크박스 atom 으로 재조립된다 (transformPasted)', () => {
+		const b = makeEditor(docJson(p()));
+		b.commands.selectAll();
+		b.view.pasteText('- [x] 끝낸 일\n- [ ] 할 일', pasteEvent());
+		const types: string[] = [];
+		b.state.doc.descendants((node) => {
+			types.push(node.type.name);
+		});
+		expect(types).toContain('bulletList');
+		expect(types).toContain('inlineCheckbox');
+	});
+});
+
+describe('순서 리스트 비활성화 (1. 입력 무시)', () => {
+	it('orderedList 노드를 빼면 스키마에 없고 input rule 도 사라진다', () => {
+		const e = new Editor({
+			extensions: [
+				StarterKit.configure({
+					code: false,
+					codeBlock: false,
+					paragraph: false,
+					listItem: false,
+					horizontalRule: false,
+					orderedList: false
+				}),
+				TomboyParagraph,
+				TomboyListItem
+			],
+			content: docJson(p())
+		});
+		editors.push(e);
+		expect(e.schema.nodes.orderedList).toBeUndefined();
+		expect(e.schema.nodes.bulletList).toBeTruthy();
+	});
+});
