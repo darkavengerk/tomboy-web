@@ -832,7 +832,19 @@
 	// Esc-closed until it is clicked into.
 	$effect(() => {
 		const req = desktopSession.focusRequest;
-		if (!req || req.guid !== guid) return;
+		if (!req) return;
+		if (req.guid !== guid) {
+			// Another note just opened / re-raised. If our editor still holds the
+			// caret, blur it so the previously-edited note is visibly deactivated
+			// (the cursor leaves it). Without this, opening a new note from the
+			// SidePanel/link left the old note's caret blinking (red title).
+			// caretInWindow() is a live DOM read (not reactive) so this effect
+			// stays triggered solely by focusRequest, never by hasCaret churn.
+			if (!active || !caretInWindow()) return;
+			const prev = editorComponent?.getEditor();
+			if (prev && !prev.isDestroyed) prev.commands.blur();
+			return;
+		}
 		// A hidden workspace window must never flash. Same guid open in two
 		// workspaces is rare but possible; only the active one should react.
 		if (!active) return;
