@@ -4,7 +4,8 @@ import { musicPlayer, __resetMusicPlayer } from '$lib/music/musicPlayer.svelte.j
 import { __resetMusicProgress } from '$lib/music/musicProgress.js';
 import {
 	refreshFromNote,
-	getGlobalLatestForTest,
+	getGlobalLatest,
+	resumeGlobalLatest,
 	__resetMusicControlForTest,
 	__setLastOwnActionAtForTest
 } from '$lib/music/musicControl.svelte.js';
@@ -207,6 +208,16 @@ describe('musicControl read path', () => {
 		await seedControlNote([remoteRec({ state: 'stopped' })]);
 		await refreshFromNote();
 		expect(musicPlayer.queue).toHaveLength(0);
-		expect(getGlobalLatestForTest()!.state).toBe('stopped');
+		expect(getGlobalLatest()!.state).toBe('stopped');
+	});
+
+	it('resumeGlobalLatest adopts and plays the remote record', async () => {
+		await seedMusicNote('gR', ['https://x/a.mp3', 'https://x/b.mp3']);
+		await seedControlNote([remoteRec({ noteGuid: 'gR', trackUrl: 'https://x/b.mp3' })]);
+		await refreshFromNote(); // sets globalLatest
+		const ok = await resumeGlobalLatest();
+		expect(ok).toBe(true);
+		expect(musicPlayer.isPlaying).toBe(true);
+		expect(musicPlayer.currentTrack!.url).toBe('https://x/b.mp3');
 	});
 });

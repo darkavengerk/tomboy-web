@@ -189,8 +189,34 @@ export async function refreshFromNote(): Promise<void> {
 	});
 }
 
-export function getGlobalLatestForTest(): MusicControlRecord | null {
+export function getGlobalLatest(): MusicControlRecord | null {
 	return globalLatest;
+}
+
+/** Explicitly adopt the current global-latest remote record and play it. Returns
+ *  false if there is no remote record. Call inside a user gesture, then call
+ *  resumePlaybackFromGesture() so iOS unlocks the element. Sets lastAppliedSig so a
+ *  subsequent passive refreshFromNote won't re-restore the same record. */
+export async function resumeGlobalLatest(): Promise<boolean> {
+	const latest = globalLatest;
+	if (!latest) return false;
+	const tracks = await tracksFromRecord(latest);
+	if (tracks.length === 0) return false;
+	const found = tracks.findIndex((t) => t.url === latest.trackUrl);
+	const index = found >= 0 ? found : 0;
+	const ds = await deviceStateSync.readDeviceState(latest.deviceId);
+	const position = ds && ds.trackUrl === tracks[index].url ? ds.position : 0;
+	saveProgress(latest.noteGuid, tracks[index].url, position);
+	lastAppliedSig = `${latest.deviceId}|${latest.updatedAt}|${latest.trackUrl}`;
+	musicPlayer.restoreSession({
+		activeNoteGuid: latest.noteGuid,
+		activeNoteName: latest.noteTitle,
+		queue: tracks,
+		currentIndex: index,
+		originNoteGuid: latest.noteGuid
+	});
+	musicPlayer.resume();
+	return true;
 }
 
 /** Boot read + subscribe to control-note changes + listen for transport events.
