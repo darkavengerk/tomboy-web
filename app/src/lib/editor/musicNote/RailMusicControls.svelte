@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { musicPlayer } from '$lib/music/musicPlayer.svelte.js';
 	import { resumePlaybackFromGesture } from '$lib/music/musicAudio.svelte.js';
-	import { getGlobalLatest, resumeGlobalLatest } from '$lib/music/musicControl.svelte.js';
+	import { getGlobalLatest, getLocalLatest, resumeGlobalLatest } from '$lib/music/musicControl.svelte.js';
 	import { continuityChoice } from '$lib/music/continuity.js';
 	import MusicContinuityPicker from './MusicContinuityPicker.svelte';
 
@@ -32,7 +32,11 @@
 		const r = remote();
 		const choice = continuityChoice({
 			localTrackUrl: musicPlayer.currentTrack?.url ?? null,
-			remoteTrackUrl: r?.trackUrl ?? null
+			remoteTrackUrl: r?.trackUrl ?? null,
+			localNoteGuid: musicPlayer.activeNoteGuid ?? null,
+			remoteNoteGuid: r?.noteGuid ?? null,
+			localUpdatedAt: getLocalLatest()?.updatedAt ?? null,
+			remoteUpdatedAt: r?.updatedAt ?? null
 		});
 		if (choice === 'both') {
 			menuOpen = true;

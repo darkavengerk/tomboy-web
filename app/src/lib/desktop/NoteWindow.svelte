@@ -31,6 +31,12 @@
 		parseDedicatedBundle
 	} from '$lib/editor/noteBundle/parser.js';
 	import TallyNote from '$lib/editor/tallyNote/TallyNote.svelte';
+	import MusicControlView from '$lib/editor/musicControlNote/MusicControlView.svelte';
+	import {
+		MUSIC_CONTROL_GUID,
+		parseRecordsFromXml
+	} from '$lib/music/musicControlNote.js';
+	import { getLocalLatest } from '$lib/music/musicControl.svelte.js';
 	import { isTallyTitle, parseTallyNote } from '$lib/tally';
 	import RemarkableActionBar from '$lib/editor/remarkable/RemarkableActionBar.svelte';
 	import SendToRemarkableModal from '$lib/remarkable/SendToRemarkableModal.svelte';
@@ -247,6 +253,10 @@
 		if (!t || !editorContent || !isTallyTitle(t)) return null;
 		return parseTallyNote(editorContent, t);
 	});
+	// 음악제어::공유 — 읽기 전용 기기별 재생 상태 요약(편집 불가).
+	const isMusicControlNote = $derived(note?.guid === MUSIC_CONTROL_GUID);
+	const musicControlRecords = $derived(note ? parseRecordsFromXml(note.xmlContent) : []);
+	const musicControlLocalDeviceId = $derived(getLocalLatest()?.deviceId ?? null);
 	// 창의 노트가 바뀌면 항상 번들/집계 뷰로 시작.
 	$effect(() => {
 		void guid;
@@ -1371,6 +1381,14 @@
 					/>
 				{/if}
 			{/key}
+		{:else if isMusicControlNote}
+			<!-- 음악제어::공유 — 읽기 전용 요약. 편집기 미마운트 = 편집 불가. -->
+			{#key guid}
+				<MusicControlView
+					records={musicControlRecords}
+					localDeviceId={musicControlLocalDeviceId}
+				/>
+			{/key}
 		{:else if tallySpec && !showRawTally}
 			<!-- 집계 전용 노트 — 본문 = 투표/퀴즈 뷰. Ctrl→편집(onraw)으로 raw 토글. -->
 			{#key guid}
@@ -1468,7 +1486,7 @@
 		>키</button>
 	{/if}
 
-	{#if !loading && editorContent && isFocused && !showTerminal && !showKeys && !(dedicatedKind && !showRawBundle) && !(tallySpec && !showRawTally)}
+	{#if !loading && editorContent && isFocused && !showTerminal && !showKeys && !(dedicatedKind && !showRawBundle) && !(tallySpec && !showRawTally) && !isMusicControlNote}
 		<!-- 전용 파일철/집계 뷰엔 호스트 에디터가 없어 툴바가 무의미 — 숨김. raw 편집 모드에선 표시. -->
 		<div class="toolbar-slot">
 			<Toolbar

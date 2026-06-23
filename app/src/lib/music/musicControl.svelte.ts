@@ -95,6 +95,10 @@ export async function recordTransport(kind: TransportKind): Promise<void> {
 }
 
 let globalLatest = $state<MusicControlRecord | null>(null);
+// THIS device's own record in the control note (or null). Exposed so the
+// continuity picker can compare our last-action time against the remote when
+// both sides share a source note (same-playlist → newest side auto-wins).
+let localLatest = $state<MusicControlRecord | null>(null);
 // ISO timestamp of the last transport event recorded by THIS device.
 // Used to guard against auto-pausing ourselves when our own record echoes back
 // slightly after a competing remote record (race window).
@@ -146,11 +150,13 @@ export async function refreshFromNote(): Promise<void> {
 	const note = await noteStore.getNote(MUSIC_CONTROL_GUID);
 	if (!note) {
 		globalLatest = null;
+		localLatest = null;
 		return;
 	}
 	// Lossless raw-xml read (deserializeContent would atomize+drop url chars).
 	const records = parseRecordsFromXml(note.xmlContent);
 	const { id } = await deviceIdentity();
+	localLatest = records.find((r) => r.deviceId === id) ?? null;
 	const latestOther = pickGlobalLatest(records.filter((r) => r.deviceId !== id));
 	// Remote pointer: only a resumable (non-stopped) other-device session.
 	globalLatest = latestOther && latestOther.state !== 'stopped' ? latestOther : null;
@@ -175,6 +181,13 @@ export async function refreshFromNote(): Promise<void> {
 
 export function getGlobalLatest(): MusicControlRecord | null {
 	return globalLatest;
+}
+
+/** THIS device's own record in the control note (or null) as of the last
+ *  refreshFromNote. Used by the continuity picker to compare last-action times
+ *  with the remote when both share a source note. */
+export function getLocalLatest(): MusicControlRecord | null {
+	return localLatest;
 }
 
 /** Explicitly adopt the current global-latest remote record and play it (the
@@ -230,6 +243,7 @@ export function installMusicControl(): () => void {
 export function __resetMusicControlForTest(): void {
 	myDeviceId = null;
 	globalLatest = null;
+	localLatest = null;
 	lastOwnActionAt = null;
 	suppressTransportRecord = false;
 }
