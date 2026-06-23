@@ -268,25 +268,26 @@ Two-backend chat notes. Body signature: `llm://<model>` (Ollama, desktop service
 
 Common shape: `Q:`/`A:` turns, send button, streaming, abort, Korean errors. Headers — Ollama: `temperature`/`num_ctx`/`top_p`/`seed`/`num_predict`/`rag`; Claude: `model`/`effort` (low|medium|high|xhigh|max); both: `system`. `parseChatNote` recognizes both signatures; cross-backend and legacy headers (옛 `cwd`/`allowedTools` 포함) silently ignored.
 
-Files: `lib/chatNote/` (`parseChatNote`, `defaults`, `backends/{ollama,claude}.ts`, `buildClaudeMessages.ts`), `lib/editor/chatNote/ChatSendBar.svelte` (backend branch), `bridge/src/claude.ts` (POST `/claude/chat` proxy), `claude-service/` (desktop Fastify, `claude -p` stream-json → SSE).
+Files: `lib/chatNote/` (`parseChatNote`, `defaults`, `backends/{ollama,claude}.ts`, `buildClaudeMessages.ts`), `lib/editor/chatNote/ChatSendBar.svelte` (backend branch), `bridge/src/claude.ts` (POST `/claude/chat` proxy), `claude-service/` (Fastify, `claude -p` stream-json → SSE; runs on desktop + Pi).
 
 Invariants:
 
 - **Claude backend forces subscription OAuth.** `claude-service/src/runner.ts` spawns with `ANTHROPIC_API_KEY=''` explicit empty — prevents host API-key leak.
-- **claude-service is desktop-only** (same machine as ocr-service). Never on Pi bridge (CPU-only, and OAuth creds live in host `~/.claude`).
+- **claude-service is a thin client — runs on desktop OR Pi.** `claude -p` streams to Anthropic's API (no local inference/GPU), so the Pi bridge (arm64) runs it fine (~68 MB idle, ~360 MB peak/chat, single-concurrency comfortable on a 1 GB Pi). **Current split:** `claude://` chat notes → **Pi** claude-service (bridge proxies to `localhost:7842`, always-on); diary-OCR pipeline → **desktop** claude-service. **Keep both alive** — the diary pipeline still calls the desktop one, which is also the chat rollback. Pi deploy = same image; volume mounts drop `:Z` (Debian, no SELinux) and creds are scp'd from the desktop (`~/.claude/.credentials.json` + `~/.claude.json`).
+- **Shared-creds rotation caveat.** Pi + desktop mount copies of the same OAuth `~/.claude` creds. claude-code is multi-device by design so this is usually fine; if one side suddenly logs out (refresh-token rotation), give the Pi its own headless `claude login` to fully decouple.
 - **Claude backend는 항상 클린 모드.** 런너(`claude-service/src/runner.ts`)가 항상 `--system-prompt`(코딩 에이전트 프롬프트 교체) + `--exclude-dynamic-system-prompt-sections` + `--disallowedTools '*'`(도구 off) + `--effort`(없으면 high)로 spawn. 노트로 코딩을 하지 않으므로 도구 게이트(`cwd`/`allowedTools`)는 제거됨. spawn cwd는 항상 `$HOME`.
 - **기본값은 설정 Claude 탭에서 변경.** `system`/`model`/`effort` 기본값은 `appSettings`(`claudeDefault*`)에 저장되고 설정 Claude 탭에서 편집. 새 `claude://` 노트 헤더에 자동으로 채워지고(`chatNotePlugin` 자동 헤더), 헤더가 비면 전송 시 폴백. 우선순위: 노트 헤더 > 설정 기본값 > `CLAUDE_HEADER_DEFAULTS` 안전망.
 - **Images = Dropbox URL passthrough.** `tomboyUrlLink` mark + image extension → Anthropic `image/url` content block direct, no base64.
 - **No session resume.** Note is source of truth. Every send re-serializes full transcript from Q:/A: history. User-edited history reflected in next send.
 - **`llm://` notes unchanged.** `LlmNoteSpec` / `LLM_*` constants remain as aliases inside `chatNote/`.
 
-⚠️ Claude backend prereq: run `claude login` once on the desktop. Setup: `claude-service/deploy/README.md`.
+⚠️ Claude backend prereq: run `claude login` once on the host. For the Pi, scp the desktop's `~/.claude/.credentials.json` + `~/.claude.json` instead of a second login (see rotation caveat above). Setup: `claude-service/deploy/README.md`.
 
 ## Deployment
 
 - **Frontend**: Vercel via `adapter-vercel`. Produces `.vercel/output/` with static SPA + `functions/api/temp-image/`. Env vars: `PUBLIC_DROPBOX_APP_KEY` (Vite public), `BLOB_READ_WRITE_TOKEN` (Vercel auto), `IMAGE_STORAGE_TOKEN` (manual, byte-identical to app's "이미지 서버 토큰"). See `app/README.md`.
 - **Cloud Functions** (`functions/`): `cd functions && npm run deploy`. Hosts `fireSchedules`, `sendTestPush`, `dropboxAuthExchange`.
-- **Bridge / ocr-service / claude-service**: rootless Podman + Quadlet. Pi (bridge) and desktop (services). See respective `deploy/` dirs.
+- **Bridge / ocr-service / claude-service**: rootless Podman + Quadlet. Pi runs bridge + claude-service (chat); desktop runs ocr-service + claude-service (diary OCR). See respective `deploy/` dirs (claude-service README has both desktop + Pi recipes).
 - **Pipeline**: see `pipeline/pi/README.md`.
 
 ## Testing
