@@ -33,6 +33,11 @@
 	import ChatSendBar from '$lib/editor/chatNote/ChatSendBar.svelte';
 	import MusicPlayerBar from '$lib/editor/musicNote/MusicPlayerBar.svelte';
 	import { isMusicNoteDoc } from '$lib/music/parseMusicNote.js';
+	import { musicPlayer } from '$lib/music/musicPlayer.svelte.js';
+	import { resumePlaybackFromGesture } from '$lib/music/musicAudio.svelte.js';
+	import { getGlobalLatest, resumeGlobalLatest } from '$lib/music/musicControl.svelte.js';
+	import { continuityChoice } from '$lib/music/continuity.js';
+	import MusicContinuityPicker from '$lib/editor/musicNote/MusicContinuityPicker.svelte';
 	import NoteBundleStack from '$lib/editor/noteBundle/NoteBundleStack.svelte';
 	import NoteBundleCabinet from '$lib/editor/noteBundle/NoteBundleCabinet.svelte';
 	import BacklinkBundleOverlay from '$lib/editor/noteBundle/BacklinkBundleOverlay.svelte';
@@ -215,6 +220,34 @@
 	const noteId = $derived(page.params.id);
 	const isFromHome = $derived(page.url.searchParams.get('from') === 'home');
 	const currentNotebook = $derived(note ? getNotebook(note) : null);
+
+	let musicMenuOpen = $state(false);
+	const musicRemote = $derived(getGlobalLatest());
+	const showMusicFab = $derived(isFromHome && (musicPlayer.queue.length > 0 || musicRemote != null));
+
+	async function pickRemoteMusic() {
+		musicMenuOpen = false;
+		const ok = await resumeGlobalLatest();
+		if (ok && musicPlayer.isPlaying) resumePlaybackFromGesture();
+	}
+	function pickLocalMusic() {
+		musicMenuOpen = false;
+		musicPlayer.resumeOrRestart();
+		if (musicPlayer.isPlaying) resumePlaybackFromGesture();
+	}
+	function onMusicFab() {
+		if (musicPlayer.isPlaying) {
+			musicPlayer.pause();
+			return;
+		}
+		const choice = continuityChoice({
+			localTrackUrl: musicPlayer.currentTrack?.url ?? null,
+			remoteTrackUrl: musicRemote?.trackUrl ?? null
+		});
+		if (choice === 'both') { musicMenuOpen = true; return; }
+		if (choice === 'remote') { void pickRemoteMusic(); return; }
+		pickLocalMusic();
+	}
 	const isFavoriteNote = $derived(note ? isFavorite(note) : false);
 	const isSlipNote = $derived(currentNotebook === SLIPBOX_NOTEBOOK);
 	const canPasteSlip = $derived(
@@ -1058,6 +1091,26 @@
 		<button class="fab-random" onclick={gotoRandom} aria-label="랜덤 노트">🎲</button>
 	{/if}
 
+	{#if showMusicFab}
+		<button
+			class="fab-music"
+			onclick={onMusicFab}
+			aria-label={musicPlayer.isPlaying ? '음악 일시정지' : '음악 재생'}
+		>{musicPlayer.isPlaying ? '⏸' : '▶'}</button>
+	{/if}
+
+	{#if musicMenuOpen}
+		<div class="music-fab-sheet" role="dialog" aria-label="재생 위치 선택">
+			<MusicContinuityPicker
+				localTitle={musicPlayer.currentTrack?.display ?? ''}
+				remoteTitle={musicRemote?.trackTitle ?? ''}
+				remoteDeviceName={musicRemote?.deviceName ?? '다른 기기'}
+				onpick={(w) => (w === 'remote' ? pickRemoteMusic() : pickLocalMusic())}
+				oncancel={() => (musicMenuOpen = false)}
+			/>
+		</div>
+	{/if}
+
 	{#if terminalSpec && !showTerminal}
 		<button
 			class="fab-terminal-connect"
@@ -1329,9 +1382,41 @@
 	   하단 FAB이 입력을 가려 방해만 되므로 숨긴다. */
 	.editor-area:focus-within ~ .fab-today,
 	.editor-area:focus-within ~ .fab-random,
+	.editor-area:focus-within ~ .fab-music,
 	.editor-area:focus-within ~ .fab-terminal-connect {
 		opacity: 0;
 		pointer-events: none;
+	}
+
+	.fab-music {
+		position: absolute;
+		bottom: calc(88px + 56px * 2);
+		right: 20px;
+		width: 48px;
+		height: 48px;
+		border-radius: 50%;
+		border: none;
+		background: var(--color-bg);
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+		font-size: 1.4rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		cursor: pointer;
+		z-index: 10;
+		transition: opacity 0.15s;
+	}
+	.fab-music:active { transform: scale(0.93); }
+
+	.music-fab-sheet {
+		position: fixed;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		z-index: var(--z-sheet);
+		background: var(--color-bg);
+		border-top: 1px solid var(--color-border, #333);
+		box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.4);
 	}
 
 	.fab-today {

@@ -27,7 +27,6 @@
 	import { installMusicAudio } from '$lib/music/musicAudio.svelte.js';
 	import { installMusicSession } from '$lib/music/musicSession.svelte.js';
 	import { installMusicControl } from '$lib/music/musicControl.svelte.js';
-	import GlobalMiniPlayer from '$lib/editor/musicNote/GlobalMiniPlayer.svelte';
 	import { pushToast } from '$lib/stores/toast.js';
 	import { getAllNotes } from '$lib/storage/noteStore.js';
 	import { favoriteStore } from '$lib/storage/favoriteStore.svelte.js';
@@ -397,7 +396,6 @@
 			{@render children()}
 		</div>
 	</div>
-	<GlobalMiniPlayer />
 	<Toast />
 	<ImageViewerModal />
 	<ImageActionMenu />
