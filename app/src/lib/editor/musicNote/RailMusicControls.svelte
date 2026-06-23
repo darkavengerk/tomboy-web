@@ -1,13 +1,48 @@
 <script lang="ts">
 	import { musicPlayer } from '$lib/music/musicPlayer.svelte.js';
 	import { resumePlaybackFromGesture } from '$lib/music/musicAudio.svelte.js';
+	import { getGlobalLatest, resumeGlobalLatest } from '$lib/music/musicControl.svelte.js';
+	import { continuityChoice } from '$lib/music/continuity.js';
+	import MusicContinuityPicker from './MusicContinuityPicker.svelte';
 
 	const hasSession = $derived(musicPlayer.queue.length > 0);
 	const playing = $derived(musicPlayer.isPlaying);
+	let menuOpen = $state(false);
 
-	function onPlayPause() {
+	function remote() {
+		return getGlobalLatest();
+	}
+
+	async function pickRemote() {
+		menuOpen = false;
+		const ok = await resumeGlobalLatest();
+		if (ok && musicPlayer.isPlaying) resumePlaybackFromGesture();
+	}
+	function pickLocal() {
+		menuOpen = false;
 		musicPlayer.resumeOrRestart();
 		if (musicPlayer.isPlaying) resumePlaybackFromGesture();
+	}
+
+	function onPlayPause() {
+		if (playing) {
+			musicPlayer.pause();
+			return;
+		}
+		const r = remote();
+		const choice = continuityChoice({
+			localTrackUrl: musicPlayer.currentTrack?.url ?? null,
+			remoteTrackUrl: r?.trackUrl ?? null
+		});
+		if (choice === 'both') {
+			menuOpen = true;
+			return;
+		}
+		if (choice === 'remote') {
+			void pickRemote();
+			return;
+		}
+		pickLocal();
 	}
 	function onPrev() {
 		musicPlayer.prev();
@@ -25,11 +60,23 @@
 		type="button"
 		class="play"
 		onclick={onPlayPause}
-		disabled={!hasSession}
+		disabled={!hasSession && !remote()}
 		aria-label={playing ? '일시정지' : '재생'}
 	>{playing ? '⏸' : '▶'}</button>
 	<button type="button" onclick={onNext} disabled={!hasSession} aria-label="다음 곡">⏭</button>
 </div>
+
+{#if menuOpen}
+	<div class="rail-menu">
+		<MusicContinuityPicker
+			localTitle={musicPlayer.currentTrack?.display ?? ''}
+			remoteTitle={remote()?.trackTitle ?? ''}
+			remoteDeviceName={remote()?.deviceName ?? '다른 기기'}
+			onpick={(w) => (w === 'remote' ? pickRemote() : pickLocal())}
+			oncancel={() => (menuOpen = false)}
+		/>
+	</div>
+{/if}
 
 <style>
 	.rail-music {
@@ -37,7 +84,7 @@
 		align-items: center;
 		justify-content: center;
 		gap: 2px;
-		width: calc(100% - 12px);
+		width: 100%;
 		flex-shrink: 0;
 	}
 	.rail-music button {
@@ -67,5 +114,17 @@
 	.rail-music button:disabled {
 		opacity: 0.35;
 		cursor: default;
+	}
+	.rail-menu {
+		position: absolute;
+		bottom: 100%;
+		left: 0;
+		right: 0;
+		z-index: var(--z-menu);
+		background: var(--color-bg, #111);
+		border: 1px solid var(--color-border, #333);
+		border-radius: 10px;
+		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+		margin-bottom: 6px;
 	}
 </style>

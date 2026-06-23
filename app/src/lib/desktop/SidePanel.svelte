@@ -341,7 +341,9 @@
 			{/each}
 		</div>
 
-		<RailMusicControls />
+		<div class="rail-music-wrap">
+			<RailMusicControls />
+		</div>
 
 		<div class="rail-chips" role="tablist" aria-label="노트북 필터">
 			<button
@@ -588,9 +590,18 @@
 		align-items: center;
 		padding: 10px 0;
 		gap: 10px;
-		overflow: hidden;
+		overflow: visible;
 		min-height: 0;
 		pointer-events: auto;
+	}
+
+	/* Wrapper that provides position:relative for the absolute .rail-menu
+	   inside RailMusicControls. Must be overflow:visible so the menu (which
+	   uses position:absolute + bottom:100%) can escape the rail column. */
+	.rail-music-wrap {
+		position: relative;
+		width: calc(100% - 12px);
+		overflow: visible;
 	}
 
 	/* Vertical drag grip at the rail's right edge. 6px hit target with a
