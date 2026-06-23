@@ -27,7 +27,8 @@ let myDeviceId: string | null = null;
 const STATE_BY_KIND: Record<TransportKind, TransportState> = {
 	play: 'playing',
 	pause: 'paused',
-	stop: 'stopped'
+	stop: 'stopped',
+	track: 'playing'
 };
 
 async function isSharingEnabled(): Promise<boolean> {
@@ -62,11 +63,6 @@ export async function recordTransport(kind: TransportKind): Promise<void> {
 	const track = musicPlayer.currentTrack;
 	const noteGuid = musicPlayer.activeNoteGuid;
 	const noteTitle = musicPlayer.activeNoteName;
-	const position = musicPlayer.currentTime;
-	// Snapshot the FULL queue (the source device parsed it live). The receiver
-	// restores it verbatim so ⏭/⏮ work and uses the source's playable urls.
-	const fullQueue = musicPlayer.queue;
-	const index = musicPlayer.currentIndex;
 	if (!track || !noteGuid) return;
 
 	if (!(await isSharingEnabled())) return;
@@ -74,20 +70,12 @@ export async function recordTransport(kind: TransportKind): Promise<void> {
 	const record: MusicControlRecord = {
 		deviceId: id,
 		deviceName: name,
+		noteGuid,
 		trackUrl: track.url,
 		trackTitle: track.display,
-		noteGuid,
 		noteTitle,
-		position: Math.max(0, position),
 		state: STATE_BY_KIND[kind],
-		updatedAt: new Date().toISOString(),
-		queue: fullQueue.map((t) => ({
-			url: t.url,
-			display: t.display,
-			title: t.title ?? null,
-			playlistLabel: t.playlistLabel ?? ''
-		})),
-		index: Math.max(0, index)
+		updatedAt: new Date().toISOString()
 	};
 
 	await ensureControlNote();
