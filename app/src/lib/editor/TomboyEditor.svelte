@@ -2426,6 +2426,14 @@ import { MUSIC_CONTROL_GUID } from "$lib/music/musicControlNote.js";
 	.tomboy-editor :global(.tomboy-send-active li:has(li:hover) > .tomboy-send-li-actions) {
 		display: none;
 	}
+	/* 모바일(터치, hover 없음): 옛 동작 복원 — Ctrl-lock 으로 send 모드가 켜지면
+	   모든 행의 보내기/스킵 버튼을 한꺼번에 보여준다. hover 게이팅은 마우스 기기에만
+	   적용되므로 `hover: none` 에서 무력화돼 전 버튼이 안 떴다. */
+	@media (hover: none) {
+		.tomboy-editor :global(.tomboy-send-active li > .tomboy-send-li-actions) {
+			display: flex;
+		}
+	}
 	.tomboy-editor :global(.tomboy-send-li-btn),
 	.tomboy-editor :global(.tomboy-skip-li-btn) {
 		padding: 2px 8px;
