@@ -49,11 +49,17 @@ export interface TerminalNoteSpec {
 	 * session name.
 	 */
 	pinnedPane?: number;
+	/**
+	 * Picker(런처) 모드: 본문에 값 없는 `spectate:` 라인이 있을 때 true.
+	 * `spectate` 는 undefined — 사용자가 런타임에 브릿지 세션 목록에서 고른다.
+	 * 선택은 휘발적이라 노트 본문에 박히지 않는다.
+	 */
+	spectatePicker?: boolean;
 }
 
 const SSH_RE = /^ssh:\/\/(?:([^@\s/]+)@)?([^:\s/]+)(?::(\d{1,5}))?\/?\s*$/;
 const BRIDGE_RE = /^bridge:\s*(wss?:\/\/\S+)\s*$/;
-const SPECTATE_RE = /^spectate:\s*([A-Za-z0-9_\-./@:]+)\s*$/;
+const SPECTATE_RE = /^spectate:\s*([A-Za-z0-9_\-./@:]*)\s*$/;
 export const HISTORY_HEADER_RE = /^history:(?:tmux:([A-Za-z0-9@$:_-]+):)?$/;
 /** Matches exactly `connect:` — no tmux variants allowed. */
 export const CONNECT_HEADER_RE = /^connect:$/;
@@ -100,6 +106,8 @@ export function parseTerminalNote(doc: JSONContent | null | undefined): Terminal
 	let bridge: string | undefined;
 	let spectate: string | undefined;
 	let pinnedPane: number | undefined;
+	let spectatePicker = false;
+	let sawSpectate = false;
 	for (let k = 1; k < meta.length; k++) {
 		const text = paragraphText(meta[k]);
 		if (text === null) return null;
@@ -111,20 +119,25 @@ export function parseTerminalNote(doc: JSONContent | null | undefined): Terminal
 		}
 		const spectateMatch = SPECTATE_RE.exec(text);
 		if (spectateMatch) {
-			if (spectate !== undefined) return null;
+			if (sawSpectate) return null; // 중복 spectate: 라인 거부 (값 유무 무관)
+			sawSpectate = true;
 			const raw = spectateMatch[1];
-			const pinMatch = /^(.+):(\d+)$/.exec(raw);
-			if (pinMatch) {
-				const n = Number(pinMatch[2]);
-				if (Number.isInteger(n) && n >= 1 && n <= 5) {
-					spectate = pinMatch[1];
-					pinnedPane = n;
-				} else {
-					spectate = pinMatch[1];
-					// pinnedPane stays undefined.
-				}
+			if (raw === '') {
+				spectatePicker = true;
 			} else {
-				spectate = raw;
+				const pinMatch = /^(.+):(\d+)$/.exec(raw);
+				if (pinMatch) {
+					const n = Number(pinMatch[2]);
+					if (Number.isInteger(n) && n >= 1 && n <= 5) {
+						spectate = pinMatch[1];
+						pinnedPane = n;
+					} else {
+						spectate = pinMatch[1];
+						// pinnedPane stays undefined.
+					}
+				} else {
+					spectate = raw;
+				}
 			}
 			continue;
 		}
@@ -209,6 +222,7 @@ export function parseTerminalNote(doc: JSONContent | null | undefined): Terminal
 		user,
 		bridge,
 		spectate,
+		spectatePicker: spectatePicker || undefined,
 		histories,
 		history,
 		connect: connect ?? [],
