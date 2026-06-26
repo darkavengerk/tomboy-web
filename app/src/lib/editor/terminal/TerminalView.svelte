@@ -523,6 +523,23 @@
 		// 역산하면 안 된다 — mount 의 getBoundingClientRect 는 transform 을
 		// 반영한 실제 시각 픽셀이라 셀 높이의 진짜 값을 준다.
 		const mountRect = xtermContainer.getBoundingClientRect();
+		// Alt-screen TUI(claude code 등)는 (1) xterm 로컬 스크롤백이 없어
+		// term.scrollLines 가 no-op 이고 (2) 방향키를 스크롤이 아니라 커서 이동으로
+		// 처리한다 — claude 가 직접 "use PgUp/PgDn to scroll" 경고를 띄운다. 그래서
+		// 보내기 팝업의 PgUp/PgDn 버튼과 동일하게 페이지 키를 활성 패널로 보낸다.
+		// 페이지 키는 페이지 단위라 반 화면 드래그를 한 페이지로 환산한다(체감 속도).
+		if (term.buffer.active.type === 'alternate') {
+			const pxPerPage = mountRect.height / 2;
+			const { lines: pages, remainder } = accumulateTouchScroll(touchScrollRemainder, deltaPx, pxPerPage);
+			touchScrollRemainder = remainder;
+			if (pages === 0) return;
+			// 아래로 끌면 과거(위) → PgUp(ESC [ 5 ~), 위로 끌면 PgDn(ESC [ 6 ~).
+			const seq = pages > 0 ? '\x1b[5~' : '\x1b[6~';
+			if (pinnedOrdinal !== null) client?.selectPane(pinnedOrdinal);
+			client?.send(seq.repeat(Math.abs(pages)));
+			return;
+		}
+		// 일반 버퍼: 진짜 스크롤백이 있으므로 로컬 뷰포트를 줄 단위로 움직인다.
 		const pxPerLine = mountRect.height / term.rows;
 		const { lines, remainder } = accumulateTouchScroll(touchScrollRemainder, deltaPx, pxPerLine);
 		touchScrollRemainder = remainder;
