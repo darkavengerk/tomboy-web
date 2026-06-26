@@ -20,8 +20,8 @@ import type { SshTarget } from './pty.js';
  * stty pre-attach claim (buildSpectatorSshArgs) and the refresh-client
  * belt-and-suspenders in spectatorHub.ts — keep the two in sync via this const.
  */
-export const SPECTATOR_VIRTUAL_COLS = 800;
-export const SPECTATOR_VIRTUAL_ROWS = 1440;
+export const SPECTATOR_VIRTUAL_COLS = 318;
+export const SPECTATOR_VIRTUAL_ROWS = 65;
 
 export interface SpectatorCallbacks {
 	paneSwitch(info: {
