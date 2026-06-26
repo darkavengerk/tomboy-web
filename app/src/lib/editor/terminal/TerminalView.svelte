@@ -911,6 +911,35 @@
 				// (스크롤백 열람 → 전체 높이, 다시 라이브 → 콘텐츠 분량).
 				applySpectatorFit();
 			});
+
+			// 데스크탑 휠 스크롤. xterm 기본 휠 핸들러는 alt-screen + 마우스 추적
+			// OFF 일 때 방향키(ESC O/[ A/B)로 폴백하는데, claude code 는 이를
+			// 스크롤이 아니라 커서 이동으로 처리하고 "use PgUp/PgDn to scroll"
+			// 경고를 띄운다. 이 커스텀 핸들러는 **마우스 추적이 꺼져 있을 때만**
+			// 호출되므로(켜져 있으면 xterm 이 마우스 휠 이벤트를 직접 보냄 →
+			// 그대로 스크롤됨), 그 폴백 케이스에서만 PgUp/PgDn 으로 대체하고
+			// false 를 반환해 방향키 폴백을 막는다. 일반 버퍼(진짜 스크롤백)는
+			// true 를 반환해 xterm 로컬 스크롤백을 그대로 쓴다. 모바일 터치
+			// 핸들러(onSpectatorTouchMove)의 alt-screen 분기와 같은 키.
+			let lastWheelKeyAt = 0;
+			term.attachCustomWheelEventHandler((e) => {
+				if (term && term.buffer.active.type === 'alternate') {
+					// PgUp/PgDn 은 페이지 단위라, 트랙패드 관성처럼 휠 이벤트가
+					// 한 번에 수십 개 쏟아지면 페이지가 폭주한다. 60ms 스로틀로
+					// 마우스 노치(이산) = 1 페이지, 트랙패드 플릭 = 상한선. 스로틀로
+					// 건너뛴 이벤트도 false 를 반환해 방향키 폴백은 무조건 막는다.
+					const now = performance.now();
+					if (now - lastWheelKeyAt >= 60) {
+						lastWheelKeyAt = now;
+						// 휠 위(deltaY<0) = 과거로 → PgUp, 아래 = PgDn.
+						const seq = e.deltaY < 0 ? '\x1b[5~' : '\x1b[6~';
+						if (pinnedOrdinal !== null) client?.selectPane(pinnedOrdinal);
+						client?.send(seq);
+					}
+					return false;
+				}
+				return true;
+			});
 		}
 
 		// 빈 spectate: 피커 노트 + 미선택 → 초기 WS 연결 보류. 사용자가
