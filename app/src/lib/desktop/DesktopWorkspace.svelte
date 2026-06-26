@@ -111,28 +111,21 @@
 		void desktopSession.stashToActiveDrawer(guid);
 	}
 
-	// If a canvas window is dropped over the open drawer panel, move it in.
-	function handleCanvasDragEnd(guid: string, pointer: { x: number; y: number }) {
-		const i = desktopSession.activeDrawer;
-		if (i === null) return;
-		const panel = document.querySelector<HTMLElement>(
-			`.drawer[data-side='${i === 0 ? 'top' : 'right'}'].open`
-		);
-		if (!panel) return;
-		const rect = panel.getBoundingClientRect();
-		if (
-			pointer.x < rect.left ||
-			pointer.x > rect.right ||
-			pointer.y < rect.top ||
-			pointer.y > rect.bottom
-		) {
-			return; // released outside the drawer → normal canvas move already applied
-		}
-		void desktopSession.moveWindowToSurface(
+	// Drag-end for a canvas window: hand the viewport pointer + window top-left to
+	// the session, which hit-tests the open drawer and moves the note in (or just
+	// repositions it on the canvas). Returns the promise so NoteWindow can hold
+	// the lift until a cross-surface move settles.
+	function handleCanvasDragEnd(
+		guid: string,
+		pointer: { x: number; y: number },
+		winTopLeft: { x: number; y: number }
+	) {
+		return desktopSession.dropDraggedWindow(
 			{ kind: 'workspace', index: desktopSession.currentWorkspace },
-			{ kind: 'drawer', index: i },
 			guid,
-			{ x: pointer.x - rect.left, y: pointer.y - rect.top }
+			winTopLeft,
+			pointer,
+			sidePanelLayout.railWidth
 		);
 	}
 
@@ -532,6 +525,11 @@
 	{/if}
 	<DrawerOverlay index={0} side="top" />
 	<DrawerOverlay index={1} side="right" />
+	<!-- Drag-lift host: the note currently being dragged is re-parented here (via
+	     the dragLift action) so it floats above the drawer panels and isn't
+	     clipped by .canvas/.drawer. Empty + pointer-events:none until then, so it
+	     never intercepts clicks; the lifted window re-enables its own. -->
+	<div class="drag-layer"></div>
 </div>
 
 <style>
@@ -556,6 +554,17 @@
 		bottom: 0;
 		background: #000;
 		overflow: hidden;
+	}
+
+	/* Drag-lift host — viewport-aligned (matches absolute coords to viewport),
+	   above the drawer panels (--z-drag), never clips. Inert until a window is
+	   lifted into it; the lifted .note-window sets its own pointer-events. */
+	.drag-layer {
+		position: fixed;
+		inset: 0;
+		overflow: visible;
+		pointer-events: none;
+		z-index: var(--z-drag);
 	}
 
 	.wallpaper {
