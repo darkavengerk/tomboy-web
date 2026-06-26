@@ -2085,6 +2085,8 @@
 		padding: 2px 8px;
 		font-size: 12px;
 		margin-left: 8px;
+		white-space: nowrap;
+		flex-shrink: 0;
 	}
 	.picker-overlay {
 		position: fixed;
