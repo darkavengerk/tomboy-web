@@ -1251,25 +1251,6 @@
 		display: none;
 	}
 
-	/* Same body-scroll trap as .dedicated-fill: on mobile .app-shell is
-	   body-scroll (min-height:100dvh, no defined height) so .editor-page's
-	   flex:1 has no basis. The terminal needs a definite height for its
-	   internal scroll surface — .terminal-page{height:100%} → .xterm-host →
-	   xterm's .xterm-viewport. Without the pin the viewport never bounds, so
-	   FitAddon fills too many rows and there's nothing to scroll (touch
-	   scrollback dies on mobile; desktop NoteWindow is position:fixed so it
-	   was never hit). Pin the page to the viewport like dedicated notes.
-	   Covers both terminal + keys connected views (showTerminal || showKeys). */
-	.editor-page.terminal-connected {
-		flex: none;
-		height: calc(100dvh - var(--topnav-height, 0px));
-	}
-	/* Terminal/keys view renders its own footer; the 56px reserve for the
-	   (now-unrendered) edit toolbar would leave dead space at the bottom. */
-	.editor-page.terminal-connected .editor-area {
-		padding-bottom: 0;
-	}
-
 	.editor-meta-bar:has(:hover),
 	.editor-meta-bar:has(:focus-visible) {
 		opacity: 1;
