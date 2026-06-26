@@ -90,3 +90,31 @@ export async function checkBridgeAuth(bridge: string): Promise<boolean> {
 		return false;
 	}
 }
+
+export interface SessionInfo {
+	name: string;
+	windows: number;
+	attached: boolean;
+	activity: number;
+	command: string;
+}
+
+/**
+ * POST /sessions — 타겟의 tmux 세션 목록. 비-200 은 throw (호출 측이 한글
+ * 에러 토스트). target 은 SSH_RE 로 이미 검증된 구조화 필드만 넘긴다.
+ */
+export async function fetchSessions(
+	bridge: string,
+	token: string,
+	target: { user?: string; host: string; port?: number }
+): Promise<SessionInfo[]> {
+	const base = bridgeToHttpBase(bridge);
+	const res = await fetch(base + '/sessions', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+		body: JSON.stringify({ target })
+	});
+	if (!res.ok) throw new Error(`sessions_failed_${res.status}`);
+	const data = (await res.json().catch(() => null)) as { sessions?: SessionInfo[] } | null;
+	return Array.isArray(data?.sessions) ? data!.sessions : [];
+}
