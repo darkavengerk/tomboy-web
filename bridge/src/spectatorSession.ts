@@ -12,16 +12,37 @@ import { controlMasterArgs } from './pty.js';
 import type { SshTarget } from './pty.js';
 
 /**
- * Virtual PTY size the spectator claims (cols × rows) so it never becomes the
- * smallest client under `window-size smallest` — the real desktop client wins.
- * When ONLY a spectator is attached (desktop off/detached), the window resizes
- * to exactly this, so it doubles as the "phone-alone" tmux panel size.
- * Must stay large enough to exceed any real desktop client. Used by both the
- * stty pre-attach claim (buildSpectatorSshArgs) and the refresh-client
- * belt-and-suspenders in spectatorHub.ts — keep the two in sync via this const.
+ * Default virtual PTY size the spectator claims (cols × rows) so it never
+ * becomes the smallest client under `window-size smallest` — the real desktop
+ * client wins. When ONLY a spectator is attached (desktop off/detached), the
+ * window resizes to exactly this, so it doubles as the "phone-alone" tmux
+ * window size. 318 = a 3-vertical-pane desktop window (≈106 cols/pane); the
+ * phone renders one active pane, so it sees ≈106 even though the window is 318.
+ * Both call sites (stty pre-attach claim + refresh-client belt-and-suspenders
+ * in spectatorHub.ts) go through `spectatorVirtualSize` — keep them in sync.
  */
 export const SPECTATOR_VIRTUAL_COLS = 318;
 export const SPECTATOR_VIRTUAL_ROWS = 65;
+
+/**
+ * Some sessions are inherently single-pane (never split) — e.g. claude-squad,
+ * which manages many agents but keeps each in a single-pane window. Claiming
+ * the full multi-pane width (318) there makes the phone render a 318-wide
+ * single pane = far too big. Claim the single-pane width instead so the phone
+ * shows ≈106 cols. Safe to shrink the window for these: there are no sibling
+ * panes to squish. Matched by session-name prefix.
+ */
+export const SPECTATOR_SINGLE_PANE_COLS = 106;
+export const SINGLE_PANE_SESSION_PREFIXES = ['claudesquad'];
+
+/** Per-session virtual PTY size — single-pane sessions get the narrow claim. */
+export function spectatorVirtualSize(session: string): { cols: number; rows: number } {
+	const singlePane = SINGLE_PANE_SESSION_PREFIXES.some((p) => session.startsWith(p));
+	return {
+		cols: singlePane ? SPECTATOR_SINGLE_PANE_COLS : SPECTATOR_VIRTUAL_COLS,
+		rows: SPECTATOR_VIRTUAL_ROWS
+	};
+}
 
 export interface SpectatorCallbacks {
 	paneSwitch(info: {
@@ -71,8 +92,9 @@ export function buildSpectatorSshArgs(
 	args.push('-o', 'StrictHostKeyChecking=accept-new');
 	if (controlPath) args.push(...controlMasterArgs(controlPath));
 	args.push(target.user ? `${target.user}@${target.host}` : target.host);
+	const { cols, rows } = spectatorVirtualSize(session);
 	args.push(
-		`stty cols ${SPECTATOR_VIRTUAL_COLS} rows ${SPECTATOR_VIRTUAL_ROWS} 2>/dev/null; stty raw -echo; exec tmux -CC attach -t ${session}`
+		`stty cols ${cols} rows ${rows} 2>/dev/null; stty raw -echo; exec tmux -CC attach -t ${session}`
 	);
 	return args;
 }

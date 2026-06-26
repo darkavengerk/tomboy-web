@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSpectatorSshArgs, panePosition } from './spectatorSession.js';
+import { buildSpectatorSshArgs, panePosition, spectatorVirtualSize } from './spectatorSession.js';
 
 test('buildSpectatorSshArgs: basic remote, no controlPath', () => {
 	const args = buildSpectatorSshArgs({ host: 'h', user: 'u' }, 'work');
@@ -10,6 +10,26 @@ test('buildSpectatorSshArgs: basic remote, no controlPath', () => {
 		'u@h',
 		'stty cols 318 rows 65 2>/dev/null; stty raw -echo; exec tmux -CC attach -t work'
 	]);
+});
+
+test('buildSpectatorSshArgs: claudesquad session claims single-pane 106 width', () => {
+	const args = buildSpectatorSshArgs({ host: 'h', user: 'u' }, 'claudesquad_feat');
+	assert.equal(
+		args[args.length - 1],
+		'stty cols 106 rows 65 2>/dev/null; stty raw -echo; exec tmux -CC attach -t claudesquad_feat'
+	);
+});
+
+test('spectatorVirtualSize: default multi-pane width for ordinary sessions', () => {
+	assert.deepEqual(spectatorVirtualSize('main'), { cols: 318, rows: 65 });
+	assert.deepEqual(spectatorVirtualSize('work'), { cols: 318, rows: 65 });
+});
+
+test('spectatorVirtualSize: claudesquad-prefixed sessions get single-pane width', () => {
+	assert.deepEqual(spectatorVirtualSize('claudesquad'), { cols: 106, rows: 65 });
+	assert.deepEqual(spectatorVirtualSize('claudesquad_branch-x'), { cols: 106, rows: 65 });
+	// prefix only — a session merely containing the word is unaffected
+	assert.deepEqual(spectatorVirtualSize('my-claudesquad'), { cols: 318, rows: 65 });
 });
 
 test('buildSpectatorSshArgs: includes port before -o flags', () => {
