@@ -844,8 +844,8 @@ describe('parseTerminalNote — spectatePicker', () => {
 	});
 
 	it('빈 spectate: + 값 있는 spectate: → null', () => {
-		// meta.length >= 3 → parser rejects before reaching spectate loop
-		// (max 2 meta lines after ssh://), so this should be null regardless
+		// 두 줄 다 메타에 들어가지만(ssh + 2 spectate = 3, cap 통과) 두 번째
+		// spectate: 에서 sawSpectate 가드가 노트를 거부한다.
 		const r = parseTerminalNote(
 			doc('Title', 'ssh://you@desktop', 'spectate:', 'spectate: main')
 		);
