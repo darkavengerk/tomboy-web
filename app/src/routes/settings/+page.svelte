@@ -1829,6 +1829,24 @@ history:
 				</details>
 
 				<details class="guide-card">
+					<summary>관전 세션 피커 (이름 없이 고르기)</summary>
+					<p class="info-text">
+						본문에 값 없는 <code>spectate:</code> 한 줄만 두면 그 노트는 세션 런처가 됩니다.
+						열고 "세션 선택"을 누르면 데스크탑의 tmux 세션 목록이 떠서, 골라서 바로 관전합니다.
+						세션 이름을 미리 몰라도 됩니다 (예: Claude Squad 의 <code>claudesquad_*</code> 세션).
+					</p>
+					<pre class="snippet">ssh://you@desktop
+spectate:
+bridge: wss://b/ws</pre>
+					<ul class="guide-list">
+						<li>선택은 <strong>휘발</strong>입니다 — 노트 본문에 박히지 않아 열 때마다 다시 고를 수 있는 재사용 메뉴입니다.</li>
+						<li>관전 중 헤더의 <strong>세션 변경</strong>으로 다른 세션으로 갈아탑니다.</li>
+						<li>목록은 데스크탑이 <strong>켜져 있고</strong> 브릿지가 ssh 로 닿을 때만 뜹니다. 꺼져 있으면 에러가 표시됩니다.</li>
+						<li>값을 적은 <code>spectate: main</code> 은 기존처럼 그 세션을 바로 관전합니다(피커 없음).</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
 					<summary>일정 노트 — 푸시 알림 받기</summary>
 					<p class="info-text">
 						설정 → 알림에서 일정 노트로 지정한 노트만 푸시 대상이 됩니다. <code>N월</code> 헤더
