@@ -7,7 +7,9 @@
 	import type { TerminalNoteSpec } from './parseTerminalNote.js';
 	import {
 		getDefaultTerminalBridge,
-		getTerminalBridgeToken
+		getTerminalBridgeToken,
+		fetchSessions,
+		type SessionInfo
 	} from './bridgeSettings.js';
 	import { Osc133State, parseOsc133Payload, shouldRecordCommand } from './oscCapture.js';
 	import { appendCommandToTerminalHistory, flushTerminalHistoryNow, removeCommandFromTerminalHistory, clearTerminalHistory, pinCommandInTerminalHistory, unpinCommandInTerminalHistory } from './historyStore.js';
@@ -85,7 +87,7 @@
 	// Pane id and size are reported by the bridge on first attach + every
 	// focus change; rendered in the header so the user knows what they're
 	// watching.
-	const isSpectator = $derived(!!spec.spectate);
+	const isSpectator = $derived(!!spec.spectate || !!spec.spectatePicker);
 	let spectatorPaneId: string | null = $state(null);
 	let spectatorCols = $state(0);
 	let spectatorRows = $state(0);
@@ -118,6 +120,19 @@
 	let sendPopupOpen = $state(false);
 	let sendPopupText = $state('');
 	let sendPopupInput: HTMLInputElement | undefined = $state();
+
+	// 세션 피커(런처) — 빈 spectate: 노트. 선택은 휘발(노트 본문 불변).
+	// 고정 세션 노트(spec.spectate 있음)는 이 분기를 절대 타지 않는다 —
+	// spec.spectatePicker 가 undefined 이므로 awaitingPick/세션 변경 버튼이 죽고
+	// effectiveSession 은 항상 spec.spectate 로 떨어진다.
+	let selectedSession = $state<string | null>(null);
+	const effectiveSession = $derived(spec.spectate ?? selectedSession ?? undefined);
+	const awaitingPick = $derived(!!spec.spectatePicker && !selectedSession);
+	let pickerOpen = $state(false);
+	let pickerLoading = $state(false);
+	let pickerError = $state('');
+	let pickerSessions = $state<SessionInfo[]>([]);
+	let pickerCloseBtn: HTMLButtonElement | undefined = $state();
 
 	// Sticky modifier chips (관전 모드 전용) — buttons in the footer arm
 	// modifier(s) that apply to the next key press (desktop keydown
@@ -881,13 +896,20 @@
 			});
 		}
 
+		// 빈 spectate: 피커 노트 + 미선택 → 초기 WS 연결 보류. 사용자가
+		// "세션 선택"으로 세션을 고르면 reconnect() 가 그 세션에 연결한다.
+		// term + onScroll 배선은 위에서 이미 무조건 끝냈고, 아래 키보드/리사이즈/
+		// 붙여넣기 배선도 무조건 실행한다(전부 client?. 가드라 null client 안전) —
+		// 그래야 나중에 reconnect() 로 세션을 골라도 입력/리사이즈가 살아 있다.
+		// 여기서는 오직 클라이언트 생성/connect 만 게이트한다.
+		if (!awaitingPick) {
 		client = new TerminalWsClient({
 			bridge,
 			target: spec.target,
 			token,
 			cols: term.cols,
 			rows: term.rows,
-			spectate: spec.spectate,
+			spectate: effectiveSession,
 			onData: (chunk) => {
 				if (term) {
 					term.write(chunk, () => {
@@ -941,6 +963,12 @@
 			},
 		});
 		client.connect();
+		} // end !awaitingPick gate for client create + connect
+		if (awaitingPick) {
+			// 미선택 피커 — 끊김 상태로 시작해 "세션 선택" 안내를 띄운다.
+			status = 'closed';
+			statusMessage = '';
+		}
 
 		if (!isSpectator) {
 			bannerTimer = setTimeout(() => {
@@ -1038,6 +1066,36 @@
 		fit = null;
 	});
 
+	// 세션 피커 — 빈 spectate: 노트에서만 노출. 모달에 브릿지 세션 목록을 띄우고,
+	// 행을 고르면 selectedSession 을 세팅해 reconnect() 가 그 세션을 관전한다.
+	async function openPicker() {
+		if (!resolvedBridge || !resolvedToken) return;
+		pickerOpen = true;
+		pickerError = '';
+		pickerLoading = true;
+		// Autofocus the close button after the modal renders.
+		queueMicrotask(() => pickerCloseBtn?.focus());
+		try {
+			pickerSessions = await fetchSessions(resolvedBridge, resolvedToken, {
+				user: spec.user,
+				host: spec.host,
+				port: spec.port
+			});
+		} catch {
+			pickerError = '데스크탑에 연결할 수 없습니다 (꺼져 있거나 네트워크 문제).';
+		} finally {
+			pickerLoading = false;
+		}
+	}
+	function closePicker() {
+		pickerOpen = false;
+	}
+	function selectSession(name: string) {
+		pickerOpen = false;
+		selectedSession = name; // effectiveSession 갱신 → reconnect 가 그 세션에 연결
+		reconnect();
+	}
+
 	function reconnect() {
 		if (!resolvedBridge || !resolvedToken) return;
 		resetSpectatorState(); // clear stale pane info so buttons reflect the new session
@@ -1059,7 +1117,7 @@
 			token: resolvedToken,
 			cols: term?.cols ?? 80,
 			rows: term?.rows ?? 24,
-			spectate: spec.spectate,
+			spectate: effectiveSession,
 			onData: (chunk) => {
 				if (term) {
 					term.write(chunk, () => {
@@ -1131,7 +1189,10 @@
 			{#if isSpectator}
 				<div class="line">
 					<span class="label">관전</span>
-					<code>tmux {spec.spectate}{spectatorPaneId ? ` · ${spectatorPaneId}` : ''}{spectatorCols ? ` · ${spectatorCols}×${spectatorRows}` : ''}</code>
+					<code>tmux {effectiveSession ?? '— 세션 미선택'}{spectatorPaneId ? ` · ${spectatorPaneId}` : ''}{spectatorCols ? ` · ${spectatorCols}×${spectatorRows}` : ''}</code>
+					{#if spec.spectatePicker && selectedSession}
+						<button type="button" class="picker-change" onclick={openPicker}>세션 변경</button>
+					{/if}
 				</div>
 			{:else if spec.bridge}
 				<div class="line"><span class="label">bridge</span><code>{spec.bridge}</code></div>
@@ -1207,6 +1268,12 @@
 				<div class="xterm-mount" bind:this={xtermContainer}></div>
 			</div>
 		</div>
+		{#if awaitingPick}
+			<div class="picker-empty">
+				<p>관전할 tmux 세션을 선택하세요.</p>
+				<button type="button" class="picker-pick" onclick={openPicker}>세션 선택</button>
+			</div>
+		{/if}
 		{#if isSpectator && !scrollState.atBottom}
 			<button
 				type="button"
@@ -1333,6 +1400,51 @@
 	onchange={onImageFilePicked}
 	style="display: none"
 />
+
+{#if pickerOpen}
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div
+		class="picker-overlay"
+		role="presentation"
+		onclick={closePicker}
+		onkeydown={(e) => { if (e.key === 'Escape') closePicker(); }}
+	>
+		<div
+			class="picker-panel"
+			role="dialog"
+			aria-modal="true"
+			aria-label="tmux 세션 선택"
+			tabindex="-1"
+			onclick={(e) => e.stopPropagation()}
+			onkeydown={(e) => e.stopPropagation()}
+		>
+			<div class="picker-head">
+				<span>tmux 세션</span>
+				<button type="button" bind:this={pickerCloseBtn} onclick={closePicker} aria-label="닫기">✕</button>
+			</div>
+			{#if pickerLoading}
+				<div class="picker-msg">불러오는 중…</div>
+			{:else if pickerError}
+				<div class="picker-msg error">{pickerError}</div>
+				<button type="button" class="picker-retry" onclick={openPicker}>다시 시도</button>
+			{:else if pickerSessions.length === 0}
+				<div class="picker-msg">실행 중인 tmux 세션이 없습니다.</div>
+			{:else}
+				<ul class="picker-list">
+					{#each pickerSessions as s (s.name)}
+						<li>
+							<button type="button" onclick={() => selectSession(s.name)}>
+								<span class="ps-name">{s.name}</span>
+								<span class="ps-meta">{s.windows}창 · {s.attached ? '●붙음' : '○'}{s.command ? ` · ${s.command}` : ''}</span>
+							</button>
+						</li>
+					{/each}
+				</ul>
+			{/if}
+		</div>
+	</div>
+{/if}
 
 {#if sendPopupOpen}
 	<div
@@ -1943,5 +2055,105 @@
 	   so .xterm fills the mount naturally — no override needed. */
 	.terminal-page:not(.spectator) .xterm-host :global(.xterm) {
 		height: 100%;
+	}
+
+	/* 세션 피커(런처) — 빈 spectate: 노트 */
+	.picker-empty {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 12px;
+		background: #1e1e1e;
+		color: #ddd;
+		z-index: 5;
+	}
+	.picker-pick,
+	.picker-change,
+	.picker-retry {
+		background: #2d6cdf;
+		color: #fff;
+		border: none;
+		border-radius: 6px;
+		padding: 8px 16px;
+		cursor: pointer;
+		font-size: 14px;
+	}
+	.picker-change {
+		padding: 2px 8px;
+		font-size: 12px;
+		margin-left: 8px;
+	}
+	.picker-overlay {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.5);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: var(--z-modal);
+	}
+	.picker-panel {
+		background: #252526;
+		color: #ddd;
+		border-radius: 8px;
+		min-width: min(420px, 92vw);
+		max-height: 70vh;
+		overflow: auto;
+		padding: 12px;
+	}
+	.picker-head {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 8px;
+		font-weight: 600;
+	}
+	.picker-head button {
+		background: none;
+		border: none;
+		color: #aaa;
+		cursor: pointer;
+		font-size: 16px;
+	}
+	.picker-msg {
+		padding: 16px;
+		text-align: center;
+		color: #bbb;
+	}
+	.picker-msg.error {
+		color: #f48771;
+	}
+	.picker-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+	.picker-list li button {
+		width: 100%;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		text-align: left;
+		background: #2d2d30;
+		border: 1px solid #3a3a3c;
+		border-radius: 6px;
+		padding: 8px 10px;
+		margin-bottom: 6px;
+		color: #eee;
+		cursor: pointer;
+	}
+	.picker-list li button:hover {
+		background: #37373a;
+	}
+	.ps-name {
+		font-family: monospace;
+		font-size: 14px;
+	}
+	.ps-meta {
+		font-size: 12px;
+		color: #9aa;
 	}
 </style>

@@ -804,3 +804,51 @@ describe('parseTerminalNote — spectate', () => {
 		expect(r).toMatchObject({ spectate: 'main', pinnedPane: undefined });
 	});
 });
+
+describe('parseTerminalNote — spectatePicker', () => {
+	it('빈 spectate: → spectatePicker===true, spectate===undefined, pinnedPane===undefined', () => {
+		const r = parseTerminalNote(doc('Title', 'ssh://you@desktop', 'spectate:'));
+		expect(r).not.toBeNull();
+		expect(r?.spectatePicker).toBe(true);
+		expect(r?.spectate).toBeUndefined();
+		expect(r?.pinnedPane).toBeUndefined();
+	});
+
+	it('후행 공백 있는 빈 spectate: → spectatePicker===true', () => {
+		const r = parseTerminalNote(doc('Title', 'ssh://you@desktop', 'spectate:   '));
+		expect(r).not.toBeNull();
+		expect(r?.spectatePicker).toBe(true);
+		expect(r?.spectate).toBeUndefined();
+	});
+
+	it('spectate: main → spectate===\'main\', spectatePicker falsy', () => {
+		const r = parseTerminalNote(doc('Title', 'ssh://you@desktop', 'spectate: main'));
+		expect(r).not.toBeNull();
+		expect(r?.spectate).toBe('main');
+		expect(r?.spectatePicker).toBeFalsy();
+	});
+
+	it('spectate: main:3 → spectate===\'main\', pinnedPane===3, spectatePicker falsy', () => {
+		const r = parseTerminalNote(doc('Title', 'ssh://you@desktop', 'spectate: main:3'));
+		expect(r).not.toBeNull();
+		expect(r?.spectate).toBe('main');
+		expect(r?.pinnedPane).toBe(3);
+		expect(r?.spectatePicker).toBeFalsy();
+	});
+
+	it('빈 spectate: 2개 → null', () => {
+		const r = parseTerminalNote(
+			doc('Title', 'ssh://you@desktop', 'spectate:', 'spectate:')
+		);
+		expect(r).toBeNull();
+	});
+
+	it('빈 spectate: + 값 있는 spectate: → null', () => {
+		// 두 줄 다 메타에 들어가지만(ssh + 2 spectate = 3, cap 통과) 두 번째
+		// spectate: 에서 sawSpectate 가드가 노트를 거부한다.
+		const r = parseTerminalNote(
+			doc('Title', 'ssh://you@desktop', 'spectate:', 'spectate: main')
+		);
+		expect(r).toBeNull();
+	});
+});
