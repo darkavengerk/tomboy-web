@@ -11,6 +11,18 @@
 import { controlMasterArgs } from './pty.js';
 import type { SshTarget } from './pty.js';
 
+/**
+ * Virtual PTY size the spectator claims (cols × rows) so it never becomes the
+ * smallest client under `window-size smallest` — the real desktop client wins.
+ * When ONLY a spectator is attached (desktop off/detached), the window resizes
+ * to exactly this, so it doubles as the "phone-alone" tmux panel size.
+ * Must stay large enough to exceed any real desktop client. Used by both the
+ * stty pre-attach claim (buildSpectatorSshArgs) and the refresh-client
+ * belt-and-suspenders in spectatorHub.ts — keep the two in sync via this const.
+ */
+export const SPECTATOR_VIRTUAL_COLS = 800;
+export const SPECTATOR_VIRTUAL_ROWS = 1440;
+
 export interface SpectatorCallbacks {
 	paneSwitch(info: {
 		paneId: string;
@@ -60,7 +72,7 @@ export function buildSpectatorSshArgs(
 	if (controlPath) args.push(...controlMasterArgs(controlPath));
 	args.push(target.user ? `${target.user}@${target.host}` : target.host);
 	args.push(
-		`stty cols 500 rows 200 2>/dev/null; stty raw -echo; exec tmux -CC attach -t ${session}`
+		`stty cols ${SPECTATOR_VIRTUAL_COLS} rows ${SPECTATOR_VIRTUAL_ROWS} 2>/dev/null; stty raw -echo; exec tmux -CC attach -t ${session}`
 	);
 	return args;
 }

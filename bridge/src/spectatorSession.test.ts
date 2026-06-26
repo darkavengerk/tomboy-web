@@ -8,7 +8,7 @@ test('buildSpectatorSshArgs: basic remote, no controlPath', () => {
 		'-tt',
 		'-o', 'StrictHostKeyChecking=accept-new',
 		'u@h',
-		'stty cols 500 rows 200 2>/dev/null; stty raw -echo; exec tmux -CC attach -t work'
+		'stty cols 800 rows 1440 2>/dev/null; stty raw -echo; exec tmux -CC attach -t work'
 	]);
 });
 
