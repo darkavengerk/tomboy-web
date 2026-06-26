@@ -337,7 +337,7 @@ test('client: unmatched block surfaces as spontaneousBlock', () => {
 
 test('client: initial-state dump does NOT steal a pending command response', async () => {
 	// Regression for the bootstrap-hang bug. The bridge writes `refresh-client
-	// -C 500x200` to ssh stdin immediately after spawning ssh, BEFORE tmux
+	// -C 800x1440` to ssh stdin immediately after spawning ssh, BEFORE tmux
 	// has emitted its initial-state dump. The pending queue has 1 entry. If
 	// the empty initial dump (flags=0) gets routed as a commandResponse it
 	// resolves refresh-client; the actual refresh-client response (flags=1)
@@ -347,7 +347,7 @@ test('client: initial-state dump does NOT steal a pending command response', asy
 	// both resolve with their own responses.
 	const upstream = new PassThrough();
 	const client = new TmuxControlClient(upstream);
-	const refresh = client.command('refresh-client -C 500x200');
+	const refresh = client.command('refresh-client -C 800x1440');
 	const disp = client.command(
 		`display-message -p -t s -F '#{session_id}|#{window_id}'`
 	);
