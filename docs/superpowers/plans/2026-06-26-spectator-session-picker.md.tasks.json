@@ -1,0 +1,46 @@
+{
+  "planPath": "docs/superpowers/plans/2026-06-26-spectator-session-picker.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: 파서 — 빈 spectate: → spectatePicker",
+      "status": "pending",
+      "description": "빈 spectate: 라인을 picker 모드로 인식. SPECTATE_RE +→*, TerminalNoteSpec.spectatePicker, sawSpectate 중복가드. TDD vitest. Verify: cd app && npx vitest run tests/unit/editor/parseTerminalNote.test.ts"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: 브릿지 — POST /sessions (parseSessionList + coerceTarget + listSessions)",
+      "status": "pending",
+      "description": "bridge/src/sessionList.ts 신규: parseSessionList(순수) + coerceTarget(보안: leading-dash 거부) + listSessions(isLocalTarget/buildSshExecArgs 재사용, execFile) + handleSessionList. server.ts /sessions 라우트. TDD node --test. Verify: cd bridge && npm test"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: 클라 — fetchSessions + SessionInfo",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "bridgeSettings.ts 에 fetchSessions + SessionInfo. bridgeToHttpBase 재사용, Bearer POST /sessions. Verify: cd app && npm run check"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: TerminalView — picker UI + 세션 선택/변경 + 모달",
+      "status": "pending",
+      "blockedBy": [1, 3],
+      "description": "isSpectator += spectatePicker. selectedSession/effectiveSession/awaitingPick 상태. onMount client 생성 awaitingPick 가드. spec.spectate→effectiveSession. openPicker/selectSession(→reconnect). 헤더 라벨+세션변경 버튼, 본문 오버레이, 모달 마크업+CSS. Verify: cd app && npm run check"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: 가이드 카드 (설정 → 가이드 → notes)",
+      "status": "pending",
+      "blockedBy": [4],
+      "description": "settings/+page.svelte notes 서브탭에 guide-card 추가. 빈 spectate: 런처 사용법(휘발/버튼흐름/데스크탑켜짐). Verify: cd app && npm run check"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: 전체 검증 (check + app test + bridge test)",
+      "status": "pending",
+      "blockedBy": [4, 5],
+      "description": "cd app && npm run check && npm run test; cd bridge && npm test. 모두 그린."
+    }
+  ],
+  "lastUpdated": "2026-06-26"
+}
