@@ -1,6 +1,7 @@
 <script lang="ts">
 	import NoteWindow from './NoteWindow.svelte';
 	import { desktopSession, DESKTOP_PINNED_Z } from './session.svelte.js';
+	import { sidePanelLayout } from './sidePanelLayout.svelte.js';
 	import { startPointerDrag } from './dragResize.js';
 
 	interface Props {
@@ -78,6 +79,8 @@
 				onmove={(g, x, y) => desktopSession.moveWindowOn(surface, g, x, y)}
 				onresize={(g, w, h) =>
 					desktopSession.updateGeometryOn(surface, g, { x: win.x, y: win.y, width: w, height: h })}
+				ondragend={(g, pointer, winTopLeft) =>
+					desktopSession.dropDraggedWindow(surface, g, winTopLeft, pointer, sidePanelLayout.railWidth)}
 				onopenlink={(t) => void desktopSession.openByTitle(t)}
 			/>
 		{/each}
