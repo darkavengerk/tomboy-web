@@ -26,7 +26,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { TmuxControlClient } from './tmuxControlClient.js';
-import { buildSpectatorSshArgs, SPECTATOR_VIRTUAL_COLS, SPECTATOR_VIRTUAL_ROWS, type SpectatorCallbacks, type SpectatorNavAction } from './spectatorSession.js';
+import { buildSpectatorSshArgs, spectatorVirtualSize, type SpectatorCallbacks, type SpectatorNavAction } from './spectatorSession.js';
 import type { SshTarget } from './pty.js';
 
 // ---------------------------------------------------------------------------
@@ -222,7 +222,8 @@ export class SpectatorHub {
 
 		try {
 			// refresh-client tolerates failure (tmux < 2.4 doesn't support -C flag)
-			try { await this.tmux.command(`refresh-client -C ${SPECTATOR_VIRTUAL_COLS}x${SPECTATOR_VIRTUAL_ROWS}`); } catch { /* tolerate */ }
+			const vsize = spectatorVirtualSize(session);
+			try { await this.tmux.command(`refresh-client -C ${vsize.cols}x${vsize.rows}`); } catch { /* tolerate */ }
 
 			const lines = await this.tmux.command(
 				`display-message -p -t ${session} -F ` +
