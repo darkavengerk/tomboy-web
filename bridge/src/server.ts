@@ -17,6 +17,7 @@ import { handleRagSearch } from './rag.js';
 import { handleOcrProxy } from './ocr.js';
 import { handleClaudeChat } from './claude.js';
 import { handleAutomationRun } from './automation.js';
+import { handleSessionList } from './sessionList.js';
 import { handleRemarkableUpload } from './remarkableUpload.js';
 import { handleMusicExtract, handleMusicEnumerate, handleMusicChapters, handleSunoPlaylist } from './music.js';
 import { handleHueDiscover, handleHuePair, handleHueClip, handleHueHealth, handleHueCredsDelete } from './hue.js';
@@ -171,6 +172,11 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 
 	if (url === '/automation/run' && req.method === 'POST') {
 		await handleAutomationRun(req, res, SECRET, AUTOMATION_SERVICE_URL);
+		return;
+	}
+
+	if (url === '/sessions' && req.method === 'POST') {
+		await handleSessionList(req, res, SECRET);
 		return;
 	}
 
