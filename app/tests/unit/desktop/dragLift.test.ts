@@ -68,4 +68,17 @@ describe('dragLift action', () => {
 		const comments = Array.from(parent.childNodes).filter((n) => n.nodeType === Node.COMMENT_NODE);
 		expect(comments).toHaveLength(0);
 	});
+
+	it('removes the lifted node on destroy (cross-surface MOVE unmount, no zombie left behind)', () => {
+		// A cross-surface drop MOVEs the note: its source NoteWindow unmounts while
+		// still lifted. The node was re-parented into `.drag-layer`, out of its
+		// Svelte block range, so Svelte's own teardown can't reach it — the action
+		// must remove it itself or an event-dead "zombie" lingers at the drop spot.
+		const h = dragLift(node, { lifted: false });
+		h?.update?.({ lifted: true });
+		expect(node.parentElement).toBe(layer);
+		h?.destroy?.();
+		expect(node.parentElement).toBeNull();
+		expect(layer.children).toHaveLength(0);
+	});
 });

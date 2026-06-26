@@ -5,8 +5,9 @@
 // position via a placeholder comment (robust to sibling reorders during the
 // drag). The component instance is untouched, so a same-surface drag keeps its
 // live TipTap editor (no remount). On a cross-surface drop the component
-// unmounts; destroy() just cleans the placeholder and lets Svelte remove the
-// node from wherever it currently lives.
+// unmounts while still lifted; because the node was re-parented OUT of its
+// Svelte block range, Svelte's own teardown can't reach it — so destroy() must
+// remove the node itself, or an event-dead "zombie" lingers in the drag layer.
 
 export interface DragLiftParams {
 	lifted: boolean;
@@ -52,6 +53,10 @@ export function dragLift(node: HTMLElement, params: DragLiftParams) {
 			else if (!p.lifted && isLifted) drop();
 		},
 		destroy() {
+			// Unmounted while still lifted (cross-surface MOVE replaced this window):
+			// the node sits in the drag layer, outside this block's range, so Svelte
+			// won't remove it. Pull it ourselves to avoid an orphaned zombie node.
+			if (isLifted && node.parentNode) node.parentNode.removeChild(node);
 			placeholder?.remove();
 			placeholder = null;
 		}
