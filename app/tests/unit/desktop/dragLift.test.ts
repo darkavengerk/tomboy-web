@@ -81,4 +81,35 @@ describe('dragLift action', () => {
 		expect(node.parentElement).toBeNull();
 		expect(layer.children).toHaveLength(0);
 	});
+
+	it('prefers the atomic moveBefore (no detach → preserves subtree scroll/focus)', () => {
+		// moveBefore (Chrome 133+) moves without detaching, so embedded 묶음/탭
+		// scroll + caret survive the reparent. Assert we route through it when present.
+		const moved: Array<[Node, Node | null]> = [];
+		(layer as unknown as { moveBefore: (n: Node, r: Node | null) => void }).moveBefore = (
+			n,
+			r
+		) => {
+			moved.push([n, r]);
+			if (r) layer.insertBefore(n, r);
+			else layer.appendChild(n);
+		};
+		const h = dragLift(node, { lifted: false });
+		h?.update?.({ lifted: true });
+		expect(moved).toHaveLength(1);
+		expect(moved[0][0]).toBe(node);
+		expect(node.parentElement).toBe(layer);
+	});
+
+	it('falls back to a plain move (still reparents correctly) when moveBefore is absent', () => {
+		// Firefox has no moveBefore: the action must still reparent, bracketed by a
+		// manual scroll/focus snapshot+restore (behaviour: node ends in the target).
+		delete (layer as unknown as { moveBefore?: unknown }).moveBefore;
+		delete (parent as unknown as { moveBefore?: unknown }).moveBefore;
+		const h = dragLift(node, { lifted: false });
+		h?.update?.({ lifted: true });
+		expect(node.parentElement).toBe(layer);
+		h?.update?.({ lifted: false });
+		expect(Array.from(parent.children)).toEqual([before, node, after]);
+	});
 });
