@@ -69,6 +69,7 @@
 	import { sync } from '$lib/sync/syncManager.js';
 	import type { JSONContent, Editor } from '@tiptap/core';
 	import { startPointerDrag } from './dragResize.js';
+	import { dragLift } from './dragLift.js';
 	import ResizeHandles from './ResizeHandles.svelte';
 	import NoteBgLayer from './NoteBgLayer.svelte';
 	import {
@@ -144,9 +145,16 @@
 		 *  moves this note out of the drawer and back into the current workspace.
 		 *  Unset on the canvas (a canvas note has nowhere to be ejected from). */
 		oneject?: (guid: string) => void;
-		/** Canvas-only: fired at title-bar drag-end with the viewport pointer so
-		 *  the host can move the window into an open drawer if released over it. */
-		ondragend?: (guid: string, pointer: { x: number; y: number }) => void;
+		/** Fired at drag-end with the viewport pointer AND the window's viewport
+		 *  top-left so the host can resolve which surface the note was dropped on
+		 *  (canvas or the open drawer) and move it there. Wired on both canvas and
+		 *  drawer windows — drag works in either direction. May return a promise so
+		 *  the lift is held until a cross-surface move settles. */
+		ondragend?: (
+			guid: string,
+			pointer: { x: number; y: number },
+			winTopLeft: { x: number; y: number }
+		) => void | Promise<void>;
 		onfocus: (guid: string) => void;
 		onclose: (guid: string) => void;
 		/** Minimize handler. Omitted by embedders without a taskbar (e.g. the
@@ -220,6 +228,16 @@
 	let isScheduleNote = $state(false);
 	let isMusicNote = $state(false);
 	let windowEl: HTMLDivElement | undefined = $state(undefined);
+	// Drag-lift: while `lifted`, the window is re-parented into the top-level
+	// `.drag-layer` (via the `dragLift` action) so it floats above the drawer
+	// panels and isn't clipped by `.canvas`/`.drawer`. `liftPos` is its VIEWPORT
+	// top-left during the drag (the drag-layer is fixed/inset:0, so absolute
+	// coords map straight to viewport). Surface geometry is frozen mid-drag; the
+	// drop is resolved in onEnd → ondragend.
+	let lifted = $state(false);
+	let liftPos = $state<{ x: number; y: number } | null>(null);
+	const renderX = $derived(lifted && liftPos ? liftPos.x : x);
+	const renderY = $derived(lifted && liftPos ? liftPos.y : y);
 	// Per-note background (local-only) + window opacity. Background is a CSS
 	// background on `.body` (behind the transparent editor content); opacity
 	// fades the whole window so stacked notes show through.
@@ -890,6 +908,41 @@
 		);
 	}
 
+	// Shared drag gesture for every move handle (title bar, Alt-drag, bundle
+	// title). Past a small threshold it LIFTS the window into the top-level
+	// drag-layer and follows the pointer in viewport coords — so it floats above
+	// the drawers and isn't clipped, regardless of F2/F3 toggling mid-drag. On
+	// release it hands the viewport pointer + window top-left to the host, which
+	// decides the destination surface. Surface geometry is untouched until then.
+	const DRAG_LIFT_THRESHOLD = 3;
+	function beginLift(e: PointerEvent) {
+		onfocus(guid);
+		const rect = windowEl?.getBoundingClientRect();
+		const baseX = rect?.left ?? 0;
+		const baseY = rect?.top ?? 0;
+		let active = false;
+		startPointerDrag(e, {
+			onMove: (dx, dy) => {
+				if (!active) {
+					if (Math.hypot(dx, dy) < DRAG_LIFT_THRESHOLD) return;
+					active = true;
+				}
+				liftPos = { x: baseX + dx, y: baseY + dy };
+				if (!lifted) lifted = true;
+			},
+			onEnd: async (pointer) => {
+				if (!active) return; // never crossed the threshold → treated as a click
+				const tl = liftPos ?? { x: baseX, y: baseY };
+				// Resolve the drop FIRST (same-surface = sync geometry update), then
+				// drop the lift — so the window returns to its slot already at the new
+				// position with no intermediate jump.
+				await ondragend?.(guid, pointer, { x: tl.x, y: tl.y });
+				lifted = false;
+				liftPos = null;
+			}
+		});
+	}
+
 	function handleWindowPointerDown(e: PointerEvent) {
 		// Always raise-to-top on any pointer inside the window.
 		onfocus(guid);
@@ -902,28 +955,14 @@
 		// suppress the inner handlers (title-bar, editor text selection, etc.).
 		e.preventDefault();
 		e.stopPropagation();
-		const origX = x;
-		const origY = y;
-		startPointerDrag(e, {
-			onMove: (dx, dy) => {
-				onmove(guid, origX + dx, origY + dy);
-			}
-		});
+		beginLift(e);
 	}
 
 	function startDrag(e: PointerEvent) {
 		// Don't start drag from the close button.
 		const targetEl = e.target as HTMLElement | null;
 		if (targetEl?.closest('[data-no-drag]')) return;
-		onfocus(guid);
-		const origX = x;
-		const origY = y;
-		startPointerDrag(e, {
-			onMove: (dx, dy) => {
-				onmove(guid, origX + dx, origY + dy);
-			},
-			onEnd: (pointer) => ondragend?.(guid, pointer)
-		});
+		beginLift(e);
 	}
 
 	// 전용 파일철 노트(탭::/묶음::)는 창 타이틀바를 숨기므로 드래그 이동 수단이
@@ -933,19 +972,10 @@
 	// startPointerDrag 의 포인터 캡처가 걸린다.
 	function handleBundleTitleDrag(e: PointerEvent) {
 		if (e.button !== 0) return;
-		onfocus(guid);
-		const origX = x;
-		const origY = y;
-		// 임계(4px) 전까진 창을 안 움직인다 — 번들 타이틀/탭은 클릭(선택) 겸용이라
-		// 작은 지터로 창이 흔들리면 안 된다. 임계 넘으면 그때부터 드래그 이동.
-		let dragging = false;
-		startPointerDrag(e, {
-			onMove: (dx, dy) => {
-				if (!dragging && Math.hypot(dx, dy) < 4) return;
-				dragging = true;
-				onmove(guid, origX + dx, origY + dy);
-			}
-		});
+		// 번들 타이틀/탭은 클릭(선택) 겸용이라 beginLift 의 임계(3px) 전까진 안
+		// 움직인다 — 작은 지터로 창이 흔들리지 않게. 임계 넘으면 리프트해서
+		// 서랍 위로 떠올라 일반 타이틀바와 동일하게 이동/드롭된다.
+		beginLift(e);
 	}
 
 	// 전용 묶음 노트 — 드롭된 노트를 본문 JSON 에 새 내부링크 항목으로 삽입+저장.
@@ -1244,9 +1274,11 @@
 	class="note-window"
 	class:hidden={hidden ?? !active}
 	class:minimized
+	class:lifting={lifted}
 	data-has-bg={noteBgUrl ? 'true' : 'false'}
-	style="left:{x}px; top:{y}px; width:{width}px; height:{height}px; z-index:{z};"
+	style="left:{renderX}px; top:{renderY}px; width:{width}px; height:{height}px; z-index:{z};"
 	style:background-color={`rgba(255, 255, 255, ${noteOpacity})`}
+	use:dragLift={{ lifted }}
 	onpointerdowncapture={handleWindowPointerDown}
 	onfocusin={handleFocusIn}
 	onfocusout={handleFocusOut}
@@ -1616,6 +1648,13 @@
 	.note-window.hidden,
 	.note-window.minimized {
 		display: none;
+	}
+
+	/* While drag-lifted the window lives inside `.drag-layer` (pointer-events:
+	   none host) — re-enable its own pointer events so the captured drag keeps
+	   delivering and the body stays interactive. */
+	.note-window.lifting {
+		pointer-events: auto;
 	}
 
 	.title-bar {

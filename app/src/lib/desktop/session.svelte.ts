@@ -399,6 +399,28 @@ function surfaceState(ref: SurfaceRef): WorkspaceState | null {
 	return drawers[ref.index] ?? null;
 }
 
+/**
+ * Viewport rectangle of drawer `index` as currently laid out — mirrors the CSS
+ * in DrawerOverlay. Index 0 = top (F2): anchored at rail+left, user width/height.
+ * Index 1 = right (F3): full height, hugging the right edge. Used by drag-drop
+ * hit-testing to decide whether a released window lands in the open drawer.
+ */
+function drawerViewportRect(
+	index: number,
+	railWidth: number
+): { left: number; top: number; right: number; bottom: number } {
+	const width = drawerWidths[index] ?? defaultDrawerWidth(index);
+	const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
+	const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
+	if (index === 0) {
+		const left = railWidth + (drawerLefts[index] ?? defaultDrawerLeft(index));
+		const height = drawerHeights[index] ?? DEFAULT_DRAWER_HEIGHT;
+		return { left, top: 0, right: left + width, bottom: height };
+	}
+	// Right drawer — slides in from the right edge, spans full viewport height.
+	return { left: vw - width, top: 0, right: vw, bottom: vh };
+}
+
 /** Mutate a window's geometry on an explicit surface, then cache + persist. */
 function mutateGeomOn(
 	ref: SurfaceRef,
@@ -1453,6 +1475,55 @@ export const desktopSession = {
 			{ kind: 'workspace', index: currentWorkspaceIndex },
 			guid
 		);
+	},
+
+	/**
+	 * Resolve a drag-release into a surface move or geometry update. `winTopLeft`
+	 * is the dragged window's viewport top-left at release; `pointer` the release
+	 * point. If the open drawer's viewport rect contains the pointer, the window
+	 * lands in that drawer; otherwise on the current-workspace canvas. winTopLeft
+	 * converts to target-surface-local coords (canvas: −railWidth; drawer: −rect
+	 * top-left). Same surface → geometry update (no remount). Cross surface →
+	 * moveWindowToSurface (MOVE). The drawer stays open either way.
+	 */
+	async dropDraggedWindow(
+		from: SurfaceRef,
+		guid: string,
+		winTopLeft: { x: number; y: number },
+		pointer: { x: number; y: number },
+		railWidth: number
+	): Promise<void> {
+		const src = surfaceState(from);
+		const srcWin = src?.windows.find((w) => w.guid === guid);
+		if (!srcWin) return; // missing guid → silent no-op
+		const srcW = srcWin.width;
+		const srcH = srcWin.height;
+
+		let to: SurfaceRef = { kind: 'workspace', index: currentWorkspaceIndex };
+		let origin = { x: railWidth, y: 0 }; // canvas origin in viewport
+		if (activeDrawer !== null) {
+			const rect = drawerViewportRect(activeDrawer, railWidth);
+			if (
+				pointer.x >= rect.left &&
+				pointer.x <= rect.right &&
+				pointer.y >= rect.top &&
+				pointer.y <= rect.bottom
+			) {
+				to = { kind: 'drawer', index: activeDrawer };
+				origin = { x: rect.left, y: rect.top };
+			}
+		}
+		const local = { x: winTopLeft.x - origin.x, y: winTopLeft.y - origin.y };
+		if (from.kind === to.kind && from.index === to.index) {
+			this.moveWindowOn(from, guid, local.x, local.y);
+			return;
+		}
+		await this.moveWindowToSurface(from, to, guid, local);
+		// Drag is WYSIWYG: the note lands where it was dropped at the size it was
+		// being dragged, overriding the target surface's remembered pose (which
+		// moveWindowToSurface restores on re-entry — right for button stash/eject,
+		// wrong for a visible drag).
+		this.updateGeometryOn(to, guid, { x: local.x, y: local.y, width: srcW, height: srcH });
 	},
 
 	isPinned(guid: string): boolean {

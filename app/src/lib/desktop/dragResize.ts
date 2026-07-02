@@ -64,9 +64,15 @@ export interface DragCallbacks {
 
 /**
  * Starts a drag gesture on the current pointer. `onMove` receives dx/dy
- * relative to the pointerdown position. The handler installs pointer capture
- * on the element that received the event so the drag continues even when
- * the pointer leaves the element (e.g. moved too fast off the title bar).
+ * relative to the pointerdown position.
+ *
+ * The move/up listeners live on `window`, NOT on the element — so the drag
+ * keeps tracking no matter how fast the pointer moves or where it goes. Pointer
+ * capture on the element is best-effort only: it's released the moment the
+ * element is re-parented (e.g. drag-lift moving the window into `.drag-layer`),
+ * which would silently freeze an element-listener drag on a fast flick. Captured
+ * events still bubble to `window`, and uncaptured events reach `window` too, so
+ * a window listener is the one reliable channel for both cases.
  */
 export function startPointerDrag(e: PointerEvent, { onMove, onEnd }: DragCallbacks): void {
 	// Ignore non-primary buttons (right-click, middle-click).
@@ -94,13 +100,13 @@ export function startPointerDrag(e: PointerEvent, { onMove, onEnd }: DragCallbac
 		} catch {
 			/* noop */
 		}
-		target.removeEventListener('pointermove', handleMove);
-		target.removeEventListener('pointerup', handleUp);
-		target.removeEventListener('pointercancel', handleUp);
+		window.removeEventListener('pointermove', handleMove);
+		window.removeEventListener('pointerup', handleUp);
+		window.removeEventListener('pointercancel', handleUp);
 		onEnd?.({ x: ev.clientX, y: ev.clientY });
 	};
 
-	target.addEventListener('pointermove', handleMove);
-	target.addEventListener('pointerup', handleUp);
-	target.addEventListener('pointercancel', handleUp);
+	window.addEventListener('pointermove', handleMove);
+	window.addEventListener('pointerup', handleUp);
+	window.addEventListener('pointercancel', handleUp);
 }

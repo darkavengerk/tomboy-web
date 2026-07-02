@@ -543,8 +543,23 @@
 		const pxPerLine = mountRect.height / term.rows;
 		const { lines, remainder } = accumulateTouchScroll(touchScrollRemainder, deltaPx, pxPerLine);
 		touchScrollRemainder = remainder;
-		// 손가락을 아래로 끌면 과거(위쪽) 출력이 드러나야 하므로 scrollLines 는 음수.
-		if (lines !== 0) term.scrollLines(-lines);
+		if (lines === 0) return;
+		// 손가락을 아래로 끌면 과거(위쪽) 출력이 드러나야 한다.
+		if (term.buffer.active.type === 'alternate') {
+			// Alt-screen TUI(claude code, vim 등)는 xterm 로컬 스크롤백이 없어
+			// term.scrollLines 가 no-op 이다. 데스크탑 휠이 동작하는 이유는 xterm
+			// 자체 휠 핸들러가 alt-screen 을 감지해 방향키(ESC [ A/B, 앱 커서 모드면
+			// ESC O A/B)로 변환해 활성 패널에 보내기 때문 — 같은 변환을 터치에도
+			// 적용한다. 보내기 팝업의 PgUp/PgDn 과 동일하게 키를 앱으로 전달한다.
+			const o = term.modes.applicationCursorKeysMode ? 'O' : '[';
+			const seq = '\x1b' + o + (lines > 0 ? 'A' : 'B');
+			if (pinnedOrdinal !== null) client?.selectPane(pinnedOrdinal);
+			// 한 프레임의 드래그 분량을 한 번의 send 로 — WS 프레임/ send-keys 호출 절약.
+			client?.send(seq.repeat(Math.abs(lines)));
+		} else {
+			// 일반 버퍼: 진짜 스크롤백이 있으므로 로컬 뷰포트를 움직인다.
+			term.scrollLines(-lines);
+		}
 	}
 
 	function onSpectatorTouchEnd(): void {
