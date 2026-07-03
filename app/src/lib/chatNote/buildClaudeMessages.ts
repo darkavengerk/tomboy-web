@@ -201,10 +201,14 @@ export function buildClaudeMessages(doc: JSONContent): AnthropicMessage[] {
  *
  * - Zero turns → []
  * - One turn (must be user, the send-bar gate guarantees this) → unchanged
- * - Multi turn → single user message: [text(history), ...latest user content]
+ * - Multi turn → single user message:
+ *   [...prior images, text(history), ...latest user content]
  *
  * History text format mirrors what's in the note ("Q:" / "A:" prefixes) so
- * Claude sees the same shape the user authored.
+ * Claude sees the same shape the user authored. Prior-turn images are carried
+ * as REAL image blocks (prepended, in encounter order, deduped by url/data)
+ * and referenced in the history text as numbered `[이미지 N]` markers —
+ * 문자열로만 뭉개면 후속 질문("이미지 읽어줘")에서 클로드가 그림을 못 본다.
  */
 function consolidateToSingleUser(messages: AnthropicMessage[]): AnthropicMessage[] {
   if (messages.length === 0) return [];
@@ -213,12 +217,26 @@ function consolidateToSingleUser(messages: AnthropicMessage[]): AnthropicMessage
 
   if (messages.length === 1) return [last];
 
+  const carried: ContentBlock[] = [];
+  const numberByKey = new Map<string, number>();
+  const markerFor = (b: ContentBlock): string => {
+    if (b.type !== 'image') return '';
+    const key = b.source.type === 'url' ? b.source.url : b.source.data;
+    let n = numberByKey.get(key);
+    if (n === undefined) {
+      n = numberByKey.size + 1;
+      numberByKey.set(key, n);
+      carried.push(b);
+    }
+    return `[이미지 ${n}]`;
+  };
+
   const lines: string[] = [];
   for (let i = 0; i < messages.length - 1; i++) {
     const m = messages[i];
     const label = m.role === 'user' ? 'Q' : 'A';
     const text = m.content
-      .map((b) => (b.type === 'text' ? b.text : '[이미지]'))
+      .map((b) => (b.type === 'text' ? b.text : markerFor(b)))
       .join('');
     lines.push(`${label}: ${text}`);
   }
@@ -227,7 +245,7 @@ function consolidateToSingleUser(messages: AnthropicMessage[]): AnthropicMessage
   return [
     {
       role: 'user',
-      content: [{ type: 'text', text: historyText }, ...last.content],
+      content: [...carried, { type: 'text', text: historyText }, ...last.content],
     },
   ];
 }
