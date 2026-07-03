@@ -1968,6 +1968,28 @@ effort: high
 				</details>
 
 				<details class="guide-card">
+					<summary>채팅 노트 (<code>claude://</code> / <code>llm://</code>) — 노트가 곧 대화</summary>
+					<p class="info-text">
+						본문 첫 줄이 <code>claude://</code>(Claude, 구독 OAuth) 또는
+						<code>llm://&lt;모델&gt;</code>(Ollama, 데스크탑)이면 <code>Q:</code>/<code>A:</code> 턴의
+						채팅 노트가 됩니다. 노트가 곧 대화 기록 — 히스토리를 고쳐 쓰면 다음 전송에 그대로 반영됩니다.
+					</p>
+					<pre class="snippet">claude://
+effort: high
+
+Q: 이 이미지 안 텍스트 읽어줘
+[이미지 붙여넣기]</pre>
+					<ul class="guide-list">
+						<li><strong>이미지 붙여넣기 지원</strong> — 큰 사진(4MB 초과)은 전송 시 자동으로 긴 변 1568px로 줄여 보냅니다. 원본은 노트에 그대로.</li>
+						<li><strong>업로드 중엔 전송 버튼이 잠깐 비활성</strong> — 업로드가 끝나야 이미지가 함께 전송됩니다.</li>
+						<li><strong>이전 턴의 이미지도 후속 질문에 유지</strong> — 히스토리 속 그림을 <code>[이미지 N]</code>으로 참조합니다.</li>
+						<li><strong>이미지 오류가 나면 사유가 표시</strong>됩니다(크기 초과 / 가져오기 실패 등).</li>
+						<li><strong>기본값(모델·effort·system)은 Claude 탭</strong>에서 설정 — 새 노트 헤더에 자동 채움.</li>
+						<li><strong>브릿지 연결 필요</strong> — 터미널 노트와 같은 브릿지 토큰 사용.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
 					<summary>노트 → 리마커블 PDF 송출 (컨텍스트 메뉴)</summary>
 					<p class="info-text">
 						데스크탑 노트 윈도우에서 우클릭 → "리마커블로 보내기" 를 누르면 현재 노트를
