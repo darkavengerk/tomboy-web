@@ -544,22 +544,12 @@
 		const { lines, remainder } = accumulateTouchScroll(touchScrollRemainder, deltaPx, pxPerLine);
 		touchScrollRemainder = remainder;
 		if (lines === 0) return;
-		// 손가락을 아래로 끌면 과거(위쪽) 출력이 드러나야 한다.
-		if (term.buffer.active.type === 'alternate') {
-			// Alt-screen TUI(claude code, vim 등)는 xterm 로컬 스크롤백이 없어
-			// term.scrollLines 가 no-op 이다. 데스크탑 휠이 동작하는 이유는 xterm
-			// 자체 휠 핸들러가 alt-screen 을 감지해 방향키(ESC [ A/B, 앱 커서 모드면
-			// ESC O A/B)로 변환해 활성 패널에 보내기 때문 — 같은 변환을 터치에도
-			// 적용한다. 보내기 팝업의 PgUp/PgDn 과 동일하게 키를 앱으로 전달한다.
-			const o = term.modes.applicationCursorKeysMode ? 'O' : '[';
-			const seq = '\x1b' + o + (lines > 0 ? 'A' : 'B');
-			if (pinnedOrdinal !== null) client?.selectPane(pinnedOrdinal);
-			// 한 프레임의 드래그 분량을 한 번의 send 로 — WS 프레임/ send-keys 호출 절약.
-			client?.send(seq.repeat(Math.abs(lines)));
-		} else {
-			// 일반 버퍼: 진짜 스크롤백이 있으므로 로컬 뷰포트를 움직인다.
-			term.scrollLines(-lines);
-		}
+		// 손가락을 아래로 끌면 과거(위쪽) 출력이 드러나야 한다. alt-screen 은
+		// 위 분기에서 PgUp/PgDn 전송 후 이미 return — 여기는 일반 버퍼뿐이라
+		// 로컬 뷰포트만 움직인다. (옛 방향키 변환 분기는 PgUp/PgDn 통일
+		// (c4153fbf) 이후 도달 불가 죽은 코드였고 svelte-check 타입 에러의
+		// 원인이었다.)
+		term.scrollLines(-lines);
 	}
 
 	function onSpectatorTouchEnd(): void {
@@ -697,7 +687,12 @@
 	function handleWindowKeydown(e: KeyboardEvent): void {
 		if (!isSpectator || isMobile || !client || !pageEl) return;
 		const active = document.activeElement;
-		if (active && active !== document.body && !pageEl.contains(active)) return;
+		// 엄격 포함 검사 — body/null 포커스를 통과시키면 데스크탑에서 관전
+		// 창이 2개 이상일 때 모든 인스턴스가 같은 Ctrl+L 을 처리한다(각자
+		// 자기 세션에 next-pane + 무장 창은 sticky 시퀀스까지 전송). 데스크탑은
+		// 페이지 클릭마다 refocusTerminal 이 xterm 에 포커스를 되돌리므로
+		// 실사용에서 포커스가 body 에 머무는 경우는 드물다.
+		if (!active || !pageEl.contains(active)) return;
 
 		// 더블탭 분기 — Ctrl/Alt/Shift 단독 키. 두 번째 탭이 윈도우 안이면
 		// 토글, 아니면 첫 탭 등록. 단독 modifier keydown 자체는 어차피 셸로
@@ -926,6 +921,35 @@
 				// (스크롤백 열람 → 전체 높이, 다시 라이브 → 콘텐츠 분량).
 				applySpectatorFit();
 			});
+
+			// 데스크탑 휠 스크롤. xterm 기본 휠 핸들러는 alt-screen + 마우스 추적
+			// OFF 일 때 방향키(ESC O/[ A/B)로 폴백하는데, claude code 는 이를
+			// 스크롤이 아니라 커서 이동으로 처리하고 "use PgUp/PgDn to scroll"
+			// 경고를 띄운다. 이 커스텀 핸들러는 **마우스 추적이 꺼져 있을 때만**
+			// 호출되므로(켜져 있으면 xterm 이 마우스 휠 이벤트를 직접 보냄 →
+			// 그대로 스크롤됨), 그 폴백 케이스에서만 PgUp/PgDn 으로 대체하고
+			// false 를 반환해 방향키 폴백을 막는다. 일반 버퍼(진짜 스크롤백)는
+			// true 를 반환해 xterm 로컬 스크롤백을 그대로 쓴다. 모바일 터치
+			// 핸들러(onSpectatorTouchMove)의 alt-screen 분기와 같은 키.
+			let lastWheelKeyAt = 0;
+			term.attachCustomWheelEventHandler((e) => {
+				if (term && term.buffer.active.type === 'alternate') {
+					// PgUp/PgDn 은 페이지 단위라, 트랙패드 관성처럼 휠 이벤트가
+					// 한 번에 수십 개 쏟아지면 페이지가 폭주한다. 60ms 스로틀로
+					// 마우스 노치(이산) = 1 페이지, 트랙패드 플릭 = 상한선. 스로틀로
+					// 건너뛴 이벤트도 false 를 반환해 방향키 폴백은 무조건 막는다.
+					const now = performance.now();
+					if (now - lastWheelKeyAt >= 60) {
+						lastWheelKeyAt = now;
+						// 휠 위(deltaY<0) = 과거로 → PgUp, 아래 = PgDn.
+						const seq = e.deltaY < 0 ? '\x1b[5~' : '\x1b[6~';
+						if (pinnedOrdinal !== null) client?.selectPane(pinnedOrdinal);
+						client?.send(seq);
+					}
+					return false;
+				}
+				return true;
+			});
 		}
 
 		// 빈 spectate: 피커 노트 + 미선택 → 초기 WS 연결 보류. 사용자가
@@ -1129,7 +1153,10 @@
 	}
 
 	function reconnect() {
-		if (!resolvedBridge || !resolvedToken) return;
+		// awaitingPick 중에는 연결 금지 — effectiveSession 이 undefined 라
+		// wsClient 가 connect 프레임에 mode:'spectate' 를 넣지 않아 브릿지가
+		// 일반 대화형 셸(쓰기 가능!)을 스폰해 버린다. 세션 선택이 먼저다.
+		if (!resolvedBridge || !resolvedToken || awaitingPick) return;
 		resetSpectatorState(); // clear stale pane info so buttons reflect the new session
 		pinUnavailableInfo = null; // clear unavailable banner on reconnect
 		connectFired = false; // allow connect: script to re-run on next 'open'
@@ -1252,7 +1279,7 @@
 				{:else if status === 'closed'}끊김
 				{:else}오류{/if}
 			</span>
-			<button type="button" onclick={reconnect} disabled={!resolvedBridge}>재연결</button>
+			<button type="button" onclick={reconnect} disabled={!resolvedBridge || awaitingPick}>재연결</button>
 			<button type="button" onclick={onedit}>편집 모드</button>
 		</div>
 	</div>
@@ -1449,7 +1476,11 @@
 			aria-label="tmux 세션 선택"
 			tabindex="-1"
 			onclick={(e) => e.stopPropagation()}
-			onkeydown={(e) => e.stopPropagation()}
+			onkeydown={(e) => {
+				// send-modal 과 동일 — Escape 는 닫고 나머지만 격리.
+				if (e.key === 'Escape' && !e.isComposing) closePicker();
+				e.stopPropagation();
+			}}
 		>
 			<div class="picker-head">
 				<span>tmux 세션</span>
@@ -1488,10 +1519,17 @@
 		<div
 			class="send-modal"
 			role="dialog"
+			aria-modal="true"
 			aria-label="명령 전송"
 			tabindex="-1"
 			onclick={(e) => e.stopPropagation()}
-			onkeydown={(e) => e.stopPropagation()}
+			onkeydown={(e) => {
+				// 버튼 등 비-input 포커스에서도 Escape 로 닫히게 여기서 직접
+				// 처리 — 무조건 stopPropagation 만 하면 오버레이의 Escape
+				// 핸들러에 이벤트가 도달하지 못해 무동작이 된다.
+				if (e.key === 'Escape' && !e.isComposing) closeSendPopup();
+				e.stopPropagation();
+			}}
 		>
 			<div class="send-title">활성 패널로 전송</div>
 			{#if stickyMods.ctrl || stickyMods.alt || stickyMods.shift}
@@ -1499,7 +1537,7 @@
 					{#if stickyMods.ctrl}<span class="badge-tag">Ctrl+</span>{/if}
 					{#if stickyMods.alt}<span class="badge-tag">Alt+</span>{/if}
 					{#if stickyMods.shift}<span class="badge-tag">Shift+</span>{/if}
-					<span class="badge-desc">다음 키에 적용됩니다</span>
+					<span class="badge-desc">입력 첫 글자에 적용됩니다 (빠른 키 제외)</span>
 				</div>
 			{/if}
 			<input
@@ -1745,6 +1783,19 @@
 		padding: 4px 8px;
 		font-size: 0.85rem;
 		cursor: pointer;
+		/* 더블탭 줌 300ms 지연 제거 — footer 는 연타하는 컨트롤. */
+		touch-action: manipulation;
+	}
+	/* 터치 기기: 칩 ~20px 높이는 오탭 지대(WCAG 2.5.8 최소 24px 미달).
+	   footer 전체 버튼을 손가락 크기로 키운다 — 마우스 데스크탑은 원래 크기. */
+	@media (pointer: coarse) {
+		.spec-footer button {
+			min-height: 36px;
+		}
+		.spec-windowbar .sticky-chip {
+			padding: 5px 12px;
+			min-height: 28px;
+		}
 	}
 	.spec-footer button.icon {
 		padding: 4px 9px;
@@ -1956,16 +2007,24 @@
 		border-top: 1px solid #111;
 	}
 
-	/* Spectator 보내기 modal */
+	/* Spectator 보내기 modal.
+	   상단 정렬 + max-height/overflow 필수 — 팝업이 input 자동포커스로 OSK를
+	   즉시 띄우는데, iOS는 interactive-widget=resizes-content 를 무시하고
+	   키보드를 오버레이하므로 중앙 정렬 모달의 하단 액션 행(취소/타이핑만/
+	   엔터로 실행)이 키보드 뒤로 잠긴다. sticky 배지가 붙는 무장 상태에서는
+	   한 줄 더 밀려 그 자리를 탭하면 빠른 키가 오격발됐다(딴 곳 터치 버그).
+	   --keyboard-inset 은 lib/viewport/viewportHeight.ts 가 <html> 에 게시
+	   (설정 토글 OFF 면 미정의 → 0px 폴백, max-height 캡이 안전망). */
 	.send-overlay {
 		position: fixed;
 		inset: 0;
 		background: rgba(0, 0, 0, 0.55);
 		display: flex;
-		align-items: center;
+		align-items: flex-start;
 		justify-content: center;
 		z-index: var(--z-modal);
 		padding: 16px;
+		padding-bottom: calc(16px + var(--keyboard-inset, 0px));
 	}
 	.send-modal {
 		background: #2a2a2a;
@@ -1974,6 +2033,8 @@
 		border-radius: 8px;
 		padding: 14px 14px 12px;
 		width: min(420px, 100%);
+		max-height: 100%;
+		overflow-y: auto;
 		display: flex;
 		flex-direction: column;
 		gap: 10px;
@@ -2036,6 +2097,13 @@
 		font-size: 0.78rem;
 		font-family: ui-monospace, Menlo, Consolas, monospace;
 		cursor: pointer;
+		touch-action: manipulation;
+	}
+	@media (pointer: coarse) {
+		.send-quick button,
+		.send-actions button {
+			min-height: 36px;
+		}
 	}
 	.send-quick button:active {
 		background: #4a4a4a;
@@ -2063,6 +2131,11 @@
 		display: flex;
 		gap: 6px;
 		justify-content: flex-end;
+		/* 모달이 스크롤될 때도 액션 행은 항상 도달 가능하게 하단 고정.
+		   배경으로 스크롤되는 빠른 키가 비쳐 보이지 않게 한다. */
+		position: sticky;
+		bottom: 0;
+		background: #2a2a2a;
 	}
 	.send-actions button {
 		background: #3a3a3a;
