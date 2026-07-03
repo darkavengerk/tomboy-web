@@ -16,8 +16,8 @@
  *    해 빈 줄(= Tomboy 라인 모델의 빈 paragraph)을 날린다. clipboardTextParser
  *    로 한 줄 = paragraph, 빈 줄 = 빈 paragraph 로 대체한다.
  *
- * 3. **붙여넣기의 마크다운 불릿 인식.** `- ` / `* ` / `+ ` 로 시작하는 줄은
- *    타이핑할 때 TipTap input rule 이 불릿 리스트로 바꾸지만, 붙여넣기는
+ * 3. **붙여넣기의 마크다운 인식(불릿 + 헤딩).** `- ` / `* ` / `+ ` 로 시작하는
+ *    줄은 타이핑할 때 TipTap input rule 이 불릿 리스트로 바꾸지만, 붙여넣기는
  *    input rule 을 타지 않아 그대로 텍스트(마커 포함)가 됐다. 이건
  *    `transformPasted` 에서 처리한다 — clipboardTextParser(plain 전용)가
  *    아니라 transformPasted 인 이유: 실제 클립보드는 보통 text/html 도 함께
@@ -25,8 +25,19 @@
  *    `- ` 가 평문으로 남았다. transformPasted 는 text·html **양쪽 경로**의
  *    최종 Slice 에 모두 적용되므로 출처와 무관하게 동작한다. 연속한 불릿
  *    문단을 묶어 bulletList 로 만들고(들여쓰기 = 중첩) 마커를 떼어낸다.
- *    순서 리스트(`1.`)는 비지원이라 그냥 텍스트로 남는다(아카이버가
- *    직렬화 못 함).
+ *    `#`~`######` 로 시작하는 줄은 size 마크(huge/large) 문단으로 바꾼다 —
+ *    Tomboy 엔 heading 노드가 없어(아카이버가 직렬화 못 함 → 저장 시 소실)
+ *    `<size>` 마크로 표현하기 때문. 외부 `<h1>`~`<h6>` HTML 노드도 같은
+ *    이유로 size 마크 문단으로 변환한다. 굵게(`**`)·기울임(`*`)·취소선(`~~`)은
+ *    StarterKit 의 mark pasteRule 이 이미 처리한다. 순서 리스트(`1.`)는 비지원
+ *    이라 그냥 텍스트로 남는다(아카이버가 직렬화 못 함).
+ *
+ *    **인라인 슬라이스 함정.** 앱/웹/메신저에서 한 줄만 복사하면 클립보드의
+ *    text/html 이 블록(`<p>`)이 아니라 인라인(span/text)이라 PM 이 인라인
+ *    슬라이스로 파싱한다. 문단 기반 로직이 이를 못 잡아 `- 입력` 이 평문으로
+ *    남던 실사용 버그가 있었다. `maybeBlockifyInlineSlice` 가 인라인 슬라이스가
+ *    마커로 시작할 때만 문단으로 승격해 커버한다(마커 없으면 그대로 둬 줄 중간
+ *    붙여넣기 병합을 보존).
  *
  * 마커 텍스트([^N], [x], ( ) 등)의 atom 재조립도 각 노드의 transformPasted
  * 가 같은 단계에서 수행한다(PM someProp 는 모든 플러그인의 transformPasted 를
@@ -135,8 +146,123 @@ function stripLeadingMarker(inline: PMNode[]): BulletItem | null {
 	return { indent, content };
 }
 
-/** 문단(또는 para 그대로) | 불릿 항목 — transformPasted 중간 표현. */
-type Unit = { bullet: BulletItem } | { para: PMNode };
+// ───────────────────────── 마크다운 헤딩 변환 ─────────────────────────
+
+/**
+ * 문단 선두의 마크다운 헤딩 마커(`#`~`######` + 공백 1칸 이상 + 내용).
+ * 공백 뒤 실제 내용이 있어야 매칭 — `#해시태그`(공백 없음)·`### `(내용 없음)은
+ * 제외. Tomboy 는 heading 노드가 없고(아카이버가 직렬화 못 함 → 저장 시 소실)
+ * 대신 `<size:huge/large>` 마크로 큰 글자를 표현하므로 헤딩을 size 마크로 바꾼다.
+ */
+const LEADING_HEADING_RE = /^(#{1,6})[ \t]+(?=\S)/;
+
+/** 헤딩 레벨(1~6) → Tomboy size 레벨. 큰 글자는 huge/large 둘뿐. */
+function headingSizeLevel(level: number): 'huge' | 'large' {
+	return level <= 1 ? 'huge' : 'large';
+}
+
+interface HeadingItem {
+	/** 마크다운 헤딩 레벨(# 개수). */
+	level: number;
+	/** 마커 제거 후 남은 인라인 노드들. */
+	content: PMNode[];
+}
+
+/** 텍스트 노드 배열의 각 텍스트에 size 마크를 얹어 반환(atom 등 비텍스트는 그대로). */
+function addSizeMark(inline: PMNode[], level: number, schema: Schema): PMNode[] {
+	const sizeMark = schema.marks.tomboySize;
+	if (!sizeMark) return inline;
+	const mark = sizeMark.create({ level: headingSizeLevel(level) });
+	return inline.map((n) => (n.isText ? n.mark(mark.addToSet(n.marks)) : n));
+}
+
+/**
+ * 인라인 노드 배열의 선두 헤딩 마커를 떼고 {level, content} 반환, 아니면 null.
+ * size 마크가 스키마에 없으면(비Tomboy 에디터) 항상 null — 헤딩 취급 안 함.
+ */
+function stripLeadingHeading(inline: PMNode[], schema: Schema): HeadingItem | null {
+	if (!schema.marks.tomboySize) return null;
+	const first = inline[0];
+	if (!first || !first.isText || typeof first.text !== 'string') return null;
+	const m = LEADING_HEADING_RE.exec(first.text);
+	if (!m) return null;
+	const markerLen = m[0].length;
+	const content: PMNode[] = [];
+	inline.forEach((child, index) => {
+		if (index === 0) {
+			const rest = child.cut(markerLen); // 마커 이후 텍스트(마크 유지)
+			if (rest.text && rest.text.length) content.push(rest);
+		} else {
+			content.push(child);
+		}
+	});
+	if (!content.length) return null;
+	return { level: m[1].length, content };
+}
+
+function makeHeadingParagraph(item: HeadingItem, schema: Schema): PMNode {
+	return schema.nodes.paragraph.create(
+		null,
+		Fragment.fromArray(addSizeMark(item.content, item.level, schema))
+	);
+}
+
+/**
+ * 붙여넣기 Slice 안의 heading 노드(외부 `<h1>`~`<h6>` HTML)를 size 마크 문단으로
+ * 바꾼다. heading 은 Tomboy .note XML 로 직렬화되지 않아(저장 시 소실) 그대로
+ * 두면 안 된다. 변경 없으면 같은 Fragment 를 돌려준다.
+ */
+function convertHeadingNodes(frag: Fragment, schema: Schema): Fragment {
+	const { heading, paragraph } = schema.nodes;
+	if (!heading || !paragraph || !schema.marks.tomboySize) return frag;
+	let changed = false;
+	const out = fragToArray(frag).map((node) => {
+		if (node.type !== heading) return node;
+		changed = true;
+		const level = (node.attrs?.level as number | undefined) ?? 1;
+		return paragraph.create(
+			null,
+			Fragment.fromArray(addSizeMark(fragToArray(node.content), level, schema))
+		);
+	});
+	return changed ? Fragment.fromArray(out) : frag;
+}
+
+/**
+ * 인라인 슬라이스(한 줄 복사의 text/html 이 블록 `<p>` 가 아니라 span/text 라
+ * PM 이 인라인으로 파싱한 경우)가 불릿/헤딩 마커로 시작하면 문단으로 승격한다.
+ * 아래 문단 기반 로직이 블록 문단만 잡기 때문 — 이게 없으면 실제 클립보드의
+ * 한 줄 `- 입력` 붙여넣기에서 마커가 평문으로 남는다. 마커가 없으면 null 을
+ * 돌려 인라인 슬라이스를 그대로 둔다(줄 중간 붙여넣기 병합 보존).
+ */
+function maybeBlockifyInlineSlice(slice: Slice, schema: Schema): Slice | null {
+	const { paragraph, hardBreak } = schema.nodes;
+	if (!paragraph) return null;
+	const first = slice.content.firstChild;
+	if (!first || first.isBlock) return null; // 이미 블록 — 기존 로직이 처리
+
+	const segments: PMNode[][] = [[]];
+	slice.content.forEach((child) => {
+		if (hardBreak && child.type === hardBreak) segments.push([]);
+		else segments[segments.length - 1].push(child);
+	});
+	while (segments.length > 1 && segments[segments.length - 1].length === 0) segments.pop();
+
+	const hasMarker = segments.some(
+		(seg) => stripLeadingMarker(seg) || stripLeadingHeading(seg, schema)
+	);
+	if (!hasMarker) return null;
+
+	const paras = segments.map((seg) =>
+		paragraph.create(null, seg.length ? Fragment.fromArray(seg) : undefined)
+	);
+	return new Slice(Fragment.fromArray(paras), 0, 0);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+
+/** 문단(또는 para 그대로) | 불릿 항목 | 헤딩 항목 — transformPasted 중간 표현. */
+type Unit = { bullet: BulletItem } | { heading: HeadingItem } | { para: PMNode };
 
 /**
  * 문단을 hardBreak 기준 시각 줄로 쪼개 불릿/문단 unit 배열로. 불릿이 하나도
@@ -160,19 +286,25 @@ function splitParagraphUnits(node: PMNode, schema: Schema): Unit[] | null {
 	while (segments.length > 1 && segments[segments.length - 1].length === 0) segments.pop();
 
 	const units: Unit[] = [];
-	let anyBullet = false;
+	let anyMarker = false;
 	for (const seg of segments) {
-		const item = stripLeadingMarker(seg);
-		if (item) {
-			units.push({ bullet: item });
-			anyBullet = true;
-		} else {
-			units.push({
-				para: paragraph.create(null, seg.length ? Fragment.fromArray(seg) : undefined)
-			});
+		const bullet = stripLeadingMarker(seg);
+		if (bullet) {
+			units.push({ bullet });
+			anyMarker = true;
+			continue;
 		}
+		const heading = stripLeadingHeading(seg, schema);
+		if (heading) {
+			units.push({ heading });
+			anyMarker = true;
+			continue;
+		}
+		units.push({
+			para: paragraph.create(null, seg.length ? Fragment.fromArray(seg) : undefined)
+		});
 	}
-	return anyBullet ? units : null;
+	return anyMarker ? units : null;
 }
 
 interface BulletTreeNode extends BulletItem {
@@ -263,20 +395,31 @@ function stripExistingListMarkers(frag: Fragment, schema: Schema): Fragment {
 }
 
 /**
- * 붙여넣기 Slice 의 마크다운 불릿 정리. 두 경로를 모두 커버:
+ * 붙여넣기 Slice 의 마크다운 정리. 네 경로를 모두 커버:
+ *  0) 인라인 슬라이스(한 줄 복사)가 마커로 시작 → 문단으로 승격.
+ *  1) heading 노드(외부 `<h1>`~`<h6>`) → size 마크 문단(라운드트립 안전).
  *  A) 이미 진짜 리스트인데 항목 텍스트에 `- ` 가 남은 경우 → 마커 제거.
- *  B) `- ` 로 시작하는 평문 문단/줄 → bulletList 로 묶기(들여쓰기 = 중첩).
+ *  B) `- ` 로 시작하는 평문 문단/줄 → bulletList 로 묶기(들여쓰기 = 중첩);
+ *     `#`~`######` 로 시작하는 줄 → size 마크 문단(헤딩).
  * 변환이 없으면 원본 Slice 를 그대로 돌려준다(객체 동일성 유지).
  */
 export function transformPastedBullets(slice: Slice, schema: Schema): Slice {
 	const { bulletList, paragraph } = schema.nodes;
 	if (!bulletList || !paragraph) return slice; // 스키마에 불릿 없음 — no-op
 
-	// A) 기존 리스트 항목의 선두 마커 제거.
-	const stripped = stripExistingListMarkers(slice.content, schema);
-	const strippedChanged = stripped !== slice.content;
+	// 0) 인라인 슬라이스가 마커로 시작하면 블록 문단으로 승격.
+	const blockified = maybeBlockifyInlineSlice(slice, schema);
+	const base = blockified ?? slice;
 
-	// B) 최상위 문단을 시각 줄 단위 unit 으로 펼친다(불릿 있는 문단만).
+	// 1) heading 노드 → size 마크 문단.
+	const headingConverted = convertHeadingNodes(base.content, schema);
+	const headingChanged = headingConverted !== base.content;
+
+	// A) 기존 리스트 항목의 선두 마커 제거.
+	const stripped = stripExistingListMarkers(headingConverted, schema);
+	const strippedChanged = stripped !== headingConverted;
+
+	// B) 최상위 문단을 시각 줄 단위 unit 으로 펼친다(불릿/헤딩 있는 문단만).
 	const units: Unit[] = [];
 	let grouped = false;
 	stripped.forEach((node) => {
@@ -289,13 +432,14 @@ export function transformPastedBullets(slice: Slice, schema: Schema): Slice {
 		}
 	});
 
-	if (!strippedChanged && !grouped) return slice;
+	if (!blockified && !headingChanged && !strippedChanged && !grouped) return slice;
 	if (!grouped) {
-		// A 만 적용 — 구조는 그대로, open 깊이 유지.
-		return new Slice(stripped, slice.openStart, slice.openEnd);
+		// 0/1/A 만 적용 — 구조는 그대로, open 깊이 유지.
+		return new Slice(stripped, base.openStart, base.openEnd);
 	}
 
 	// 연속한 불릿 unit 을 bulletList 하나로 묶는다(들여쓰기 = 중첩).
+	// 헤딩 unit 은 size 마크 문단으로, 나머지는 문단 그대로.
 	const out: PMNode[] = [];
 	let i = 0;
 	while (i < units.length) {
@@ -308,6 +452,9 @@ export function transformPastedBullets(slice: Slice, schema: Schema): Slice {
 				i++;
 			}
 			out.push(makeBulletList(buildBulletForest(run), schema));
+		} else if ('heading' in u) {
+			out.push(makeHeadingParagraph(u.heading, schema));
+			i++;
 		} else {
 			out.push(u.para);
 			i++;
@@ -316,8 +463,8 @@ export function transformPastedBullets(slice: Slice, schema: Schema): Slice {
 
 	// 가장자리가 리스트로 바뀌었으면 닫힘(0) — 리스트는 통째 블록으로 삽입.
 	// 그대로 문단이면 원래 open 깊이 유지(현재 줄로 텍스트 병합).
-	const openStart = out[0]?.type === bulletList ? 0 : slice.openStart;
-	const openEnd = out[out.length - 1]?.type === bulletList ? 0 : slice.openEnd;
+	const openStart = out[0]?.type === bulletList ? 0 : base.openStart;
+	const openEnd = out[out.length - 1]?.type === bulletList ? 0 : base.openEnd;
 	return new Slice(Fragment.fromArray(out), openStart, openEnd);
 }
 
