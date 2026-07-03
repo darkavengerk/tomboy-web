@@ -897,6 +897,10 @@ import { MUSIC_CONTROL_GUID } from "$lib/music/musicControlNote.js";
 				onblur?.();
 			},
 			editorProps: {
+				// Kill the browser's native red/blue spellcheck squiggles — note
+				// content is Korean prose, filenames, code, links; the underlines
+				// are visual noise, not useful signal.
+				attributes: { spellcheck: "false" },
 				// Downward caret reveals are owned by installCursorVisibility()
 				// (it knows the live --toolbar-height and the true visual-viewport
 				// bottom incl. offsetTop). The old static scrollMargin/Threshold
