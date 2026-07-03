@@ -121,6 +121,7 @@ import { MUSIC_CONTROL_GUID } from "$lib/music/musicControlNote.js";
 		BridgeFileUploadError,
 	} from "$lib/sync/bridgeFileUpload.js";
 	import { pushToast, dismissToast } from "$lib/stores/toast.js";
+	import { beginImageUpload, endImageUpload } from "$lib/editor/imageUploadTracker.svelte.js";
 	import { Extension } from "@tiptap/core";
 	import { insertTodayDate } from "./insertDate.js";
 	import { insertTable } from "./insertTable.js";
@@ -1678,6 +1679,9 @@ import { MUSIC_CONTROL_GUID } from "$lib/music/musicControlNote.js";
 		if (!ed) return;
 
 		const toastId = pushToast("이미지 업로드 중…", { timeoutMs: 0 });
+		// 업로드가 끝나야 URL 노드가 doc에 들어간다 — 그 사이 채팅 전송을
+		// 막도록 카운터를 올린다 (paste→send 레이스, ChatSendBar 게이트).
+		beginImageUpload(ed);
 		try {
 			const url = await uploadTempImage(file);
 			dismissToast(toastId);
@@ -1699,6 +1703,8 @@ import { MUSIC_CONTROL_GUID } from "$lib/music/musicControlNote.js";
 			dismissToast(toastId);
 			const msg = err instanceof Error ? err.message : String(err);
 			pushToast(`이미지 업로드 실패: ${msg}`, { kind: "error" });
+		} finally {
+			endImageUpload(ed);
 		}
 	}
 

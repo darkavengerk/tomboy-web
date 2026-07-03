@@ -20,6 +20,7 @@
 	} from '$lib/chatNote/backends/claude.js';
 	import { formatClaudeError } from '$lib/chatNote/formatClaudeError.js';
 	import { prepareImagesForSend } from '$lib/chatNote/imageSendPrep.js';
+	import { pendingImageUploads } from '$lib/editor/imageUploadTracker.svelte.js';
 	import {
 		setStep,
 		clearStep
@@ -75,7 +76,10 @@
 		sending ||
 			!spec ||
 			!spec.trailingEmptyUserTurn ||
-			lastUserContent.trim() === ''
+			lastUserContent.trim() === '' ||
+			// 이미지 업로드가 끝나야 URL 노드가 doc에 들어간다 — 그 전에
+			// 보내면 이미지 없는 요청이 나감 (paste→send 레이스)
+			pendingImageUploads(editor) > 0
 	);
 
 	function appendParagraph(text: string): void {
