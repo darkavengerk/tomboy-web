@@ -101,6 +101,35 @@ describe('dragLift action', () => {
 		expect(node.parentElement).toBe(layer);
 	});
 
+	it('restores descendant scrollTop even when moveBefore is used (moveBefore does NOT preserve scroll)', () => {
+		// The bug: moveBefore preserves focus/media but NOT scrollTop, so the
+		// embedded 묶음/탭 body still jumped to top. atomicMove must snapshot+restore
+		// scroll around BOTH the moveBefore and the plain-move paths.
+		const scroller = document.createElement('div');
+		let st = 100;
+		Object.defineProperty(scroller, 'scrollTop', {
+			get: () => st,
+			set: (v: number) => {
+				st = v;
+			},
+			configurable: true
+		});
+		node.appendChild(scroller);
+		// moveBefore present AND simulating the real browser: the move reclamps
+		// the scroll container to 0.
+		(layer as unknown as { moveBefore: (n: Node, r: Node | null) => void }).moveBefore = (
+			n,
+			r
+		) => {
+			if (r) layer.insertBefore(n, r);
+			else layer.appendChild(n);
+			st = 0;
+		};
+		const h = dragLift(node, { lifted: false });
+		h?.update?.({ lifted: true });
+		expect(scroller.scrollTop).toBe(100); // restored despite moveBefore zeroing it
+	});
+
 	it('falls back to a plain move (still reparents correctly) when moveBefore is absent', () => {
 		// Firefox has no moveBefore: the action must still reparent, bracketed by a
 		// manual scroll/focus snapshot+restore (behaviour: node ends in the target).

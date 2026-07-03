@@ -83,11 +83,24 @@ function restoreDomState(node: HTMLElement, s: DragDomState): void {
 	}
 }
 
-// Move `node` to before `ref` (null = append) inside `parent`. Prefers the
-// atomic `moveBefore` (no detach → all subtree state preserved); otherwise
-// brackets a plain move with capture/restore so scroll/focus/caret survive.
+// Move `node` to before `ref` (null = append) inside `parent`, preserving the
+// subtree's scroll positions + focus/caret across the move.
+//
+// We snapshot+restore UNCONDITIONALLY — even when `moveBefore` is used. Reason:
+// `moveBefore` (Chrome 133+) preserves focus / iframe / media / CSS-animation
+// state, but does NOT preserve scrollTop/scrollLeft of scrollable descendants
+// (undocumented and empirically lost — the reparent still reclamps scroll on the
+// new parent's layout). So we still relocate the embedded 묶음/탭 `.bundle-body`
+// to the top without the explicit restore. `moveBefore` is preferred when
+// present (its focus/media preservation is strictly better than the plain
+// fallback), but the scroll restore is what actually kills the "드래그하면 번들
+// 스크롤 맨 위로" bug — hence it wraps BOTH paths. Restoring focus/caret too is
+// belt-and-suspenders: if moveBefore already kept them, re-applying the same
+// range is a no-op; on the plain fallback it's the only thing that keeps them.
 function atomicMove(parent: Node, node: HTMLElement, ref: Node | null): void {
+	const snap = captureDomState(node);
 	const p = parent as Node & { moveBefore?: (n: Node, r: Node | null) => void };
+	let moved = false;
 	if (
 		typeof p.moveBefore === 'function' &&
 		node.isConnected &&
@@ -95,14 +108,15 @@ function atomicMove(parent: Node, node: HTMLElement, ref: Node | null): void {
 	) {
 		try {
 			p.moveBefore(node, ref);
-			return;
+			moved = true;
 		} catch {
 			// Some invalid-state cases throw — fall through to the plain move.
 		}
 	}
-	const snap = captureDomState(node);
-	if (ref) parent.insertBefore(node, ref);
-	else parent.appendChild(node);
+	if (!moved) {
+		if (ref) parent.insertBefore(node, ref);
+		else parent.appendChild(node);
+	}
 	restoreDomState(node, snap);
 }
 
