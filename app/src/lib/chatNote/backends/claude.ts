@@ -7,6 +7,7 @@ export type ClaudeChatErrorKind =
   | 'cli_failed'
   | 'bad_request'
   | 'payload_too_large'
+  | 'image_fetch_failed'
   | 'upstream_error'
   | 'stream_error'
   | 'network';
@@ -80,15 +81,28 @@ export async function sendClaude(opts: SendClaudeOpts): Promise<SendClaudeResult
   }
 
   if (!res.ok) {
-    const kind =
-      STATUS_TO_KIND[res.status] ?? (res.status >= 500 ? 'upstream_error' : 'bad_request');
     let detail: string | undefined;
+    let bodyError: string | undefined;
     try {
       const text = await res.text();
       detail = text.slice(0, 200);
+      try {
+        const parsed = JSON.parse(text) as { error?: unknown; detail?: unknown };
+        if (typeof parsed.error === 'string') bodyError = parsed.error;
+        if (typeof parsed.detail === 'string') detail = parsed.detail.slice(0, 300);
+      } catch {
+        /* body가 JSON이 아님 — raw slice 유지 */
+      }
     } catch {
       /* ignore */
     }
+    // claude-service가 이미지 URL을 못 가져온 경우(크기 초과/404/네트워크) —
+    // 일반 upstream_error로 뭉개면 사용자가 원인을 알 수 없다.
+    if (bodyError === 'image_fetch_failed') {
+      throw new ClaudeChatError('image_fetch_failed', detail);
+    }
+    const kind =
+      STATUS_TO_KIND[res.status] ?? (res.status >= 500 ? 'upstream_error' : 'bad_request');
     throw new ClaudeChatError(kind, detail);
   }
 

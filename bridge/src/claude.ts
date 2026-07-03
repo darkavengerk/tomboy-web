@@ -126,7 +126,7 @@ export async function handleClaudeChat(
 async function readJson(req: IncomingMessage): Promise<unknown> {
 	const chunks: Buffer[] = [];
 	let total = 0;
-	const MAX = 2 * 1024 * 1024; // 2 MiB — claude payloads are text/URLs, not base64 images
+	const MAX = 16 * 1024 * 1024; // 16 MiB — 클라가 큰 이미지를 다운스케일 후 base64로 인라인해 보냄
 	for await (const chunk of req) {
 		const buf = chunk as Buffer;
 		total += buf.length;

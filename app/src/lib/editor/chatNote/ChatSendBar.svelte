@@ -18,6 +18,9 @@
 		ClaudeChatError,
 		type ClaudeChatBody
 	} from '$lib/chatNote/backends/claude.js';
+	import { formatClaudeError } from '$lib/chatNote/formatClaudeError.js';
+	import { prepareImagesForSend } from '$lib/chatNote/imageSendPrep.js';
+	import { pendingImageUploads } from '$lib/editor/imageUploadTracker.svelte.js';
 	import {
 		setStep,
 		clearStep
@@ -73,7 +76,10 @@
 		sending ||
 			!spec ||
 			!spec.trailingEmptyUserTurn ||
-			lastUserContent.trim() === ''
+			lastUserContent.trim() === '' ||
+			// 이미지 업로드가 끝나야 URL 노드가 doc에 들어간다 — 그 전에
+			// 보내면 이미지 없는 요청이 나감 (paste→send 레이스)
+			pendingImageUploads(editor) > 0
 	);
 
 	function appendParagraph(text: string): void {
@@ -191,28 +197,6 @@
 		}
 	}
 
-	function formatClaudeError(err: ClaudeChatError): string {
-		switch (err.kind) {
-			case 'unauthorized':
-				return '[오류: 인증 실패 — 설정에서 브릿지 재로그인]';
-			case 'service_unavailable':
-				return '[오류: 데스크탑 Claude 서비스 응답 없음]';
-			case 'rate_limited':
-				return '[오류: Claude 사용량 한도 도달. 잠시 후 재시도]';
-			case 'cli_failed':
-				return `[오류: claude 실행 실패 — ${(err.detail ?? '').slice(0, 200)}]`;
-			case 'bad_request':
-				return `[오류: 요청 형식 오류 ${err.detail ?? ''}]`;
-			case 'payload_too_large':
-				return '[오류: 노트가 너무 큼]';
-			case 'network':
-			case 'upstream_error':
-			case 'stream_error':
-			default:
-				return '[오류: 연결 실패. 재시도?]';
-		}
-	}
-
 	async function runClaude(
 		spec: ChatNoteSpec,
 		httpBase: string,
@@ -232,11 +216,14 @@
 			appendParagraph('Q: ');
 			return;
 		}
+		// 큰 이미지는 전송 전에 클라에서 축소 → base64 인라인 (서버 8MiB 캡 +
+		// Anthropic 5MB 제한 회피, Pi의 URL fetch 의존 제거).
+		const prepared = await prepareImagesForSend(messages);
 		const system = spec.system ?? (await getClaudeDefaultSystem());
 		const model = spec.model || (await getClaudeDefaultModel());
 		const effort = spec.options.effort ?? (await getClaudeDefaultEffort());
 		const body: ClaudeChatBody = {
-			messages,
+			messages: prepared,
 			model: model || undefined,
 			system,
 			effort

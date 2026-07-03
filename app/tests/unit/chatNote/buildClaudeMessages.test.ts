@@ -98,7 +98,7 @@ describe('buildClaudeMessages', () => {
     ]);
   });
 
-  it('image in prior turn becomes [이미지] placeholder in history text', () => {
+  it('image in prior turn is carried as a real image block + numbered marker in history', () => {
     const url = 'https://dropbox.com/old.png?raw=1';
     const d: JSONContent = {
       type: 'doc',
@@ -120,11 +120,17 @@ describe('buildClaudeMessages', () => {
     const msgs = buildClaudeMessages(d);
     expect(msgs).toHaveLength(1);
     expect(msgs[0].role).toBe('user');
-    // First content block is the history text — prior image becomes a placeholder
-    const first = msgs[0].content[0];
-    expect(first.type).toBe('text');
-    expect((first as { text: string }).text).toContain('look at [이미지]');
-    expect((first as { text: string }).text).toContain('A: I see it');
+    // 이전 턴 이미지가 실제 블록으로 맨 앞에 캐리된다 — '[이미지]' 문자열로
+    // 뭉개면 후속 질문("이미지 읽어줘")에서 클로드가 그림을 못 본다.
+    expect(msgs[0].content[0]).toEqual({
+      type: 'image',
+      source: { type: 'url', url },
+    });
+    // 히스토리 텍스트에는 번호 달린 마커
+    const hist = msgs[0].content[1];
+    expect(hist.type).toBe('text');
+    expect((hist as { text: string }).text).toContain('look at [이미지 1]');
+    expect((hist as { text: string }).text).toContain('A: I see it');
     // Last block is the new user turn's content
     expect(msgs[0].content[msgs[0].content.length - 1]).toEqual({
       type: 'text',
@@ -213,6 +219,66 @@ describe('buildClaudeMessages', () => {
     };
     const msgs = buildClaudeMessages(d);
     expect(msgs[0].content).toEqual([{ type: 'text', text: 'line 1\nline 2' }]);
+  });
+
+  it('여러 이전 턴 이미지는 등장 순서대로 캐리 + 순서대로 번호', () => {
+    const u1 = 'https://x/temp-images/1.png';
+    const u2 = 'https://x/temp-images/2.png';
+    const d = docFrom(
+      textPara('title'),
+      textPara('claude://'),
+      textPara(''),
+      imageLinkPara(u1, 'Q: first '),
+      textPara('A: ok'),
+      imageLinkPara(u2, 'Q: second '),
+      textPara('A: ok2'),
+      textPara('Q: compare them'),
+    );
+    const msgs = buildClaudeMessages(d);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].content[0]).toEqual({ type: 'image', source: { type: 'url', url: u1 } });
+    expect(msgs[0].content[1]).toEqual({ type: 'image', source: { type: 'url', url: u2 } });
+    const hist = msgs[0].content[2] as { type: string; text: string };
+    expect(hist.text).toContain('first [이미지 1]');
+    expect(hist.text).toContain('second [이미지 2]');
+  });
+
+  it('같은 이미지가 여러 턴에 나와도 한 번만 캐리(같은 번호 재사용)', () => {
+    const url = 'https://x/temp-images/same.png';
+    const d = docFrom(
+      textPara('title'),
+      textPara('claude://'),
+      textPara(''),
+      imageLinkPara(url, 'Q: see '),
+      textPara('A: yes'),
+      imageLinkPara(url, 'Q: again '),
+      textPara('A: still'),
+      textPara('Q: final'),
+    );
+    const msgs = buildClaudeMessages(d);
+    const imageBlocks = msgs[0].content.filter((b) => b.type === 'image');
+    expect(imageBlocks).toHaveLength(1);
+    const hist = msgs[0].content[1] as { type: string; text: string };
+    expect(hist.text).toContain('see [이미지 1]');
+    expect(hist.text).toContain('again [이미지 1]');
+  });
+
+  it('마지막 턴에만 이미지가 있으면 캐리 없음 (기존 단일턴 동작 유지)', () => {
+    const url = 'https://x/temp-images/now.png';
+    const d = docFrom(
+      textPara('title'),
+      textPara('claude://'),
+      textPara(''),
+      textPara('Q: hello'),
+      textPara('A: hi'),
+      imageLinkPara(url, 'Q: read this '),
+    );
+    const msgs = buildClaudeMessages(d);
+    expect(msgs).toHaveLength(1);
+    // 히스토리 텍스트가 첫 블록, 마지막 턴 이미지는 last.content 쪽에 그대로
+    expect(msgs[0].content[0].type).toBe('text');
+    const images = msgs[0].content.filter((b) => b.type === 'image');
+    expect(images).toEqual([{ type: 'image', source: { type: 'url', url } }]);
   });
 
   it('multi-paragraph Q joins with \\n', () => {

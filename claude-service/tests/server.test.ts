@@ -73,7 +73,8 @@ describe('claude-service POST /chat', () => {
   });
 
   it('413 when payload exceeds limit', async () => {
-    const huge = 'x'.repeat(3 * 1024 * 1024);
+    // 한도 16 MiB(클라 base64 이미지 인라인 수용) — 그 초과는 여전히 413
+    const huge = 'x'.repeat(16 * 1024 * 1024 + 1024);
     const r = await app.inject({
       method: 'POST', url: '/chat',
       headers: { authorization: 'Bearer test-token' },

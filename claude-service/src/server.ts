@@ -3,7 +3,8 @@ import { runClaude, type ClaudeRunnerSpawn, type RunRequest } from './runner.js'
 import { extractBearer, verifyToken } from './auth.js';
 import { inlineImageUrls, ImageFetchError, type FetchFn } from './imageInline.js';
 
-const MAX_BYTES = Number(process.env.CLAUDE_MAX_REQUEST_BYTES ?? 2 * 1024 * 1024);
+// 16 MiB — 클라가 큰 이미지를 다운스케일 후 base64로 인라인해 보냄 (브릿지 readJson MAX와 맞춤)
+const MAX_BYTES = Number(process.env.CLAUDE_MAX_REQUEST_BYTES ?? 16 * 1024 * 1024);
 
 export interface BuildServerOpts {
   sharedToken: string;

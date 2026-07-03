@@ -137,6 +137,46 @@ describe('sendClaude', () => {
   });
 });
 
+describe('sendClaude — image_fetch_failed 분류', () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => { fetchSpy = vi.spyOn(globalThis, 'fetch'); });
+  afterEach(() => { fetchSpy.mockRestore(); });
+
+  it('502 body error=image_fetch_failed → kind image_fetch_failed + detail 보존', async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          error: 'image_fetch_failed',
+          detail: 'image fetch failed (https://x.public.blob.vercel-storage.com/temp-images/a.png): image too large: 21165980 bytes > 8388608',
+        }),
+        { status: 502 }
+      )
+    );
+    const err = await sendClaude({
+      url: 'x', token: 'y', body: { messages: [] }, onToken: () => {},
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(ClaudeChatError);
+    expect(err.kind).toBe('image_fetch_failed');
+    expect(err.detail).toContain('too large: 21165980');
+  });
+
+  it('502 body가 image_fetch_failed 아니면 여전히 upstream_error', async () => {
+    fetchSpy.mockResolvedValue(
+      new Response(JSON.stringify({ error: 'something_else' }), { status: 502 })
+    );
+    await expect(
+      sendClaude({ url: 'x', token: 'y', body: { messages: [] }, onToken: () => {} })
+    ).rejects.toMatchObject({ kind: 'upstream_error' });
+  });
+
+  it('502 body가 JSON 아니어도 upstream_error로 폴백', async () => {
+    fetchSpy.mockResolvedValue(new Response('<html>bad gateway</html>', { status: 502 }));
+    await expect(
+      sendClaude({ url: 'x', token: 'y', body: { messages: [] }, onToken: () => {} })
+    ).rejects.toMatchObject({ kind: 'upstream_error' });
+  });
+});
+
 describe('sendClaude — step events', () => {
   let fetchSpy: ReturnType<typeof vi.spyOn>;
   beforeEach(() => { fetchSpy = vi.spyOn(globalThis, 'fetch'); });
