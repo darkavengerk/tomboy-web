@@ -248,11 +248,11 @@ test('handleClaudeChat: 200 SSE pass-through via real HTTP upstream server', asy
 
 // ---- body size limit --------------------------------------------------------
 
-test('handleClaudeChat: 413 on body > 2 MiB', async () => {
+test('handleClaudeChat: 413 on body > 16 MiB', async () => {
 	const token = mintToken(SECRET);
 	const { res, get } = mockRes();
-	// Build a body that is just over 2 MiB
-	const bigString = 'x'.repeat(2 * 1024 * 1024 + 1);
+	// Build a body that is just over 16 MiB
+	const bigString = 'x'.repeat(16 * 1024 * 1024 + 1);
 	const raw = bigString; // raw non-JSON, so body too large check fires first
 	const r = Readable.from([Buffer.from(raw, 'utf8')]) as unknown as IncomingMessage;
 	(r as { headers: Record<string, string> }).headers = { authorization: `Bearer ${token}` };
@@ -260,4 +260,19 @@ test('handleClaudeChat: 413 on body > 2 MiB', async () => {
 	await handleClaudeChat(r, res, SECRET, CLAUDE_URL);
 	assert.equal(get().status, 413);
 	assert.match(get().body, /payload_too_large/);
+});
+
+test('handleClaudeChat: 3 MiB body(base64 이미지 인라인)는 413 아님', async () => {
+	// 클라 다운스케일이 이미지들을 base64로 인라인하면 페이로드가 수 MiB가
+	// 된다 — 옛 2 MiB 캡이면 payload_too_large로 전송 자체가 죽는다.
+	const token = mintToken(SECRET);
+	const { res, get } = mockRes();
+	const bigString = 'x'.repeat(3 * 1024 * 1024);
+	const r = Readable.from([Buffer.from(bigString, 'utf8')]) as unknown as IncomingMessage;
+	(r as { headers: Record<string, string> }).headers = { authorization: `Bearer ${token}` };
+	(r as { method: string }).method = 'POST';
+	await handleClaudeChat(r, res, SECRET, CLAUDE_URL);
+	// non-JSON이므로 400 bad_json — 크기 거절(413)만 아니면 통과한 것
+	assert.equal(get().status, 400);
+	assert.match(get().body, /bad_json/);
 });

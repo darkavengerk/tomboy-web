@@ -19,6 +19,7 @@
 		type ClaudeChatBody
 	} from '$lib/chatNote/backends/claude.js';
 	import { formatClaudeError } from '$lib/chatNote/formatClaudeError.js';
+	import { prepareImagesForSend } from '$lib/chatNote/imageSendPrep.js';
 	import {
 		setStep,
 		clearStep
@@ -211,11 +212,14 @@
 			appendParagraph('Q: ');
 			return;
 		}
+		// 큰 이미지는 전송 전에 클라에서 축소 → base64 인라인 (서버 8MiB 캡 +
+		// Anthropic 5MB 제한 회피, Pi의 URL fetch 의존 제거).
+		const prepared = await prepareImagesForSend(messages);
 		const system = spec.system ?? (await getClaudeDefaultSystem());
 		const model = spec.model || (await getClaudeDefaultModel());
 		const effort = spec.options.effort ?? (await getClaudeDefaultEffort());
 		const body: ClaudeChatBody = {
-			messages,
+			messages: prepared,
 			model: model || undefined,
 			system,
 			effort

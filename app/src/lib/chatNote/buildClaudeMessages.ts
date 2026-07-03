@@ -2,7 +2,8 @@ import type { JSONContent } from '@tiptap/core';
 
 export type ContentBlock =
   | { type: 'text'; text: string }
-  | { type: 'image'; source: { type: 'url'; url: string } };
+  | { type: 'image'; source: { type: 'url'; url: string } }
+  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } };
 
 export interface AnthropicMessage {
   role: 'user' | 'assistant';
