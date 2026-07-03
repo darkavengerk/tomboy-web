@@ -2374,6 +2374,29 @@ automation,➖ 미설정,
 				</p>
 
 				<details class="guide-card" open>
+					<summary>붙여넣기 — 마크다운 자동 인식</summary>
+					<p class="info-text">
+						다른 앱·웹·메신저에서 <strong>마크다운 텍스트를 붙여넣으면</strong> 자동으로 서식으로
+						바뀝니다. 한 줄만 복사한 경우에도 똑같이 인식됩니다.
+					</p>
+					<pre class="snippet">### 제목
+- 사과
+- 바나나
+**굵게** *기울임*</pre>
+					<ul class="guide-list">
+						<li><code>- </code> / <code>* </code> / <code>+ </code>(뒤에 공백) 로 시작하는 줄 →
+							<strong>불릿 리스트</strong>. 들여쓰기하면 중첩되고, 마커 글자(<code>- </code>)는
+							사라집니다.</li>
+						<li><code>#</code>~<code>######</code>(뒤에 공백) 로 시작하는 줄 → <strong>큰 글자 제목</strong>
+							(<code>#</code> 아주 크게, <code>##</code> 이하 크게). Tomboy 엔 제목 노드가 없어
+							<strong>글자 크기 마크</strong>로 저장돼 데스크탑과 라운드트립됩니다.</li>
+						<li><code>**굵게**</code> · <code>*기울임*</code> · <code>~~취소선~~</code> → 인라인 서식.</li>
+						<li>공백이 없으면 서식이 아닙니다 — <code>#해시태그</code> · <code>-5도</code>는 그대로 평문.</li>
+						<li>순서 목록(<code>1.</code>)은 Tomboy XML에 없어 지원하지 않습니다 — 평문으로 남습니다.</li>
+					</ul>
+				</details>
+
+				<details class="guide-card" open>
 					<summary>제목은 본문에서 분리됩니다</summary>
 					<p class="info-text">
 						제목은 더 이상 본문 첫 줄로 편집하지 않습니다. 본문 위 <strong>제목 바</strong>에 표시되며,
