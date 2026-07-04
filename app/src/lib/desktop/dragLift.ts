@@ -58,7 +58,23 @@ interface DragDomState {
 function captureDomState(node: HTMLElement): DragDomState {
 	const scrolls: DragDomState['scrolls'] = [];
 	const record = (el: Element) => {
-		if (el.scrollTop || el.scrollLeft) scrolls.push({ el, top: el.scrollTop, left: el.scrollLeft });
+		// Snapshot every element that CAN scroll — including ones sitting at
+		// 0/0. Gecko (Firefox) saves a scroll frame's position when the frame is
+		// destroyed while scrolled and RESTORES it when the frame is rebuilt; a
+		// reparent (moveBefore included) does destroy+rebuild, so a scroller the
+		// user parked at the TOP gets natively yanked back to a stale saved
+		// position (wherever a previous reparent happened) — the "스크롤 최상단에서
+		// 드래그하면 예전 위치로 회귀" bug. Only-nonzero capture missed exactly
+		// that case. scrollHeight>clientHeight over-captures overflow:visible
+		// blocks, but restore writes are conditional no-ops for them.
+		if (
+			el.scrollTop ||
+			el.scrollLeft ||
+			el.scrollHeight > el.clientHeight ||
+			el.scrollWidth > el.clientWidth
+		) {
+			scrolls.push({ el, top: el.scrollTop, left: el.scrollLeft });
+		}
 	};
 	record(node);
 	node.querySelectorAll('*').forEach(record);
@@ -100,12 +116,18 @@ function selectionMatches(sel: Selection, s: SelSnapshot): boolean {
 // caret move — the deferred pointerup check then scrolls the caret (= the
 // user's OLD editing spot) back into view, which reads as "드래그하면 예전
 // 스크롤로 회귀".
-function restoreDomState(node: HTMLElement, s: DragDomState): void {
+function restoreScrolls(s: DragDomState): void {
 	for (const { el, top, left } of s.scrolls) {
 		if (!el.isConnected) continue;
-		el.scrollTop = top;
-		el.scrollLeft = left;
+		// Conditional writes: most captured elements are unscrolled no-ops, and
+		// an unchanged value must not fire a scroll event.
+		if (el.scrollTop !== top) el.scrollTop = top;
+		if (el.scrollLeft !== left) el.scrollLeft = left;
 	}
+}
+
+function restoreDomState(node: HTMLElement, s: DragDomState): void {
+	restoreScrolls(s);
 	// preventScroll is load-bearing: a plain focus() would scroll an ancestor to
 	// reveal the caret and re-introduce the very jump we're preventing.
 	if (
@@ -170,6 +192,15 @@ function atomicMove(parent: Node, node: HTMLElement, ref: Node | null): void {
 		else parent.appendChild(node);
 	}
 	restoreDomState(node, snap);
+	// Gecko's stale-scroll restore happens when the scroll frame is REBUILT,
+	// which can land on the next reflow — i.e. AFTER the synchronous restore
+	// above. Re-assert the scroll snapshot once on the next frame to beat it;
+	// the conditional writes make this a no-op everywhere the sync restore
+	// already stuck. (Scroll only — re-running the focus/selection restore here
+	// could fire late synthetic events.)
+	if (typeof requestAnimationFrame !== 'undefined') {
+		requestAnimationFrame(() => restoreScrolls(snap));
+	}
 }
 
 export function dragLift(node: HTMLElement, params: DragLiftParams) {

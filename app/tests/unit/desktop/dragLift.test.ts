@@ -200,6 +200,76 @@ describe('dragLift action', () => {
 		expect(sel.getRangeAt(0).startOffset).toBe(2);
 	});
 
+	it('writes a scrollable descendant back to 0 when the browser scrolls it during the move (Gecko stale-scroll restore)', () => {
+		// Firefox saves a scroll frame's position when the frame is destroyed and
+		// RESTORES it on reconstruction — a reparent does both. A scroller the
+		// user parked at the TOP gets natively scrolled back to a stale saved
+		// position (e.g. where a previous drag happened). Capturing only nonzero
+		// scrolls missed it; scrollABLE elements at 0 must be snapshotted too.
+		const scroller = document.createElement('div');
+		let st = 0;
+		Object.defineProperty(scroller, 'scrollTop', {
+			get: () => st,
+			set: (v: number) => {
+				st = v;
+			},
+			configurable: true
+		});
+		Object.defineProperty(scroller, 'scrollHeight', { value: 1000, configurable: true });
+		Object.defineProperty(scroller, 'clientHeight', { value: 200, configurable: true });
+		node.appendChild(scroller);
+		(layer as unknown as { moveBefore: (n: Node, r: Node | null) => void }).moveBefore = (
+			n,
+			r
+		) => {
+			if (r) layer.insertBefore(n, r);
+			else layer.appendChild(n);
+			st = 1920; // Gecko restores its stale saved position on reattach
+		};
+		const h = dragLift(node, { lifted: false });
+		h?.update?.({ lifted: true });
+		expect(scroller.scrollTop).toBe(0);
+	});
+
+	it('re-asserts scroll on the next frame (Gecko restore can land after the synchronous restore)', () => {
+		const rafCbs: FrameRequestCallback[] = [];
+		const origRaf = globalThis.requestAnimationFrame;
+		globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+			rafCbs.push(cb);
+			return 1;
+		}) as typeof requestAnimationFrame;
+		try {
+			const scroller = document.createElement('div');
+			let st = 0;
+			Object.defineProperty(scroller, 'scrollTop', {
+				get: () => st,
+				set: (v: number) => {
+					st = v;
+				},
+				configurable: true
+			});
+			Object.defineProperty(scroller, 'scrollHeight', { value: 1000, configurable: true });
+			Object.defineProperty(scroller, 'clientHeight', { value: 200, configurable: true });
+			node.appendChild(scroller);
+			(layer as unknown as { moveBefore: (n: Node, r: Node | null) => void }).moveBefore = (
+				n,
+				r
+			) => {
+				if (r) layer.insertBefore(n, r);
+				else layer.appendChild(n);
+			};
+			const h = dragLift(node, { lifted: false });
+			h?.update?.({ lifted: true });
+			expect(scroller.scrollTop).toBe(0);
+			// The stale native restore lands AFTER the sync restore (next reflow).
+			st = 1920;
+			for (const cb of rafCbs.splice(0)) cb(0);
+			expect(scroller.scrollTop).toBe(0);
+		} finally {
+			globalThis.requestAnimationFrame = origRaf;
+		}
+	});
+
 	it('falls back to a plain move (still reparents correctly) when moveBefore is absent', () => {
 		// Firefox has no moveBefore: the action must still reparent, bracketed by a
 		// manual scroll/focus snapshot+restore (behaviour: node ends in the target).
