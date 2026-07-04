@@ -31,16 +31,30 @@ function resolveTarget(t: HTMLElement | string | undefined): HTMLElement | null 
 	return el instanceof HTMLElement ? el : null;
 }
 
+interface SelSnapshot {
+	startContainer: Node;
+	startOffset: number;
+	endContainer: Node;
+	endOffset: number;
+}
+
 interface DragDomState {
 	scrolls: Array<{ el: Element; top: number; left: number }>;
 	activeEl: HTMLElement | null;
-	range: Range | null;
+	sel: SelSnapshot | null;
 }
 
 // Snapshot the transient DOM-layout state a detach+reattach would destroy, so
 // the plain-move fallback can put it back. Only records scroll containers that
 // are actually scrolled (keeps the list tiny), and only captures focus/selection
 // that lives inside `node` (so we never steal it from elsewhere on restore).
+//
+// The selection is stored as PLAIN boundary refs, NOT a cloned Range: the spec's
+// range fixup rewrites every live Range whose boundaries sit inside a removed
+// subtree (a plain move = remove + insert) to point at the OLD PARENT — clones
+// included. Restoring such a fixed-up Range would park the caret outside the
+// editor at the window's previous container. Plain {node, offset} refs are
+// immune to the fixup.
 function captureDomState(node: HTMLElement): DragDomState {
 	const scrolls: DragDomState['scrolls'] = [];
 	const record = (el: Element) => {
@@ -52,15 +66,40 @@ function captureDomState(node: HTMLElement): DragDomState {
 	const ae = document.activeElement as HTMLElement | null;
 	const activeEl = ae && node.contains(ae) ? ae : null;
 
-	let range: Range | null = null;
+	let snap: SelSnapshot | null = null;
 	const sel = typeof window !== 'undefined' ? window.getSelection() : null;
 	if (sel && sel.rangeCount > 0) {
 		const r = sel.getRangeAt(0);
-		if (node.contains(r.startContainer) && node.contains(r.endContainer)) range = r.cloneRange();
+		if (node.contains(r.startContainer) && node.contains(r.endContainer)) {
+			snap = {
+				startContainer: r.startContainer,
+				startOffset: r.startOffset,
+				endContainer: r.endContainer,
+				endOffset: r.endOffset
+			};
+		}
 	}
-	return { scrolls, activeEl, range };
+	return { scrolls, activeEl, sel: snap };
 }
 
+function selectionMatches(sel: Selection, s: SelSnapshot): boolean {
+	if (sel.rangeCount !== 1) return false;
+	const r = sel.getRangeAt(0);
+	return (
+		r.startContainer === s.startContainer &&
+		r.startOffset === s.startOffset &&
+		r.endContainer === s.endContainer &&
+		r.endOffset === s.endOffset
+	);
+}
+
+// Restore is IDEMPOTENT: state the move already preserved (moveBefore keeps
+// focus + selection natively) is left untouched. Re-asserting an unchanged
+// selection would fire synthetic `selectionchange`/`focus` events, and
+// edit-driven listeners (keepCursorVisible's caret nudge) treat those as a real
+// caret move — the deferred pointerup check then scrolls the caret (= the
+// user's OLD editing spot) back into view, which reads as "드래그하면 예전
+// 스크롤로 회귀".
 function restoreDomState(node: HTMLElement, s: DragDomState): void {
 	for (const { el, top, left } of s.scrolls) {
 		if (!el.isConnected) continue;
@@ -69,16 +108,29 @@ function restoreDomState(node: HTMLElement, s: DragDomState): void {
 	}
 	// preventScroll is load-bearing: a plain focus() would scroll an ancestor to
 	// reveal the caret and re-introduce the very jump we're preventing.
-	if (s.activeEl && s.activeEl.isConnected && node.contains(s.activeEl)) {
+	if (
+		s.activeEl &&
+		s.activeEl.isConnected &&
+		node.contains(s.activeEl) &&
+		document.activeElement !== s.activeEl
+	) {
 		s.activeEl.focus({ preventScroll: true });
 	}
 	// Only re-apply the caret if its endpoints are still in the (live) DOM — a
 	// debounced editor save could have rebuilt the ProseMirror DOM in between.
-	if (s.range && s.range.startContainer.isConnected && s.range.endContainer.isConnected) {
+	if (s.sel && s.sel.startContainer.isConnected && s.sel.endContainer.isConnected) {
 		const sel = window.getSelection();
-		if (sel) {
-			sel.removeAllRanges();
-			sel.addRange(s.range);
+		if (sel && !selectionMatches(sel, s.sel)) {
+			try {
+				const r = document.createRange();
+				r.setStart(s.sel.startContainer, s.sel.startOffset);
+				r.setEnd(s.sel.endContainer, s.sel.endOffset);
+				sel.removeAllRanges();
+				sel.addRange(r);
+			} catch {
+				// Offsets no longer valid (content mutated mid-drag) — keep whatever
+				// selection the browser left rather than throwing mid-drop.
+			}
 		}
 	}
 }

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { dragLift } from '$lib/desktop/dragLift.js';
 
 let parent: HTMLElement;
@@ -128,6 +128,76 @@ describe('dragLift action', () => {
 		const h = dragLift(node, { lifted: false });
 		h?.update?.({ lifted: true });
 		expect(scroller.scrollTop).toBe(100); // restored despite moveBefore zeroing it
+	});
+
+	it('does NOT re-assert focus/selection the move already preserved (no synthetic events)', () => {
+		// moveBefore (Chrome) natively keeps focus + selection across the reparent.
+		// Re-asserting them anyway fires synthetic selectionchange/focus events;
+		// keepCursorVisible treats those as a real caret move and, on the next
+		// pointerup, scrolls the caret (= the user's OLD editing spot) back into
+		// view — the "드래그하면 예전 스크롤로 회귀" bug. When the state survived
+		// the move, the restore must be a pure no-op.
+		const editable = document.createElement('div');
+		editable.tabIndex = 0;
+		editable.textContent = 'hello';
+		node.appendChild(editable);
+		editable.focus();
+		const sel = window.getSelection()!;
+		const r = document.createRange();
+		r.setStart(editable.firstChild!, 2);
+		r.collapse(true);
+		sel.removeAllRanges();
+		sel.addRange(r);
+
+		// Simulate a perfectly state-preserving atomic move (the node isn't even
+		// detached, so focus/selection are guaranteed intact afterwards).
+		(layer as unknown as { moveBefore: (n: Node, r: Node | null) => void }).moveBefore =
+			() => {};
+
+		const removeSpy = vi.spyOn(sel, 'removeAllRanges');
+		const addSpy = vi.spyOn(sel, 'addRange');
+		const focusSpy = vi.spyOn(editable, 'focus');
+
+		const h = dragLift(node, { lifted: false });
+		h?.update?.({ lifted: true });
+
+		expect(removeSpy).not.toHaveBeenCalled();
+		expect(addSpy).not.toHaveBeenCalled();
+		expect(focusSpy).not.toHaveBeenCalled();
+	});
+
+	it('still re-asserts focus/selection when the move dropped them (plain-move path)', () => {
+		const editable = document.createElement('div');
+		editable.tabIndex = 0;
+		editable.textContent = 'hello';
+		node.appendChild(editable);
+		editable.focus();
+		const sel = window.getSelection()!;
+		const r = document.createRange();
+		r.setStart(editable.firstChild!, 2);
+		r.collapse(true);
+		sel.removeAllRanges();
+		sel.addRange(r);
+
+		// Simulate a browser whose move loses the transient state (Firefox plain
+		// insertBefore): blur + selection cleared by the "move".
+		(layer as unknown as { moveBefore: (n: Node, r: Node | null) => void }).moveBefore = (
+			n,
+			ref
+		) => {
+			if (ref) layer.insertBefore(n, ref);
+			else layer.appendChild(n);
+			(document.activeElement as HTMLElement | null)?.blur();
+			sel.removeAllRanges();
+		};
+
+		const h = dragLift(node, { lifted: false });
+		h?.update?.({ lifted: true });
+
+		expect(document.activeElement).toBe(editable);
+		expect(sel.rangeCount).toBe(1);
+		expect(sel.getRangeAt(0).startContainer).toBe(editable.firstChild);
+		expect(sel.getRangeAt(0).startOffset).toBe(2);
 	});
 
 	it('falls back to a plain move (still reparents correctly) when moveBefore is absent', () => {

@@ -118,6 +118,17 @@ export function installCursorVisibility(
 	let settling = false;
 	let settleTimer = 0;
 	let settleResize: (() => void) | null = null;
+	// Unchanged-selection guard (container mode only) — drag-lifting a desktop
+	// NoteWindow reparents its live DOM; the restore re-asserts the same
+	// focus/caret, firing selectionchange/focus although the caret never moved.
+	// Counting those as caret moves means the deferred pointerup check scrolls
+	// the caret — the user's OLD editing spot — back into view right after the
+	// drag ("드래그하면 예전 스크롤로 회귀"). So a trigger only counts when the
+	// PM selection actually moved since the last trigger. Scoped to container:
+	// in window mode a focus with an unmoved caret is REAL work (the mobile
+	// keyboard just rose and may now cover it), so mobile keeps unconditional
+	// triggers.
+	let lastSelKey: string | null = null;
 
 	const readPx = (el: Element, name: string): number => {
 		const raw = getComputedStyle(el).getPropertyValue(name).trim();
@@ -187,7 +198,9 @@ export function installCursorVisibility(
 		if (overflow > 2) window.scrollBy({ top: overflow, left: 0 });
 	};
 
-	const schedule = () => {
+	// Raw scheduler — used by the deferred paths (pointerup, settle end) that
+	// re-run a trigger which already passed the guard below.
+	const scheduleNow = () => {
 		if (pointersDown > 0) {
 			pendingAfterPointer = true;
 			return;
@@ -196,6 +209,22 @@ export function installCursorVisibility(
 		if (settling) return;
 		if (frame) return;
 		frame = requestAnimationFrame(check);
+	};
+
+	// Trigger-facing scheduler — every event listener funnels through here so
+	// the unchanged-selection guard sees ALL trigger kinds (selectionchange,
+	// editor selectionUpdate/update, focus).
+	const schedule = () => {
+		if (mode === "container") {
+			const view = editor.view;
+			if (view && !view.isDestroyed) {
+				const { anchor, head } = view.state.selection;
+				const key = `${anchor}:${head}`;
+				if (key === lastSelKey) return; // caret didn't move → synthetic re-assert
+				lastSelKey = key;
+			}
+		}
+		scheduleNow();
 	};
 
 	const endSettle = () => {
@@ -209,7 +238,7 @@ export function installCursorVisibility(
 			vv.removeEventListener("resize", settleResize);
 			settleResize = null;
 		}
-		schedule();
+		scheduleNow();
 	};
 
 	const onFocus = () => {
@@ -248,7 +277,7 @@ export function installCursorVisibility(
 		pointersDown = Math.max(0, pointersDown - 1);
 		if (pointersDown === 0 && pendingAfterPointer) {
 			pendingAfterPointer = false;
-			schedule();
+			scheduleNow();
 		}
 	};
 	const onPointerCancel = () => {

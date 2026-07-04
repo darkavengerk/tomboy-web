@@ -78,10 +78,12 @@ beforeEach(() => {
 	scrollBy = vi.fn();
 	disposers = [];
 	vi.stubGlobal("scrollBy", scrollBy);
-	// rAF runs synchronously so a fired event resolves check() inline.
+	// rAF runs synchronously so a fired event resolves check() inline. Return 0
+	// (falsy) so `frame` doesn't stay latched after the synchronous check — a
+	// truthy handle would block every later schedule() in the same test.
 	vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
 		cb(0);
-		return 1;
+		return 0;
 	});
 	vi.stubGlobal("cancelAnimationFrame", () => {});
 	// 60px toolbar overlaying the bottom of an 800px-tall visible area:
@@ -312,6 +314,64 @@ describe("installCursorVisibility — focus settle (keyboard race)", () => {
 		editor.fire("focus");
 		// limit = 800 - 60 - 8 = 732; caret 790 → overflow 58
 		expect(scroller.scrollTop).toBe(58);
+	});
+});
+
+describe("installCursorVisibility — container-mode unchanged-selection guard (drag-lift)", () => {
+	// Drag-lifting a NoteWindow reparents the live DOM; the restore re-asserts
+	// the same focus/caret, firing selectionchange/focus although the caret
+	// never moved. The pointer gate then latches the trigger and the deferred
+	// pointerup check scrolls the caret — the user's OLD editing spot — back
+	// into view ("드래그하면 예전 스크롤로 회귀"). In container mode a trigger
+	// only counts when the PM selection actually moved.
+
+	function containerSetup(caretBottom = 790) {
+		const editor = makeFakeEditor({ empty: true, caretBottom });
+		const scroller = {
+			getBoundingClientRect: () => ({ bottom: 800 }),
+			scrollTop: 0,
+		};
+		editor.view.dom.parentElement = scroller;
+		install(editor, { mode: "container" });
+		return { editor, scroller };
+	}
+
+	it("ignores a synthetic re-assert of the SAME caret across a drag (no snap-back on pointerup)", () => {
+		const { editor, scroller } = containerSetup();
+		// Baseline: a fresh caret below the toolbar nudges once.
+		editor.fire("selectionUpdate");
+		expect(scroller.scrollTop).toBe(58);
+		// User scrolls away from the parked caret…
+		scroller.scrollTop = 0;
+		// …then drags the window: the lift's DOM restore fires selectionchange +
+		// focus with an UNCHANGED selection while the pointer is down.
+		document.dispatchEvent(new Event("pointerdown"));
+		document.dispatchEvent(new Event("selectionchange"));
+		editor.fire("focus");
+		document.dispatchEvent(new Event("pointerup"));
+		expect(scroller.scrollTop).toBe(0); // stayed where the user scrolled
+	});
+
+	it("still nudges when the selection actually moved during the gesture (real caret tap)", () => {
+		const { editor, scroller } = containerSetup();
+		editor.fire("selectionUpdate");
+		expect(scroller.scrollTop).toBe(58);
+		scroller.scrollTop = 0;
+		document.dispatchEvent(new Event("pointerdown"));
+		editor.view.state.selection = { head: 9, anchor: 9, empty: true };
+		document.dispatchEvent(new Event("selectionchange"));
+		document.dispatchEvent(new Event("pointerup"));
+		expect(scroller.scrollTop).toBe(58);
+	});
+
+	it("window mode keeps unconditional triggers (keyboard may cover an unmoved caret)", () => {
+		const editor = makeFakeEditor({ empty: true, caretBottom: 790 });
+		install(editor, { mode: "window" });
+		editor.fire("selectionUpdate");
+		expect(scrollBy).toHaveBeenCalledTimes(1);
+		// Same selection again — mobile must still check (focus/keyboard cases).
+		editor.fire("selectionUpdate");
+		expect(scrollBy).toHaveBeenCalledTimes(2);
 	});
 });
 
