@@ -35,25 +35,17 @@ function liTexts(list: JSONContent | undefined): (string | undefined)[] {
 	);
 }
 
-describe('appendListItemToDocJson (월 섹션 인식)', () => {
-	it('대상 월 섹션의 리스트에 추가하고 일 번호순 정렬(마지막 리스트가 아님)', () => {
+describe('appendListItemToDocJson (마지막 섹션이 현재 월일 때만 추가)', () => {
+	it('마지막 섹션이 현재 월이면 그 리스트에 정렬 삽입', () => {
 		const doc: JSONContent = {
 			type: 'doc',
-			content: [
-				para('6월'),
-				bullet([li('3(금) a'), li('15(월) c')]),
-				para('7월'),
-				bullet([li('1(화) x'), li('20(목) y')])
-			]
+			content: [para('6월'), bullet([li('3(금) a'), li('15(월) c')])]
 		};
 		const out = appendListItemToDocJson(doc, li('9(목) b'), 6);
-		// 6월 리스트로 정렬 삽입
 		expect(liTexts(out.content?.[1])).toEqual(['3(금) a', '9(목) b', '15(월) c']);
-		// 7월 리스트는 그대로
-		expect(liTexts(out.content?.[3])).toEqual(['1(화) x', '20(목) y']);
 	});
 
-	it('대상 월 헤더가 없으면 문서 끝에 새 월 섹션을 만든다', () => {
+	it('마지막 섹션이 다른 월이면 거슬러 찾지 않고 끝에 현재 월 섹션을 새로 만든다', () => {
 		const doc: JSONContent = {
 			type: 'doc',
 			content: [para('6월'), bullet([li('1(월) a'), li('2(화) b')])]
@@ -68,7 +60,29 @@ describe('appendListItemToDocJson (월 섹션 인식)', () => {
 		expect(liTexts(out.content?.[n - 1])).toEqual(['5(화) x']);
 	});
 
-	it('월 헤더가 하나도 없으면 현재 달 섹션을 생성한다', () => {
+	it('앞쪽에 (작년) 같은 월 섹션이 있어도 거기 넣지 않고 끝에 새로 만든다', () => {
+		// 헤더에 연도가 없으므로 위로 거슬러 찾으면 작년 7월에 들어가는 버그가 난다.
+		const doc: JSONContent = {
+			type: 'doc',
+			content: [
+				para('7월'),
+				bullet([li('1(화) 작년것')]),
+				para('6월'),
+				bullet([li('10(금) a')])
+			]
+		};
+		const out = appendListItemToDocJson(doc, li('5(화) x'), 7);
+		// 앞쪽 7월(작년)은 건드리지 않음
+		expect(liTexts(out.content?.[1])).toEqual(['1(화) 작년것']);
+		// 6월 그대로
+		expect(liTexts(out.content?.[3])).toEqual(['10(금) a']);
+		// 끝에 새 7월
+		const n = out.content?.length ?? 0;
+		expect((out.content?.[n - 2]?.content?.[0] as { text?: string })?.text).toBe('7월');
+		expect(liTexts(out.content?.[n - 1])).toEqual(['5(화) x']);
+	});
+
+	it('월 헤더가 하나도 없으면 현재 월 섹션을 생성한다', () => {
 		const doc: JSONContent = { type: 'doc', content: [para('빈 노트')] };
 		const out = appendListItemToDocJson(doc, li('5(화) x'), 7);
 		expect((out.content?.[1]?.content?.[0] as { text?: string })?.text).toBe('7월');
@@ -76,19 +90,14 @@ describe('appendListItemToDocJson (월 섹션 인식)', () => {
 		expect(liTexts(out.content?.[2])).toEqual(['5(화) x']);
 	});
 
-	it('월 헤더는 있으나 뒤따르는 리스트가 없으면 헤더 뒤에 새 리스트를 넣는다', () => {
-		const doc: JSONContent = {
-			type: 'doc',
-			content: [para('7월'), para('메모')]
-		};
+	it('마지막 섹션 헤더가 현재 월인데 리스트가 없으면 헤더 뒤에 리스트를 넣는다', () => {
+		const doc: JSONContent = { type: 'doc', content: [para('메모'), para('7월')] };
 		const out = appendListItemToDocJson(doc, li('5(화) x'), 7);
-		expect(out.content?.[1]?.type).toBe('bulletList');
-		expect(liTexts(out.content?.[1])).toEqual(['5(화) x']);
-		// 메모 문단은 뒤로 밀림
-		expect((out.content?.[2]?.content?.[0] as { text?: string })?.text).toBe('메모');
+		expect(out.content?.[2]?.type).toBe('bulletList');
+		expect(liTexts(out.content?.[2])).toEqual(['5(화) x']);
 	});
 
-	it('날짜 없는 항목은 대상 월 리스트 안에서 제자리 고정', () => {
+	it('날짜 없는 항목은 현재 월 리스트 안에서 제자리 고정', () => {
 		const doc: JSONContent = {
 			type: 'doc',
 			content: [para('6월'), bullet([li('헤더 메모'), li('15(월) c')])]
@@ -108,7 +117,7 @@ describe('appendListItemToDocJson (월 섹션 인식)', () => {
 	});
 });
 
-describe('appendLiToLiveEditor (라이브 에디터 월 섹션 인식)', () => {
+describe('appendLiToLiveEditor (라이브 에디터 — 마지막 섹션 기준)', () => {
 	let currentEditor: Editor | null = null;
 	function makeEditor(doc: JSONContent): Editor {
 		const editor = new Editor({
@@ -122,11 +131,25 @@ describe('appendLiToLiveEditor (라이브 에디터 월 섹션 인식)', () => {
 		currentEditor = editor;
 		return editor;
 	}
-	function monthTexts(editor: Editor, month: number): string[] {
-		const list = findMonthBulletList(editor.state.doc, month);
-		if (!list) return [];
-		const out: string[] = [];
-		list.node.forEach((child) => out.push(child.firstChild?.textContent ?? ''));
+	// 상단 → 하단 순서로 모든 `N월` 섹션과 그 바로 뒤 리스트 항목을 나열한다.
+	function sections(editor: Editor): { month: number; items: string[] }[] {
+		const out: { month: number; items: string[] }[] = [];
+		let cur: { month: number; items: string[] } | null = null;
+		editor.state.doc.forEach((child) => {
+			const t =
+				child.type.name === 'paragraph' || child.type.name === 'heading'
+					? child.textContent
+					: '';
+			const m = /^\s*(\d{1,2})월\s*$/.exec(t);
+			if (m) {
+				cur = { month: parseInt(m[1], 10), items: [] };
+				out.push(cur);
+				return;
+			}
+			if (child.type.name === 'bulletList' && cur && cur.items.length === 0) {
+				child.forEach((liNode) => cur!.items.push(liNode.firstChild?.textContent ?? ''));
+			}
+		});
 		return out;
 	}
 	afterEach(() => {
@@ -134,31 +157,46 @@ describe('appendLiToLiveEditor (라이브 에디터 월 섹션 인식)', () => {
 		currentEditor = null;
 	});
 
-	it('대상 월 섹션 리스트에 정렬 삽입한다', () => {
+	it('마지막 섹션이 현재 월이면 그 리스트에 정렬 삽입', () => {
 		const editor = makeEditor({
 			type: 'doc',
-			content: [
-				para('6월'),
-				bullet([li('3(금) a'), li('15(월) c')]),
-				para('7월'),
-				bullet([li('1(화) x')])
-			]
+			content: [para('6월'), bullet([li('3(금) a'), li('15(월) c')])]
 		});
 		const ok = appendLiToLiveEditor(editor, li('9(목) b'), 6);
 		expect(ok).toBe(true);
-		expect(monthTexts(editor, 6)).toEqual(['3(금) a', '9(목) b', '15(월) c']);
-		expect(monthTexts(editor, 7)).toEqual(['1(화) x']);
+		expect(sections(editor)).toEqual([{ month: 6, items: ['3(금) a', '9(목) b', '15(월) c'] }]);
 	});
 
-	it('대상 월 헤더가 없으면 끝에 새 섹션을 만든다', () => {
+	it('마지막 섹션이 다른 월이면 끝에 현재 월 섹션을 새로 만든다', () => {
 		const editor = makeEditor({
 			type: 'doc',
 			content: [para('6월'), bullet([li('1(월) a')])]
 		});
 		const ok = appendLiToLiveEditor(editor, li('5(화) x'), 7);
 		expect(ok).toBe(true);
-		expect(monthTexts(editor, 6)).toEqual(['1(월) a']);
-		expect(monthTexts(editor, 7)).toEqual(['5(화) x']);
+		expect(sections(editor)).toEqual([
+			{ month: 6, items: ['1(월) a'] },
+			{ month: 7, items: ['5(화) x'] }
+		]);
+	});
+
+	it('앞쪽에 (작년) 같은 월 섹션이 있어도 끝에 새로 만든다', () => {
+		const editor = makeEditor({
+			type: 'doc',
+			content: [
+				para('7월'),
+				bullet([li('1(화) 작년것')]),
+				para('6월'),
+				bullet([li('10(금) a')])
+			]
+		});
+		const ok = appendLiToLiveEditor(editor, li('5(화) x'), 7);
+		expect(ok).toBe(true);
+		expect(sections(editor)).toEqual([
+			{ month: 7, items: ['1(화) 작년것'] },
+			{ month: 6, items: ['10(금) a'] },
+			{ month: 7, items: ['5(화) x'] }
+		]);
 	});
 });
 
