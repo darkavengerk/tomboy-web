@@ -38,16 +38,18 @@ function topNodeText(node: JSONContent): string {
 }
 
 /**
- * Insert `liJson` into the `${month}월` section of `docJson`, day-sorted.
+ * Insert `liJson` into the history note's **current-month** section, day-sorted.
  *
  * The history note is organised by month (`N월` header paragraph + a following
- * bulletList). We target the section matching `month` rather than blindly
- * appending to the last list, so that after a month rollover new items land in
- * the current month instead of piling onto the previous month.
+ * bulletList), newest section last. We only ever extend the **tail** section:
+ * if the last `N월` header is `month`, append to its list; otherwise start a
+ * fresh `${month}월` section at the end. We deliberately do NOT search backwards
+ * for an earlier same-month header — headers carry no year, so an older
+ * (previous-year) `${month}월` would wrongly absorb this year's item.
  *
- *   - header + following list → append to that list, then sort by day.
- *   - header but no list yet   → insert a fresh bulletList right after it.
- *   - no header for this month → append `${month}월` paragraph + list at the end.
+ *   - tail header is `month`, with a following list → append + day-sort.
+ *   - tail header is `month`, no list yet           → insert a fresh list after it.
+ *   - tail header differs / no header at all         → append `${month}월` + list at end.
  *
  * Returns a new doc JSON — does not mutate the input.
  */
@@ -57,38 +59,71 @@ export function appendListItemToDocJson(
 	month: number
 ): JSONContent {
 	const content = [...(docJson.content ?? [])];
-	let headerIdx = -1;
+	let lastHeaderIdx = -1;
+	let lastHeaderMonth = -1;
 	for (let i = 0; i < content.length; i++) {
 		const m = MONTH_HEADER_RE.exec(topNodeText(content[i] ?? {}));
-		if (m && parseInt(m[1], 10) === month) {
-			headerIdx = i;
-			break;
+		if (m) {
+			lastHeaderIdx = i;
+			lastHeaderMonth = parseInt(m[1], 10);
 		}
 	}
-	if (headerIdx >= 0) {
-		const next = content[headerIdx + 1];
+	if (lastHeaderIdx >= 0 && lastHeaderMonth === month) {
+		const next = content[lastHeaderIdx + 1];
 		if (next && (next.type === 'bulletList' || next.type === 'orderedList')) {
 			const items = sortListItemsByDay([...(next.content ?? []), liJson]);
-			content[headerIdx + 1] = { ...next, content: items };
+			content[lastHeaderIdx + 1] = { ...next, content: items };
 		} else {
-			content.splice(headerIdx + 1, 0, { type: 'bulletList', content: [liJson] });
+			content.splice(lastHeaderIdx + 1, 0, { type: 'bulletList', content: [liJson] });
 		}
 		return { ...docJson, content };
 	}
-	// No section for this month — create one at the end.
+	// Tail section isn't the current month (or no header at all) — start a new one.
 	content.push({ type: 'paragraph', content: [{ type: 'text', text: `${month}월` }] });
 	content.push({ type: 'bulletList', content: [liJson] });
 	return { ...docJson, content };
 }
 
+/** Month of a top-level `N월` header node (paragraph/heading only), else null. */
+function pmHeaderMonth(n: PMNode): number | null {
+	if (n.type.name !== 'paragraph' && n.type.name !== 'heading') return null;
+	const m = MONTH_HEADER_RE.exec(n.textContent);
+	return m ? parseInt(m[1], 10) : null;
+}
+
 /**
- * Insert a list-item node into a live TipTap editor's `${month}월` section,
- * day-sorting the list when appending to an existing one. Creates the month
- * section (or its list) when missing. Returns true on success.
- *
- * Mirrors `appendListItemToDocJson` for the case where the destination note is
- * open in a desktop window, reusing the same month-section planner as the
- * recurrence path.
+ * The last top-level `N월` section in `doc`: its month, the position just after
+ * the header, and the immediately-following list (if the section has one yet).
+ */
+function findLastMonthSection(doc: PMNode): {
+	month: number;
+	headerEndPos: number;
+	list: { pos: number; node: PMNode } | null;
+} | null {
+	let month = -1;
+	let headerEndPos = -1;
+	let headerIndex = -1;
+	doc.forEach((child, offset, index) => {
+		const mm = pmHeaderMonth(child);
+		if (mm !== null) {
+			month = mm;
+			headerEndPos = offset + child.nodeSize;
+			headerIndex = index;
+		}
+	});
+	if (headerIndex < 0) return null;
+	const next = headerIndex + 1 < doc.childCount ? doc.child(headerIndex + 1) : null;
+	const list =
+		next && (next.type.name === 'bulletList' || next.type.name === 'orderedList')
+			? { pos: headerEndPos, node: next }
+			: null;
+	return { month, headerEndPos, list };
+}
+
+/**
+ * Insert a list-item node into a live TipTap editor's **current-month** section.
+ * Mirrors `appendListItemToDocJson`: extend the tail section only, else start a
+ * fresh `${month}월` section at the end. Returns true on success.
  */
 export function appendLiToLiveEditor(
 	editor: Editor,
@@ -96,17 +131,26 @@ export function appendLiToLiveEditor(
 	month: number
 ): boolean {
 	const { state, schema } = editor;
-	const plan = planMonthInsert(state.doc, month);
-	const nodes = buildInsertionNodes(schema, plan, liJson, month);
-	if (!nodes) return false;
+	const liNode = buildSchemaNode(schema, liJson);
+	if (!liNode) return false;
 
 	const tr = state.tr;
-	const insertPos =
-		plan.kind === 'new-section-at-end' ? state.doc.content.size : plan.insertPos;
-	tr.insert(insertPos, nodes);
-	if (plan.kind === 'append-to-list') {
-		const grown = findMonthBulletList(tr.doc, month);
-		if (grown) sortListNodeInTr(tr, schema, grown.pos, grown.node);
+	const last = findLastMonthSection(state.doc);
+	if (last && last.month === month && last.list) {
+		const insertPos = last.list.pos + last.list.node.nodeSize - 1;
+		tr.insert(insertPos, liNode);
+		const grown = findLastMonthSection(tr.doc);
+		if (grown?.list) sortListNodeInTr(tr, schema, grown.list.pos, grown.list.node);
+	} else if (last && last.month === month && !last.list) {
+		const ul = schema.nodes.bulletList.create(null, [liNode]);
+		tr.insert(last.headerEndPos, ul);
+	} else {
+		const paragraph = schema.nodes.paragraph;
+		const bulletList = schema.nodes.bulletList;
+		if (!paragraph || !bulletList) return false;
+		const header = paragraph.create(null, [schema.text(`${month}월`)]);
+		const ul = bulletList.create(null, [liNode]);
+		tr.insert(state.doc.content.size, [header, ul]);
 	}
 	editor.view.dispatch(tr);
 	return true;
