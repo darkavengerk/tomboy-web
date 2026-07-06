@@ -3059,6 +3059,27 @@ Complete:</pre>
 				<p class="info-text">이게 안 맞으면 해당 기능이 동작하지 않거나 깨져 보입니다.</p>
 
 				<details class="guide-card">
+					<summary>데스크탑 — 레일 시계 + 달력 위젯</summary>
+					<p class="info-text">
+						데스크탑 왼쪽 레일 <strong>맨 아래(옛 「고급」 자리)에 실시간 시계</strong>가
+						24시간 <code>HH:MM</code> 형식으로 표시됩니다. 이 시계를 누르면 예전과 같은
+						<strong>고급 메뉴</strong>가 열리고, 그 안의 <strong>달력</strong>을 누르면
+						달력 창이 다른 노트처럼 캔버스에 뜹니다.
+					</p>
+					<ul class="guide-list">
+						<li>달력은 <strong>노트가 아니라 위젯</strong>입니다 — IndexedDB에 저장되지 않고
+							Dropbox·Firestore로 동기화되지 않습니다. 창 크기·위치만 이 기기에 기억됩니다.</li>
+						<li>월별 그리드에서 <strong>◀ / ▶</strong>로 연·월을 바꿔 보고, 가운데
+							<strong>연·월 라벨</strong>을 누르면 이번 달로 돌아옵니다.</li>
+						<li>각 날짜 셀의 작은 숫자 배지는 <strong>그날 생성된 노트 개수</strong>입니다.</li>
+						<li>개수가 있는 날짜를 누르면 그날 만든 노트들이 <strong>역참조 묶음과 같은
+							별도 창</strong>으로 뜹니다. 항목을 꺼내면 해당 노트가 캔버스 창으로 열립니다.</li>
+						<li>다른 창에서 노트를 만들면 개수 배지가 <strong>자동으로 갱신</strong>됩니다.</li>
+						<li>데스크탑 전용입니다(모바일은 단일 노트 화면).</li>
+					</ul>
+				</details>
+
+				<details class="guide-card">
 					<summary>데스크탑 — 펼쳐보기로 열린 노트 한눈에 보기</summary>
 					<p class="info-text">
 						데스크탑 작업공간에서 노트 창이 여러 개 겹쳐 잘 안 보일 때

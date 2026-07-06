@@ -4,6 +4,7 @@
 	import SettingsWindow from './SettingsWindow.svelte';
 	import AdminWindow from './AdminWindow.svelte';
 	import HistoryWindow from './HistoryWindow.svelte';
+	import CalendarWindow from './CalendarWindow.svelte';
 	import SidePanel from './SidePanel.svelte';
 	import {
 		desktopSession,
@@ -156,6 +157,10 @@
 
 	function handleOpenAdmin() {
 		desktopSession.openAdmin();
+	}
+
+	function handleOpenCalendar() {
+		desktopSession.openCalendarWidget();
 	}
 
 	function handleSwitchWorkspace(index: number) {
@@ -480,6 +485,20 @@
 						onmove={handleMove}
 						onresize={handleResize}
 					/>
+				{:else if win.kind === 'calendar'}
+					<CalendarWindow
+						x={win.x}
+						y={win.y}
+						width={win.width}
+						height={win.height}
+						z={(win.pinned ? DESKTOP_PINNED_Z : 0) + win.z}
+						pinned={win.pinned}
+						active={visible}
+						onfocus={handleFocus}
+						onclose={handleClose}
+						onmove={handleMove}
+						onresize={handleResize}
+					/>
 				{:else}
 					<NoteWindow
 						guid={win.guid}
@@ -516,6 +535,7 @@
 		onrestore={handleRestore}
 		onopensettings={handleOpenSettings}
 		onopenadmin={handleOpenAdmin}
+		oncalendar={handleOpenCalendar}
 		onswitchworkspace={handleSwitchWorkspace}
 		onspread={handleSpread}
 		spreadDisabled={!hasNoteWindows}

@@ -73,13 +73,16 @@ const MIN_NOTE_OPACITY = 0.2;
  */
 export const DESKTOP_PINNED_Z = 1_000_000;
 
-export type DesktopWindowKind = 'note' | 'settings' | 'admin' | 'history';
+export type DesktopWindowKind = 'note' | 'settings' | 'admin' | 'history' | 'calendar';
 
 /** Singleton guid used for the settings window. */
 export const SETTINGS_WINDOW_GUID = '__settings__';
 
 /** Singleton guid used for the admin window. */
 export const ADMIN_WINDOW_GUID = '__admin__';
+
+/** Singleton guid used for the calendar widget window. */
+export const CALENDAR_WIDGET_GUID = '__calendar__';
 
 /** Prefix for ephemeral revision-history windows. Source note guid follows. */
 export const HISTORY_GUID_PREFIX = '__history__';
@@ -179,6 +182,9 @@ const DEFAULT_SETTINGS_HEIGHT = 640;
 // opens larger than the settings panel.
 const DEFAULT_ADMIN_WIDTH = 820;
 const DEFAULT_ADMIN_HEIGHT = 680;
+// Calendar widget: a compact month grid (7 columns), taller than wide.
+const DEFAULT_CALENDAR_WIDTH = 360;
+const DEFAULT_CALENDAR_HEIGHT = 440;
 const MIN_WIDTH = 280;
 const MIN_HEIGHT = 240;
 // The SidePanel rail's width is user-resizable and persisted in
@@ -451,6 +457,9 @@ function defaultGeometry(kind: DesktopWindowKind): GeometrySnapshot {
 	}
 	if (kind === 'admin') {
 		return centeredFor(DEFAULT_ADMIN_WIDTH, DEFAULT_ADMIN_HEIGHT);
+	}
+	if (kind === 'calendar') {
+		return centeredFor(DEFAULT_CALENDAR_WIDTH, DEFAULT_CALENDAR_HEIGHT);
 	}
 	return centeredFor(DEFAULT_WIDTH, DEFAULT_HEIGHT);
 }
@@ -950,6 +959,36 @@ export const desktopSession = {
 		const win: DesktopWindowState = {
 			guid,
 			kind: 'admin',
+			x: geom.x,
+			y: geom.y,
+			width: geom.width,
+			height: geom.height,
+			z: ++ws.nextZ
+		};
+		ws.windows.push(win);
+		cacheGeometry(ws, win);
+		schedulePersist();
+	},
+
+	/**
+	 * Open (or focus) the calendar widget window. Like settings/admin it is a
+	 * non-note widget keyed by a sentinel guid — its pose is cached + persisted,
+	 * but it is never backed by an IndexedDB note and never synced.
+	 */
+	openCalendarWidget(): void {
+		const ws = current();
+		const guid = CALENDAR_WIDGET_GUID;
+		const existing = ws.windows.find((w) => w.guid === guid);
+		if (existing) {
+			bumpZ(ws, existing);
+			schedulePersist();
+			return;
+		}
+		const cached = ws.geometryByGuid[guid];
+		const geom = cached ?? defaultGeometry('calendar');
+		const win: DesktopWindowState = {
+			guid,
+			kind: 'calendar',
 			x: geom.x,
 			y: geom.y,
 			width: geom.width,
