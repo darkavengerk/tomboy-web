@@ -36,6 +36,7 @@
 		}
 		return [
 			{ href: '/', label: '홈', mode: 'home' as AppMode },
+			{ href: '/calendar', label: '달력', mode: 'calendar' as AppMode },
 			{ href: '/sleepnote', label: '슬립노트', mode: 'sleepnote' as AppMode },
 			{ href: '/notes', label: '전체', mode: 'notes' as AppMode }
 		];

@@ -3059,23 +3059,28 @@ Complete:</pre>
 				<p class="info-text">이게 안 맞으면 해당 기능이 동작하지 않거나 깨져 보입니다.</p>
 
 				<details class="guide-card">
-					<summary>데스크탑 — 레일 시계 + 달력 위젯</summary>
+					<summary>달력 위젯 — 데스크탑 레일 시계 + 모바일 상단 「달력」</summary>
 					<p class="info-text">
-						데스크탑 왼쪽 레일 <strong>맨 아래(옛 「고급」 자리)에 실시간 시계</strong>가
-						24시간 <code>HH:MM</code> 형식으로 표시됩니다. 이 시계를 누르면 예전과 같은
-						<strong>고급 메뉴</strong>가 열리고, 그 안의 <strong>달력</strong>을 누르면
-						달력 창이 다른 노트처럼 캔버스에 뜹니다.
+						<strong>데스크탑</strong>: 왼쪽 레일 <strong>맨 아래(옛 「고급」 자리)에 실시간 시계</strong>가
+						24시간 <code>HH:MM</code>으로 표시됩니다. 시계를 누르면 <strong>고급 메뉴</strong>가 열리고
+						그 안의 <strong>달력</strong>으로 달력 창을 띄웁니다. <strong>빈 바탕화면을 더블클릭</strong>해도
+						바로 열립니다. <strong>모바일</strong>: 상단 네비 <strong>홈 옆의 「달력」</strong>으로 들어갑니다.
 					</p>
 					<ul class="guide-list">
-						<li>달력은 <strong>노트가 아니라 위젯</strong>입니다 — IndexedDB에 저장되지 않고
-							Dropbox·Firestore로 동기화되지 않습니다. 창 크기·위치만 이 기기에 기억됩니다.</li>
-						<li>월별 그리드에서 <strong>◀ / ▶</strong>로 연·월을 바꿔 보고, 가운데
-							<strong>연·월 라벨</strong>을 누르면 이번 달로 돌아옵니다.</li>
-						<li>각 날짜 셀의 작은 숫자 배지는 <strong>그날 생성된 노트 개수</strong>입니다.</li>
-						<li>개수가 있는 날짜를 누르면 그날 만든 노트들이 <strong>역참조 묶음과 같은
-							별도 창</strong>으로 뜹니다. 항목을 꺼내면 해당 노트가 캔버스 창으로 열립니다.</li>
-						<li>다른 창에서 노트를 만들면 개수 배지가 <strong>자동으로 갱신</strong>됩니다.</li>
-						<li>데스크탑 전용입니다(모바일은 단일 노트 화면).</li>
+						<li>달력은 <strong>노트가 아니라 위젯</strong>입니다 — 저장·동기화되지 않고, 창 크기·위치만
+							이 기기에 로컬로 기억됩니다.</li>
+						<li>월별 그리드에서 <strong>◀ / ▶</strong>로 연·월을 바꾸고, 가운데 <strong>연·월 라벨</strong>을
+							누르면 이번 달로 돌아옵니다. 각 날짜의 작은 배지 = <strong>그날 생성된 노트 개수</strong>.</li>
+						<li><strong>다이어리 모드</strong>: 달력을 <strong>충분히 크게</strong>(폭·높이 둘 다 크게) 만들면
+							각 날짜 칸에 그날의 <strong>일정 + 히스토리 항목</strong>이 다이어리처럼 적힙니다. 작으면
+							개수 배지만 보입니다.</li>
+						<li>일정 = <strong>설정 → 알림</strong>에서 지정한 일정 노트, 히스토리 = 일정 항목을
+							<strong>Ctrl로 「보내기」</strong> 한 기록입니다. 월(<code>N월</code>) 구획 아래 항목만 날짜에
+							배치됩니다.</li>
+						<li>개수가 있는 날짜를 누르면 그날 노트들이 <strong>역참조 묶음</strong>처럼 뜹니다 —
+							데스크탑은 <strong>달력 오른쪽에 도킹</strong>(크기 로컬 기억), 모바일은 풀스크린. 항목을 꺼내면
+							해당 노트가 열립니다.</li>
+						<li>다른 곳에서 노트를 만들면 개수·다이어리가 <strong>자동 갱신</strong>됩니다.</li>
 					</ul>
 				</details>
 
