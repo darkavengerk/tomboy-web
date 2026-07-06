@@ -5,6 +5,7 @@ import type { JSONContent } from '@tiptap/core';
 import { TomboyListItem } from '$lib/editor/extensions/TomboyListItem.js';
 import { TomboyParagraph } from '$lib/editor/extensions/TomboyParagraph.js';
 import {
+	appendLiToLiveEditor,
 	appendListItemToDocJson,
 	applySourceSideEdits
 } from '$lib/editor/sendListItem/transferListItem.js';
@@ -34,41 +35,130 @@ function liTexts(list: JSONContent | undefined): (string | undefined)[] {
 	);
 }
 
-describe('appendListItemToDocJson', () => {
-	it('마지막 bulletList에 추가하고 일 번호순으로 정렬한다', () => {
+describe('appendListItemToDocJson (월 섹션 인식)', () => {
+	it('대상 월 섹션의 리스트에 추가하고 일 번호순 정렬(마지막 리스트가 아님)', () => {
 		const doc: JSONContent = {
 			type: 'doc',
-			content: [bullet([li('3(금) a'), li('15(월) c')])]
+			content: [
+				para('6월'),
+				bullet([li('3(금) a'), li('15(월) c')]),
+				para('7월'),
+				bullet([li('1(화) x'), li('20(목) y')])
+			]
 		};
-		const out = appendListItemToDocJson(doc, li('9(목) b'));
-		expect(liTexts(out.content?.[0])).toEqual(['3(금) a', '9(목) b', '15(월) c']);
+		const out = appendListItemToDocJson(doc, li('9(목) b'), 6);
+		// 6월 리스트로 정렬 삽입
+		expect(liTexts(out.content?.[1])).toEqual(['3(금) a', '9(목) b', '15(월) c']);
+		// 7월 리스트는 그대로
+		expect(liTexts(out.content?.[3])).toEqual(['1(화) x', '20(목) y']);
 	});
 
-	it('날짜 없는 항목은 제자리 고정', () => {
+	it('대상 월 헤더가 없으면 문서 끝에 새 월 섹션을 만든다', () => {
 		const doc: JSONContent = {
 			type: 'doc',
-			content: [bullet([li('헤더 메모'), li('15(월) c')])]
+			content: [para('6월'), bullet([li('1(월) a'), li('2(화) b')])]
 		};
-		const out = appendListItemToDocJson(doc, li('2(수) a'));
-		// 메모는 idx0 고정, 날짜 항목들만 [2, 15]로 채워짐
-		expect(liTexts(out.content?.[0])).toEqual(['헤더 메모', '2(수) a', '15(월) c']);
+		const out = appendListItemToDocJson(doc, li('5(화) x'), 7);
+		// 6월 섹션 그대로
+		expect(liTexts(out.content?.[1])).toEqual(['1(월) a', '2(화) b']);
+		// 끝에 7월 헤더 + 리스트
+		const n = out.content?.length ?? 0;
+		expect((out.content?.[n - 2]?.content?.[0] as { text?: string })?.text).toBe('7월');
+		expect(out.content?.[n - 1]?.type).toBe('bulletList');
+		expect(liTexts(out.content?.[n - 1])).toEqual(['5(화) x']);
 	});
 
-	it('bulletList가 없으면 새로 만들어 추가(정렬 불필요)', () => {
+	it('월 헤더가 하나도 없으면 현재 달 섹션을 생성한다', () => {
 		const doc: JSONContent = { type: 'doc', content: [para('빈 노트')] };
-		const out = appendListItemToDocJson(doc, li('5(화) x'));
+		const out = appendListItemToDocJson(doc, li('5(화) x'), 7);
+		expect((out.content?.[1]?.content?.[0] as { text?: string })?.text).toBe('7월');
+		expect(out.content?.[2]?.type).toBe('bulletList');
+		expect(liTexts(out.content?.[2])).toEqual(['5(화) x']);
+	});
+
+	it('월 헤더는 있으나 뒤따르는 리스트가 없으면 헤더 뒤에 새 리스트를 넣는다', () => {
+		const doc: JSONContent = {
+			type: 'doc',
+			content: [para('7월'), para('메모')]
+		};
+		const out = appendListItemToDocJson(doc, li('5(화) x'), 7);
 		expect(out.content?.[1]?.type).toBe('bulletList');
 		expect(liTexts(out.content?.[1])).toEqual(['5(화) x']);
+		// 메모 문단은 뒤로 밀림
+		expect((out.content?.[2]?.content?.[0] as { text?: string })?.text).toBe('메모');
+	});
+
+	it('날짜 없는 항목은 대상 월 리스트 안에서 제자리 고정', () => {
+		const doc: JSONContent = {
+			type: 'doc',
+			content: [para('6월'), bullet([li('헤더 메모'), li('15(월) c')])]
+		};
+		const out = appendListItemToDocJson(doc, li('2(수) a'), 6);
+		expect(liTexts(out.content?.[1])).toEqual(['헤더 메모', '2(수) a', '15(월) c']);
 	});
 
 	it('입력 doc을 변형하지 않는다', () => {
 		const doc: JSONContent = {
 			type: 'doc',
-			content: [bullet([li('3(금) a')])]
+			content: [para('6월'), bullet([li('3(금) a')])]
 		};
 		const before = JSON.stringify(doc);
-		appendListItemToDocJson(doc, li('1(수) b'));
+		appendListItemToDocJson(doc, li('1(수) b'), 6);
 		expect(JSON.stringify(doc)).toBe(before);
+	});
+});
+
+describe('appendLiToLiveEditor (라이브 에디터 월 섹션 인식)', () => {
+	let currentEditor: Editor | null = null;
+	function makeEditor(doc: JSONContent): Editor {
+		const editor = new Editor({
+			extensions: [
+				StarterKit.configure({ code: false, codeBlock: false, paragraph: false, listItem: false }),
+				TomboyParagraph,
+				TomboyListItem
+			],
+			content: doc
+		});
+		currentEditor = editor;
+		return editor;
+	}
+	function monthTexts(editor: Editor, month: number): string[] {
+		const list = findMonthBulletList(editor.state.doc, month);
+		if (!list) return [];
+		const out: string[] = [];
+		list.node.forEach((child) => out.push(child.firstChild?.textContent ?? ''));
+		return out;
+	}
+	afterEach(() => {
+		currentEditor?.destroy();
+		currentEditor = null;
+	});
+
+	it('대상 월 섹션 리스트에 정렬 삽입한다', () => {
+		const editor = makeEditor({
+			type: 'doc',
+			content: [
+				para('6월'),
+				bullet([li('3(금) a'), li('15(월) c')]),
+				para('7월'),
+				bullet([li('1(화) x')])
+			]
+		});
+		const ok = appendLiToLiveEditor(editor, li('9(목) b'), 6);
+		expect(ok).toBe(true);
+		expect(monthTexts(editor, 6)).toEqual(['3(금) a', '9(목) b', '15(월) c']);
+		expect(monthTexts(editor, 7)).toEqual(['1(화) x']);
+	});
+
+	it('대상 월 헤더가 없으면 끝에 새 섹션을 만든다', () => {
+		const editor = makeEditor({
+			type: 'doc',
+			content: [para('6월'), bullet([li('1(월) a')])]
+		});
+		const ok = appendLiToLiveEditor(editor, li('5(화) x'), 7);
+		expect(ok).toBe(true);
+		expect(monthTexts(editor, 6)).toEqual(['1(월) a']);
+		expect(monthTexts(editor, 7)).toEqual(['5(화) x']);
 	});
 });
 

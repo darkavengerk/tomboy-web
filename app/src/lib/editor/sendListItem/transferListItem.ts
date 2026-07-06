@@ -27,75 +27,102 @@ export const SEND_SOURCE_GUID = 'd5ef5481-b301-44fa-bd50-aa5ce7b32cf2';
 /** GUID of the note that receives sent list items (appended to its last list). */
 export const SEND_TARGET_GUID = '1cc0670b-8a5c-4858-b6a1-a2f7b5c24103';
 
+const MONTH_HEADER_RE = /^\s*(\d{1,2})월\s*$/;
+
+/** Concatenated text of a top-level paragraph/heading JSON node (for `N월` header match). */
+function topNodeText(node: JSONContent): string {
+	if (node.type !== 'paragraph' && node.type !== 'heading') return '';
+	return (node.content ?? [])
+		.map((n) => (n.type === 'text' && typeof n.text === 'string' ? n.text : ''))
+		.join('');
+}
+
 /**
- * Append `liJson` to the end of the last bulletList in `docJson`, then sort
- * that list by schedule day (undated items pinned in place). If the doc has no
- * bulletList, create one at the end containing just the new item.
+ * Insert `liJson` into the `${month}월` section of `docJson`, day-sorted.
+ *
+ * The history note is organised by month (`N월` header paragraph + a following
+ * bulletList). We target the section matching `month` rather than blindly
+ * appending to the last list, so that after a month rollover new items land in
+ * the current month instead of piling onto the previous month.
+ *
+ *   - header + following list → append to that list, then sort by day.
+ *   - header but no list yet   → insert a fresh bulletList right after it.
+ *   - no header for this month → append `${month}월` paragraph + list at the end.
  *
  * Returns a new doc JSON — does not mutate the input.
  */
 export function appendListItemToDocJson(
 	docJson: JSONContent,
-	liJson: JSONContent
+	liJson: JSONContent,
+	month: number
 ): JSONContent {
 	const content = [...(docJson.content ?? [])];
-	let lastListIdx = -1;
-	for (let i = content.length - 1; i >= 0; i--) {
-		if (content[i]?.type === 'bulletList') {
-			lastListIdx = i;
+	let headerIdx = -1;
+	for (let i = 0; i < content.length; i++) {
+		const m = MONTH_HEADER_RE.exec(topNodeText(content[i] ?? {}));
+		if (m && parseInt(m[1], 10) === month) {
+			headerIdx = i;
 			break;
 		}
 	}
-	if (lastListIdx >= 0) {
-		const list = content[lastListIdx];
-		const items = sortListItemsByDay([...(list.content ?? []), liJson]);
-		content[lastListIdx] = { ...list, content: items };
-	} else {
-		content.push({ type: 'bulletList', content: [liJson] });
+	if (headerIdx >= 0) {
+		const next = content[headerIdx + 1];
+		if (next && (next.type === 'bulletList' || next.type === 'orderedList')) {
+			const items = sortListItemsByDay([...(next.content ?? []), liJson]);
+			content[headerIdx + 1] = { ...next, content: items };
+		} else {
+			content.splice(headerIdx + 1, 0, { type: 'bulletList', content: [liJson] });
+		}
+		return { ...docJson, content };
 	}
+	// No section for this month — create one at the end.
+	content.push({ type: 'paragraph', content: [{ type: 'text', text: `${month}월` }] });
+	content.push({ type: 'bulletList', content: [liJson] });
 	return { ...docJson, content };
 }
 
 /**
- * Append a list-item node to a live TipTap editor's last bulletList (or append
- * a new bulletList at the end if none exists). Returns true on success.
+ * Insert a list-item node into a live TipTap editor's `${month}월` section,
+ * day-sorting the list when appending to an existing one. Creates the month
+ * section (or its list) when missing. Returns true on success.
+ *
+ * Mirrors `appendListItemToDocJson` for the case where the destination note is
+ * open in a desktop window, reusing the same month-section planner as the
+ * recurrence path.
  */
-function appendLiToLiveEditor(editor: Editor, liJson: JSONContent): boolean {
+export function appendLiToLiveEditor(
+	editor: Editor,
+	liJson: JSONContent,
+	month: number
+): boolean {
 	const { state, schema } = editor;
-	let liNode: PMNode;
-	try {
-		liNode = schema.nodeFromJSON(liJson);
-	} catch {
-		return false;
-	}
-
-	const lastList = findLastBulletList(state.doc);
+	const plan = planMonthInsert(state.doc, month);
+	const nodes = buildInsertionNodes(schema, plan, liJson, month);
+	if (!nodes) return false;
 
 	const tr = state.tr;
-	if (lastList) {
-		const insertPos = lastList.pos + lastList.node.nodeSize - 1;
-		tr.insert(insertPos, liNode);
-		// Re-find the (now larger) last list in tr.doc and day-sort it.
-		const grown = findLastBulletList(tr.doc);
+	const insertPos =
+		plan.kind === 'new-section-at-end' ? state.doc.content.size : plan.insertPos;
+	tr.insert(insertPos, nodes);
+	if (plan.kind === 'append-to-list') {
+		const grown = findMonthBulletList(tr.doc, month);
 		if (grown) sortListNodeInTr(tr, schema, grown.pos, grown.node);
-	} else {
-		const ul = schema.nodes.bulletList.create(null, [liNode]);
-		tr.insert(state.doc.content.size, ul);
 	}
 	editor.view.dispatch(tr);
 	return true;
 }
 
 /**
- * Write the list-item JSON into the destination note. Uses the live editor if
- * the note is currently open in a desktop window, otherwise reads/writes IDB.
+ * Write the list-item JSON into the destination note's `${month}월` section.
+ * Uses the live editor if the note is currently open in a desktop window,
+ * otherwise reads/writes IDB.
  *
  * Throws on failure so the caller can leave the source intact.
  */
-async function writeToDestination(liJson: JSONContent): Promise<void> {
+async function writeToDestination(liJson: JSONContent, month: number): Promise<void> {
 	const liveEditor = desktopSession.getEditorForGuid(SEND_TARGET_GUID);
 	if (liveEditor && !liveEditor.isDestroyed) {
-		const ok = appendLiToLiveEditor(liveEditor, liJson);
+		const ok = appendLiToLiveEditor(liveEditor, liJson, month);
 		if (!ok) throw new Error('대상 노트에 삽입할 수 없습니다.');
 		return;
 	}
@@ -103,7 +130,7 @@ async function writeToDestination(liJson: JSONContent): Promise<void> {
 	const note = await getNote(SEND_TARGET_GUID);
 	if (!note) throw new Error('대상 노트를 찾을 수 없습니다.');
 	const docJson = getNoteEditorContent(note);
-	const nextDoc = appendListItemToDocJson(docJson, liJson);
+	const nextDoc = appendListItemToDocJson(docJson, liJson, month);
 	const updated = await updateNoteFromEditor(SEND_TARGET_GUID, nextDoc);
 	if (!updated) throw new Error('대상 노트 저장에 실패했습니다.');
 }
@@ -114,15 +141,6 @@ function buildSchemaNode(schema: Schema, json: JSONContent): PMNode | null {
 	} catch {
 		return null;
 	}
-}
-
-/** Find the last top-level bulletList in `doc` (offset + node), or null. */
-function findLastBulletList(doc: PMNode): { pos: number; node: PMNode } | null {
-	let result: { pos: number; node: PMNode } | null = null;
-	doc.forEach((child, offset) => {
-		if (child.type.name === 'bulletList') result = { pos: offset, node: child };
-	});
-	return result;
 }
 
 /**
@@ -316,9 +334,12 @@ export async function transferListItem(
 	const expectedSize = liNode.nodeSize;
 	const parsed = parsePrefix(liNode.firstChild?.textContent ?? '');
 	const spec = parsed ? recurrenceFromParse(parsed) : null;
+	// 히스토리 노트는 월(`N월`)별로 정리된다. 항목을 보낼 땐 "지금 이 달"의 섹션에
+	// 넣어, 달이 바뀌어도 이전 달 리스트에 쌓이지 않게 한다(없으면 생성).
+	const targetMonth = new Date().getMonth() + 1;
 
 	try {
-		await writeToDestination(liJson);
+		await writeToDestination(liJson, targetMonth);
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
 		pushToast(`보내기 실패: ${msg}`, { kind: 'error' });

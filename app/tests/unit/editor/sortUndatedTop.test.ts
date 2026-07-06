@@ -86,6 +86,7 @@ describe('appendListItemToDocJson — 상단 날짜없는 텍스트 + 보내기 
 		const doc: JSONContent = {
 			type: 'doc',
 			content: [
+				para('6월'),
 				bullet([
 					li('이번 달 메모'),
 					li('잊지 말 것'),
@@ -94,9 +95,9 @@ describe('appendListItemToDocJson — 상단 날짜없는 텍스트 + 보내기 
 				])
 			]
 		};
-		const out = appendListItemToDocJson(doc, li('9(월) 새것'));
+		const out = appendListItemToDocJson(doc, li('9(월) 새것'), 6);
 		// 메모 2줄은 상단 고정, 날짜는 [5,9,20] 정렬
-		expect(liTexts(out.content?.[0])).toEqual([
+		expect(liTexts(out.content?.[1])).toEqual([
 			'이번 달 메모',
 			'잊지 말 것',
 			'5(목) 기존2',
@@ -108,12 +109,12 @@ describe('appendListItemToDocJson — 상단 날짜없는 텍스트 + 보내기 
 	it('여러 번 연속 보내기에도 상단 메모 고정 유지', () => {
 		let doc: JSONContent = {
 			type: 'doc',
-			content: [bullet([li('헤더'), li('10(금) a')])]
+			content: [para('6월'), bullet([li('헤더'), li('10(금) a')])]
 		};
-		doc = appendListItemToDocJson(doc, li('3(화) b'));
-		doc = appendListItemToDocJson(doc, li('25(토) c'));
-		doc = appendListItemToDocJson(doc, li('7(수) d'));
-		expect(liTexts(doc.content?.[0])).toEqual([
+		doc = appendListItemToDocJson(doc, li('3(화) b'), 6);
+		doc = appendListItemToDocJson(doc, li('25(토) c'), 6);
+		doc = appendListItemToDocJson(doc, li('7(수) d'), 6);
+		expect(liTexts(doc.content?.[1])).toEqual([
 			'헤더',
 			'3(화) b',
 			'7(수) d',
