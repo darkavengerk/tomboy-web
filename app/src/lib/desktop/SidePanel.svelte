@@ -27,6 +27,7 @@
 	import { startPointerDrag } from './dragResize.js';
 	import RailMusicControls from '$lib/editor/musicNote/RailMusicControls.svelte';
 	import RailNowPlaying from '$lib/editor/musicNote/RailNowPlaying.svelte';
+	import { clock } from './clock.svelte.js';
 
 	// SLIPNOTE_WORKSPACE_INDEX (workspace 1, the dedicated slipnote
 	// workspace) is shared from session.svelte.ts so DesktopWorkspace and
@@ -44,6 +45,8 @@
 		onrestore: (guid: string) => void;
 		onopensettings: () => void;
 		onopenadmin: () => void;
+		/** Open the calendar widget window. */
+		oncalendar: () => void;
 		onswitchworkspace: (index: number) => void;
 		onspread: () => void;
 		spreadDisabled?: boolean;
@@ -58,6 +61,7 @@
 		onrestore,
 		onopensettings,
 		onopenadmin,
+		oncalendar,
 		onswitchworkspace,
 		onspread,
 		spreadDisabled = false
@@ -387,9 +391,9 @@
 			onclick={toggleAdvanced}
 			aria-haspopup="menu"
 			aria-expanded={advancedOpen}
-			title="고급"
-			aria-label="고급"
-		>고급</button>
+			title="고급 메뉴"
+			aria-label="고급 메뉴"
+		>{clock.hhmm}</button>
 	</div>
 
 	<!--
@@ -508,6 +512,15 @@
 	-->
 	{#if advancedOpen}
 		<div class="advanced-menu" role="menu" aria-label="고급">
+			<button
+				type="button"
+				class="adv-item"
+				role="menuitem"
+				onclick={() => {
+					advancedOpen = false;
+					oncalendar();
+				}}
+			>달력</button>
 			<a
 				class="adv-item"
 				href="/desktop/graph"
