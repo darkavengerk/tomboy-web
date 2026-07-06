@@ -21,6 +21,3 @@ Thumbs.db
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
-
-# Prefetched fonts (리마커블 PDF 송출용 — scripts/prefetch-fonts.mjs 가 자동 채움)
-static/fonts/*.ttf
