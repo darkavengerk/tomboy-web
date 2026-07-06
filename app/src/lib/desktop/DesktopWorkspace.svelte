@@ -394,6 +394,12 @@
 		canvasDownAt = onBare ? { x: e.clientX, y: e.clientY } : null;
 		noteFocusedAtDown = onBare && aNoteHasCaret();
 	}
+	// 빈 캔버스 배경 더블클릭 → 달력 위젯 열기(바탕화면 단축키). 노트 창 위
+	// 더블클릭은 target이 창 내부라 무시된다.
+	function onCanvasDblClick(e: MouseEvent) {
+		if (e.target !== e.currentTarget) return;
+		desktopSession.openCalendarWidget();
+	}
 	function onCanvasClick(e: MouseEvent) {
 		if (e.target !== e.currentTarget) return;
 		const down = canvasDownAt;
@@ -422,6 +428,7 @@
 		ondrop={onCanvasDrop}
 		onpointerdown={onCanvasPointerDown}
 		onclick={onCanvasClick}
+		ondblclick={onCanvasDblClick}
 	>
 		{#if wallpaperUrl}
 			<div

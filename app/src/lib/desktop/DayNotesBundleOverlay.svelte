@@ -1,12 +1,15 @@
 <script lang="ts">
 	/**
-	 * 특정 날짜에 생성된 노트들을 역참조 번들과 동일한 방식으로 묶어 보여주는
-	 * 떠다니는 창. `BacklinkBundleOverlay`의 windowed 모드를 본떠, 재사용하는
-	 * 실제 심(buildSyntheticBundleSpec + NoteBundleCabinet)은 역참조와 같다.
+	 * 특정 날짜에 생성된 노트들을 역참조 번들과 동일한 방식으로 묶어 보여주는 창.
+	 * `BacklinkBundleOverlay`처럼 재사용 심(buildSyntheticBundleSpec +
+	 * NoteBundleCabinet)은 역참조와 같다. desktopSession에 등록되지 않는 임시
+	 * 오버레이 — 세션 영속은 없지만, 창 크기만 localStorage에 로컬로 기억한다.
 	 *
-	 * 달력 위젯이 소유하는 임시 오버레이 — desktopSession에 등록되지 않으므로
-	 * 세션/지오메트리 영속화가 없다(닫으면 소멸). body 로 portal 해 `.note-window`
-	 * stacking context 밖 `--z-modal` 밴드에 띄운다.
+	 * 표시 모드:
+	 *  - `windowed`(데스크탑): 드래그+리사이즈 떠다니는 창. `anchor`(달력 지오메트리)가
+	 *    있으면 달력 오른쪽에 도킹해 연다.
+	 *  - 비-windowed(모바일): 풀스크린(inset:0).
+	 * 둘 다 body 로 portal 해 `.note-window` stacking context 밖 `--z-modal` 밴드에 띄운다.
 	 */
 	import { onMount } from 'svelte';
 	import { portal } from '$lib/utils/portal.js';
@@ -23,15 +26,21 @@
 		/** 그날 생성된 노트들(달력이 이미 계산). */
 		notes: CalendarNote[];
 		onclose: () => void;
-		/** 항목 꺼내기 — 해당 노트를 캔버스 창으로 연다. */
+		/** 항목 꺼내기 — 해당 노트를 연다. */
 		onopennote: (title: string) => void;
+		/** true 면 드래그/리사이즈 떠다니는 창(데스크탑), false 면 풀스크린(모바일). */
+		windowed?: boolean;
+		/** windowed 일 때 이 사각형(달력 창) 오른쪽에 도킹해 연다. */
+		anchor?: { x: number; y: number; width: number; height: number };
 	}
 
-	let { date, notes, onclose, onopennote }: Props = $props();
+	let { date, notes, onclose, onopennote, windowed = true, anchor }: Props = $props();
 
 	const WIN_DEFAULT_WIDTH = 460;
 	const WIN_DEFAULT_HEIGHT = 480;
 	const WIN_MIN = { width: 280, height: 240 };
+	const DOCK_GAP = 8;
+	const SIZE_KEY = 'calendar:daynotes:size';
 
 	const titles = $derived(notes.map((n) => n.title.trim()).filter(Boolean));
 	const count = $derived(titles.length);
@@ -46,6 +55,34 @@
 		height: WIN_DEFAULT_HEIGHT
 	});
 
+	function loadStoredSize(): { width: number; height: number } | null {
+		if (typeof localStorage === 'undefined') return null;
+		try {
+			const raw = localStorage.getItem(SIZE_KEY);
+			if (!raw) return null;
+			const o = JSON.parse(raw);
+			if (typeof o?.width === 'number' && typeof o?.height === 'number') {
+				return { width: o.width, height: o.height };
+			}
+		} catch {
+			/* ignore */
+		}
+		return null;
+	}
+	function saveSize(width: number, height: number): void {
+		if (typeof localStorage === 'undefined') return;
+		try {
+			localStorage.setItem(SIZE_KEY, JSON.stringify({ width: Math.round(width), height: Math.round(height) }));
+		} catch {
+			/* ignore */
+		}
+	}
+
+	function onResize(g: Geometry) {
+		geo = g;
+		saveSize(g.width, g.height);
+	}
+
 	function startTitleDrag(e: PointerEvent) {
 		const t = e.target as HTMLElement | null;
 		if (t?.closest('[data-no-drag]')) return;
@@ -59,13 +96,25 @@
 	}
 
 	onMount(() => {
-		if (typeof window !== 'undefined') {
-			geo = {
-				...geo,
-				x: Math.max(0, Math.round((window.innerWidth - geo.width) / 2)),
-				y: Math.max(0, Math.round((window.innerHeight - geo.height) / 2))
-			};
+		if (!windowed || typeof window === 'undefined') return;
+		const stored = loadStoredSize();
+		const width = Math.max(WIN_MIN.width, stored?.width ?? WIN_DEFAULT_WIDTH);
+		const height = Math.max(WIN_MIN.height, stored?.height ?? WIN_DEFAULT_HEIGHT);
+		let x: number;
+		let y: number;
+		if (anchor) {
+			// 달력 오른쪽에 도킹; 넘치면 왼쪽, 그래도 안 되면 뷰포트에 클램프.
+			x = anchor.x + anchor.width + DOCK_GAP;
+			if (x + width > window.innerWidth) {
+				const leftX = anchor.x - DOCK_GAP - width;
+				x = leftX >= 0 ? leftX : Math.max(0, window.innerWidth - width);
+			}
+			y = Math.max(0, Math.min(anchor.y, window.innerHeight - height));
+		} else {
+			x = Math.max(0, Math.round((window.innerWidth - width) / 2));
+			y = Math.max(0, Math.round((window.innerHeight - height) / 2));
 		}
+		geo = { x, y, width, height };
 	});
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -87,10 +136,13 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
 	class="dn-overlay"
+	class:windowed
 	use:portal
-	style={`left:${geo.x}px; top:${geo.y}px; width:${geo.width}px; height:${geo.height}px;`}
+	style={windowed
+		? `left:${geo.x}px; top:${geo.y}px; width:${geo.width}px; height:${geo.height}px;`
+		: ''}
 >
-	<header class="dn-header" onpointerdown={startTitleDrag}>
+	<header class="dn-header" onpointerdown={windowed ? startTitleDrag : undefined}>
 		<div class="dn-title">
 			<span class="dn-tag">{date}</span>
 			<span class="dn-count">{count}개</span>
@@ -113,16 +165,23 @@
 		{/if}
 	</div>
 
-	<ResizeHandles base={() => geo} min={WIN_MIN} onresize={(g) => (geo = g)} />
+	{#if windowed}
+		<ResizeHandles base={() => geo} min={WIN_MIN} onresize={onResize} />
+	{/if}
 </div>
 
 <style>
 	.dn-overlay {
 		position: fixed;
+		inset: 0;
 		z-index: var(--z-modal);
 		display: flex;
 		flex-direction: column;
 		background: var(--color-bg, #fff);
+	}
+
+	.dn-overlay.windowed {
+		inset: auto;
 		border: 1px solid var(--color-border, #d4d8dc);
 		border-radius: 8px;
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
@@ -134,16 +193,19 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 12px;
-		padding: 10px 14px;
+		padding: 10px 14px calc(10px) max(14px, env(safe-area-inset-left));
 		border-bottom: 1px solid var(--color-border, #e4e8ec);
 		flex-shrink: 0;
-		cursor: grab;
-		user-select: none;
-		touch-action: none;
 		background: var(--color-bg-secondary, #f5f6f7);
 	}
 
-	.dn-header:active {
+	.dn-overlay.windowed .dn-header {
+		cursor: grab;
+		user-select: none;
+		touch-action: none;
+	}
+
+	.dn-overlay.windowed .dn-header:active {
 		cursor: grabbing;
 	}
 
