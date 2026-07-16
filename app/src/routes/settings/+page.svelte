@@ -2389,6 +2389,26 @@ automation,➖ 미설정,
 						<li>사용 전: 설정 → 터미널 탭의 <b>Hue 조명</b> 섹션에서 허브를 먼저 연결하세요.</li>
 					</ul>
 				</details>
+
+				<details class="guide-card">
+					<summary>달력 — 날짜 노트 + 이전 년도 기록</summary>
+					<p class="info-text">
+						데스크탑 달력에서 날짜 셀을 누르면 그날의 날짜 노트(제목 <code>YYYY-MM-DD</code>)가 열립니다.
+						노트가 없으면 임시 창이 뜨고, 거기서 바로 그 날짜 노트를 만들 수 있습니다.
+					</p>
+					<ul class="guide-list">
+						<li>셀 <b>본문</b> 클릭 = 그날 날짜 노트 열기.</li>
+						<li>셀 우상단 <b>개수 배지</b> 클릭 = 그날 생성된 노트 + 이전 년도 같은 날짜 노트 목록.</li>
+						<li>
+							날짜 노트를 열면 하단에 <b>이전 년도 같은 날짜</b>의 「히스토리 기록」 항목이 흐리게(우측정렬)
+							표시됩니다. 달력 셀에도 같은 기록이 흐리게 붙습니다.
+						</li>
+						<li>
+							출처: <code>히스토리 기록</code> 노트의 <code>YYYY - 히스토리 기록</code> 링크를 따라간
+							각 연도 노트. 데스크탑 전용.
+						</li>
+					</ul>
+				</details>
 			</section>
 
 			{:else if guideSubTab === 'editor'}
