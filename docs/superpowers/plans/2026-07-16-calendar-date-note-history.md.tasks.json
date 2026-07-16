@@ -1,0 +1,90 @@
+{
+  "planPath": "docs/superpowers/plans/2026-07-16-calendar-date-note-history.md",
+  "specPath": "docs/superpowers/specs/2026-07-16-calendar-date-note-history-design.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: historyChain.ts 파서/로더 (+유닛 테스트)",
+      "status": "pending",
+      "description": "히스토리 체인 파서/로더. Files: parseSchedule.ts(extractMonthListItems export), calendar/historyChain.ts, tests/unit/desktop/calendar/historyChain.test.ts. Verify: cd app && npm run test -- historyChain && npm run check",
+      "metadata": {
+        "files": ["app/src/lib/schedule/parseSchedule.ts", "app/src/lib/desktop/calendar/historyChain.ts", "app/tests/unit/desktop/calendar/historyChain.test.ts"],
+        "verifyCommand": "cd app && npm run test -- historyChain && npm run check",
+        "acceptanceCriteria": ["parseHistoryDayLine handles 일/markers/range/invalid", "parseHistoryYearNote all months", "extractHistoryYearLinks only YYYY - 히스토리 기록", "recordsForDate year<target desc", "parseDateTitle/isDateTitle", "npm run check"]
+      }
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: PrevYearRecords + DateNoteFooter (+컴포넌트 테스트)",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "이전 년도 기록 패널. Files: calendar/PrevYearRecords.svelte, calendar/DateNoteFooter.svelte, tests/unit/desktop/calendar/DateNoteFooter.test.ts. Verify: cd app && npm run test -- DateNoteFooter && npm run check",
+      "metadata": {
+        "files": ["app/src/lib/desktop/calendar/PrevYearRecords.svelte", "app/src/lib/desktop/calendar/DateNoteFooter.svelte", "app/tests/unit/desktop/calendar/DateNoteFooter.test.ts"],
+        "verifyCommand": "cd app && npm run test -- DateNoteFooter && npm run check",
+        "acceptanceCriteria": ["PrevYearRecords grouped/dim/right", "DateNoteFooter renders 2024 record for 2026-07-16 seeded IDB", "empty for non-date", "npm run check"]
+      }
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: NoteWindow에 날짜 노트 푸터 마운트 (req 2)",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "NoteWindow가 날짜 제목 노트에 DateNoteFooter 마운트. Files: NoteWindow.svelte. Verify: cd app && npm run check",
+      "metadata": {
+        "files": ["app/src/lib/desktop/NoteWindow.svelte"],
+        "verifyCommand": "cd app && npm run check",
+        "acceptanceCriteria": ["isDateNote derived", "DateNoteFooter mounts in .body after editor for date notes", "npm run check"]
+      }
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: CalendarView — 셀 클릭/배지 분리 + 이전 년도 셀 라인 (req 1,3)",
+      "status": "pending",
+      "blockedBy": [1],
+      "description": "셀 본문=onopendate, 배지=ondayselect, 이전 년도 셀 라인. Files: calendar/CalendarView.svelte. Verify: cd app && npm run check",
+      "metadata": {
+        "files": ["app/src/lib/desktop/calendar/CalendarView.svelte"],
+        "verifyCommand": "cd app && npm run check",
+        "acceptanceCriteria": ["onopendate prop", "clickCell opens date any in-month cell", "badge=button ondayselect, cell=div role=button", "diary cells prev-year dim right", "npm run check CalendarView clean"]
+      }
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: CalendarWindow 배선 + EphemeralDateOverlay (req 1분기, req 5)",
+      "status": "pending",
+      "blockedBy": [1, 4],
+      "description": "find→openWindow else EphemeralDateOverlay. Files: EphemeralDateOverlay.svelte, CalendarWindow.svelte. Verify: cd app && npm run check",
+      "metadata": {
+        "files": ["app/src/lib/desktop/EphemeralDateOverlay.svelte", "app/src/lib/desktop/CalendarWindow.svelte"],
+        "verifyCommand": "cd app && npm run check",
+        "acceptanceCriteria": ["onopendate wired", "handleOpenDate find→openWindow else ephemeral", "EphemeralDateOverlay prev-year + 만들기", "npm run check"]
+      }
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: 목록에 이전 년도 같은 날짜 노트 병합 (req 4)",
+      "status": "pending",
+      "blockedBy": [1, 5],
+      "description": "DayNotesBundleOverlay prevYearTitles 병합 + CalendarWindow 계산. Files: DayNotesBundleOverlay.svelte, CalendarWindow.svelte. Verify: cd app && npm run check",
+      "metadata": {
+        "files": ["app/src/lib/desktop/DayNotesBundleOverlay.svelte", "app/src/lib/desktop/CalendarWindow.svelte"],
+        "verifyCommand": "cd app && npm run check",
+        "acceptanceCriteria": ["prevYearTitles prop merged+deduped", "CalendarWindow computes existing prev-year date titles from chain years", "npm run check"]
+      }
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: 설정 가이드 카드 + 최종 검증",
+      "status": "pending",
+      "blockedBy": [3, 4, 5, 6],
+      "description": "설정 가이드 카드(노트 탭) + 전체 check/test. Files: routes/settings/+page.svelte. Verify: cd app && npm run check && npm run test",
+      "metadata": {
+        "files": ["app/src/routes/settings/+page.svelte"],
+        "verifyCommand": "cd app && npm run check && npm run test",
+        "acceptanceCriteria": ["guide-card added notes sub-tab", "npm run check", "npm run test full suite"]
+      }
+    }
+  ],
+  "lastUpdated": "2026-07-16"
+}
