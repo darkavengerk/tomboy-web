@@ -160,7 +160,7 @@ export function extractCurrentMonthListItems(doc: JSONContent, now: Date): strin
 	return extractMonthListItems(doc, now.getMonth() + 1);
 }
 
-function extractMonthListItems(doc: JSONContent, targetMonth: number): string[] {
+export function extractMonthListItems(doc: JSONContent, targetMonth: number): string[] {
 	const blocks = linearizeDoc(doc);
 	const result: string[] = [];
 	let collecting = false;
