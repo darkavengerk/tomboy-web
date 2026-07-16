@@ -106,6 +106,8 @@
 	import { slipNoteGuids } from '$lib/sleepnote/slipNoteGuids.js';
 	import { createTitleProvider } from '$lib/editor/autoLink/titleProvider.js';
 	import { findAdjacentDateNotes } from '$lib/editor/dateLink/findAdjacentDateNotes.js';
+	import DateNoteFooter from './calendar/DateNoteFooter.svelte';
+	import { isDateTitle } from './calendar/historyChain.js';
 
 	interface Props {
 		guid: string;
@@ -256,6 +258,7 @@
 	// — 진입 Ctrl→편집, 복귀 raw 뷰 Ctrl→↩ 묶음. 닫기(✕)는 창 닫기.
 	let showRawBundle = $state(false);
 	const dedicatedKind = $derived(dedicatedBundleKind(note?.title ?? ''));
+	const isDateNote = $derived(!!note && isDateTitle(note.title));
 	const dedicatedSpec = $derived.by(() => {
 		if (!dedicatedKind || !editorContent) return null;
 		return parseDedicatedBundle(editorContent, dedicatedKind);
@@ -1487,6 +1490,9 @@
 						bridgeUrl={llmBridgeUrl}
 						bridgeToken={llmBridgeToken}
 					/>
+				{/if}
+				{#if isDateNote}
+					<DateNoteFooter title={note?.title ?? ''} />
 				{/if}
 			{:else}
 				<div class="loading">노트를 불러올 수 없습니다.</div>
