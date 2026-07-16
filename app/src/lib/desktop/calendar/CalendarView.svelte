@@ -222,6 +222,9 @@
 		flex-direction: column;
 		padding: 8px;
 		gap: 6px;
+		/* 창(노트) 크기에 비례해 폰트가 커지도록 컨테이너 쿼리 기준. 하위
+		   폰트들은 clamp(min, Ncqi, max) — cqi = 이 컨테이너 폭의 1%. */
+		container-type: inline-size;
 	}
 
 	.nav {
@@ -239,7 +242,7 @@
 		background: #f0f1f3;
 		border-radius: 4px;
 		cursor: pointer;
-		font-size: 0.75rem;
+		font-size: clamp(0.72rem, 2.6cqi, 1.2rem);
 		color: #333;
 	}
 
@@ -251,7 +254,7 @@
 		flex: 1;
 		border: none;
 		background: transparent;
-		font-size: 0.95rem;
+		font-size: clamp(0.92rem, 3.6cqi, 1.55rem);
 		font-weight: 600;
 		color: #111;
 		cursor: pointer;
@@ -275,7 +278,7 @@
 
 	.weekday {
 		text-align: center;
-		font-size: 0.7rem;
+		font-size: clamp(0.7rem, 2.6cqi, 1.15rem);
 		font-weight: 600;
 		color: #888;
 		padding: 2px 0;
@@ -318,7 +321,7 @@
 	}
 
 	.cell-day {
-		font-size: 0.78rem;
+		font-size: clamp(0.8rem, 3cqi, 1.35rem);
 		color: #333;
 		line-height: 1.1;
 		align-self: center;
@@ -349,7 +352,7 @@
 		position: absolute;
 		top: 2px;
 		right: 2px;
-		font-size: 0.58rem;
+		font-size: clamp(0.58rem, 2.1cqi, 0.9rem);
 		font-weight: 600;
 		color: #fff;
 		background: var(--color-accent, #4a7);
@@ -373,7 +376,7 @@
 	}
 
 	.cell-entry {
-		font-size: 0.6rem;
+		font-size: clamp(0.6rem, 2.2cqi, 0.95rem);
 		line-height: 1.25;
 		color: #2a2a2a;
 		white-space: nowrap;
@@ -394,7 +397,7 @@
 	}
 
 	.cell-more {
-		font-size: 0.56rem;
+		font-size: clamp(0.55rem, 2cqi, 0.85rem);
 		color: #888;
 		padding-left: 3px;
 	}
@@ -417,20 +420,20 @@
 		margin-top: auto;
 	}
 	.cell-prev-line {
-		font-size: 0.55rem;
+		font-size: clamp(0.55rem, 2cqi, 0.85rem);
 		line-height: 1.2;
-		color: #b0b4b8;
+		color: #7c828a;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
 	.cell-prev-line b {
 		font-weight: 700;
-		color: #c4c8cc;
+		color: #565c63;
 	}
 	.cell-prev-more {
-		font-size: 0.52rem;
-		color: #c4c8cc;
+		font-size: clamp(0.52rem, 1.9cqi, 0.8rem);
+		color: #7c828a;
 		text-align: right;
 	}
 </style>

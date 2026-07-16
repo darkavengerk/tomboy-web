@@ -42,7 +42,7 @@
 		gap: 4px;
 		padding: 6px 10px;
 		text-align: right;
-		color: #9aa0a6;
+		color: #6d737a;
 		font-size: 0.72rem;
 		line-height: 1.35;
 	}
@@ -55,7 +55,7 @@
 	.py-year {
 		flex-shrink: 0;
 		font-weight: 700;
-		color: #b0b4b8;
+		color: #565c63;
 	}
 	.py-list {
 		margin: 0;

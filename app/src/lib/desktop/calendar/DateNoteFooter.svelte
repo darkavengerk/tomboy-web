@@ -51,5 +51,8 @@
 		border-top: 1px solid #ececec;
 		max-height: 40%;
 		overflow-y: auto;
+		/* 창 하단 플로팅 툴바(--toolbar-h, .note-window 에서 상속)와 겹치지
+		   않도록 여유 공간. 에디터 .tiptap 의 padding-bottom 과 같은 취지. */
+		margin-bottom: calc(var(--toolbar-h, 30px) + 8px);
 	}
 </style>
