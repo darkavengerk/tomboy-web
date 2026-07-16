@@ -16,15 +16,18 @@
 	} from './groupNotesByCreateDay.js';
 	import { buildMonthCells, type MonthCell } from './monthGrid.js';
 	import { loadDiaryDayMap, type DiaryEntry } from './diaryEntries.js';
+	import { loadHistoryChain, recordsForDate, type HistoryChain } from './historyChain.js';
 
 	interface Props {
 		/** 다이어리 모드(셀에 일정/히스토리 항목 표기). */
 		diary?: boolean;
-		/** 개수>0인 날짜를 누르면 호출 — 그날 생성된 노트 목록을 넘긴다. */
+		/** 셀 본문 클릭 — 그날 날짜 노트(제목 YYYY-MM-DD)를 연다. */
+		onopendate?: (date: string) => void;
+		/** 개수 배지 클릭 — 그날 생성된 노트 목록을 넘긴다. */
 		ondayselect: (date: string, notes: CalendarNote[]) => void;
 	}
 
-	let { diary = false, ondayselect }: Props = $props();
+	let { diary = false, onopendate, ondayselect }: Props = $props();
 
 	const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 	const MAX_ENTRY_LINES = 3;
@@ -56,6 +59,16 @@
 		void loadDiary();
 	});
 
+	let historyChain = $state<HistoryChain | null>(null);
+	async function loadHistory() {
+		historyChain = await loadHistoryChain();
+	}
+
+	function prevYearsFor(cell: MonthCell) {
+		if (!diary || !cell.inMonth || !historyChain) return [];
+		return recordsForDate(historyChain, viewYear, cell.date.getMonth() + 1, cell.day);
+	}
+
 	async function loadNotes() {
 		const all = await listNotes();
 		notes = all.map((n) => ({ guid: n.guid, title: n.title, createDate: n.createDate }));
@@ -63,10 +76,12 @@
 
 	onMount(() => {
 		void loadNotes();
-		// 어떤 노트든 생성/삭제/변경으로 목록 캐시가 무효화되면 개수 + 다이어리 갱신.
+		void loadHistory();
+		// 어떤 노트든 생성/삭제/변경으로 목록 캐시가 무효화되면 개수 + 다이어리 + 히스토리 갱신.
 		return onInvalidate(() => {
 			void loadNotes();
 			void loadDiary();
+			void loadHistory();
 		});
 	});
 
@@ -107,7 +122,22 @@
 			viewMonth = cell.date.getMonth();
 			return;
 		}
+		if (onopendate) {
+			onopendate(cell.key);
+			return;
+		}
+		// onopendate 미제공(모바일 /calendar 등) — 기존 동작 유지: 개수>0면 목록.
 		if (cell.count > 0) ondayselect(cell.key, dayMap.get(cell.key) ?? []);
+	}
+	function clickBadge(e: MouseEvent, cell: MonthCell) {
+		e.stopPropagation();
+		ondayselect(cell.key, dayMap.get(cell.key) ?? []);
+	}
+	function cellKeydown(e: KeyboardEvent, cell: MonthCell) {
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			clickCell(cell);
+		}
 	}
 </script>
 
@@ -129,20 +159,30 @@
 	<div class="grid days">
 		{#each cells as cell (cell.key)}
 			{@const entries = entriesFor(cell)}
-			<button
-				type="button"
+			<!-- svelte-ignore a11y_no_static_element_interactions -->
+			<div
 				class="cell"
+				role="button"
+				tabindex="0"
 				class:out={!cell.inMonth}
 				class:today={cell.isToday}
 				class:has={cell.count > 0}
 				class:sun={cell.date.getDay() === 0}
 				class:sat={cell.date.getDay() === 6}
 				onclick={() => clickCell(cell)}
+				onkeydown={(e) => cellKeydown(e, cell)}
 				data-no-drag
 			>
 				<span class="cell-day">{cell.day}</span>
 				{#if cell.count > 0}
-					<span class="cell-count">{cell.count}</span>
+					<button
+						type="button"
+						class="cell-count"
+						onclick={(e) => clickBadge(e, cell)}
+						aria-label="{cell.key} 노트 목록"
+						title="이 날의 노트 목록"
+						data-no-drag>{cell.count}</button
+					>
 				{/if}
 				{#if diary && entries.length > 0}
 					<span class="cell-entries">
@@ -156,7 +196,20 @@
 						{/if}
 					</span>
 				{/if}
-			</button>
+				{#if diary}
+					{@const pys = prevYearsFor(cell)}
+					{#if pys.length > 0}
+						<span class="cell-prev">
+							{#each pys.slice(0, 2) as p, i (i)}
+								<span class="cell-prev-line"><b>{p.year}</b> {p.label}</span>
+							{/each}
+							{#if pys.length > 2}
+								<span class="cell-prev-more">+{pys.length - 2}</span>
+							{/if}
+						</span>
+					{/if}
+				{/if}
+			</div>
 		{/each}
 	</div>
 </div>
@@ -344,5 +397,40 @@
 		font-size: 0.56rem;
 		color: #888;
 		padding-left: 3px;
+	}
+
+	.cell-count {
+		border: none;
+		cursor: pointer;
+	}
+	.cell-count:hover {
+		filter: brightness(1.1);
+	}
+
+	.cell-prev {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		min-height: 0;
+		overflow: hidden;
+		text-align: right;
+		margin-top: auto;
+	}
+	.cell-prev-line {
+		font-size: 0.55rem;
+		line-height: 1.2;
+		color: #b0b4b8;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.cell-prev-line b {
+		font-weight: 700;
+		color: #c4c8cc;
+	}
+	.cell-prev-more {
+		font-size: 0.52rem;
+		color: #c4c8cc;
+		text-align: right;
 	}
 </style>
