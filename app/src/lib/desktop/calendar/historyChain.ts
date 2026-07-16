@@ -60,78 +60,9 @@ export function parseHistoryDayLine(
 	return { day, label };
 }
 
-// --- Local month-header order detection ---
-// parseSchedule.ts's linearizeDoc/MONTH_HEADER_RE are private (notification-critical
-// module — only extractMonthListItems is exported, per invariant). We mirror the same
-// shape-agnostic traversal here just to recover the *document order* of "N월" sections,
-// since looping months 1..12 (ascending) does not match a month-descending note.
-type LinearBlock = { kind: 'paragraph' | 'listItem'; text: string };
-
-function inlineText(node: JSONContent): string {
-	if (typeof node.text === 'string') return node.text;
-	if (node.type === 'footnoteMarker') {
-		return `[^${(node.attrs?.label as string | undefined) ?? ''}]`;
-	}
-	if (node.type === 'inlineCheckbox') {
-		return node.attrs?.checked ? '[x]' : '[ ]';
-	}
-	if (!node.content) return '';
-	return node.content.map(inlineText).join('');
-}
-
-function firstParagraphText(li: JSONContent): string {
-	for (const child of li.content ?? []) {
-		if (child.type === 'paragraph' || child.type === 'heading') {
-			return inlineText(child).trim();
-		}
-	}
-	return '';
-}
-
-function linearizeDoc(doc: JSONContent): LinearBlock[] {
-	const out: LinearBlock[] = [];
-	function walk(blocks: JSONContent[] | undefined): void {
-		if (!blocks) return;
-		for (const b of blocks) {
-			if (b.type === 'paragraph' || b.type === 'heading') {
-				out.push({ kind: 'paragraph', text: inlineText(b).trim() });
-			} else if (b.type === 'bulletList' || b.type === 'orderedList') {
-				for (const li of b.content ?? []) {
-					if (li.type !== 'listItem') continue;
-					out.push({ kind: 'listItem', text: firstParagraphText(li) });
-					const nested = (li.content ?? []).filter(
-						(c) => c.type === 'bulletList' || c.type === 'orderedList'
-					);
-					walk(nested);
-				}
-			}
-		}
-	}
-	walk(doc.content);
-	return out;
-}
-
-const MONTH_HEADER_RE = /^(\d+)월$/;
-
-function detectMonthOrder(doc: JSONContent): number[] {
-	const order: number[] = [];
-	const seen = new Set<number>();
-	for (const b of linearizeDoc(doc)) {
-		const m = MONTH_HEADER_RE.exec(b.text);
-		if (m) {
-			const month = parseInt(m[1], 10);
-			if (!seen.has(month)) {
-				seen.add(month);
-				order.push(month);
-			}
-		}
-	}
-	return order;
-}
-
 export function parseHistoryYearNote(doc: JSONContent, year: number): HistoryEntry[] {
 	const out: HistoryEntry[] = [];
-	for (const month of detectMonthOrder(doc)) {
+	for (let month = 1; month <= 12; month++) {
 		for (const line of extractMonthListItems(doc, month)) {
 			const parsed = parseHistoryDayLine(line, year, month);
 			if (parsed) out.push({ year, month, day: parsed.day, label: parsed.label });

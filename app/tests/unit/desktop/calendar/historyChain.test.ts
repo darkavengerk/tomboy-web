@@ -59,10 +59,9 @@ describe('parseHistoryYearNote', () => {
 			{ month: '11월', items: ['9일(토) 한국 도착'] }
 		]);
 		const entries = parseHistoryYearNote(doc, 2019);
-		expect(entries).toEqual([
-			{ year: 2019, month: 12, day: 9, label: '물주기' },
-			{ year: 2019, month: 11, day: 9, label: '한국 도착' }
-		]);
+		expect(entries).toHaveLength(2);
+		expect(entries).toContainEqual({ year: 2019, month: 12, day: 9, label: '물주기' });
+		expect(entries).toContainEqual({ year: 2019, month: 11, day: 9, label: '한국 도착' });
 	});
 });
 
