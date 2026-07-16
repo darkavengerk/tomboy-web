@@ -5,7 +5,7 @@
     {
       "id": 1,
       "subject": "Task 1: historyChain.ts 파서/로더 (+유닛 테스트)",
-      "status": "pending",
+      "status": "completed",
       "description": "히스토리 체인 파서/로더. Files: parseSchedule.ts(extractMonthListItems export), calendar/historyChain.ts, tests/unit/desktop/calendar/historyChain.test.ts. Verify: cd app && npm run test -- historyChain && npm run check",
       "metadata": {
         "files": ["app/src/lib/schedule/parseSchedule.ts", "app/src/lib/desktop/calendar/historyChain.ts", "app/tests/unit/desktop/calendar/historyChain.test.ts"],
@@ -16,7 +16,7 @@
     {
       "id": 2,
       "subject": "Task 2: PrevYearRecords + DateNoteFooter (+컴포넌트 테스트)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "이전 년도 기록 패널. Files: calendar/PrevYearRecords.svelte, calendar/DateNoteFooter.svelte, tests/unit/desktop/calendar/DateNoteFooter.test.ts. Verify: cd app && npm run test -- DateNoteFooter && npm run check",
       "metadata": {
@@ -28,7 +28,7 @@
     {
       "id": 3,
       "subject": "Task 3: NoteWindow에 날짜 노트 푸터 마운트 (req 2)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [2],
       "description": "NoteWindow가 날짜 제목 노트에 DateNoteFooter 마운트. Files: NoteWindow.svelte. Verify: cd app && npm run check",
       "metadata": {
@@ -40,7 +40,7 @@
     {
       "id": 4,
       "subject": "Task 4: CalendarView — 셀 클릭/배지 분리 + 이전 년도 셀 라인 (req 1,3)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1],
       "description": "셀 본문=onopendate, 배지=ondayselect, 이전 년도 셀 라인. Files: calendar/CalendarView.svelte. Verify: cd app && npm run check",
       "metadata": {
@@ -52,7 +52,7 @@
     {
       "id": 5,
       "subject": "Task 5: CalendarWindow 배선 + EphemeralDateOverlay (req 1분기, req 5)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1, 4],
       "description": "find→openWindow else EphemeralDateOverlay. Files: EphemeralDateOverlay.svelte, CalendarWindow.svelte. Verify: cd app && npm run check",
       "metadata": {
@@ -64,7 +64,7 @@
     {
       "id": 6,
       "subject": "Task 6: 목록에 이전 년도 같은 날짜 노트 병합 (req 4)",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [1, 5],
       "description": "DayNotesBundleOverlay prevYearTitles 병합 + CalendarWindow 계산. Files: DayNotesBundleOverlay.svelte, CalendarWindow.svelte. Verify: cd app && npm run check",
       "metadata": {
@@ -76,7 +76,7 @@
     {
       "id": 7,
       "subject": "Task 7: 설정 가이드 카드 + 최종 검증",
-      "status": "pending",
+      "status": "completed",
       "blockedBy": [3, 4, 5, 6],
       "description": "설정 가이드 카드(노트 탭) + 전체 check/test. Files: routes/settings/+page.svelte. Verify: cd app && npm run check && npm run test",
       "metadata": {
