@@ -12,6 +12,7 @@
 	import DayNotesBundleOverlay from './DayNotesBundleOverlay.svelte';
 	import EphemeralDateOverlay from './EphemeralDateOverlay.svelte';
 	import { findNoteByTitle } from '$lib/core/noteManager.js';
+	import { loadHistoryChain, parseDateTitle } from './calendar/historyChain.js';
 	import {
 		DESKTOP_WINDOW_MIN_WIDTH,
 		DESKTOP_WINDOW_MIN_HEIGHT,
@@ -59,10 +60,29 @@
 	let selectedDate = $state<string | null>(null);
 	let selectedNotes = $state<CalendarNote[]>([]);
 	let ephemeralDate = $state<string | null>(null);
+	let prevYearTitles = $state<string[]>([]);
 
-	function handleDaySelect(date: string, notes: CalendarNote[]) {
+	async function handleDaySelect(date: string, notes: CalendarNote[]) {
 		selectedDate = date;
 		selectedNotes = notes;
+		prevYearTitles = [];
+		const d = parseDateTitle(date);
+		if (!d) return;
+		const chain = await loadHistoryChain();
+		const mmdd = date.slice(5); // "MM-DD"
+		const years = [...new Set(chain.entries.map((e) => e.year))]
+			.filter((y) => y < d.year)
+			.sort((a, b) => b - a);
+		const found = await Promise.all(
+			years.map((y) => {
+				const t = `${y}-${mmdd}`;
+				return findNoteByTitle(t).then((n) => (n ? t : null));
+			})
+		);
+		// selectedDate 가 그새 바뀌었으면 버린다(빠른 연속 클릭 가드).
+		if (selectedDate === date) {
+			prevYearTitles = found.filter((t): t is string => !!t);
+		}
 	}
 
 	async function handleOpenDate(title: string) {
@@ -145,6 +165,7 @@
 		windowed
 		date={selectedDate}
 		notes={selectedNotes}
+		{prevYearTitles}
 		anchor={{ x, y, width, height }}
 		onclose={() => (selectedDate = null)}
 		onopennote={openNote}

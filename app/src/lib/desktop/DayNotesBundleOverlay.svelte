@@ -32,9 +32,19 @@
 		windowed?: boolean;
 		/** windowed 일 때 이 사각형(달력 창) 오른쪽에 도킹해 연다. */
 		anchor?: { x: number; y: number; width: number; height: number };
+		/** 이전 년도 같은 날짜 노트 제목(존재하는 것만). 목록에 병합. */
+		prevYearTitles?: string[];
 	}
 
-	let { date, notes, onclose, onopennote, windowed = true, anchor }: Props = $props();
+	let {
+		date,
+		notes,
+		onclose,
+		onopennote,
+		windowed = true,
+		anchor,
+		prevYearTitles = []
+	}: Props = $props();
 
 	const WIN_DEFAULT_WIDTH = 460;
 	const WIN_DEFAULT_HEIGHT = 480;
@@ -42,7 +52,17 @@
 	const DOCK_GAP = 8;
 	const SIZE_KEY = 'calendar:daynotes:size';
 
-	const titles = $derived(notes.map((n) => n.title.trim()).filter(Boolean));
+	const titles = $derived.by(() => {
+		const seen = new Set<string>();
+		const out: string[] = [];
+		for (const t of [...notes.map((n) => n.title.trim()), ...prevYearTitles]) {
+			if (t && !seen.has(t)) {
+				seen.add(t);
+				out.push(t);
+			}
+		}
+		return out;
+	});
 	const count = $derived(titles.length);
 	const spec = $derived<BundleSpec | null>(
 		titles.length > 0 ? buildSyntheticBundleSpec(titles, 'bundle') : null
