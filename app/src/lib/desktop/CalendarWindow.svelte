@@ -10,6 +10,8 @@
 	import ResizeHandles from './ResizeHandles.svelte';
 	import CalendarView from './calendar/CalendarView.svelte';
 	import DayNotesBundleOverlay from './DayNotesBundleOverlay.svelte';
+	import EphemeralDateOverlay from './EphemeralDateOverlay.svelte';
+	import { findNoteByTitle } from '$lib/core/noteManager.js';
 	import {
 		DESKTOP_WINDOW_MIN_WIDTH,
 		DESKTOP_WINDOW_MIN_HEIGHT,
@@ -56,10 +58,20 @@
 
 	let selectedDate = $state<string | null>(null);
 	let selectedNotes = $state<CalendarNote[]>([]);
+	let ephemeralDate = $state<string | null>(null);
 
 	function handleDaySelect(date: string, notes: CalendarNote[]) {
 		selectedDate = date;
 		selectedNotes = notes;
+	}
+
+	async function handleOpenDate(title: string) {
+		const note = await findNoteByTitle(title);
+		if (note) {
+			desktopSession.openWindow(note.guid);
+			return;
+		}
+		ephemeralDate = title;
 	}
 
 	function handleFocus() {
@@ -119,7 +131,7 @@
 		>
 	</div>
 
-	<CalendarView diary={diaryMode} ondayselect={handleDaySelect} />
+	<CalendarView diary={diaryMode} onopendate={handleOpenDate} ondayselect={handleDaySelect} />
 
 	<ResizeHandles
 		base={() => ({ x, y, width, height })}
@@ -135,6 +147,15 @@
 		notes={selectedNotes}
 		anchor={{ x, y, width, height }}
 		onclose={() => (selectedDate = null)}
+		onopennote={openNote}
+	/>
+{/if}
+
+{#if ephemeralDate}
+	<EphemeralDateOverlay
+		date={ephemeralDate}
+		anchor={{ x, y, width, height }}
+		onclose={() => (ephemeralDate = null)}
 		onopennote={openNote}
 	/>
 {/if}
