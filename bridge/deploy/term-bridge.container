@@ -86,6 +86,10 @@ Volume=%h/.ssh:/home/node/.ssh:ro,z
 # disabled" and skips wake for every target.
 Volume=%h/.config/term-bridge/hosts.json:/etc/term-bridge/hosts.json:ro,z
 Environment=BRIDGE_HOSTS_FILE=/etc/term-bridge/hosts.json
+# 워크로그 노트 creds ({uid, notebook, serviceAccount}) — 없으면 /notes는 503.
+# 주의: podman은 결측 source를 디렉토리로 생성함 — 유닛 start 전에 파일을 먼저 만들 것.
+Volume=%h/.config/term-bridge/notes-creds.json:/etc/term-bridge/notes-creds.json:ro,z
+Environment=BRIDGE_NOTES_FILE=/etc/term-bridge/notes-creds.json
 # reMarkable wallpaper host map — read-only, alias → {host,user,port?}.
 # When the file is absent or has no valid host entries, the bridge logs
 # that wallpaper is disabled and /remarkable/wallpaper returns 503. SSH
