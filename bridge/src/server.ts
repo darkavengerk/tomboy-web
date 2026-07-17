@@ -39,6 +39,8 @@ import {
 } from './files.js';
 import { spawn } from 'node:child_process';
 import { isAllowedKeyCode, buildKeyCommand } from './keyEvents.js';
+import { handleNotesRead, handleNotesWrite, handleNotesAppend, handleNotesList } from './notes.js';
+import { handleNotesMcp } from './notesMcp.js';
 
 const PORT = Number(process.env.BRIDGE_PORT || 3000);
 const PASSWORD = requireEnv('BRIDGE_PASSWORD');
@@ -283,6 +285,37 @@ async function handleHttp(req: IncomingMessage, res: ServerResponse): Promise<vo
 
 	if (url === '/hue/creds' && req.method === 'DELETE') {
 		await handleHueCredsDelete(req, res, SECRET);
+		return;
+	}
+
+	if (url === '/notes/read' && req.method === 'POST') {
+		await handleNotesRead(req, res, SECRET);
+		return;
+	}
+
+	if (url === '/notes/write' && req.method === 'POST') {
+		await handleNotesWrite(req, res, SECRET);
+		return;
+	}
+
+	if (url === '/notes/append' && req.method === 'POST') {
+		await handleNotesAppend(req, res, SECRET);
+		return;
+	}
+
+	if (url === '/notes/list' && req.method === 'POST') {
+		await handleNotesList(req, res, SECRET);
+		return;
+	}
+
+	if (url === '/mcp' && req.method === 'POST') {
+		await handleNotesMcp(req, res, SECRET);
+		return;
+	}
+
+	if (url === '/mcp' && req.method === 'GET') {
+		res.writeHead(405, { 'Content-Type': 'application/json' });
+		res.end(JSON.stringify({ error: 'method_not_allowed', detail: 'SSE 미지원 — POST만' }));
 		return;
 	}
 

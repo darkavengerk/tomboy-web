@@ -124,6 +124,9 @@ echo "Save the password from term-bridge.env somewhere safe — you'll log in wi
 #    the files dir this means /files uploads can't write anything.
 mkdir -p ~/.config/term-bridge
 [ -e ~/.config/term-bridge/hosts.json ] || echo '{}' > ~/.config/term-bridge/hosts.json
+# notes-creds.json: 워크로그 노트 채널 creds ({uid, notebook, serviceAccount}).
+# 빈 {} 플레이스홀더면 /notes·/mcp가 503(비활성)으로 안전 동작 — 실값은 desktop에서 조립해 scp.
+[ -e ~/.config/term-bridge/notes-creds.json ] || echo '{}' > ~/.config/term-bridge/notes-creds.json
 mkdir -p ~/.local/share/term-bridge/files
 
 # 4. Drop the Quadlet unit.

@@ -1,0 +1,60 @@
+{
+  "planPath": "docs/superpowers/plans/2026-07-16-tomboy-worklog.md",
+  "tasks": [
+    {
+      "id": 1,
+      "subject": "Task 1: md↔XML 직렬화기 (noteMarkdown.ts) + 앱측 바이트 라운드트립",
+      "status": "completed",
+      "description": "**Goal:** 마크다운 서브셋과 Tomboy <note-content> XML 양방향 변환기 — 앱 archiver로 파싱→재직렬화 시 바이트 동일.\n\n**Files:** Create bridge/src/noteMarkdown.ts; Test bridge/src/noteMarkdown.test.ts; Test app/tests/unit/core/bridgeNoteFixture.test.ts\n\n**Acceptance Criteria:** md 서브셋(##→bold줄, - 2칸 중첩리스트, **bold**, `mono`, 펜스→줄별 monospace, [[링크]]→link:internal, --- 드롭, [x] 평문) 왕복; 대괄호 포함 제목 링크(lazy); &<> 이스케이프 왕복; 앱측 deserializeContent→serializeContent 바이트 동일 + [x]가 inlineCheckbox atom; md 라운드트립(펜스 축퇴 허용)\n\n**Verify:** cd bridge && node --import tsx --test src/noteMarkdown.test.ts; cd app && npx vitest run tests/unit/core/bridgeNoteFixture.test.ts\n\n**Steps:** 플랜 Task 1 전체 코드. RED→GREEN→앱 fixture(불일치 시 직렬화기를 앱 출력에 맞춤, 앱 코드 수정 금지)→커밋.\n\n```json:metadata\n{\"files\": [\"bridge/src/noteMarkdown.ts\", \"bridge/src/noteMarkdown.test.ts\", \"app/tests/unit/core/bridgeNoteFixture.test.ts\"], \"verifyCommand\": \"cd bridge && node --import tsx --test src/noteMarkdown.test.ts && cd ../app && npx vitest run tests/unit/core/bridgeNoteFixture.test.ts\", \"acceptanceCriteria\": [\"md 서브셋 왕복 변환\", \"대괄호 포함 링크 처리\", \"앱 archiver 바이트 라운드트립 동일\", \"[x]가 inlineCheckbox atom으로 파싱\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: creds + Firestore REST 스토어 (notesStore.ts)",
+      "status": "completed",
+      "description": "**Goal:** BRIDGE_NOTES_FILE creds 로더 + SA JWT 토큰 교환 + Firestore REST(findByTitle/listByNotebook/write) — 의존성 0.\n\n**Files:** Create bridge/src/notesStore.ts; Test bridge/src/notesStore.test.ts\n\n**Acceptance Criteria:** creds 로더 hueCreds 패턴(미설정/ENOENT/결손→null); getAccessToken RS256 JWT + 만료 60초 전 캐시; findByTitle runQuery title EQUAL limit 2; listByNotebook ARRAY_CONTAINS; write commit 10필드 + serverUpdatedAt REQUEST_TIME transform; formatTomboyDate 7자리+콜론 오프셋; 주입 fetchFn만 사용\n\n**Verify:** cd bridge && node --import tsx --test src/notesStore.test.ts\n\n**Steps:** 플랜 Task 2 전체 코드. RED→GREEN→커밋.\n\n```json:metadata\n{\"files\": [\"bridge/src/notesStore.ts\", \"bridge/src/notesStore.test.ts\"], \"verifyCommand\": \"cd bridge && node --import tsx --test src/notesStore.test.ts\", \"acceptanceCriteria\": [\"creds 로더 hueCreds 패턴\", \"RS256 JWT + 토큰 캐시\", \"runQuery/commit 요청 형태 정확\", \"10필드 + serverUpdatedAt transform\", \"formatTomboyDate 7자리\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: 코어 op + HTTP 핸들러 (notes.ts)",
+      "status": "completed",
+      "blockedBy": [1, 2],
+      "description": "**Goal:** 가드/409/톰스톤 부활 포함 read/write/list/append 코어 op + /notes/* HTTP 핸들러 4개 (fake store DI 테스트).\n\n**Files:** Create bridge/src/notes.ts; Test bridge/src/notes.test.ts\n\n**Acceptance Criteria:** 민트토큰 OR 원시시크릿(constant-time) 인증; creds 없음 503; 제목 가드 /^\\[[^\\]]+\\] .+/ 403; 노트북 태그 없는 문서 403(슬립노트 보호); 생성 10필드 완전; 갱신 guid/createDate/tags/public 보존 + ifChangeDate 409(+현재본문) + force/createOnly; 톰스톤 read 404·write guid 재사용 부활(타 노트북 403); append 병합; list 필터+정렬\n\n**Verify:** cd bridge && node --import tsx --test src/notes.test.ts\n\n**Steps:** 플랜 Task 3 전체 코드. RED→GREEN→커밋.\n\n```json:metadata\n{\"files\": [\"bridge/src/notes.ts\", \"bridge/src/notes.test.ts\"], \"verifyCommand\": \"cd bridge && node --import tsx --test src/notes.test.ts\", \"acceptanceCriteria\": [\"민트토큰/원시시크릿 인증\", \"제목+노트북 이중 가드\", \"생성 10필드 완전\", \"409 낙관적 잠금 + 현재본문 반환\", \"톰스톤 guid 재사용 부활\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: MCP 엔드포인트 (notesMcp.ts)",
+      "status": "completed",
+      "blockedBy": [3],
+      "description": "**Goal:** POST /mcp — MCP Streamable HTTP(무상태 단건 JSON)로 worklog_read/write/list/append 4툴 노출, 코어 op 재사용.\n\n**Files:** Create bridge/src/notesMcp.ts; Test bridge/src/notesMcp.test.ts\n\n**Acceptance Criteria:** initialize protocolVersion 에코(기본 2025-03-26)+serverInfo; notifications 202; tools/list 4개+inputSchema; tools/call content text JSON + NotesOpError isError(409 시 현재본문); -32601/-32700; 무인증 401\n\n**Verify:** cd bridge && node --import tsx --test src/notesMcp.test.ts\n\n**Steps:** 플랜 Task 4 전체 코드. RED→GREEN→커밋.\n\n```json:metadata\n{\"files\": [\"bridge/src/notesMcp.ts\", \"bridge/src/notesMcp.test.ts\"], \"verifyCommand\": \"cd bridge && node --import tsx --test src/notesMcp.test.ts\", \"acceptanceCriteria\": [\"initialize/tools.list/tools.call 동작\", \"worklog 4툴 왕복\", \"충돌 시 isError + 현재본문\", \"401/-32601/-32700 처리\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: 서버 배선 + quadlet + 전체 검증",
+      "status": "completed",
+      "blockedBy": [3, 4],
+      "description": "**Goal:** server.ts에 /notes/* 4개 + /mcp 라우트 등록, quadlet notes-creds ro 마운트, bridge 전체 테스트+빌드 green.\n\n**Files:** Modify bridge/src/server.ts; Modify bridge/deploy/term-bridge.container\n\n**Acceptance Criteria:** POST 정확매칭 5라우트(충돌 없음, CORS 무수정); quadlet Volume+Environment 짝 + podman 결측소스 경고 주석; npm test 전체 green + npm run build 성공\n\n**Verify:** cd bridge && npm test && npm run build\n\n**Steps:** 플랜 Task 5 코드. 배선→quadlet→검증→커밋.\n\n```json:metadata\n{\"files\": [\"bridge/src/server.ts\", \"bridge/deploy/term-bridge.container\"], \"verifyCommand\": \"cd bridge && npm test && npm run build\", \"acceptanceCriteria\": [\"5라우트 등록\", \"quadlet notes-creds 마운트\", \"bridge 전체 테스트+빌드 green\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: 전역 worklog 스킬 + CLI + 훅 (repo 밖)",
+      "status": "completed",
+      "blockedBy": [5],
+      "description": "**Goal:** ~/.claude/skills/worklog/(SKILL.md 의식 + worklog.mjs CLI) + SessionStart/PreCompact 훅 + 설정 골격.\n\n**Files:** Create ~/.claude/skills/worklog/SKILL.md, ~/.claude/skills/worklog/scripts/worklog.mjs, ~/.claude/hooks/worklog-session-start.sh(+x), ~/.config/tomboy-worklog/env(0600 placeholder); Modify ~/.claude/settings.json(SessionStart+PreCompact, 기존 훅 보존)\n\n**Acceptance Criteria:** resolve가 tomboy-web/shifu 정확 해석(--git-common-dir); init 멱등(info/exclude WORK.md); 훅 fail-soft exit 0(비 git 침묵/브릿지 실패 경고); settings.json 유효+기존 훅 무손상; env 0600\n\n**Verify:** node ~/.claude/skills/worklog/scripts/worklog.mjs resolve; bash ~/.claude/hooks/worklog-session-start.sh; python3 -m json.tool ~/.claude/settings.json\n\n**Steps:** 플랜 Task 6 전체 코드(worklog.mjs/SKILL.md/훅/설정 JSON). repo 밖 — 커밋 없음, 변경 목록 보고.\n\n```json:metadata\n{\"files\": [\"~/.claude/skills/worklog/SKILL.md\", \"~/.claude/skills/worklog/scripts/worklog.mjs\", \"~/.claude/hooks/worklog-session-start.sh\", \"~/.config/tomboy-worklog/env\", \"~/.claude/settings.json\"], \"verifyCommand\": \"node ~/.claude/skills/worklog/scripts/worklog.mjs resolve && bash ~/.claude/hooks/worklog-session-start.sh && python3 -m json.tool ~/.claude/settings.json\", \"acceptanceCriteria\": [\"resolve가 tomboy-web/shifu 정확 해석\", \"init 멱등\", \"훅 fail-soft exit 0\", \"settings.json 유효 + 기존 훅 보존\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: Pi 프로비저닝 + 배포 + 라이브 검증",
+      "status": "completed",
+      "blockedBy": [5, 6],
+      "description": "**Goal:** notes-creds.json Pi 배치, 브릿지 재배포, /notes/list 라이브 200 + MCP user 스코프 등록.\n\n**Files:** Create(Pi) ~/.config/term-bridge/notes-creds.json(0600); Modify ~/.config/tomboy-worklog/env(실값); claude mcp add --scope user\n\n**Acceptance Criteria:** creds(uid=pipeline.yaml firebase_uid, SA JSON, notebook 개발; project_id=tomboy-web 일치 확인 — 불일치 시 중단); /notes/list 200; 없는 제목 404; 무인증 401; claude mcp list에 worklog; Pi 기존 서비스 무영향(term-bridge active, /health 200)\n\n**Verify:** node ~/.claude/skills/worklog/scripts/worklog.mjs list\n\n**Steps:** 플랜 Task 7 — uid/SA 수집→creds 조립+scp→git push origin shifu + BRIDGE_DEPLOY_BRANCH=shifu npm run deploy(main 머지는 사용자 결정)→env 실값(Pi BRIDGE_SECRET; URL LAN 기본/Caddyfile 공개경로 우선)→라이브 검증→MCP 등록. Pi: ssh -p 2222 umayloveme@192.168.219.110.\n\n```json:metadata\n{\"files\": [\"~/.config/tomboy-worklog/env\"], \"verifyCommand\": \"node ~/.claude/skills/worklog/scripts/worklog.mjs list\", \"acceptanceCriteria\": [\"Pi creds 배치 + project_id 일치\", \"/notes/list 200\", \"무인증 401\", \"claude mcp list에 worklog\", \"기존 서비스 무영향\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: 초기 노트 + 도그푸드 e2e + 문서화 (사용자 게이트)",
+      "status": "completed",
+      "blockedBy": [6, 7],
+      "description": "**Goal:** 로그/인박스/작업 노트 실생성, 이 기능 자체를 첫 checkpoint로 기록, 사용자 앱 end-to-end 확인, CLAUDE.md·메모리 문서화.\n\n**USER-ORDERED GATE — NON-SKIPPABLE.** This task was requested by the user in the current conversation. It MUST NOT be closed by walking around it, by declaring it \"verified inline\", or by substituting a cheaper check. Close only after every item in acceptanceCriteria has been re-validated independently, with output captured.\n\n**Files:** Create WORK.md(shifu 루트, gitignored); Modify CLAUDE.md; Create 메모리 project_worklog_system.md + MEMORY.md 줄; 노트 3개([tomboy-web] 로그, [개발] 인박스, [tomboy-web/shifu] 작업)\n\n**Acceptance Criteria:** append/write/push-work 200 + list 3개; read==WORK.md; 사용자 확인 ①앱 개발 노트북 필터 3개 ②bold 섹션+탭 가능 체크박스 ③[[내부링크]] 이동 ④앱 체크박스 토글→worklog read 반영; 새 세션 훅 주입 확인; CLAUDE.md+메모리 작성\n\n**Verify:** node ~/.claude/skills/worklog/scripts/worklog.mjs list → 3개 + 사용자 구두 확인 캡처\n\n**Steps:** 플랜 Task 8 — WORK.md→노트 생성→사용자 게이트(AskUserQuestion)→새 세션 훅 확인→문서화→커밋.\n\n```json:metadata\n{\"userGate\": true, \"tags\": [\"user-gate\"], \"files\": [\"WORK.md\", \"CLAUDE.md\"], \"verifyCommand\": \"node ~/.claude/skills/worklog/scripts/worklog.mjs list\", \"acceptanceCriteria\": [\"worklog list에 노트 3개\", \"앱 개발 노트북 필터에 3개 표시(사용자 확인)\", \"작업 노트 체크박스 탭 가능 + 토글이 worklog read에 반영(사용자 확인)\", \"내부링크 이동 동작(사용자 확인)\", \"새 세션 SessionStart 훅이 WORK.md 주입(사용자 확인)\"]}\n```"
+    }
+  ],
+  "lastUpdated": "2026-07-17"
+}
