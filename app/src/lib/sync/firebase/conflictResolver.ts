@@ -41,18 +41,43 @@ export function resolveNoteConflict(
 
 	if (sidesEquivalent(l, r)) return { kind: 'noop' };
 
-	const cmp = l.changeDate.localeCompare(r.changeDate);
+	const cmp = compareTomboyDates(l.changeDate, r.changeDate);
 	if (cmp > 0) return { kind: 'push', reason: 'local-newer' };
 	if (cmp < 0) return { kind: 'pull', reason: 'remote-newer' };
 
 	// changeDate ties — fall back to metadataChangeDate (covers tag/favorite-only edits).
-	const mcmp = l.metadataChangeDate.localeCompare(r.metadataChangeDate);
+	const mcmp = compareTomboyDates(l.metadataChangeDate, r.metadataChangeDate);
 	if (mcmp > 0) return { kind: 'push', reason: 'local-newer' };
 	if (mcmp < 0) return { kind: 'pull', reason: 'remote-newer' };
 
 	// Full timestamp tie but content/tags/deleted disagree → keep what the
 	// user is looking at locally.
 	return { kind: 'push', reason: 'tie-prefers-local' };
+}
+
+/**
+ * Compare two Tomboy date strings by absolute instant. Lexical comparison is
+ * only valid while every writer emits the same UTC offset — an external
+ * writer stamping `+00:00` (e.g. the Pi bridge's UTC container) produced
+ * strings whose lexical order contradicted chronological order, letting a
+ * stale phone doc "win" over a newer bridge write and silently revert it.
+ * When either side doesn't parse, or both map to the same millisecond
+ * (Tomboy fractions carry sub-ms digits Date can't hold), fall back to
+ * string order — byte-identical behavior to the old comparator for
+ * same-offset strings.
+ */
+function compareTomboyDates(a: string, b: string): number {
+	const ta = parseTomboyDateMs(a);
+	const tb = parseTomboyDateMs(b);
+	if (ta !== null && tb !== null && ta !== tb) return ta < tb ? -1 : 1;
+	return a.localeCompare(b);
+}
+
+function parseTomboyDateMs(s: string): number | null {
+	const m = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}:\d{2})$/.exec(s);
+	if (!m) return null;
+	const ms = Date.parse(`${m[1]}.${(m[2] ?? '').padEnd(3, '0').slice(0, 3)}${m[3]}`);
+	return Number.isNaN(ms) ? null : ms;
 }
 
 function sidesEquivalent(a: ConflictSide, b: ConflictSide): boolean {

@@ -90,6 +90,9 @@ Environment=BRIDGE_HOSTS_FILE=/etc/term-bridge/hosts.json
 # 주의: podman은 결측 source를 디렉토리로 생성함 — 유닛 start 전에 파일을 먼저 만들 것.
 Volume=%h/.config/term-bridge/notes-creds.json:/etc/term-bridge/notes-creds.json:ro,z
 Environment=BRIDGE_NOTES_FILE=/etc/term-bridge/notes-creds.json
+# 노트 changeDate는 Tomboy 로컬-offset 문자열 — 앱(폰, +09:00)과 offset이 어긋나면
+# 문자열 LWW/정렬이 시간순과 뒤집힌다. 컨테이너 기본 UTC 방지용으로 앱과 동일 tz 고정.
+Environment=TZ=Asia/Seoul
 # reMarkable wallpaper host map — read-only, alias → {host,user,port?}.
 # When the file is absent or has no valid host entries, the bridge logs
 # that wallpaper is disabled and /remarkable/wallpaper returns 503. SSH
