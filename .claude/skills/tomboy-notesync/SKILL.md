@@ -219,9 +219,19 @@ KB — paid once. After that, only deltas.
    `tie-prefers-local`**: never silently overwrite the editor the user is
    currently looking at.
 
-Tomboy `changeDate` is a string ISO-8601 with timezone, so plain
-`localeCompare` is correct across days/years. `xmlContent` equality is
-byte-level, which is fine because the editor's no-op-skip logic in
+Tomboy `changeDate` is a string ISO-8601 with a **local** timezone offset.
+Plain `localeCompare` was the original comparator; it is only correct while
+every writer emits the same offset. The worklog bridge running in a UTC
+container (`+00:00`) broke that in production (2026-07-17): a stale phone
+doc stamped `01:09+09:00` lexically beat a newer bridge write stamped
+`01:05+00:00` and silently reverted it. `compareTomboyDates` in
+`conflictResolver.ts` now parses both sides to absolute instants (7-digit
+fractions trimmed to ms) and only falls back to `localeCompare` when a side
+doesn't parse or both map to the same millisecond — byte-identical to the
+old behavior for same-offset strings. Defense-in-depth: the bridge quadlet
+also pins `TZ=Asia/Seoul` so new strings stay single-offset (list sorting
+elsewhere still compares strings). `xmlContent` equality is byte-level,
+which is fine because the editor's no-op-skip logic in
 `updateNoteFromEditor` already prevents whitespace-only writes.
 
 Tombstones flow through unchanged: a remote `deleted=true` with a newer
@@ -261,6 +271,12 @@ must set `metadataChangeDate` to strictly newer than any value the
 receiver could already have.** Otherwise plan on the receiver clobbering
 you. See the diary pipeline's `tomboy-diary` skill, invariant I13, for
 the worked example.
+
+Second writer rule: **emit timestamps in the app's timezone offset
+(+09:00), not UTC.** The conflict resolver compares absolute instants, but
+list sorting and `home.ts`'s latest-note pick still compare strings — a
+`+00:00` writer sorts wrong for up to 9 hours. Containerized writers must
+pin `TZ=Asia/Seoul` (the worklog bridge quadlet does).
 
 ## Gating: feature flag + sign-in
 

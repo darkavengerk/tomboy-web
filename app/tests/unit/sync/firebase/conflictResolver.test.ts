@@ -149,4 +149,65 @@ describe('resolveNoteConflict', () => {
 		});
 		expect(resolveNoteConflict(local, remote).kind).toBe('pull');
 	});
+
+	describe('mixed timezone offsets (bridge writes +00:00, app writes +09:00)', () => {
+		it('remote absolutely newer wins even when local string sorts higher (production repro)', () => {
+			// local: 01:09 KST = 2026-07-16T16:09Z (older). remote: 01:05 UTC (newer).
+			// localeCompare would say local > remote and push the stale doc.
+			const local = side({
+				xmlContent: 'stale phone doc',
+				changeDate: '2026-07-17T01:09:40.0330000+09:00'
+			});
+			const remote = side({
+				xmlContent: 'fresh bridge write',
+				changeDate: '2026-07-17T01:05:58.5150000+00:00'
+			});
+			expect(resolveNoteConflict(local, remote)).toEqual({
+				kind: 'pull',
+				reason: 'remote-newer'
+			});
+		});
+
+		it('local absolutely newer wins even when remote string sorts higher', () => {
+			const local = side({
+				xmlContent: 'fresh local',
+				changeDate: '2026-07-17T01:05:58.0000000+00:00'
+			});
+			const remote = side({
+				xmlContent: 'stale remote',
+				changeDate: '2026-07-17T01:09:40.0000000+09:00'
+			});
+			expect(resolveNoteConflict(local, remote)).toEqual({
+				kind: 'push',
+				reason: 'local-newer'
+			});
+		});
+
+		it('metadataChangeDate tiebreak also compares by absolute instant', () => {
+			const shared = '2026-07-17T01:00:00.0000000+00:00';
+			const local = side({
+				xmlContent: 'A',
+				changeDate: shared,
+				metadataChangeDate: '2026-07-17T01:09:40.0000000+09:00' // 16:09Z 전날 = older
+			});
+			const remote = side({
+				xmlContent: 'B',
+				changeDate: shared,
+				metadataChangeDate: '2026-07-17T01:05:58.0000000+00:00' // newer instant
+			});
+			expect(resolveNoteConflict(local, remote)).toEqual({
+				kind: 'pull',
+				reason: 'remote-newer'
+			});
+		});
+
+		it('unparseable date falls back to string comparison', () => {
+			const local = side({ xmlContent: 'A', changeDate: 'not-a-date-b' });
+			const remote = side({ xmlContent: 'B', changeDate: 'not-a-date-a' });
+			expect(resolveNoteConflict(local, remote)).toEqual({
+				kind: 'push',
+				reason: 'local-newer'
+			});
+		});
+	});
 });
