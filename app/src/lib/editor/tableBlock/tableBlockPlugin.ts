@@ -33,6 +33,7 @@ import {
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { Editor, JSONContent } from '@tiptap/core';
+import { pushToast } from '$lib/stores/toast.js';
 import { findTableRegions, findMarkdownTableRegions, type TableRegion } from './findTableRegions.js';
 import { renderInlinesToDom } from './renderInlines.js';
 import { commitCellEdit, findCellEditRange } from './cellEdit.js';
@@ -744,6 +745,52 @@ export function commitCellEditCommand(editor: Editor, newText: string): boolean 
 	return true;
 }
 
+/**
+ * Handle a single click on a rendered table cell: copy the cell's plain
+ * text (from `region.rows`, the mark-stripped view of the same cells the
+ * renderer draws) to the clipboard and toast. Returns true when the
+ * click was consumed. Empty cells are a no-op so a stray click doesn't
+ * clobber the clipboard with nothing.
+ */
+function handleCellCopyClick(view: EditorView, target: HTMLElement): boolean {
+	const cell = target.closest(
+		'th[data-table-block-row], td[data-table-block-row]'
+	) as HTMLElement | null;
+	if (!cell) return false;
+	// NOTE: don't test `closest('[contenteditable="true"]')` here — the
+	// editor root itself is contenteditable=true, so that would always
+	// match. The editing cell has its own data marker.
+	if (
+		target.closest('a') ||
+		target.closest('button') ||
+		target.closest('[data-table-block-editing="true"]')
+	) {
+		return false;
+	}
+	const wrap = cell.closest('[data-table-block-open]') as HTMLElement | null;
+	if (!wrap) return false;
+	const open = Number(wrap.getAttribute('data-table-block-open'));
+	const rowIdx = Number(cell.getAttribute('data-table-block-row'));
+	const colIdx = Number(cell.getAttribute('data-table-block-col'));
+	if (!Number.isFinite(open) || !Number.isFinite(rowIdx) || !Number.isFinite(colIdx)) {
+		return false;
+	}
+	const st = tableBlockPluginKey.getState(view.state);
+	const region = st?.regions.find((r) => r.openFromPos === open);
+	if (!region) return false;
+	const text = region.rows[rowIdx]?.[colIdx] ?? '';
+	if (!text) return false;
+	if (!navigator.clipboard?.writeText) {
+		pushToast('복사 실패', { kind: 'error' });
+		return true;
+	}
+	navigator.clipboard.writeText(text).then(
+		() => pushToast('셀 내용 복사됨'),
+		() => pushToast('복사 실패', { kind: 'error' })
+	);
+	return true;
+}
+
 export function createTableBlockPlugin(): Plugin<PluginState> {
 	return new Plugin<PluginState>({
 		key: tableBlockPluginKey,
@@ -817,18 +864,24 @@ export function createTableBlockPlugin(): Plugin<PluginState> {
 					const cb = target.closest(
 						'input[data-table-block-toggle]'
 					) as HTMLInputElement | null;
-					if (!cb) return false;
-					const wrap = cb.closest('[data-table-block-open]') as HTMLElement | null;
-					if (!wrap) return false;
-					const open = Number(wrap.getAttribute('data-table-block-open'));
-					if (!Number.isFinite(open)) return false;
-					event.preventDefault();
-					event.stopPropagation();
-					const tr: Transaction = view.state.tr.setMeta(tableBlockPluginKey, {
-						toggleAt: open
-					} as Meta);
-					view.dispatch(tr);
-					return true;
+					if (cb) {
+						const wrap = cb.closest('[data-table-block-open]') as HTMLElement | null;
+						if (!wrap) return false;
+						const open = Number(wrap.getAttribute('data-table-block-open'));
+						if (!Number.isFinite(open)) return false;
+						event.preventDefault();
+						event.stopPropagation();
+						const tr: Transaction = view.state.tr.setMeta(tableBlockPluginKey, {
+							toggleAt: open
+						} as Meta);
+						view.dispatch(tr);
+						return true;
+					}
+					// Single click on a rendered cell copies its plain text to
+					// the clipboard. Clicks that another interaction owns pass
+					// through: links (navigation), the contenteditable editing
+					// cell, and the ctrl-mode action buttons.
+					return handleCellCopyClick(view, target);
 				},
 				// Double-click on a body cell enters cell-edit mode for that
 				// cell. We resolve the target (region open + row/col) from

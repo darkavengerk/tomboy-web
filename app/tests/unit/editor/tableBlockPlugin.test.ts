@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Editor, Extension } from '@tiptap/core';
 import Document from '@tiptap/extension-document';
 import Paragraph from '@tiptap/extension-paragraph';
@@ -1210,5 +1210,69 @@ describe('tableBlockPlugin — state across edits', () => {
 						?.class === 'tomboy-table-block-hidden'
 			);
 		expect(hides.length).toBeGreaterThan(0);
+	});
+});
+
+describe('tableBlockPlugin — cell click copies to clipboard', () => {
+	function mockClipboard() {
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		Object.defineProperty(navigator, 'clipboard', {
+			value: { writeText },
+			configurable: true
+		});
+		return writeText;
+	}
+
+	afterEach(() => {
+		// jsdom has no real clipboard; drop the mock so other suites see
+		// the pristine (undefined) state.
+		Object.defineProperty(navigator, 'clipboard', {
+			value: undefined,
+			configurable: true
+		});
+	});
+
+	function clickCell(ed: Editor, selector: string): HTMLElement {
+		const cell = ed.view.dom.querySelector(selector) as HTMLElement | null;
+		expect(cell).not.toBeNull();
+		cell!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+		return cell!;
+	}
+
+	it('click on a body cell copies its plain text', () => {
+		const writeText = mockClipboard();
+		const ed = makeEditor(['```csv', 'h1, h2', 'val1, val2', '```']);
+		clickCell(ed, 'td[data-table-block-row="1"][data-table-block-col="0"]');
+		expect(writeText).toHaveBeenCalledWith('val1');
+	});
+
+	it('click on a header cell copies too', () => {
+		const writeText = mockClipboard();
+		const ed = makeEditor(['```csv', 'h1, h2', 'val1, val2', '```']);
+		clickCell(ed, 'th[data-table-block-row="0"][data-table-block-col="1"]');
+		expect(writeText).toHaveBeenCalledWith('h2');
+	});
+
+	it('empty cell click is a no-op (clipboard untouched)', () => {
+		const writeText = mockClipboard();
+		// Ragged row: second body row has only one cell — col 1 is empty.
+		const ed = makeEditor(['```csv', 'h1, h2', 'only', '```']);
+		clickCell(ed, 'td[data-table-block-row="1"][data-table-block-col="1"]');
+		expect(writeText).not.toHaveBeenCalled();
+	});
+
+	it('click inside the contenteditable editing cell does not copy', () => {
+		const writeText = mockClipboard();
+		const ed = makeEditor(['```csv', 'alpha, beta', '```']);
+		const r = getState(ed)!.regions[0]!;
+		enterCellEdit(ed, { openFromPos: r.openFromPos, rowIdx: 0, colIdx: 1 });
+		const editingCell = ed.view.dom.querySelector(
+			'[data-table-block-editing="true"]'
+		) as HTMLElement | null;
+		expect(editingCell).not.toBeNull();
+		editingCell!.dispatchEvent(
+			new MouseEvent('click', { bubbles: true, cancelable: true })
+		);
+		expect(writeText).not.toHaveBeenCalled();
 	});
 });
