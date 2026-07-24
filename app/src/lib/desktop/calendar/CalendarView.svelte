@@ -17,6 +17,7 @@
 	import { buildMonthCells, type MonthCell } from './monthGrid.js';
 	import { loadDiaryDayMap, type DiaryEntry } from './diaryEntries.js';
 	import { loadHistoryChain, recordsForDate, type HistoryChain } from './historyChain.js';
+	import { loadEventChain, eventsForDate, type EventChain } from './eventEntries.js';
 
 	interface Props {
 		/** 다이어리 모드(셀에 일정/히스토리 항목 표기). */
@@ -31,6 +32,7 @@
 
 	const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
 	const MAX_ENTRY_LINES = 3;
+	const MAX_EVENT_LINES = 2;
 
 	let notes = $state<CalendarNote[]>([]);
 	const dayMap = $derived(groupNotesByCreateDay(notes));
@@ -69,6 +71,17 @@
 		return recordsForDate(historyChain, viewYear, cell.date.getMonth() + 1, cell.day);
 	}
 
+	// 사건·사고·기념 이벤트(단일 노트, 모든 연도) — 기념일 방식(과거+올해).
+	let eventChain = $state<EventChain | null>(null);
+	async function loadEvents() {
+		eventChain = await loadEventChain();
+	}
+
+	function eventsFor(cell: MonthCell) {
+		if (!diary || !cell.inMonth || !eventChain) return [];
+		return eventsForDate(eventChain, viewYear, cell.date.getMonth() + 1, cell.day);
+	}
+
 	async function loadNotes() {
 		const all = await listNotes();
 		notes = all.map((n) => ({ guid: n.guid, title: n.title, createDate: n.createDate }));
@@ -77,11 +90,13 @@
 	onMount(() => {
 		void loadNotes();
 		void loadHistory();
-		// 어떤 노트든 생성/삭제/변경으로 목록 캐시가 무효화되면 개수 + 다이어리 + 히스토리 갱신.
+		void loadEvents();
+		// 어떤 노트든 생성/삭제/변경으로 목록 캐시가 무효화되면 개수 + 다이어리 + 히스토리 + 이벤트 갱신.
 		return onInvalidate(() => {
 			void loadNotes();
 			void loadDiary();
 			void loadHistory();
+			void loadEvents();
 		});
 	});
 
@@ -183,6 +198,19 @@
 						title="이 날의 노트 목록"
 						data-no-drag>{cell.count}</button
 					>
+				{/if}
+				{#if diary}
+					{@const evs = eventsFor(cell)}
+					{#if evs.length > 0}
+						<span class="cell-events">
+							{#each evs.slice(0, MAX_EVENT_LINES) as ev, i (i)}
+								<span class="cell-event"><b>{ev.year}</b> {ev.label}</span>
+							{/each}
+							{#if evs.length > MAX_EVENT_LINES}
+								<span class="cell-event-more">+{evs.length - MAX_EVENT_LINES}</span>
+							{/if}
+						</span>
+					{/if}
 				{/if}
 				{#if diary && entries.length > 0}
 					<span class="cell-entries">
@@ -399,6 +427,37 @@
 	.cell-more {
 		font-size: clamp(0.55rem, 2cqi, 0.85rem);
 		color: #888;
+		padding-left: 3px;
+	}
+
+	/* 사건·사고·기념 이벤트 — 기념일 강조. 배경 하이라이트 배지(앰버). */
+	.cell-events {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		min-height: 0;
+		overflow: hidden;
+	}
+	.cell-event {
+		font-size: clamp(0.6rem, 2.2cqi, 0.95rem);
+		line-height: 1.25;
+		color: #7a4e00;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		background: #fdecc4;
+		border-left: 3px solid #e8a33d;
+		border-radius: 3px;
+		padding: 0 4px;
+		font-weight: 600;
+	}
+	.cell-event b {
+		font-weight: 800;
+		color: #995f00;
+	}
+	.cell-event-more {
+		font-size: clamp(0.52rem, 1.9cqi, 0.8rem);
+		color: #b07d1a;
 		padding-left: 3px;
 	}
 
