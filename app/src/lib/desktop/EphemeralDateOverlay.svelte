@@ -13,7 +13,9 @@
 		parseDateTitle,
 		type HistoryEntry
 	} from './calendar/historyChain.js';
+	import { loadEventChain, eventsForDate, type EventEntry } from './calendar/eventEntries.js';
 	import PrevYearRecords from './calendar/PrevYearRecords.svelte';
+	import EventRecords from './calendar/EventRecords.svelte';
 	import { startPointerDrag, type Geometry } from './dragResize.js';
 	import ResizeHandles from './ResizeHandles.svelte';
 
@@ -33,6 +35,7 @@
 	const DOCK_GAP = 8;
 
 	let records = $state<HistoryEntry[]>([]);
+	let events = $state<EventEntry[]>([]);
 	let creating = $state(false);
 	let geo = $state<Geometry>({ x: 0, y: 0, width: WIN_DEFAULT_WIDTH, height: WIN_DEFAULT_HEIGHT });
 
@@ -40,10 +43,12 @@
 		const d = parseDateTitle(date);
 		if (!d) {
 			records = [];
+			events = [];
 			return;
 		}
-		const chain = await loadHistoryChain();
+		const [chain, evChain] = await Promise.all([loadHistoryChain(), loadEventChain()]);
 		records = recordsForDate(chain, d.year, d.month, d.day);
+		events = eventsForDate(evChain, d.year, d.month, d.day);
 	}
 
 	async function handleCreate() {
@@ -114,7 +119,8 @@
 	</header>
 
 	<div class="ed-body">
-		{#if records.length > 0}
+		{#if events.length > 0 || records.length > 0}
+			<EventRecords records={events} />
 			<PrevYearRecords {records} />
 		{:else}
 			<p class="ed-msg">이 날짜의 이전 년도 기록이 없습니다.</p>

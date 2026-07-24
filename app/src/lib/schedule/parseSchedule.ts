@@ -62,7 +62,7 @@ export function parseDayLine(text: string, year: number, month: number): ParsedD
 // "any block whose plain text is `Nx월`" — could be a paragraph (flat shape)
 // or a top-level listItem (nested shape). We flatten both shapes into a
 // single sequence so the section grouping logic is shape-agnostic.
-type LinearBlock = { kind: 'paragraph' | 'listItem'; text: string };
+export type LinearBlock = { kind: 'paragraph' | 'listItem'; text: string };
 
 function inlineText(node: JSONContent): string {
 	if (typeof node.text === 'string') return node.text;
@@ -85,7 +85,7 @@ function firstParagraphText(li: JSONContent): string {
 	return '';
 }
 
-function linearizeDoc(doc: JSONContent): LinearBlock[] {
+export function linearizeDoc(doc: JSONContent): LinearBlock[] {
 	const out: LinearBlock[] = [];
 	function walk(blocks: JSONContent[] | undefined): void {
 		if (!blocks) return;

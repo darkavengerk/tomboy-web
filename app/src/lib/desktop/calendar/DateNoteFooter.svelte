@@ -10,7 +10,9 @@
 		parseDateTitle,
 		type HistoryEntry
 	} from './historyChain.js';
+	import { loadEventChain, eventsForDate, type EventEntry } from './eventEntries.js';
 	import PrevYearRecords from './PrevYearRecords.svelte';
+	import EventRecords from './EventRecords.svelte';
 
 	interface Props {
 		title: string;
@@ -18,18 +20,21 @@
 	let { title }: Props = $props();
 
 	let records = $state<HistoryEntry[]>([]);
+	let events = $state<EventEntry[]>([]);
 	let token = 0;
 
 	async function load() {
 		const d = parseDateTitle(title);
 		if (!d) {
 			records = [];
+			events = [];
 			return;
 		}
 		const t = ++token;
-		const chain = await loadHistoryChain();
+		const [chain, evChain] = await Promise.all([loadHistoryChain(), loadEventChain()]);
 		if (t !== token) return;
 		records = recordsForDate(chain, d.year, d.month, d.day);
+		events = eventsForDate(evChain, d.year, d.month, d.day);
 	}
 
 	$effect(() => {
@@ -39,8 +44,9 @@
 	onMount(() => onInvalidate(() => void load()));
 </script>
 
-{#if records.length > 0}
+{#if events.length > 0 || records.length > 0}
 	<div class="date-note-footer">
+		<EventRecords records={events} />
 		<PrevYearRecords {records} />
 	</div>
 {/if}
